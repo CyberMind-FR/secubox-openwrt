@@ -6,7 +6,8 @@
 				"luci.streamlit": [
 					"get_status", "get_config", "get_logs",
 					"list_apps", "get_app", "get_install_progress",
-					"list_instances"
+					"list_instances",
+					"get_gitea_config", "gitea_list_repos"
 				]
 			},
 			"uci": ["streamlit"]
@@ -17,7 +18,9 @@
 					"save_config", "start", "stop", "restart",
 					"install", "uninstall", "update",
 					"add_app", "remove_app", "set_active_app", "upload_app",
-					"add_instance", "remove_instance", "enable_instance", "disable_instance"
+					"preview_zip", "upload_zip",
+					"add_instance", "remove_instance", "enable_instance", "disable_instance",
+					"save_gitea_config", "gitea_clone", "gitea_pull"
 				]
 			},
 			"uci": ["streamlit"]
