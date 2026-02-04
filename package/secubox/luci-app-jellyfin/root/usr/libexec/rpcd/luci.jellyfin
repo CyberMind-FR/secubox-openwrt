@@ -8,7 +8,7 @@ CONFIG="jellyfin"
 
 case "$1" in
 	list)
-		echo '{"status":{},"start":{},"stop":{},"restart":{},"install":{},"logs":{"lines":"int"}}'
+		echo '{"status":{},"start":{},"stop":{},"restart":{},"install":{},"uninstall":{},"update":{},"configure_haproxy":{},"backup":{},"restore":{"path":"str"},"logs":{"lines":"int"}}'
 		;;
 	call)
 		case "$2" in
@@ -22,12 +22,24 @@ case "$1" in
 				timezone=$(uci -q get ${CONFIG}.main.timezone)
 				hw_accel=$(uci -q get ${CONFIG}.transcoding.hw_accel)
 
+				# Network/domain config
+				domain=$(uci -q get ${CONFIG}.network.domain)
+				haproxy=$(uci -q get ${CONFIG}.network.haproxy)
+				firewall_wan=$(uci -q get ${CONFIG}.network.firewall_wan)
+
+				# Mesh config
+				mesh_enabled=$(uci -q get ${CONFIG}.mesh.enabled)
+
 				json_add_boolean "enabled" ${enabled:-0}
 				json_add_string "image" "${image:-jellyfin/jellyfin:latest}"
 				json_add_int "port" ${port:-8096}
 				json_add_string "data_path" "${data_path:-/srv/jellyfin}"
 				json_add_string "timezone" "${timezone:-Europe/Paris}"
 				json_add_boolean "hw_accel" ${hw_accel:-0}
+				json_add_string "domain" "${domain:-jellyfin.secubox.local}"
+				json_add_boolean "haproxy" ${haproxy:-0}
+				json_add_boolean "firewall_wan" ${firewall_wan:-0}
+				json_add_boolean "mesh_enabled" ${mesh_enabled:-0}
 
 				# Docker availability
 				if command -v docker >/dev/null 2>&1; then
@@ -47,6 +59,27 @@ case "$1" in
 				else
 					json_add_string "container_status" "not_installed"
 					json_add_string "container_uptime" ""
+				fi
+
+				# HAProxy vhost status
+				if [ "${haproxy:-0}" = "1" ]; then
+					vhost_exists=$(uci show haproxy 2>/dev/null | grep "\.domain='${domain:-jellyfin.secubox.local}'" | head -1)
+					if [ -n "$vhost_exists" ]; then
+						json_add_string "haproxy_status" "configured"
+					else
+						json_add_string "haproxy_status" "pending"
+					fi
+				else
+					json_add_string "haproxy_status" "disabled"
+				fi
+
+				# Disk usage
+				dp="${data_path:-/srv/jellyfin}"
+				if [ -d "$dp" ]; then
+					disk_usage=$(du -sh "$dp" 2>/dev/null | cut -f1)
+					json_add_string "disk_usage" "${disk_usage:-0}"
+				else
+					json_add_string "disk_usage" ""
 				fi
 
 				# Media paths
@@ -81,6 +114,59 @@ case "$1" in
 				json_add_boolean "success" $((code == 0))
 				json_add_string "output" "$output"
 				json_dump
+				;;
+
+			uninstall)
+				output=$(/usr/sbin/jellyfinctl uninstall 2>&1)
+				code=$?
+				json_init
+				json_add_boolean "success" $((code == 0))
+				json_add_string "output" "$output"
+				json_dump
+				;;
+
+			update)
+				output=$(/usr/sbin/jellyfinctl update 2>&1)
+				code=$?
+				json_init
+				json_add_boolean "success" $((code == 0))
+				json_add_string "output" "$output"
+				json_dump
+				;;
+
+			configure_haproxy)
+				output=$(/usr/sbin/jellyfinctl configure-haproxy 2>&1)
+				code=$?
+				json_init
+				json_add_boolean "success" $((code == 0))
+				json_add_string "output" "$output"
+				json_dump
+				;;
+
+			backup)
+				backup_file="/tmp/jellyfin-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
+				output=$(/usr/sbin/jellyfinctl backup "$backup_file" 2>&1)
+				code=$?
+				json_init
+				json_add_boolean "success" $((code == 0))
+				json_add_string "path" "$backup_file"
+				json_add_string "output" "$output"
+				json_dump
+				;;
+
+			restore)
+				read -r input
+				path=$(echo "$input" | jsonfilter -e '@.path' 2>/dev/null)
+				if [ -z "$path" ]; then
+					echo '{"success":false,"output":"No backup path specified"}'
+				else
+					output=$(/usr/sbin/jellyfinctl restore "$path" 2>&1)
+					code=$?
+					json_init
+					json_add_boolean "success" $((code == 0))
+					json_add_string "output" "$output"
+					json_dump
+				fi
 				;;
 
 			logs)

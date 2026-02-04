@@ -22,7 +22,15 @@ stop_service() {
 	"$SERVICE_BIN" service-stop >/dev/null 2>&1
 }
 
-restart_service() {
+reload_service() {
 	stop_service
 	start_service
+}
+
+service_triggers() {
+	procd_add_reload_trigger "jellyfin"
+}
+
+status_service() {
+	"$SERVICE_BIN" status
 }
