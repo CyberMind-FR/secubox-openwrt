@@ -2,24 +2,35 @@
 
 ## Active Threads
 
-- **SecuBox Nav Theme Support**  
-  Status: ✅ COMPLETE (2025-12-28)  
-  Notes: All view tabs now respect theme colors; monitoring menu cleaned up.
+- **Zigbee2mqtt LXC Rewrite**
+  Status: COMPLETE (2026-02-04)
+  Notes: Rewritten from Docker to LXC Alpine container. Feed rebuilt.
+  Deploy fix (2026-02-04): adapter `ezsp`→`ember` (z2m 2.x rename), added `ZIGBEE2MQTT_DATA` env var to start script, added `mosquitto-nossl` dependency. Direct `/dev/ttyUSB0` passthrough works; socat TCP bridge does NOT work (ASH RSTACK timeout).
 
-- **SecuBox v0.5.0-A polish**  
-  Status: ✅ COMPLETE (2025-12-29)  
-  Notes: Monitoring/Modules/Alerts/Help views now share the same navbar + chip headers; Help tab added globally.
+- **Jellyfin Media Server**
+  Status: COMPLETE (2026-02-04)
+  Notes: New secubox-app-jellyfin + luci-app-jellyfin with LXC, HAProxy integration, uninstall/update/backup.
 
-- **Backup/Restore UX Alignment**  
-  Status: ✅ COMPLETE  
-  Notes: System Hub header and restore flow updated; API now accepts `file_name`.
+- **Device Intel & DNS Provider**
+  Status: COMPLETE (2026-02-04)
+  Notes: New packages added. BusyBox compatibility, OUI emoji display, SDK build pattern aligned.
+
+- **Exposure KISS Redesign**
+  Status: COMPLETE (2026-02-04)
+  Notes: Enriched service names, vhost integration, DNS domain sorting, toggle switch fix.
+
+- **Streamlit Upload Fixes**
+  Status: COMPLETE (2026-02-04)
+  Notes: Chunked upload (uhttpd 64KB limit), UTF-8 fix, ZIP requirements auto-install, rename support.
 
 ## Next Up
 
-- Port the new chip header layout to remaining SecuBox derivative apps (client-guardian, auth-guardian).
-- Re-run deployment scripts on target routers after each batch to ensure consistency.
+- Port the chip header layout to remaining SecuBox derivative apps (client-guardian, auth-guardian) — still pending, neither has `sh-page-header` pattern.
+- Rebuild bonus feed with all 2026-02-04 changes (partially done — zigbee2mqtt and device-intel included, verify completeness).
+- Commit uncommitted working tree changes (bonus-feed IPKs, zigbee2mqttctl).
 
 ## Blockers / Risks
 
-- Theme manager still only exposes dark/light/system options in Settings UI. Cyberpunk mode exists but is hidden.
+- Cyberpunk theme is now exposed in Settings UI (dark/light/system/cyberpunk) — previous blocker resolved.
 - No automated regression tests for LuCI views; manual verification required after each SCP deploy.
+- `zigbee2mqttctl` has uncommitted changes in working tree.

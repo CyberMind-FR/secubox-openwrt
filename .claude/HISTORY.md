@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-01-27_
+_Last updated: 2026-02-04_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -48,3 +48,87 @@ _Last updated: 2026-01-27_
     - README.md updated to v0.16.0 with all 38 modules categorized.
     - Added build requirement table distinguishing SDK vs toolchain builds.
     - secubox-tools/README.md updated to v1.1.0 with SDK vs toolchain guidance.
+
+11. **Service Registry & HAProxy ACME v0.15.0 (2026-01-28)**
+    - `service-registry`: Unified service aggregation dashboard with dynamic health checks, URL readiness wizard, public IP detection, and external port checks.
+    - `haproxy`: Webroot ACME mode (no HAProxy restart), async cert workflow, auto-open firewall when publishing.
+    - Menu reorganization: CrowdSec, Threat Monitor, Network Diagnostics, WireGuard all moved to LuCI Services menu.
+    - `tor-shield`: Exit node hostname (reverse DNS), presets with immediate activation, excluded destinations for CDN/direct, master protection switch.
+    - `network-tweaks`: AdGuard Home DNS control, CDN cache and WPAD proxy controls, cumulative impact counters for HAProxy vhosts/LXC/firewall.
+    - `client-guardian`: Safe defaults, emergency clear, and safety limits.
+    - `metablogizer`: Improved site creation and HAProxy integration.
+    - Portal: HTTP health checks and speedtest integration.
+    - CrowdSec: Dynamic LAPI port detection.
+    - 30 commits, 15 feat / 12 fix / 3 refactor.
+
+12. **App Store KISS Evolution & Dependency Cleanup (2026-01-29)**
+    - Renamed `luci-app-secubox-bonus` to `secubox-app-bonus` (feeds-based architecture).
+    - Implemented KISS Evolution for app store: feeds, profiles, skills, feedback system.
+    - Stripped all libc/libubox/libubus/libuci dependencies from SecuBox packages.
+    - Added `PKG_FLAGS:=nonshared` to prevent automatic libc dependency injection.
+
+13. **P2P Hub & SecuBox Console (2026-01-30)**
+    - `secubox-p2p`: Full P2P Hub with globe peer visualization, Hub Registry, Services Registry, parallel component sources, auto-self mesh, master deployment, DNS bridge, WireGuard mirror, Gitea repository creation, mesh backup, test cloning, gigogne distribution mode, and mDNS service publishing.
+    - `secubox-console`: Linux host TUI frontend with CLI tools lexical reference.
+    - `cdn-cache`: Added MITM SSL bump support for HTTPS caching.
+    - `metablogizer`: Tor hidden service integration, DNS resolution fixes, permissions fixes.
+    - `streamlit`: ZIP upload with selective tree extraction.
+    - `crowdsec-dashboard`: Extensible theming system (later removed), UCI ubus permissions.
+    - `secubox-core`: P2P Hub API and wizard-first menu.
+    - `secubox-app-bonus`: Added `secubox-feed install all` command.
+    - 40+ commits — largest single-day effort in project history.
+
+14. **P2P MirrorBox & Factory Dashboard (2026-01-31)**
+    - `secubox-p2p` v0.6.0: MirrorBox NetMesh Catalog with DNS federation, distributed mesh services panel, WAN IP and WireGuard tunnel redundancy, mDNS service publishing, REST API for mesh visibility.
+    - `secubox-factory`: Unified dashboard with signed Merkle snapshots and HMAC-style signing for OpenWrt compatibility.
+    - `portal`: KISS redesign with service categorization.
+    - `crowdsec-dashboard`: KISS rewrite, console enrollment, CrowdSec theme integration, dynamic port/path detection.
+    - `secubox-swiss`: Unified CLI tool for SecuBox operations.
+    - `jitsi`: Jitsi Meet video conferencing integration.
+    - `mitmproxy`: HAProxy backend inspection, token auth, enhanced threat detection analytics v2.0.
+    - `secubox-core`: P2P mesh API endpoints for console discovery.
+
+15. **KISS UI Rewrites & DNS Guard (2026-02-01)**
+    - `streamlit`: KISS UI redesign with instances management, Gitea integration, and multiple upload bug fixes.
+    - `metablogizer`: KISS UI redesign with backend status display.
+    - `ollama`: KISS UI rewrite with model suggestions and thermal monitoring.
+    - `netdiag`: Thermal monitoring integration.
+    - `dnsguard`: New DNS Guard app with provider lookup methods.
+    - `haproxy`: AdGuard Home detection, improved service discovery, reserved ports with listening verification.
+    - `p2p`: Distributed catalog with Gitea sync and health probing.
+    - `mitmproxy`: Enhanced threat patterns; moved to Security menu.
+    - `network-tweaks`: Moved to Network menu.
+    - `crowdsec-dashboard`: Nav path fixes, alerts/countries display fixes.
+    - `wireguard-dashboard`: QR code generation fix.
+    - `exposure`: Reserved ports with listening verification.
+
+16. **WAF Auto-Ban & Security Hardening (2026-02-02)**
+    - `waf`: Sensitivity-based auto-ban system with CrowdSec integration and comprehensive CVE detection patterns (including CVE-2025-15467).
+    - `mitmproxy`: WAN protection mode for incoming traffic inspection; LAN transparent proxy disabled by default.
+    - `simplex`: SimpleX Chat self-hosted messaging servers.
+    - `crowdsec`: KISS setup simplification, CAPI enrollment status, restored working setup page.
+    - `local-build`: Added missing toolchain package shorthands and feeds path fix.
+    - WAF auto-ban statistics added to dashboards.
+
+17. **Mesh Security & MAC Guardian (2026-02-03)**
+    - `mac-guardian`: New WiFi MAC security monitor with DHCP lease protection for odhcpd.
+    - `master-link`: Secure mesh onboarding with dynamic join IPK generation.
+    - `security-threats`: KISS rewrite with mesh threat intelligence, LXC mitmproxy detection.
+    - `p2p`: Decentralized threat intelligence sharing via mesh.
+    - `tor-shield`: Server mode for split-routing with public IP preservation.
+    - `wireguard-dashboard`: jshn bypass for QR code (argument size limit), peer private key persistence in UCI, server endpoint persistence.
+    - `localai`: gte-small preset, RPC expect unwrapping and chat JSON escaping fixes.
+    - `lyrion`: WAN access checkbox for firewall rules, networking fixes for device discovery.
+    - `tools`: SecuBox image builder and sysupgrade scripts.
+    - RPCD/LuCI frontend guidelines added to CLAUDE.md.
+    - KISS READMEs added for all 46 remaining packages.
+
+18. **New Packages & Exposure Redesign (2026-02-04)**
+    - `jellyfin`: New media server package with LXC container, uninstall/update/backup, HAProxy integration, and LuCI actions.
+    - `zigbee2mqtt`: Complete rewrite from Docker to LXC Alpine container.
+    - `device-intel`: New device intelligence package with OUI emoji display (BusyBox compatibility fixes, SDK build pattern alignment).
+    - `dns-provider`: New DNS provider management package.
+    - `exposure`: KISS redesign with enriched service names, vhost integration, DNS domain sorting; toggle switch fix.
+    - `streamlit`: Chunked upload to bypass uhttpd 64KB JSON limit, UTF-8 `.py` file upload fix, auto-install requirements from ZIP, non-standard filename support.
+    - `crowdsec-dashboard`: Decisions list fix (wrong RPC expect key).
+    - RPCD: BusyBox ash `local` keyword compatibility fix (wrap call handlers in function).
