@@ -71,6 +71,23 @@ return view.extend({
 		var sslCount = sslBackends.length;
 		var domainCount = haproxyVhosts.filter(function(v) { return v.enabled; }).length;
 
+		// Sort: services with DNS domains first (alphabetically), then by port
+		services.sort(function(a, b) {
+			var aDomains = domainsByPort[a.port] || [];
+			var bDomains = domainsByPort[b.port] || [];
+			var aHas = aDomains.length > 0;
+			var bHas = bDomains.length > 0;
+			if (aHas && !bHas) return -1;
+			if (!aHas && bHas) return 1;
+			if (aHas && bHas) {
+				var aName = aDomains[0].domain.toLowerCase();
+				var bName = bDomains[0].domain.toLowerCase();
+				if (aName < bName) return -1;
+				if (aName > bName) return 1;
+			}
+			return a.port - b.port;
+		});
+
 		var rows = services.map(function(svc) {
 			var torInfo = torByPort[svc.port] || torByName[svc.name] || torByName[svc.process] || null;
 			var sslInfo = sslByPort[svc.port] || sslByName[svc.name] || sslByName[svc.process] || null;
