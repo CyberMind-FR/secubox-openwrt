@@ -1,0 +1,15 @@
+config jellyfin 'main'
+	option enabled '0'
+	option image 'jellyfin/jellyfin:latest'
+	option data_path '/srv/jellyfin'
+	option port '8096'
+	option timezone 'Europe/Paris'
+
+config jellyfin 'media'
+	# list media_path '/mnt/media/movies'
+	# list media_path '/mnt/media/music'
+	# list media_path '/mnt/media/shows'
+
+config jellyfin 'transcoding'
+	option hw_accel '0'
+	option gpu_device ''

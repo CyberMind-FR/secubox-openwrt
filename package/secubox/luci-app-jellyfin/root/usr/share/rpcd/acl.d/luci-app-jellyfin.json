@@ -1,0 +1,24 @@
+{
+	"luci-app-jellyfin": {
+		"description": "Grant access to Jellyfin media server configuration",
+		"read": {
+			"file": {
+				"/etc/config/jellyfin": ["read"]
+			},
+			"ubus": {
+				"file": ["read", "stat"],
+				"luci.jellyfin": ["*"]
+			},
+			"uci": ["jellyfin"]
+		},
+		"write": {
+			"file": {
+				"/etc/config/jellyfin": ["write"]
+			},
+			"ubus": {
+				"luci.jellyfin": ["*"]
+			},
+			"uci": ["jellyfin"]
+		}
+	}
+}

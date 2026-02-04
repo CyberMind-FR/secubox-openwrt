@@ -1,0 +1,100 @@
+#!/bin/sh
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+CONTAINER="secbx-jellyfin"
+CONFIG="jellyfin"
+
+case "$1" in
+	list)
+		echo '{"status":{},"start":{},"stop":{},"restart":{},"install":{},"logs":{"lines":"int"}}'
+		;;
+	call)
+		case "$2" in
+			status)
+				json_init
+
+				enabled=$(uci -q get ${CONFIG}.main.enabled)
+				image=$(uci -q get ${CONFIG}.main.image)
+				port=$(uci -q get ${CONFIG}.main.port)
+				data_path=$(uci -q get ${CONFIG}.main.data_path)
+				timezone=$(uci -q get ${CONFIG}.main.timezone)
+				hw_accel=$(uci -q get ${CONFIG}.transcoding.hw_accel)
+
+				json_add_boolean "enabled" ${enabled:-0}
+				json_add_string "image" "${image:-jellyfin/jellyfin:latest}"
+				json_add_int "port" ${port:-8096}
+				json_add_string "data_path" "${data_path:-/srv/jellyfin}"
+				json_add_string "timezone" "${timezone:-Europe/Paris}"
+				json_add_boolean "hw_accel" ${hw_accel:-0}
+
+				# Docker availability
+				if command -v docker >/dev/null 2>&1; then
+					json_add_boolean "docker_available" 1
+				else
+					json_add_boolean "docker_available" 0
+				fi
+
+				# Container status
+				if docker ps --filter "name=$CONTAINER" --format '{{.Status}}' 2>/dev/null | grep -q .; then
+					json_add_string "container_status" "running"
+					uptime=$(docker ps --filter "name=$CONTAINER" --format '{{.Status}}' 2>/dev/null)
+					json_add_string "container_uptime" "$uptime"
+				elif docker ps -a --filter "name=$CONTAINER" --format '{{.Status}}' 2>/dev/null | grep -q .; then
+					json_add_string "container_status" "stopped"
+					json_add_string "container_uptime" ""
+				else
+					json_add_string "container_status" "not_installed"
+					json_add_string "container_uptime" ""
+				fi
+
+				# Media paths
+				json_add_array "media_paths"
+				for mp in $(uci -q get ${CONFIG}.media.media_path); do
+					json_add_string "" "$mp"
+				done
+				json_close_array
+
+				json_dump
+				;;
+
+			start)
+				/etc/init.d/jellyfin start >/dev/null 2>&1
+				echo '{"success":true}'
+				;;
+
+			stop)
+				/etc/init.d/jellyfin stop >/dev/null 2>&1
+				echo '{"success":true}'
+				;;
+
+			restart)
+				/etc/init.d/jellyfin restart >/dev/null 2>&1
+				echo '{"success":true}'
+				;;
+
+			install)
+				output=$(/usr/sbin/jellyfinctl install 2>&1)
+				code=$?
+				json_init
+				json_add_boolean "success" $((code == 0))
+				json_add_string "output" "$output"
+				json_dump
+				;;
+
+			logs)
+				read -r input
+				lines=$(echo "$input" | jsonfilter -e '@.lines' 2>/dev/null)
+				[ -z "$lines" ] && lines=50
+
+				logs=$(docker logs --tail "$lines" "$CONTAINER" 2>&1 | tail -100)
+				json_init
+				json_add_string "logs" "$logs"
+				json_dump
+				;;
+		esac
+		;;
+esac
+
+exit 0

@@ -1,0 +1,187 @@
+#!/bin/sh
+# SecuBox Jellyfin Media Server manager
+
+CONFIG="jellyfin"
+CONTAINER="secbx-jellyfin"
+OPKG_UPDATED=0
+
+usage() {
+	cat <<'USAGE'
+Usage: jellyfinctl <command>
+
+Commands:
+  install         Install prerequisites, prepare directories, pull image
+  check           Run prerequisite checks
+  update          Pull new image and restart
+  status          Show container status
+  logs            Show container logs (use -f to follow)
+  shell           Open shell inside container
+  service-run     Internal: run container via procd
+  service-stop    Stop container
+USAGE
+}
+
+require_root() { [ "$(id -u)" -eq 0 ]; }
+
+uci_get() { uci -q get ${CONFIG}.$1; }
+
+defaults() {
+	image="$(uci_get main.image)"
+	[ -z "$image" ] && image="jellyfin/jellyfin:latest"
+	data_path="$(uci_get main.data_path)"
+	[ -z "$data_path" ] && data_path="/srv/jellyfin"
+	port="$(uci_get main.port)"
+	[ -z "$port" ] && port="8096"
+	timezone="$(uci_get main.timezone)"
+	[ -z "$timezone" ] && timezone="Europe/Paris"
+	hw_accel="$(uci_get transcoding.hw_accel)"
+	[ -z "$hw_accel" ] && hw_accel="0"
+	gpu_device="$(uci_get transcoding.gpu_device)"
+}
+
+ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
+
+ensure_packages() {
+	for pkg in "$@"; do
+		if ! opkg status "$pkg" 2>/dev/null | grep -q "Status:.*installed"; then
+			if [ "$OPKG_UPDATED" -eq 0 ]; then
+				opkg update || return 1
+				OPKG_UPDATED=1
+			fi
+			opkg install "$pkg" || return 1
+		fi
+	done
+}
+
+check_prereqs() {
+	defaults
+	ensure_dir "$data_path"
+	[ -d /sys/fs/cgroup ] || { echo "[ERROR] /sys/fs/cgroup missing" >&2; return 1; }
+	ensure_packages dockerd docker containerd
+	/etc/init.d/dockerd enable >/dev/null 2>&1
+	/etc/init.d/dockerd start >/dev/null 2>&1
+}
+
+pull_image() { defaults; docker pull "$image"; }
+
+stop_container() {
+	docker stop "$CONTAINER" >/dev/null 2>&1 || true
+	docker rm "$CONTAINER" >/dev/null 2>&1 || true
+}
+
+build_media_mounts() {
+	local mounts=""
+	local paths
+	paths=$(uci -q get ${CONFIG}.media.media_path)
+	if [ -n "$paths" ]; then
+		for p in $paths; do
+			[ -d "$p" ] && mounts="$mounts -v ${p}:${p}:ro"
+		done
+	fi
+	echo "$mounts"
+}
+
+build_gpu_args() {
+	if [ "$hw_accel" = "1" ]; then
+		local dev="${gpu_device:-/dev/dri}"
+		if [ -e "$dev" ]; then
+			echo "--device=${dev}:${dev}"
+		else
+			echo ""
+		fi
+	fi
+}
+
+cmd_install() {
+	require_root || { echo "Root required" >&2; exit 1; }
+	echo "[Jellyfin] Installing prerequisites..."
+	check_prereqs || exit 1
+	ensure_dir "$data_path/config"
+	ensure_dir "$data_path/cache"
+	echo "[Jellyfin] Pulling Docker image..."
+	pull_image || exit 1
+	uci set ${CONFIG}.main.enabled='1'
+	uci commit ${CONFIG}
+	/etc/init.d/jellyfin enable
+	echo ""
+	echo "Jellyfin installed successfully."
+	echo "Configure media paths:"
+	echo "  uci add_list jellyfin.media.media_path='/path/to/media'"
+	echo "  uci commit jellyfin"
+	echo "Start with: /etc/init.d/jellyfin start"
+	echo "Web UI: http://<device-ip>:${port}"
+}
+
+cmd_check() { check_prereqs; echo "Prerequisite check completed."; }
+
+cmd_update() {
+	require_root || { echo "Root required" >&2; exit 1; }
+	echo "[Jellyfin] Pulling latest image..."
+	pull_image || exit 1
+	echo "[Jellyfin] Restarting..."
+	/etc/init.d/jellyfin restart
+}
+
+cmd_status() {
+	defaults
+	echo "Jellyfin Media Server"
+	echo "====================="
+	echo "  Image:     $image"
+	echo "  Port:      $port"
+	echo "  Data:      $data_path"
+	echo ""
+	if docker ps --filter "name=$CONTAINER" --format '{{.Status}}' 2>/dev/null | grep -q .; then
+		echo "  Container: RUNNING"
+		docker ps --filter "name=$CONTAINER" --format '  Uptime:    {{.Status}}'
+	elif docker ps -a --filter "name=$CONTAINER" --format '{{.Status}}' 2>/dev/null | grep -q .; then
+		echo "  Container: STOPPED"
+	else
+		echo "  Container: NOT INSTALLED"
+	fi
+}
+
+cmd_logs() { docker logs "$@" "$CONTAINER" 2>&1; }
+
+cmd_shell() { docker exec -it "$CONTAINER" /bin/bash 2>/dev/null || docker exec -it "$CONTAINER" /bin/sh; }
+
+cmd_service_run() {
+	require_root || { echo "Root required" >&2; exit 1; }
+	check_prereqs || exit 1
+	defaults
+	stop_container
+
+	local media_mounts
+	media_mounts=$(build_media_mounts)
+
+	local gpu_args
+	gpu_args=$(build_gpu_args)
+
+	local docker_args="--name $CONTAINER"
+	docker_args="$docker_args -p ${port}:8096"
+	docker_args="$docker_args -v ${data_path}/config:/config"
+	docker_args="$docker_args -v ${data_path}/cache:/cache"
+	docker_args="$docker_args -e TZ=${timezone}"
+
+	# shellcheck disable=SC2086
+	exec docker run --rm $docker_args $media_mounts $gpu_args "$image"
+}
+
+cmd_service_stop() {
+	require_root || { echo "Root required" >&2; exit 1; }
+	stop_container
+}
+
+case "${1:-}" in
+	install) shift; cmd_install "$@" ;;
+	check) shift; cmd_check "$@" ;;
+	update) shift; cmd_update "$@" ;;
+	status) shift; cmd_status "$@" ;;
+	logs) shift; cmd_logs "$@" ;;
+	shell) shift; cmd_shell "$@" ;;
+	service-run) shift; cmd_service_run "$@" ;;
+	service-stop) shift; cmd_service_stop "$@" ;;
+	help|--help|-h|'') usage ;;
+	*) echo "Unknown command: $1" >&2; usage >&2; exit 1 ;;
+esac
+
+exit 0

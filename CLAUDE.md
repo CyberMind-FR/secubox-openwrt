@@ -169,3 +169,44 @@ ssh root@192.168.255.1 '/etc/init.d/rpcd restart'
 - **RPC params order matters**: The `params` array in `rpc.declare()` must match the positional arguments in `addPeer(arg1, arg2, ...)` calls — adding a new param means updating ALL callers
 - **sessionStorage is volatile**: Data stored in `sessionStorage` is lost on tab close/refresh — don't rely on it for persistent data; use UCI backend storage instead
 - **Interface name conflicts**: When creating WireGuard interfaces, always check for existing names (wg0, wg1, etc.) and auto-increment to the next available name
+
+## Punk Exposure Engine — Architectural Directive
+
+The SecuBox service exposure architecture follows a three-verb model called **Peek / Poke / Emancipate**. All new service components, exposure features, and mesh integrations must align with this model.
+
+### Core Concepts
+
+- **Peek**: Discover and scan. Any feature that detects services, lists DNS records, shows mesh peers, or aggregates visibility across nodes.
+- **Poke**: Target and configure. Any feature that selects a service and configures an exposure channel (Tor, DNS/SSL, mesh publish).
+- **Emancipate**: Activate the linking flow. Any feature that atomically makes a service reachable through one or more channels.
+
+### Three Exposure Channels
+
+1. **Tor** — `.onion` hidden services via `secubox-app-tor` + `secubox-exposure tor add`
+2. **DNS/SSL** — Classical HTTPS via HAProxy + ACME + DNS provider API (OVH, Gandi, Cloudflare) via `secubox-app-dns-provider` + `dnsctl`
+3. **Mesh** — P2P service registry via `secubox-p2p publish` + gossip chain sync
+
+### Key Architectural Rules
+
+- **Match services by port, not name** — when cross-referencing scan results with Tor/SSL/vhost/mesh entries, always use the backend port number as the join key
+- **DNS provider API integration** — use `dnsctl` (from `secubox-app-dns-provider`) for programmatic DNS record management; support DNS-01 ACME challenges as alternative to HTTP-01 webroot
+- **Emancipate is multi-channel** — exposing a service should support activating Tor + DNS + Mesh in a single flow; each channel is independently togglable
+- **Every station is generative** — each SecuBox node can discover local services, create new exposure endpoints, and propagate them to mesh peers
+- **Guard against local-only exposure** — never auto-expose services bound to 127.0.0.1; only services on 0.0.0.0 or specific LAN IPs are eligible for external exposure
+
+### Reference Document
+
+Full architectural spec: `package/secubox/PUNK-EXPOSURE.md`
+
+### Affected Packages
+
+| Package | Role in Punk Exposure |
+|---------|----------------------|
+| `secubox-app-exposure` | Peek scanner + Tor/SSL orchestrator |
+| `luci-app-exposure` | Dashboard: Peek table + Poke toggles |
+| `secubox-app-tor` | Tor channel backend |
+| `secubox-app-haproxy` | SSL/ACME channel backend |
+| `secubox-app-dns-provider` | DNS provider API (to build) |
+| `secubox-p2p` | Mesh channel + gossip sync |
+| `secubox-master-link` | Node onboarding + trust hierarchy |
+| `luci-app-service-registry` | Aggregated service catalog + health checks |

@@ -1,0 +1,14 @@
+{
+	"admin/services/jellyfin": {
+		"title": "Jellyfin",
+		"order": 60,
+		"action": {
+			"type": "view",
+			"path": "jellyfin/overview"
+		},
+		"depends": {
+			"acl": ["luci-app-jellyfin"],
+			"uci": {"jellyfin": true}
+		}
+	}
+}

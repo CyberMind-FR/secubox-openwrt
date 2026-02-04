@@ -266,7 +266,8 @@
       "Bash(gdbus call:*)",
       "Bash(git mv:*)",
       "Bash(DISPLAY=:1 scrot:*)",
-      "Bash(node -c:*)"
+      "Bash(node -c:*)",
+      "Bash(/home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-build.sh:*)"
     ]
   }
 }
