@@ -39,7 +39,8 @@ case "$1" in
 		;;
 
 	call)
-		case "$2" in
+		handle_call() {
+		case "$1" in
 			get_config)
 				json_init
 
@@ -241,10 +242,12 @@ case "$1" in
 			*)
 				json_init
 				json_add_boolean "error" 1
-				json_add_string "message" "Unknown method: $2"
+				json_add_string "message" "Unknown method: $1"
 				json_dump
 				;;
 		esac
+		}
+		handle_call "$2"
 		;;
 esac
 
