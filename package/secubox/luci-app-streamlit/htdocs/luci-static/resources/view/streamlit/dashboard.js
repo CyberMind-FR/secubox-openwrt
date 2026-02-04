@@ -615,18 +615,12 @@ return view.extend({
 		var reader = new FileReader();
 
 		reader.onload = function(e) {
-			var content;
-			if (isZip) {
-				var binary = e.target.result;
-				var bytes = new Uint8Array(binary);
-				var chunks = [];
-				for (var i = 0; i < bytes.length; i += 8192) {
-					chunks.push(String.fromCharCode.apply(null, bytes.slice(i, i + 8192)));
-				}
-				content = btoa(chunks.join(''));
-			} else {
-				content = btoa(e.target.result);
+			var bytes = new Uint8Array(e.target.result);
+			var chunks = [];
+			for (var i = 0; i < bytes.length; i += 8192) {
+				chunks.push(String.fromCharCode.apply(null, bytes.slice(i, i + 8192)));
 			}
+			var content = btoa(chunks.join(''));
 
 			var uploadFn = isZip ? api.uploadZip(name, content, null) : api.uploadApp(name, content);
 
@@ -645,11 +639,7 @@ return view.extend({
 			});
 		};
 
-		if (isZip) {
-			reader.readAsArrayBuffer(file);
-		} else {
-			reader.readAsText(file);
-		}
+		reader.readAsArrayBuffer(file);
 	},
 
 	renameApp: function(id, currentName) {
