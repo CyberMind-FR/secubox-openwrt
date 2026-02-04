@@ -7,7 +7,7 @@ PKG_LICENSE:=GPL-3.0-or-later
 PKG_ARCH:=all
 
 LUCI_TITLE:=LuCI Support for SecuBox Zigbee2MQTT App
-LUCI_DESCRIPTION:=Graphical interface for managing the Zigbee2MQTT docker application.
+LUCI_DESCRIPTION:=Graphical interface for managing the Zigbee2MQTT LXC application.
 LUCI_DEPENDS:=+luci-base +luci-lib-jsonc +secubox-app-zigbee2mqtt
 LUCI_PKGARCH:=all
 

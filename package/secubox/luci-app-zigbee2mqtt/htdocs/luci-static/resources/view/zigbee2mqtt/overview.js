@@ -4,12 +4,6 @@
 'require ui';
 'require poll';
 'require zigbee2mqtt/api as API';
-'require secubox-theme/theme as Theme';
-
-var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
-	(document.documentElement && document.documentElement.getAttribute('lang')) ||
-	(navigator.language ? navigator.language.split('-')[0] : 'en');
-Theme.init({ language: lang });
 
 return view.extend({
 	load: function() {
@@ -18,9 +12,16 @@ return view.extend({
 
 	render: function(data) {
 		var config = data || {};
+		var self = this;
+
+		if (!document.querySelector('link[href*="zigbee2mqtt/common.css"]')) {
+			var link = document.createElement('link');
+			link.rel = 'stylesheet';
+			link.href = L.resource('zigbee2mqtt/common.css');
+			document.head.appendChild(link);
+		}
+
 		var container = E('div', { 'class': 'z2m-dashboard' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('zigbee2mqtt/common.css') }),
 			this.renderHeader(config),
 			this.renderSetup(config),
 			this.renderForm(config),
@@ -39,12 +40,9 @@ return view.extend({
 	},
 
 	renderHeader: function(cfg) {
-		var header = E('div', { 'class': 'z2m-card', 'id': 'z2m-status-card' }, [
+		return E('div', { 'class': 'z2m-card', 'id': 'z2m-status-card' }, [
 			E('div', { 'class': 'z2m-card-header' }, [
-				E('div', { 'class': 'sh-page-title' }, [
-					E('span', { 'class': 'sh-page-title-icon' }, '🧩'),
-					_('Zigbee2MQTT')
-				]),
+				E('h2', { 'style': 'margin:0;' }, _('Zigbee2MQTT')),
 				E('div', { 'class': 'z2m-status-badges' }, [
 					E('div', { 'class': 'z2m-badge ' + ((cfg.service && cfg.service.running) ? 'on' : 'off'), 'id': 'z2m-badge-running' },
 						cfg.service && cfg.service.running ? _('Running') : _('Stopped')),
@@ -53,16 +51,14 @@ return view.extend({
 				])
 			]),
 			E('div', { 'class': 'z2m-actions' }, [
-				E('button', { 'class': 'sh-btn-secondary', 'click': this.handleCheck.bind(this) }, _('Run checks')),
-				E('button', { 'class': 'sh-btn-secondary', 'click': this.handleInstall.bind(this) }, _('Install prerequisites')),
-				E('button', { 'class': 'sh-btn-secondary', 'click': this.handleLogs.bind(this) }, _('Refresh logs')),
-				E('button', { 'class': 'sh-btn-secondary', 'click': this.handleUpdate.bind(this) }, _('Update Image')),
-				E('button', { 'class': 'sh-btn-secondary', 'click': this.handleControl.bind(this, 'restart') }, _('Restart')),
-				E('button', { 'class': 'sh-btn-secondary', 'click': this.handleControl.bind(this, 'start') }, _('Start')),
-				E('button', { 'class': 'sh-btn-secondary', 'click': this.handleControl.bind(this, 'stop') }, _('Stop'))
+				E('button', { 'class': 'cbi-button cbi-button-action', 'click': this.handleInstall.bind(this) }, _('Install')),
+				E('button', { 'class': 'cbi-button', 'click': this.handleCheck.bind(this) }, _('Check')),
+				E('button', { 'class': 'cbi-button', 'click': this.handleControl.bind(this, 'start') }, _('Start')),
+				E('button', { 'class': 'cbi-button', 'click': this.handleControl.bind(this, 'stop') }, _('Stop')),
+				E('button', { 'class': 'cbi-button', 'click': this.handleControl.bind(this, 'restart') }, _('Restart')),
+				E('button', { 'class': 'cbi-button', 'click': this.handleUpdate.bind(this) }, _('Update'))
 			])
 		]);
-		return header;
 	},
 
 	updateHeader: function(cfg) {
@@ -81,19 +77,17 @@ return view.extend({
 	renderSetup: function(cfg) {
 		var diag = cfg.diagnostics || {};
 		return E('div', { 'class': 'z2m-card' }, [
-			E('div', { 'class': 'z2m-card-header' }, [
-				E('div', { 'class': 'sh-card-title' }, _('Prerequisites & Health'))
-			]),
+			E('h3', { 'style': 'margin:0 0 0.5em;' }, _('Prerequisites')),
 			this.renderDiagnostics(diag)
 		]);
 	},
 
 	renderDiagnostics: function(diag) {
 		var items = [
-			{ key: 'cgroups', label: _('cgroups mounted') },
-			{ key: 'docker', label: _('Docker daemon') },
-			{ key: 'usb_module', label: _('cdc_acm module') },
+			{ key: 'lxc', label: _('LXC') },
+			{ key: 'cp210x_module', label: _('cp210x module') },
 			{ key: 'serial_device', label: _('Serial device') },
+			{ key: 'container_exists', label: _('Container') },
 			{ key: 'service_file', label: _('Service script') }
 		];
 		return E('div', { 'class': 'z2m-diag-list' }, items.map(function(item) {
@@ -109,7 +103,7 @@ return view.extend({
 	},
 
 	updateDiagnostics: function(diag) {
-		var keys = ['cgroups', 'docker', 'usb_module', 'serial_device', 'service_file'];
+		var keys = ['lxc', 'cp210x_module', 'serial_device', 'container_exists', 'service_file'];
 		diag = diag || {};
 		keys.forEach(function(key) {
 			var el = document.getElementById('z2m-diag-' + key);
@@ -127,25 +121,22 @@ return view.extend({
 		var self = this;
 		var inputs = [
 			self.input('enabled', _('Enable service'), cfg.enabled ? '1' : '0', 'checkbox'),
-			self.input('serial_port', _('Serial device'), cfg.serial_port || '/dev/ttyACM0'),
+			self.input('serial_port', _('Serial device'), cfg.serial_port || '/dev/ttyUSB0'),
 			self.input('mqtt_host', _('MQTT host URL'), cfg.mqtt_host || 'mqtt://127.0.0.1:1883'),
 			self.input('mqtt_username', _('MQTT username'), cfg.mqtt_username || ''),
 			self.input('mqtt_password', _('MQTT password'), cfg.mqtt_password || '', 'password'),
 			self.input('base_topic', _('Base topic'), cfg.base_topic || 'zigbee2mqtt'),
-			self.input('frontend_port', _('Frontend port'), cfg.frontend_port || '8080', 'number'),
+			self.input('frontend_port', _('Frontend port'), cfg.frontend_port || '8099', 'number'),
 			self.input('channel', _('Zigbee channel'), cfg.channel || '11', 'number'),
-			self.input('data_path', _('Data path'), cfg.data_path || '/srv/zigbee2mqtt'),
-			self.input('image', _('Docker image'), cfg.image || 'ghcr.io/koenkk/zigbee2mqtt:latest'),
-			self.input('timezone', _('Timezone'), cfg.timezone || 'UTC')
+			self.input('permit_join', _('Permit join'), cfg.permit_join || '0', 'checkbox'),
+			self.input('data_path', _('Data path'), cfg.data_path || '/srv/zigbee2mqtt')
 		];
 
 		return E('div', { 'class': 'z2m-card' }, [
-			E('div', { 'class': 'z2m-card-header' }, [
-				E('div', { 'class': 'sh-card-title' }, _('Configuration'))
-			]),
+			E('h3', { 'style': 'margin:0 0 0.5em;' }, _('Configuration')),
 			E('div', { 'class': 'z2m-form-grid', 'id': 'z2m-form-grid' }, inputs),
 			E('div', { 'class': 'z2m-actions' }, [
-				E('button', { 'class': 'sh-btn-primary', 'click': this.handleSave.bind(this) }, _('Save & Apply'))
+				E('button', { 'class': 'cbi-button cbi-button-action', 'click': this.handleSave.bind(this) }, _('Save & Apply'))
 			])
 		]);
 	},
@@ -169,14 +160,14 @@ return view.extend({
 
 	renderLogs: function() {
 		return E('div', { 'class': 'z2m-card' }, [
-			E('div', { 'class': 'z2m-card-header' }, [
-				E('div', { 'class': 'sh-card-title' }, _('Logs')),
-				E('div', { 'class': 'z2m-actions' }, [
-					E('input', { 'class': 'z2m-input', 'type': 'number', 'id': 'z2m-log-tail', 'value': '200', 'style': 'width:90px;' }),
-					E('button', { 'class': 'sh-btn-secondary', 'click': this.handleLogs.bind(this) }, _('Refresh'))
+			E('div', { 'style': 'display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5em;' }, [
+				E('h3', { 'style': 'margin:0;' }, _('Logs')),
+				E('div', { 'style': 'display:flex; gap:0.5em; align-items:center;' }, [
+					E('input', { 'class': 'z2m-input', 'type': 'number', 'id': 'z2m-log-tail', 'value': '50', 'style': 'width:70px;' }),
+					E('button', { 'class': 'cbi-button', 'click': this.handleLogs.bind(this) }, _('Refresh'))
 				])
 			]),
-			E('pre', { 'class': 'z2m-log', 'id': 'z2m-log-output' }, _('Logs will appear here.'))
+			E('pre', { 'class': 'z2m-log', 'id': 'z2m-log-output' }, _('Click Refresh to load logs.'))
 		]);
 	},
 
@@ -190,100 +181,97 @@ return view.extend({
 			base_topic: document.getElementById('base_topic').value,
 			frontend_port: document.getElementById('frontend_port').value,
 			channel: document.getElementById('channel').value,
-			data_path: document.getElementById('data_path').value,
-			image: document.getElementById('image').value,
-			timezone: document.getElementById('timezone').value
+			permit_join: document.getElementById('permit_join').checked ? '1' : '0',
+			data_path: document.getElementById('data_path').value
 		};
-		ui.showModal(_('Applying configuration'), [
-			E('p', {}, _('Saving settings and restarting service…')),
-			E('div', { 'class': 'spinning' })
+		ui.showModal(_('Saving'), [
+			E('p', { 'class': 'spinning' }, _('Saving settings and restarting service...'))
 		]);
-		API.applyConfig(payload).then(function() {
+		API.applyConfig(
+			payload.enabled, payload.serial_port, payload.mqtt_host,
+			payload.mqtt_username, payload.mqtt_password, payload.base_topic,
+			payload.frontend_port, payload.channel, payload.permit_join,
+			payload.data_path
+		).then(function() {
 			ui.hideModal();
 			ui.addNotification(null, E('p', {}, _('Configuration applied.')), 'info');
 		}).catch(function(err) {
 			ui.hideModal();
-			ui.addNotification(null, E('p', {}, err.message || err), 'error');
+			ui.addNotification(null, E('p', {}, err.message || String(err)), 'danger');
 		});
 	},
 
 	handleLogs: function() {
-		var tail = parseInt(document.getElementById('z2m-log-tail').value, 10) || 200;
+		var tail = parseInt(document.getElementById('z2m-log-tail').value, 10) || 50;
 		API.getLogs(tail).then(function(result) {
 			var box = document.getElementById('z2m-log-output');
-			if (box && result && result.lines) {
-				box.textContent = result.lines.join('\n');
+			if (box && result && result.log) {
+				box.textContent = result.log;
+			} else if (box) {
+				box.textContent = _('No logs available.');
 			}
 		});
 	},
 
 	handleControl: function(action) {
-		ui.showModal(_('Executing action'), [
-			E('p', {}, _('Performing %s…').format(action)),
-			E('div', { 'class': 'spinning' })
+		ui.showModal(_('Executing'), [
+			E('p', { 'class': 'spinning' }, action + '...')
 		]);
 		API.control(action).then(function(result) {
 			ui.hideModal();
 			if (result && result.success) {
-				ui.addNotification(null, E('p', {}, _('Action completed: %s').format(action)), 'info');
+				ui.addNotification(null, E('p', {}, _('Action completed: ') + action), 'info');
 			} else {
-				ui.addNotification(null, E('p', {}, _('Action failed')), 'error');
+				ui.addNotification(null, E('p', {}, _('Action failed')), 'danger');
 			}
 		}).catch(function(err) {
 			ui.hideModal();
-			ui.addNotification(null, E('p', {}, err.message || err), 'error');
+			ui.addNotification(null, E('p', {}, err.message || String(err)), 'danger');
 		});
 	},
 
 	handleUpdate: function() {
-		ui.showModal(_('Updating image'), [
-			E('p', {}, _('Pulling latest Zigbee2MQTT image…')),
-			E('div', { 'class': 'spinning' })
+		ui.showModal(_('Updating'), [
+			E('p', { 'class': 'spinning' }, _('Updating zigbee2mqtt...'))
 		]);
 		API.update().then(function(result) {
 			ui.hideModal();
 			if (result && result.success) {
-				ui.addNotification(null, E('p', {}, _('Image updated. Service restarted.')), 'info');
+				ui.addNotification(null, E('p', {}, _('Update complete.')), 'info');
 			} else {
-				ui.addNotification(null, E('p', {}, _('Update failed')), 'error');
+				ui.addNotification(null, E('p', {}, _('Update failed: ') + (result && result.output || '')), 'danger');
 			}
 		}).catch(function(err) {
 			ui.hideModal();
-			ui.addNotification(null, E('p', {}, err.message || err), 'error');
+			ui.addNotification(null, E('p', {}, err.message || String(err)), 'danger');
 		});
 	},
 
 	handleInstall: function() {
-		this.runCommand(_('Installing prerequisites…'), API.install);
+		this.runCommand(_('Installing...'), API.install);
 	},
 
 	handleCheck: function() {
-		this.runCommand(_('Running prerequisite checks…'), API.runCheck);
+		this.runCommand(_('Running checks...'), API.runCheck);
 	},
 
 	runCommand: function(title, fn) {
 		var self = this;
 		ui.showModal(title, [
-			E('p', {}, title),
-			E('div', { 'class': 'spinning' })
+			E('p', { 'class': 'spinning' }, title)
 		]);
 		fn().then(function(result) {
 			ui.hideModal();
-			self.showCommandOutput(result, title);
+			var output = (result && result.output) ? result.output : _('Done.');
+			var tone = (result && result.success) ? 'info' : 'danger';
+			ui.addNotification(null, E('div', {}, [
+				E('pre', { 'style': 'white-space:pre-wrap;' }, output)
+			]), tone);
 			self.refreshStatus();
 		}).catch(function(err) {
 			ui.hideModal();
-			self.showCommandOutput({ success: 0, output: err && err.message ? err.message : err }, title);
+			ui.addNotification(null, E('p', {}, err.message || String(err)), 'danger');
 		});
-	},
-
-	showCommandOutput: function(result, title) {
-		var output = (result && result.output) ? result.output : _('Command finished.');
-		var tone = (result && result.success) ? 'info' : 'error';
-		ui.addNotification(null, E('div', {}, [
-			E('strong', {}, title),
-			E('pre', { 'style': 'white-space:pre-wrap;margin-top:8px;' }, output)
-		]), tone);
 	},
 
 	refreshStatus: function() {
