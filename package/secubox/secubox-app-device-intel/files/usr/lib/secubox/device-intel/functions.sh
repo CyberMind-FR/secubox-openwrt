@@ -65,22 +65,31 @@ di_collect_mac_guardian() {
 }
 
 # Collect client-guardian data via UCI
-# Format: cg|mac|ip|hostname|zone|status|rx_bytes|tx_bytes|risk_score
+# Format: cg|mac|name|zone|status|first_seen|last_seen
 di_collect_client_guardian() {
 	local idx=0
 	while uci -q get client-guardian.@client[$idx] >/dev/null 2>&1; do
 		local mac=$(uci -q get client-guardian.@client[$idx].mac)
-		local ip=$(uci -q get client-guardian.@client[$idx].ip)
-		local hostname=$(uci -q get client-guardian.@client[$idx].hostname)
+		local name=$(uci -q get client-guardian.@client[$idx].name)
 		local zone=$(uci -q get client-guardian.@client[$idx].zone)
 		local status=$(uci -q get client-guardian.@client[$idx].status)
-		local rx=$(uci -q get client-guardian.@client[$idx].rx_bytes)
-		local tx=$(uci -q get client-guardian.@client[$idx].tx_bytes)
-		local risk=$(uci -q get client-guardian.@client[$idx].risk_score)
+		local first_seen=$(uci -q get client-guardian.@client[$idx].first_seen)
+		local last_seen=$(uci -q get client-guardian.@client[$idx].last_seen)
 
-		[ -n "$mac" ] && echo "cg|${mac}|${ip}|${hostname}|${zone}|${status}|${rx:-0}|${tx:-0}|${risk:-0}"
+		[ -n "$mac" ] && echo "cg|${mac}|${name}|${zone}|${status}|${first_seen}|${last_seen}"
 		idx=$((idx + 1))
 	done
+}
+
+# Collect ARP table for IP-to-MAC resolution and online detection
+# Format: arp|mac|ip|iface
+di_collect_arp() {
+	while read -r ip hw flags mac mask iface; do
+		[ "$ip" = "IP" ] && continue  # skip header
+		[ "$mac" = "00:00:00:00:00:00" ] && continue
+		[ "$flags" = "0x0" ] && continue  # incomplete entry
+		echo "arp|${mac}|${ip}|${iface}"
+	done < /proc/net/arp
 }
 
 # Collect DHCP lease data
@@ -120,7 +129,7 @@ di_collect_exposure() {
 	while read -r sl local_addr rem_addr st rest; do
 		[ "$st" != "0A" ] && continue  # 0A = LISTEN
 		local hex_port=$(echo "$local_addr" | cut -d: -f2)
-		local port=$((16#$hex_port))
+		local port=$(printf "%d" "0x${hex_port}" 2>/dev/null)
 		local hex_ip=$(echo "$local_addr" | cut -d: -f1)
 
 		# Determine bind address
@@ -161,6 +170,7 @@ di_aggregate_devices() {
 	di_collect_mac_guardian > "${tmp_dir}/mg.dat" 2>/dev/null
 	di_collect_client_guardian > "${tmp_dir}/cg.dat" 2>/dev/null
 	di_collect_dhcp > "${tmp_dir}/dhcp.dat" 2>/dev/null
+	di_collect_arp > "${tmp_dir}/arp.dat" 2>/dev/null
 	di_collect_p2p_peers > "${tmp_dir}/p2p.dat" 2>/dev/null
 	di_collect_exposure > "${tmp_dir}/exp.dat" 2>/dev/null
 	di_collect_emulators > "${tmp_dir}/emu.dat" 2>/dev/null
@@ -183,8 +193,8 @@ di_aggregate_devices() {
 		local ip="" hostname="" vendor="" iface="" online="false"
 		local mg_status="" cg_zone="" cg_status="" randomized="false"
 		local first_seen="" last_seen="" label="" device_type=""
-		local device_type_source="" emulator_source="" rx=0 tx=0 risk=0
-		local services="" source_node="local"
+		local device_type_source="" emulator_source=""
+		local source_node="local"
 
 		# Mac-Guardian data
 		local mg=$(grep "^mg|${mac}|" "${tmp_dir}/mg.dat" 2>/dev/null | head -1)
@@ -199,18 +209,27 @@ di_aggregate_devices() {
 			last_seen=$(echo "$mg" | cut -d'|' -f9)
 		fi
 
-		# Client-Guardian data
-		local cg=$(grep "^cg|${mac}|" "${tmp_dir}/cg.dat" 2>/dev/null | head -1)
+		# Client-Guardian data (format: cg|mac|name|zone|status|first_seen|last_seen)
+		local cg=$(grep -i "^cg|${mac}|" "${tmp_dir}/cg.dat" 2>/dev/null | head -1)
 		if [ -n "$cg" ]; then
-			local cg_ip=$(echo "$cg" | cut -d'|' -f3)
-			[ -n "$cg_ip" ] && ip="$cg_ip"
-			local cg_host=$(echo "$cg" | cut -d'|' -f4)
-			[ -n "$cg_host" ] && [ -z "$hostname" ] && hostname="$cg_host"
-			cg_zone=$(echo "$cg" | cut -d'|' -f5)
-			cg_status=$(echo "$cg" | cut -d'|' -f6)
-			rx=$(echo "$cg" | cut -d'|' -f7)
-			tx=$(echo "$cg" | cut -d'|' -f8)
-			risk=$(echo "$cg" | cut -d'|' -f9)
+			local cg_name=$(echo "$cg" | cut -d'|' -f3)
+			[ -n "$cg_name" ] && [ -z "$hostname" ] && hostname="$cg_name"
+			cg_zone=$(echo "$cg" | cut -d'|' -f4)
+			cg_status=$(echo "$cg" | cut -d'|' -f5)
+			local cg_first=$(echo "$cg" | cut -d'|' -f6)
+			local cg_last=$(echo "$cg" | cut -d'|' -f7)
+			[ -n "$cg_first" ] && [ -z "$first_seen" ] && first_seen="$cg_first"
+			[ -n "$cg_last" ] && [ -z "$last_seen" ] && last_seen="$cg_last"
+		fi
+
+		# ARP data — provides IP and online detection
+		local arp=$(grep -i "|${mac}|" "${tmp_dir}/arp.dat" 2>/dev/null | head -1)
+		if [ -n "$arp" ]; then
+			local arp_ip=$(echo "$arp" | cut -d'|' -f3)
+			[ -n "$arp_ip" ] && [ -z "$ip" ] && ip="$arp_ip"
+			local arp_iface=$(echo "$arp" | cut -d'|' -f4)
+			[ -n "$arp_iface" ] && [ -z "$iface" ] && iface="$arp_iface"
+			online="true"  # present in ARP = reachable
 		fi
 
 		# DHCP data
@@ -272,12 +291,9 @@ di_aggregate_devices() {
 		[ -n "$device_type" ] && printf ',"device_type":"%s"' "$device_type"
 		[ -n "$device_type_source" ] && printf ',"device_type_source":"%s"' "$device_type_source"
 		[ -n "$emulator_source" ] && printf ',"emulator_source":"%s"' "$emulator_source"
-		printf ',"rx_bytes":%s' "${rx:-0}"
-		printf ',"tx_bytes":%s' "${tx:-0}"
-		printf ',"risk_score":%s' "${risk:-0}"
 		printf ',"source_node":"%s"' "$source_node"
-		[ -n "$first_seen" ] && printf ',"first_seen":%s' "$first_seen"
-		[ -n "$last_seen" ] && printf ',"last_seen":%s' "$last_seen"
+		[ -n "$first_seen" ] && printf ',"first_seen":"%s"' "$first_seen"
+		[ -n "$last_seen" ] && printf ',"last_seen":"%s"' "$last_seen"
 		printf '}'
 	done
 
@@ -339,12 +355,11 @@ di_get_devices() {
 
 di_get_summary() {
 	local devices=$(di_get_devices)
-	local total=0 online=0 mesh=0 iot=0 storage=0 compute=0
+	local total=0 online=0 mesh=0
 
-	# Count using jsonfilter
 	total=$(echo "$devices" | jsonfilter -e '@[*].mac' 2>/dev/null | wc -l)
-	online=$(echo "$devices" | jsonfilter -e '@[*]' 2>/dev/null | grep '"online":true' | wc -l)
-	mesh=$(echo "$devices" | jsonfilter -e '@[*]' 2>/dev/null | grep '"device_type":"mesh_peer"' | wc -l)
+	online=$(echo "$devices" | jsonfilter -e '@[*].online' 2>/dev/null | grep -c "true")
+	mesh=$(echo "$devices" | jsonfilter -e '@[*].device_type' 2>/dev/null | grep -c "mesh_peer")
 
 	printf '{"total":%d,"online":%d,"mesh_peers":%d}' \
 		"$total" "$online" "$mesh"

@@ -17,7 +17,7 @@ log() { echo -e "${GREEN}[INTEL]${NC} $1"; }
 warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
-uci_get() { uci -q get ${CONFIG}.$1; }
+di_ctl_get() { uci -q get ${CONFIG}.$1; }
 
 # Load libraries
 . "${LIB_DIR}/functions.sh"
@@ -101,9 +101,8 @@ cmd_show() {
 	local dtype=$(echo "$device" | jsonfilter -e '@.device_type' 2>/dev/null)
 	local dsrc=$(echo "$device" | jsonfilter -e '@.device_type_source' 2>/dev/null)
 	local emu=$(echo "$device" | jsonfilter -e '@.emulator_source' 2>/dev/null)
-	local rx=$(echo "$device" | jsonfilter -e '@.rx_bytes' 2>/dev/null)
-	local tx=$(echo "$device" | jsonfilter -e '@.tx_bytes' 2>/dev/null)
-	local risk=$(echo "$device" | jsonfilter -e '@.risk_score' 2>/dev/null)
+	local first_seen=$(echo "$device" | jsonfilter -e '@.first_seen' 2>/dev/null)
+	local last_seen=$(echo "$device" | jsonfilter -e '@.last_seen' 2>/dev/null)
 
 	echo "  IP:          ${ip:--}"
 	echo "  Hostname:    ${hostname:--}"
@@ -117,16 +116,15 @@ cmd_show() {
 	echo "  MAC Status:  ${mg_status:--}"
 	echo "  NAC Zone:    ${cg_zone:--}"
 	echo "  NAC Status:  ${cg_status:--}"
-	echo "  Risk Score:  ${risk:-0}"
 	echo ""
 	echo "  ── Classification ──"
 	echo "  Device Type: ${dtype:--}"
 	echo "  Source:      ${dsrc:--}"
 	[ -n "$emu" ] && echo "  Emulator:    $emu"
 	echo ""
-	echo "  ── Traffic ──"
-	echo "  RX:          ${rx:-0} bytes"
-	echo "  TX:          ${tx:-0} bytes"
+	echo "  ── Timeline ──"
+	echo "  First Seen:  ${first_seen:--}"
+	echo "  Last Seen:   ${last_seen:--}"
 	echo ""
 }
 
@@ -214,7 +212,7 @@ cmd_summary() {
 	# Emulator status
 	echo "  ── Emulators ──"
 	for emu in usb mqtt zigbee; do
-		local enabled=$(uci_get "${emu}.enabled")
+		local enabled=$(di_ctl_get "${emu}.enabled")
 		if [ "$enabled" = "1" ]; then
 			echo -e "  ${emu}:  ${GREEN}enabled${NC}"
 		else
@@ -246,7 +244,7 @@ cmd_emulators() {
 	echo ""
 
 	for emu in usb mqtt zigbee; do
-		local enabled=$(uci_get "${emu}.enabled")
+		local enabled=$(di_ctl_get "${emu}.enabled")
 		echo -e "  ${CYAN}${emu}${NC}:"
 		echo -e "    Enabled:  $([ "$enabled" = "1" ] && echo "${GREEN}Yes${NC}" || echo "${RED}No${NC}")"
 
@@ -257,16 +255,16 @@ cmd_emulators() {
 				echo "    Devices:  $count USB device(s)"
 				;;
 			mqtt)
-				local host=$(uci_get mqtt.broker_host)
-				local port=$(uci_get mqtt.broker_port)
+				local host=$(di_ctl_get mqtt.broker_host)
+				local port=$(di_ctl_get mqtt.broker_port)
 				echo "    Broker:   ${host:-127.0.0.1}:${port:-1883}"
 				pgrep mosquitto >/dev/null 2>&1 && \
 					echo -e "    Status:   ${GREEN}broker running${NC}" || \
 					echo -e "    Status:   ${RED}broker not found${NC}"
 				;;
 			zigbee)
-				local adapter=$(uci_get zigbee.adapter)
-				local coord=$(uci_get zigbee.coordinator)
+				local adapter=$(di_ctl_get zigbee.adapter)
+				local coord=$(di_ctl_get zigbee.coordinator)
 				echo "    Adapter:  ${adapter:-zigbee2mqtt}"
 				echo "    Dongle:   ${coord:-/dev/ttyUSB0}"
 				[ -c "${coord:-/dev/ttyUSB0}" ] 2>/dev/null && \
