@@ -76,8 +76,9 @@
 
 ## Next Up
 
-1. Rebuild bonus feed with all 2026-02-04/05 changes.
-2. Commit uncommitted working tree changes.
+1. Rebuild bonus feed with all 2026-02-04/05 changes (IPK files need rebuild).
+   - Uncommitted: 91 IPK files in secubox-app-bonus/root/www/secubox-feed/
+   - These are build artifacts that need SDK rebuild
 
 ## Known Bugs (Deferred)
 
