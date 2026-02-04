@@ -257,13 +257,20 @@ find_app_file() {
 install_requirements() {
     local app_dir="$1"
     local app_name=$(basename "$app_dir")
-    local req_file="$app_dir/requirements.txt"
 
-    if [ -f "$req_file" ]; then
+    # Find requirements file: requirements.txt first, then any requirements*.txt
+    local req_file=""
+    if [ -f "$app_dir/requirements.txt" ]; then
+        req_file="$app_dir/requirements.txt"
+    else
+        req_file=$(ls -1 "$app_dir"/requirements*.txt 2>/dev/null | head -1)
+    fi
+
+    if [ -n "$req_file" ] && [ -f "$req_file" ]; then
         REQ_HASH=$(md5sum "$req_file" 2>/dev/null | cut -d' ' -f1)
         REQ_MARKER="/opt/.req_${app_name}_${REQ_HASH}"
         if [ ! -f "$REQ_MARKER" ]; then
-            echo "Installing requirements for $app_name..."
+            echo "Installing requirements from $(basename $req_file) for $app_name..."
             pip3 install --break-system-packages -r "$req_file" 2>/dev/null || \
             pip3 install -r "$req_file" 2>/dev/null || true
             touch "$REQ_MARKER"
@@ -505,9 +512,10 @@ cmd_app_list() {
 			done
 			[ -z "$main_file" ] && main_file=$(ls -1 "$app_dir"/*.py 2>/dev/null | head -1 | xargs basename 2>/dev/null)
 
-			# Check for requirements
+			# Check for requirements (requirements.txt or any requirements*.txt)
 			local has_req="no"
 			[ -f "$app_dir/requirements.txt" ] && has_req="yes"
+			[ "$has_req" = "no" ] && ls -1 "$app_dir"/requirements*.txt >/dev/null 2>&1 && has_req="yes"
 
 			# Check for git repo
 			local has_git="no"
@@ -823,8 +831,11 @@ cmd_instance_start() {
 			done
 			[ -z \"\$APP_FILE\" ] && APP_FILE=\$(ls -1 *.py 2>/dev/null | head -1)
 
-			# Install requirements
-			[ -f requirements.txt ] && pip3 install --break-system-packages -r requirements.txt 2>/dev/null
+			# Install requirements (requirements.txt or any requirements*.txt)
+			REQ_FILE=''
+			[ -f requirements.txt ] && REQ_FILE='requirements.txt'
+			[ -z \"\$REQ_FILE\" ] && REQ_FILE=\$(ls -1 requirements*.txt 2>/dev/null | head -1)
+			[ -n \"\$REQ_FILE\" ] && pip3 install --break-system-packages -r \"\$REQ_FILE\" 2>/dev/null
 		elif [ -f /srv/apps/${app}.py ]; then
 			WORK_DIR='/srv/apps'
 			APP_FILE='${app}.py'

@@ -622,6 +622,18 @@ upload_finalize() {
 		local main_py
 		main_py=$(find "$app_dir" -maxdepth 2 -name "*.py" -type f | head -1)
 		if [ -n "$main_py" ]; then
+			# Install requirements if found (requirements.txt or requirements*.txt)
+			if lxc_running; then
+				local req_file=""
+				if [ -f "$app_dir/requirements.txt" ]; then
+					req_file="requirements.txt"
+				else
+					req_file=$(ls -1 "$app_dir"/requirements*.txt 2>/dev/null | head -1 | xargs basename 2>/dev/null)
+				fi
+				if [ -n "$req_file" ]; then
+					lxc-attach -n "$LXC_NAME" -- pip3 install --break-system-packages -r "/srv/apps/${name}/${req_file}" >/dev/null 2>&1 &
+				fi
+			fi
 			uci set "${CONFIG}.${name}=app"
 			uci set "${CONFIG}.${name}.name=$name"
 			uci set "${CONFIG}.${name}.path=$main_py"
@@ -932,6 +944,19 @@ upload_zip() {
 	main_py=$(find "$app_dir" -maxdepth 2 -name "*.py" -type f | head -1)
 
 	if [ -n "$main_py" ]; then
+		# Install requirements if found (requirements.txt or requirements*.txt)
+		if lxc_running; then
+			local req_file=""
+			if [ -f "$app_dir/requirements.txt" ]; then
+				req_file="requirements.txt"
+			else
+				req_file=$(ls -1 "$app_dir"/requirements*.txt 2>/dev/null | head -1 | xargs basename 2>/dev/null)
+			fi
+			if [ -n "$req_file" ]; then
+				lxc-attach -n "$LXC_NAME" -- pip3 install --break-system-packages -r "/srv/apps/${name}/${req_file}" >/dev/null 2>&1 &
+			fi
+		fi
+
 		# Register in UCI
 		uci set "${CONFIG}.${name}=app"
 		uci set "${CONFIG}.${name}.name=$name"
