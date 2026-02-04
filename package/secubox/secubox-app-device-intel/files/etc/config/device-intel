@@ -1,0 +1,111 @@
+# SecuBox Device Intelligence Configuration
+
+config device-intel 'main'
+	option enabled '1'
+	option cache_ttl '30'
+	option mesh_query_timeout '3'
+	option auto_classify '1'
+	option classify_interval '300'
+
+config display 'display'
+	option default_view 'grid'
+	option group_by 'type'
+	option show_offline '1'
+	option show_mesh_peers '1'
+	option auto_refresh '1'
+	option refresh_interval '15'
+
+# ── Emulator Modules ──
+
+config emulator 'mqtt'
+	option enabled '0'
+	option broker_host '127.0.0.1'
+	option broker_port '1883'
+	option discovery_topic '$SYS/#'
+	option scan_interval '60'
+
+config emulator 'zigbee'
+	option enabled '0'
+	option coordinator '/dev/ttyUSB0'
+	option adapter 'zigbee2mqtt'
+	option api_port '8099'
+	option bridge_topic 'zigbee2mqtt/bridge/devices'
+
+config emulator 'usb'
+	option enabled '1'
+	option scan_interval '120'
+	option track_storage '1'
+	option track_serial '1'
+
+# ── Device Type Rules (heuristic classification) ──
+
+config device_type 'iot_sensor'
+	option name 'IoT Sensor'
+	option icon 'activity'
+	option color '#f59e0b'
+	list vendor_match 'Tuya'
+	list vendor_match 'Xiaomi'
+	list vendor_match 'Sonoff'
+	list hostname_match '.*sensor.*'
+
+config device_type 'storage'
+	option name 'Storage / NAS'
+	option icon 'hard-drive'
+	option color '#3b82f6'
+	list vendor_match 'Synology'
+	list vendor_match 'QNAP'
+	list port_match '445'
+	list port_match '2049'
+
+config device_type 'relay_gateway'
+	option name 'Relay / Gateway'
+	option icon 'git-merge'
+	option color '#8b5cf6'
+	list hostname_match '.*secubox.*'
+	list port_match '7331'
+	list port_match '51820'
+
+config device_type 'compute'
+	option name 'Compute Node'
+	option icon 'cpu'
+	option color '#10b981'
+	list port_match '11434'
+	list hostname_match '.*server.*'
+
+config device_type 'io_device'
+	option name 'Input/Output'
+	option icon 'monitor'
+	option color '#06b6d4'
+	list vendor_match 'HP'
+	list vendor_match 'Canon'
+	list port_match '9100'
+	list port_match '631'
+
+config device_type 'mqtt_device'
+	option name 'MQTT Device'
+	option icon 'radio'
+	option color '#ec4899'
+
+config device_type 'zigbee_device'
+	option name 'Zigbee Device'
+	option icon 'zap'
+	option color '#eab308'
+
+config device_type 'usb_peripheral'
+	option name 'USB Peripheral'
+	option icon 'usb'
+	option color '#a855f7'
+
+config device_type 'mesh_peer'
+	option name 'Mesh Peer'
+	option icon 'globe'
+	option color '#6366f1'
+
+# ── Per-device user overrides (MAC-keyed, colons stripped) ──
+# config device 'aabbccddeeff'
+#     option mac 'aa:bb:cc:dd:ee:ff'
+#     option type 'iot_sensor'
+#     option label 'Living Room Temp'
+#     list capabilities 'temperature'
+#     option notes 'Zigbee via Sonoff bridge'
+#     option mesh_shared '0'

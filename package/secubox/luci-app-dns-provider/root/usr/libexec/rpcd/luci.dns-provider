@@ -1,0 +1,251 @@
+#!/bin/sh
+#
+# RPCD backend for SecuBox DNS Provider Manager
+#
+
+. /usr/share/libubox/jshn.sh
+. /lib/functions.sh
+
+CONFIG="dns-provider"
+
+case "$1" in
+	list)
+		json_init
+		json_add_object "get_config"
+		json_close_object
+		json_add_object "list_records"
+		json_close_object
+		json_add_object "add_record"
+			json_add_string "type" "string"
+			json_add_string "subdomain" "string"
+			json_add_string "target" "string"
+			json_add_int "ttl" 0
+		json_close_object
+		json_add_object "remove_record"
+			json_add_string "type" "string"
+			json_add_string "subdomain" "string"
+		json_close_object
+		json_add_object "sync_records"
+		json_close_object
+		json_add_object "verify_record"
+			json_add_string "fqdn" "string"
+		json_close_object
+		json_add_object "test_credentials"
+		json_close_object
+		json_add_object "acme_dns01"
+			json_add_string "domain" "string"
+		json_close_object
+		json_dump
+		;;
+
+	call)
+		case "$2" in
+			get_config)
+				json_init
+
+				local enabled=$(uci -q get ${CONFIG}.main.enabled)
+				local provider=$(uci -q get ${CONFIG}.main.provider)
+				local zone=$(uci -q get ${CONFIG}.main.zone)
+
+				json_add_string "enabled" "${enabled:-0}"
+				json_add_string "provider" "${provider:-}"
+				json_add_string "zone" "${zone:-}"
+
+				# Provider-specific config (mask secrets)
+				case "$provider" in
+					ovh)
+						json_add_object "provider_config"
+							json_add_string "endpoint" "$(uci -q get ${CONFIG}.ovh.endpoint)"
+							local ak=$(uci -q get ${CONFIG}.ovh.app_key)
+							local as=$(uci -q get ${CONFIG}.ovh.app_secret)
+							local ck=$(uci -q get ${CONFIG}.ovh.consumer_key)
+							json_add_boolean "app_key_set" "$([ -n "$ak" ] && echo 1 || echo 0)"
+							json_add_boolean "app_secret_set" "$([ -n "$as" ] && echo 1 || echo 0)"
+							json_add_boolean "consumer_key_set" "$([ -n "$ck" ] && echo 1 || echo 0)"
+						json_close_object
+						;;
+					gandi)
+						json_add_object "provider_config"
+							local gk=$(uci -q get ${CONFIG}.gandi.api_key)
+							json_add_boolean "api_key_set" "$([ -n "$gk" ] && echo 1 || echo 0)"
+						json_close_object
+						;;
+					cloudflare)
+						json_add_object "provider_config"
+							local ct=$(uci -q get ${CONFIG}.cloudflare.api_token)
+							local cz=$(uci -q get ${CONFIG}.cloudflare.zone_id)
+							json_add_boolean "api_token_set" "$([ -n "$ct" ] && echo 1 || echo 0)"
+							json_add_string "zone_id" "${cz:-}"
+						json_close_object
+						;;
+					*)
+						json_add_object "provider_config"
+						json_close_object
+						;;
+				esac
+
+				json_dump
+				;;
+
+			list_records)
+				local provider=$(uci -q get ${CONFIG}.main.provider)
+				local zone=$(uci -q get ${CONFIG}.main.zone)
+
+				if [ -z "$provider" ] || [ -z "$zone" ]; then
+					json_init
+					json_add_boolean "success" 0
+					json_add_string "error" "DNS provider not configured"
+					json_dump
+					exit 0
+				fi
+
+				# Call dnsctl and capture raw API output
+				local output=$(/usr/sbin/dnsctl list 2>/dev/null | grep -v '^\[')
+
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "provider" "$provider"
+				json_add_string "zone" "$zone"
+				json_add_string "raw" "$output"
+				json_dump
+				;;
+
+			add_record)
+				read -r input
+				local type=$(echo "$input" | jsonfilter -e '@.type' 2>/dev/null)
+				local subdomain=$(echo "$input" | jsonfilter -e '@.subdomain' 2>/dev/null)
+				local target=$(echo "$input" | jsonfilter -e '@.target' 2>/dev/null)
+				local ttl=$(echo "$input" | jsonfilter -e '@.ttl' 2>/dev/null)
+
+				if [ -z "$type" ] || [ -z "$subdomain" ] || [ -z "$target" ]; then
+					json_init
+					json_add_boolean "success" 0
+					json_add_string "error" "type, subdomain and target are required"
+					json_dump
+					exit 0
+				fi
+
+				local output=$(/usr/sbin/dnsctl add "$type" "$subdomain" "$target" "${ttl:-3600}" 2>&1)
+				local code=$?
+
+				json_init
+				json_add_boolean "success" $((code == 0))
+				json_add_string "output" "$output"
+				json_dump
+				;;
+
+			remove_record)
+				read -r input
+				local type=$(echo "$input" | jsonfilter -e '@.type' 2>/dev/null)
+				local subdomain=$(echo "$input" | jsonfilter -e '@.subdomain' 2>/dev/null)
+
+				if [ -z "$type" ] || [ -z "$subdomain" ]; then
+					json_init
+					json_add_boolean "success" 0
+					json_add_string "error" "type and subdomain are required"
+					json_dump
+					exit 0
+				fi
+
+				local output=$(/usr/sbin/dnsctl rm "$type" "$subdomain" 2>&1)
+				local code=$?
+
+				json_init
+				json_add_boolean "success" $((code == 0))
+				json_add_string "output" "$output"
+				json_dump
+				;;
+
+			sync_records)
+				local output=$(/usr/sbin/dnsctl sync 2>&1)
+				local code=$?
+
+				json_init
+				json_add_boolean "success" $((code == 0))
+				json_add_string "output" "$output"
+				json_dump
+				;;
+
+			verify_record)
+				read -r input
+				local fqdn=$(echo "$input" | jsonfilter -e '@.fqdn' 2>/dev/null)
+
+				if [ -z "$fqdn" ]; then
+					json_init
+					json_add_boolean "success" 0
+					json_add_string "error" "fqdn is required"
+					json_dump
+					exit 0
+				fi
+
+				# Check DNS propagation against multiple resolvers
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "fqdn" "$fqdn"
+				json_add_array "resolvers"
+
+				for resolver in 1.1.1.1 8.8.8.8 9.9.9.9; do
+					local result=$(nslookup "$fqdn" "$resolver" 2>/dev/null | grep "Address:" | tail -1 | awk '{print $2}')
+					local resolved=0
+					if [ -n "$result" ] && [ "$result" != "$resolver" ]; then
+						resolved=1
+					fi
+
+					json_add_object ""
+						json_add_string "resolver" "$resolver"
+						json_add_boolean "resolved" "$resolved"
+						json_add_string "result" "${result:-}"
+					json_close_object
+				done
+
+				json_close_array
+				json_dump
+				;;
+
+			test_credentials)
+				local output=$(/usr/sbin/dnsctl test 2>&1)
+				local code=$?
+
+				json_init
+				if [ $code -eq 0 ]; then
+					json_add_boolean "success" 1
+					json_add_string "message" "Credentials valid"
+				else
+					json_add_boolean "success" 0
+					json_add_string "error" "$output"
+				fi
+				json_dump
+				;;
+
+			acme_dns01)
+				read -r input
+				local domain=$(echo "$input" | jsonfilter -e '@.domain' 2>/dev/null)
+
+				if [ -z "$domain" ]; then
+					json_init
+					json_add_boolean "success" 0
+					json_add_string "error" "domain is required"
+					json_dump
+					exit 0
+				fi
+
+				local output=$(/usr/sbin/dnsctl acme-dns01 "$domain" 2>&1)
+				local code=$?
+
+				json_init
+				json_add_boolean "success" $((code == 0))
+				json_add_string "output" "$output"
+				json_dump
+				;;
+
+			*)
+				json_init
+				json_add_boolean "error" 1
+				json_add_string "message" "Unknown method: $2"
+				json_dump
+				;;
+		esac
+		;;
+esac
+
+exit 0

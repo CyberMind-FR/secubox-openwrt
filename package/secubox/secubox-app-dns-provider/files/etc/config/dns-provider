@@ -1,0 +1,19 @@
+# DNS Provider API Configuration
+
+config dns_provider 'main'
+	option enabled '0'
+	option provider ''
+	option zone ''
+
+config ovh 'ovh'
+	option endpoint 'ovh-eu'
+	option app_key ''
+	option app_secret ''
+	option consumer_key ''
+
+config gandi 'gandi'
+	option api_key ''
+
+config cloudflare 'cloudflare'
+	option api_token ''
+	option zone_id ''

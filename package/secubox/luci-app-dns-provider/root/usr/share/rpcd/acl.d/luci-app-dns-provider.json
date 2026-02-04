@@ -1,0 +1,24 @@
+{
+	"luci-app-dns-provider": {
+		"description": "Grant access to DNS Provider Manager",
+		"read": {
+			"file": {
+				"/etc/config/dns-provider": ["read"]
+			},
+			"ubus": {
+				"file": ["read", "stat"],
+				"luci.dns-provider": ["*"]
+			},
+			"uci": ["dns-provider"]
+		},
+		"write": {
+			"file": {
+				"/etc/config/dns-provider": ["write"]
+			},
+			"ubus": {
+				"luci.dns-provider": ["*"]
+			},
+			"uci": ["dns-provider"]
+		}
+	}
+}

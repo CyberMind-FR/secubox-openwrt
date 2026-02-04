@@ -1,0 +1,163 @@
+/* SecuBox Device Intelligence — Dashboard Styles */
+
+.di-stats {
+	display: flex;
+	gap: 1em;
+	flex-wrap: wrap;
+	margin-bottom: 1.5em;
+}
+
+.di-stat-card {
+	flex: 1;
+	min-width: 140px;
+	padding: 1em;
+	border-radius: 8px;
+	background: var(--bg-alt, #f8f9fa);
+	border: 1px solid var(--border-color, #dee2e6);
+	text-align: center;
+}
+
+.di-stat-card .value {
+	font-size: 2em;
+	font-weight: 700;
+	line-height: 1.2;
+}
+
+.di-stat-card .label {
+	font-size: 0.85em;
+	color: var(--text-muted, #6c757d);
+	margin-top: 0.25em;
+}
+
+.di-type-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+	gap: 0.75em;
+	margin-bottom: 1.5em;
+}
+
+.di-type-card {
+	padding: 0.75em 1em;
+	border-radius: 6px;
+	border-left: 4px solid var(--type-color, #6c757d);
+	background: var(--bg-alt, #f8f9fa);
+	display: flex;
+	align-items: center;
+	gap: 0.5em;
+}
+
+.di-type-card .count {
+	font-size: 1.5em;
+	font-weight: 700;
+}
+
+.di-type-card .name {
+	font-size: 0.85em;
+	color: var(--text-muted, #6c757d);
+}
+
+.di-source-bar {
+	display: flex;
+	gap: 0.5em;
+	flex-wrap: wrap;
+	margin-bottom: 1em;
+}
+
+.di-source-chip {
+	padding: 0.25em 0.75em;
+	border-radius: 12px;
+	font-size: 0.8em;
+	background: var(--bg-alt, #e9ecef);
+}
+
+.di-source-chip.active {
+	background: #22c55e;
+	color: #fff;
+}
+
+.di-source-chip.inactive {
+	background: #ef4444;
+	color: #fff;
+	opacity: 0.7;
+}
+
+.di-device-table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+.di-device-table th {
+	text-align: left;
+	padding: 0.5em 0.75em;
+	border-bottom: 2px solid var(--border-color, #dee2e6);
+	font-size: 0.85em;
+	color: var(--text-muted, #6c757d);
+}
+
+.di-device-table td {
+	padding: 0.5em 0.75em;
+	border-bottom: 1px solid var(--border-color-light, #f0f0f0);
+	font-size: 0.9em;
+}
+
+.di-device-table tr:hover {
+	background: var(--bg-hover, #f8f9fa);
+}
+
+.di-online-dot {
+	display: inline-block;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	margin-right: 0.5em;
+}
+
+.di-online-dot.online { background: #22c55e; }
+.di-online-dot.offline { background: #ef4444; }
+
+.di-emu-card {
+	padding: 1em;
+	border-radius: 8px;
+	background: var(--bg-alt, #f8f9fa);
+	border: 1px solid var(--border-color, #dee2e6);
+	margin-bottom: 1em;
+}
+
+.di-emu-card h4 {
+	margin: 0 0 0.5em 0;
+	display: flex;
+	align-items: center;
+	gap: 0.5em;
+}
+
+.di-emu-card .status {
+	font-size: 0.85em;
+	padding: 0.15em 0.5em;
+	border-radius: 4px;
+}
+
+.di-emu-card .status.enabled {
+	background: #dcfce7;
+	color: #166534;
+}
+
+.di-emu-card .status.disabled {
+	background: #fee2e2;
+	color: #991b1b;
+}
+
+.di-filter-bar {
+	display: flex;
+	gap: 0.5em;
+	flex-wrap: wrap;
+	margin-bottom: 1em;
+	align-items: center;
+}
+
+.di-filter-bar input,
+.di-filter-bar select {
+	padding: 0.4em 0.6em;
+	border: 1px solid var(--border-color, #dee2e6);
+	border-radius: 4px;
+	font-size: 0.9em;
+}
