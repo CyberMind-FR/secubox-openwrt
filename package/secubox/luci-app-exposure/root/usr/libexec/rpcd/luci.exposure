@@ -41,6 +41,8 @@ case "$1" in
         json_add_object "ssl_remove"
             json_add_string "service" "string"
         json_close_object
+        json_add_object "vhost_list"
+        json_close_object
         json_dump
         ;;
 
@@ -49,6 +51,9 @@ case "$1" in
             scan)
                 # Scan listening services - use temp file to avoid subshell issues
                 TMP_SVC="/tmp/exposure_scan_$$"
+                TMP_NAMES="/tmp/exposure_names_$$"
+                > "$TMP_NAMES"
+
                 netstat -tlnp 2>/dev/null | grep LISTEN | awk '{
                     split($4, a, ":")
                     port = a[length(a)]
@@ -59,6 +64,47 @@ case "$1" in
                         print port, $4, proc
                     }
                 }' | sort -n > "$TMP_SVC"
+
+                # Build port->name enrichment from component configs
+
+                # uhttpd instances
+                for _s in $(uci show uhttpd 2>/dev/null | grep "=uhttpd$" | cut -d'.' -f2 | cut -d'=' -f1); do
+                    _listen=$(uci -q get "uhttpd.${_s}.listen_http")
+                    [ -z "$_listen" ] && continue
+                    _p=$(echo "$_listen" | grep -o '[0-9]*$')
+                    case "$_s" in
+                        main) echo "$_p|LuCI" >> "$TMP_NAMES" ;;
+                        acme) echo "$_p|ACME Challenge" >> "$TMP_NAMES" ;;
+                        metablog_site_*) echo "$_p|Metablog: $(echo "$_s" | sed 's/^metablog_site_//')" >> "$TMP_NAMES" ;;
+                        p2p_api) echo "$_p|P2P API" >> "$TMP_NAMES" ;;
+                        *) echo "$_p|uhttpd: $_s" >> "$TMP_NAMES" ;;
+                    esac
+                done
+
+                # Streamlit instances
+                for _s in $(uci show streamlit 2>/dev/null | grep "\.port=" | cut -d'.' -f2); do
+                    _p=$(uci -q get "streamlit.${_s}.port")
+                    _n=$(uci -q get "streamlit.${_s}.name")
+                    [ -n "$_p" ] && echo "$_p|Streamlit: ${_n:-$_s}" >> "$TMP_NAMES"
+                done
+
+                # Docker containers
+                docker ps --format '{{.Ports}}|{{.Names}}' 2>/dev/null | while IFS='|' read _ports _cname; do
+                    [ -z "$_cname" ] && continue
+                    echo "$_ports" | tr ',' '\n' | while read _bind; do
+                        _hp=$(echo "$_bind" | sed -n 's/.*:\([0-9]*\)->.*/\1/p')
+                        [ -n "$_hp" ] && echo "$_hp|Docker: $_cname" >> "$TMP_NAMES"
+                    done
+                done
+
+                # Glances
+                _gp=$(uci -q get glances.main.web_port)
+                [ -n "$_gp" ] && echo "$_gp|Glances" >> "$TMP_NAMES"
+
+                # Known services by port
+                echo "9000|Lyrion" >> "$TMP_NAMES"
+                echo "3483|Lyrion Discovery" >> "$TMP_NAMES"
+                echo "9090|Lyrion CLI" >> "$TMP_NAMES"
 
                 json_init
                 json_add_array "services"
@@ -73,19 +119,23 @@ case "$1" in
                         *) external=1 ;;
                     esac
 
-                    name="$proc"
-                    case "$proc" in
-                        sshd|dropbear) name="SSH" ;;
-                        dnsmasq) name="DNS" ;;
-                        haproxy) name="HAProxy" ;;
-                        uhttpd) name="LuCI" ;;
-                        gitea) name="Gitea" ;;
-                        netifyd) name="Netifyd" ;;
-                        tor) name="Tor" ;;
-                        python*) name="Python App" ;;
-                        streamlit) name="Streamlit" ;;
-                        hexo|node) name="HexoJS" ;;
-                    esac
+                    # Try enriched name first, fallback to process-based mapping
+                    name=$(grep "^${port}|" "$TMP_NAMES" | head -1 | cut -d'|' -f2)
+                    if [ -z "$name" ]; then
+                        case "$proc" in
+                            sshd|dropbear) name="SSH" ;;
+                            dnsmasq) name="DNS" ;;
+                            haproxy) name="HAProxy" ;;
+                            uhttpd) name="LuCI" ;;
+                            gitea) name="Gitea" ;;
+                            netifyd) name="Netifyd" ;;
+                            tor) name="Tor" ;;
+                            python*) name="Python App" ;;
+                            streamlit) name="Streamlit" ;;
+                            hexo|node) name="HexoJS" ;;
+                            *) name="$proc" ;;
+                        esac
+                    fi
 
                     json_add_object ""
                         json_add_int "port" "$port"
@@ -96,7 +146,7 @@ case "$1" in
                     json_close_object
                 done < "$TMP_SVC"
 
-                rm -f "$TMP_SVC"
+                rm -f "$TMP_SVC" "$TMP_NAMES"
                 json_close_array
                 json_dump
                 ;;
@@ -409,6 +459,83 @@ case "$1" in
                     json_add_boolean "success" 0
                     json_add_string "error" "$result"
                 fi
+                json_dump
+                ;;
+
+            vhost_list)
+                json_init
+
+                # HAProxy vhosts (domain -> backend with resolved port)
+                json_add_array "haproxy"
+                for vhost in $(uci show haproxy 2>/dev/null | grep "=vhost$" | cut -d'.' -f2 | cut -d'=' -f1); do
+                    domain=$(uci -q get "haproxy.${vhost}.domain")
+                    backend=$(uci -q get "haproxy.${vhost}.backend")
+                    enabled=$(uci -q get "haproxy.${vhost}.enabled")
+                    ssl=$(uci -q get "haproxy.${vhost}.ssl")
+                    acme=$(uci -q get "haproxy.${vhost}.acme")
+
+                    [ -z "$domain" ] && continue
+
+                    # Check for original_backend (when mitmproxy is intercepting)
+                    original_backend=$(uci -q get "haproxy.${vhost}.original_backend")
+                    resolve_backend="${original_backend:-$backend}"
+
+                    # Resolve backend port from the target backend
+                    backend_port=""
+                    if [ -n "$resolve_backend" ]; then
+                        # Try inline server option: 'name IP:PORT check'
+                        server_line=$(uci -q get "haproxy.${resolve_backend}.server" 2>/dev/null)
+                        if [ -n "$server_line" ]; then
+                            backend_port=$(echo "$server_line" | awk '{print $2}' | grep -o ':[0-9]*' | tr -d ':')
+                        fi
+                        # Try server sections referencing this backend
+                        if [ -z "$backend_port" ]; then
+                            for srv in $(uci show haproxy 2>/dev/null | grep "=server$" | cut -d'.' -f2 | cut -d'=' -f1); do
+                                srv_backend=$(uci -q get "haproxy.${srv}.backend")
+                                if [ "$srv_backend" = "$resolve_backend" ]; then
+                                    backend_port=$(uci -q get "haproxy.${srv}.port")
+                                    break
+                                fi
+                            done
+                        fi
+                    fi
+
+                    json_add_object ""
+                        json_add_string "id" "$vhost"
+                        json_add_string "domain" "$domain"
+                        json_add_string "backend" "${resolve_backend:-${backend:-}}"
+                        json_add_int "backend_port" "${backend_port:-0}"
+                        json_add_boolean "ssl" "${ssl:-0}"
+                        json_add_boolean "acme" "${acme:-0}"
+                        json_add_boolean "enabled" "${enabled:-0}"
+                    json_close_object
+                done
+                json_close_array
+
+                # uhttpd vhosts (non-main instances)
+                json_add_array "uhttpd"
+                for section in $(uci show uhttpd 2>/dev/null | grep "=uhttpd$" | cut -d'.' -f2 | cut -d'=' -f1); do
+                    [ "$section" = "main" ] && continue
+                    [ "$section" = "acme" ] && continue
+
+                    listen=$(uci -q get "uhttpd.${section}.listen_http")
+                    home=$(uci -q get "uhttpd.${section}.home")
+                    [ -z "$listen" ] && continue
+
+                    port=$(echo "$listen" | grep -o '[0-9]*$')
+
+                    # Derive friendly name from section id
+                    fname=$(echo "$section" | sed 's/^metablog_site_//' | sed 's/_/ /g')
+
+                    json_add_object ""
+                        json_add_string "id" "$section"
+                        json_add_int "port" "${port:-0}"
+                        json_add_string "name" "$fname"
+                        json_add_string "home" "${home:-}"
+                    json_close_object
+                done
+                json_close_array
+
                 json_dump
                 ;;
 
