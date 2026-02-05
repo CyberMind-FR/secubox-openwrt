@@ -1,6 +1,6 @@
 # SecuBox TODOs (Claude Edition)
 
-_Last updated: 2026-02-04_
+_Last updated: 2026-02-05_
 
 ## Resolved
 
@@ -11,6 +11,7 @@ _Last updated: 2026-02-04_
 - ~~Chip Header Layout Migration~~ — Done: client-guardian and auth-guardian ported to `sh-page-header` + `renderHeaderChip()` (2026-02-05).
 - ~~SMB/CIFS Shared Remote Directories~~ — Done: `secubox-app-smbfs` (client mount manager) + `secubox-app-ksmbd` (server for mesh sharing) (2026-02-04/05).
 - ~~P2P App Store Emancipation~~ — Done: P2P package distribution, packages.js view, devstatus.js widget (2026-02-04/05).
+- ~~Navigation Component~~ — Done: `SecuNav.renderTabs()` now auto-inits theme+CSS, `renderCompactTabs()` for nested modules (2026-02-05).
 
 ## Open
 
@@ -18,9 +19,9 @@ _Last updated: 2026-02-04_
    - ~~Port `sh-page-header` + `renderHeaderChip()` pattern to client-guardian and auth-guardian.~~
    - ~~Both now use `sh-page-header` with chip stats.~~
 
-2. **Navigation Component**
-   - Convert `SecuNav.renderTabs()` into a reusable LuCI widget (avoid duplicating `Theme.init` in each view).
-   - Provide a compact variant for nested modules (e.g., CDN Cache, Network Modes).
+2. ~~**Navigation Component**~~ — Done (2026-02-05)
+   - ~~Convert `SecuNav.renderTabs()` into a reusable LuCI widget (avoid duplicating `Theme.init` in each view).~~
+   - ~~Provide a compact variant for nested modules (e.g., CDN Cache, Network Modes).~~
 
 3. **Monitoring UX**
    - Add empty-state copy while charts warm up.

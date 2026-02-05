@@ -74,6 +74,15 @@
   Notes: `client-guardian` and `auth-guardian` overview.js updated to use `sh-page-header` chip layout.
   Shared CSS from `secubox/common.css`. Consistent with SecuBox dashboard design.
 
+- **Navigation Component Refactoring**
+  Status: DONE (2026-02-05)
+  Notes: Unified navigation widget in `secubox/nav.js`.
+  - `SecuNav.renderTabs()` now auto-inits theme and loads CSS (no more boilerplate in views).
+  - `SecuNav.renderCompactTabs()` for nested modules (CDN Cache, CrowdSec, System Hub, etc.).
+  - `SecuNav.renderBreadcrumb()` for back-navigation to SecuBox.
+  - Updated module navs: cdn-cache, client-guardian, crowdsec-dashboard, media-flow, mqtt-bridge, system-hub.
+  - Removed ~1000 lines of duplicate CSS from module nav files.
+
 ## Next Up
 
 1. Rebuild bonus feed with all 2026-02-04/05 changes (IPK files need rebuild).

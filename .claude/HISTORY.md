@@ -155,3 +155,12 @@ _Last updated: 2026-02-04_
     - `ksmbd`: New `secubox-app-ksmbd` mesh media server package — `ksmbdctl` CLI with enable/disable/status/add-share/remove-share/list-shares/add-user/mesh-register, UCI config with pre-configured shares (Media, Jellyfin, Lyrion, Backup), Avahi mDNS announcement, P2P mesh registration.
     - `client-guardian`: Ported to `sh-page-header` chip layout with 6 status chips (Online, Approved, Quarantine, Banned, Threats, Zones).
     - `auth-guardian`: Ported to `sh-page-header` chip layout with 4 status chips (Status, Sessions, Portal, Method), sessions table, quick actions card.
+
+20. **Navigation Component Refactoring (2026-02-05)**
+    - `secubox/nav.js`: Unified navigation widget with auto-theme initialization.
+      - `renderTabs(active)`: Main SecuBox tabs with automatic Theme.init() and CSS loading.
+      - `renderCompactTabs(active, tabs, options)`: Compact variant for nested modules.
+      - `renderBreadcrumb(moduleName, icon)`: Back-navigation to SecuBox dashboard.
+    - Eliminated ~1000 lines of duplicate CSS from module nav files.
+    - Updated modules: `cdn-cache`, `client-guardian`, `crowdsec-dashboard`, `media-flow`, `mqtt-bridge`, `system-hub`.
+    - Views no longer need to require Theme separately or manually load CSS.

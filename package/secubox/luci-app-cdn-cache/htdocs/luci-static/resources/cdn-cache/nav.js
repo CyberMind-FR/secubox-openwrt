@@ -1,5 +1,11 @@
 'use strict';
 'require baseclass';
+'require secubox/nav as SecuNav';
+
+/**
+ * CDN Cache Navigation
+ * Uses SecuNav.renderCompactTabs() for consistent styling
+ */
 
 var tabs = [
 	{ id: 'overview', icon: '📦', label: _('Overview'), path: ['admin', 'services', 'cdn-cache', 'overview'] },
@@ -15,17 +21,18 @@ return baseclass.extend({
 		return tabs.slice();
 	},
 
+	/**
+	 * Render CDN Cache navigation tabs
+	 * Delegates to SecuNav.renderCompactTabs() for consistent styling
+	 */
 	renderTabs: function(active) {
-		return E('div', { 'class': 'sh-nav-tabs cdn-nav-tabs' },
-			this.getTabs().map(function(tab) {
-				return E('a', {
-					'class': 'sh-nav-tab' + (tab.id === active ? ' active' : ''),
-					'href': L.url.apply(L, tab.path)
-				}, [
-					E('span', { 'class': 'sh-tab-icon' }, tab.icon),
-					E('span', { 'class': 'sh-tab-label' }, tab.label)
-				]);
-			})
-		);
+		return SecuNav.renderCompactTabs(active, this.getTabs(), { className: 'cdn-nav-tabs' });
+	},
+
+	/**
+	 * Render breadcrumb back to SecuBox
+	 */
+	renderBreadcrumb: function() {
+		return SecuNav.renderBreadcrumb(_('CDN Cache'), '💾');
 	}
 });
