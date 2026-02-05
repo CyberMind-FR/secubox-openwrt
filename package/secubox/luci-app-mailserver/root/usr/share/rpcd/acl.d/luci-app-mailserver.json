@@ -1,0 +1,17 @@
+{
+	"luci-app-mailserver": {
+		"description": "Grant access to Mail Server Manager",
+		"read": {
+			"ubus": {
+				"luci.mailserver": ["status", "user_list", "alias_list", "webmail_status", "logs"]
+			},
+			"uci": ["mailserver"]
+		},
+		"write": {
+			"ubus": {
+				"luci.mailserver": ["install", "start", "stop", "restart", "user_add", "user_del", "user_passwd", "alias_add", "dns_setup", "ssl_setup", "webmail_configure", "mesh_backup", "mesh_sync"]
+			},
+			"uci": ["mailserver"]
+		}
+	}
+}

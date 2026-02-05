@@ -1,0 +1,14 @@
+{
+	"admin/services/mailserver": {
+		"title": "Mail Server",
+		"order": 60,
+		"action": {
+			"type": "view",
+			"path": "mailserver/overview"
+		},
+		"depends": {
+			"acl": ["luci-app-mailserver"],
+			"uci": { "mailserver": true }
+		}
+	}
+}
