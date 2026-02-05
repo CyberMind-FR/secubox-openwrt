@@ -3,188 +3,241 @@
 'require dom';
 'require poll';
 'require ui';
-'require threat-analyst/api as api';
+'require threat-analyst.api as api';
+
+/**
+ * Threat Analyst Dashboard - v0.1.0
+ * Generative AI-powered threat filtering
+ *
+ * Following CrowdSec Dashboard KISS template pattern
+ */
 
 return view.extend({
-	chatHistory: [],
-
 	load: function() {
-		return Promise.all([
-			api.status(),
-			api.getThreats(20),
-			api.getPending()
-		]);
+		var link = document.createElement('link');
+		link.rel = 'stylesheet';
+		link.href = L.resource('threat-analyst/dashboard.css');
+		document.head.appendChild(link);
+		return api.getOverview().catch(function() { return {}; });
 	},
 
 	render: function(data) {
-		var status = data[0] || {};
-		var threats = (data[1] || {}).threats || [];
-		var pending = (data[2] || {}).pending || [];
 		var self = this;
+		var s = data.status || {};
+		var threats = data.threats || [];
+		var pending = data.pending || [];
 
-		// Add CSS
-		var style = E('style', {}, `
-			.ta-dashboard { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-			.ta-card { background: var(--bg-alt, #f8f9fa); border-radius: 8px; padding: 16px; }
-			.ta-card h3 { margin: 0 0 12px 0; font-size: 14px; text-transform: uppercase; opacity: 0.7; }
-			.ta-status-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-			.ta-stat { text-align: center; padding: 12px; background: var(--bg, #fff); border-radius: 6px; }
-			.ta-stat-value { font-size: 24px; font-weight: bold; color: var(--primary, #2196f3); }
-			.ta-stat-label { font-size: 11px; opacity: 0.6; margin-top: 4px; }
-			.ta-stat.warning .ta-stat-value { color: #ff9800; }
-			.ta-stat.danger .ta-stat-value { color: #f44336; }
-			.ta-stat.success .ta-stat-value { color: #4caf50; }
-
-			.ta-chat { grid-column: span 2; }
-			.ta-chat-messages { height: 300px; overflow-y: auto; background: var(--bg, #fff); border-radius: 6px; padding: 12px; margin-bottom: 12px; }
-			.ta-message { margin-bottom: 12px; }
-			.ta-message.user { text-align: right; }
-			.ta-message-bubble { display: inline-block; max-width: 80%; padding: 8px 12px; border-radius: 12px; }
-			.ta-message.user .ta-message-bubble { background: #2196f3; color: white; }
-			.ta-message.ai .ta-message-bubble { background: var(--bg-alt, #e3e3e3); }
-			.ta-message-time { font-size: 10px; opacity: 0.5; margin-top: 4px; }
-			.ta-chat-input { display: flex; gap: 8px; }
-			.ta-chat-input input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 6px; }
-			.ta-chat-input button { padding: 10px 20px; background: #2196f3; color: white; border: none; border-radius: 6px; cursor: pointer; }
-
-			.ta-threats { grid-column: span 2; }
-			.ta-threats-table { width: 100%; border-collapse: collapse; }
-			.ta-threats-table th, .ta-threats-table td { padding: 8px; text-align: left; border-bottom: 1px solid #eee; }
-			.ta-threats-table th { font-size: 11px; text-transform: uppercase; opacity: 0.6; }
-			.ta-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
-			.ta-badge.critical { background: #f44336; color: white; }
-			.ta-badge.high { background: #ff9800; color: white; }
-			.ta-badge.medium { background: #ffc107; color: black; }
-			.ta-badge.low { background: #4caf50; color: white; }
-
-			.ta-actions { display: flex; gap: 8px; margin-top: 16px; }
-			.ta-btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
-			.ta-btn-primary { background: #2196f3; color: white; }
-			.ta-btn-success { background: #4caf50; color: white; }
-			.ta-btn-warning { background: #ff9800; color: white; }
-
-			.ta-pending { margin-top: 20px; }
-			.ta-pending-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; background: var(--bg, #fff); border-radius: 6px; margin-bottom: 8px; }
-		`);
-
-		var statusCard = E('div', { 'class': 'ta-card' }, [
-			E('h3', {}, 'Agent Status'),
-			E('div', { 'class': 'ta-status-grid' }, [
-				E('div', { 'class': 'ta-stat ' + (status.daemon_running ? 'success' : 'warning') }, [
-					E('div', { 'class': 'ta-stat-value' }, status.daemon_running ? 'ON' : 'OFF'),
-					E('div', { 'class': 'ta-stat-label' }, 'Daemon')
-				]),
-				E('div', { 'class': 'ta-stat ' + (status.localai_status === 'online' ? 'success' : 'danger') }, [
-					E('div', { 'class': 'ta-stat-value' }, status.localai_status === 'online' ? 'OK' : 'OFF'),
-					E('div', { 'class': 'ta-stat-label' }, 'LocalAI')
-				]),
-				E('div', { 'class': 'ta-stat ' + (status.recent_threats > 10 ? 'danger' : status.recent_threats > 0 ? 'warning' : 'success') }, [
-					E('div', { 'class': 'ta-stat-value' }, status.recent_threats || 0),
-					E('div', { 'class': 'ta-stat-label' }, 'Threats (1h)')
+		var view = E('div', { 'class': 'ta-view' }, [
+			// Header
+			E('div', { 'class': 'ta-header' }, [
+				E('div', { 'class': 'ta-title' }, 'Threat Analyst'),
+				E('div', { 'class': 'ta-status' }, [
+					E('span', { 'class': 'ta-dot ' + (s.daemon_running ? 'online' : 'offline') }),
+					s.daemon_running ? 'Running' : 'Stopped'
 				])
 			]),
+
+			// Stats
+			E('div', { 'class': 'ta-stats', 'id': 'ta-stats' }, this.renderStats(s, pending)),
+
+			// Two column layout
+			E('div', { 'class': 'ta-grid-2' }, [
+				// Health card
+				E('div', { 'class': 'ta-card' }, [
+					E('div', { 'class': 'ta-card-header' }, 'System Health'),
+					E('div', { 'class': 'ta-card-body' }, this.renderHealth(s))
+				]),
+				// Pending Rules card
+				E('div', { 'class': 'ta-card' }, [
+					E('div', { 'class': 'ta-card-header' }, 'Pending Rules (' + pending.length + ')'),
+					E('div', { 'class': 'ta-card-body', 'id': 'ta-pending' }, this.renderPending(pending))
+				])
+			]),
+
+			// Generate Rules card
+			E('div', { 'class': 'ta-card' }, [
+				E('div', { 'class': 'ta-card-header' }, 'Generate Filter Rules'),
+				E('div', { 'class': 'ta-card-body' }, this.renderTargets())
+			]),
+
+			// Threats card
+			E('div', { 'class': 'ta-card' }, [
+				E('div', { 'class': 'ta-card-header' }, 'Recent Threats from CrowdSec'),
+				E('div', { 'class': 'ta-card-body', 'id': 'ta-threats' }, this.renderThreats(threats))
+			]),
+
+			// AI Chat card
+			E('div', { 'class': 'ta-card' }, [
+				E('div', { 'class': 'ta-card-header' }, 'AI Security Assistant'),
+				E('div', { 'class': 'ta-card-body' }, this.renderChat())
+			])
+		]);
+
+		poll.add(L.bind(this.pollData, this), 30);
+		return view;
+	},
+
+	renderStats: function(s, pending) {
+		var stats = [
+			{ label: 'Daemon', value: s.daemon_running ? 'ON' : 'OFF', type: s.daemon_running ? 'success' : 'danger' },
+			{ label: 'LocalAI', value: s.localai_status === 'online' ? 'OK' : 'OFF', type: s.localai_status === 'online' ? 'success' : 'danger' },
+			{ label: 'Threats (1h)', value: s.recent_threats || 0, type: (s.recent_threats || 0) > 10 ? 'danger' : (s.recent_threats || 0) > 0 ? 'warning' : 'success' },
+			{ label: 'Pending', value: pending.length || 0, type: (pending.length || 0) > 0 ? 'warning' : '' }
+		];
+		return stats.map(function(st) {
+			return E('div', { 'class': 'ta-stat ' + st.type }, [
+				E('div', { 'class': 'ta-stat-value' }, String(st.value)),
+				E('div', { 'class': 'ta-stat-label' }, st.label)
+			]);
+		});
+	},
+
+	renderHealth: function(s) {
+		var cveCount = s.cve_alerts || 0;
+		var checks = [
+			{ label: 'Daemon', ok: s.daemon_running },
+			{ label: 'LocalAI', ok: s.localai_status === 'online' },
+			{ label: 'CrowdSec', ok: s.recent_threats !== undefined },
+			{ label: 'CVE Alerts', ok: cveCount === 0, value: cveCount > 0 ? cveCount + ' Active' : 'None', warn: cveCount > 0 },
+			{ label: 'Auto-Apply', ok: s.enabled, value: s.enabled ? 'Enabled' : 'Manual' }
+		];
+		return E('div', { 'class': 'ta-health' }, checks.map(function(c) {
+			var valueText = c.value ? c.value : (c.ok ? 'OK' : 'Unavailable');
+			var iconClass = c.warn ? 'warning' : (c.ok ? 'ok' : 'error');
+			var iconChar = c.warn ? '\u26A0' : (c.ok ? '\u2713' : '\u2717');
+			return E('div', { 'class': 'ta-health-item' }, [
+				E('div', { 'class': 'ta-health-icon ' + iconClass }, iconChar),
+				E('div', {}, [
+					E('div', { 'class': 'ta-health-label' }, c.label),
+					E('div', { 'class': 'ta-health-value' }, valueText)
+				])
+			]);
+		}));
+	},
+
+	renderPending: function(pending) {
+		var self = this;
+		if (!pending.length) {
+			return E('div', { 'class': 'ta-empty' }, 'No pending rules for approval');
+		}
+		return E('div', { 'class': 'ta-pending-list' }, pending.map(function(rule) {
+			return E('div', { 'class': 'ta-pending-item' }, [
+				E('div', { 'class': 'ta-pending-info' }, [
+					E('div', { 'class': 'ta-pending-type' }, [
+						E('span', { 'class': 'ta-badge ' + rule.type }, rule.type)
+					]),
+					E('div', { 'class': 'ta-pending-date' }, (rule.created || '').substring(0, 10))
+				]),
+				E('div', { 'class': 'ta-pending-actions' }, [
+					E('button', {
+						'class': 'ta-btn ta-btn-success ta-btn-sm',
+						'click': function() { self.approveRule(rule.id); }
+					}, 'Approve'),
+					E('button', {
+						'class': 'ta-btn ta-btn-danger ta-btn-sm',
+						'click': function() { self.rejectRule(rule.id); }
+					}, 'Reject')
+				])
+			]);
+		}));
+	},
+
+	renderTargets: function() {
+		var self = this;
+		var targets = [
+			{ id: 'crowdsec', name: 'CrowdSec', desc: 'Generate autoban scenarios', icon: '\uD83D\uDEE1' },
+			{ id: 'mitmproxy', name: 'mitmproxy', desc: 'Generate Python filters', icon: '\uD83D\uDD0D' },
+			{ id: 'waf', name: 'WAF', desc: 'Generate ModSecurity rules', icon: '\uD83D\uDEA7' }
+		];
+		return E('div', {}, [
+			E('div', { 'class': 'ta-targets' }, targets.map(function(t) {
+				return E('div', {
+					'class': 'ta-target',
+					'click': function() { self.generateRules(t.id); }
+				}, [
+					E('div', { 'class': 'ta-target-icon' }, t.icon),
+					E('div', { 'class': 'ta-target-name' }, t.name),
+					E('div', { 'class': 'ta-target-desc' }, t.desc)
+				]);
+			})),
 			E('div', { 'class': 'ta-actions' }, [
 				E('button', {
 					'class': 'ta-btn ta-btn-primary',
-					'click': function() { self.runCycle(); }
-				}, 'Run Analysis'),
+					'click': function() { self.runAnalysis(); }
+				}, 'Run Analysis Cycle'),
 				E('button', {
 					'class': 'ta-btn ta-btn-success',
 					'click': function() { self.generateRules('all'); }
-				}, 'Generate Rules')
+				}, 'Generate All Rules')
 			])
 		]);
+	},
 
-		var pendingCard = E('div', { 'class': 'ta-card' }, [
-			E('h3', {}, 'Pending Rules (' + pending.length + ')'),
-			E('div', { 'class': 'ta-pending', 'id': 'pending-rules' },
-				pending.length === 0 ? E('em', {}, 'No pending rules') :
-				pending.map(function(rule) {
-					return E('div', { 'class': 'ta-pending-item' }, [
-						E('span', {}, rule.type + ' - ' + (rule.created || '').substring(0, 10)),
-						E('div', {}, [
-							E('button', {
-								'class': 'ta-btn ta-btn-success',
-								'style': 'padding: 4px 8px; margin-right: 4px;',
-								'click': function() { self.approveRule(rule.id); }
-							}, 'Approve'),
-							E('button', {
-								'class': 'ta-btn ta-btn-warning',
-								'style': 'padding: 4px 8px;',
-								'click': function() { self.rejectRule(rule.id); }
-							}, 'Reject')
-						])
-					]);
-				})
-			)
+	renderThreats: function(threats) {
+		if (!threats.length) {
+			return E('div', { 'class': 'ta-empty' }, 'No recent threats detected');
+		}
+		return E('table', { 'class': 'ta-table' }, [
+			E('thead', {}, E('tr', {}, [
+				E('th', {}, 'Time'),
+				E('th', {}, 'Source IP'),
+				E('th', {}, 'Scenario'),
+				E('th', {}, 'CVE'),
+				E('th', {}, 'Severity')
+			])),
+			E('tbody', {}, threats.slice(0, 10).map(function(t) {
+				var src = t.source || {};
+				var severity = api.getSeverityClass(t.scenario);
+				var cveId = api.extractCVE(t.scenario);
+				var cveCell = cveId ?
+					E('a', {
+						'class': 'ta-cve-link',
+						'href': 'https://nvd.nist.gov/vuln/detail/' + cveId,
+						'target': '_blank',
+						'rel': 'noopener'
+					}, cveId) :
+					E('span', { 'class': 'ta-no-cve' }, '-');
+				return E('tr', { 'class': cveId ? 'ta-cve-row' : '' }, [
+					E('td', { 'class': 'ta-time' }, api.formatRelativeTime(t.created_at)),
+					E('td', {}, E('span', { 'class': 'ta-ip' }, src.ip || '-')),
+					E('td', {}, E('span', { 'class': 'ta-scenario' }, api.parseScenario(t.scenario))),
+					E('td', {}, cveCell),
+					E('td', {}, E('span', { 'class': 'ta-badge ' + severity }, severity))
+				]);
+			}))
 		]);
+	},
 
-		var chatCard = E('div', { 'class': 'ta-card ta-chat' }, [
-			E('h3', {}, 'AI Security Chat'),
-			E('div', { 'class': 'ta-chat-messages', 'id': 'chat-messages' },
+	renderChat: function() {
+		var self = this;
+		return E('div', { 'class': 'ta-chat' }, [
+			E('div', { 'class': 'ta-chat-messages', 'id': 'ta-chat-messages' }, [
 				E('div', { 'class': 'ta-message ai' }, [
-					E('div', { 'class': 'ta-message-bubble' }, 'Hello! I\'m your SecuBox Threat Analyst. Ask me about security threats, or request filter rules for mitmproxy, CrowdSec, or WAF.')
+					E('div', { 'class': 'ta-message-bubble' },
+						'Hello! I\'m your Threat Analyst AI. Ask me about security threats, ' +
+						'or request rules for CrowdSec, mitmproxy, or WAF.'),
+					E('div', { 'class': 'ta-message-time' }, 'System')
 				])
-			),
+			]),
 			E('div', { 'class': 'ta-chat-input' }, [
 				E('input', {
 					'type': 'text',
-					'id': 'chat-input',
-					'placeholder': 'Ask about threats or request rules...',
+					'id': 'ta-chat-input',
+					'placeholder': 'Ask about threats or request filter rules...',
 					'keypress': function(e) { if (e.key === 'Enter') self.sendChat(); }
 				}),
-				E('button', { 'click': function() { self.sendChat(); } }, 'Send')
-			])
-		]);
-
-		var threatsCard = E('div', { 'class': 'ta-card ta-threats' }, [
-			E('h3', {}, 'Recent Threats'),
-			E('table', { 'class': 'ta-threats-table' }, [
-				E('thead', {}, [
-					E('tr', {}, [
-						E('th', {}, 'Time'),
-						E('th', {}, 'Source'),
-						E('th', {}, 'Scenario'),
-						E('th', {}, 'IP'),
-						E('th', {}, 'Severity')
-					])
-				]),
-				E('tbody', { 'id': 'threats-body' },
-					threats.slice(0, 10).map(function(t) {
-						var severity = 'medium';
-						if (t.scenario && (t.scenario.includes('malware') || t.scenario.includes('exploit'))) severity = 'critical';
-						else if (t.scenario && t.scenario.includes('scan')) severity = 'high';
-						else if (t.scenario && t.scenario.includes('http')) severity = 'low';
-
-						return E('tr', {}, [
-							E('td', {}, (t.created_at || '').substring(11, 19)),
-							E('td', {}, (t.source || {}).ip || '-'),
-							E('td', {}, t.scenario || '-'),
-							E('td', {}, (t.source || {}).ip || '-'),
-							E('td', {}, E('span', { 'class': 'ta-badge ' + severity }, severity))
-						]);
-					})
-				)
-			])
-		]);
-
-		return E('div', {}, [
-			style,
-			E('h2', {}, 'Threat Analyst'),
-			E('div', { 'class': 'ta-dashboard' }, [
-				statusCard,
-				pendingCard,
-				chatCard,
-				threatsCard
+				E('button', {
+					'class': 'ta-btn ta-btn-primary',
+					'click': function() { self.sendChat(); }
+				}, 'Send')
 			])
 		]);
 	},
 
 	sendChat: function() {
-		var input = document.getElementById('chat-input');
-		var messages = document.getElementById('chat-messages');
+		var input = document.getElementById('ta-chat-input');
+		var messages = document.getElementById('ta-chat-messages');
 		var message = input.value.trim();
-		var self = this;
 
 		if (!message) return;
 
@@ -197,26 +250,24 @@ return view.extend({
 		input.value = '';
 		messages.scrollTop = messages.scrollHeight;
 
-		// Add loading indicator
-		var loading = E('div', { 'class': 'ta-message ai', 'id': 'chat-loading' }, [
+		// Add loading
+		var loading = E('div', { 'class': 'ta-message ai', 'id': 'ta-chat-loading' }, [
 			E('div', { 'class': 'ta-message-bubble' }, 'Analyzing...')
 		]);
 		messages.appendChild(loading);
 
-		// Call API
 		api.chat(message).then(function(result) {
-			var loadingEl = document.getElementById('chat-loading');
+			var loadingEl = document.getElementById('ta-chat-loading');
 			if (loadingEl) loadingEl.remove();
 
 			var response = result.response || result.error || 'No response';
-
 			messages.appendChild(E('div', { 'class': 'ta-message ai' }, [
 				E('div', { 'class': 'ta-message-bubble' }, response),
 				E('div', { 'class': 'ta-message-time' }, new Date().toLocaleTimeString())
 			]));
 			messages.scrollTop = messages.scrollHeight;
 		}).catch(function(err) {
-			var loadingEl = document.getElementById('chat-loading');
+			var loadingEl = document.getElementById('ta-chat-loading');
 			if (loadingEl) loadingEl.remove();
 
 			messages.appendChild(E('div', { 'class': 'ta-message ai' }, [
@@ -225,7 +276,7 @@ return view.extend({
 		});
 	},
 
-	runCycle: function() {
+	runAnalysis: function() {
 		ui.showModal('Running Analysis', [
 			E('p', { 'class': 'spinning' }, 'Running threat analysis cycle...')
 		]);
@@ -233,31 +284,39 @@ return view.extend({
 		api.runCycle().then(function() {
 			ui.hideModal();
 			ui.addNotification(null, E('p', {}, 'Analysis cycle started'), 'success');
+		}).catch(function() {
+			ui.hideModal();
+			ui.addNotification(null, E('p', {}, 'Failed to start analysis'), 'error');
 		});
 	},
 
 	generateRules: function(target) {
+		var targetName = target === 'all' ? 'All' : target;
 		ui.showModal('Generating Rules', [
-			E('p', { 'class': 'spinning' }, 'Generating ' + target + ' rules with AI...')
+			E('p', { 'class': 'spinning' }, 'Generating ' + targetName + ' rules with AI...')
 		]);
 
 		api.generateRules(target).then(function(result) {
 			ui.hideModal();
 			if (result.rules) {
-				ui.addNotification(null, E('p', {}, 'Rules generated. Check pending queue.'), 'success');
+				ui.addNotification(null, E('p', {}, 'Rules generated. Check pending queue for approval.'), 'success');
 				window.location.reload();
 			} else {
-				ui.addNotification(null, E('p', {}, 'Failed to generate rules'), 'error');
+				ui.addNotification(null, E('p', {}, 'No rules generated'), 'warning');
 			}
+		}).catch(function() {
+			ui.hideModal();
+			ui.addNotification(null, E('p', {}, 'Failed to generate rules'), 'error');
 		});
 	},
 
 	approveRule: function(id) {
-		var self = this;
 		api.approveRule(id).then(function(result) {
 			if (result.success) {
 				ui.addNotification(null, E('p', {}, 'Rule approved and applied'), 'success');
 				window.location.reload();
+			} else {
+				ui.addNotification(null, E('p', {}, 'Failed to approve rule'), 'error');
 			}
 		});
 	},
@@ -266,6 +325,24 @@ return view.extend({
 		api.rejectRule(id).then(function() {
 			ui.addNotification(null, E('p', {}, 'Rule rejected'), 'info');
 			window.location.reload();
+		});
+	},
+
+	pollData: function() {
+		var self = this;
+		return api.getOverview().then(function(data) {
+			var s = data.status || {};
+			var pending = data.pending || [];
+			var threats = data.threats || [];
+
+			var el = document.getElementById('ta-stats');
+			if (el) dom.content(el, self.renderStats(s, pending));
+
+			el = document.getElementById('ta-pending');
+			if (el) dom.content(el, self.renderPending(pending));
+
+			el = document.getElementById('ta-threats');
+			if (el) dom.content(el, self.renderThreats(threats));
 		});
 	},
 

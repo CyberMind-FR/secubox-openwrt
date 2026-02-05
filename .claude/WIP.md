@@ -45,6 +45,15 @@ _Last updated: 2026-02-06_
 
 _None currently active_
 
+### Just Completed
+
+- **Subdomain Generator Tool** — DONE (2026-02-05)
+  - `secubox-subdomain` CLI for generative subdomain management
+  - Automates: DNS A record + HAProxy vhost + UCI registration
+  - Uses wildcard certificate (*.zone) for instant SSL
+  - Quick-add shortcuts for common services (gitea, grafana, jellyfin, etc.)
+  - Part of Punk Exposure infrastructure
+
 ### Next Up — Couche 1
 
 1. **Guacamole Pre-built Binaries**
@@ -88,6 +97,13 @@ _None currently active_
   - Approval workflow: auto-apply mitmproxy, queue CrowdSec/WAF
   - Created `luci-app-threat-analyst` with AI chatbot dashboard
   - RPCD handler with 10 methods for status, chat, rules, approval
+
+- **Threat Analyst KISS Dashboard v0.1.0** — DONE (2026-02-05)
+  - Regenerated LuCI dashboard following CrowdSec KISS template pattern
+  - External CSS loading, baseclass.extend() API pattern
+  - CVE alerts in System Health section
+  - CVE column in threats table with NVD hyperlinks
+  - AI Security Assistant chat interface
 
 - **MCP Server Implementation** — DONE (2026-02-06)
   - Created `secubox-mcp-server` package with JSON-RPC 2.0 over stdio

@@ -54,25 +54,35 @@ method_status() {
 	stats_port=$(get_uci main stats_port 8404)
 	stats_enabled=$(get_uci main stats_enabled 1)
 
-	# Check container status - prefer lxc-info, fallback to pgrep lxc-start
-	if command -v lxc-info >/dev/null 2>&1; then
-		container_running=$(lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING" && echo "1" || echo "0")
-	else
-		# Fallback: check if lxc-start is running for haproxy
-		container_running=$(pgrep -f "lxc-start.*-n haproxy" >/dev/null 2>&1 && echo "1" || echo "0")
+	# Check container status - Docker first, then LXC
+	container_running="0"
+	haproxy_running="0"
+
+	# Check Docker container (secubox-haproxy or haproxy)
+	if command -v docker >/dev/null 2>&1; then
+		if docker ps --format '{{.Names}}' 2>/dev/null | grep -qE '^(secubox-haproxy|haproxy)$'; then
+			container_running="1"
+			haproxy_running="1"
+		fi
 	fi
 
-	# Check HAProxy process
-	if [ "$container_running" = "1" ]; then
-		# Try lxc-attach first, fallback to direct pgrep
-		if command -v lxc-attach >/dev/null 2>&1; then
-			haproxy_running=$(lxc-attach -n haproxy -- pgrep haproxy >/dev/null 2>&1 && echo "1" || echo "0")
-		else
-			# Fallback: check if haproxy process exists (it runs in container but visible from host)
-			haproxy_running=$(pgrep -f "haproxy.*haproxy.cfg" >/dev/null 2>&1 && echo "1" || echo "0")
+	# If not Docker, check LXC
+	if [ "$container_running" = "0" ]; then
+		if command -v lxc-info >/dev/null 2>&1; then
+			if lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING"; then
+				container_running="1"
+				# Check HAProxy process inside LXC
+				haproxy_running=$(lxc-attach -n haproxy -- pgrep haproxy >/dev/null 2>&1 && echo "1" || echo "0")
+			fi
 		fi
-	else
-		haproxy_running="0"
+	fi
+
+	# Final fallback: check if HAProxy port is listening
+	if [ "$container_running" = "0" ]; then
+		if netstat -tln 2>/dev/null | grep -q ":80 "; then
+			container_running="1"
+			haproxy_running="1"
+		fi
 	fi
 
 	json_init

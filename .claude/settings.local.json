@@ -278,7 +278,8 @@
       "Bash(jsonfilter:*)",
       "WebFetch(domain:zigbeefordomoticz.github.io)",
       "WebFetch(domain:rustdesk.com)",
-      "WebFetch(domain:deepwiki.com)"
+      "WebFetch(domain:deepwiki.com)",
+      "Bash(traceroute:*)"
     ]
   }
 }

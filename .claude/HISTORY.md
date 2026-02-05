@@ -327,3 +327,23 @@ _Last updated: 2026-02-06_
       - Service mirroring via reverse proxy chaining
       - Gossip-based exposure config sync
       - Submastering/multimixslaving architecture
+
+32. **Threat Analyst KISS Dashboard v0.1.0 (2026-02-05)**
+    - Regenerated `luci-app-threat-analyst` following CrowdSec dashboard KISS template pattern.
+    - **Architectural changes**:
+      - `api.js`: Migrated from plain object to `baseclass.extend()` pattern
+      - `dashboard.css`: External CSS file (loaded dynamically in view)
+      - `dashboard.js`: View-only JS following CrowdSec pattern with `view.extend()`
+    - **CVE integration**:
+      - System Health: New "CVE Alerts" indicator with warning icon (yellow) when CVEs detected
+      - Threats table: New CVE column with hyperlinks to NVD (`https://nvd.nist.gov/vuln/detail/CVE-XXXX-XXXXX`)
+      - CVE extraction: `extractCVE()` function in API parses CVE-YYYY-NNNNN patterns from scenarios
+      - CVE row styling: Red-tinted background for CVE-related threats
+    - **RPCD updates**:
+      - Status method now returns `cve_alerts` count from CrowdSec alerts
+      - Fixed output bug (grep `|| echo 0` causing double output)
+    - **CSS additions**:
+      - `.ta-health-icon.warning` for CVE alerts in health section
+      - `.ta-cve-link` for NVD hyperlinks (red badge style)
+      - `.ta-cve-row` for highlighted CVE threat rows
+    - Following LuCI UI Generation Model Template v0.1.0 for future KISS modules.

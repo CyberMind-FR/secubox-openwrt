@@ -894,18 +894,21 @@ lxc.environment = MITMPROXY_HAPROXY_ROUTER_ENABLED=$haproxy_router_enabled
 lxc.environment = MITMPROXY_HAPROXY_LISTEN_PORT=$haproxy_listen_port
 lxc.environment = MITMPROXY_HAPROXY_ROUTES_FILE=/data/haproxy-routes.json
 
-# Capabilities
-lxc.cap.drop = sys_admin sys_module mac_admin mac_override
+# Capabilities - drop dangerous ones (sys_admin needed for some ops)
+lxc.cap.drop = sys_module mac_admin mac_override sys_time
 
-# cgroups limits
-lxc.cgroup.memory.limit_in_bytes = $memory_limit
+# Disable seccomp for cgroup v2 compatibility
+lxc.seccomp.profile =
+
+# Console/TTY (cgroup v2 compatible)
+lxc.tty.max = 0
+lxc.pty.max = 256
+
+# cgroup v2 limits (NOT v1 syntax)
+lxc.cgroup2.memory.max = $memory_limit_bytes
 
 # Init
 lxc.init.cmd = /opt/start-mitmproxy.sh
-
-# Console
-lxc.console.size = 1024
-lxc.pty.max = 1024
 EOF
 
 	log_info "LXC config created at $LXC_CONFIG"

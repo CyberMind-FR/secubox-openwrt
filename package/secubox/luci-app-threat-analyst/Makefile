@@ -28,6 +28,7 @@ define Package/luci-app-threat-analyst/install
 
 	$(INSTALL_DIR) $(1)/www/luci-static/resources/threat-analyst
 	$(INSTALL_DATA) ./htdocs/luci-static/resources/threat-analyst/api.js $(1)/www/luci-static/resources/threat-analyst/
+	$(INSTALL_DATA) ./htdocs/luci-static/resources/threat-analyst/dashboard.css $(1)/www/luci-static/resources/threat-analyst/
 endef
 
 $(eval $(call BuildPackage,luci-app-threat-analyst))

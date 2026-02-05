@@ -1,0 +1,573 @@
+#!/bin/sh
+# SecuBox Centralized VHost Manager
+# Orchestrates HAProxy, DNS, Tor, Mesh, and mitmproxy from single interface
+
+VERSION="1.0.0"
+CONFIG="vhosts"
+
+# Load adapter libraries
+LIB_DIR="/usr/lib/vhost-manager"
+. "$LIB_DIR/backends.sh"
+. "$LIB_DIR/haproxy.sh"
+. "$LIB_DIR/dns.sh"
+. "$LIB_DIR/tor.sh"
+. "$LIB_DIR/mesh.sh"
+. "$LIB_DIR/mitmproxy.sh"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+log() { echo -e "${GREEN}[VHOST]${NC} $1"; }
+warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+error() { echo -e "${RED}[ERROR]${NC} $1"; }
+
+# ============================================================================
+# Add VHost
+# ============================================================================
+
+cmd_add() {
+	local domain="$1"
+	local service="$2"
+	local port="$3"
+	shift 3
+
+	if [ -z "$domain" ] || [ -z "$service" ] || [ -z "$port" ]; then
+		echo "Usage: secubox-vhost add <domain> <service> <port> [options]"
+		echo ""
+		echo "Options:"
+		echo "  --ssl          Enable SSL (default: yes)"
+		echo "  --no-ssl       Disable SSL"
+		echo "  --tor          Enable Tor hidden service"
+		echo "  --mesh         Enable mesh P2P publishing"
+		echo "  --mitm         Enable mitmproxy WAF (default: yes)"
+		echo "  --no-mitm      Disable mitmproxy WAF"
+		return 1
+	fi
+
+	# Validate port
+	if ! echo "$port" | grep -qE '^[0-9]+$' || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
+		error "Invalid port: $port (must be 1-65535)"
+		return 1
+	fi
+
+	# Parse options
+	local ssl=1
+	local tor=0
+	local mesh=0
+	local mitm=1
+	local host="127.0.0.1"
+
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--ssl) ssl=1 ;;
+			--no-ssl) ssl=0 ;;
+			--tor) tor=1 ;;
+			--mesh) mesh=1 ;;
+			--mitm) mitm=1 ;;
+			--no-mitm) mitm=0 ;;
+			--host=*) host="${1#*=}" ;;
+			*) warn "Unknown option: $1" ;;
+		esac
+		shift
+	done
+
+	local section=$(sanitize_section_name "$domain")
+
+	# Check for duplicate
+	if uci -q get $CONFIG.$section >/dev/null 2>&1; then
+		error "VHost already exists: $domain"
+		return 1
+	fi
+
+	log "Creating vhost: $domain -> $host:$port"
+
+	# Store in UCI
+	uci set $CONFIG.$section=vhost
+	uci set $CONFIG.$section.domain="$domain"
+	uci set $CONFIG.$section.service="$service"
+	uci set $CONFIG.$section.backend_host="$host"
+	uci set $CONFIG.$section.backend_port="$port"
+	uci set $CONFIG.$section.enabled='1'
+	uci set $CONFIG.$section.haproxy='1'
+	uci set $CONFIG.$section.ssl="$ssl"
+	uci set $CONFIG.$section.ssl_redirect="$ssl"
+	uci set $CONFIG.$section.acme="$ssl"
+	uci set $CONFIG.$section.tor="$tor"
+	uci set $CONFIG.$section.mesh="$mesh"
+	uci set $CONFIG.$section.mitmproxy="$mitm"
+	uci set $CONFIG.$section.created="$(date -Iseconds)"
+	uci commit $CONFIG
+
+	# Apply to backends
+	log "  [1/5] Creating HAProxy vhost..."
+	haproxy_add_vhost "$domain" "$service" "$host" "$port" "$ssl" "$ssl"
+
+	log "  [2/5] Adding DNS record..."
+	dns_add_record "$domain" 2>/dev/null || warn "DNS: Not configured or failed"
+
+	if [ "$tor" = "1" ]; then
+		log "  [3/5] Creating Tor hidden service..."
+		if tor_is_available; then
+			tor_add_service "$service" "$port"
+			local onion=$(tor_wait_for_onion "$service" 5)
+			if [ -n "$onion" ]; then
+				uci set $CONFIG.$section.onion_address="$onion"
+				uci commit $CONFIG
+				log "       Onion: $onion"
+			fi
+		else
+			warn "Tor not available"
+		fi
+	else
+		log "  [3/5] Tor: skipped"
+	fi
+
+	if [ "$mesh" = "1" ]; then
+		log "  [4/5] Publishing to mesh..."
+		if mesh_is_available; then
+			mesh_publish "$service" "$port" "$domain"
+		else
+			warn "Mesh not available"
+		fi
+	else
+		log "  [4/5] Mesh: skipped"
+	fi
+
+	if [ "$mitm" = "1" ]; then
+		log "  [5/5] Adding mitmproxy route..."
+		if mitmproxy_is_available; then
+			mitmproxy_add_route "$domain" "$host" "$port"
+		else
+			warn "Mitmproxy not available"
+		fi
+	else
+		log "  [5/5] Mitmproxy: skipped"
+	fi
+
+	# Reload HAProxy
+	log "Reloading HAProxy..."
+	haproxy_reload
+
+	echo ""
+	log "VHost created: https://$domain"
+	[ "$tor" = "1" ] && [ -n "$onion" ] && log "Tor: http://$onion"
+}
+
+# ============================================================================
+# Remove VHost
+# ============================================================================
+
+cmd_remove() {
+	local domain="$1"
+
+	if [ -z "$domain" ]; then
+		echo "Usage: secubox-vhost remove <domain>"
+		return 1
+	fi
+
+	local section=$(sanitize_section_name "$domain")
+
+	if ! uci -q get $CONFIG.$section >/dev/null 2>&1; then
+		error "VHost not found: $domain"
+		return 1
+	fi
+
+	local service=$(uci -q get $CONFIG.$section.service)
+	local tor=$(uci -q get $CONFIG.$section.tor)
+	local mesh=$(uci -q get $CONFIG.$section.mesh)
+	local mitm=$(uci -q get $CONFIG.$section.mitmproxy)
+
+	log "Removing vhost: $domain"
+
+	# Remove from backends
+	log "  [1/5] Removing HAProxy vhost..."
+	haproxy_remove_vhost "$domain"
+
+	log "  [2/5] Removing DNS record..."
+	dns_remove_record "$domain" 2>/dev/null || true
+
+	if [ "$tor" = "1" ]; then
+		log "  [3/5] Removing Tor hidden service..."
+		tor_remove_service "$service" 2>/dev/null || true
+	fi
+
+	if [ "$mesh" = "1" ]; then
+		log "  [4/5] Unpublishing from mesh..."
+		mesh_unpublish "$service" 2>/dev/null || true
+	fi
+
+	if [ "$mitm" = "1" ]; then
+		log "  [5/5] Removing mitmproxy route..."
+		mitmproxy_remove_route "$domain" 2>/dev/null || true
+	fi
+
+	# Remove from UCI
+	uci delete $CONFIG.$section
+	uci commit $CONFIG
+
+	# Reload HAProxy
+	haproxy_reload
+
+	log "VHost removed: $domain"
+}
+
+# ============================================================================
+# List VHosts
+# ============================================================================
+
+cmd_list() {
+	local json=0
+	[ "$1" = "--json" ] && json=1
+
+	if [ "$json" = "1" ]; then
+		printf '{"vhosts":['
+		local first=1
+		for section in $(uci show $CONFIG 2>/dev/null | grep "=vhost$" | cut -d. -f2 | cut -d= -f1); do
+			local domain=$(uci -q get $CONFIG.$section.domain)
+			[ -z "$domain" ] && continue
+
+			[ $first -eq 0 ] && printf ','
+			first=0
+
+			local service=$(uci -q get $CONFIG.$section.service)
+			local port=$(uci -q get $CONFIG.$section.backend_port)
+			local enabled=$(uci -q get $CONFIG.$section.enabled)
+			local ssl=$(uci -q get $CONFIG.$section.ssl)
+			local tor=$(uci -q get $CONFIG.$section.tor)
+			local mesh=$(uci -q get $CONFIG.$section.mesh)
+			local mitm=$(uci -q get $CONFIG.$section.mitmproxy)
+			local onion=$(uci -q get $CONFIG.$section.onion_address)
+
+			printf '{"domain":"%s","service":"%s","port":%s,"enabled":%s,"ssl":%s,"tor":%s,"mesh":%s,"mitmproxy":%s,"onion":"%s"}' \
+				"$domain" "${service:-unknown}" "${port:-0}" \
+				"$([ "$enabled" = "1" ] && echo true || echo false)" \
+				"$([ "$ssl" = "1" ] && echo true || echo false)" \
+				"$([ "$tor" = "1" ] && echo true || echo false)" \
+				"$([ "$mesh" = "1" ] && echo true || echo false)" \
+				"$([ "$mitm" = "1" ] && echo true || echo false)" \
+				"${onion:-}"
+		done
+		printf ']}\n'
+	else
+		echo ""
+		echo "==========================================="
+		echo "  SecuBox VHosts"
+		echo "==========================================="
+		echo ""
+		printf "%-30s %-12s %-6s %-4s %-4s %-4s %-4s\n" "DOMAIN" "SERVICE" "PORT" "SSL" "TOR" "MESH" "WAF"
+		printf "%-30s %-12s %-6s %-4s %-4s %-4s %-4s\n" "------" "-------" "----" "---" "---" "----" "---"
+
+		local count=0
+		for section in $(uci show $CONFIG 2>/dev/null | grep "=vhost$" | cut -d. -f2 | cut -d= -f1); do
+			local domain=$(uci -q get $CONFIG.$section.domain)
+			[ -z "$domain" ] && continue
+
+			local service=$(uci -q get $CONFIG.$section.service)
+			local port=$(uci -q get $CONFIG.$section.backend_port)
+			local ssl=$(uci -q get $CONFIG.$section.ssl)
+			local tor=$(uci -q get $CONFIG.$section.tor)
+			local mesh=$(uci -q get $CONFIG.$section.mesh)
+			local mitm=$(uci -q get $CONFIG.$section.mitmproxy)
+
+			printf "%-30s %-12s %-6s %-4s %-4s %-4s %-4s\n" \
+				"$domain" "${service:-?}" "${port:-?}" \
+				"$([ "$ssl" = "1" ] && echo "yes" || echo "no")" \
+				"$([ "$tor" = "1" ] && echo "yes" || echo "no")" \
+				"$([ "$mesh" = "1" ] && echo "yes" || echo "no")" \
+				"$([ "$mitm" = "1" ] && echo "yes" || echo "no")"
+
+			count=$((count + 1))
+		done
+
+		if [ "$count" -eq 0 ]; then
+			echo "  No vhosts configured"
+		fi
+		echo ""
+		echo "Total: $count vhost(s)"
+		echo ""
+	fi
+}
+
+# ============================================================================
+# Status
+# ============================================================================
+
+cmd_status() {
+	local domain="$1"
+
+	if [ -z "$domain" ]; then
+		echo "Usage: secubox-vhost status <domain>"
+		return 1
+	fi
+
+	local section=$(sanitize_section_name "$domain")
+
+	if ! uci -q get $CONFIG.$section >/dev/null 2>&1; then
+		error "VHost not found: $domain"
+		return 1
+	fi
+
+	echo ""
+	echo "VHost: $domain"
+	echo "========================================"
+	echo ""
+	echo "Service:  $(uci -q get $CONFIG.$section.service)"
+	echo "Backend:  $(uci -q get $CONFIG.$section.backend_host):$(uci -q get $CONFIG.$section.backend_port)"
+	echo "Enabled:  $(uci -q get $CONFIG.$section.enabled)"
+	echo ""
+	echo "Channels:"
+	echo "  HAProxy:   yes ($(haproxy_get_status "$domain"))"
+	echo "  SSL/ACME:  $(uci -q get $CONFIG.$section.ssl)"
+	echo "  Tor:       $(uci -q get $CONFIG.$section.tor)"
+	[ "$(uci -q get $CONFIG.$section.tor)" = "1" ] && echo "  Onion:     $(uci -q get $CONFIG.$section.onion_address)"
+	echo "  Mesh:      $(uci -q get $CONFIG.$section.mesh)"
+	echo "  Mitmproxy: $(uci -q get $CONFIG.$section.mitmproxy)"
+	echo ""
+	echo "Created: $(uci -q get $CONFIG.$section.created)"
+	echo ""
+}
+
+# ============================================================================
+# Sync
+# ============================================================================
+
+cmd_sync() {
+	log "Syncing vhosts to all backends..."
+
+	for section in $(uci show $CONFIG 2>/dev/null | grep "=vhost$" | cut -d. -f2 | cut -d= -f1); do
+		local domain=$(uci -q get $CONFIG.$section.domain)
+		[ -z "$domain" ] && continue
+
+		local service=$(uci -q get $CONFIG.$section.service)
+		local host=$(uci -q get $CONFIG.$section.backend_host)
+		local port=$(uci -q get $CONFIG.$section.backend_port)
+		local ssl=$(uci -q get $CONFIG.$section.ssl)
+		local tor=$(uci -q get $CONFIG.$section.tor)
+		local mesh=$(uci -q get $CONFIG.$section.mesh)
+		local mitm=$(uci -q get $CONFIG.$section.mitmproxy)
+
+		log "  Syncing: $domain"
+
+		# Ensure HAProxy
+		haproxy_add_vhost "$domain" "$service" "$host" "$port" "$ssl" "$ssl" 2>/dev/null
+
+		# Ensure mitmproxy route
+		[ "$mitm" = "1" ] && mitmproxy_add_route "$domain" "$host" "$port" 2>/dev/null
+	done
+
+	haproxy_reload
+	mitmproxy_sync_routes 2>/dev/null || true
+
+	log "Sync complete"
+}
+
+# ============================================================================
+# Validate
+# ============================================================================
+
+cmd_validate() {
+	log "Validating vhosts..."
+	local errors=0
+
+	for section in $(uci show $CONFIG 2>/dev/null | grep "=vhost$" | cut -d. -f2 | cut -d= -f1); do
+		local domain=$(uci -q get $CONFIG.$section.domain)
+		[ -z "$domain" ] && continue
+
+		local host=$(uci -q get $CONFIG.$section.backend_host)
+		local port=$(uci -q get $CONFIG.$section.backend_port)
+
+		if validate_backend "$host:$port"; then
+			log "  [OK] $domain -> $host:$port"
+		else
+			error "  [FAIL] $domain -> $host:$port (unreachable)"
+			errors=$((errors + 1))
+		fi
+	done
+
+	if [ "$errors" -gt 0 ]; then
+		error "$errors vhost(s) have unreachable backends"
+		return 1
+	fi
+
+	log "All vhosts valid"
+}
+
+# ============================================================================
+# Import
+# ============================================================================
+
+cmd_import() {
+	log "Importing vhosts from HAProxy UCI..."
+	local imported=0
+
+	for section in $(uci show haproxy 2>/dev/null | grep "=vhost$" | cut -d. -f2 | cut -d= -f1); do
+		local domain=$(uci -q get haproxy.$section.domain)
+		[ -z "$domain" ] && continue
+
+		local vhost_section=$(sanitize_section_name "$domain")
+
+		# Skip if already imported
+		uci -q get $CONFIG.$vhost_section >/dev/null 2>&1 && continue
+
+		local backend=$(uci -q get haproxy.$section.backend)
+		local addr=$(get_backend_address "" "$backend")
+		local host=$(echo "$addr" | cut -d: -f1)
+		local port=$(echo "$addr" | cut -d: -f2)
+
+		[ -z "$port" ] && port="80"
+		[ -z "$host" ] && host="127.0.0.1"
+
+		local ssl=$(uci -q get haproxy.$section.ssl)
+		local enabled=$(uci -q get haproxy.$section.enabled)
+
+		log "  Importing: $domain ($backend -> $host:$port)"
+
+		uci set $CONFIG.$vhost_section=vhost
+		uci set $CONFIG.$vhost_section.domain="$domain"
+		uci set $CONFIG.$vhost_section.service="${backend#backend_}"
+		uci set $CONFIG.$vhost_section.backend_host="$host"
+		uci set $CONFIG.$vhost_section.backend_port="$port"
+		uci set $CONFIG.$vhost_section.enabled="${enabled:-1}"
+		uci set $CONFIG.$vhost_section.haproxy='1'
+		uci set $CONFIG.$vhost_section.ssl="${ssl:-1}"
+		uci set $CONFIG.$vhost_section.ssl_redirect="${ssl:-1}"
+		uci set $CONFIG.$vhost_section.acme="${ssl:-1}"
+		uci set $CONFIG.$vhost_section.tor='0'
+		uci set $CONFIG.$vhost_section.mesh='0'
+		uci set $CONFIG.$vhost_section.mitmproxy='1'
+		uci set $CONFIG.$vhost_section.imported='1'
+
+		imported=$((imported + 1))
+	done
+
+	uci commit $CONFIG
+	log "Imported $imported vhost(s)"
+}
+
+# ============================================================================
+# Enable/Disable
+# ============================================================================
+
+cmd_enable() {
+	local domain="$1"
+	[ -z "$domain" ] && { echo "Usage: secubox-vhost enable <domain>"; return 1; }
+
+	local section=$(sanitize_section_name "$domain")
+	uci set $CONFIG.$section.enabled='1'
+	uci commit $CONFIG
+	haproxy_set_enabled "$domain" '1'
+	haproxy_reload
+
+	log "Enabled: $domain"
+}
+
+cmd_disable() {
+	local domain="$1"
+	[ -z "$domain" ] && { echo "Usage: secubox-vhost disable <domain>"; return 1; }
+
+	local section=$(sanitize_section_name "$domain")
+	uci set $CONFIG.$section.enabled='0'
+	uci commit $CONFIG
+	haproxy_set_enabled "$domain" '0'
+	haproxy_reload
+
+	log "Disabled: $domain"
+}
+
+# ============================================================================
+# Set Channel
+# ============================================================================
+
+cmd_set() {
+	local domain="$1"
+	shift
+
+	[ -z "$domain" ] && { echo "Usage: secubox-vhost set <domain> --<channel>=<0|1>"; return 1; }
+
+	local section=$(sanitize_section_name "$domain")
+
+	if ! uci -q get $CONFIG.$section >/dev/null 2>&1; then
+		error "VHost not found: $domain"
+		return 1
+	fi
+
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--ssl=*) uci set $CONFIG.$section.ssl="${1#*=}" ;;
+			--tor=*) uci set $CONFIG.$section.tor="${1#*=}" ;;
+			--mesh=*) uci set $CONFIG.$section.mesh="${1#*=}" ;;
+			--mitmproxy=*|--mitm=*) uci set $CONFIG.$section.mitmproxy="${1#*=}" ;;
+			*) warn "Unknown option: $1" ;;
+		esac
+		shift
+	done
+
+	uci commit $CONFIG
+	cmd_sync
+	log "Updated: $domain"
+}
+
+# ============================================================================
+# Help
+# ============================================================================
+
+show_help() {
+	cat << EOF
+SecuBox Centralized VHost Manager v${VERSION}
+
+Usage: secubox-vhost <command> [options]
+
+Commands:
+  add <domain> <service> <port> [opts]  Create new vhost
+  remove <domain>                        Remove vhost
+  list [--json]                          List all vhosts
+  status <domain>                        Show vhost details
+  enable <domain>                        Enable vhost
+  disable <domain>                       Disable vhost
+  set <domain> --<channel>=<0|1>         Toggle channel
+  sync                                   Sync UCI to all backends
+  validate                               Validate all backends reachable
+  import                                 Import from HAProxy UCI
+
+Add Options:
+  --ssl / --no-ssl       Enable/disable SSL (default: yes)
+  --tor                  Enable Tor hidden service
+  --mesh                 Enable mesh P2P publishing
+  --mitm / --no-mitm     Enable/disable mitmproxy WAF (default: yes)
+  --host=<ip>            Backend host (default: 127.0.0.1)
+
+Examples:
+  secubox-vhost add git.example.com gitea 3000 --ssl --tor
+  secubox-vhost add api.example.com myapi 8080 --ssl --mesh --mitm
+  secubox-vhost remove git.example.com
+  secubox-vhost set api.example.com --tor=1
+  secubox-vhost list --json
+  secubox-vhost import
+
+EOF
+}
+
+# ============================================================================
+# Main
+# ============================================================================
+
+case "${1:-}" in
+	add)       shift; cmd_add "$@" ;;
+	remove|rm) shift; cmd_remove "$@" ;;
+	list|ls)   shift; cmd_list "$@" ;;
+	status)    shift; cmd_status "$@" ;;
+	enable)    shift; cmd_enable "$@" ;;
+	disable)   shift; cmd_disable "$@" ;;
+	set)       shift; cmd_set "$@" ;;
+	sync)      shift; cmd_sync "$@" ;;
+	validate)  shift; cmd_validate "$@" ;;
+	import)    shift; cmd_import "$@" ;;
+	help|--help|-h|'') show_help ;;
+	*)         error "Unknown command: $1"; show_help >&2; exit 1 ;;
+esac
+
+exit 0

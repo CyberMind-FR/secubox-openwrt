@@ -1,0 +1,23 @@
+# SecuBox Centralized VHost Manager Configuration
+
+config vhosts 'main'
+	option enabled '1'
+	option default_ssl '1'
+	option default_ssl_redirect '1'
+	option default_acme '1'
+	option default_mitmproxy '1'
+
+# Example vhost (commented out)
+#config vhost 'example'
+#	option domain 'app.example.com'
+#	option service 'myapp'
+#	option backend_host '127.0.0.1'
+#	option backend_port '8080'
+#	option enabled '1'
+#	option haproxy '1'
+#	option ssl '1'
+#	option ssl_redirect '1'
+#	option acme '1'
+#	option tor '0'
+#	option mesh '0'
+#	option mitmproxy '1'

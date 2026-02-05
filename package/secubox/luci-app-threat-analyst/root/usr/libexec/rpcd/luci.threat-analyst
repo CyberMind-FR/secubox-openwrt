@@ -61,10 +61,16 @@ EOF
 				[ -f "$STATE_DIR/pending_rules.json" ] && \
 					pending_count=$(jsonfilter -i "$STATE_DIR/pending_rules.json" -e '@[*]' 2>/dev/null | wc -l)
 
-				# Count recent threats
+				# Count recent threats and CVE alerts
 				threat_count=0
-				command -v cscli >/dev/null 2>&1 && \
-					threat_count=$(cscli alerts list -o json --since 1h 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+				cve_count=0
+				if command -v cscli >/dev/null 2>&1; then
+					alerts_json=$(cscli alerts list -o json --since 1h 2>/dev/null)
+					threat_count=$(echo "$alerts_json" | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+					# Count CVE-related alerts
+					cve_count=$(echo "$alerts_json" | grep -ic 'cve-' 2>/dev/null)
+					[ -z "$cve_count" ] && cve_count=0
+				fi
 
 				cat <<EOF
 {
@@ -75,7 +81,8 @@ EOF
 	"localai_status": "$localai_status",
 	"localai_url": "$localai_url",
 	"pending_rules": $pending_count,
-	"recent_threats": $threat_count
+	"recent_threats": $threat_count,
+	"cve_alerts": $cve_count
 }
 EOF
 				;;
