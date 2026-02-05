@@ -88,9 +88,13 @@ postconf -e 'smtpd_tls_key_file = /etc/ssl/mail/privkey.pem'
 postconf -e 'smtpd_tls_security_level = may'
 postconf -e 'smtp_tls_security_level = may'
 postconf -e 'virtual_mailbox_domains = /etc/postfix/vdomains'
-postconf -e 'virtual_mailbox_maps = hash:/etc/postfix/vmailbox'
-postconf -e 'virtual_alias_maps = hash:/etc/postfix/valias'
+# Alpine Postfix uses LMDB, not BerkeleyDB hash
+postconf -e 'virtual_mailbox_maps = lmdb:/etc/postfix/vmailbox'
+postconf -e 'virtual_alias_maps = lmdb:/etc/postfix/valias'
 postconf -e 'virtual_mailbox_base = /var/mail'
+# Copy resolv.conf to Postfix chroot for DNS lookups
+mkdir -p /var/spool/postfix/etc
+cp /etc/resolv.conf /var/spool/postfix/etc/
 postconf -e 'virtual_uid_maps = static:1000'
 postconf -e 'virtual_gid_maps = static:1000'
 # Create vmail user

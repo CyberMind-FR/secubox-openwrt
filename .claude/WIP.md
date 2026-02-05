@@ -63,6 +63,13 @@ _Last updated: 2026-02-06_
   - Fix: Changed to use socat proxy at `172.17.0.1:10143` (plaintext, internal)
   - Updated `mailctl webmail configure` to use proxy instead of direct SSL
 
+- **Mail Send 451 "Temporary lookup failure"** — RESOLVED (2026-02-06)
+  - Root cause: Alpine Postfix uses LMDB, not BerkeleyDB hash maps
+  - `virtual_alias_maps = hash:/etc/postfix/virtual` was invalid
+  - Postfix chroot `/var/spool/postfix/etc/resolv.conf` was missing
+  - Fix: Changed setup.sh to use `lmdb:` prefix and copy resolv.conf to chroot
+  - Added `mailctl fix-postfix` command to repair existing installations
+
 ### Just Completed
 
 - **Unified Backup Manager** — DONE (2026-02-05)

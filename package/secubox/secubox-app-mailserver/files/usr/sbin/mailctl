@@ -285,6 +285,37 @@ cmd_mesh() {
 }
 
 # ============================================================================
+# Fix / Repair
+# ============================================================================
+
+cmd_fix_postfix() {
+	local container=$(uci_get main.container)
+	container="${container:-mailserver}"
+
+	log "Fixing Postfix configuration..."
+
+	# Fix LMDB maps (Alpine doesn't support hash maps)
+	lxc-attach -n "$container" -- sh -c '
+		postconf -e "virtual_mailbox_maps = lmdb:/etc/postfix/vmailbox"
+		postconf -e "virtual_alias_maps = lmdb:/etc/postfix/virtual"
+
+		# Regenerate LMDB databases
+		[ -f /etc/postfix/vmailbox ] && postmap lmdb:/etc/postfix/vmailbox
+		[ -f /etc/postfix/virtual ] && postmap lmdb:/etc/postfix/virtual
+
+		# Fix Postfix chroot DNS resolution
+		mkdir -p /var/spool/postfix/etc
+		cp /etc/resolv.conf /var/spool/postfix/etc/
+
+		# Reload Postfix
+		postfix reload
+	'
+
+	log "Postfix configuration fixed"
+	log "If you still see 'Temporary lookup failure', restart the container: mailctl restart"
+}
+
+# ============================================================================
 # Logs & Diagnostics
 # ============================================================================
 
@@ -509,6 +540,7 @@ Diagnostics:
   logs [lines]         View mail logs
   test <email>         Send test email
   ssl-status           Show SSL cert info
+  fix-postfix          Fix LMDB maps and DNS resolution
 
 Examples:
   mailctl install
@@ -540,6 +572,7 @@ case "${1:-}" in
 	logs)        shift; cmd_logs "$@" ;;
 	test)        shift; cmd_test "$@" ;;
 	report)      shift; cmd_report "$@" ;;
+	fix-postfix) shift; cmd_fix_postfix "$@" ;;
 	help|--help|-h|'') show_help ;;
 	*)           error "Unknown command: $1"; show_help >&2; exit 1 ;;
 esac
