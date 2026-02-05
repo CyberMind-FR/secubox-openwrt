@@ -219,3 +219,13 @@ _Last updated: 2026-02-05_
       - `luci-app-mac-guardian`: category "security", icon "wifi", description "WiFi MAC address security monitor with spoofing detection"
       - `secubox-app-mac-guardian`: icon "wifi", description "WiFi MAC security backend with CrowdSec integration"
     - Package features: MAC spoofing detection, OUI anomaly detection, MAC floods, CrowdSec scenarios integration.
+
+26. **Fanzine v3 Roadmap Alignment (2026-02-06)**
+    - Restructured TODO.md and WIP.md to align with SecuBox Fanzine v3 4-layer architecture:
+      - **Couche 1 — Core Mesh**: 35+ modules, v0.18 priorities, testing/validation, CVE Layer 7
+      - **Couche 2 — AI Gateway**: Data Classifier, 6 Autonomous Agents, MCP Server, provider hierarchy
+      - **Couche 3 — MirrorNetworking**: EnigmaBox → MirrorNet, dual transport, Services Mirrors, VoIP/Matrix
+      - **Couche 4 — Roadmap**: v0.18/v0.19/v1.0/v1.1+ milestones, certifications (ANSSI, ISO, NIS2)
+    - Added strategic reference to Fanzine v3 document.
+    - Consolidated completed items under "Resolved" section.
+    - Created version milestone checklists for tracking progress.

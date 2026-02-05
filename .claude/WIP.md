@@ -1,141 +1,141 @@
 # Work In Progress (Claude)
 
-## Active Threads
+_Last updated: 2026-02-06_
 
-- **SMB/CIFS Remote Mount Manager**
-  Status: DONE — package created (2026-02-04)
-  Notes: New `secubox-app-smbfs` package with `smbfsctl` CLI, UCI config, init script, catalog entry.
-  Integrates with Jellyfin and Lyrion media paths.
+> **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
-- **Jellyfin README**
-  Status: DONE (2026-02-04)
-  Notes: KISS READMEs created for both `secubox-app-jellyfin` and `luci-app-jellyfin`.
+---
 
-- **Glances Full System Monitoring**
-  Status: COMPLETE (2026-02-04)
-  Notes: LXC host bind mounts, Docker socket, fs plugin patch, hostname/OS identity.
+## Couche 1 — Core Mesh
 
-- **Zigbee2mqtt LXC Rewrite**
-  Status: COMPLETE (2026-02-04)
-  Notes: Direct `/dev/ttyUSB0` passthrough, adapter `ezsp`→`ember`, `ZIGBEE2MQTT_DATA` env var.
+### Recently Completed (2026-02-04/05)
+
+- **MAC Guardian Feed Integration** — DONE (2026-02-05)
+  - Both IPKs built and added to bonus feed
+  - Catalog updated with security category, wifi icon
+
+- **Punk Exposure Emancipate** — DONE (2026-02-05)
+  - CLI: `emancipate` and `revoke` commands for multi-channel exposure
+  - RPCD: 3 new methods in `luci.exposure`
+  - Dashboard: Mesh column toggle, Emancipate modal
+
+- **Jellyfin Post-Install Wizard** — DONE (2026-02-05)
+  - 4-step modal wizard (Welcome, Media, Network, Complete)
+  - RPCD methods for wizard status and media path management
+
+- **Navigation Component Refactoring** — DONE (2026-02-05)
+  - `SecuNav.renderTabs()` auto-inits theme and CSS
+  - `renderCompactTabs()` for nested modules
+  - Eliminated ~1000 lines of duplicate CSS
+
+- **ksmbd Mesh Media Sharing** — DONE (2026-02-05)
+  - `ksmbdctl` CLI with share management
+  - Pre-configured shares: Media, Jellyfin, Lyrion, Backup
+
+- **SMB/CIFS Remote Mount Manager** — DONE (2026-02-04)
+  - `smbfsctl` CLI, UCI config, init script
+  - Jellyfin and Lyrion media path integration
+
+- **Domoticz IoT Integration** — DONE (2026-02-04)
+  - LXC Debian container with native binary
+  - MQTT auto-bridge, Zigbee2MQTT integration
+  - `domoticzctl configure-mqtt` command
+
+### In Progress
+
+_None currently active_
+
+### Next Up — Couche 1
+
+1. **Guacamole Pre-built Binaries**
+   - Current LXC build-from-source approach is too slow
+   - Need to find/create pre-built ARM64 binaries for guacd + Tomcat
+
+2. **Mesh Onboarding Testing**
+   - End-to-end test of master-link dynamic join IPK generation
+   - Validate P2P threat intelligence with real CrowdSec alerts
+
+---
+
+## Couche 2 — AI Gateway
+
+### Next Up — v0.18 AI Components
+
+1. **MCP Server Implementation**
+   - Create `secubox-mcp-server` package
+   - Implement MCP tools: crowdsec.alerts, waf.logs, dns.queries, network.flows, system.metrics, wireguard.status, uci.config
+   - Integration with Claude Desktop, Cursor
+
+2. **Threat Analyst Agent**
+   - CrowdSec alert analysis and correlation
+   - Automated threat severity assessment
+
+3. **DNS Guard Migration**
+   - Migrate current `luci-app-dnsguard` to AI-powered agent
+   - DNS anomaly detection with ML patterns
+
+4. **LocalAI Upgrade → 3.9**
+   - Update `secubox-app-localai` to version 3.9
+   - Add new model presets
+
+---
+
+## Couche 3 — MirrorNetworking
+
+### Packages to Build (v0.19)
+
+| Package | Priority | Notes |
+|---------|----------|-------|
+| `secubox-mirrornet` | HIGH | Core mesh orchestration, gossip protocol |
+| `secubox-identity` | HIGH | did:plc generation, key rotation |
+| `secubox-p2p-intel` | MEDIUM | IoC signed gossip |
+| `luci-app-secubox-mirror` | MEDIUM | Dashboard for peers, trust, services |
+
+### Communication Layer (v1.0)
+
+- `secubox-voip` — Asterisk micro-PBX
+- `secubox-matrix` — Conduit Matrix server
+
+---
+
+## Couche 4 — Roadmap Tracking
+
+### v0.18.0 Progress
+
+| Item | Status |
+|------|--------|
+| Core Mesh modules | 35+ DONE |
+| Guacamole | DEFERRED |
+| MCP Server | TODO |
+| Threat Analyst | TODO |
+| DNS Guard migration | TODO |
+| LocalAI 3.9 | TODO |
+
+### Certifications
+
+- ANSSI CSPN: Data Classifier + Mistral EU + offline mode
+- GDPR: Currently compliant
+- ISO 27001, NIS2, SOC2: Planned for v1.1+
+
+---
 
 ## Strategic Documents Received
 
-- `SecuBox_LocalAI_Strategic_Analysis.html` — AI Management Layer roadmap (LocalAI 3.9 + LocalAGI + MCP).
-- `SecuBox_AI_Gateway_Hybrid_Architecture.html` — Hybrid Local/Cloud architecture (LiteLLM + Data Classifier + multi-provider).
-- `SecuBox_MirrorNetworking_Paradigm_Reversal.html` — EnigmaBox autopsy → MirrorNet zero-central-authority architecture. Dual transport (WireGuard + Yggdrasil), VoIP E2E (Asterisk), Matrix/Conduit messaging, did:plc identity, P2P gossip threat intel, Mirror concepts (Threat Intel, AI Inference, Reputation, Config & Updates). New packages: secubox-mirrornet (v0.19), secubox-identity (v0.19), secubox-voip (v1.0), secubox-matrix (v1.0), secubox-p2p-intel (v0.19), yggdrasil-secubox (v1.1+), luci-app-secubox-mirror (v0.19). Crowdfunding target: 2027.
+- `SecuBox_LocalAI_Strategic_Analysis.html` — AI Management Layer roadmap
+- `SecuBox_AI_Gateway_Hybrid_Architecture.html` — Hybrid Local/Cloud architecture
+- `SecuBox_MirrorNetworking_Paradigm_Reversal.html` — EnigmaBox autopsy → MirrorNet
+- `SecuBox_Fanzine_v3_Feb2026.html` — 4-layer architecture overview
 
-- **Domoticz IoT Integration**
-  Status: DONE (2026-02-04)
-  Notes: `luci-app-domoticz` created with RPCD handler, LuCI overview (status, MQTT, Z2M, HAProxy, mesh, logs).
-  `domoticzctl` enhanced with `configure-mqtt`, `configure-haproxy`, `backup/restore`, `mesh-register`, `uninstall`.
-  UCI config extended with mqtt, network, mesh sections. Catalog updated with LuCI package and IoT tags.
-
-- **P2P App Store Emancipation**
-  Status: DONE (2026-02-04)
-  Notes: HTTP P2P package distribution across mesh peers.
-  CGI endpoints: `/api/factory/packages`, `/api/factory/packages-sync`.
-  RPCD methods: get_feed_peers, get_peer_packages, get_all_packages, fetch_package, sync_package_catalog, get_feed_settings, set_feed_settings.
-  CLI commands: `secubox-feed peers/search/fetch-peer/fetch-any/sync-peers`.
-  LuCI view: `packages.js` under MirrorBox > App Store.
-  UCI config: `p2p_feed` section with share_feed, auto_sync, sync_interval, prefer_local.
-
-- **RustDesk & Guacamole Remote Access**
-  Status: PARTIAL (2026-02-04)
-  Notes: `secubox-app-rustdesk` — WORKING: native hbbs/hbbr binaries from GitHub releases, auto-key generation.
-  `secubox-app-guacamole` — DEFERRED: LXC build-from-source too slow; needs pre-built binaries or Docker approach.
-  RustDesk deployed and tested on router (ports 21116-21117).
-
-- **Development Status Widget**
-  Status: DONE (2026-02-04)
-  Notes: `devstatus.js` view under MirrorBox > Dev Status.
-  - Generative/dynamic dashboard with real-time polling
-  - Gitea commit activity and repository stats
-  - MirrorBox App Store package counts (local/peer/unique)
-  - Progress bar toward v1.0 (0-100%) with milestone tracking
-  - 8 milestone categories with dynamic progress indicators
-  Plan for later: cross-compile RustDesk binaries via toolchain.
-
-- **Content Distribution System**
-  Status: DONE (2026-02-04)
-  Notes: `secubox-content-pkg` — auto-package Metablogizer sites and Streamlit apps as IPKs.
-  Auto-publish hooks in metablogizerctl and streamlitctl.
-  `secubox-feed sync-content` — auto-install content packages from mesh peers.
-  P2P distribution: sites → HAProxy vhosts, Streamlit → service instances.
-
-- **ksmbd Mesh Media Sharing**
-  Status: DONE (2026-02-05)
-  Notes: `secubox-app-ksmbd` package with `ksmbdctl` CLI, UCI config, pre-configured media shares.
-  Commands: enable/disable/status/add-share/remove-share/list-shares/add-user/mesh-register.
-  Default shares: Media, Jellyfin, Lyrion, Backup.
-
-- **Chip Header Layout Port**
-  Status: DONE (2026-02-05)
-  Notes: `client-guardian` and `auth-guardian` overview.js updated to use `sh-page-header` chip layout.
-  Shared CSS from `secubox/common.css`. Consistent with SecuBox dashboard design.
-
-- **Navigation Component Refactoring**
-  Status: DONE (2026-02-05)
-  Notes: Unified navigation widget in `secubox/nav.js`.
-  - `SecuNav.renderTabs()` now auto-inits theme and loads CSS (no more boilerplate in views).
-  - `SecuNav.renderCompactTabs()` for nested modules (CDN Cache, CrowdSec, System Hub, etc.).
-  - `SecuNav.renderBreadcrumb()` for back-navigation to SecuBox.
-  - Updated module navs: cdn-cache, client-guardian, crowdsec-dashboard, media-flow, mqtt-bridge, system-hub.
-  - Removed ~1000 lines of duplicate CSS from module nav files.
-
-- **Monitoring UX Improvements**
-  Status: DONE (2026-02-05)
-  Notes: Empty-state loading and dynamic bandwidth units.
-  - Empty-state overlay with animated dots during 5-second warmup.
-  - Chart legend "Waiting" → "Live" transition.
-  - `formatBits()` helper for network rates (Kbps/Mbps/Gbps).
-  - Cyberpunk theme support for empty state.
-
-- **Punk Exposure Emancipate CLI**
-  Status: DONE (2026-02-05)
-  Notes: Phase 1 of multi-channel exposure system.
-  - `secubox-exposure emancipate <svc> <port> <domain> [--tor] [--dns] [--mesh] [--all]`
-  - `secubox-exposure revoke <svc> [--tor] [--dns] [--mesh] [--all]`
-  - UCI tracking for emancipated services with channel status.
-  - Status command shows emancipated services.
-  - TODO: Fix mesh integration (secubox-p2p uses different commands).
-
-- **Punk Exposure LuCI Dashboard**
-  Status: DONE (2026-02-05)
-  Notes: Phases 2-4 of Punk Exposure.
-  - RPCD methods: `emancipate`, `revoke`, `get_emancipated` added to `luci.exposure`.
-  - API wrapper: `emancipate()`, `revoke()`, `getEmancipated()` exported.
-  - ACL updated with new methods.
-  - Dashboard: Mesh column with toggle, Emancipate button with multi-channel modal.
-  - CSS: Mesh badge (blue), mesh slider, action button styles.
-
-- **Jellyfin Post-Install Wizard**
-  Status: DONE (2026-02-05)
-  Notes: 4-step modal setup wizard for first-time Jellyfin configuration.
-  - RPCD methods: `get_wizard_status`, `set_wizard_complete`, `add_media_path`, `remove_media_path`, `get_media_paths`.
-  - Wizard auto-shows when Jellyfin is installed but wizard_complete=0.
-  - Step 1 (Welcome): Docker/container status checks, install/start buttons.
-  - Step 2 (Media): Add/remove media library paths with type presets.
-  - Step 3 (Network): Domain, HAProxy, ACME configuration.
-  - Step 4 (Complete): Success message with link to Jellyfin Web UI.
-  - CSS: `jellyfin/wizard.css` with step indicators, media list, form styles.
-
-- **MAC Guardian Feed Integration**
-  Status: DONE (2026-02-05)
-  Notes: Both IPKs built and added to bonus feed. Catalog updated with proper metadata.
-
-## Next Up
-
-1. Commit bonus feed rebuild (IPKs updated with MAC Guardian packages).
-   - All packages rebuilt including new mac-guardian IPKs
-   - apps-local.json catalog updated
+---
 
 ## Known Bugs (Deferred)
 
-- **Tor Shield / opkg conflict**: opkg downloads fail (`wget returned 4`) when Tor Shield is active. Direct `wget` to full URL works. Likely DNS/routing interference from Tor split-routing. To be fixed later.
+- **Tor Shield / opkg conflict**: opkg downloads fail (`wget returned 4`) when Tor Shield is active. Likely DNS/routing interference.
+
+---
 
 ## Blockers / Risks
 
-- No automated regression tests for LuCI views; manual verification required after each SCP deploy.
-- Glances + Zigbee2MQTT + SMB/CIFS source changes uncommitted in working tree.
-- Strategic AI + MirrorNetworking documents noted but not yet implemented (v0.18+ roadmap).
+- No automated regression tests for LuCI views; manual verification required after SCP deploy.
+- Guacamole ARM64 pre-built binaries not readily available.
+- MCP Server requires understanding of Model Context Protocol specification.
