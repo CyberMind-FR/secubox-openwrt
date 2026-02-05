@@ -1,0 +1,15 @@
+{
+	"luci-app-ai-insights": {
+		"description": "Grant access to AI Insights Dashboard",
+		"read": {
+			"ubus": {
+				"luci.ai-insights": ["status", "get_alerts", "get_posture", "get_timeline"]
+			}
+		},
+		"write": {
+			"ubus": {
+				"luci.ai-insights": ["run_all", "analyze"]
+			}
+		}
+	}
+}

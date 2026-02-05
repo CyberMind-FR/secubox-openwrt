@@ -1,0 +1,307 @@
+#!/bin/sh
+# AI Insights Aggregation RPCD Handler
+# Unified view across all SecuBox AI agents
+
+. /usr/share/libubox/jshn.sh
+
+log_info() { logger -t ai-insights-rpcd "$*"; }
+
+# Check if a command exists
+cmd_exists() { command -v "$1" >/dev/null 2>&1; }
+
+# Get agent status
+get_agent_status() {
+	local agent="$1"
+	local status="offline"
+	local alerts=0
+
+	case "$agent" in
+		threat_analyst)
+			pgrep -f "threat-analyst daemon" >/dev/null 2>&1 && status="online"
+			[ -f /var/lib/threat-analyst/pending_rules.json ] && \
+				alerts=$(jsonfilter -i /var/lib/threat-analyst/pending_rules.json -e '@[*]' 2>/dev/null | wc -l)
+			;;
+		dns_guard)
+			pgrep -f "dnsguardctl daemon" >/dev/null 2>&1 && status="online"
+			[ -f /var/lib/dns-guard/alerts.json ] && \
+				alerts=$(jsonfilter -i /var/lib/dns-guard/alerts.json -e '@[*]' 2>/dev/null | wc -l)
+			;;
+		network_anomaly)
+			pgrep -f "network-anomalyctl daemon" >/dev/null 2>&1 && status="online"
+			[ -f /var/lib/network-anomaly/alerts.json ] && \
+				alerts=$(jsonfilter -i /var/lib/network-anomaly/alerts.json -e '@[*]' 2>/dev/null | wc -l)
+			;;
+		cve_triage)
+			pgrep -f "cve-triagectl daemon" >/dev/null 2>&1 && status="online"
+			[ -f /var/lib/cve-triage/alerts.json ] && \
+				alerts=$(jsonfilter -i /var/lib/cve-triage/alerts.json -e '@[*]' 2>/dev/null | wc -l)
+			;;
+	esac
+
+	printf '{"status":"%s","alerts":%d}' "$status" "$alerts"
+}
+
+# Calculate security posture score (0-100)
+calculate_posture() {
+	local score=100
+	local factors=""
+
+	# Check LocalAI
+	local localai_url=$(uci -q get localrecall.main.localai_url || echo "http://127.0.0.1:8091")
+	if ! wget -q -O /dev/null --timeout=2 "${localai_url}/v1/models" 2>/dev/null; then
+		score=$((score - 10))
+		factors="${factors}LocalAI offline (-10), "
+	fi
+
+	# Check agent statuses
+	for agent in threat_analyst dns_guard network_anomaly cve_triage; do
+		local status=$(get_agent_status "$agent" | jsonfilter -e '@.status' 2>/dev/null)
+		if [ "$status" != "online" ]; then
+			score=$((score - 5))
+			factors="${factors}${agent} offline (-5), "
+		fi
+	done
+
+	# Check CrowdSec alerts (high = bad)
+	if cmd_exists cscli; then
+		local cs_alerts=$(cscli alerts list -o json --since 1h 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+		if [ "$cs_alerts" -gt 50 ]; then
+			score=$((score - 20))
+			factors="${factors}High CrowdSec alerts (-20), "
+		elif [ "$cs_alerts" -gt 20 ]; then
+			score=$((score - 10))
+			factors="${factors}Elevated CrowdSec alerts (-10), "
+		elif [ "$cs_alerts" -gt 5 ]; then
+			score=$((score - 5))
+			factors="${factors}Some CrowdSec alerts (-5), "
+		fi
+	fi
+
+	# Check CVE alerts
+	if [ -f /var/lib/cve-triage/vulnerabilities.json ]; then
+		local critical=$(jsonfilter -i /var/lib/cve-triage/vulnerabilities.json -e "@[@.severity='critical']" 2>/dev/null | wc -l)
+		local high=$(jsonfilter -i /var/lib/cve-triage/vulnerabilities.json -e "@[@.severity='high']" 2>/dev/null | wc -l)
+		[ "$critical" -gt 0 ] && score=$((score - critical * 10)) && factors="${factors}Critical CVEs (-$((critical * 10))), "
+		[ "$high" -gt 0 ] && score=$((score - high * 5)) && factors="${factors}High CVEs (-$((high * 5))), "
+	fi
+
+	# Ensure score is 0-100
+	[ "$score" -lt 0 ] && score=0
+	[ "$score" -gt 100 ] && score=100
+
+	# Remove trailing comma
+	factors=$(echo "$factors" | sed 's/, $//')
+	[ -z "$factors" ] && factors="All systems nominal"
+
+	printf '{"score":%d,"factors":"%s"}' "$score" "$factors"
+}
+
+case "$1" in
+	list)
+		cat <<'EOF'
+{
+	"status": {},
+	"get_alerts": {"limit": 50},
+	"get_posture": {},
+	"get_timeline": {"hours": 24},
+	"run_all": {},
+	"analyze": {}
+}
+EOF
+		;;
+
+	call)
+		case "$2" in
+			status)
+				# Get all agent statuses
+				ta=$(get_agent_status threat_analyst)
+				dg=$(get_agent_status dns_guard)
+				na=$(get_agent_status network_anomaly)
+				ct=$(get_agent_status cve_triage)
+
+				# Check LocalAI
+				localai_status="offline"
+				localai_url=$(uci -q get localrecall.main.localai_url || echo "http://127.0.0.1:8091")
+				wget -q -O /dev/null --timeout=2 "${localai_url}/v1/models" 2>/dev/null && localai_status="online"
+
+				# Check LocalRecall
+				memories=0
+				[ -f /var/lib/localrecall/memories.json ] && \
+					memories=$(jsonfilter -i /var/lib/localrecall/memories.json -e '@[*]' 2>/dev/null | wc -l)
+
+				# Get posture
+				posture=$(calculate_posture)
+				posture_score=$(echo "$posture" | jsonfilter -e '@.score' 2>/dev/null)
+
+				cat <<EOF
+{
+	"localai": "$localai_status",
+	"memories": $memories,
+	"posture_score": ${posture_score:-0},
+	"agents": {
+		"threat_analyst": $ta,
+		"dns_guard": $dg,
+		"network_anomaly": $na,
+		"cve_triage": $ct
+	}
+}
+EOF
+				;;
+
+			get_alerts)
+				read -r input
+				limit=$(echo "$input" | jsonfilter -e '@.limit' 2>/dev/null)
+				[ -z "$limit" ] && limit=50
+
+				# Aggregate alerts from all sources
+				alerts='['
+				first=1
+
+				# Threat Analyst pending rules
+				if [ -f /var/lib/threat-analyst/pending_rules.json ]; then
+					jsonfilter -i /var/lib/threat-analyst/pending_rules.json -e '@[*]' 2>/dev/null | head -n 10 | while read -r a; do
+						[ $first -eq 0 ] && printf ','
+						first=0
+						printf '{"source":"threat_analyst","type":"rule","data":%s}' "$a"
+					done
+				fi
+
+				# DNS Guard alerts
+				if [ -f /var/lib/dns-guard/alerts.json ]; then
+					jsonfilter -i /var/lib/dns-guard/alerts.json -e '@[*]' 2>/dev/null | head -n 10 | while read -r a; do
+						[ $first -eq 0 ] && printf ','
+						first=0
+						printf '{"source":"dns_guard","type":"alert","data":%s}' "$a"
+					done
+				fi
+
+				# Network Anomaly alerts
+				if [ -f /var/lib/network-anomaly/alerts.json ]; then
+					jsonfilter -i /var/lib/network-anomaly/alerts.json -e '@[*]' 2>/dev/null | head -n 10 | while read -r a; do
+						[ $first -eq 0 ] && printf ','
+						first=0
+						printf '{"source":"network_anomaly","type":"alert","data":%s}' "$a"
+					done
+				fi
+
+				# CVE Triage alerts
+				if [ -f /var/lib/cve-triage/alerts.json ]; then
+					jsonfilter -i /var/lib/cve-triage/alerts.json -e '@[*]' 2>/dev/null | head -n 10 | while read -r a; do
+						[ $first -eq 0 ] && printf ','
+						first=0
+						printf '{"source":"cve_triage","type":"cve","data":%s}' "$a"
+					done
+				fi
+
+				alerts="${alerts}]"
+				printf '{"alerts":%s}' "$alerts"
+				;;
+
+			get_posture)
+				posture=$(calculate_posture)
+				echo "$posture"
+				;;
+
+			get_timeline)
+				read -r input
+				hours=$(echo "$input" | jsonfilter -e '@.hours' 2>/dev/null)
+				[ -z "$hours" ] && hours=24
+
+				# Build timeline from system log
+				timeline='['
+				first=1
+
+				# Get security-related log entries
+				logread 2>/dev/null | grep -E "(crowdsec|threat-analyst|dns-guard|network-anomaly|cve-triage)" | tail -n 50 | while read -r line; do
+					ts=$(echo "$line" | awk '{print $1" "$2" "$3}')
+					msg=$(echo "$line" | cut -d: -f4-)
+					source=$(echo "$line" | grep -oE "(crowdsec|threat-analyst|dns-guard|network-anomaly|cve-triage)" | head -1)
+
+					[ $first -eq 0 ] && printf ','
+					first=0
+					printf '{"time":"%s","source":"%s","message":"%s"}' "$ts" "$source" "$(echo "$msg" | sed 's/"/\\"/g')"
+				done
+
+				timeline="${timeline}]"
+				printf '{"timeline":%s}' "$timeline"
+				;;
+
+			run_all)
+				# Trigger all agents
+				results='{'
+
+				# Run Threat Analyst
+				if cmd_exists threat-analystctl; then
+					/usr/bin/threat-analystctl run -q >/dev/null 2>&1 &
+					results="${results}\"threat_analyst\":\"started\","
+				else
+					results="${results}\"threat_analyst\":\"not_installed\","
+				fi
+
+				# Run DNS Guard
+				if cmd_exists dnsguardctl; then
+					/usr/bin/dnsguardctl run -q >/dev/null 2>&1 &
+					results="${results}\"dns_guard\":\"started\","
+				else
+					results="${results}\"dns_guard\":\"not_installed\","
+				fi
+
+				# Run Network Anomaly
+				if cmd_exists network-anomalyctl; then
+					/usr/bin/network-anomalyctl run -q >/dev/null 2>&1 &
+					results="${results}\"network_anomaly\":\"started\","
+				else
+					results="${results}\"network_anomaly\":\"not_installed\","
+				fi
+
+				# Run CVE Triage
+				if cmd_exists cve-triagectl; then
+					/usr/bin/cve-triagectl run -q >/dev/null 2>&1 &
+					results="${results}\"cve_triage\":\"started\","
+				else
+					results="${results}\"cve_triage\":\"not_installed\","
+				fi
+
+				# Remove trailing comma and close
+				results=$(echo "$results" | sed 's/,$//')
+				results="${results}}"
+				echo "$results"
+				;;
+
+			analyze)
+				# Get AI security analysis
+				localai_url=$(uci -q get localrecall.main.localai_url || echo "http://127.0.0.1:8091")
+				localai_model=$(uci -q get localrecall.main.localai_model || echo "tinyllama-1.1b-chat-v1.0.Q4_K_M")
+
+				if ! curl -s --max-time 2 "${localai_url}/v1/models" >/dev/null 2>&1; then
+					echo '{"error":"LocalAI not available"}'
+					exit 0
+				fi
+
+				# Collect current state
+				posture=$(calculate_posture)
+				score=$(echo "$posture" | jsonfilter -e '@.score' 2>/dev/null)
+				factors=$(echo "$posture" | jsonfilter -e '@.factors' 2>/dev/null)
+
+				prompt="You are a security analyst for SecuBox. Current security posture score: $score/100. Factors: $factors. Provide a brief security assessment and top 3 recommendations."
+				prompt=$(printf '%s' "$prompt" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ')
+
+				response=$(curl -s --max-time 60 -X POST "${localai_url}/v1/chat/completions" \
+					-H "Content-Type: application/json" \
+					-d "{\"model\":\"$localai_model\",\"messages\":[{\"role\":\"user\",\"content\":\"$prompt\"}],\"max_tokens\":256,\"temperature\":0.3}" 2>/dev/null)
+
+				if [ -n "$response" ]; then
+					content=$(echo "$response" | jsonfilter -e '@.choices[0].message.content' 2>/dev/null)
+					content=$(printf '%s' "$content" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ')
+					printf '{"analysis":"%s"}' "$content"
+				else
+					echo '{"error":"AI analysis failed"}'
+				fi
+				;;
+
+			*)
+				echo '{"error":"Unknown method"}'
+				;;
+		esac
+		;;
+esac

@@ -1,0 +1,295 @@
+#!/bin/sh
+# Network Anomaly Detection Controller
+# Package: secubox-network-anomaly
+
+VERSION="1.0.0"
+CONFIG="network-anomaly"
+STATE_DIR="/var/lib/network-anomaly"
+LIB_DIR="/usr/lib/network-anomaly"
+
+# Load detection library
+. "$LIB_DIR/detector.sh"
+
+usage() {
+	cat <<EOF
+Network Anomaly Detection Controller v$VERSION
+
+Usage: $(basename "$0") <command> [options]
+
+Commands:
+  status          Show detection status
+  run             Run single detection cycle
+  daemon          Start background daemon
+  analyze         Analyze with AI (requires LocalAI)
+  list-alerts     List recent alerts
+  ack <id>        Acknowledge an alert
+  clear-alerts    Clear all alerts
+  baseline        Show/reset baseline
+  help            Show this help
+
+Options:
+  -q, --quiet     Suppress output
+  -j, --json      Output in JSON format
+EOF
+}
+
+uci_get() {
+	uci -q get "${CONFIG}.$1"
+}
+
+cmd_status() {
+	local json_mode="$1"
+	local enabled=$(uci_get main.enabled)
+	local interval=$(uci_get main.interval)
+	local auto_block=$(uci_get main.auto_block)
+
+	local daemon_running="false"
+	pgrep -f "network-anomalyctl daemon" >/dev/null 2>&1 && daemon_running="true"
+
+	local alert_count=0
+	[ -f "$ALERTS_FILE" ] && alert_count=$(jsonfilter -i "$ALERTS_FILE" -e '@[*]' 2>/dev/null | wc -l)
+
+	local last_run=""
+	[ -f "$STATE_DIR/last_run" ] && last_run=$(cat "$STATE_DIR/last_run")
+
+	local localai_status="offline"
+	local localai_url=$(uci_get main.localai_url)
+	[ -z "$localai_url" ] && localai_url="http://127.0.0.1:8091"
+	wget -q -O /dev/null --timeout=2 "${localai_url}/v1/models" 2>/dev/null && localai_status="online"
+
+	if [ "$json_mode" = "1" ]; then
+		cat <<EOF
+{
+	"enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
+	"daemon_running": $daemon_running,
+	"interval": ${interval:-60},
+	"auto_block": $([ "$auto_block" = "1" ] && echo "true" || echo "false"),
+	"alert_count": $alert_count,
+	"last_run": "$last_run",
+	"localai_status": "$localai_status"
+}
+EOF
+	else
+		echo "Network Anomaly Detection Status"
+		echo "================================="
+		echo "Enabled:       $([ "$enabled" = "1" ] && echo "Yes" || echo "No")"
+		echo "Daemon:        $([ "$daemon_running" = "true" ] && echo "Running" || echo "Stopped")"
+		echo "Interval:      ${interval:-60}s"
+		echo "Auto-block:    $([ "$auto_block" = "1" ] && echo "Yes" || echo "No")"
+		echo "Alerts:        $alert_count"
+		echo "Last run:      ${last_run:-Never}"
+		echo "LocalAI:       $localai_status"
+	fi
+}
+
+cmd_run() {
+	local quiet="$1"
+
+	init_state
+
+	[ "$quiet" != "1" ] && echo "Running detection cycle..."
+
+	local alerts_found=$(run_detection)
+
+	# Save last run timestamp
+	date -Iseconds > "$STATE_DIR/last_run"
+
+	[ "$quiet" != "1" ] && echo "Detection complete. Alerts found: $alerts_found"
+
+	return 0
+}
+
+cmd_daemon() {
+	local interval=$(uci_get main.interval)
+	[ -z "$interval" ] && interval=60
+
+	logger -t network-anomaly "Starting daemon (interval: ${interval}s)"
+
+	init_state
+
+	while true; do
+		run_detection >/dev/null 2>&1
+		date -Iseconds > "$STATE_DIR/last_run"
+		sleep "$interval"
+	done
+}
+
+cmd_analyze() {
+	local localai_url=$(uci_get main.localai_url)
+	local localai_model=$(uci_get main.localai_model)
+	[ -z "$localai_url" ] && localai_url="http://127.0.0.1:8091"
+	[ -z "$localai_model" ] && localai_model="tinyllama-1.1b-chat-v1.0.Q4_K_M"
+
+	echo "Collecting current network stats..."
+	local stats=$(collect_stats)
+
+	echo "Analyzing with AI..."
+
+	# Get recent alerts for context
+	local recent_alerts=""
+	[ -f "$ALERTS_FILE" ] && recent_alerts=$(head -c 2000 "$ALERTS_FILE")
+
+	local prompt="Analyze this network traffic data for security anomalies. Current stats: $stats. Recent alerts: $recent_alerts. Provide a brief security assessment."
+	prompt=$(printf '%s' "$prompt" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ')
+
+	local response=$(curl -s --max-time 120 -X POST "${localai_url}/v1/chat/completions" \
+		-H "Content-Type: application/json" \
+		-d "{\"model\":\"$localai_model\",\"messages\":[{\"role\":\"user\",\"content\":\"$prompt\"}],\"max_tokens\":256,\"temperature\":0.7}" 2>/dev/null)
+
+	if [ -n "$response" ]; then
+		local content=$(echo "$response" | jsonfilter -e '@.choices[0].message.content' 2>/dev/null)
+		if [ -n "$content" ]; then
+			echo ""
+			echo "AI Analysis:"
+			echo "============"
+			echo "$content"
+		else
+			echo "Error: Empty AI response"
+			return 1
+		fi
+	else
+		echo "Error: AI query failed. Is LocalAI running?"
+		return 1
+	fi
+}
+
+cmd_list_alerts() {
+	local json_mode="$1"
+	local limit="$2"
+	[ -z "$limit" ] && limit=20
+
+	if [ ! -f "$ALERTS_FILE" ]; then
+		[ "$json_mode" = "1" ] && echo '{"alerts":[]}' || echo "No alerts"
+		return 0
+	fi
+
+	if [ "$json_mode" = "1" ]; then
+		printf '{"alerts":'
+		cat "$ALERTS_FILE"
+		printf '}'
+	else
+		echo "Recent Alerts"
+		echo "============="
+
+		local count=0
+		jsonfilter -i "$ALERTS_FILE" -e '@[*]' 2>/dev/null | while read -r alert; do
+			[ $count -ge $limit ] && break
+
+			local id=$(echo "$alert" | jsonfilter -e '@.id' 2>/dev/null)
+			local type=$(echo "$alert" | jsonfilter -e '@.type' 2>/dev/null)
+			local severity=$(echo "$alert" | jsonfilter -e '@.severity' 2>/dev/null)
+			local message=$(echo "$alert" | jsonfilter -e '@.message' 2>/dev/null)
+			local timestamp=$(echo "$alert" | jsonfilter -e '@.timestamp' 2>/dev/null)
+			local acked=$(echo "$alert" | jsonfilter -e '@.acknowledged' 2>/dev/null)
+
+			printf "[%s] %s (%s) - %s" "$severity" "$type" "${timestamp:-unknown}" "$message"
+			[ "$acked" = "true" ] && printf " [ACK]"
+			printf "\n"
+
+			count=$((count + 1))
+		done
+	fi
+}
+
+cmd_ack() {
+	local alert_id="$1"
+
+	if [ -z "$alert_id" ]; then
+		echo "Error: Alert ID required"
+		return 1
+	fi
+
+	if [ ! -f "$ALERTS_FILE" ]; then
+		echo "Error: No alerts file"
+		return 1
+	fi
+
+	# Mark alert as acknowledged
+	# For simplicity, we rewrite the file with sed
+	local tmp_file="$ALERTS_FILE.tmp"
+	sed "s/\"id\":\"$alert_id\",\\(.*\\)\"acknowledged\":false/\"id\":\"$alert_id\",\\1\"acknowledged\":true/" \
+		"$ALERTS_FILE" > "$tmp_file"
+	mv "$tmp_file" "$ALERTS_FILE"
+
+	echo "Alert $alert_id acknowledged"
+}
+
+cmd_clear_alerts() {
+	echo '[]' > "$ALERTS_FILE"
+	echo "All alerts cleared"
+}
+
+cmd_baseline() {
+	local action="$1"
+
+	case "$action" in
+		reset)
+			rm -f "$BASELINE_FILE"
+			echo "Baseline reset. New baseline will be established on next run."
+			;;
+		*)
+			if [ -f "$BASELINE_FILE" ]; then
+				echo "Current Baseline:"
+				cat "$BASELINE_FILE"
+			else
+				echo "No baseline established yet. Run detection to create one."
+			fi
+			;;
+	esac
+}
+
+# Parse global options
+QUIET=0
+JSON=0
+
+while [ $# -gt 0 ]; do
+	case "$1" in
+		-q|--quiet)
+			QUIET=1
+			shift
+			;;
+		-j|--json)
+			JSON=1
+			shift
+			;;
+		*)
+			break
+			;;
+	esac
+done
+
+# Parse command
+case "$1" in
+	status)
+		cmd_status "$JSON"
+		;;
+	run)
+		cmd_run "$QUIET"
+		;;
+	daemon)
+		cmd_daemon
+		;;
+	analyze)
+		cmd_analyze
+		;;
+	list-alerts|alerts)
+		cmd_list_alerts "$JSON" "$2"
+		;;
+	ack|acknowledge)
+		cmd_ack "$2"
+		;;
+	clear-alerts|clear)
+		cmd_clear_alerts
+		;;
+	baseline)
+		cmd_baseline "$2"
+		;;
+	help|--help|-h|"")
+		usage
+		;;
+	*)
+		echo "Unknown command: $1"
+		usage
+		exit 1
+		;;
+esac

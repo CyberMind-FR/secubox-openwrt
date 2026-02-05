@@ -1,0 +1,45 @@
+#!/bin/sh /etc/rc.common
+# LocalRecall Memory Cleanup Daemon
+
+START=99
+STOP=10
+USE_PROCD=1
+
+CONFIG="localrecall"
+
+start_service() {
+	local enabled auto_cleanup cleanup_hour
+
+	config_load "$CONFIG"
+	config_get enabled main enabled 0
+	config_get auto_cleanup cleanup auto_cleanup 1
+	config_get cleanup_hour cleanup cleanup_hour 3
+
+	[ "$enabled" = "1" ] || return 0
+	[ "$auto_cleanup" = "1" ] || return 0
+
+	# Schedule daily cleanup via cron instead of daemon
+	# This is more efficient for periodic tasks
+	local cron_entry="0 $cleanup_hour * * * /usr/bin/localrecallctl cleanup -q"
+
+	# Add to crontab if not present
+	if ! grep -q "localrecallctl cleanup" /etc/crontabs/root 2>/dev/null; then
+		echo "$cron_entry" >> /etc/crontabs/root
+		/etc/init.d/cron restart 2>/dev/null
+	fi
+
+	# Initialize storage
+	mkdir -p /var/lib/localrecall
+}
+
+stop_service() {
+	# Remove from crontab
+	if [ -f /etc/crontabs/root ]; then
+		sed -i '/localrecallctl cleanup/d' /etc/crontabs/root
+		/etc/init.d/cron restart 2>/dev/null
+	fi
+}
+
+service_triggers() {
+	procd_add_reload_trigger "$CONFIG"
+}
