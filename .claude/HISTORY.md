@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-02-04_
+_Last updated: 2026-02-05_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -164,3 +164,13 @@ _Last updated: 2026-02-04_
     - Eliminated ~1000 lines of duplicate CSS from module nav files.
     - Updated modules: `cdn-cache`, `client-guardian`, `crowdsec-dashboard`, `media-flow`, `mqtt-bridge`, `system-hub`.
     - Views no longer need to require Theme separately or manually load CSS.
+
+21. **Monitoring UX Improvements (2026-02-05)**
+    - Empty-state loading animation for charts during 5-second data collection warmup.
+      - Animated "Collecting data..." overlay with pulsing dots.
+      - Chart legend shows "Waiting" → "Live" transition.
+      - Cyberpunk theme support for empty state styling.
+    - Dynamic bandwidth units via new `formatBits()` helper.
+      - Network rates now display in bits (Kbps/Mbps/Gbps) instead of bytes.
+      - Uses SI units (1000 base) for industry-standard notation.
+      - Dash placeholder ("— ↓ · — ↑") before first data point.

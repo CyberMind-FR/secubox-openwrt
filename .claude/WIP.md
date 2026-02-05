@@ -83,6 +83,14 @@
   - Updated module navs: cdn-cache, client-guardian, crowdsec-dashboard, media-flow, mqtt-bridge, system-hub.
   - Removed ~1000 lines of duplicate CSS from module nav files.
 
+- **Monitoring UX Improvements**
+  Status: DONE (2026-02-05)
+  Notes: Empty-state loading and dynamic bandwidth units.
+  - Empty-state overlay with animated dots during 5-second warmup.
+  - Chart legend "Waiting" → "Live" transition.
+  - `formatBits()` helper for network rates (Kbps/Mbps/Gbps).
+  - Cyberpunk theme support for empty state.
+
 ## Next Up
 
 1. Rebuild bonus feed with all 2026-02-04/05 changes (IPK files need rebuild).

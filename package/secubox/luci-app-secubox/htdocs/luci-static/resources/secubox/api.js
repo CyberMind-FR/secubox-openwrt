@@ -299,6 +299,16 @@ function formatBytes(bytes) {
 	return (bytes / Math.pow(k, i)).toFixed(2) + ' ' + sizes[i];
 }
 
+function formatBits(bytes, decimals) {
+	if (!bytes) return '0 bps';
+	var bits = bytes * 8;
+	var k = 1000;  // SI units (1000, not 1024)
+	var sizes = ['bps', 'Kbps', 'Mbps', 'Gbps', 'Tbps'];
+	var i = Math.floor(Math.log(bits) / Math.log(k));
+	var d = (decimals !== undefined) ? decimals : 1;
+	return (bits / Math.pow(k, i)).toFixed(d) + ' ' + sizes[i];
+}
+
 return baseclass.extend({
 	getStatus: callStatus,
 	getModules: callModules,
@@ -349,5 +359,6 @@ return baseclass.extend({
 	p2pSetSettings: callP2PSetSettings,
 	// Utilities
 	formatUptime: formatUptime,
-	formatBytes: formatBytes
+	formatBytes: formatBytes,
+	formatBits: formatBits
 });

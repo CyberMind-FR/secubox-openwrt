@@ -12,6 +12,7 @@ _Last updated: 2026-02-05_
 - ~~SMB/CIFS Shared Remote Directories~~ — Done: `secubox-app-smbfs` (client mount manager) + `secubox-app-ksmbd` (server for mesh sharing) (2026-02-04/05).
 - ~~P2P App Store Emancipation~~ — Done: P2P package distribution, packages.js view, devstatus.js widget (2026-02-04/05).
 - ~~Navigation Component~~ — Done: `SecuNav.renderTabs()` now auto-inits theme+CSS, `renderCompactTabs()` for nested modules (2026-02-05).
+- ~~Monitoring UX~~ — Done: Empty-state loading animation for charts, dynamic bandwidth units in bits (Kbps/Mbps/Gbps) via `formatBits()` (2026-02-05).
 
 ## Open
 
@@ -23,9 +24,9 @@ _Last updated: 2026-02-05_
    - ~~Convert `SecuNav.renderTabs()` into a reusable LuCI widget (avoid duplicating `Theme.init` in each view).~~
    - ~~Provide a compact variant for nested modules (e.g., CDN Cache, Network Modes).~~
 
-3. **Monitoring UX**
-   - Add empty-state copy while charts warm up.
-   - Display bandwidth units dynamically (Kbps/Mbps/Gbps) based on rate.
+3. ~~**Monitoring UX**~~ — Done (2026-02-05)
+   - ~~Add empty-state copy while charts warm up.~~
+   - ~~Display bandwidth units dynamically (Kbps/Mbps/Gbps) based on rate.~~
 
 4. **MAC Guardian Feed Integration**
    - Build and include mac-guardian IPK in bonus feed (new package from 2026-02-03, not yet in feed).

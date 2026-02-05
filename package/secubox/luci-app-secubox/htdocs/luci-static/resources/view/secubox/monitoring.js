@@ -151,7 +151,16 @@ return view.extend({
 	renderChartCard: function(type, title, unit, accent) {
 		return E('div', { 'class': 'secubox-chart-card' }, [
 			E('h3', { 'class': 'secubox-chart-title' }, title),
-			E('div', { 'class': 'secubox-chart-container' },
+			E('div', { 'class': 'secubox-chart-container' }, [
+				E('div', { 'id': 'chart-empty-' + type, 'class': 'secubox-chart-empty' }, [
+					E('span', { 'class': 'secubox-chart-empty-icon' }, '📊'),
+					E('span', { 'class': 'secubox-chart-empty-text' }, _('Collecting data...')),
+					E('div', { 'class': 'secubox-chart-empty-progress' }, [
+						E('span', { 'class': 'secubox-chart-empty-dot' }),
+						E('span', { 'class': 'secubox-chart-empty-dot' }),
+						E('span', { 'class': 'secubox-chart-empty-dot' })
+					])
+				]),
 				E('svg', {
 					'id': 'chart-' + type,
 					'class': 'secubox-chart',
@@ -159,10 +168,10 @@ return view.extend({
 					'preserveAspectRatio': 'none',
 					'data-accent': accent
 				})
-			),
+			]),
 			E('div', { 'class': 'secubox-chart-legend' }, [
-				E('span', { 'id': 'current-' + type, 'class': 'secubox-current-value' }, '0' + unit),
-				E('span', { 'class': 'secubox-chart-unit' }, _('Live'))
+				E('span', { 'id': 'current-' + type, 'class': 'secubox-current-value' }, '—'),
+				E('span', { 'id': 'unit-' + type, 'class': 'secubox-chart-unit' }, _('Waiting'))
 			])
 		]);
 	},
@@ -214,9 +223,18 @@ return view.extend({
 
 	drawChart: function(type, data, color) {
 		var svg = document.getElementById('chart-' + type);
+		var emptyEl = document.getElementById('chart-empty-' + type);
 		var currentEl = document.getElementById('current-' + type);
-		if (!svg || data.length === 0)
+		var unitEl = document.getElementById('unit-' + type);
+
+		if (!svg || data.length === 0) {
+			if (emptyEl) emptyEl.style.display = 'flex';
 			return;
+		}
+
+		// Hide empty state, show chart
+		if (emptyEl) emptyEl.style.display = 'none';
+		if (unitEl) unitEl.textContent = _('Live');
 
 		var width = 600;
 		var height = 200;
@@ -294,15 +312,24 @@ return view.extend({
 
 		if (currentEl) {
 			var last = rates[rates.length - 1];
-			currentEl.textContent = API.formatBytes(last.rx + last.tx) + '/s';
+			currentEl.textContent = API.formatBits(last.rx + last.tx);
 		}
 	},
 
 	drawLoadChart: function() {
 		var svg = document.getElementById('chart-load');
+		var emptyEl = document.getElementById('chart-empty-load');
 		var currentEl = document.getElementById('current-load');
-		if (!svg || this.loadHistory.length === 0)
+		var unitEl = document.getElementById('unit-load');
+
+		if (!svg || this.loadHistory.length === 0) {
+			if (emptyEl) emptyEl.style.display = 'flex';
 			return;
+		}
+
+		// Hide empty state, show chart
+		if (emptyEl) emptyEl.style.display = 'none';
+		if (unitEl) unitEl.textContent = _('Live');
 
 		var width = 600;
 		var height = 200;
@@ -385,7 +412,7 @@ return view.extend({
 
 	getNetworkRateSummary: function() {
 		if (this.networkHistory.length < 2)
-			return { summary: '0 B/s' };
+			return { summary: '— ↓ · — ↑', rx: 0, tx: 0 };
 
 		var last = this.networkHistory[this.networkHistory.length - 1];
 		var prev = this.networkHistory[this.networkHistory.length - 2];
@@ -394,7 +421,9 @@ return view.extend({
 		var tx = Math.max(0, (last.tx - prev.tx) / seconds);
 
 		return {
-			summary: API.formatBytes(rx) + '/s ↓ · ' + API.formatBytes(tx) + '/s ↑'
+			summary: API.formatBits(rx) + ' ↓ · ' + API.formatBits(tx) + ' ↑',
+			rx: rx,
+			tx: tx
 		};
 	},
 

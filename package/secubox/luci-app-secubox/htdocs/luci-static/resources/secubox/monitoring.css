@@ -95,6 +95,61 @@
     overflow: hidden;
 }
 
+/* Empty State / Loading Skeleton */
+.secubox-chart-empty {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    color: var(--sb-text-muted);
+    z-index: 1;
+}
+
+.secubox-chart-empty-icon {
+    font-size: 32px;
+    opacity: 0.5;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.secubox-chart-empty-text {
+    font-size: 14px;
+    text-align: center;
+}
+
+.secubox-chart-empty-progress {
+    display: flex;
+    gap: 4px;
+    margin-top: 8px;
+}
+
+.secubox-chart-empty-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--sh-primary);
+    opacity: 0.3;
+    animation: dotPulse 1.5s ease-in-out infinite;
+}
+
+.secubox-chart-empty-dot:nth-child(2) { animation-delay: 0.2s; }
+.secubox-chart-empty-dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes pulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+}
+
+@keyframes dotPulse {
+    0%, 100% { opacity: 0.3; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.2); }
+}
+
 .secubox-chart {
     width: 100%;
     height: 100%;
@@ -237,4 +292,13 @@
 [data-secubox-theme="cyberpunk"] .secubox-stat-item:hover {
 	border-color: var(--cyber-accent-primary);
 	box-shadow: 0 0 20px rgba(102, 126, 234, 0.2);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-chart-empty-dot {
+	background: var(--cyber-accent-primary);
+	box-shadow: 0 0 8px var(--cyber-accent-primary);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-chart-empty-icon {
+	text-shadow: 0 0 10px rgba(102, 126, 234, 0.5);
 }
