@@ -47,15 +47,56 @@ Each adapter in `/usr/lib/secubox/dns/` implements:
 
 ## CLI Usage
 
+### Basic Operations
+
 ```bash
 dnsctl status                          # Show config status
 dnsctl test                            # Verify API credentials
 dnsctl list                            # List zone records
 dnsctl add A myservice 1.2.3.4        # Create A record
 dnsctl add CNAME www mycdn.net        # Create CNAME
+dnsctl update A myservice 5.6.7.8     # Update existing record
+dnsctl get A www                       # Get record value
 dnsctl rm A myservice                  # Remove record
-dnsctl sync                            # Sync HAProxy vhosts to DNS
-dnsctl verify myservice.example.com    # Check propagation
+dnsctl domains                         # List all domains in account
+```
+
+### HAProxy Sync
+
+```bash
+dnsctl sync                            # Sync HAProxy vhosts to DNS A records
+dnsctl verify myservice.example.com    # Check propagation (1.1.1.1, 8.8.8.8, 9.9.9.9)
+```
+
+### Subdomain Generator
+
+```bash
+dnsctl generate gitea                  # Auto-create gitea.zone with public IP
+dnsctl generate api prod               # Create prod-api.zone
+dnsctl suggest web                     # Show subdomain name suggestions
+dnsctl suggest mail                    # Suggestions: mail, smtp, imap, webmail, mx
+dnsctl suggest dev                     # Suggestions: git, dev, staging, test, ci
+```
+
+### DynDNS
+
+```bash
+dnsctl dyndns                          # Update root A record with WAN IP
+dnsctl dyndns api 300                  # Update api.zone with 5min TTL
+```
+
+### Mail DNS Setup
+
+```bash
+dnsctl mail-setup                      # Create MX, SPF, DMARC records
+dnsctl mail-setup mail 10              # Custom hostname and priority
+dnsctl dkim-add mail '<public-key>'    # Add DKIM TXT record
+```
+
+### SSL Certificates
+
+```bash
+dnsctl acme-dns01 example.com          # Issue cert via DNS-01 challenge
 dnsctl acme-dns01 '*.example.com'      # Wildcard cert via DNS-01
 ```
 

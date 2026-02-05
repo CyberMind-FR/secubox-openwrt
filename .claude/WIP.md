@@ -47,6 +47,24 @@ _None currently active_
 
 ### Just Completed
 
+- **Unified Backup Manager** — DONE (2026-02-05)
+  - Created `secubox-app-backup` CLI for LXC containers, UCI config, service data
+  - Created `luci-app-backup` dashboard with container list, backup history
+  - Gitea remote sync and mesh backup support
+  - RPCD handler with 8 methods
+
+- **Custom Mail Server** — DONE (2026-02-05)
+  - Created `secubox-app-mailserver` - Postfix + Dovecot in LXC container
+  - `mailctl` CLI: user management, aliases, SSL, mesh backup
+  - Webmail (Roundcube) integration
+  - Mesh P2P mail backup sync
+
+- **DNS Provider Enhanced** — DONE (2026-02-05)
+  - Added `dnsctl generate` - auto-generate subdomain A records
+  - Added `dnsctl suggest` - name suggestions by category
+  - Added `dnsctl mail-setup` - MX, SPF, DMARC records
+  - Added `dnsctl dkim-add` - DKIM TXT record
+
 - **Subdomain Generator Tool** — DONE (2026-02-05)
   - `secubox-subdomain` CLI for generative subdomain management
   - Automates: DNS A record + HAProxy vhost + UCI registration

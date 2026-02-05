@@ -1,0 +1,159 @@
+#!/bin/sh
+# Mail Server User Management
+
+CONFIG="mailserver"
+
+get_container() {
+	uci -q get $CONFIG.main.container || echo "mailserver"
+}
+
+get_data_path() {
+	uci -q get $CONFIG.main.data_path || echo "/srv/mailserver"
+}
+
+# Add mail user
+user_add() {
+	local email="$1"
+	local password="$2"
+
+	[ -z "$email" ] && { echo "Usage: user_add <email@domain>"; return 1; }
+
+	local user=$(echo "$email" | cut -d@ -f1)
+	local domain=$(echo "$email" | cut -d@ -f2)
+	local container=$(get_container)
+	local data_path=$(get_data_path)
+
+	# Validate
+	echo "$email" | grep -qE '^[^@]+@[^@]+\.[^@]+$' || { echo "Invalid email format"; return 1; }
+
+	# Create mailbox directory
+	local maildir="$data_path/mail/$domain/$user"
+	mkdir -p "$maildir"/{cur,new,tmp}
+	chown -R 1000:1000 "$maildir"
+
+	# Add to virtual mailbox map
+	local vmailbox="$data_path/config/vmailbox"
+	touch "$vmailbox"
+	grep -q "^$email" "$vmailbox" || echo "$email $domain/$user/" >> "$vmailbox"
+
+	# Generate password hash
+	if [ -z "$password" ]; then
+		echo "Enter password for $email:"
+		read -s password
+	fi
+
+	# Add to dovecot users
+	local passfile="$data_path/config/users"
+	local hash=$(lxc-attach -n "$container" -- doveadm pw -s SHA512-CRYPT -p "$password" 2>/dev/null)
+	[ -z "$hash" ] && hash=$(openssl passwd -6 "$password")
+
+	grep -v "^$email:" "$passfile" > "${passfile}.tmp" 2>/dev/null
+	echo "$email:$hash" >> "${passfile}.tmp"
+	mv "${passfile}.tmp" "$passfile"
+
+	# Postmap
+	lxc-attach -n "$container" -- postmap /etc/postfix/vmailbox 2>/dev/null
+
+	echo "User added: $email"
+}
+
+# Delete mail user
+user_del() {
+	local email="$1"
+	[ -z "$email" ] && { echo "Usage: user_del <email@domain>"; return 1; }
+
+	local container=$(get_container)
+	local data_path=$(get_data_path)
+
+	# Remove from vmailbox
+	local vmailbox="$data_path/config/vmailbox"
+	sed -i "/^$email /d" "$vmailbox" 2>/dev/null
+
+	# Remove from passfile
+	local passfile="$data_path/config/users"
+	sed -i "/^$email:/d" "$passfile" 2>/dev/null
+
+	# Postmap
+	lxc-attach -n "$container" -- postmap /etc/postfix/vmailbox 2>/dev/null
+
+	echo "User deleted: $email (mailbox preserved)"
+}
+
+# List mail users
+user_list() {
+	local data_path=$(get_data_path)
+	local passfile="$data_path/config/users"
+
+	if [ -f "$passfile" ]; then
+		echo "Mail Users:"
+		cut -d: -f1 "$passfile" | while read email; do
+			local domain=$(echo "$email" | cut -d@ -f2)
+			local user=$(echo "$email" | cut -d@ -f1)
+			local maildir="$data_path/mail/$domain/$user"
+			local size=$(du -sh "$maildir" 2>/dev/null | awk '{print $1}')
+			printf "  %-40s %s\n" "$email" "${size:-0}"
+		done
+	else
+		echo "No users configured"
+	fi
+}
+
+# Change user password
+user_passwd() {
+	local email="$1"
+	local password="$2"
+
+	[ -z "$email" ] && { echo "Usage: user_passwd <email@domain> [new_password]"; return 1; }
+
+	local container=$(get_container)
+	local data_path=$(get_data_path)
+	local passfile="$data_path/config/users"
+
+	grep -q "^$email:" "$passfile" || { echo "User not found: $email"; return 1; }
+
+	if [ -z "$password" ]; then
+		echo "Enter new password for $email:"
+		read -s password
+	fi
+
+	local hash=$(lxc-attach -n "$container" -- doveadm pw -s SHA512-CRYPT -p "$password" 2>/dev/null)
+	[ -z "$hash" ] && hash=$(openssl passwd -6 "$password")
+
+	sed -i "s|^$email:.*|$email:$hash|" "$passfile"
+
+	echo "Password changed for: $email"
+}
+
+# Add alias
+alias_add() {
+	local alias="$1"
+	local target="$2"
+
+	[ -z "$alias" ] || [ -z "$target" ] && { echo "Usage: alias_add <alias@domain> <target@domain>"; return 1; }
+
+	local container=$(get_container)
+	local data_path=$(get_data_path)
+	local valias="$data_path/config/valias"
+
+	touch "$valias"
+	grep -q "^$alias " "$valias" || echo "$alias $target" >> "$valias"
+
+	lxc-attach -n "$container" -- postmap /etc/postfix/valias 2>/dev/null
+
+	echo "Alias added: $alias → $target"
+}
+
+# List aliases
+alias_list() {
+	local data_path=$(get_data_path)
+	local valias="$data_path/config/valias"
+
+	if [ -f "$valias" ]; then
+		echo "Aliases:"
+		cat "$valias" | while read alias target; do
+			printf "  %-40s → %s\n" "$alias" "$target"
+		done
+	else
+		echo "No aliases configured"
+	fi
+}

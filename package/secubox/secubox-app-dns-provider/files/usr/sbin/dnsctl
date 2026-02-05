@@ -318,6 +318,170 @@ cmd_domains() {
 }
 
 # ============================================================================
+# Subdomain Generator
+# ============================================================================
+
+cmd_generate() {
+	local service="$1"
+	local prefix="${2:-}"
+
+	if [ -z "$service" ]; then
+		echo "Usage: dnsctl generate <service> [prefix]"
+		echo "  Auto-generates unique subdomain and creates A record"
+		echo ""
+		echo "Examples:"
+		echo "  dnsctl generate gitea          # Creates gitea.zone.tld"
+		echo "  dnsctl generate blog dev       # Creates dev-blog.zone.tld"
+		echo "  dnsctl generate api prod       # Creates prod-api.zone.tld"
+		return 1
+	fi
+
+	load_provider
+	local zone=$(get_zone)
+	local public_ip=$(curl -s --connect-timeout 5 https://ipv4.icanhazip.com 2>/dev/null | tr -d '\n')
+
+	[ -z "$public_ip" ] && { error "Cannot detect public IP"; return 1; }
+
+	# Build subdomain name
+	local subdomain
+	if [ -n "$prefix" ]; then
+		subdomain="${prefix}-${service}"
+	else
+		subdomain="$service"
+	fi
+
+	# Check if subdomain exists
+	local existing=$(nslookup "${subdomain}.${zone}" 8.8.8.8 2>/dev/null | grep "Address:" | tail -1)
+	if echo "$existing" | grep -q "[0-9]"; then
+		warn "Subdomain ${subdomain}.${zone} already exists"
+		# Try with numeric suffix
+		local i=2
+		while [ $i -lt 10 ]; do
+			local try_sub="${subdomain}${i}"
+			local try_check=$(nslookup "${try_sub}.${zone}" 8.8.8.8 2>/dev/null | grep "Address:" | tail -1)
+			if ! echo "$try_check" | grep -q "[0-9]"; then
+				subdomain="$try_sub"
+				break
+			fi
+			i=$((i + 1))
+		done
+	fi
+
+	log "Generating subdomain: ${subdomain}.${zone}"
+	dns_add "$zone" "A" "$subdomain" "$public_ip" 3600
+
+	echo ""
+	echo "Created: ${subdomain}.${zone} → $public_ip"
+	echo ""
+	log "Verify with: dnsctl verify ${subdomain}.${zone}"
+}
+
+cmd_suggest() {
+	local category="${1:-web}"
+
+	echo ""
+	echo "Subdomain suggestions for category: $category"
+	echo ""
+
+	case "$category" in
+		web)
+			echo "  www, blog, shop, app, portal, admin, api"
+			;;
+		mail)
+			echo "  mail, smtp, imap, pop, webmail, mx, mta"
+			;;
+		dev)
+			echo "  git, dev, staging, test, ci, cd, build"
+			;;
+		media)
+			echo "  media, cdn, stream, video, music, files"
+			;;
+		iot)
+			echo "  mqtt, home, sensor, hub, iot, zwave, zigbee"
+			;;
+		security)
+			echo "  vpn, tor, proxy, guard, auth, sso"
+			;;
+		*)
+			echo "  Custom: use 'dnsctl generate <name>'"
+			;;
+	esac
+	echo ""
+}
+
+# ============================================================================
+# Mail DNS Records (MX, SPF, DKIM, DMARC)
+# ============================================================================
+
+cmd_mail_setup() {
+	local mail_host="${1:-mail}"
+	local priority="${2:-10}"
+
+	load_provider
+	local zone=$(get_zone)
+	local public_ip=$(curl -s --connect-timeout 5 https://ipv4.icanhazip.com 2>/dev/null | tr -d '\n')
+
+	[ -z "$public_ip" ] && { error "Cannot detect public IP"; return 1; }
+
+	log "Setting up mail DNS records for $zone..."
+
+	# Create mail A record
+	log "  Creating A record: ${mail_host}.${zone} → $public_ip"
+	dns_add "$zone" "A" "$mail_host" "$public_ip" 3600
+
+	# Create MX record
+	log "  Creating MX record: ${zone} → ${mail_host}.${zone} (priority $priority)"
+	dns_add "$zone" "MX" "@" "${priority} ${mail_host}.${zone}." 3600
+
+	# Create SPF record
+	local spf="v=spf1 mx a:${mail_host}.${zone} ~all"
+	log "  Creating SPF record: $spf"
+	dns_add "$zone" "TXT" "@" "$spf" 3600
+
+	# Create DMARC record (relaxed policy for start)
+	local dmarc="v=DMARC1; p=none; rua=mailto:postmaster@${zone}"
+	log "  Creating DMARC record: $dmarc"
+	dns_add "$zone" "TXT" "_dmarc" "$dmarc" 3600
+
+	echo ""
+	log "Mail DNS setup complete!"
+	echo ""
+	echo "Next steps:"
+	echo "  1. Configure your mail server at ${mail_host}.${zone}"
+	echo "  2. Generate DKIM keys and add TXT record:"
+	echo "     dnsctl add TXT mail._domainkey '<dkim-public-key>'"
+	echo "  3. Verify MX: dig MX ${zone}"
+	echo "  4. Test SPF: dig TXT ${zone}"
+	echo ""
+}
+
+cmd_dkim_add() {
+	local selector="${1:-mail}"
+	local public_key="$2"
+
+	if [ -z "$public_key" ]; then
+		echo "Usage: dnsctl dkim-add [selector] <public_key>"
+		echo "  selector defaults to 'mail'"
+		echo ""
+		echo "Generate DKIM key pair:"
+		echo "  openssl genrsa -out dkim.private 2048"
+		echo "  openssl rsa -in dkim.private -pubout -out dkim.public"
+		echo "  # Use content between -----BEGIN/END PUBLIC KEY----- (no newlines)"
+		return 1
+	fi
+
+	load_provider
+	local zone=$(get_zone)
+
+	# Format DKIM record
+	local dkim="v=DKIM1; k=rsa; p=${public_key}"
+	log "Adding DKIM record: ${selector}._domainkey.${zone}"
+	dns_add "$zone" "TXT" "${selector}._domainkey" "$dkim" 3600
+
+	log "DKIM record added. Verify with: dig TXT ${selector}._domainkey.${zone}"
+}
+
+# ============================================================================
 # ACME DNS-01 Helper
 # ============================================================================
 
@@ -384,6 +548,14 @@ Commands:
 DynDNS:
   dyndns [subdomain] [ttl]     Update A record with current WAN IP
 
+Generator:
+  generate <service> [prefix]  Auto-generate subdomain with A record
+  suggest [category]           Show subdomain name suggestions
+
+Mail:
+  mail-setup [host] [priority] Set up MX, SPF, DMARC records
+  dkim-add [selector] <pubkey> Add DKIM TXT record
+
 SSL:
   acme-dns01 <domain>          Issue SSL cert via DNS-01 challenge
 
@@ -413,6 +585,10 @@ case "${1:-}" in
 	status)      shift; cmd_status "$@" ;;
 	domains)     shift; cmd_domains "$@" ;;
 	dyndns)      shift; cmd_dyndns "$@" ;;
+	generate)    shift; cmd_generate "$@" ;;
+	suggest)     shift; cmd_suggest "$@" ;;
+	mail-setup)  shift; cmd_mail_setup "$@" ;;
+	dkim-add)    shift; cmd_dkim_add "$@" ;;
 	acme-dns01)  shift; cmd_acme_dns01 "$@" ;;
 	help|--help|-h|'') show_help ;;
 	*)           error "Unknown command: $1"; show_help >&2; exit 1 ;;

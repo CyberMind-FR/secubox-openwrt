@@ -1,0 +1,437 @@
+#!/bin/sh
+# SecuBox Unified Backup Manager
+
+VERSION="1.0.0"
+CONFIG="backup"
+
+# Load libraries
+LIB_DIR="/usr/lib/backup"
+. "$LIB_DIR/containers.sh"
+. "$LIB_DIR/config.sh"
+. "$LIB_DIR/remote.sh"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+log() { echo -e "${GREEN}[BACKUP]${NC} $1"; }
+warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+error() { echo -e "${RED}[ERROR]${NC} $1"; }
+
+get_storage_path() {
+	local path=$(uci -q get $CONFIG.main.storage_path)
+	echo "${path:-/srv/backups}"
+}
+
+ensure_storage() {
+	local path=$(get_storage_path)
+	mkdir -p "$path/containers" "$path/config" "$path/services" "$path/profiles"
+}
+
+# ============================================================================
+# Create Backup
+# ============================================================================
+
+cmd_create() {
+	local type="full"
+
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--full) type="full" ;;
+			--config) type="config" ;;
+			--containers) type="containers" ;;
+			--services) type="services" ;;
+			*) warn "Unknown option: $1" ;;
+		esac
+		shift
+	done
+
+	ensure_storage
+	local storage=$(get_storage_path)
+	local timestamp=$(date +%Y%m%d-%H%M%S)
+
+	log "Creating $type backup..."
+
+	case "$type" in
+		full)
+			log "Backing up configurations..."
+			config_backup "$storage/config"
+
+			log "Backing up containers..."
+			for dir in /srv/lxc/*/; do
+				[ -d "$dir" ] || continue
+				local name=$(basename "$dir")
+				[ -f "$dir/config" ] || continue
+				log "  Container: $name"
+				container_backup "$name" "$storage/containers"
+			done
+
+			log "Backing up service data..."
+			for svc in haproxy mitmproxy; do
+				if [ -d "/srv/$svc" ]; then
+					log "  Service: $svc"
+					tar -czf "$storage/services/${svc}-${timestamp}.tar.gz" -C /srv "$svc" 2>/dev/null
+				fi
+			done
+			;;
+
+		config)
+			config_backup "$storage/config"
+			;;
+
+		containers)
+			for dir in /srv/lxc/*/; do
+				[ -d "$dir" ] || continue
+				local name=$(basename "$dir")
+				[ -f "$dir/config" ] || continue
+				log "  Container: $name"
+				container_backup "$name" "$storage/containers"
+			done
+			;;
+
+		services)
+			for svc in haproxy mitmproxy localai gitea; do
+				if [ -d "/srv/$svc" ]; then
+					log "  Service: $svc"
+					tar -czf "$storage/services/${svc}-${timestamp}.tar.gz" -C /srv "$svc" 2>/dev/null
+				fi
+			done
+			;;
+	esac
+
+	log "Backup complete: $storage"
+
+	# Cleanup old backups
+	cmd_cleanup
+}
+
+# ============================================================================
+# List Backups
+# ============================================================================
+
+cmd_list() {
+	local type="all"
+
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--local) type="local" ;;
+			--remote) type="remote" ;;
+			--all) type="all" ;;
+			--json) type="json" ;;
+			*) warn "Unknown option: $1" ;;
+		esac
+		shift
+	done
+
+	local storage=$(get_storage_path)
+
+	echo ""
+	echo "==========================================="
+	echo "  SecuBox Backups"
+	echo "==========================================="
+	echo ""
+	echo "Storage: $storage"
+	echo ""
+
+	if [ "$type" = "local" ] || [ "$type" = "all" ]; then
+		echo "--- Config Backups ---"
+		config_list_backups "$storage/config"
+		echo ""
+
+		echo "--- Container Backups ---"
+		ls -lh "$storage/containers/"*.tar* 2>/dev/null | awk '{printf "%-50s %-10s %s %s %s\n", $NF, $5, $6, $7, $8}' || echo "  None"
+		echo ""
+
+		echo "--- Service Backups ---"
+		ls -lh "$storage/services/"*.tar* 2>/dev/null | awk '{printf "%-50s %-10s %s %s %s\n", $NF, $5, $6, $7, $8}' || echo "  None"
+		echo ""
+	fi
+
+	if [ "$type" = "remote" ] || [ "$type" = "all" ]; then
+		echo "--- Remote Backups (Gitea) ---"
+		gitea_list 2>/dev/null || echo "  Not configured"
+		echo ""
+	fi
+}
+
+# ============================================================================
+# Restore Backup
+# ============================================================================
+
+cmd_restore() {
+	local backup_id="$1"
+	local dry_run=0
+
+	shift
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--dry-run) dry_run=1 ;;
+			*) warn "Unknown option: $1" ;;
+		esac
+		shift
+	done
+
+	if [ -z "$backup_id" ]; then
+		echo "Usage: secubox-backup restore <backup_file> [--dry-run]"
+		return 1
+	fi
+
+	local storage=$(get_storage_path)
+
+	# Find backup file
+	local backup_file=""
+	for dir in "$storage/config" "$storage/containers" "$storage/services"; do
+		if [ -f "$dir/$backup_id" ]; then
+			backup_file="$dir/$backup_id"
+			break
+		fi
+	done
+
+	[ -z "$backup_file" ] && { error "Backup not found: $backup_id"; return 1; }
+
+	log "Restoring from: $backup_file"
+
+	# Determine type from path
+	if echo "$backup_file" | grep -q "/config/"; then
+		config_restore "$backup_file" "$dry_run"
+	elif echo "$backup_file" | grep -q "/containers/"; then
+		local name=$(basename "$backup_file" | sed 's/-[0-9]*-.*//')
+		container_restore "$name" "$backup_file"
+	else
+		error "Unknown backup type"
+		return 1
+	fi
+}
+
+# ============================================================================
+# Container Commands
+# ============================================================================
+
+cmd_container() {
+	local action="$1"
+	shift
+
+	case "$action" in
+		list)
+			container_list "${1:-0}"
+			;;
+
+		backup)
+			local name="$1"
+			[ -z "$name" ] && { echo "Usage: secubox-backup container backup <name>"; return 1; }
+			ensure_storage
+			local storage=$(get_storage_path)
+			log "Backing up container: $name"
+			container_backup "$name" "$storage/containers"
+			;;
+
+		restore)
+			local name="$1"
+			local backup="$2"
+			[ -z "$name" ] || [ -z "$backup" ] && { echo "Usage: secubox-backup container restore <name> <backup_file>"; return 1; }
+			log "Restoring container: $name"
+			container_restore "$name" "$backup"
+			;;
+
+		backups)
+			local name="$1"
+			[ -z "$name" ] && { echo "Usage: secubox-backup container backups <name>"; return 1; }
+			local storage=$(get_storage_path)
+			container_list_backups "$name" "$storage/containers"
+			;;
+
+		*)
+			echo "Container commands:"
+			echo "  list              List containers"
+			echo "  backup <name>     Backup container"
+			echo "  restore <n> <f>   Restore container from backup"
+			echo "  backups <name>    List backups for container"
+			;;
+	esac
+}
+
+# ============================================================================
+# Profile Commands
+# ============================================================================
+
+cmd_profile() {
+	local action="$1"
+	shift
+
+	# Delegate to secubox-profile if available
+	if command -v secubox-profile >/dev/null 2>&1; then
+		case "$action" in
+			list)   secubox-profile list "$@" ;;
+			create) secubox-profile export "$@" ;;
+			apply)  secubox-profile apply "$@" ;;
+			share)  secubox-profile share "$@" ;;
+			*)
+				echo "Profile commands (via secubox-profile):"
+				echo "  list           List profiles"
+				echo "  create <name>  Create profile from current config"
+				echo "  apply <name>   Apply profile"
+				echo "  share <name>   Share profile"
+				;;
+		esac
+	else
+		echo "secubox-profile not installed"
+	fi
+}
+
+# ============================================================================
+# Sync Commands
+# ============================================================================
+
+cmd_sync() {
+	local mode="push"
+
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--push) mode="push" ;;
+			--pull) mode="pull" ;;
+			*) warn "Unknown option: $1" ;;
+		esac
+		shift
+	done
+
+	local storage=$(get_storage_path)
+
+	case "$mode" in
+		push)
+			log "Pushing backups to remote..."
+
+			# Push latest config backup
+			local latest=$(ls -t "$storage/config/"*.tar.gz 2>/dev/null | head -1)
+			[ -n "$latest" ] && gitea_push "$latest" "Config backup $(date +%Y-%m-%d)"
+			;;
+
+		pull)
+			log "Pulling backups from remote..."
+			gitea_list
+			;;
+	esac
+}
+
+# ============================================================================
+# Cleanup
+# ============================================================================
+
+cmd_cleanup() {
+	local storage=$(get_storage_path)
+	local max=$(uci -q get $CONFIG.main.max_backups)
+	max=${max:-10}
+
+	log "Cleaning up old backups (keeping last $max)..."
+
+	for dir in config containers services; do
+		local count=$(ls -1 "$storage/$dir/"*.tar* 2>/dev/null | wc -l)
+		if [ "$count" -gt "$max" ]; then
+			ls -1t "$storage/$dir/"*.tar* 2>/dev/null | tail -n +$((max + 1)) | while read f; do
+				rm -f "$f"
+				log "  Removed: $(basename "$f")"
+			done
+		fi
+	done
+}
+
+# ============================================================================
+# Status
+# ============================================================================
+
+cmd_status() {
+	local storage=$(get_storage_path)
+
+	echo ""
+	echo "==========================================="
+	echo "  SecuBox Backup Status"
+	echo "==========================================="
+	echo ""
+	echo "Storage Path: $storage"
+	echo "Storage Used: $(du -sh "$storage" 2>/dev/null | awk '{print $1}')"
+	echo ""
+
+	echo "Last Backups:"
+	for type in config containers services; do
+		local latest=$(ls -t "$storage/$type/"*.tar* 2>/dev/null | head -1)
+		if [ -n "$latest" ]; then
+			local date=$(stat -c %y "$latest" 2>/dev/null | cut -d' ' -f1,2 | cut -d'.' -f1)
+			printf "  %-12s %s\n" "$type:" "$date"
+		else
+			printf "  %-12s %s\n" "$type:" "none"
+		fi
+	done
+
+	echo ""
+	echo "Containers:"
+	for dir in /srv/lxc/*/; do
+		[ -d "$dir" ] || continue
+		local name=$(basename "$dir")
+		[ -f "$dir/config" ] || continue
+		local state="stopped"
+		lxc-info -n "$name" 2>/dev/null | grep -q "RUNNING" && state="running"
+		printf "  %-20s %s\n" "$name" "$state"
+	done
+	echo ""
+}
+
+# ============================================================================
+# Help
+# ============================================================================
+
+show_help() {
+	cat << EOF
+SecuBox Unified Backup Manager v${VERSION}
+
+Usage: secubox-backup <command> [options]
+
+Commands:
+  create [--full|--config|--containers|--services]
+                         Create backup
+  list [--local|--remote|--all]
+                         List backups
+  restore <file> [--dry-run]
+                         Restore from backup
+  status                 Show backup status
+  cleanup                Remove old backups
+
+  container list         List LXC containers
+  container backup <n>   Backup container
+  container restore <n> <f>
+                         Restore container
+
+  profile list           List profiles
+  profile create <n>     Create profile
+  profile apply <n>      Apply profile
+
+  sync [--push|--pull]   Sync with remote (Gitea)
+
+Examples:
+  secubox-backup create --full
+  secubox-backup container backup mitmproxy
+  secubox-backup container restore mitmproxy /srv/backups/containers/mitmproxy-20260205.tar.gz
+  secubox-backup list
+  secubox-backup sync --push
+
+EOF
+}
+
+# ============================================================================
+# Main
+# ============================================================================
+
+case "${1:-}" in
+	create)    shift; cmd_create "$@" ;;
+	list|ls)   shift; cmd_list "$@" ;;
+	restore)   shift; cmd_restore "$@" ;;
+	status)    shift; cmd_status "$@" ;;
+	cleanup)   shift; cmd_cleanup "$@" ;;
+	container) shift; cmd_container "$@" ;;
+	profile)   shift; cmd_profile "$@" ;;
+	sync)      shift; cmd_sync "$@" ;;
+	help|--help|-h|'') show_help ;;
+	*)         error "Unknown command: $1"; show_help >&2; exit 1 ;;
+esac
+
+exit 0

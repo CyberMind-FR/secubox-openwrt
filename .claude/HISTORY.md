@@ -347,3 +347,32 @@ _Last updated: 2026-02-06_
       - `.ta-cve-link` for NVD hyperlinks (red badge style)
       - `.ta-cve-row` for highlighted CVE threat rows
     - Following LuCI UI Generation Model Template v0.1.0 for future KISS modules.
+
+33. **Unified Backup Manager & Custom Mail Server (2026-02-05)**
+    - Created `secubox-app-backup` — unified backup system for LXC containers, UCI config, service data.
+      - **CLI commands**: create (full/config/containers/services), list, restore, status, cleanup
+      - **Container ops**: container list/backup/restore/backups
+      - **Profile ops**: profile list/create/apply/share (delegates to secubox-profile)
+      - **Remote sync**: sync --push/--pull (Gitea integration)
+      - **Libraries**: containers.sh, config.sh, remote.sh
+      - **Storage structure**: /srv/backups/{config,containers,services,profiles}
+    - Created `luci-app-backup` — LuCI dashboard for backup management.
+      - **Status panel**: storage path, usage, last backup times
+      - **Quick actions**: Full/Config/Containers backup buttons
+      - **Container table**: name, state, size, backup count, backup button
+      - **Backup history**: file, type, size, date (sorted by timestamp)
+      - **RPCD methods**: status, list, container_list, create, restore, cleanup, container_backup, container_restore
+    - Created `secubox-app-mailserver` — custom Postfix + Dovecot mail server in LXC container.
+      - **mailctl CLI**: install, start/stop/restart, status
+      - **User management**: user add/del/list/passwd, alias add/list
+      - **SSL**: ssl-setup (ACME DNS-01), ssl-status
+      - **DNS integration**: dns-setup (creates MX, SPF, DMARC via dnsctl)
+      - **Mesh backup**: mesh backup/restore/sync/add-peer/peers/enable/disable
+      - **Webmail integration**: webmail status/configure (Roundcube container)
+      - **Libraries**: container.sh, users.sh, mesh.sh
+    - Enhanced `dnsctl` with subdomain generation and mail DNS:
+      - `generate <service> [prefix]` — auto-create subdomain A record with public IP
+      - `suggest [category]` — subdomain name suggestions (web, mail, dev, media, iot, security)
+      - `mail-setup [host] [priority]` — create MX, SPF, DMARC records
+      - `dkim-add [selector] <pubkey>` — add DKIM TXT record
+    - Renamed `secbx-webmail` Docker container to `secubox-webmail` for consistency.
