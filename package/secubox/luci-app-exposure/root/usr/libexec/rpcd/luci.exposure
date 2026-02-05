@@ -43,6 +43,22 @@ case "$1" in
         json_close_object
         json_add_object "vhost_list"
         json_close_object
+        json_add_object "emancipate"
+            json_add_string "service" "string"
+            json_add_int "port" "integer"
+            json_add_string "domain" "string"
+            json_add_boolean "tor" "boolean"
+            json_add_boolean "dns" "boolean"
+            json_add_boolean "mesh" "boolean"
+        json_close_object
+        json_add_object "revoke"
+            json_add_string "service" "string"
+            json_add_boolean "tor" "boolean"
+            json_add_boolean "dns" "boolean"
+            json_add_boolean "mesh" "boolean"
+        json_close_object
+        json_add_object "get_emancipated"
+        json_close_object
         json_dump
         ;;
 
@@ -536,6 +552,109 @@ case "$1" in
                 done
                 json_close_array
 
+                json_dump
+                ;;
+
+            emancipate)
+                read -r input
+                service=$(echo "$input" | jsonfilter -e '@.service')
+                port=$(echo "$input" | jsonfilter -e '@.port')
+                domain=$(echo "$input" | jsonfilter -e '@.domain')
+                tor=$(echo "$input" | jsonfilter -e '@.tor')
+                dns=$(echo "$input" | jsonfilter -e '@.dns')
+                mesh=$(echo "$input" | jsonfilter -e '@.mesh')
+
+                if [ -z "$service" ] || [ -z "$port" ]; then
+                    json_init
+                    json_add_boolean "success" 0
+                    json_add_string "error" "Service and port required"
+                    json_dump
+                    exit 0
+                fi
+
+                flags=""
+                [ "$tor" = "true" ] || [ "$tor" = "1" ] && flags="$flags --tor"
+                [ "$dns" = "true" ] || [ "$dns" = "1" ] && flags="$flags --dns"
+                [ "$mesh" = "true" ] || [ "$mesh" = "1" ] && flags="$flags --mesh"
+                [ -z "$flags" ] && flags="--all"
+
+                result=$(/usr/sbin/secubox-exposure emancipate "$service" "$port" "$domain" $flags 2>&1)
+                rc=$?
+
+                json_init
+                if [ $rc -eq 0 ]; then
+                    json_add_boolean "success" 1
+                    json_add_string "message" "Service emancipated"
+                    json_add_string "output" "$result"
+                else
+                    json_add_boolean "success" 0
+                    json_add_string "error" "$result"
+                fi
+                json_dump
+                ;;
+
+            revoke)
+                read -r input
+                service=$(echo "$input" | jsonfilter -e '@.service')
+                tor=$(echo "$input" | jsonfilter -e '@.tor')
+                dns=$(echo "$input" | jsonfilter -e '@.dns')
+                mesh=$(echo "$input" | jsonfilter -e '@.mesh')
+
+                if [ -z "$service" ]; then
+                    json_init
+                    json_add_boolean "success" 0
+                    json_add_string "error" "Service name required"
+                    json_dump
+                    exit 0
+                fi
+
+                flags=""
+                [ "$tor" = "true" ] || [ "$tor" = "1" ] && flags="$flags --tor"
+                [ "$dns" = "true" ] || [ "$dns" = "1" ] && flags="$flags --dns"
+                [ "$mesh" = "true" ] || [ "$mesh" = "1" ] && flags="$flags --mesh"
+                [ -z "$flags" ] && flags="--all"
+
+                result=$(/usr/sbin/secubox-exposure revoke "$service" $flags 2>&1)
+                rc=$?
+
+                json_init
+                if [ $rc -eq 0 ]; then
+                    json_add_boolean "success" 1
+                    json_add_string "message" "Service revoked"
+                    json_add_string "output" "$result"
+                else
+                    json_add_boolean "success" 0
+                    json_add_string "error" "$result"
+                fi
+                json_dump
+                ;;
+
+            get_emancipated)
+                json_init
+                json_add_array "services"
+
+                # Read emancipated services from UCI
+                for svc in $(uci show secubox-exposure 2>/dev/null | grep "=service$" | cut -d'.' -f2 | cut -d'=' -f1); do
+                    emancipated=$(uci -q get "secubox-exposure.$svc.emancipated")
+                    [ "$emancipated" != "1" ] && continue
+
+                    port=$(uci -q get "secubox-exposure.$svc.port")
+                    domain=$(uci -q get "secubox-exposure.$svc.domain")
+                    tor=$(uci -q get "secubox-exposure.$svc.tor")
+                    dns=$(uci -q get "secubox-exposure.$svc.dns")
+                    mesh=$(uci -q get "secubox-exposure.$svc.mesh")
+
+                    json_add_object ""
+                        json_add_string "name" "$svc"
+                        json_add_int "port" "${port:-0}"
+                        json_add_string "domain" "${domain:-}"
+                        json_add_boolean "tor" "${tor:-0}"
+                        json_add_boolean "dns" "${dns:-0}"
+                        json_add_boolean "mesh" "${mesh:-0}"
+                    json_close_object
+                done
+
+                json_close_array
                 json_dump
                 ;;
 

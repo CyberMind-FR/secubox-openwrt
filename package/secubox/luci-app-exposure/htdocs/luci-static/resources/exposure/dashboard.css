@@ -94,6 +94,11 @@
 	color: var(--exp-ssl);
 }
 
+.exp-badge-mesh {
+	background: rgba(59, 130, 246, 0.2);
+	color: #3b82f6;
+}
+
 /* Buttons */
 .exp-btn {
 	display: inline-flex;
@@ -174,4 +179,25 @@ input:checked + .ssl-slider {
 
 input:checked + .ssl-slider:before {
 	background-color: #27ae60;
+}
+
+input:checked + .mesh-slider {
+	background-color: rgba(59, 130, 246, 0.3);
+	border: 1px solid #3b82f6;
+}
+
+input:checked + .mesh-slider:before {
+	background-color: #3b82f6;
+}
+
+/* Action button */
+.exp-btn-action {
+	background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+	color: white;
+	border-color: transparent;
+}
+
+.exp-btn-action:hover {
+	background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+	box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
 }
