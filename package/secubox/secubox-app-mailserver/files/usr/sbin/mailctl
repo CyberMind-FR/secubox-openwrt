@@ -115,11 +115,15 @@ cmd_status() {
 	echo "  Hostname:    ${hostname:-mail}.${domain:-example.com}"
 	echo ""
 
-	# Port status
+	# Port status - check inside container
 	echo "  Ports:"
 	local ports="25 587 465 993 995"
+	local container_ports=""
+	if [ "$state" = "running" ]; then
+		container_ports=$(lxc-attach -n "$container" -- netstat -tln 2>/dev/null)
+	fi
 	for port in $ports; do
-		if netstat -tln 2>/dev/null | grep -q ":$port "; then
+		if echo "$container_ports" | grep -q ":$port "; then
 			echo -e "    $port: ${GREEN}listening${NC}"
 		else
 			echo -e "    $port: ${RED}closed${NC}"
@@ -360,6 +364,89 @@ EOF"
 }
 
 # ============================================================================
+# Daily Report
+# ============================================================================
+
+cmd_report() {
+	local action="${1:-generate}"
+	local admin_email=$(uci_get main.admin_email)
+	admin_email="${admin_email:-root}"
+	local container=$(uci_get main.container)
+	container="${container:-mailserver}"
+	local domain=$(uci_get main.domain)
+
+	case "$action" in
+		generate)
+			local report_date=$(date '+%Y-%m-%d')
+			local report_file="/tmp/mail-report-${report_date}.txt"
+
+			cat > "$report_file" << EOF
+========================================
+SecuBox Mail Server Daily Report
+Date: $report_date
+Domain: ${domain:-not set}
+========================================
+
+=== Server Status ===
+$(cmd_status 2>/dev/null | grep -v '====')
+
+=== Mail Queue ===
+$(lxc-attach -n "$container" -- mailq 2>/dev/null | head -20)
+
+=== Recent Mail Log (last 50 lines) ===
+$(lxc-attach -n "$container" -- tail -50 /var/log/mail.log 2>/dev/null)
+
+=== Storage Usage ===
+$(du -sh /srv/mailserver/* 2>/dev/null)
+
+=== Active Connections ===
+$(lxc-attach -n "$container" -- netstat -tn 2>/dev/null | grep -E ':25|:143|:993|:587' | head -20)
+
+EOF
+			echo "Report generated: $report_file"
+			echo "$report_file"
+			;;
+
+		send)
+			local report_file=$(cmd_report generate | tail -1)
+			if [ -f "$report_file" ]; then
+				log "Sending daily report to $admin_email..."
+				lxc-attach -n "$container" -- sh -c "cat '$report_file' | mail -s 'SecuBox Mail Daily Report' '$admin_email'"
+				log "Report sent to $admin_email"
+			else
+				error "Failed to generate report"
+				return 1
+			fi
+			;;
+
+		enable)
+			# Setup cron job for daily report
+			local cron_file="/etc/cron.d/secubox-mail-report"
+			cat > "$cron_file" << 'EOF'
+# SecuBox Mail Server Daily Report
+# Runs at 7:00 AM daily
+0 7 * * * root /usr/sbin/mailctl report send >/dev/null 2>&1
+EOF
+			chmod 644 "$cron_file"
+			log "Daily report enabled (7:00 AM)"
+			;;
+
+		disable)
+			rm -f /etc/cron.d/secubox-mail-report
+			log "Daily report disabled"
+			;;
+
+		*)
+			echo "Report commands:"
+			echo "  report generate      Generate report to file"
+			echo "  report send          Generate and send to admin"
+			echo "  report enable        Enable daily report (7 AM)"
+			echo "  report disable       Disable daily report"
+			;;
+	esac
+}
+
+# ============================================================================
 # Help
 # ============================================================================
 
@@ -401,6 +488,12 @@ Webmail:
   webmail status       Show webmail status
   webmail configure    Configure for this server
 
+Reports:
+  report generate      Generate status report
+  report send          Send report to admin
+  report enable        Enable daily report (7 AM)
+  report disable       Disable daily report
+
 Diagnostics:
   logs [lines]         View mail logs
   test <email>         Send test email
@@ -435,6 +528,7 @@ case "${1:-}" in
 	webmail)     shift; cmd_webmail "$@" ;;
 	logs)        shift; cmd_logs "$@" ;;
 	test)        shift; cmd_test "$@" ;;
+	report)      shift; cmd_report "$@" ;;
 	help|--help|-h|'') show_help ;;
 	*)           error "Unknown command: $1"; show_help >&2; exit 1 ;;
 esac
