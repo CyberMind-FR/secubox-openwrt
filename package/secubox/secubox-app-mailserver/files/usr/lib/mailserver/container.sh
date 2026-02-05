@@ -77,7 +77,8 @@ echo "disable_plaintext_auth = no" >> /etc/dovecot/dovecot.conf
 # Configure postfix
 postconf -e 'myhostname = MAIL_HOSTNAME'
 postconf -e 'mydomain = MAIL_DOMAIN'
-postconf -e 'mydestination = $myhostname, localhost.$mydomain, localhost, $mydomain'
+# Don't include $mydomain in mydestination - it conflicts with virtual_mailbox_domains
+postconf -e 'mydestination = $myhostname, localhost.$mydomain, localhost'
 postconf -e 'inet_interfaces = all'
 postconf -e 'home_mailbox = Maildir/'
 postconf -e 'smtpd_sasl_type = dovecot'

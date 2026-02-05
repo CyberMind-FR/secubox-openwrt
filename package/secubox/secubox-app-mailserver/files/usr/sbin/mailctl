@@ -291,13 +291,22 @@ cmd_mesh() {
 cmd_fix_postfix() {
 	local container=$(uci_get main.container)
 	container="${container:-mailserver}"
+	local domain=$(uci_get main.domain)
 
 	log "Fixing Postfix configuration..."
 
 	# Fix LMDB maps (Alpine doesn't support hash maps)
-	lxc-attach -n "$container" -- sh -c '
-		postconf -e "virtual_mailbox_maps = lmdb:/etc/postfix/vmailbox"
-		postconf -e "virtual_alias_maps = lmdb:/etc/postfix/virtual"
+	lxc-attach -n "$container" -- sh -c "
+		# Use LMDB instead of hash (Alpine Postfix)
+		postconf -e 'virtual_mailbox_maps = lmdb:/etc/postfix/vmailbox'
+		postconf -e 'virtual_alias_maps = lmdb:/etc/postfix/virtual'
+		postconf -e 'virtual_mailbox_domains = /etc/postfix/vdomains'
+
+		# Don't include domain in mydestination (conflicts with virtual)
+		postconf -e 'mydestination = \\\$myhostname, localhost.\\\$mydomain, localhost'
+
+		# Ensure vdomains file exists
+		echo '$domain' > /etc/postfix/vdomains
 
 		# Regenerate LMDB databases
 		[ -f /etc/postfix/vmailbox ] && postmap lmdb:/etc/postfix/vmailbox
@@ -309,10 +318,10 @@ cmd_fix_postfix() {
 
 		# Reload Postfix
 		postfix reload
-	'
+	"
 
 	log "Postfix configuration fixed"
-	log "If you still see 'Temporary lookup failure', restart the container: mailctl restart"
+	log "If you still see errors, restart the container: mailctl restart"
 }
 
 # ============================================================================
