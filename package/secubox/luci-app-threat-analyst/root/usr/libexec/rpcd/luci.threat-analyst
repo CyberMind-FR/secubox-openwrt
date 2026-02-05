@@ -15,7 +15,7 @@ uci_get() { uci -q get "${CONFIG}.$1"; }
 [ -f "$LIB_DIR/analyzer.sh" ] && {
 	localai_url=$(uci_get main.localai_url)
 	localai_model=$(uci_get main.localai_model)
-	[ -z "$localai_url" ] && localai_url="http://127.0.0.1:8081"
+	[ -z "$localai_url" ] && localai_url="http://127.0.0.1:8091"
 	[ -z "$localai_model" ] && localai_model="tinyllama-1.1b-chat-v1.0.Q4_K_M"
 	. "$LIB_DIR/analyzer.sh"
 	. "$LIB_DIR/appliers.sh"
@@ -143,46 +143,54 @@ EOF
 					exit 0
 				fi
 
-				# Check LocalAI
-				if ! wget -q -O /dev/null --timeout=2 "${localai_url}/v1/models" 2>/dev/null; then
+				# Generate request ID
+				req_id=$(head -c 8 /dev/urandom | md5sum | head -c 8)
+				req_file="$STATE_DIR/chat_${req_id}.json"
+				mkdir -p "$STATE_DIR"
+
+				# Check for pending response from previous request
+				poll_id=$(echo "$input" | jsonfilter -e '@.poll_id' 2>/dev/null)
+				if [ -n "$poll_id" ]; then
+					poll_file="$STATE_DIR/chat_${poll_id}.json"
+					if [ -f "$poll_file" ]; then
+						cat "$poll_file"
+						rm -f "$poll_file"
+					else
+						echo '{"pending":true,"poll_id":"'"$poll_id"'"}'
+					fi
+					exit 0
+				fi
+
+				# Check LocalAI quickly
+				if ! curl -s --max-time 2 "${localai_url}/v1/models" >/dev/null 2>&1; then
 					echo '{"error":"LocalAI not available","suggestion":"Start LocalAI: localaictl start"}'
 					exit 0
 				fi
 
-				# Get threat context
-				threat_context=""
-				if command -v cscli >/dev/null 2>&1; then
-					threat_context=$(cscli alerts list -o json --limit 10 2>/dev/null | head -c 3000)
-				fi
+				# Start background AI query
+				(
+					escaped_message=$(printf '%s' "$message" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ')
+					prompt="You are SecuBox AI security assistant. $escaped_message"
 
-				# Build prompt
-				prompt="You are SecuBox Threat Analyst, an AI security assistant for an OpenWrt router.
+					response=$(curl -s --max-time 120 -X POST "${localai_url}/v1/chat/completions" \
+						-H "Content-Type: application/json" \
+						-d "{\"model\":\"$localai_model\",\"messages\":[{\"role\":\"user\",\"content\":\"$prompt\"}],\"max_tokens\":256,\"temperature\":0.7}" 2>/dev/null)
 
-Current security context:
-- Recent CrowdSec alerts: $threat_context
+					if [ -n "$response" ]; then
+						content=$(echo "$response" | jsonfilter -e '@.choices[0].message.content' 2>/dev/null)
+						if [ -n "$content" ]; then
+							content=$(printf '%s' "$content" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ')
+							printf '{"response":"%s"}' "$content" > "$req_file"
+						else
+							echo '{"error":"Empty AI response"}' > "$req_file"
+						fi
+					else
+						echo '{"error":"AI query failed"}' > "$req_file"
+					fi
+				) &
 
-User message: $message
-
-Provide helpful, actionable security advice. If asked about threats, analyze the context. If asked to generate rules, provide specific patterns for mitmproxy/CrowdSec/WAF."
-
-				# Call LocalAI
-				request=$(cat <<AIEOF
-{"model":"$localai_model","messages":[{"role":"system","content":"You are SecuBox Threat Analyst AI."},{"role":"user","content":"$(echo "$prompt" | sed 's/"/\\"/g' | tr '\n' ' ')"}],"max_tokens":1024,"temperature":0.5}
-AIEOF
-)
-
-				response=$(echo "$request" | wget -q -O - --post-data=- \
-					--header="Content-Type: application/json" \
-					"${localai_url}/v1/chat/completions" 2>/dev/null)
-
-				if [ -n "$response" ]; then
-					content=$(echo "$response" | jsonfilter -e '@.choices[0].message.content' 2>/dev/null)
-					# Escape for JSON
-					content=$(echo "$content" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ')
-					printf '{"response":"%s"}' "$content"
-				else
-					echo '{"error":"AI query failed"}'
-				fi
+				# Return poll ID immediately
+				echo '{"pending":true,"poll_id":"'"$req_id"'"}'
 				;;
 
 			analyze)

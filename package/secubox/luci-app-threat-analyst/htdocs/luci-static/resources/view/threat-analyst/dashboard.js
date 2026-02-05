@@ -250,9 +250,9 @@ return view.extend({
 		input.value = '';
 		messages.scrollTop = messages.scrollHeight;
 
-		// Add loading
+		// Add loading (AI can take 30-60s to respond)
 		var loading = E('div', { 'class': 'ta-message ai', 'id': 'ta-chat-loading' }, [
-			E('div', { 'class': 'ta-message-bubble' }, 'Analyzing...')
+			E('div', { 'class': 'ta-message-bubble spinning' }, 'Thinking... (AI inference can take up to 60s)')
 		]);
 		messages.appendChild(loading);
 

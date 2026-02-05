@@ -36,9 +36,40 @@ var callGetPending = rpc.declare({
 var callChat = rpc.declare({
 	object: 'luci.threat-analyst',
 	method: 'chat',
-	params: ['message'],
+	params: ['message', 'poll_id'],
 	expect: { }
 });
+
+// Async chat with polling
+function chatAsync(message, maxPolls, pollInterval) {
+	maxPolls = maxPolls || 20;
+	pollInterval = pollInterval || 3000;
+
+	return callChat(message, null).then(function(result) {
+		if (!result.pending) {
+			return result;
+		}
+
+		var pollId = result.poll_id;
+		var polls = 0;
+
+		return new Promise(function(resolve, reject) {
+			function poll() {
+				polls++;
+				callChat('poll', pollId).then(function(res) {
+					if (res.response || res.error) {
+						resolve(res);
+					} else if (polls < maxPolls) {
+						setTimeout(poll, pollInterval);
+					} else {
+						resolve({ error: 'AI response timeout (max polls reached)' });
+					}
+				}).catch(reject);
+			}
+			setTimeout(poll, pollInterval);
+		});
+	});
+}
 
 var callGenerateRules = rpc.declare({
 	object: 'luci.threat-analyst',
@@ -111,7 +142,8 @@ return baseclass.extend({
 	getStatus: callStatus,
 	getThreats: callGetThreats,
 	getPending: callGetPending,
-	chat: callChat,
+	chat: chatAsync,
+	chatSync: callChat,
 	generateRules: callGenerateRules,
 	approveRule: callApproveRule,
 	rejectRule: callRejectRule,
