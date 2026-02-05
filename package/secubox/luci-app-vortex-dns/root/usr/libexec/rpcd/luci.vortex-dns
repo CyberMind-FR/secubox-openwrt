@@ -1,0 +1,215 @@
+#!/bin/sh
+# RPCD handler for Vortex DNS
+
+. /usr/share/libubox/jshn.sh
+
+CONFIG="vortex-dns"
+STATE_DIR="/var/lib/vortex-dns"
+
+uci_get() { uci -q get "${CONFIG}.$1"; }
+
+case "$1" in
+	list)
+		echo '{"status":{},"get_slaves":{},"get_peers":{},"get_published":{},"master_init":{"domain":"str"},"delegate":{"node":"str","zone":"str"},"revoke":{"zone":"str"},"slave_join":{"master":"str","token":"str"},"mesh_sync":{},"mesh_publish":{"service":"str","domain":"str"}}'
+		;;
+	call)
+		case "$2" in
+			status)
+				json_init
+
+				enabled=$(uci_get main.enabled)
+				mode=$(uci_get main.mode)
+				sync_interval=$(uci_get main.sync_interval)
+
+				json_add_boolean "enabled" "${enabled:-0}"
+				json_add_string "mode" "${mode:-standalone}"
+				json_add_int "sync_interval" "${sync_interval:-300}"
+
+				# Master info
+				if [ "$(uci_get master.enabled)" = "1" ]; then
+					json_add_object "master"
+					json_add_string "wildcard_domain" "$(uci_get master.wildcard_domain)"
+					json_add_string "dns_provider" "$(uci_get master.dns_provider)"
+
+					# Count slaves
+					slaves=$(uci show "$CONFIG" 2>/dev/null | grep -c "=delegation")
+					json_add_int "slave_count" "$slaves"
+					json_close_object
+				fi
+
+				# Slave info
+				if [ "$(uci_get slave.enabled)" = "1" ]; then
+					json_add_object "slave"
+					json_add_string "parent_master" "$(uci_get slave.parent_master)"
+					json_add_string "delegated_zone" "$(uci_get slave.delegated_zone)"
+					json_close_object
+				fi
+
+				# Mesh info
+				json_add_object "mesh"
+				json_add_boolean "gossip_enabled" "$(uci_get mesh.gossip_enabled)"
+				json_add_boolean "first_peek" "$(uci_get mesh.first_peek)"
+				json_add_boolean "auto_register" "$(uci_get mesh.auto_register)"
+
+				# Count peers
+				if command -v secubox-p2p >/dev/null 2>&1; then
+					peers=$(secubox-p2p peers 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+					json_add_int "peer_count" "$peers"
+				else
+					json_add_int "peer_count" 0
+				fi
+
+				# Count published
+				if [ -f "$STATE_DIR/published.json" ]; then
+					published=$(jsonfilter -i "$STATE_DIR/published.json" -e '@[*]' 2>/dev/null | wc -l)
+					json_add_int "published_count" "$published"
+				else
+					json_add_int "published_count" 0
+				fi
+				json_close_object
+
+				# Last sync
+				if [ -f "$STATE_DIR/last_sync" ]; then
+					json_add_string "last_sync" "$(cat "$STATE_DIR/last_sync")"
+				fi
+
+				json_dump
+				;;
+
+			get_slaves)
+				json_init
+				json_add_array "slaves"
+
+				uci show "$CONFIG" 2>/dev/null | grep "=delegation" | while read -r line; do
+					section=$(echo "$line" | cut -d= -f1 | cut -d. -f2)
+					json_add_object
+					json_add_string "zone" "$(uci_get "${section}.zone")"
+					json_add_string "node" "$(uci_get "${section}.node")"
+					json_add_string "fqdn" "$(uci_get "${section}.fqdn")"
+					json_add_string "created" "$(uci_get "${section}.created")"
+					json_close_object
+				done
+
+				json_close_array
+				json_dump
+				;;
+
+			get_peers)
+				json_init
+				json_add_array "peers"
+
+				if command -v secubox-p2p >/dev/null 2>&1; then
+					secubox-p2p peers 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | while read -r peer; do
+						json_add_object
+						json_add_string "id" "$(echo "$peer" | jsonfilter -e '@.id' 2>/dev/null)"
+						json_add_string "name" "$(echo "$peer" | jsonfilter -e '@.name' 2>/dev/null)"
+						json_add_string "ip" "$(echo "$peer" | jsonfilter -e '@.ip' 2>/dev/null)"
+						json_add_boolean "online" "$(echo "$peer" | jsonfilter -e '@.online' 2>/dev/null)"
+						json_close_object
+					done
+				fi
+
+				json_close_array
+				json_dump
+				;;
+
+			get_published)
+				json_init
+				json_add_array "services"
+
+				if [ -f "$STATE_DIR/published.json" ]; then
+					cat "$STATE_DIR/published.json"
+				else
+					echo "[]"
+				fi
+				;;
+
+			master_init)
+				read -r input
+				domain=$(echo "$input" | jsonfilter -e '@.domain')
+
+				if [ -z "$domain" ]; then
+					echo '{"error":"Domain required"}'
+					exit 1
+				fi
+
+				output=$(vortexctl master init "$domain" 2>&1)
+				token=$(echo "$output" | grep "enrollment token:" | awk '{print $NF}')
+
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "domain" "$domain"
+				json_add_string "token" "$token"
+				json_dump
+				;;
+
+			delegate)
+				read -r input
+				node=$(echo "$input" | jsonfilter -e '@.node')
+				zone=$(echo "$input" | jsonfilter -e '@.zone')
+
+				if [ -z "$node" ] || [ -z "$zone" ]; then
+					echo '{"error":"Node and zone required"}'
+					exit 1
+				fi
+
+				vortexctl master delegate "$node" "$zone" >/dev/null 2>&1
+
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "zone" "$zone"
+				json_add_string "node" "$node"
+				json_dump
+				;;
+
+			slave_join)
+				read -r input
+				master=$(echo "$input" | jsonfilter -e '@.master')
+				token=$(echo "$input" | jsonfilter -e '@.token')
+
+				if [ -z "$master" ] || [ -z "$token" ]; then
+					echo '{"error":"Master IP and token required"}'
+					exit 1
+				fi
+
+				vortexctl slave join "$master" "$token" >/dev/null 2>&1
+
+				json_init
+				json_add_boolean "success" 1
+				json_dump
+				;;
+
+			mesh_sync)
+				vortexctl mesh sync >/dev/null 2>&1
+
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "synced_at" "$(date -Iseconds)"
+				json_dump
+				;;
+
+			mesh_publish)
+				read -r input
+				service=$(echo "$input" | jsonfilter -e '@.service')
+				domain=$(echo "$input" | jsonfilter -e '@.domain')
+
+				if [ -z "$service" ] || [ -z "$domain" ]; then
+					echo '{"error":"Service and domain required"}'
+					exit 1
+				fi
+
+				vortexctl mesh publish "$service" "$domain" >/dev/null 2>&1
+
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "service" "$service"
+				json_add_string "domain" "$domain"
+				json_dump
+				;;
+
+			*)
+				echo '{"error":"Unknown method"}'
+				;;
+		esac
+		;;
+esac

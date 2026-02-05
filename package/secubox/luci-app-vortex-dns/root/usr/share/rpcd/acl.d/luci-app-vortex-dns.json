@@ -1,0 +1,17 @@
+{
+	"luci-app-vortex-dns": {
+		"description": "Grant access to Vortex DNS",
+		"read": {
+			"uci": ["vortex-dns"],
+			"ubus": {
+				"luci.vortex-dns": ["status", "get_slaves", "get_peers", "get_published"]
+			}
+		},
+		"write": {
+			"uci": ["vortex-dns"],
+			"ubus": {
+				"luci.vortex-dns": ["master_init", "delegate", "revoke", "slave_join", "mesh_sync", "mesh_publish"]
+			}
+		}
+	}
+}

@@ -279,7 +279,12 @@
       "WebFetch(domain:zigbeefordomoticz.github.io)",
       "WebFetch(domain:rustdesk.com)",
       "WebFetch(domain:deepwiki.com)",
-      "Bash(traceroute:*)"
+      "Bash(traceroute:*)",
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt add package/secubox/secubox-app-mailserver/files/usr/sbin/mailctl package/secubox/secubox-app-mailserver/files/usr/lib/mailserver/container.sh .claude/WIP.md)",
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt commit -m \"$\\(cat <<''EOF''\nfix\\(mailserver\\): Use LMDB maps instead of hash for Alpine Postfix\n\nAlpine Linux''s Postfix is compiled with LMDB support, not BerkeleyDB\nhash support. This caused \"Temporary lookup failure\" errors on send.\n\nChanges:\n- Changed virtual_alias_maps and virtual_mailbox_maps to lmdb: prefix\n- Copy resolv.conf to Postfix chroot for DNS resolution\n- Added `mailctl fix-postfix` command to repair existing installations\n\nRoot cause: virtual_alias_maps was configured as hash:/etc/postfix/virtual\nbut the hash map type is not supported on Alpine, only lmdb.\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt add:*)",
+      "Bash(recipient table\" errors because Postfix treated the domain as local\ninstead of virtual.\n\nChanges:\n- Remove $mydomain from mydestination in setup.sh\n- Update fix-postfix command to also fix this issue\n- Ensure vdomains file is properly created\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt commit -m \"$\\(cat <<''EOF''\ndocs: Document mail port hijacking fix\n\nFirewall DNAT rules were redirecting ALL port 993/587/465 traffic\nto local mailserver, blocking external mail server connections.\n\nFix: Add -i $WAN_IF to only redirect inbound WAN traffic.\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
     ]
   }
 }
