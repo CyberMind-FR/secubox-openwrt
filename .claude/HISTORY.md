@@ -174,3 +174,14 @@ _Last updated: 2026-02-05_
       - Network rates now display in bits (Kbps/Mbps/Gbps) instead of bytes.
       - Uses SI units (1000 base) for industry-standard notation.
       - Dash placeholder ("— ↓ · — ↑") before first data point.
+
+22. **Punk Exposure Emancipate CLI (2026-02-05)**
+    - `secubox-exposure emancipate <service> <port> <domain> [--tor] [--dns] [--mesh] [--all]`
+      - Unified multi-channel exposure: Tor + DNS/SSL + Mesh in single command.
+      - Creates DNS A record via `dnsctl`, HAProxy vhost, requests certificate.
+      - Publishes to mesh via `secubox-p2p publish`.
+      - Stores emancipation state in UCI for status tracking.
+    - `secubox-exposure revoke <service> [--tor] [--dns] [--mesh] [--all]`
+      - Inverse of emancipate: removes exposure from selected channels.
+      - Cleans up DNS records, HAProxy vhosts, certificates, mesh publishing.
+    - Enhanced `status` command shows emancipated services with active channels.

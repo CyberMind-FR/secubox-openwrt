@@ -599,6 +599,286 @@ cmd_ssl_remove() {
 }
 
 # ============================================================================
+# EMANCIPATE - Unified Multi-Channel Exposure
+# ============================================================================
+
+cmd_emancipate() {
+    local service="$1"
+    local port="$2"
+    local domain="$3"
+    shift 3 2>/dev/null || true
+
+    if [ -z "$service" ] || [ -z "$port" ]; then
+        log_err "Usage: secubox-exposure emancipate <service> <port> <domain> [--tor] [--dns] [--mesh] [--all]"
+        return 1
+    fi
+
+    local enable_tor=0 enable_dns=0 enable_mesh=0
+
+    # Parse flags
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --tor) enable_tor=1 ;;
+            --dns) enable_dns=1 ;;
+            --mesh) enable_mesh=1 ;;
+            --all) enable_tor=1; enable_dns=1; enable_mesh=1 ;;
+        esac
+        shift
+    done
+
+    # Default to --all if no flags specified
+    if [ "$enable_tor" = "0" ] && [ "$enable_dns" = "0" ] && [ "$enable_mesh" = "0" ]; then
+        enable_tor=1
+        enable_dns=1
+        enable_mesh=1
+    fi
+
+    load_config
+
+    # Validate: check if port is listening
+    local listen_info=$(netstat -tlnp 2>/dev/null | grep ":$port ")
+    if [ -z "$listen_info" ]; then
+        log_warn "Port $port is not currently listening (service may start later)"
+    else
+        # Check if localhost-only
+        local listen_addr=$(echo "$listen_info" | awk '{print $4}' | head -1)
+        case "$listen_addr" in
+            127.0.0.1:*|::1:*)
+                log_err "Cannot expose localhost-only service (listening on $listen_addr)"
+                log_err "Service must bind to 0.0.0.0 or a specific LAN IP"
+                return 1
+                ;;
+        esac
+    fi
+
+    echo ""
+    log_info "Emancipating ${CYAN}$service${NC} on port $port"
+    echo ""
+
+    local success=0
+    local failed=0
+
+    # Channel 1: Tor Hidden Service
+    if [ "$enable_tor" = "1" ]; then
+        log_info "Channel 1: Tor Hidden Service..."
+        if cmd_tor_add "$service" "$port" 80 2>/dev/null; then
+            local onion=$(cat "$TOR_HIDDEN_DIR/$service/hostname" 2>/dev/null)
+            if [ -n "$onion" ]; then
+                echo -e "  ${GREEN}✓${NC} Tor: http://$onion"
+                success=$((success + 1))
+            else
+                echo -e "  ${YELLOW}⏳${NC} Tor: Generating onion address..."
+                success=$((success + 1))
+            fi
+        else
+            echo -e "  ${RED}✗${NC} Tor: Failed to create hidden service"
+            failed=$((failed + 1))
+        fi
+    fi
+
+    # Channel 2: DNS/SSL via HAProxy
+    if [ "$enable_dns" = "1" ]; then
+        if [ -z "$domain" ]; then
+            echo -e "  ${YELLOW}⚠${NC} DNS: Skipped (no domain specified)"
+        else
+            log_info "Channel 2: DNS/SSL via HAProxy..."
+
+            # Check for dnsctl
+            if [ -x "/usr/sbin/dnsctl" ]; then
+                # Get public IP
+                local public_ip=$(curl -s --connect-timeout 5 ifconfig.me 2>/dev/null || \
+                                  curl -s --connect-timeout 5 icanhazip.com 2>/dev/null || \
+                                  echo "")
+
+                if [ -n "$public_ip" ]; then
+                    # Extract subdomain from FQDN (e.g., gitea.example.com -> gitea)
+                    local subdomain="${domain%%.*}"
+
+                    # Create DNS A record
+                    if /usr/sbin/dnsctl add A "$subdomain" "$public_ip" 2>/dev/null; then
+                        log_ok "DNS A record created: $subdomain -> $public_ip"
+                    else
+                        log_warn "DNS A record creation failed (may already exist)"
+                    fi
+                else
+                    log_warn "Could not determine public IP for DNS record"
+                fi
+            else
+                log_warn "dnsctl not found - skipping DNS record creation"
+            fi
+
+            # Create HAProxy vhost + backend
+            if cmd_ssl_add "$service" "$domain" "$port" 2>/dev/null; then
+                echo -e "  ${GREEN}✓${NC} DNS: https://$domain"
+                success=$((success + 1))
+
+                # Request certificate if haproxyctl supports it
+                if [ -x "/usr/sbin/haproxyctl" ]; then
+                    log_info "Requesting SSL certificate for $domain..."
+                    /usr/sbin/haproxyctl cert add "$domain" 2>/dev/null || \
+                        log_warn "Certificate request may have failed (check haproxyctl logs)"
+                fi
+            else
+                echo -e "  ${RED}✗${NC} DNS: Failed to create HAProxy backend"
+                failed=$((failed + 1))
+            fi
+        fi
+    fi
+
+    # Channel 3: Mesh P2P
+    if [ "$enable_mesh" = "1" ]; then
+        log_info "Channel 3: Mesh P2P..."
+        if [ -x "/usr/sbin/secubox-p2p" ]; then
+            if /usr/sbin/secubox-p2p publish "$service" "$port" "$service" 2>/dev/null; then
+                echo -e "  ${GREEN}✓${NC} Mesh: http://${service}.mesh.local"
+                success=$((success + 1))
+
+                # Update mesh DNS
+                /usr/sbin/secubox-p2p dns-update 2>/dev/null || true
+            else
+                echo -e "  ${RED}✗${NC} Mesh: Failed to publish service"
+                failed=$((failed + 1))
+            fi
+        else
+            echo -e "  ${YELLOW}⚠${NC} Mesh: secubox-p2p not installed"
+        fi
+    fi
+
+    # Store emancipation state in UCI
+    uci set "${CONFIG_NAME}.${service}=service"
+    uci set "${CONFIG_NAME}.${service}.port=$port"
+    [ -n "$domain" ] && uci set "${CONFIG_NAME}.${service}.domain=$domain"
+    uci set "${CONFIG_NAME}.${service}.tor=$enable_tor"
+    uci set "${CONFIG_NAME}.${service}.dns=$enable_dns"
+    uci set "${CONFIG_NAME}.${service}.mesh=$enable_mesh"
+    uci set "${CONFIG_NAME}.${service}.emancipated=1"
+    uci commit "$CONFIG_NAME"
+
+    echo ""
+    if [ "$failed" -eq 0 ]; then
+        log_ok "Emancipation complete: $success channel(s) active"
+    else
+        log_warn "Emancipation partial: $success succeeded, $failed failed"
+    fi
+    echo ""
+}
+
+cmd_revoke() {
+    local service="$1"
+    shift 2>/dev/null || true
+
+    if [ -z "$service" ]; then
+        log_err "Usage: secubox-exposure revoke <service> [--tor] [--dns] [--mesh] [--all]"
+        return 1
+    fi
+
+    local enable_tor=0 enable_dns=0 enable_mesh=0
+
+    # Parse flags
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --tor) enable_tor=1 ;;
+            --dns) enable_dns=1 ;;
+            --mesh) enable_mesh=1 ;;
+            --all) enable_tor=1; enable_dns=1; enable_mesh=1 ;;
+        esac
+        shift
+    done
+
+    # Default to --all if no flags specified
+    if [ "$enable_tor" = "0" ] && [ "$enable_dns" = "0" ] && [ "$enable_mesh" = "0" ]; then
+        enable_tor=1
+        enable_dns=1
+        enable_mesh=1
+    fi
+
+    load_config
+
+    echo ""
+    log_info "Revoking exposure for ${CYAN}$service${NC}"
+    echo ""
+
+    local success=0
+
+    # Channel 1: Remove Tor Hidden Service
+    if [ "$enable_tor" = "1" ]; then
+        if [ -d "$TOR_HIDDEN_DIR/$service" ]; then
+            log_info "Removing Tor hidden service..."
+            cmd_tor_remove "$service" 2>/dev/null
+            echo -e "  ${GREEN}✓${NC} Tor: Hidden service removed"
+            success=$((success + 1))
+        else
+            echo -e "  ${YELLOW}−${NC} Tor: No hidden service found"
+        fi
+    fi
+
+    # Channel 2: Remove DNS/SSL
+    if [ "$enable_dns" = "1" ]; then
+        local domain=$(uci -q get "${CONFIG_NAME}.${service}.domain")
+
+        if [ -n "$domain" ]; then
+            log_info "Removing DNS/SSL..."
+
+            # Remove DNS record
+            if [ -x "/usr/sbin/dnsctl" ]; then
+                local subdomain="${domain%%.*}"
+                /usr/sbin/dnsctl rm A "$subdomain" 2>/dev/null || true
+            fi
+
+            # Remove HAProxy vhost/backend
+            cmd_ssl_remove "$service" 2>/dev/null
+            echo -e "  ${GREEN}✓${NC} DNS: HAProxy vhost removed"
+            success=$((success + 1))
+
+            # Remove certificate
+            if [ -x "/usr/sbin/haproxyctl" ]; then
+                /usr/sbin/haproxyctl cert remove "$domain" 2>/dev/null || true
+            fi
+        else
+            echo -e "  ${YELLOW}−${NC} DNS: No domain configured"
+        fi
+    fi
+
+    # Channel 3: Remove from Mesh
+    if [ "$enable_mesh" = "1" ]; then
+        if [ -x "/usr/sbin/secubox-p2p" ]; then
+            log_info "Removing from mesh..."
+            /usr/sbin/secubox-p2p unpublish "$service" 2>/dev/null || true
+            /usr/sbin/secubox-p2p dns-update 2>/dev/null || true
+            echo -e "  ${GREEN}✓${NC} Mesh: Service unpublished"
+            success=$((success + 1))
+        else
+            echo -e "  ${YELLOW}−${NC} Mesh: secubox-p2p not installed"
+        fi
+    fi
+
+    # Update UCI
+    if [ "$enable_tor" = "1" ] && [ "$enable_dns" = "1" ] && [ "$enable_mesh" = "1" ]; then
+        # Full revoke - delete the entire section
+        uci delete "${CONFIG_NAME}.${service}" 2>/dev/null
+    else
+        # Partial revoke - just update flags
+        [ "$enable_tor" = "1" ] && uci set "${CONFIG_NAME}.${service}.tor=0"
+        [ "$enable_dns" = "1" ] && uci set "${CONFIG_NAME}.${service}.dns=0"
+        [ "$enable_mesh" = "1" ] && uci set "${CONFIG_NAME}.${service}.mesh=0"
+
+        # Check if all channels are now disabled
+        local tor_enabled=$(uci -q get "${CONFIG_NAME}.${service}.tor" || echo "0")
+        local dns_enabled=$(uci -q get "${CONFIG_NAME}.${service}.dns" || echo "0")
+        local mesh_enabled=$(uci -q get "${CONFIG_NAME}.${service}.mesh" || echo "0")
+
+        if [ "$tor_enabled" = "0" ] && [ "$dns_enabled" = "0" ] && [ "$mesh_enabled" = "0" ]; then
+            uci set "${CONFIG_NAME}.${service}.emancipated=0"
+        fi
+    fi
+    uci commit "$CONFIG_NAME"
+
+    echo ""
+    log_ok "Revocation complete: $success channel(s) removed"
+    echo ""
+}
+
+# ============================================================================
 # STATUS & HELP
 # ============================================================================
 
@@ -648,6 +928,31 @@ cmd_status() {
     done
     [ "$ssl_backends" = "0" ] && echo "  (none configured)"
     echo ""
+
+    # Emancipated services
+    echo -e "${BLUE}Emancipated Services:${NC}"
+    local emancipated=0
+    for svc in $(uci show "$CONFIG_NAME" 2>/dev/null | grep "=service$" | cut -d'.' -f2 | cut -d'=' -f1); do
+        local is_emancipated=$(uci -q get "${CONFIG_NAME}.${svc}.emancipated")
+        [ "$is_emancipated" != "1" ] && continue
+
+        local port=$(uci -q get "${CONFIG_NAME}.${svc}.port")
+        local domain=$(uci -q get "${CONFIG_NAME}.${svc}.domain")
+        local tor=$(uci -q get "${CONFIG_NAME}.${svc}.tor")
+        local dns=$(uci -q get "${CONFIG_NAME}.${svc}.dns")
+        local mesh=$(uci -q get "${CONFIG_NAME}.${svc}.mesh")
+
+        local channels=""
+        [ "$tor" = "1" ] && channels="${channels}Tor "
+        [ "$dns" = "1" ] && channels="${channels}DNS "
+        [ "$mesh" = "1" ] && channels="${channels}Mesh"
+
+        echo "  - ${svc} (:${port}) [${channels}]"
+        [ -n "$domain" ] && echo "    Domain: ${domain}"
+        emancipated=$((emancipated + 1))
+    done
+    [ "$emancipated" = "0" ] && echo "  (none)"
+    echo ""
     echo -e "${CYAN}═══════════════════════════════════════════════════════════════${NC}"
 }
 
@@ -663,6 +968,13 @@ COMMANDS:
   fix-port <svc> [port]   Change service port (auto-assigns if no port given)
   status                  Show exposure status summary
 
+  emancipate <svc> <port> <domain> [flags]
+                          Expose service through multiple channels
+                          Flags: --tor, --dns, --mesh, --all (default)
+
+  revoke <svc> [flags]    Remove service exposure
+                          Flags: --tor, --dns, --mesh, --all (default)
+
   tor add <svc> [port]    Create Tor hidden service
   tor list                List hidden services
   tor remove <svc>        Remove hidden service
@@ -673,17 +985,25 @@ COMMANDS:
   ssl remove <svc>        Remove SSL backend
 
 EXAMPLES:
+  # Full emancipation (Tor + DNS + Mesh)
+  secubox-exposure emancipate gitea 3000 gitea.example.com --all
+
+  # Tor-only exposure
+  secubox-exposure emancipate streamlit 8501 "" --tor
+
+  # DNS/SSL only
+  secubox-exposure emancipate ollama 11434 ai.example.com --dns
+
+  # Revoke all channels
+  secubox-exposure revoke gitea --all
+
+  # Revoke only Tor
+  secubox-exposure revoke gitea --tor
+
+  # Legacy commands
   secubox-exposure scan
-  secubox-exposure conflicts
-  secubox-exposure fix-port domoticz 8180
-
   secubox-exposure tor add gitea
-  secubox-exposure tor add streamlit 8501 80
-  secubox-exposure tor list
-
   secubox-exposure ssl add gitea git.example.com
-  secubox-exposure ssl add streamlit app.example.com 8501
-  secubox-exposure ssl list
 
 EOF
 }
@@ -705,6 +1025,14 @@ case "$1" in
         ;;
     status)
         cmd_status
+        ;;
+    emancipate)
+        shift
+        cmd_emancipate "$@"
+        ;;
+    revoke)
+        shift
+        cmd_revoke "$@"
         ;;
     tor)
         case "$2" in

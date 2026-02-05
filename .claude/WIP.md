@@ -91,6 +91,15 @@
   - `formatBits()` helper for network rates (Kbps/Mbps/Gbps).
   - Cyberpunk theme support for empty state.
 
+- **Punk Exposure Emancipate CLI**
+  Status: DONE (2026-02-05)
+  Notes: Phase 1 of multi-channel exposure system.
+  - `secubox-exposure emancipate <svc> <port> <domain> [--tor] [--dns] [--mesh] [--all]`
+  - `secubox-exposure revoke <svc> [--tor] [--dns] [--mesh] [--all]`
+  - UCI tracking for emancipated services with channel status.
+  - Status command shows emancipated services.
+  - TODO: Fix mesh integration (secubox-p2p uses different commands).
+
 ## Next Up
 
 1. Rebuild bonus feed with all 2026-02-04/05 changes (IPK files need rebuild).

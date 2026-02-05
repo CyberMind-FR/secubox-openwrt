@@ -83,12 +83,14 @@ _Last updated: 2026-02-05_
     - Budget cap: configurable monthly cloud spend limit via LiteLLM.
     - ANSSI CSPN: Data Classifier + Mistral EU + offline mode = triple sovereignty proof.
 
-13. **Punk Exposure Multi-Domain DNS**
-    - Multi-domain DNS with P2P exposure and Tor endpoints.
-    - Classical HTTPS endpoint (DNS provider API: OVH, Gandi, Cloudflare).
-    - Administrable DNS provider API integration via `dnsctl`.
-    - Mapped to local services, mesh-federated, locally tweakable.
-    - Follows Peek / Poke / Emancipate model (see `PUNK-EXPOSURE.md`).
+13. ~~**Punk Exposure Multi-Domain DNS**~~ — In Progress (2026-02-05)
+    - ~~Multi-domain DNS with P2P exposure and Tor endpoints.~~
+    - ~~Classical HTTPS endpoint (DNS provider API: OVH, Gandi, Cloudflare).~~
+    - ~~Administrable DNS provider API integration via `dnsctl`.~~
+    - ~~Mapped to local services, mesh-federated, locally tweakable.~~
+    - ~~Follows Peek / Poke / Emancipate model (see `PUNK-EXPOSURE.md`).~~
+    - Phase 1 DONE: `emancipate` and `revoke` CLI commands added to secubox-exposure.
+    - Phase 2-4: Dashboard enhancements pending.
 
 14. **Jellyfin Post-Install**
     - Complete startup wizard (media library configuration).
