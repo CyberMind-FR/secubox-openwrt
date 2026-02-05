@@ -336,24 +336,35 @@ cmd_webmail() {
 			hostname="${hostname:-mail}"
 			local fqdn="${hostname}.${domain}"
 
-			log "Configuring webmail to use $fqdn..."
+			log "Configuring webmail to connect via socat proxy..."
 
 			local webmail=$(uci_get webmail.container)
 			webmail="${webmail:-secubox-webmail}"
 
-			# Update Roundcube config
+			# Docker containers reach host via gateway IP 172.17.0.1
+			# socat proxies IMAP on 10143 and SMTP on 10025
+			local docker_gateway="172.17.0.1"
+			local imap_proxy_port="10143"
+			local smtp_proxy_port="10025"
+
+			# Update Roundcube config to use socat proxy (plaintext, no SSL)
+			# SSL termination happens at HAProxy level for external access
 			docker exec "$webmail" sh -c "cat > /var/www/html/config/config.docker.inc.php << EOF
 <?php
   \\\$config['db_dsnw'] = 'sqlite:////var/roundcube/db/sqlite.db?mode=0646';
-  \\\$config['imap_host'] = 'ssl://$fqdn:993';
-  \\\$config['smtp_host'] = 'ssl://$fqdn:465';
+  \\\$config['db_dsnr'] = '';
+  // Connect to LXC mailserver via socat proxy on host
+  \\\$config['imap_host'] = '${docker_gateway}:${imap_proxy_port}';
+  \\\$config['smtp_host'] = '${docker_gateway}:${smtp_proxy_port}';
   \\\$config['username_domain'] = '$domain';
   \\\$config['temp_dir'] = '/tmp/roundcube-temp';
   \\\$config['skin'] = 'elastic';
+  \\\$config['request_path'] = '/';
   \\\$config['plugins'] = array_filter(array_unique(array_merge(\\\$config['plugins'], ['archive', 'zipdownload'])));
 EOF"
 
-			log "Webmail configured. Restart with: docker restart $webmail"
+			log "Webmail configured to use proxy at ${docker_gateway}:${imap_proxy_port}"
+			log "Ensure socat proxies are running (mailserver init.d starts them)"
 			;;
 		*)
 			echo "Webmail commands:"

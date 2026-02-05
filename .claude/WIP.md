@@ -43,7 +43,25 @@ _Last updated: 2026-02-06_
 
 ### In Progress
 
-_None currently active_
+- **Vortex DNS** - Meshed multi-dynamic subdomain delegation (QUEUED)
+
+### Just Completed (2026-02-06)
+
+- **CVE Triage Agent** — DONE
+  - Created `secubox-cve-triage` - AI-powered CVE analysis and vulnerability management
+  - Architecture: Collector → Analyzer → Recommender → Applier
+  - NVD API integration for CVE data
+  - CrowdSec CVE alert correlation
+  - LocalAI-powered impact analysis
+  - Approval workflow for patch recommendations
+  - Multi-source monitoring: opkg, LXC, Docker
+  - Created `luci-app-cve-triage` dashboard with alerts, pending queue, risk score
+
+- **Webmail Login 401 Issue** — RESOLVED
+  - Root cause: `config.docker.inc.php` overrode IMAP host to `ssl://mail.secubox.in:993`
+  - Docker container couldn't resolve domain or connect via SSL
+  - Fix: Changed to use socat proxy at `172.17.0.1:10143` (plaintext, internal)
+  - Updated `mailctl webmail configure` to use proxy instead of direct SSL
 
 ### Just Completed
 

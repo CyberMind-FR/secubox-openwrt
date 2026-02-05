@@ -1,0 +1,473 @@
+#!/bin/sh
+# SecuBox Vortex DNS Controller
+# Meshed multi-dynamic subdomain delegation system
+#
+# Copyright (C) 2026 CyberMind.fr
+
+CONFIG="vortex-dns"
+LIB_DIR="/usr/lib/vortex-dns"
+STATE_DIR="/var/lib/vortex-dns"
+LOG_TAG="vortex-dns"
+
+# Source libraries
+[ -f "$LIB_DIR/master.sh" ] && . "$LIB_DIR/master.sh"
+[ -f "$LIB_DIR/slave.sh" ] && . "$LIB_DIR/slave.sh"
+[ -f "$LIB_DIR/gossip.sh" ] && . "$LIB_DIR/gossip.sh"
+
+usage() {
+	cat <<'EOF'
+Usage: vortexctl <command> [options]
+
+Master Commands:
+  master init <wildcard_domain>   Initialize as master node
+  master delegate <node> <zone>   Delegate subzone to slave node
+  master revoke <zone>            Revoke zone delegation
+  master list-slaves              List delegated zones
+
+Slave Commands:
+  slave join <master_ip> <token>  Join as slave to master
+  slave leave                     Leave master hierarchy
+  slave status                    Show slave status
+
+Mesh Commands:
+  mesh status                     Show mesh DNS status
+  mesh sync                       Force sync with peers
+  mesh publish <service> <domain> Publish service to mesh
+  mesh unpublish <service>        Remove from mesh
+
+Submaster Commands:
+  submaster promote               Promote to submaster role
+  submaster demote                Demote to regular slave
+
+General:
+  status                          Show overall status
+  daemon                          Run sync daemon
+
+Configuration: /etc/config/vortex-dns
+EOF
+}
+
+log_info() { logger -t "$LOG_TAG" "$*"; echo "[INFO] $*"; }
+log_warn() { logger -t "$LOG_TAG" -p warning "$*"; echo "[WARN] $*" >&2; }
+log_error() { logger -t "$LOG_TAG" -p err "$*"; echo "[ERROR] $*" >&2; }
+
+uci_get() { uci -q get "${CONFIG}.$1"; }
+uci_set() { uci set "${CONFIG}.$1=$2"; }
+
+load_config() {
+	enabled=$(uci_get main.enabled)
+	mode=$(uci_get main.mode)
+	sync_interval=$(uci_get main.sync_interval)
+
+	master_enabled=$(uci_get master.enabled)
+	wildcard_domain=$(uci_get master.wildcard_domain)
+	dns_provider=$(uci_get master.dns_provider)
+
+	slave_enabled=$(uci_get slave.enabled)
+	parent_master=$(uci_get slave.parent_master)
+	delegated_zone=$(uci_get slave.delegated_zone)
+
+	gossip_enabled=$(uci_get mesh.gossip_enabled)
+	first_peek=$(uci_get mesh.first_peek)
+	auto_register=$(uci_get mesh.auto_register)
+
+	[ -z "$sync_interval" ] && sync_interval=300
+
+	mkdir -p "$STATE_DIR"
+}
+
+# =============================================================================
+# STATUS
+# =============================================================================
+
+cmd_status() {
+	load_config
+
+	echo "=== Vortex DNS Status ==="
+	echo ""
+	echo "Enabled: $([ "$enabled" = "1" ] && echo "Yes" || echo "No")"
+	echo "Mode: ${mode:-standalone}"
+	echo "Sync Interval: ${sync_interval}s"
+	echo ""
+
+	if [ "$master_enabled" = "1" ]; then
+		echo "=== Master Node ==="
+		echo "Wildcard Domain: ${wildcard_domain:-not set}"
+		echo "DNS Provider: ${dns_provider:-not set}"
+
+		# Count delegated zones
+		local zones=$(uci show "$CONFIG" 2>/dev/null | grep -c "=delegation")
+		echo "Delegated Zones: $zones"
+		echo ""
+	fi
+
+	if [ "$slave_enabled" = "1" ]; then
+		echo "=== Slave Node ==="
+		echo "Parent Master: ${parent_master:-not set}"
+		echo "Delegated Zone: ${delegated_zone:-not set}"
+		echo ""
+	fi
+
+	echo "=== Mesh Status ==="
+	echo "Gossip: $([ "$gossip_enabled" = "1" ] && echo "Enabled" || echo "Disabled")"
+	echo "First Peek: $([ "$first_peek" = "1" ] && echo "Enabled" || echo "Disabled")"
+	echo "Auto Register: $([ "$auto_register" = "1" ] && echo "Enabled" || echo "Disabled")"
+
+	# Count mesh peers
+	if command -v secubox-p2p >/dev/null 2>&1; then
+		local peers=$(secubox-p2p peers 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+		echo "Mesh Peers: $peers"
+	fi
+
+	# Count published services
+	if [ -f "$STATE_DIR/published.json" ]; then
+		local services=$(jsonfilter -i "$STATE_DIR/published.json" -e '@[*]' 2>/dev/null | wc -l)
+		echo "Published Services: $services"
+	fi
+}
+
+# =============================================================================
+# MASTER COMMANDS
+# =============================================================================
+
+cmd_master_init() {
+	local domain="$1"
+
+	[ -z "$domain" ] && {
+		echo "Usage: vortexctl master init <wildcard_domain>"
+		echo "Example: vortexctl master init secubox.io"
+		exit 1
+	}
+
+	load_config
+
+	log_info "Initializing as master for *.$domain"
+
+	# Get DNS provider from dns-provider config
+	local provider=$(uci -q get dns-provider.main.provider)
+	[ -z "$provider" ] && {
+		log_error "DNS provider not configured. Run: uci set dns-provider.main.provider=<ovh|gandi|cloudflare>"
+		exit 1
+	}
+
+	# Configure master mode
+	uci_set master.enabled 1
+	uci_set master.wildcard_domain "$domain"
+	uci_set master.dns_provider "$provider"
+	uci_set main.mode "master"
+	uci commit "$CONFIG"
+
+	# Create wildcard DNS record pointing to this node
+	local wan_ip=$(curl -s -4 ifconfig.me 2>/dev/null || wget -q -O - ifconfig.me 2>/dev/null)
+	if [ -n "$wan_ip" ]; then
+		log_info "Creating wildcard A record: *.$domain -> $wan_ip"
+		dnsctl add A "*" "$wan_ip" 300 2>/dev/null || log_warn "Failed to create wildcard record"
+	fi
+
+	# Generate master token for slave enrollment
+	local master_token=$(head -c 32 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 32)
+	echo "$master_token" > "$STATE_DIR/master_token"
+	chmod 600 "$STATE_DIR/master_token"
+
+	log_info "Master initialized for *.$domain"
+	echo ""
+	echo "Slave enrollment token: $master_token"
+	echo "Slaves can join with: vortexctl slave join $(hostname -I | awk '{print $1}') $master_token"
+}
+
+cmd_master_delegate() {
+	local node="$1"
+	local zone="$2"
+
+	[ -z "$node" ] || [ -z "$zone" ] && {
+		echo "Usage: vortexctl master delegate <node_ip> <subzone>"
+		echo "Example: vortexctl master delegate 192.168.1.100 node1"
+		exit 1
+	}
+
+	load_config
+
+	[ "$master_enabled" != "1" ] && {
+		log_error "Not configured as master. Run: vortexctl master init <domain>"
+		exit 1
+	}
+
+	local fqdn="${zone}.${wildcard_domain}"
+	log_info "Delegating $fqdn to $node"
+
+	# Create NS record for delegation
+	dnsctl add NS "$zone" "ns1.${fqdn}" 2>/dev/null
+	dnsctl add A "ns1.${zone}" "$node" 2>/dev/null
+
+	# Store delegation in UCI
+	local section="delegation_$(echo "$zone" | tr '.-' '__')"
+	uci set "${CONFIG}.${section}=delegation"
+	uci set "${CONFIG}.${section}.zone=$zone"
+	uci set "${CONFIG}.${section}.node=$node"
+	uci set "${CONFIG}.${section}.fqdn=$fqdn"
+	uci set "${CONFIG}.${section}.created=$(date -Iseconds)"
+	uci commit "$CONFIG"
+
+	# Notify slave via mesh
+	if [ "$gossip_enabled" = "1" ]; then
+		secubox-p2p publish "dns-delegation" "0" "zone=$fqdn,node=$node" 2>/dev/null
+	fi
+
+	log_info "Delegated $fqdn to $node"
+}
+
+cmd_master_list_slaves() {
+	load_config
+
+	echo "=== Delegated Zones ==="
+	echo ""
+
+	uci show "$CONFIG" 2>/dev/null | grep "=delegation" | while read -r line; do
+		local section=$(echo "$line" | cut -d= -f1 | cut -d. -f2)
+		local zone=$(uci_get "${section}.zone")
+		local node=$(uci_get "${section}.node")
+		local fqdn=$(uci_get "${section}.fqdn")
+		local created=$(uci_get "${section}.created")
+
+		echo "Zone: $zone"
+		echo "  FQDN: $fqdn"
+		echo "  Node: $node"
+		echo "  Created: $created"
+		echo ""
+	done
+}
+
+# =============================================================================
+# SLAVE COMMANDS
+# =============================================================================
+
+cmd_slave_join() {
+	local master_ip="$1"
+	local token="$2"
+
+	[ -z "$master_ip" ] || [ -z "$token" ] && {
+		echo "Usage: vortexctl slave join <master_ip> <enrollment_token>"
+		exit 1
+	}
+
+	load_config
+
+	log_info "Joining master at $master_ip..."
+
+	# Verify token with master (via mesh API)
+	local verify=$(wget -q -O - --timeout=10 "http://${master_ip}:7331/api/vortex/verify?token=$token" 2>/dev/null)
+
+	if [ -z "$verify" ]; then
+		log_warn "Could not verify with master, proceeding anyway..."
+	fi
+
+	# Configure slave mode
+	uci_set slave.enabled 1
+	uci_set slave.parent_master "$master_ip"
+	uci_set slave.sync_key "$token"
+	uci_set main.mode "slave"
+
+	# Request zone assignment from master
+	local hostname=$(uci -q get system.@system[0].hostname || hostname)
+	local my_ip=$(hostname -I | awk '{print $1}')
+
+	# Ask master to delegate a zone for us
+	local zone_response=$(wget -q -O - --timeout=10 \
+		"http://${master_ip}:7331/api/vortex/request-zone?hostname=$hostname&ip=$my_ip&token=$token" 2>/dev/null)
+
+	if [ -n "$zone_response" ]; then
+		local assigned_zone=$(echo "$zone_response" | jsonfilter -e '@.zone' 2>/dev/null)
+		if [ -n "$assigned_zone" ]; then
+			uci_set slave.delegated_zone "$assigned_zone"
+			log_info "Assigned zone: $assigned_zone"
+		fi
+	fi
+
+	uci commit "$CONFIG"
+
+	log_info "Joined master at $master_ip"
+	cmd_status
+}
+
+cmd_slave_status() {
+	load_config
+
+	[ "$slave_enabled" != "1" ] && {
+		echo "Not configured as slave"
+		exit 0
+	}
+
+	echo "=== Slave Status ==="
+	echo "Parent Master: $parent_master"
+	echo "Delegated Zone: ${delegated_zone:-pending}"
+
+	# Check connectivity to master
+	if wget -q -O /dev/null --timeout=3 "http://${parent_master}:7331/api/status" 2>/dev/null; then
+		echo "Master Connectivity: OK"
+	else
+		echo "Master Connectivity: FAILED"
+	fi
+}
+
+# =============================================================================
+# MESH COMMANDS
+# =============================================================================
+
+cmd_mesh_sync() {
+	load_config
+
+	log_info "Syncing with mesh peers..."
+
+	# Get all exposure entries from peers
+	if command -v secubox-p2p >/dev/null 2>&1; then
+		secubox-p2p sync 2>/dev/null
+	fi
+
+	# Sync DNS records based on mesh catalog
+	if [ -f "/tmp/secubox-p2p-services.json" ]; then
+		jsonfilter -i /tmp/secubox-p2p-services.json -e '@[*]' 2>/dev/null | while read -r svc; do
+			local name=$(echo "$svc" | jsonfilter -e '@.name' 2>/dev/null)
+			local domain=$(echo "$svc" | jsonfilter -e '@.domain' 2>/dev/null)
+			local ip=$(echo "$svc" | jsonfilter -e '@.ip' 2>/dev/null)
+
+			if [ -n "$domain" ] && [ -n "$ip" ]; then
+				log_info "Mesh sync: $domain -> $ip"
+				# Update local DNS cache/records as needed
+			fi
+		done
+	fi
+
+	date -Iseconds > "$STATE_DIR/last_sync"
+	log_info "Mesh sync complete"
+}
+
+cmd_mesh_publish() {
+	local service="$1"
+	local domain="$2"
+
+	[ -z "$service" ] || [ -z "$domain" ] && {
+		echo "Usage: vortexctl mesh publish <service> <domain>"
+		exit 1
+	}
+
+	load_config
+
+	log_info "Publishing $service as $domain to mesh..."
+
+	# Use secubox-p2p to publish
+	if command -v secubox-p2p >/dev/null 2>&1; then
+		secubox-p2p publish "$service" "0" "domain=$domain" 2>/dev/null
+	fi
+
+	# Store locally
+	mkdir -p "$STATE_DIR"
+	local entry="{\"service\":\"$service\",\"domain\":\"$domain\",\"published\":\"$(date -Iseconds)\"}"
+
+	if [ -f "$STATE_DIR/published.json" ]; then
+		# Append to existing
+		sed -i "s/\]$/,$entry]/" "$STATE_DIR/published.json"
+	else
+		echo "[$entry]" > "$STATE_DIR/published.json"
+	fi
+
+	log_info "Published $service as $domain"
+}
+
+cmd_mesh_status() {
+	load_config
+
+	echo "=== Mesh DNS Status ==="
+	echo ""
+	echo "Gossip: $([ "$gossip_enabled" = "1" ] && echo "Enabled" || echo "Disabled")"
+	echo "First Peek: $([ "$first_peek" = "1" ] && echo "Enabled" || echo "Disabled")"
+	echo "Auto Register: $([ "$auto_register" = "1" ] && echo "Enabled" || echo "Disabled")"
+	echo ""
+
+	if [ -f "$STATE_DIR/last_sync" ]; then
+		echo "Last Sync: $(cat "$STATE_DIR/last_sync")"
+	fi
+
+	echo ""
+	echo "=== Published Services ==="
+	if [ -f "$STATE_DIR/published.json" ]; then
+		jsonfilter -i "$STATE_DIR/published.json" -e '@[*]' 2>/dev/null | while read -r pub; do
+			local svc=$(echo "$pub" | jsonfilter -e '@.service' 2>/dev/null)
+			local dom=$(echo "$pub" | jsonfilter -e '@.domain' 2>/dev/null)
+			echo "  $svc -> $dom"
+		done
+	else
+		echo "  (none)"
+	fi
+}
+
+# =============================================================================
+# DAEMON
+# =============================================================================
+
+cmd_daemon() {
+	load_config
+
+	[ "$enabled" = "1" ] || {
+		log_error "Vortex DNS is disabled"
+		exit 1
+	}
+
+	log_info "Starting Vortex DNS daemon (interval: ${sync_interval}s)..."
+
+	while true; do
+		cmd_mesh_sync 2>&1 | while read -r line; do
+			logger -t "$LOG_TAG" "$line"
+		done
+
+		sleep "$sync_interval"
+	done
+}
+
+# =============================================================================
+# MAIN
+# =============================================================================
+
+case "$1" in
+	status)
+		cmd_status
+		;;
+	master)
+		case "$2" in
+			init) cmd_master_init "$3" ;;
+			delegate) cmd_master_delegate "$3" "$4" ;;
+			revoke) log_info "Not implemented yet" ;;
+			list-slaves) cmd_master_list_slaves ;;
+			*) echo "Unknown master command: $2"; usage; exit 1 ;;
+		esac
+		;;
+	slave)
+		case "$2" in
+			join) cmd_slave_join "$3" "$4" ;;
+			leave) log_info "Not implemented yet" ;;
+			status) cmd_slave_status ;;
+			*) echo "Unknown slave command: $2"; usage; exit 1 ;;
+		esac
+		;;
+	mesh)
+		case "$2" in
+			status) cmd_mesh_status ;;
+			sync) cmd_mesh_sync ;;
+			publish) cmd_mesh_publish "$3" "$4" ;;
+			unpublish) log_info "Not implemented yet" ;;
+			*) echo "Unknown mesh command: $2"; usage; exit 1 ;;
+		esac
+		;;
+	submaster)
+		log_info "Submaster commands not implemented yet"
+		;;
+	daemon)
+		cmd_daemon
+		;;
+	-h|--help|help)
+		usage
+		;;
+	*)
+		usage
+		exit 1
+		;;
+esac

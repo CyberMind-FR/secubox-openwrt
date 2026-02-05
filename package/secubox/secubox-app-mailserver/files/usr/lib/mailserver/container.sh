@@ -72,6 +72,8 @@ EOF
 #!/bin/sh
 apk update
 apk add postfix postfix-pcre dovecot dovecot-lmtpd dovecot-pigeonhole-plugin rspamd opendkim
+# Configure Dovecot for local plaintext auth (needed for Docker webmail containers)
+echo "disable_plaintext_auth = no" >> /etc/dovecot/dovecot.conf
 # Configure postfix
 postconf -e 'myhostname = MAIL_HOSTNAME'
 postconf -e 'mydomain = MAIL_DOMAIN'

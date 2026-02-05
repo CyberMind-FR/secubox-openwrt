@@ -168,7 +168,7 @@ All cloud providers are **opt-in**. Offline resilience: local tier always active
 
 ### v0.19.0 — AI Expansion + MirrorNet
 
-- [ ] CVE Triage agent
+- [x] CVE Triage agent (Done 2026-02-06)
 - [ ] Network Anomaly agent
 - [ ] LocalRecall memory integration
 - [ ] AI Insights dashboard

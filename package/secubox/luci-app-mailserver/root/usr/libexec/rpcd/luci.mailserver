@@ -86,10 +86,14 @@ case "$1" in
 				json_add_string "webmail_container" "$webmail_container"
 				json_add_boolean "mesh_enabled" "${mesh_enabled:-0}"
 
-				# Port status
+				# Port status - check inside container
 				json_add_object "ports"
+				container_ports=""
+				if [ "$state" = "running" ]; then
+					container_ports=$(lxc-attach -n "$container" -- netstat -tln 2>/dev/null)
+				fi
 				for port in 25 587 465 993 995; do
-					if netstat -tln 2>/dev/null | grep -q ":$port "; then
+					if echo "$container_ports" | grep -q ":$port "; then
 						json_add_boolean "$port" 1
 					else
 						json_add_boolean "$port" 0

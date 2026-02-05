@@ -53,6 +53,35 @@ lxc.cap.drop = sys_module mac_admin mac_override sys_time
 
 ---
 
+### Issue: LXC container fails with "cgroup:mixed" mount auto
+
+**Symptoms:**
+```
+ERROR cgfsng - Failed to create cgroup at_mnt 38()
+Failed to mount "/sys/fs/cgroup"
+```
+
+**Root Cause:**
+The `lxc.mount.auto = cgroup:mixed` directive tries to mount cgroup v1 inside the container, which fails on hosts running cgroup v2 (unified hierarchy).
+
+**Solution:**
+Remove `cgroup:mixed` from the mount.auto line. For containers using host networking (like HAProxy), use minimal mounts:
+
+```bash
+# BAD - causes cgroup mount failures:
+lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+
+# GOOD - works on cgroup v2 systems:
+lxc.mount.entry = /some/path opt/somedir none bind,create=dir 0 0
+lxc.seccomp.profile =
+lxc.autodev = 1
+```
+
+**Key Recommendation:**
+When creating LXC configs for SecuBox packages, avoid `lxc.mount.auto` entirely. Use explicit `lxc.mount.entry` bind mounts instead and let the container manage its own proc/sys if needed.
+
+---
+
 ### Issue: Alpine-based LXC rootfs incompatible with host cgroups
 
 **Symptoms:**

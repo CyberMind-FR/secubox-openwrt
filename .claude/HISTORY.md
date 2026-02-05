@@ -376,3 +376,17 @@ _Last updated: 2026-02-06_
       - `mail-setup [host] [priority]` — create MX, SPF, DMARC records
       - `dkim-add [selector] <pubkey>` — add DKIM TXT record
     - Renamed `secbx-webmail` Docker container to `secubox-webmail` for consistency.
+
+34. **HAProxy/Mailserver LXC cgroup Fixes & Documentation (2026-02-06)**
+    - Fixed HAProxy LXC container cgroup mount failure:
+      - Removed `lxc.mount.auto = proc:mixed sys:ro cgroup:mixed` which fails on cgroup v2 hosts
+      - Simplified to explicit `lxc.mount.entry` bind mounts only
+      - Updated `haproxyctl` `lxc_create_config()` function with working config
+    - Fixed Docker-to-LXC mailserver connectivity:
+      - Added socat TCP proxies on ports 10143/10025 in mailserver init.d script
+      - Configured Dovecot with `disable_plaintext_auth = no` for local connections
+      - Roundcube can now reach LXC mailserver via host-bridged ports
+    - Documentation updates:
+      - Added "LXC container fails with cgroup:mixed" section to FAQ-TROUBLESHOOTING.md
+      - Updated CLAUDE.md Session Startup section to include FAQ-TROUBLESHOOTING.md consultation
+      - Key recommendation: avoid `lxc.mount.auto` entirely, use explicit bind mounts

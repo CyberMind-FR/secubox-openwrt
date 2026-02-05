@@ -1,0 +1,28 @@
+config vortex 'main'
+	option enabled '1'
+	option mode 'standalone'
+	option sync_interval '300'
+
+config master 'master'
+	option enabled '0'
+	option wildcard_domain ''
+	option dns_provider ''
+	option auto_delegate '1'
+	option delegation_ttl '300'
+
+config slave 'slave'
+	option enabled '0'
+	option parent_master ''
+	option delegated_zone ''
+	option sync_key ''
+
+config mesh 'mesh'
+	option gossip_enabled '1'
+	option first_peek '1'
+	option auto_register '1'
+	option propagate_exposure '1'
+
+config submaster 'submaster'
+	option enabled '0'
+	option max_slaves '10'
+	option depth '1'

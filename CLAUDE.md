@@ -9,6 +9,7 @@
 3. `.claude/HISTORY.md` — Completed milestones with dates (gap analysis reference)
 4. `.claude/context.md` — Module map, stack overview, and templates
 5. `package/secubox/PUNK-EXPOSURE.md` — Architectural spec for exposure features
+6. `.claude/FAQ-TROUBLESHOOTING.md` — **Consult before debugging** — resolved issues and known fixes for LXC cgroups, networking, HAProxy, mitmproxy, DNS
 
 **When the user says "continue" or "next"**, consult WIP.md "Next Up" and TODO.md "Open" to pick the next task. When completing work, update these files to keep them current. New features and fixes must be appended to HISTORY.md with the date.
 

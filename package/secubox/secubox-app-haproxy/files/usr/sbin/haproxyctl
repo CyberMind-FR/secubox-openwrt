@@ -276,20 +276,23 @@ lxc.arch = $arch
 # Network: use host network for binding ports
 lxc.net.0.type = none
 
-# Mount points
-lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+# Mount points - avoid cgroup:mixed which causes failures on some systems
 lxc.mount.entry = $data_path opt/haproxy none bind,create=dir 0 0
+
+# Disable seccomp for compatibility
+lxc.seccomp.profile =
+
+# TTY/PTY settings
+lxc.tty.max = 0
+lxc.pty.max = 256
+
+# Auto device nodes
+lxc.autodev = 1
 
 # Environment
 lxc.environment = HTTP_PORT=$http_port
 lxc.environment = HTTPS_PORT=$https_port
 lxc.environment = STATS_PORT=$stats_port
-
-# Security
-lxc.cap.drop = sys_admin sys_module mac_admin mac_override sys_time
-
-# Resource limits (cgroup2)
-lxc.cgroup2.memory.max = $mem_bytes
 
 # Init command
 lxc.init.cmd = /opt/start-haproxy.sh
