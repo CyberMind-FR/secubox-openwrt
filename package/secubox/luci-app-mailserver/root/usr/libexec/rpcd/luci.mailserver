@@ -37,41 +37,41 @@ case "$1" in
 			status)
 				json_init
 
-				local enabled=$(uci -q get $CONFIG.main.enabled)
-				local container=$(uci -q get $CONFIG.main.container)
+				enabled=$(uci -q get $CONFIG.main.enabled)
+				container=$(uci -q get $CONFIG.main.container)
 				container="${container:-mailserver}"
-				local domain=$(uci -q get $CONFIG.main.domain)
-				local hostname=$(uci -q get $CONFIG.main.hostname)
+				domain=$(uci -q get $CONFIG.main.domain)
+				hostname=$(uci -q get $CONFIG.main.hostname)
 				hostname="${hostname:-mail}"
-				local data_path=$(uci -q get $CONFIG.main.data_path)
+				data_path=$(uci -q get $CONFIG.main.data_path)
 				data_path="${data_path:-/srv/mailserver}"
 
 				# Container state
-				local state="stopped"
+				state="stopped"
 				lxc-info -n "$container" 2>/dev/null | grep -q "RUNNING" && state="running"
 
 				# User count
-				local user_count=0
+				user_count=0
 				[ -f "$data_path/config/users" ] && user_count=$(wc -l < "$data_path/config/users" 2>/dev/null || echo "0")
 
 				# Storage
-				local storage=$(du -sh "$data_path" 2>/dev/null | awk '{print $1}')
+				storage=$(du -sh "$data_path" 2>/dev/null | awk '{print $1}')
 
 				# SSL status
-				local ssl_valid=0
+				ssl_valid=0
 				if [ -f "$data_path/ssl/fullchain.pem" ]; then
-					local expiry=$(openssl x509 -in "$data_path/ssl/fullchain.pem" -noout -enddate 2>/dev/null | cut -d= -f2)
+					expiry=$(openssl x509 -in "$data_path/ssl/fullchain.pem" -noout -enddate 2>/dev/null | cut -d= -f2)
 					[ -n "$expiry" ] && ssl_valid=1
 				fi
 
 				# Webmail
-				local webmail_container=$(uci -q get $CONFIG.webmail.container)
+				webmail_container=$(uci -q get $CONFIG.webmail.container)
 				webmail_container="${webmail_container:-secubox-webmail}"
-				local webmail_running=0
+				webmail_running=0
 				docker ps 2>/dev/null | grep -q "$webmail_container" && webmail_running=1
 
 				# Mesh
-				local mesh_enabled=$(uci -q get $CONFIG.mesh.enabled)
+				mesh_enabled=$(uci -q get $CONFIG.mesh.enabled)
 
 				json_add_boolean "enabled" "${enabled:-0}"
 				json_add_string "state" "$state"
@@ -101,7 +101,7 @@ case "$1" in
 				;;
 
 			user_list)
-				local data_path=$(uci -q get $CONFIG.main.data_path)
+				data_path=$(uci -q get $CONFIG.main.data_path)
 				data_path="${data_path:-/srv/mailserver}"
 
 				json_init
@@ -110,11 +110,11 @@ case "$1" in
 				if [ -f "$data_path/config/users" ]; then
 					while IFS=: read -r email hash; do
 						[ -z "$email" ] && continue
-						local domain=$(echo "$email" | cut -d@ -f2)
-						local user=$(echo "$email" | cut -d@ -f1)
-						local maildir="$data_path/mail/$domain/$user"
-						local size=$(du -sh "$maildir" 2>/dev/null | awk '{print $1}')
-						local count=$(find "$maildir" -type f 2>/dev/null | wc -l)
+						udomain=$(echo "$email" | cut -d@ -f2)
+						user=$(echo "$email" | cut -d@ -f1)
+						maildir="$data_path/mail/$udomain/$user"
+						size=$(du -sh "$maildir" 2>/dev/null | awk '{print $1}')
+						count=$(find "$maildir" -type f 2>/dev/null | wc -l)
 
 						json_add_object ""
 						json_add_string "email" "$email"
@@ -129,17 +129,17 @@ case "$1" in
 				;;
 
 			alias_list)
-				local data_path=$(uci -q get $CONFIG.main.data_path)
+				data_path=$(uci -q get $CONFIG.main.data_path)
 				data_path="${data_path:-/srv/mailserver}"
 
 				json_init
 				json_add_array "aliases"
 
 				if [ -f "$data_path/config/valias" ]; then
-					while read -r alias target; do
-						[ -z "$alias" ] && continue
+					while read -r aalias target; do
+						[ -z "$aalias" ] && continue
 						json_add_object ""
-						json_add_string "alias" "$alias"
+						json_add_string "alias" "$aalias"
 						json_add_string "target" "$target"
 						json_close_object
 					done < "$data_path/config/valias"
@@ -150,9 +150,9 @@ case "$1" in
 				;;
 
 			webmail_status)
-				local webmail_container=$(uci -q get $CONFIG.webmail.container)
+				webmail_container=$(uci -q get $CONFIG.webmail.container)
 				webmail_container="${webmail_container:-secubox-webmail}"
-				local port=$(uci -q get $CONFIG.webmail.port)
+				port=$(uci -q get $CONFIG.webmail.port)
 				port="${port:-8026}"
 
 				json_init
@@ -174,19 +174,19 @@ case "$1" in
 				json_get_var lines lines
 				lines="${lines:-50}"
 
-				local container=$(uci -q get $CONFIG.main.container)
+				container=$(uci -q get $CONFIG.main.container)
 				container="${container:-mailserver}"
 
 				json_init
-				local log_output=$(lxc-attach -n "$container" -- tail -n "$lines" /var/log/mail.log 2>/dev/null)
+				log_output=$(lxc-attach -n "$container" -- tail -n "$lines" /var/log/mail.log 2>/dev/null)
 				json_add_string "logs" "$log_output"
 				json_dump
 				;;
 
 			install)
 				json_init
-				local output=$($MAILCTL install 2>&1)
-				local rc=$?
+				output=$($MAILCTL install 2>&1)
+				rc=$?
 				json_add_int "code" "$rc"
 				json_add_string "output" "$output"
 				json_dump
@@ -223,7 +223,7 @@ case "$1" in
 					json_add_int "code" 1
 					json_add_string "error" "Email required"
 				else
-					local output=$($MAILCTL user add "$email" "$password" 2>&1)
+					output=$($MAILCTL user add "$email" "$password" 2>&1)
 					json_add_int "code" "$?"
 					json_add_string "output" "$output"
 				fi
@@ -239,7 +239,7 @@ case "$1" in
 					json_add_int "code" 1
 					json_add_string "error" "Email required"
 				else
-					local output=$($MAILCTL user del "$email" 2>&1)
+					output=$($MAILCTL user del "$email" 2>&1)
 					json_add_int "code" "$?"
 					json_add_string "output" "$output"
 				fi
@@ -256,7 +256,7 @@ case "$1" in
 					json_add_int "code" 1
 					json_add_string "error" "Email and password required"
 				else
-					local output=$($MAILCTL user passwd "$email" "$password" 2>&1)
+					output=$($MAILCTL user passwd "$email" "$password" 2>&1)
 					json_add_int "code" "$?"
 					json_add_string "output" "$output"
 				fi
@@ -265,15 +265,15 @@ case "$1" in
 
 			alias_add)
 				json_load "$3"
-				json_get_var alias alias
+				json_get_var aalias alias
 				json_get_var target target
 
 				json_init
-				if [ -z "$alias" ] || [ -z "$target" ]; then
+				if [ -z "$aalias" ] || [ -z "$target" ]; then
 					json_add_int "code" 1
 					json_add_string "error" "Alias and target required"
 				else
-					local output=$($MAILCTL alias add "$alias" "$target" 2>&1)
+					output=$($MAILCTL alias add "$aalias" "$target" 2>&1)
 					json_add_int "code" "$?"
 					json_add_string "output" "$output"
 				fi
@@ -282,7 +282,7 @@ case "$1" in
 
 			dns_setup)
 				json_init
-				local output=$($MAILCTL dns-setup 2>&1)
+				output=$($MAILCTL dns-setup 2>&1)
 				json_add_int "code" "$?"
 				json_add_string "output" "$output"
 				json_dump
@@ -290,7 +290,7 @@ case "$1" in
 
 			ssl_setup)
 				json_init
-				local output=$($MAILCTL ssl-setup 2>&1)
+				output=$($MAILCTL ssl-setup 2>&1)
 				json_add_int "code" "$?"
 				json_add_string "output" "$output"
 				json_dump
@@ -298,7 +298,7 @@ case "$1" in
 
 			webmail_configure)
 				json_init
-				local output=$($MAILCTL webmail configure 2>&1)
+				output=$($MAILCTL webmail configure 2>&1)
 				json_add_int "code" "$?"
 				json_add_string "output" "$output"
 				json_dump
@@ -306,7 +306,7 @@ case "$1" in
 
 			mesh_backup)
 				json_init
-				local output=$($MAILCTL mesh backup 2>&1)
+				output=$($MAILCTL mesh backup 2>&1)
 				json_add_int "code" "$?"
 				json_add_string "output" "$output"
 				json_dump
@@ -318,7 +318,7 @@ case "$1" in
 				mode="${mode:-push}"
 
 				json_init
-				local output=$($MAILCTL mesh sync "$mode" 2>&1)
+				output=$($MAILCTL mesh sync "$mode" 2>&1)
 				json_add_int "code" "$?"
 				json_add_string "output" "$output"
 				json_dump

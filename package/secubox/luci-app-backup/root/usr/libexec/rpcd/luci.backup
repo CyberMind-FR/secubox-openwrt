@@ -27,8 +27,8 @@ case "$1" in
 				json_init
 
 				# Get storage info
-				local storage=$($BACKUP_CMD status 2>/dev/null | grep "Storage Path" | cut -d: -f2 | tr -d ' ')
-				local used=$($BACKUP_CMD status 2>/dev/null | grep "Storage Used" | cut -d: -f2 | tr -d ' ')
+				storage=$($BACKUP_CMD status 2>/dev/null | grep "Storage Path" | cut -d: -f2 | tr -d ' ')
+				used=$($BACKUP_CMD status 2>/dev/null | grep "Storage Used" | cut -d: -f2 | tr -d ' ')
 
 				json_add_string "storage_path" "${storage:-/srv/backups}"
 				json_add_string "storage_used" "${used:-0}"
@@ -36,10 +36,10 @@ case "$1" in
 				# Last backup times
 				json_add_object "last_backup"
 				for type in config containers services; do
-					local latest=$(ls -t "${storage:-/srv/backups}/$type/"*.tar* 2>/dev/null | head -1)
+					latest=$(ls -t "${storage:-/srv/backups}/$type/"*.tar* 2>/dev/null | head -1)
 					if [ -n "$latest" ]; then
-						local date=$(stat -c %Y "$latest" 2>/dev/null)
-						json_add_int "$type" "${date:-0}"
+						bdate=$(stat -c %Y "$latest" 2>/dev/null)
+						json_add_int "$type" "${bdate:-0}"
 					else
 						json_add_int "$type" 0
 					fi
@@ -47,7 +47,7 @@ case "$1" in
 				json_close_object
 
 				# Container count
-				local containers=$(ls -d /srv/lxc/*/ 2>/dev/null | wc -l)
+				containers=$(ls -d /srv/lxc/*/ 2>/dev/null | wc -l)
 				json_add_int "container_count" "$containers"
 
 				json_dump
@@ -58,7 +58,7 @@ case "$1" in
 				json_get_var type type
 				type="${type:-all}"
 
-				local storage=$(uci -q get backup.main.storage_path)
+				storage=$(uci -q get backup.main.storage_path)
 				storage="${storage:-/srv/backups}"
 
 				json_init
@@ -66,7 +66,7 @@ case "$1" in
 
 				# List config backups
 				if [ "$type" = "all" ] || [ "$type" = "config" ]; then
-					for f in "$storage/config/"*.tar* 2>/dev/null; do
+					ls "$storage/config/"*.tar* 2>/dev/null | while read f; do
 						[ -f "$f" ] || continue
 						json_add_object ""
 						json_add_string "file" "$(basename "$f")"
@@ -79,7 +79,7 @@ case "$1" in
 
 				# List container backups
 				if [ "$type" = "all" ] || [ "$type" = "containers" ]; then
-					for f in "$storage/containers/"*.tar* 2>/dev/null; do
+					ls "$storage/containers/"*.tar* 2>/dev/null | while read f; do
 						[ -f "$f" ] || continue
 						json_add_object ""
 						json_add_string "file" "$(basename "$f")"
@@ -92,7 +92,7 @@ case "$1" in
 
 				# List service backups
 				if [ "$type" = "all" ] || [ "$type" = "services" ]; then
-					for f in "$storage/services/"*.tar* 2>/dev/null; do
+					ls "$storage/services/"*.tar* 2>/dev/null | while read f; do
 						[ -f "$f" ] || continue
 						json_add_object ""
 						json_add_string "file" "$(basename "$f")"
@@ -113,17 +113,17 @@ case "$1" in
 
 				for dir in /srv/lxc/*/; do
 					[ -d "$dir" ] || continue
-					local name=$(basename "$dir")
+					name=$(basename "$dir")
 					[ -f "$dir/config" ] || continue
 
-					local state="stopped"
+					state="stopped"
 					lxc-info -n "$name" 2>/dev/null | grep -q "RUNNING" && state="running"
-					local size=$(du -sh "$dir" 2>/dev/null | awk '{print $1}')
+					size=$(du -sh "$dir" 2>/dev/null | awk '{print $1}')
 
 					# Count backups for this container
-					local storage=$(uci -q get backup.main.storage_path)
+					storage=$(uci -q get backup.main.storage_path)
 					storage="${storage:-/srv/backups}"
-					local backup_count=$(ls -1 "$storage/containers/${name}-"*.tar* 2>/dev/null | wc -l)
+					backup_count=$(ls -1 "$storage/containers/${name}-"*.tar* 2>/dev/null | wc -l)
 
 					json_add_object ""
 					json_add_string "name" "$name"
@@ -142,9 +142,8 @@ case "$1" in
 				json_get_var type type
 				type="${type:-full}"
 
-				local result
 				result=$($BACKUP_CMD create --$type 2>&1)
-				local rc=$?
+				rc=$?
 
 				json_init
 				json_add_int "code" "$rc"
@@ -165,12 +164,11 @@ case "$1" in
 					exit 0
 				}
 
-				local opts=""
+				opts=""
 				[ "$dry_run" = "1" ] || [ "$dry_run" = "true" ] && opts="--dry-run"
 
-				local result
 				result=$($BACKUP_CMD restore "$file" $opts 2>&1)
-				local rc=$?
+				rc=$?
 
 				json_init
 				json_add_int "code" "$rc"
@@ -179,9 +177,8 @@ case "$1" in
 				;;
 
 			cleanup)
-				local result
 				result=$($BACKUP_CMD cleanup 2>&1)
-				local rc=$?
+				rc=$?
 
 				json_init
 				json_add_int "code" "$rc"
@@ -201,9 +198,8 @@ case "$1" in
 					exit 0
 				}
 
-				local result
 				result=$($BACKUP_CMD container backup "$name" 2>&1)
-				local rc=$?
+				rc=$?
 
 				json_init
 				json_add_int "code" "$rc"
@@ -224,9 +220,8 @@ case "$1" in
 					exit 0
 				}
 
-				local result
 				result=$($BACKUP_CMD container restore "$name" "$file" 2>&1)
-				local rc=$?
+				rc=$?
 
 				json_init
 				json_add_int "code" "$rc"
