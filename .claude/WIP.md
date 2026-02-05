@@ -74,9 +74,9 @@ _None currently active_
    - Migrate current `luci-app-dnsguard` to AI-powered agent
    - DNS anomaly detection with ML patterns
 
-4. **LocalAI Upgrade → 3.9**
-   - Update `secubox-app-localai` to version 3.9
-   - Add new model presets
+4. ~~**LocalAI Upgrade → 3.9**~~ — DONE (2026-02-06)
+   - Upgraded to v3.9.0 with Agent Jobs Panel and Memory Reclaimer
+   - Updated README with complete CLI reference and model presets
 
 ---
 
@@ -109,7 +109,7 @@ _None currently active_
 | MCP Server | TODO |
 | Threat Analyst | TODO |
 | DNS Guard migration | TODO |
-| LocalAI 3.9 | TODO |
+| LocalAI 3.9 | DONE |
 
 ### Certifications
 

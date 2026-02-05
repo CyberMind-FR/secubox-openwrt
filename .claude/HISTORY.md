@@ -229,3 +229,12 @@ _Last updated: 2026-02-05_
     - Added strategic reference to Fanzine v3 document.
     - Consolidated completed items under "Resolved" section.
     - Created version milestone checklists for tracking progress.
+
+27. **LocalAI Upgrade to v3.9.0 (2026-02-06)**
+    - Upgraded `secubox-app-localai` from v2.25.0 to v3.9.0.
+    - New features in v3.9.0:
+      - **Agent Jobs Panel**: Schedule and manage background agentic tasks via web UI and API
+      - **Memory Reclaimer**: LRU eviction for loaded models, automatic VRAM cleanup
+      - **VibeVoice backend**: New voice synthesis support
+    - Updated README with complete CLI reference, model presets table, API endpoints.
+    - Part of v0.18 AI Gateway roadmap (Couche 2).

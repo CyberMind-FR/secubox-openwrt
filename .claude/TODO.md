@@ -158,7 +158,7 @@ All cloud providers are **opt-in**. Offline resilience: local tier always active
 
 ### v0.18.0 — MirrorBox Core v1.0
 
-- [ ] LocalAI upgrade → 3.9
+- [x] LocalAI upgrade → 3.9 (Done 2026-02-06)
 - [ ] MCP Server implementation
 - [ ] Threat Analyst agent
 - [ ] DNS Guard migration
