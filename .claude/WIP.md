@@ -43,7 +43,13 @@ _Last updated: 2026-02-06_
 
 ### In Progress
 
-- **Vortex DNS** - Meshed multi-dynamic subdomain delegation (QUEUED)
+- **Vortex DNS** - Meshed multi-dynamic subdomain delegation (DONE 2026-02-05)
+  - Created `secubox-vortex-dns` package with `vortexctl` CLI
+  - Master/slave hierarchical DNS delegation
+  - Wildcard domain management (*.domain.com)
+  - First Peek auto-registration of services
+  - Gossip-based exposure config sync via secubox-p2p
+  - Created `luci-app-vortex-dns` dashboard
 
 ### Just Completed (2026-02-06)
 

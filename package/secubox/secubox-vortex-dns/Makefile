@@ -41,6 +41,9 @@ define Package/secubox-vortex-dns/install
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/etc/config/vortex-dns $(1)/etc/config/
 
+	$(INSTALL_DIR) $(1)/etc/init.d
+	$(INSTALL_BIN) ./files/etc/init.d/vortex-dns $(1)/etc/init.d/
+
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_BIN) ./files/usr/sbin/vortexctl $(1)/usr/sbin/
 endef

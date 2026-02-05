@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-02-06_
+_Last updated: 2026-02-05_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -390,3 +390,33 @@ _Last updated: 2026-02-06_
       - Added "LXC container fails with cgroup:mixed" section to FAQ-TROUBLESHOOTING.md
       - Updated CLAUDE.md Session Startup section to include FAQ-TROUBLESHOOTING.md consultation
       - Key recommendation: avoid `lxc.mount.auto` entirely, use explicit bind mounts
+
+35. **Vortex DNS - Meshed Subdomain Delegation (2026-02-05)**
+    - Created `secubox-vortex-dns` — meshed multi-dynamic subdomain delegation system.
+    - **Modes**:
+      - **Master**: Owns wildcard domain (*.secubox.io), delegates subzones to slaves
+      - **Slave**: Receives delegated subdomain from master (node1.secubox.io)
+      - **Submaster**: Hierarchical delegation (master → submaster → slaves)
+      - **Standalone**: Default mode, mesh-only participation
+    - **CLI commands** (`vortexctl`):
+      - Master: `master init <domain>`, `master delegate <node> <zone>`, `master revoke <zone>`, `master list-slaves`
+      - Slave: `slave join <master> <token>`, `slave leave`, `slave status`
+      - Mesh: `mesh sync`, `mesh publish <service> <domain>`, `mesh unpublish`, `mesh status`
+      - Submaster: `submaster promote`, `submaster demote`
+      - General: `status`, `daemon`
+    - **Mesh integration**:
+      - First Peek: Auto-registers new services in mesh DNS
+      - Gossip-based exposure config sync via `secubox-p2p`
+      - Published services tracked in `/var/lib/vortex-dns/published.json`
+    - **DNS provider integration**:
+      - Uses `dnsctl` from `secubox-app-dns-provider` for programmatic DNS record management
+      - Auto-creates wildcard A record on master init
+      - NS/A records for zone delegation
+    - Created `luci-app-vortex-dns` — LuCI dashboard.
+      - Status panel: mode badge, enabled state, sync interval, last sync time
+      - Master section: wildcard domain, DNS provider, delegated slave count, zones table
+      - Slave section: parent master, delegated zone
+      - Mesh section: gossip state, First Peek, peer count, published services
+      - Actions: Sync Mesh, Initialize as Master, Join as Slave, Delegate Zone
+    - **RPCD methods**: status, get_slaves, get_peers, get_published, master_init, delegate, revoke, slave_join, mesh_sync, mesh_publish
+    - Part of v0.19 MirrorNetworking roadmap (Couche 3).

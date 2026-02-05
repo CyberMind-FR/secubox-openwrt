@@ -176,11 +176,11 @@ All cloud providers are **opt-in**. Offline resilience: local tier always active
   - [ ] `secubox-mirrornet` — Mesh orchestration, gossip protocol
   - [ ] `secubox-identity` — did:plc generation, trust scoring
   - [ ] `secubox-p2p-intel` — IoC signed gossip
-- [ ] Master/Slave CDN Architecture:
-  - [ ] Wildcard domain delegation (*.secubox.io concept)
+- [x] Master/Slave CDN Architecture:
+  - [x] Wildcard domain delegation (*.secubox.io concept) — `secubox-vortex-dns` (2026-02-05)
   - [ ] Service mirroring via reverse proxy chaining
-  - [ ] Gossip-based exposure config sync
-  - [ ] Hierarchical submastering/multimixslaving
+  - [x] Gossip-based exposure config sync — `vortexctl mesh sync` (2026-02-05)
+  - [x] Hierarchical submastering/multimixslaving — `vortexctl submaster` (2026-02-05)
 
 ### v1.0.0 — Full Stack
 
