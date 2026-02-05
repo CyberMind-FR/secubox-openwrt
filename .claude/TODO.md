@@ -83,17 +83,17 @@ _Last updated: 2026-02-05_
     - Budget cap: configurable monthly cloud spend limit via LiteLLM.
     - ANSSI CSPN: Data Classifier + Mistral EU + offline mode = triple sovereignty proof.
 
-13. ~~**Punk Exposure Multi-Domain DNS**~~ — In Progress (2026-02-05)
+13. ~~**Punk Exposure Multi-Domain DNS**~~ — DONE (2026-02-05)
     - ~~Multi-domain DNS with P2P exposure and Tor endpoints.~~
     - ~~Classical HTTPS endpoint (DNS provider API: OVH, Gandi, Cloudflare).~~
     - ~~Administrable DNS provider API integration via `dnsctl`.~~
     - ~~Mapped to local services, mesh-federated, locally tweakable.~~
     - ~~Follows Peek / Poke / Emancipate model (see `PUNK-EXPOSURE.md`).~~
-    - Phase 1 DONE: `emancipate` and `revoke` CLI commands added to secubox-exposure.
-    - Phase 2-4: Dashboard enhancements pending.
+    - Phase 1: `emancipate` and `revoke` CLI commands added to secubox-exposure.
+    - Phase 2-4: RPCD methods, API wrapper, Mesh column, Emancipate modal, CSS styles.
 
-14. **Jellyfin Post-Install**
-    - Complete startup wizard (media library configuration).
+14. ~~**Jellyfin Post-Install**~~ — DONE (2026-02-05)
+    - ~~Complete startup wizard (media library configuration)~~ — 4-step modal wizard added.
     - ~~README documentation~~ — Done (2026-02-04).
 
 15. ~~**Domoticz IoT Integration & SecuBox Peering**~~ — Done (2026-02-04)

@@ -100,6 +100,26 @@
   - Status command shows emancipated services.
   - TODO: Fix mesh integration (secubox-p2p uses different commands).
 
+- **Punk Exposure LuCI Dashboard**
+  Status: DONE (2026-02-05)
+  Notes: Phases 2-4 of Punk Exposure.
+  - RPCD methods: `emancipate`, `revoke`, `get_emancipated` added to `luci.exposure`.
+  - API wrapper: `emancipate()`, `revoke()`, `getEmancipated()` exported.
+  - ACL updated with new methods.
+  - Dashboard: Mesh column with toggle, Emancipate button with multi-channel modal.
+  - CSS: Mesh badge (blue), mesh slider, action button styles.
+
+- **Jellyfin Post-Install Wizard**
+  Status: DONE (2026-02-05)
+  Notes: 4-step modal setup wizard for first-time Jellyfin configuration.
+  - RPCD methods: `get_wizard_status`, `set_wizard_complete`, `add_media_path`, `remove_media_path`, `get_media_paths`.
+  - Wizard auto-shows when Jellyfin is installed but wizard_complete=0.
+  - Step 1 (Welcome): Docker/container status checks, install/start buttons.
+  - Step 2 (Media): Add/remove media library paths with type presets.
+  - Step 3 (Network): Domain, HAProxy, ACME configuration.
+  - Step 4 (Complete): Success message with link to Jellyfin Web UI.
+  - CSS: `jellyfin/wizard.css` with step indicators, media list, form styles.
+
 ## Next Up
 
 1. Rebuild bonus feed with all 2026-02-04/05 changes (IPK files need rebuild).

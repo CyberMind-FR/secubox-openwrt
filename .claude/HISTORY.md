@@ -185,3 +185,29 @@ _Last updated: 2026-02-05_
       - Inverse of emancipate: removes exposure from selected channels.
       - Cleans up DNS records, HAProxy vhosts, certificates, mesh publishing.
     - Enhanced `status` command shows emancipated services with active channels.
+
+23. **Punk Exposure LuCI Dashboard (2026-02-05)**
+    - RPCD handler extended with three new methods:
+      - `emancipate` - orchestrates multi-channel exposure via CLI
+      - `revoke` - removes exposure from selected channels
+      - `get_emancipated` - returns list of emancipated services with channel status
+    - API wrapper (`exposure/api.js`) exports `emancipate()`, `revoke()`, `getEmancipated()`.
+    - ACL updated in `luci-app-exposure.json` for new methods.
+    - Dashboard UI enhancements:
+      - New Mesh column with toggle switch (blue theme)
+      - Emancipate button in header with rocket emoji
+      - Multi-channel modal with Tor/DNS/Mesh checkboxes
+      - Mesh badge count in header stats
+    - CSS additions: `.exp-badge-mesh`, `.mesh-slider`, `.exp-btn-action`.
+
+24. **Jellyfin Post-Install Setup Wizard (2026-02-05)**
+    - 4-step modal wizard for first-time Jellyfin configuration.
+    - RPCD methods added to `luci.jellyfin`:
+      - `get_wizard_status` - checks container state and wizard completion
+      - `set_wizard_complete` - marks wizard as finished in UCI
+      - `add_media_path` / `remove_media_path` - manage media library entries
+      - `get_media_paths` - returns configured media libraries
+    - Wizard auto-triggers when installed but `wizard_complete=0`.
+    - Steps: Welcome (Docker/container checks), Media (add paths), Network (domain/HAProxy), Complete.
+    - New CSS file `jellyfin/wizard.css` with step indicators and form styling.
+    - Makefile updated to install CSS resources.
