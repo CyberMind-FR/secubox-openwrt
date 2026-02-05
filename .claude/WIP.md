@@ -120,11 +120,15 @@
   - Step 4 (Complete): Success message with link to Jellyfin Web UI.
   - CSS: `jellyfin/wizard.css` with step indicators, media list, form styles.
 
+- **MAC Guardian Feed Integration**
+  Status: DONE (2026-02-05)
+  Notes: Both IPKs built and added to bonus feed. Catalog updated with proper metadata.
+
 ## Next Up
 
-1. Rebuild bonus feed with all 2026-02-04/05 changes (IPK files need rebuild).
-   - Uncommitted: 91 IPK files in secubox-app-bonus/root/www/secubox-feed/
-   - These are build artifacts that need SDK rebuild
+1. Commit bonus feed rebuild (IPKs updated with MAC Guardian packages).
+   - All packages rebuilt including new mac-guardian IPKs
+   - apps-local.json catalog updated
 
 ## Known Bugs (Deferred)
 

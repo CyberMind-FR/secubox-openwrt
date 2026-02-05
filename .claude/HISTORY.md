@@ -211,3 +211,11 @@ _Last updated: 2026-02-05_
     - Steps: Welcome (Docker/container checks), Media (add paths), Network (domain/HAProxy), Complete.
     - New CSS file `jellyfin/wizard.css` with step indicators and form styling.
     - Makefile updated to install CSS resources.
+
+25. **MAC Guardian Feed Integration (2026-02-05)**
+    - Built and added `secubox-app-mac-guardian` and `luci-app-mac-guardian` IPKs to bonus feed.
+    - Synced `luci-app-mac-guardian` to local-feed (backend was already synced).
+    - Updated `apps-local.json` catalog with proper metadata:
+      - `luci-app-mac-guardian`: category "security", icon "wifi", description "WiFi MAC address security monitor with spoofing detection"
+      - `secubox-app-mac-guardian`: icon "wifi", description "WiFi MAC security backend with CrowdSec integration"
+    - Package features: MAC spoofing detection, OUI anomaly detection, MAC floods, CrowdSec scenarios integration.

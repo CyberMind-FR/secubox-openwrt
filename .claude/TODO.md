@@ -13,6 +13,7 @@ _Last updated: 2026-02-05_
 - ~~P2P App Store Emancipation~~ — Done: P2P package distribution, packages.js view, devstatus.js widget (2026-02-04/05).
 - ~~Navigation Component~~ — Done: `SecuNav.renderTabs()` now auto-inits theme+CSS, `renderCompactTabs()` for nested modules (2026-02-05).
 - ~~Monitoring UX~~ — Done: Empty-state loading animation for charts, dynamic bandwidth units in bits (Kbps/Mbps/Gbps) via `formatBits()` (2026-02-05).
+- ~~MAC Guardian Feed Integration~~ — Done: Both IPKs built and added to bonus feed with catalog entries (2026-02-05).
 
 ## Open
 
@@ -28,8 +29,9 @@ _Last updated: 2026-02-05_
    - ~~Add empty-state copy while charts warm up.~~
    - ~~Display bandwidth units dynamically (Kbps/Mbps/Gbps) based on rate.~~
 
-4. **MAC Guardian Feed Integration**
-   - Build and include mac-guardian IPK in bonus feed (new package from 2026-02-03, not yet in feed).
+4. ~~**MAC Guardian Feed Integration**~~ — Done (2026-02-05)
+   - ~~Build and include mac-guardian IPK in bonus feed (new package from 2026-02-03, not yet in feed).~~
+   - `secubox-app-mac-guardian` and `luci-app-mac-guardian` IPKs added to bonus feed with catalog entries.
 
 5. **Mesh Onboarding Testing**
    - master-link dynamic join IPK generation needs end-to-end testing on multi-node mesh.
