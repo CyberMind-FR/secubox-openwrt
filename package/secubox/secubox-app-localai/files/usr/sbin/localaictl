@@ -8,7 +8,7 @@ CONFIG="localai"
 BINARY="/usr/bin/local-ai"
 DATA_DIR="/srv/localai"
 BACKEND_ASSETS="/usr/share/localai/backend-assets"
-LOCALAI_VERSION="2.25.0"
+LOCALAI_VERSION="3.9.0"
 
 usage() {
 	cat <<'EOF'
