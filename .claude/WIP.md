@@ -70,6 +70,12 @@ _Last updated: 2026-02-06_
   - Fix: Changed setup.sh to use `lmdb:` prefix and copy resolv.conf to chroot
   - Added `mailctl fix-postfix` command to repair existing installations
 
+- **Mail Port Hijacking External Connections** — RESOLVED (2026-02-06)
+  - Root cause: firewall.user DNAT rules had no interface restriction
+  - ALL port 993/587/etc traffic was redirected to local mailserver
+  - This blocked Thunderbird from connecting to external mail (ssl0.ovh.net)
+  - Fix: Added `-i $WAN_IF` to only redirect inbound WAN traffic
+
 ### Just Completed
 
 - **Unified Backup Manager** — DONE (2026-02-05)
