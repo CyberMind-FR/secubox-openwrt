@@ -1,0 +1,108 @@
+# DNS Configuration for secubox.in as master on secubox.maegia.tv
+# This configuration will set up secubox.in as a master DNS zone
+
+# Step 1: Configure DNS Provider for secubox.in
+# This will be added to /etc/config/dns-provider
+
+config dns_provider 'secubox_in'
+    option enabled '1'
+    option provider 'bind'  # Using BIND as the DNS server
+    option zone 'secubox.in'
+    option master 'secubox.maegia.tv'
+    option type 'master'
+    option file '/etc/bind/zones/secubox.in.db'
+
+# Step 2: Zone file for secubox.in
+# This will be created at /etc/bind/zones/secubox.in.db
+
+# Step 3: Named configuration
+# This will be added to /etc/bind/named.conf.local
+
+zone "secubox.in" {
+    type master;
+    file "/etc/bind/zones/secubox.in.db";
+    allow-transfer {
+        # Allow zone transfers to trusted peers
+        192.168.1.0/24;
+        10.0.0.0/8;
+    };
+    also-notify {
+        # Notify peers when zone changes
+        # Add peer IPs here
+    };
+};
+
+# Step 4: Create the zone file content
+# This will be the content of /etc/bind/zones/secubox.in.db
+
+$TTL    604800
+@       IN      SOA     ns1.secubox.in. admin.secubox.in. (
+                      2024020501 ; Serial
+                      604800     ; Refresh
+                      86400      ; Retry
+                      2419200    ; Expire
+                      604800 )   ; Negative Cache TTL
+;
+
+; Name servers
+@       IN      NS      ns1.secubox.in.
+@       IN      NS      ns2.secubox.in.
+
+; A records for name servers
+ns1     IN      A       192.168.1.100
+ns2     IN      A       192.168.1.101
+
+; Main domain A records
+@       IN      A       192.168.1.100
+www     IN      A       192.168.1.100
+
+; MX records
+@       IN      MX      10 mail.secubox.in.
+mail    IN      A       192.168.1.102
+
+; CNAME records
+www     IN      CNAME   secubox.in.
+
+; TXT records for verification
+@       IN      TXT     "v=spf1 mx ~all"
+_dmarc  IN      TXT     "v=DMARC1; p=none; rua=mailto:admin@secubox.in"
+
+# Step 5: Configuration for secubox.maegia.tv peer
+# This will be added to the peer's DNS configuration
+
+# On secubox.maegia.tv, add this to named.conf.local:
+zone "secubox.in" {
+    type slave;
+    masters { 192.168.1.100; };  # IP of the master DNS server
+    file "/etc/bind/zones/secubox.in.slave";
+};
+
+# Step 6: Firewall rules for DNS
+# Allow DNS traffic between peers
+# Add to /etc/config/firewall:
+
+config rule
+    option name             'Allow-DNS-Peers'
+    option src              'lan'
+    option dest             'lan'
+    option proto            'tcp udp'
+    option dest_port        '53'
+    option target           'ACCEPT'
+
+config rule
+    option name             'Allow-Zone-Transfers'
+    option src              'lan'
+    option dest             'lan'
+    option proto            'tcp'
+    option dest_port        '53'
+    option target           'ACCEPT'
+
+# Step 7: Verify and test the configuration
+# After applying these configurations:
+# 1. Restart BIND: /etc/init.d/named restart
+# 2. Test DNS resolution: dig @localhost secubox.in
+# 3. Check zone transfer: dig @localhost secubox.in AXFR
+# 4. Verify on peer: dig @secubox.maegia.tv secubox.in
+
+# Note: Replace IP addresses with actual server IPs
+# and ensure proper network connectivity between peers

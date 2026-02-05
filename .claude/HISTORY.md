@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-02-05_
+_Last updated: 2026-02-06_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -238,3 +238,92 @@ _Last updated: 2026-02-05_
       - **VibeVoice backend**: New voice synthesis support
     - Updated README with complete CLI reference, model presets table, API endpoints.
     - Part of v0.18 AI Gateway roadmap (Couche 2).
+
+28. **MCP Server Implementation (2026-02-06)**
+    - Created `secubox-mcp-server` package — Model Context Protocol server for AI integration.
+    - **Protocol**: JSON-RPC 2.0 over stdio, MCP version 2024-11-05.
+    - **Core tools** (9 total):
+      - `crowdsec.alerts`, `crowdsec.decisions` — CrowdSec threat intelligence
+      - `waf.logs` — WAF/mitmproxy threat events
+      - `dns.queries` — DNS statistics from AdGuard Home/dnsmasq
+      - `network.flows` — Network traffic summary with interface stats
+      - `system.metrics` — CPU, memory, disk, temperature monitoring
+      - `wireguard.status` — VPN tunnel status with peer details
+      - `uci.get`, `uci.set` — OpenWrt configuration access (set disabled by default)
+    - **AI-powered tools** (5 total, require LocalAI):
+      - `ai.analyze_threats` — AI analysis of CrowdSec alerts with recommendations
+      - `ai.cve_lookup` — CVE vulnerability analysis with mitigation advice
+      - `ai.suggest_waf_rules` — AI-suggested mitmproxy/WAF filter patterns
+      - `ai.explain_ban` — Explain CrowdSec ban decisions in plain language
+      - `ai.security_posture` — Full security assessment with scoring
+    - **Security features**:
+      - UCI-based tool whitelist — only allowed tools can be invoked
+      - Sensitive data blocked in uci.get (password, secret, key, token)
+      - uci.set disabled by default, requires explicit enable
+      - Data classification support (local_only, sanitized, cloud_direct)
+    - **Claude Desktop integration** via SSH:
+      ```json
+      {"mcpServers":{"secubox":{"command":"ssh","args":["root@192.168.255.1","/usr/bin/secubox-mcp"]}}}
+      ```
+    - Files: `secubox-mcp` main server, `protocol.sh` JSON-RPC handler, 8 tool modules.
+    - Part of v0.18 AI Gateway roadmap (Couche 2).
+
+29. **Threat Analyst Agent Implementation (2026-02-05)**
+    - Created `secubox-threat-analyst` — AI-powered autonomous threat analysis and filter generation agent.
+    - **Architecture**:
+      - Collector: Gathers threats from CrowdSec, mitmproxy, netifyd DPI
+      - Analyzer: LocalAI-powered intelligent analysis and pattern recognition
+      - Generators: Rule creation for three targets
+      - Appliers: Auto-apply or queue for approval
+    - **Generated rule types**:
+      - `mitmproxy`: Python filter class with IP blocklist, URL patterns, User-Agent detection
+      - `CrowdSec`: YAML scenarios for AI-detected attack patterns
+      - `WAF`: JSON rules for SQLi, XSS, path traversal, scanner detection
+    - **CLI commands**: status, run, daemon, analyze, generate, gen-mitmproxy, gen-crowdsec, gen-waf, list-pending, approve, reject
+    - **UCI configuration**: interval, LocalAI URL/model, auto-apply per target (mitmproxy auto, CrowdSec/WAF queued), min_confidence, max_rules_per_cycle
+    - Created `luci-app-threat-analyst` — LuCI dashboard with AI chatbot.
+    - **Dashboard features**:
+      - Status panel: daemon state, LocalAI connectivity, threat counts
+      - AI Chat: real-time conversation with threat analyst AI
+      - Pending rules: approve/reject queue for generated rules
+      - Threats table: recent security events with severity badges
+    - **RPCD methods**: status, get_threats, get_alerts, get_pending, chat, analyze, generate_rules, approve_rule, reject_rule, run_cycle
+    - Part of v0.18 AI Gateway roadmap (Couche 2).
+
+30. **DNS Guard AI Migration (2026-02-06)**
+    - Created `secubox-dns-guard` — AI-powered DNS anomaly detection daemon.
+    - **Detection modules** (5 total):
+      - `dga`: Domain Generation Algorithm detection via Shannon entropy analysis (threshold 3.2)
+      - `tunneling`: DNS tunneling/exfiltration detection (subdomain length, base64/hex patterns, TXT rate)
+      - `rate_anomaly`: Unusual query rate detection (queries/min, unique domains/min thresholds)
+      - `known_bad`: Known malicious domain matching against external blocklists
+      - `tld_anomaly`: Suspicious TLD detection (xyz, top, club, etc.) and punycode/IDN homograph detection
+    - **LocalAI integration**:
+      - Intelligent threat analysis and domain classification (BLOCK/MONITOR/SAFE)
+      - Pattern analysis and malware family identification
+      - Single domain analysis via CLI
+    - **Approval workflow**:
+      - Auto-apply mode for trusted detections
+      - Queue mode for human approval (configurable per confidence threshold)
+      - Pending blocks approval via CLI or LuCI
+    - **CLI commands**: status, run, daemon, analyze, detect, check <domain>, stats, top-domains, top-clients, list-pending, approve/reject/approve-all
+    - **UCI configuration**: interval, LocalAI URL/model, auto_apply_blocks, min_confidence (80%), max_blocks_per_cycle, per-detector settings
+    - Updated `luci-app-dnsguard` to v1.1.0:
+      - New "AI Guard" tab with daemon toggle, alert/pending/blocked counts
+      - Pending blocks approval panel with approve/reject actions
+      - Real-time alerts panel with type-colored badges
+      - "Analyze" tab with domain checker and detection module status
+      - RPCD extended with 11 new methods: guard_status, get_alerts, get_pending, approve_block, reject_block, approve_all, ai_check, get_blocklist, unblock, get_stats, toggle_guard
+    - Part of v0.18 AI Gateway roadmap (Couche 2).
+
+31. **LocalAI Multi-Channel Emancipation (2026-02-06)**
+    - Exposed LocalAI (port 8091) via Punk Exposure system with 3 channels:
+      - **Tor**: `b7lmlfs3b55jhgqdwbn6unhjhlfflq6ch235xa2gsdvxe7toxcf7qyad.onion`
+      - **DNS/SSL**: `localai.secubox.local` via HAProxy with ACME certificate
+      - **mDNS**: `_secubox._tcp.local` mesh advertisement via Avahi
+    - Command: `secubox-exposure emancipate localai 8091 localai.secubox.local --all`
+    - Documented MirrorNetworking vision for v0.19:
+      - Master/slave hierarchical domain delegation (*.sb → xxx.sb)
+      - Service mirroring via reverse proxy chaining
+      - Gossip-based exposure config sync
+      - Submastering/multimixslaving architecture

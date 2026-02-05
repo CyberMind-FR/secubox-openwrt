@@ -220,6 +220,104 @@ cmd_status() {
 }
 
 # ============================================================================
+# DynDNS Commands
+# ============================================================================
+
+cmd_dyndns() {
+	local subdomain="${1:-@}"
+	local ttl="${2:-300}"
+
+	load_provider
+	local zone=$(get_zone)
+	local provider=$(uci_get main.provider)
+
+	log "DynDNS update for ${subdomain}.${zone}..."
+
+	# Check if provider has dyndns support
+	if ! type dns_dyndns >/dev/null 2>&1; then
+		error "Provider $provider does not support DynDNS (dns_dyndns function missing)"
+		return 1
+	fi
+
+	local result=$(dns_dyndns "$zone" "$subdomain" "$ttl")
+	echo "$result"
+
+	if echo "$result" | grep -q '"status":"updated"'; then
+		local new_ip=$(echo "$result" | jsonfilter -e '@.new_ip' 2>/dev/null)
+		log "Updated ${subdomain}.${zone} → $new_ip"
+	elif echo "$result" | grep -q '"status":"unchanged"'; then
+		local ip=$(echo "$result" | jsonfilter -e '@.ip' 2>/dev/null)
+		log "IP unchanged: $ip"
+	else
+		error "DynDNS update failed"
+		return 1
+	fi
+}
+
+cmd_get() {
+	local type="$1" subdomain="$2"
+
+	if [ -z "$type" ]; then
+		echo "Usage: dnsctl get <TYPE> [subdomain]"
+		echo "  dnsctl get A @          # Get root A record"
+		echo "  dnsctl get A www        # Get www A record"
+		return 1
+	fi
+
+	[ -z "$subdomain" ] && subdomain="@"
+
+	load_provider
+	local zone=$(get_zone)
+
+	# Check if provider has get support
+	if type dns_get >/dev/null 2>&1; then
+		dns_get "$zone" "$type" "$subdomain"
+	else
+		# Fallback to list and filter
+		dns_list "$zone" | jsonfilter -e "@[*]" 2>/dev/null | \
+			grep -E "\"rrset_name\":\"$subdomain\"" | \
+			grep -E "\"rrset_type\":\"$type\""
+	fi
+}
+
+cmd_update() {
+	local type="$1" subdomain="$2" target="$3" ttl="${4:-3600}"
+
+	if [ -z "$type" ] || [ -z "$subdomain" ] || [ -z "$target" ]; then
+		echo "Usage: dnsctl update <TYPE> <subdomain> <target> [ttl]"
+		echo "  Updates existing record (use 'add' for new records)"
+		return 1
+	fi
+
+	load_provider
+	local zone=$(get_zone)
+
+	# Check if provider has update support
+	if type dns_update >/dev/null 2>&1; then
+		log "Updating $type record: ${subdomain}.${zone} → $target"
+		dns_update "$zone" "$type" "$subdomain" "$target" "$ttl"
+	else
+		# Fallback: remove and add
+		warn "Provider lacks update, using rm+add"
+		dns_rm "$zone" "$type" "$subdomain"
+		dns_add "$zone" "$type" "$subdomain" "$target" "$ttl"
+	fi
+}
+
+cmd_domains() {
+	load_provider
+	local provider=$(uci_get main.provider)
+
+	if type dns_domains >/dev/null 2>&1; then
+		log "Domains in $provider account:"
+		dns_domains
+	else
+		error "Provider $provider does not support domain listing"
+		return 1
+	fi
+}
+
+# ============================================================================
 # ACME DNS-01 Helper
 # ============================================================================
 
@@ -274,16 +372,27 @@ Usage: dnsctl <command> [options]
 Commands:
   list                         List all DNS records in zone
   add <TYPE> <sub> <target>    Create DNS record (A, AAAA, CNAME, TXT, MX)
+  update <TYPE> <sub> <target> Update existing DNS record
+  get <TYPE> [subdomain]       Get specific record value
   rm <TYPE> <subdomain>        Remove DNS record
   sync                         Sync HAProxy vhosts → DNS A records
   verify <fqdn>                Check DNS propagation across resolvers
   test                         Verify provider API credentials
   status                       Show provider configuration status
+  domains                      List all domains in provider account
+
+DynDNS:
+  dyndns [subdomain] [ttl]     Update A record with current WAN IP
+
+SSL:
   acme-dns01 <domain>          Issue SSL cert via DNS-01 challenge
 
 Examples:
   dnsctl add A gitea 1.2.3.4
-  dnsctl add CNAME www mycdn.example.net
+  dnsctl update A gitea 5.6.7.8
+  dnsctl get A www
+  dnsctl dyndns @ 300          # Update root A record
+  dnsctl dyndns api 600        # Update api.zone with WAN IP
   dnsctl rm A gitea
   dnsctl sync
   dnsctl verify gitea.example.com
@@ -295,11 +404,15 @@ EOF
 case "${1:-}" in
 	list)        shift; cmd_list "$@" ;;
 	add)         shift; cmd_add "$@" ;;
+	update)      shift; cmd_update "$@" ;;
+	get)         shift; cmd_get "$@" ;;
 	rm|remove)   shift; cmd_rm "$@" ;;
 	sync)        shift; cmd_sync "$@" ;;
 	verify)      shift; cmd_verify "$@" ;;
 	test)        shift; cmd_test "$@" ;;
 	status)      shift; cmd_status "$@" ;;
+	domains)     shift; cmd_domains "$@" ;;
+	dyndns)      shift; cmd_dyndns "$@" ;;
 	acme-dns01)  shift; cmd_acme_dns01 "$@" ;;
 	help|--help|-h|'') show_help ;;
 	*)           error "Unknown command: $1"; show_help >&2; exit 1 ;;

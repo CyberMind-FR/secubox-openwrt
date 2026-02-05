@@ -59,22 +59,47 @@ _None currently active_
 
 ## Couche 2 — AI Gateway
 
+### Recently Completed (2026-02-06)
+
+- **DNS Guard AI Migration** — DONE (2026-02-06)
+  - Created `secubox-dns-guard` daemon with 5 detection modules:
+    - DGA (Domain Generation Algorithm) detection via entropy analysis
+    - DNS tunneling/exfiltration detection
+    - Rate anomaly detection (queries/min, unique domains/min)
+    - Known bad domain matching against blocklists
+    - TLD anomaly detection (suspicious TLDs, punycode/IDN)
+  - LocalAI integration for intelligent threat analysis
+  - Approval workflow: auto-apply or queue for review
+  - Updated `luci-app-dnsguard` v1.1.0 with:
+    - AI Guard tab with pending blocks approval
+    - Real-time alerts panel
+    - Domain analysis with AI
+    - Detection module status display
+
+- **LocalAI Multi-Channel Emancipation** — DONE (2026-02-06)
+  - Exposed LocalAI via Punk Exposure:
+    - Tor: `b7lmlfs3b55jhgqdwbn6unhjhlfflq6ch235xa2gsdvxe7toxcf7qyad.onion`
+    - DNS/SSL: `localai.secubox.local`
+    - mDNS: `_secubox._tcp.local` (mesh advertised)
+
+- **Threat Analyst Agent** — DONE (2026-02-05)
+  - Created `secubox-threat-analyst` autonomous threat analysis daemon
+  - Rule generation for mitmproxy (Python), CrowdSec (YAML), WAF (JSON)
+  - Approval workflow: auto-apply mitmproxy, queue CrowdSec/WAF
+  - Created `luci-app-threat-analyst` with AI chatbot dashboard
+  - RPCD handler with 10 methods for status, chat, rules, approval
+
+- **MCP Server Implementation** — DONE (2026-02-06)
+  - Created `secubox-mcp-server` package with JSON-RPC 2.0 over stdio
+  - 9 core tools: crowdsec.alerts/decisions, waf.logs, dns.queries, network.flows, system.metrics, wireguard.status, uci.get/set
+  - 5 AI-powered tools (via LocalAI): ai.analyze_threats, ai.cve_lookup, ai.suggest_waf_rules, ai.explain_ban, ai.security_posture
+  - Claude Desktop integration via SSH
+
 ### Next Up — v0.18 AI Components
 
-1. **MCP Server Implementation**
-   - Create `secubox-mcp-server` package
-   - Implement MCP tools: crowdsec.alerts, waf.logs, dns.queries, network.flows, system.metrics, wireguard.status, uci.config
-   - Integration with Claude Desktop, Cursor
+1. ~~**DNS Guard Migration**~~ — DONE (2026-02-06)
 
-2. **Threat Analyst Agent**
-   - CrowdSec alert analysis and correlation
-   - Automated threat severity assessment
-
-3. **DNS Guard Migration**
-   - Migrate current `luci-app-dnsguard` to AI-powered agent
-   - DNS anomaly detection with ML patterns
-
-4. ~~**LocalAI Upgrade → 3.9**~~ — DONE (2026-02-06)
+2. ~~**LocalAI Upgrade → 3.9**~~ — DONE (2026-02-06)
    - Upgraded to v3.9.0 with Agent Jobs Panel and Memory Reclaimer
    - Updated README with complete CLI reference and model presets
 
@@ -91,6 +116,23 @@ _None currently active_
 | `secubox-p2p-intel` | MEDIUM | IoC signed gossip |
 | `luci-app-secubox-mirror` | MEDIUM | Dashboard for peers, trust, services |
 
+### Master/Slave CDN Architecture (User Vision)
+
+> "multipoint CDN for SSL dependencies, root/master with *.sb, xxx.sb slaved, first peek meshed, submastering/multimixslaving"
+
+Target architecture for service mirroring:
+1. **Root Master** owns wildcard domain `*.secubox.io` (or similar)
+2. **Slave Nodes** get delegated subdomains (`node1.secubox.io`)
+3. **First Peek** = service discovery auto-registers in mesh
+4. **Mirror Cascade** = master pushes exposure config to slaves
+5. **Submastering** = hierarchical delegation (master → submaster → slaves)
+
+Required components:
+- Dynamic DNS delegation with zone transfer
+- Service mirroring via reverse proxy chaining
+- Gossip-based exposure config sync
+- Trust hierarchy with certificate delegation
+
 ### Communication Layer (v1.0)
 
 - `secubox-voip` — Asterisk micro-PBX
@@ -106,10 +148,11 @@ _None currently active_
 |------|--------|
 | Core Mesh modules | 35+ DONE |
 | Guacamole | DEFERRED |
-| MCP Server | TODO |
-| Threat Analyst | TODO |
-| DNS Guard migration | TODO |
+| MCP Server | DONE |
+| Threat Analyst | DONE |
+| DNS Guard AI Migration | DONE |
 | LocalAI 3.9 | DONE |
+| LocalAI Emancipation | DONE (Tor + DNS + mDNS) |
 
 ### Certifications
 

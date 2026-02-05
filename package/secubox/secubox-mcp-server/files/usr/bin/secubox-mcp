@@ -1,0 +1,50 @@
+#!/bin/sh
+# SecuBox MCP Server - Model Context Protocol for AI Integration
+# Copyright (C) 2026 CyberMind.fr
+#
+# Runs as stdio server for Claude Desktop, Cursor, VS Code, etc.
+# Protocol: JSON-RPC 2.0 over stdin/stdout
+#
+# Usage:
+#   ssh root@router /usr/bin/secubox-mcp
+#
+# Or in Claude Desktop config:
+#   { "mcpServers": { "secubox": { "command": "ssh", "args": ["root@192.168.255.1", "/usr/bin/secubox-mcp"] }}}
+
+set -e
+
+MCP_VERSION="2024-11-05"
+SERVER_NAME="secubox-mcp"
+SERVER_VERSION="1.0.0"
+CONFIG="mcp-server"
+TOOLS_DIR="/usr/lib/secubox-mcp/tools"
+PROTOCOL_LIB="/usr/lib/secubox-mcp/protocol.sh"
+
+# Check if enabled
+enabled=$(uci -q get ${CONFIG}.main.enabled || echo "1")
+if [ "$enabled" != "1" ]; then
+	echo '{"jsonrpc":"2.0","error":{"code":-32000,"message":"MCP server disabled"},"id":null}' >&2
+	exit 1
+fi
+
+# Source protocol handler
+if [ ! -f "$PROTOCOL_LIB" ]; then
+	echo '{"jsonrpc":"2.0","error":{"code":-32000,"message":"Protocol library not found"},"id":null}' >&2
+	exit 1
+fi
+
+. "$PROTOCOL_LIB"
+
+# Log startup (to system log, not stdout which is for JSON-RPC)
+logger -t secubox-mcp "MCP server started (v${SERVER_VERSION})"
+
+# Main loop - read JSON-RPC requests from stdin, one per line
+while IFS= read -r line; do
+	# Skip empty lines
+	[ -z "$line" ] && continue
+
+	# Handle the request
+	handle_request "$line"
+done
+
+logger -t secubox-mcp "MCP server stopped"

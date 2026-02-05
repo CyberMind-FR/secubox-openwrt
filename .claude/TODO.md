@@ -21,6 +21,7 @@ _Last updated: 2026-02-06_
 - ~~Punk Exposure Multi-Domain DNS~~ — Done: emancipate/revoke CLI, RPCD, Mesh column, Emancipate modal (2026-02-05).
 - ~~Jellyfin Post-Install Wizard~~ — Done: 4-step modal wizard for media library configuration (2026-02-05).
 - ~~Domoticz IoT Integration~~ — Done: LuCI dashboard, MQTT auto-bridge, Zigbee2MQTT integration (2026-02-04).
+- ~~MCP Server~~ — Done: `secubox-mcp-server` with 9 core tools + 5 AI-powered tools (LocalAI integration), Claude Desktop via SSH (2026-02-06).
 
 ---
 
@@ -159,18 +160,27 @@ All cloud providers are **opt-in**. Offline resilience: local tier always active
 ### v0.18.0 — MirrorBox Core v1.0
 
 - [x] LocalAI upgrade → 3.9 (Done 2026-02-06)
-- [ ] MCP Server implementation
-- [ ] Threat Analyst agent
-- [ ] DNS Guard migration
-- [ ] Guacamole pre-built binaries
+- [x] MCP Server implementation (Done 2026-02-06)
+- [x] Threat Analyst agent (Done 2026-02-05)
+- [x] DNS Guard AI migration (Done 2026-02-06)
+- [x] LocalAI multi-channel emancipation (Done 2026-02-06)
+- [ ] Guacamole pre-built binaries (DEFERRED)
 
-### v0.19.0 — AI Expansion
+### v0.19.0 — AI Expansion + MirrorNet
 
 - [ ] CVE Triage agent
 - [ ] Network Anomaly agent
 - [ ] LocalRecall memory integration
 - [ ] AI Insights dashboard
-- [ ] MirrorNet core packages
+- [ ] MirrorNet core packages:
+  - [ ] `secubox-mirrornet` — Mesh orchestration, gossip protocol
+  - [ ] `secubox-identity` — did:plc generation, trust scoring
+  - [ ] `secubox-p2p-intel` — IoC signed gossip
+- [ ] Master/Slave CDN Architecture:
+  - [ ] Wildcard domain delegation (*.secubox.io concept)
+  - [ ] Service mirroring via reverse proxy chaining
+  - [ ] Gossip-based exposure config sync
+  - [ ] Hierarchical submastering/multimixslaving
 
 ### v1.0.0 — Full Stack
 

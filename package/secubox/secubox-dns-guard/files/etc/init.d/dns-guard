@@ -1,0 +1,68 @@
+#!/bin/sh /etc/rc.common
+# SecuBox DNS Guard - AI-powered DNS anomaly detection
+
+START=95
+STOP=10
+USE_PROCD=1
+
+NAME="dns-guard"
+PROG="/usr/bin/dns-guard"
+
+start_service() {
+	local enabled
+	config_load dns-guard
+	config_get enabled main enabled 0
+
+	[ "$enabled" != "1" ] && {
+		logger -t "$NAME" "Service disabled in config"
+		return 0
+	}
+
+	# Ensure dnsmasq logging is enabled
+	ensure_dnsmasq_logging
+
+	procd_open_instance
+	procd_set_param command "$PROG" daemon
+	procd_set_param respawn
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_set_param pidfile /var/run/${NAME}.pid
+	procd_close_instance
+
+	logger -t "$NAME" "Started DNS Guard daemon"
+}
+
+stop_service() {
+	logger -t "$NAME" "Stopped DNS Guard daemon"
+}
+
+reload_service() {
+	stop
+	start
+}
+
+service_triggers() {
+	procd_add_reload_trigger "dns-guard"
+}
+
+ensure_dnsmasq_logging() {
+	# Check if dnsmasq query logging is enabled
+	local log_queries=$(uci -q get dhcp.@dnsmasq[0].logqueries)
+	local log_facility=$(uci -q get dhcp.@dnsmasq[0].logfacility)
+
+	if [ "$log_queries" != "1" ]; then
+		logger -t "$NAME" "Enabling dnsmasq query logging for DNS Guard"
+		uci set dhcp.@dnsmasq[0].logqueries='1'
+		uci set dhcp.@dnsmasq[0].logfacility='/var/log/dnsmasq.log'
+		uci commit dhcp
+		/etc/init.d/dnsmasq restart
+	fi
+}
+
+status() {
+	"$PROG" status
+}
+
+boot() {
+	start
+}

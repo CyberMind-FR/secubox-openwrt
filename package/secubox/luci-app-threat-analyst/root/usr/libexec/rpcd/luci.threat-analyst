@@ -1,0 +1,273 @@
+#!/bin/sh
+# SecuBox Threat Analyst RPCD Handler
+
+. /usr/share/libubox/jshn.sh
+
+CONFIG="threat-analyst"
+STATE_DIR="/var/lib/threat-analyst"
+LIB_DIR="/usr/lib/threat-analyst"
+
+log_info() { logger -t threat-analyst-rpcd "$*"; }
+
+uci_get() { uci -q get "${CONFIG}.$1"; }
+
+# Source libraries for analysis functions
+[ -f "$LIB_DIR/analyzer.sh" ] && {
+	localai_url=$(uci_get main.localai_url)
+	localai_model=$(uci_get main.localai_model)
+	[ -z "$localai_url" ] && localai_url="http://127.0.0.1:8081"
+	[ -z "$localai_model" ] && localai_model="tinyllama-1.1b-chat-v1.0.Q4_K_M"
+	. "$LIB_DIR/analyzer.sh"
+	. "$LIB_DIR/appliers.sh"
+}
+
+case "$1" in
+	list)
+		cat <<'EOF'
+{
+	"status": {},
+	"get_threats": {"limit": 50},
+	"get_alerts": {"limit": 20},
+	"get_pending": {},
+	"chat": {"message": "string"},
+	"analyze": {},
+	"generate_rules": {"target": "string"},
+	"approve_rule": {"id": "string"},
+	"reject_rule": {"id": "string"},
+	"run_cycle": {}
+}
+EOF
+		;;
+
+	call)
+		case "$2" in
+			status)
+				# Get agent status
+				enabled=$(uci_get main.enabled)
+				interval=$(uci_get main.interval)
+				last_run=""
+				[ -f "$STATE_DIR/last_run" ] && last_run=$(cat "$STATE_DIR/last_run")
+
+				# Check LocalAI
+				localai_status="offline"
+				wget -q -O /dev/null --timeout=2 "${localai_url}/v1/models" 2>/dev/null && localai_status="online"
+
+				# Check daemon
+				daemon_running="false"
+				pgrep -f "threat-analyst daemon" >/dev/null 2>&1 && daemon_running="true"
+
+				# Count pending
+				pending_count=0
+				[ -f "$STATE_DIR/pending_rules.json" ] && \
+					pending_count=$(jsonfilter -i "$STATE_DIR/pending_rules.json" -e '@[*]' 2>/dev/null | wc -l)
+
+				# Count recent threats
+				threat_count=0
+				command -v cscli >/dev/null 2>&1 && \
+					threat_count=$(cscli alerts list -o json --since 1h 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+
+				cat <<EOF
+{
+	"enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
+	"daemon_running": $daemon_running,
+	"interval": ${interval:-300},
+	"last_run": "$last_run",
+	"localai_status": "$localai_status",
+	"localai_url": "$localai_url",
+	"pending_rules": $pending_count,
+	"recent_threats": $threat_count
+}
+EOF
+				;;
+
+			get_threats)
+				read -r input
+				limit=$(echo "$input" | jsonfilter -e '@.limit' 2>/dev/null)
+				[ -z "$limit" ] && limit=50
+
+				# Get CrowdSec alerts
+				alerts='[]'
+				if command -v cscli >/dev/null 2>&1; then
+					alerts=$(cscli alerts list -o json --limit "$limit" 2>/dev/null || echo '[]')
+				fi
+
+				printf '{"threats":%s}' "$alerts"
+				;;
+
+			get_alerts)
+				read -r input
+				limit=$(echo "$input" | jsonfilter -e '@.limit' 2>/dev/null)
+				[ -z "$limit" ] && limit=20
+
+				# Get mitmproxy threats
+				threats='[]'
+				log_file="/srv/mitmproxy/threats.log"
+				if [ -f "$log_file" ]; then
+					# Build JSON array without jq
+					threats=$({
+						printf '['
+						first=1
+						tail -n "$limit" "$log_file" 2>/dev/null | while IFS= read -r line; do
+							# Skip empty or invalid JSON
+							echo "$line" | jsonfilter -e '@' >/dev/null 2>&1 || continue
+							[ $first -eq 0 ] && printf ','
+							first=0
+							printf '%s' "$line"
+						done
+						printf ']'
+					})
+				fi
+
+				printf '{"alerts":%s}' "$threats"
+				;;
+
+			get_pending)
+				pending='[]'
+				[ -f "$STATE_DIR/pending_rules.json" ] && pending=$(cat "$STATE_DIR/pending_rules.json")
+				printf '{"pending":%s}' "$pending"
+				;;
+
+			chat)
+				read -r input
+				message=$(echo "$input" | jsonfilter -e '@.message' 2>/dev/null)
+
+				if [ -z "$message" ]; then
+					echo '{"error":"No message provided"}'
+					exit 0
+				fi
+
+				# Check LocalAI
+				if ! wget -q -O /dev/null --timeout=2 "${localai_url}/v1/models" 2>/dev/null; then
+					echo '{"error":"LocalAI not available","suggestion":"Start LocalAI: localaictl start"}'
+					exit 0
+				fi
+
+				# Get threat context
+				threat_context=""
+				if command -v cscli >/dev/null 2>&1; then
+					threat_context=$(cscli alerts list -o json --limit 10 2>/dev/null | head -c 3000)
+				fi
+
+				# Build prompt
+				prompt="You are SecuBox Threat Analyst, an AI security assistant for an OpenWrt router.
+
+Current security context:
+- Recent CrowdSec alerts: $threat_context
+
+User message: $message
+
+Provide helpful, actionable security advice. If asked about threats, analyze the context. If asked to generate rules, provide specific patterns for mitmproxy/CrowdSec/WAF."
+
+				# Call LocalAI
+				request=$(cat <<AIEOF
+{"model":"$localai_model","messages":[{"role":"system","content":"You are SecuBox Threat Analyst AI."},{"role":"user","content":"$(echo "$prompt" | sed 's/"/\\"/g' | tr '\n' ' ')"}],"max_tokens":1024,"temperature":0.5}
+AIEOF
+)
+
+				response=$(echo "$request" | wget -q -O - --post-data=- \
+					--header="Content-Type: application/json" \
+					"${localai_url}/v1/chat/completions" 2>/dev/null)
+
+				if [ -n "$response" ]; then
+					content=$(echo "$response" | jsonfilter -e '@.choices[0].message.content' 2>/dev/null)
+					# Escape for JSON
+					content=$(echo "$content" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ')
+					printf '{"response":"%s"}' "$content"
+				else
+					echo '{"error":"AI query failed"}'
+				fi
+				;;
+
+			analyze)
+				# Run analysis without rule generation
+				threats=$(collect_threats 2>/dev/null)
+				analysis=$(analyze_threats "$threats" 2>/dev/null)
+
+				if [ -n "$analysis" ]; then
+					escaped=$(echo "$analysis" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ')
+					printf '{"analysis":"%s"}' "$escaped"
+				else
+					echo '{"error":"Analysis failed"}'
+				fi
+				;;
+
+			generate_rules)
+				read -r input
+				target=$(echo "$input" | jsonfilter -e '@.target' 2>/dev/null)
+				[ -z "$target" ] && target="all"
+
+				# Source generators
+				[ -f "$LIB_DIR/generators.sh" ] && . "$LIB_DIR/generators.sh"
+
+				threats=$(collect_threats 2>/dev/null)
+				analysis=$(analyze_threats "$threats" 2>/dev/null)
+
+				result='{"rules":{'
+				first=1
+
+				if [ "$target" = "all" ] || [ "$target" = "mitmproxy" ]; then
+					[ $first -eq 0 ] && result="${result},"
+					first=0
+					mitm=$(generate_mitmproxy_filters "$analysis" "$threats" 2>/dev/null | base64 -w 0)
+					result="${result}\"mitmproxy\":\"$mitm\""
+				fi
+
+				if [ "$target" = "all" ] || [ "$target" = "crowdsec" ]; then
+					[ $first -eq 0 ] && result="${result},"
+					first=0
+					cs=$(generate_crowdsec_scenario "$analysis" "$threats" 2>/dev/null | base64 -w 0)
+					result="${result}\"crowdsec\":\"$cs\""
+				fi
+
+				if [ "$target" = "all" ] || [ "$target" = "waf" ]; then
+					[ $first -eq 0 ] && result="${result},"
+					first=0
+					waf=$(generate_waf_rules "$analysis" "$threats" 2>/dev/null | base64 -w 0)
+					result="${result}\"waf\":\"$waf\""
+				fi
+
+				result="${result}}}"
+				echo "$result"
+				;;
+
+			approve_rule)
+				read -r input
+				rule_id=$(echo "$input" | jsonfilter -e '@.id' 2>/dev/null)
+
+				if [ -z "$rule_id" ]; then
+					echo '{"error":"No rule ID provided"}'
+					exit 0
+				fi
+
+				if approve_pending_rule "$rule_id" 2>/dev/null; then
+					echo '{"success":true}'
+				else
+					echo '{"success":false,"error":"Failed to approve rule"}'
+				fi
+				;;
+
+			reject_rule)
+				read -r input
+				rule_id=$(echo "$input" | jsonfilter -e '@.id' 2>/dev/null)
+
+				if [ -z "$rule_id" ]; then
+					echo '{"error":"No rule ID provided"}'
+					exit 0
+				fi
+
+				reject_pending_rule "$rule_id" 2>/dev/null
+				echo '{"success":true}'
+				;;
+
+			run_cycle)
+				# Trigger analysis cycle
+				/usr/bin/threat-analyst run >/dev/null 2>&1 &
+				echo '{"started":true}'
+				;;
+
+			*)
+				echo '{"error":"Unknown method"}'
+				;;
+		esac
+		;;
+esac

@@ -1,0 +1,193 @@
+# DNS Configuration for secubox.in as master on secubox.maegia.tv
+# This configuration will set up secubox.in as a master DNS zone
+# with secubox.maegia.tv as a slave/peer server
+
+# ============================================================================
+# STEP 1: DNS PROVIDER CONFIGURATION
+# ============================================================================
+# This configuration will be added to /etc/config/dns-provider on the master server
+# It defines secubox.in as a master zone managed by BIND DNS server
+
+config dns_provider 'secubox_in'
+    option enabled '1'                    # Enable this DNS provider configuration
+    option provider 'bind'                # Using BIND as the DNS server software
+    option zone 'secubox.in'              # Domain zone being managed
+    option master 'secubox.maegia.tv'     # Peer server that will act as slave
+    option type 'master'                  # This server is the master for this zone
+    option file '/etc/bind/zones/secubox.in.db'  # Zone file location
+
+# ============================================================================
+# STEP 2: BIND NAMED CONFIGURATION (MASTER SERVER)
+# ============================================================================
+# This will be added to /etc/bind/named.conf.local on the master server
+# It defines the master zone and allows zone transfers to trusted peers
+
+zone "secubox.in" {
+    type master;                          # This server is authoritative master
+    file "/etc/bind/zones/secubox.in.db"; # Path to zone file
+    
+    # Allow zone transfers to trusted networks
+    # Replace with actual peer IP addresses for production
+    allow-transfer {
+        192.168.1.0/24;      # Local network range
+        10.0.0.0/8;          # Additional trusted network
+        # Add specific peer IPs here for better security
+        # Example: 192.168.1.50;  # secubox.maegia.tv IP
+    };
+    
+    # Notify peers when zone changes (DNS NOTIFY)
+    also-notify {
+        # Add peer IPs here to receive zone change notifications
+        # Example: 192.168.1.50;  # secubox.maegia.tv IP
+    };
+};
+
+# ============================================================================
+# STEP 3: ZONE FILE CONTENT
+# ============================================================================
+# This is the complete content for /etc/bind/zones/secubox.in.db
+# It contains all DNS records for the secubox.in domain
+
+$TTL    604800
+@       IN      SOA     ns1.secubox.in. admin.secubox.in. (
+                      2024020501 ; Serial   # Increment this when making changes
+                      604800     ; Refresh  # How often slaves should check for updates
+                      86400      ; Retry    # How long to wait before retrying failed refresh
+                      2419200    ; Expire   # When to expire the zone if not refreshed
+                      604800 )   ; Negative Cache TTL
+;
+
+; Name servers for the domain (required)
+@       IN      NS      ns1.secubox.in.
+@       IN      NS      ns2.secubox.in.
+
+; A records for name servers (required)
+ns1     IN      A       192.168.1.100  # Primary name server IP
+ns2     IN      A       192.168.1.101  # Secondary name server IP
+
+; Main domain A records
+@       IN      A       192.168.1.100  # Main domain points to primary server
+www     IN      A       192.168.1.100  # www subdomain
+
+; MX records for email
+@       IN      MX      10 mail.secubox.in.  # Mail server with priority 10
+mail    IN      A       192.168.1.102      # Mail server A record
+
+; CNAME records (aliases)
+www     IN      CNAME   secubox.in.         # www is an alias for main domain
+
+; TXT records for email verification and security
+@       IN      TXT     "v=spf1 mx ~all"    # SPF record for email
+_dmarc  IN      TXT     "v=DMARC1; p=none; rua=mailto:admin@secubox.in"  # DMARC record
+
+; Additional records can be added here as needed
+; Example for subdomains:
+; api     IN      A       192.168.1.103
+; portal  IN      CNAME   secubox.in.
+
+# ============================================================================
+# STEP 4: BIND NAMED CONFIGURATION (SLAVE/PEER SERVER)
+# ============================================================================
+# This configuration goes on secubox.maegia.tv in /etc/bind/named.conf.local
+# It sets up the slave zone that will receive updates from the master
+
+zone "secubox.in" {
+    type slave;                           # This server is a slave/secondary
+    masters { 192.168.1.100; };           # IP of the master DNS server
+    file "/etc/bind/zones/secubox.in.slave";  # Where to store the transferred zone
+    
+    # Optional: Restrict which master can send updates
+    # masters port 53 { 192.168.1.100; };
+};
+
+# ============================================================================
+# STEP 5: FIREWALL CONFIGURATION
+# ============================================================================
+# Add these rules to /etc/config/firewall to allow DNS traffic between peers
+
+# Rule 1: Allow standard DNS queries (UDP and TCP)
+config rule
+    option name             'Allow-DNS-Peers'
+    option src              'lan'
+    option dest             'lan'
+    option proto            'tcp udp'
+    option dest_port        '53'
+    option target           'ACCEPT'
+
+# Rule 2: Allow zone transfers (TCP only, more secure)
+config rule
+    option name             'Allow-Zone-Transfers'
+    option src              'lan'
+    option dest             'lan'
+    option proto            'tcp'
+    option dest_port        '53'
+    option target           'ACCEPT'
+
+# For better security, replace 'lan' with specific IP ranges or interfaces
+# Example for specific peer:
+# option src_ip           '192.168.1.50'  # secubox.maegia.tv IP
+
+# ============================================================================
+# STEP 6: VERIFICATION AND TESTING
+# ============================================================================
+# After applying these configurations, perform the following tests:
+
+# 1. Restart BIND on both servers:
+#    /etc/init.d/named restart
+
+# 2. Test DNS resolution on master:
+#    dig @localhost secubox.in
+#    dig @localhost www.secubox.in
+#    dig @localhost mx secubox.in
+
+# 3. Check zone transfer from master:
+#    dig @localhost secubox.in AXFR
+
+# 4. Verify on slave/peer (secubox.maegia.tv):
+#    dig @localhost secubox.in
+#    dig @secubox.maegia.tv secubox.in
+
+# 5. Test from external network:
+#    dig @<master-ip> secubox.in
+#    dig @<slave-ip> secubox.in
+
+# ============================================================================
+# STEP 7: TROUBLESHOOTING
+# ============================================================================
+# Common issues and solutions:
+
+# Issue: Zone transfer fails
+# Solution: Check firewall rules, ensure allow-transfer includes peer IP
+
+# Issue: Slave doesn't update
+# Solution: Check also-notify configuration, verify network connectivity
+
+# Issue: DNS queries timeout
+# Solution: Check BIND is running, verify port 53 is open
+
+# Issue: Serial number conflicts
+# Solution: Increment serial number in SOA record on master
+
+# ============================================================================
+# IMPORTANT NOTES
+# ============================================================================
+# 1. Replace all example IP addresses (192.168.1.x) with actual server IPs
+# 2. Ensure proper network connectivity between master and slave
+# 3. Use strong, unique passwords for any DNS management interfaces
+# 4. Consider using TSIG for secure zone transfers in production
+# 5. Monitor DNS logs: /var/log/syslog or /var/log/named.log
+# 6. Set up proper monitoring for DNS service availability
+# 7. Consider implementing DNSSEC for additional security
+
+# ============================================================================
+# DNS SECURITY BEST PRACTICES
+# ============================================================================
+# 1. Restrict zone transfers to only necessary peers
+# 2. Use TSIG (Transaction SIGnatures) for secure updates
+# 3. Implement DNSSEC for data integrity
+# 4. Keep BIND software updated
+# 5. Monitor for unusual query patterns
+# 6. Rate limit DNS queries to prevent amplification attacks
+# 7. Consider using separate IPs for authoritative and recursive DNS
+
+# End of DNS Configuration for secubox.in
