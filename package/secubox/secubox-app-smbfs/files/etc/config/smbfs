@@ -1,0 +1,21 @@
+# SecuBox SMB/CIFS Remote Mount Manager
+# Each 'mount' section defines a remote SMB share
+
+config smbfs 'global'
+	option enabled '1'
+	option mount_base '/mnt/smb'
+	option cifs_version '3.0'
+	option timeout '10'
+
+# Example share (disabled by default):
+# config mount 'media'
+#	option enabled '0'
+#	option server '//192.168.1.100/media'
+#	option mountpoint '/mnt/smb/media'
+#	option username 'guest'
+#	option _password ''
+#	option domain ''
+#	option cifs_version '3.0'
+#	option read_only '1'
+#	option auto_mount '1'
+#	option description 'Media library share'

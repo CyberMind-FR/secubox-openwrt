@@ -5,7 +5,7 @@ config glances 'main'
 	option api_port '61209'
 	option web_host '0.0.0.0'
 	option refresh_rate '3'
-	option memory_limit '128M'
+	option memory_limit '256M'
 
 config monitoring 'monitoring'
 	option monitor_docker '1'

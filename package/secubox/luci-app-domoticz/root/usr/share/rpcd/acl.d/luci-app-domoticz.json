@@ -1,0 +1,24 @@
+{
+	"luci-app-domoticz": {
+		"description": "Grant access to Domoticz home automation configuration",
+		"read": {
+			"file": {
+				"/etc/config/domoticz": ["read"]
+			},
+			"ubus": {
+				"file": ["read", "stat"],
+				"luci.domoticz": ["*"]
+			},
+			"uci": ["domoticz"]
+		},
+		"write": {
+			"file": {
+				"/etc/config/domoticz": ["write"]
+			},
+			"ubus": {
+				"luci.domoticz": ["*"]
+			},
+			"uci": ["domoticz"]
+		}
+	}
+}

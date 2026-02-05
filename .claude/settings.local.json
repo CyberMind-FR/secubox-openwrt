@@ -267,7 +267,14 @@
       "Bash(git mv:*)",
       "Bash(DISPLAY=:1 scrot:*)",
       "Bash(node -c:*)",
-      "Bash(/home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-build.sh:*)"
+      "Bash(/home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-build.sh:*)",
+      "Bash(do rsync -av --delete /home/reepost/CyberMindStudio/secubox-openwrt/package/secubox/$pkg/ /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/$pkg/)",
+      "Bash(do rsync -av --delete \"package/secubox/$pkg/\" \"secubox-tools/local-feed/$pkg/\")",
+      "Bash(xdg-open:*)",
+      "WebFetch(domain:releases.domoticz.com)",
+      "WebFetch(domain:www.domoticz.com)",
+      "Bash(gh release view:*)",
+      "Bash(gh release list:*)"
     ]
   }
 }

@@ -197,7 +197,9 @@ generate_config() {
 
 	# Generate zigbee2mqtt configuration.yaml
 	cat > "$data_path/data/configuration.yaml" << EOF
-homeassistant: false
+version: 4
+homeassistant:
+  enabled: false
 permit_join: $([ "$permit_join" = "1" ] && echo "true" || echo "false")
 mqtt:
   base_topic: $base_topic
@@ -206,13 +208,14 @@ $([ -n "$mqtt_user" ] && echo "  user: $mqtt_user")
 $([ -n "$mqtt_pass" ] && echo "  password: $mqtt_pass")
 serial:
   port: /dev/$(basename $serial_port)
-  adapter: ezsp
+  adapter: ember
 advanced:
   channel: $channel
   log_level: info
   log_output:
     - console
 frontend:
+  enabled: true
   port: $frontend_port
   host: 0.0.0.0
 EOF
@@ -228,6 +231,7 @@ generate_start_script() {
 #!/bin/sh
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 export NODE_PATH=/opt/zigbee2mqtt/node_modules
+export ZIGBEE2MQTT_DATA=/opt/zigbee2mqtt/data
 
 cd /opt/zigbee2mqtt
 
@@ -244,7 +248,7 @@ if [ -n "$SERIAL" ] && [ ! -c "/dev/$SERIAL" ]; then
 fi
 
 # Run zigbee2mqtt
-exec node node_modules/zigbee2mqtt/dist/index.js 2>&1 | tee -a "$LOG_FILE"
+exec node node_modules/zigbee2mqtt/index.js 2>&1 | tee -a "$LOG_FILE"
 STARTEOF
 
 	chmod +x "$LXC_ROOTFS/opt/start-zigbee2mqtt.sh"

@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-app-domoticz
-PKG_RELEASE:=2
+PKG_RELEASE:=4
 PKG_VERSION:=1.0.0
 PKG_ARCH:=all
 PKG_MAINTAINER:=CyberMind Studio <contact@cybermind.fr>
@@ -14,13 +14,13 @@ define Package/secubox-app-domoticz
   CATEGORY:=Utilities
   PKGARCH:=all
   SUBMENU:=SecuBox Apps
-  TITLE:=SecuBox Domoticz docker app
-  DEPENDS:=dockerd +docker +containerd
+  TITLE:=SecuBox Domoticz LXC app
+  DEPENDS:=+lxc +lxc-common
 endef
 
 define Package/secubox-app-domoticz/description
 Installer, configuration, and service manager for running Domoticz
-inside Docker on SecuBox-powered OpenWrt systems.
+inside an LXC Alpine container on SecuBox-powered OpenWrt systems.
 endef
 
 define Package/secubox-app-domoticz/conffiles

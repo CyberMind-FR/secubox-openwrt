@@ -1,5 +1,17 @@
 # Claude Instructions for SecuBox OpenWrt
 
+## Session Startup — Follow the Roadmap
+
+**Before starting any work, always read the project planning files to understand current priorities and context:**
+
+1. `.claude/TODO.md` — Open tasks and backlog, ordered by priority
+2. `.claude/WIP.md` — Active threads, next-up items, and blockers
+3. `.claude/HISTORY.md` — Completed milestones with dates (gap analysis reference)
+4. `.claude/context.md` — Module map, stack overview, and templates
+5. `package/secubox/PUNK-EXPOSURE.md` — Architectural spec for exposure features
+
+**When the user says "continue" or "next"**, consult WIP.md "Next Up" and TODO.md "Open" to pick the next task. When completing work, update these files to keep them current. New features and fixes must be appended to HISTORY.md with the date.
+
 ## OpenWrt Shell Scripting Guidelines
 
 ### Process Detection

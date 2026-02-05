@@ -1522,8 +1522,8 @@
       "name": "Domoticz",
       "version": "1.0.0",
       "category": "iot",
-      "runtime": "docker",
-      "description": "Home automation system with support for various devices and protocols",
+      "runtime": "lxc",
+      "description": "Home automation system with MQTT bridge, Zigbee2MQTT integration, and IoT device management",
       "author": "CyberMind.fr",
       "license": "GPL-3.0",
       "url": "https://www.domoticz.com/",
@@ -1532,34 +1532,58 @@
         "home-automation",
         "iot",
         "smart-home",
-        "docker"
+        "lxc",
+        "mqtt",
+        "zigbee",
+        "mesh"
       ],
       "packages": {
         "required": [
           "secubox-app-domoticz",
-          "docker",
-          "dockerd"
+          "luci-app-domoticz",
+          "lxc",
+          "lxc-common"
+        ],
+        "optional": [
+          "mosquitto-nossl",
+          "secubox-app-zigbee2mqtt"
         ]
       },
       "capabilities": [
         "home-automation",
         "iot",
-        "smart-home"
+        "smart-home",
+        "mqtt-bridge",
+        "zigbee",
+        "mesh-service"
       ],
       "requirements": {
         "min_ram_mb": 256,
         "min_storage_mb": 100
       },
       "status": "stable",
-      "pkg_version": "1.0.0-2",
+      "pkg_version": "1.0.0-4",
       "app_version": "1.0.0",
       "changelog": {
+        "1.0.0-4": {
+          "date": "2026-02-04",
+          "changes": [
+            "Rewrite from Docker to LXC Alpine container",
+            "Native Domoticz binary download from releases.domoticz.com",
+            "LXC config with USB cgroup2 passthrough and memory limits",
+            "LuCI dashboard with IoT integration status",
+            "MQTT auto-bridge for Mosquitto and Zigbee2MQTT",
+            "HAProxy reverse proxy integration",
+            "P2P mesh service registration",
+            "Backup and restore support"
+          ]
+        },
         "1.0.0": {
           "date": "2026-01-04",
           "changes": [
-            "Added support for new devices",
-            "Improved automation rules",
-            "Enhanced device discovery"
+            "Initial Docker-based deployment",
+            "domoticzctl CLI manager",
+            "UCI configuration"
           ]
         }
       },
@@ -2391,6 +2415,62 @@
         "enabled": false,
         "template": "default",
         "refresh_interval": 30,
+        "metrics": []
+      }
+    },
+    {
+      "id": "secubox-app-smbfs",
+      "name": "SMB/CIFS Mounts",
+      "version": "1.0.0",
+      "category": "system",
+      "runtime": "native",
+      "description": "SMB/CIFS remote directory mount manager for media servers, backups, and shared storage",
+      "author": "CyberMind.fr",
+      "license": "Apache-2.0",
+      "icon": "\ud83d\udcc1",
+      "tags": [
+        "storage",
+        "smb",
+        "cifs",
+        "nas",
+        "media",
+        "backup"
+      ],
+      "packages": {
+        "required": [
+          "secubox-app-smbfs",
+          "kmod-fs-cifs",
+          "cifsmount"
+        ]
+      },
+      "capabilities": [
+        "storage",
+        "nas",
+        "media-library"
+      ],
+      "requirements": {
+        "min_ram_mb": 16,
+        "min_storage_mb": 1
+      },
+      "status": "stable",
+      "notes": "Manages SMB/CIFS network mounts. Integrates with Jellyfin and Lyrion media paths.",
+      "pkg_version": "1.0.0-1",
+      "app_version": "1.0.0",
+      "changelog": {
+        "1.0.0": {
+          "date": "2026-02-04",
+          "changes": [
+            "Initial release",
+            "UCI-based share management",
+            "Auto-mount at boot",
+            "Jellyfin and Lyrion integration"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": false,
+        "template": "default",
+        "refresh_interval": 60,
         "metrics": []
       }
     }

@@ -15,7 +15,7 @@ define Package/secubox-app-zigbee2mqtt
   PKGARCH:=all
   SUBMENU:=SecuBox Apps
   TITLE:=SecuBox Zigbee2MQTT LXC app
-  DEPENDS:=+lxc +kmod-usb-serial-cp210x
+  DEPENDS:=+lxc +kmod-usb-serial-cp210x +mosquitto-nossl
 endef
 
 define Package/secubox-app-zigbee2mqtt/description
