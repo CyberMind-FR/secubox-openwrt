@@ -1,0 +1,309 @@
+#!/bin/sh
+# P2P Intel CLI - Decentralized threat intelligence management
+# Usage: p2p-intelctl <command> [options]
+
+VERSION="0.1.0"
+
+# Load libraries
+[ -f /usr/lib/p2p-intel/collector.sh ] && . /usr/lib/p2p-intel/collector.sh
+[ -f /usr/lib/p2p-intel/signer.sh ] && . /usr/lib/p2p-intel/signer.sh
+[ -f /usr/lib/p2p-intel/validator.sh ] && . /usr/lib/p2p-intel/validator.sh
+[ -f /usr/lib/p2p-intel/applier.sh ] && . /usr/lib/p2p-intel/applier.sh
+
+INTEL_DIR="/var/lib/p2p-intel"
+DAEMON_INTERVAL=300
+
+usage() {
+    cat <<EOF
+P2P Intel CLI v$VERSION - Decentralized Threat Intelligence
+
+Usage: p2p-intelctl <command> [options]
+
+Collection Commands:
+  collect                   Collect IOCs from all enabled sources
+  collect-crowdsec          Collect from CrowdSec
+  collect-mitmproxy         Collect from mitmproxy
+  collect-waf               Collect from WAF
+  collect-dns-guard         Collect from DNS Guard
+  local-iocs                Show locally collected IOCs
+
+Signing Commands:
+  sign <ioc_json>           Sign single IOC
+  sign-batch <file>         Sign batch of IOCs
+  create-package            Create shareable IOC package
+
+Sharing Commands:
+  share                     Share IOCs with mesh peers
+  receive <file>            Receive IOC package from peer
+
+Validation Commands:
+  validate <file>           Validate received IOC package
+  validated                 Show validated IOCs
+
+Application Commands:
+  apply <ioc_json>          Apply single IOC
+  apply-all                 Apply all validated IOCs
+  pending                   Show pending IOCs (needs approval)
+  approve <index>           Approve pending IOC
+  reject <index>            Reject pending IOC
+  applied                   Show applied IOCs
+  remove-ban <ip>           Remove IP ban
+
+Daemon Commands:
+  daemon                    Run as daemon (foreground)
+  status                    Show P2P Intel status
+
+General:
+  help                      Show this help
+  version                   Show version
+
+EOF
+}
+
+# Get status
+cmd_status() {
+    local enabled auto_collect auto_share auto_apply
+    enabled=$(uci -q get p2p-intel.main.enabled || echo "0")
+    auto_collect=$(uci -q get p2p-intel.main.auto_collect || echo "0")
+    auto_share=$(uci -q get p2p-intel.main.auto_share || echo "0")
+    auto_apply=$(uci -q get p2p-intel.main.auto_apply || echo "0")
+
+    local local_count=0
+    local validated_count=0
+    local pending_count=0
+    local applied_count=0
+
+    if [ -f "$INTEL_DIR/local-iocs.json" ]; then
+        local_count=$(jsonfilter -i "$INTEL_DIR/local-iocs.json" -e '@[*]' 2>/dev/null | wc -l)
+    fi
+
+    if [ -f "$INTEL_DIR/pending.json" ]; then
+        pending_count=$(jsonfilter -i "$INTEL_DIR/pending.json" -e '@[*]' 2>/dev/null | wc -l)
+    fi
+
+    if [ -f "$INTEL_DIR/applied.json" ]; then
+        applied_count=$(jsonfilter -i "$INTEL_DIR/applied.json" -e '@[*]' 2>/dev/null | wc -l)
+    fi
+
+    # Count validated files
+    validated_count=$(ls "$INTEL_DIR/validated/"*.json 2>/dev/null | wc -l)
+
+    cat <<EOF
+{
+  "version": "$VERSION",
+  "enabled": $enabled,
+  "auto_collect": $auto_collect,
+  "auto_share": $auto_share,
+  "auto_apply": $auto_apply,
+  "sources": {
+    "crowdsec": $(uci -q get p2p-intel.sources.crowdsec || echo "0"),
+    "mitmproxy": $(uci -q get p2p-intel.sources.mitmproxy || echo "0"),
+    "waf": $(uci -q get p2p-intel.sources.waf || echo "0"),
+    "dns_guard": $(uci -q get p2p-intel.sources.dns_guard || echo "0")
+  },
+  "counts": {
+    "local": $local_count,
+    "validated": $validated_count,
+    "pending": $pending_count,
+    "applied": $applied_count
+  },
+  "settings": {
+    "min_severity": "$(uci -q get p2p-intel.sharing.min_severity || echo "medium")",
+    "require_signature": $(uci -q get p2p-intel.validation.require_signature || echo "1"),
+    "min_source_trust": $(uci -q get p2p-intel.validation.min_source_trust || echo "40"),
+    "ban_duration": $(uci -q get p2p-intel.application.ban_duration || echo "86400")
+  }
+}
+EOF
+}
+
+# Share with mesh peers
+cmd_share() {
+    local package
+    package=$(create_package)
+
+    if echo "$package" | grep -q '"error"'; then
+        echo "$package"
+        return 1
+    fi
+
+    # Get peer list
+    local peers_file="/tmp/secubox-p2p-peers.json"
+    if [ ! -f "$peers_file" ]; then
+        echo '{"error": "No peers file"}'
+        return 1
+    fi
+
+    local shared_count=0
+
+    while read -r peer_line; do
+        local peer_addr
+        peer_addr=$(echo "$peer_line" | jsonfilter -e '@.address' 2>/dev/null)
+
+        [ -z "$peer_addr" ] && continue
+
+        # Send package to peer
+        local result
+        result=$(curl -s -X POST -H "Content-Type: application/json" \
+            -d "$package" \
+            "http://$peer_addr:7331/api/threat-intel/receive" \
+            --connect-timeout 5 2>/dev/null)
+
+        if [ -n "$result" ]; then
+            shared_count=$((shared_count + 1))
+        fi
+    done < <(jsonfilter -i "$peers_file" -e '@[*]' 2>/dev/null)
+
+    echo "{\"shared_to\": $shared_count}"
+}
+
+# Daemon loop
+cmd_daemon() {
+    local collect_interval
+    collect_interval=$(uci -q get p2p-intel.main.collect_interval || echo "300")
+
+    logger -t p2p-intel "Daemon starting (interval: ${collect_interval}s)"
+
+    local last_collect=0
+
+    while true; do
+        local now
+        now=$(date +%s)
+
+        # Auto-collect
+        if [ $((now - last_collect)) -ge "$collect_interval" ]; then
+            local auto_collect
+            auto_collect=$(uci -q get p2p-intel.main.auto_collect || echo "0")
+
+            if [ "$auto_collect" = "1" ]; then
+                collect_all >/dev/null 2>&1
+                logger -t p2p-intel "Auto-collected IOCs"
+            fi
+
+            # Auto-share
+            local auto_share
+            auto_share=$(uci -q get p2p-intel.main.auto_share || echo "0")
+
+            if [ "$auto_share" = "1" ]; then
+                cmd_share >/dev/null 2>&1
+            fi
+
+            # Auto-apply
+            local auto_apply
+            auto_apply=$(uci -q get p2p-intel.main.auto_apply || echo "0")
+
+            if [ "$auto_apply" = "1" ]; then
+                apply_all_validated >/dev/null 2>&1
+            fi
+
+            last_collect=$now
+        fi
+
+        # Cleanup old files
+        cleanup >/dev/null 2>&1
+
+        sleep "$DAEMON_INTERVAL"
+    done
+}
+
+# Main command dispatcher
+case "$1" in
+    # Collection
+    collect)
+        collect_all
+        ;;
+    collect-crowdsec)
+        collect_crowdsec
+        ;;
+    collect-mitmproxy)
+        collect_mitmproxy
+        ;;
+    collect-waf)
+        collect_waf
+        ;;
+    collect-dns-guard)
+        collect_dns_guard
+        ;;
+    local-iocs)
+        get_local_iocs
+        ;;
+
+    # Signing
+    sign)
+        [ -z "$2" ] && { echo "Usage: p2p-intelctl sign <ioc_json>"; exit 1; }
+        sign_ioc "$2"
+        ;;
+    sign-batch)
+        [ -z "$2" ] && { echo "Usage: p2p-intelctl sign-batch <file>"; exit 1; }
+        sign_batch "$2"
+        ;;
+    create-package)
+        create_package
+        ;;
+
+    # Sharing
+    share)
+        cmd_share
+        ;;
+    receive)
+        [ -z "$2" ] && { echo "Usage: p2p-intelctl receive <file>"; exit 1; }
+        process_received "$2"
+        ;;
+
+    # Validation
+    validate)
+        [ -z "$2" ] && { echo "Usage: p2p-intelctl validate <file>"; exit 1; }
+        process_received "$2"
+        ;;
+    validated)
+        get_validated
+        ;;
+
+    # Application
+    apply)
+        [ -z "$2" ] && { echo "Usage: p2p-intelctl apply <ioc_json>"; exit 1; }
+        apply_ioc "$2"
+        ;;
+    apply-all)
+        apply_all_validated
+        ;;
+    pending)
+        get_pending
+        ;;
+    approve)
+        [ -z "$2" ] && { echo "Usage: p2p-intelctl approve <index>"; exit 1; }
+        approve_pending "$2"
+        ;;
+    reject)
+        [ -z "$2" ] && { echo "Usage: p2p-intelctl reject <index>"; exit 1; }
+        reject_pending "$2"
+        ;;
+    applied)
+        get_applied
+        ;;
+    remove-ban)
+        [ -z "$2" ] && { echo "Usage: p2p-intelctl remove-ban <ip>"; exit 1; }
+        remove_ban "$2"
+        ;;
+
+    # Daemon
+    daemon)
+        cmd_daemon
+        ;;
+    status)
+        cmd_status
+        ;;
+
+    # General
+    version)
+        echo "P2P Intel CLI v$VERSION"
+        ;;
+    help|--help|-h|"")
+        usage
+        ;;
+    *)
+        echo "Unknown command: $1"
+        echo "Run 'p2p-intelctl help' for usage"
+        exit 1
+        ;;
+esac

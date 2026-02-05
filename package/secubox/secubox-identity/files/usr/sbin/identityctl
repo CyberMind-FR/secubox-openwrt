@@ -1,0 +1,239 @@
+#!/bin/sh
+# SecuBox Identity CLI
+# Usage: identityctl <command> [options]
+
+VERSION="0.1.0"
+
+# Load libraries
+[ -f /usr/lib/secubox-identity/core.sh ] && . /usr/lib/secubox-identity/core.sh
+[ -f /usr/lib/secubox-identity/keys.sh ] && . /usr/lib/secubox-identity/keys.sh
+[ -f /usr/lib/secubox-identity/trust.sh ] && . /usr/lib/secubox-identity/trust.sh
+
+usage() {
+    cat <<EOF
+SecuBox Identity CLI v$VERSION
+
+Usage: identityctl <command> [options]
+
+DID Commands:
+  did                     Show node DID
+  did-fingerprint         Show DID fingerprint only
+  did-validate <did>      Validate DID format
+  identity                Show full identity document
+  refresh                 Refresh identity document
+
+Key Commands:
+  keygen [id]             Generate new keypair
+  pubkey [id]             Show public key info
+  keys                    List all key IDs
+  keys-public             List all public keys (JSON)
+  sign <data> [key_id]    Sign data
+  verify <data> <sig> [key_id]  Verify signature
+  rotate [id]             Rotate key (backup old)
+  delete <id>             Delete key
+  check-rotation [id]     Check if rotation needed
+
+Peer Commands:
+  resolve <did>           Resolve DID to identity document
+  store <did> <doc>       Store peer identity
+  list-peers              List known peers
+  remove-peer <id>        Remove peer identity
+
+Trust Commands:
+  trust <peer_id>         Get peer trust score
+  trust-level <peer_id>   Get trust level (verified/trusted/neutral/suspicious/untrusted)
+  trust-list              List all trust scores
+  trust-history [n]       Show trust history
+  trust-reset <peer_id>   Reset peer trust
+  trust-ban <peer_id>     Ban peer
+  is-trusted <peer_id>    Check if peer is trusted (exit code)
+  is-banned <peer_id>     Check if peer is banned (exit code)
+
+Backup Commands:
+  export [file]           Export identity to file
+  import <file>           Import identity from file
+
+General:
+  status                  Show identity status
+  help                    Show this help
+  version                 Show version
+
+EOF
+}
+
+cmd_status() {
+    local did enabled
+    did=$(did_get 2>/dev/null || echo "not configured")
+    enabled=$(uci -q get identity.main.enabled || echo "0")
+
+    local key_count=0
+    local peer_count=0
+
+    if [ -d /var/lib/secubox-identity/keys ]; then
+        key_count=$(ls /var/lib/secubox-identity/keys/*.key 2>/dev/null | wc -l)
+    fi
+
+    if [ -d /var/lib/secubox-identity/peers ]; then
+        peer_count=$(ls /var/lib/secubox-identity/peers/*.json 2>/dev/null | wc -l)
+    fi
+
+    cat <<EOF
+{
+  "version": "$VERSION",
+  "enabled": $enabled,
+  "did": "$did",
+  "fingerprint": "$(did_fingerprint 2>/dev/null)",
+  "keys": $key_count,
+  "peers": $peer_count,
+  "trust": $(trust_summary 2>/dev/null || echo '{}')
+}
+EOF
+}
+
+# Main command dispatcher
+case "$1" in
+    # DID
+    did)
+        did_get
+        ;;
+    did-fingerprint)
+        did_fingerprint
+        ;;
+    did-validate)
+        [ -z "$2" ] && { echo "Usage: identityctl did-validate <did>"; exit 1; }
+        if did_validate "$2"; then
+            echo "Valid"
+        else
+            echo "Invalid"
+            exit 1
+        fi
+        ;;
+    identity)
+        identity_get_document
+        ;;
+    refresh)
+        identity_refresh
+        echo "Identity refreshed"
+        ;;
+
+    # Keys
+    keygen)
+        keys_generate "${2:-primary}"
+        ;;
+    pubkey)
+        keys_get_public "${2:-primary}"
+        ;;
+    keys)
+        keys_list
+        ;;
+    keys-public)
+        keys_list_public
+        ;;
+    sign)
+        [ -z "$2" ] && { echo "Usage: identityctl sign <data> [key_id]"; exit 1; }
+        keys_sign "$2" "${3:-primary}"
+        ;;
+    verify)
+        [ -z "$2" ] || [ -z "$3" ] && { echo "Usage: identityctl verify <data> <signature> [key_id]"; exit 1; }
+        if keys_verify "$2" "$3" "${4:-primary}"; then
+            echo "Valid"
+        else
+            echo "Invalid"
+            exit 1
+        fi
+        ;;
+    rotate)
+        keys_rotate "${2:-primary}"
+        ;;
+    delete)
+        [ -z "$2" ] && { echo "Usage: identityctl delete <key_id>"; exit 1; }
+        keys_delete "$2"
+        ;;
+    check-rotation)
+        if keys_check_rotation "${2:-primary}"; then
+            echo "Rotation recommended"
+            exit 0
+        else
+            echo "No rotation needed"
+            exit 1
+        fi
+        ;;
+
+    # Peers
+    resolve)
+        [ -z "$2" ] && { echo "Usage: identityctl resolve <did>"; exit 1; }
+        did_resolve "$2"
+        ;;
+    store)
+        [ -z "$2" ] || [ -z "$3" ] && { echo "Usage: identityctl store <did> <document>"; exit 1; }
+        identity_store_peer "$2" "$3"
+        ;;
+    list-peers)
+        identity_list_peers
+        ;;
+    remove-peer)
+        [ -z "$2" ] && { echo "Usage: identityctl remove-peer <identifier>"; exit 1; }
+        identity_remove_peer "$2"
+        ;;
+
+    # Trust
+    trust)
+        [ -z "$2" ] && { echo "Usage: identityctl trust <peer_id>"; exit 1; }
+        score=$(trust_get_score "$2")
+        level=$(trust_level "$2")
+        echo "{\"peer_id\":\"$2\",\"score\":$score,\"level\":\"$level\"}"
+        ;;
+    trust-level)
+        [ -z "$2" ] && { echo "Usage: identityctl trust-level <peer_id>"; exit 1; }
+        trust_level "$2"
+        ;;
+    trust-list)
+        trust_list
+        ;;
+    trust-history)
+        trust_history "${2:-50}"
+        ;;
+    trust-reset)
+        [ -z "$2" ] && { echo "Usage: identityctl trust-reset <peer_id>"; exit 1; }
+        trust_reset "$2"
+        echo "Trust reset for $2"
+        ;;
+    trust-ban)
+        [ -z "$2" ] && { echo "Usage: identityctl trust-ban <peer_id>"; exit 1; }
+        trust_ban "$2"
+        echo "Peer $2 banned"
+        ;;
+    is-trusted)
+        [ -z "$2" ] && { echo "Usage: identityctl is-trusted <peer_id>"; exit 1; }
+        trust_is_trusted "$2"
+        ;;
+    is-banned)
+        [ -z "$2" ] && { echo "Usage: identityctl is-banned <peer_id>"; exit 1; }
+        trust_is_banned "$2"
+        ;;
+
+    # Backup
+    export)
+        identity_export "$2"
+        ;;
+    import)
+        [ -z "$2" ] && { echo "Usage: identityctl import <file>"; exit 1; }
+        identity_import "$2"
+        ;;
+
+    # General
+    status)
+        cmd_status
+        ;;
+    version)
+        echo "SecuBox Identity CLI v$VERSION"
+        ;;
+    help|--help|-h|"")
+        usage
+        ;;
+    *)
+        echo "Unknown command: $1"
+        echo "Run 'identityctl help' for usage"
+        exit 1
+        ;;
+esac

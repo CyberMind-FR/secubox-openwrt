@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-06_
+_Last updated: 2026-02-07_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -52,6 +52,26 @@ _Last updated: 2026-02-06_
   - Created `luci-app-vortex-dns` dashboard
 
 ### Just Completed (2026-02-06)
+
+- **AI Insights Dashboard** — DONE
+  - Created `luci-app-ai-insights` - unified view across all AI agents
+  - Security posture scoring (0-100) with factor breakdown
+  - Agent status grid: Threat Analyst, DNS Guard, Network Anomaly, CVE Triage
+  - Aggregated alerts from all agents
+  - Actions: Run All Agents, AI Analysis, View Timeline
+  - Links to LocalRecall memory dashboard
+
+- **LocalRecall Memory System** — DONE
+  - Created `secubox-localrecall` - persistent memory for AI agents
+  - Categories: threats, decisions, patterns, configs, conversations
+  - LocalAI integration for semantic search and AI summarization
+  - Created `luci-app-localrecall` dashboard with add/search/summarize
+
+- **Network Anomaly Agent** — DONE
+  - Created `secubox-network-anomaly` with 5 detection modules
+  - Bandwidth spikes, connection floods, port scans, DNS anomalies, protocol anomalies
+  - LocalAI integration for AI-powered analysis
+  - Created `luci-app-network-anomaly` dashboard
 
 - **CVE Triage Agent** — DONE
   - Created `secubox-cve-triage` - AI-powered CVE analysis and vulnerability management
@@ -178,14 +198,52 @@ _Last updated: 2026-02-06_
 
 ## Couche 3 — MirrorNetworking
 
-### Packages to Build (v0.19)
+### Just Completed (2026-02-07)
 
-| Package | Priority | Notes |
-|---------|----------|-------|
-| `secubox-mirrornet` | HIGH | Core mesh orchestration, gossip protocol |
-| `secubox-identity` | HIGH | did:plc generation, key rotation |
-| `secubox-p2p-intel` | MEDIUM | IoC signed gossip |
-| `luci-app-secubox-mirror` | MEDIUM | Dashboard for peers, trust, services |
+- **MirrorNet Core Package** — DONE
+  - Created `secubox-mirrornet` with 5 library modules:
+    - `identity.sh` - DID-based identity (did:plc:<fingerprint>), keypair generation, signing
+    - `reputation.sh` - Peer trust scoring (0-100), event logging, decay, ban thresholds
+    - `mirror.sh` - Service mirroring, upstream management, HAProxy backend generation
+    - `gossip.sh` - Enhanced gossip protocol, priority routing, deduplication, TTL-based forwarding
+    - `health.sh` - Peer health monitoring, latency/packet loss, anomaly detection, alerts
+  - `mirrorctl` CLI with 30+ commands
+  - UCI config for roles (master/submaster/peer), reputation, gossip, mirror, health settings
+
+- **MirrorNet Dashboard** — DONE
+  - Created `luci-app-secubox-mirror` with RPCD handler (15 methods)
+  - Identity card with DID, hostname, role, version
+  - Peer reputation table with trust levels and reset action
+  - Gossip protocol stats (sent/received/forwarded/dropped)
+  - Health alerts panel with acknowledgment
+  - Mirrored services table
+
+- **SecuBox Identity Package** — DONE
+  - Created `secubox-identity` standalone identity management
+  - DID generation (did:plc:<fingerprint>) compatible with AT Protocol
+  - Keypair management (HMAC-SHA256, Ed25519 fallback)
+  - Key rotation with backup
+  - Peer identity storage and resolution
+  - Trust scoring integration
+  - `identityctl` CLI with 25+ commands
+
+- **P2P Intel Package** — DONE
+  - Created `secubox-p2p-intel` for signed IOC sharing
+  - Collector: CrowdSec, mitmproxy, WAF, DNS Guard sources
+  - Signer: Cryptographic signing of IOC batches
+  - Validator: Source trust, age, format validation
+  - Applier: nftables/iptables/CrowdSec application
+  - Approval workflow for manual review
+  - `p2p-intelctl` CLI with 20+ commands
+
+### MirrorNet Packages Summary (v0.19)
+
+| Package | Status | Description |
+|---------|--------|-------------|
+| `secubox-mirrornet` | DONE | Core mesh orchestration, gossip, health |
+| `secubox-identity` | DONE | DID-based identity, key management, trust |
+| `secubox-p2p-intel` | DONE | IOC signed gossip, validation, application |
+| `luci-app-secubox-mirror` | DONE | Dashboard for peers, trust, services |
 
 ### Master/Slave CDN Architecture (User Vision)
 

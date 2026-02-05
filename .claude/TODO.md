@@ -169,16 +169,17 @@ All cloud providers are **opt-in**. Offline resilience: local tier always active
 ### v0.19.0 — AI Expansion + MirrorNet
 
 - [x] CVE Triage agent (Done 2026-02-06)
-- [ ] Network Anomaly agent
-- [ ] LocalRecall memory integration
-- [ ] AI Insights dashboard
-- [ ] MirrorNet core packages:
-  - [ ] `secubox-mirrornet` — Mesh orchestration, gossip protocol
-  - [ ] `secubox-identity` — did:plc generation, trust scoring
-  - [ ] `secubox-p2p-intel` — IoC signed gossip
+- [x] Network Anomaly agent (Done 2026-02-06)
+- [x] LocalRecall memory integration (Done 2026-02-06)
+- [x] AI Insights dashboard (Done 2026-02-06)
+- [x] MirrorNet core packages: (Done 2026-02-07)
+  - [x] `secubox-mirrornet` — Mesh orchestration, gossip protocol
+  - [x] `secubox-identity` — did:plc generation, trust scoring
+  - [x] `secubox-p2p-intel` — IoC signed gossip
+  - [x] `luci-app-secubox-mirror` — Dashboard for peers, trust, services
 - [x] Master/Slave CDN Architecture:
   - [x] Wildcard domain delegation (*.secubox.io concept) — `secubox-vortex-dns` (2026-02-05)
-  - [ ] Service mirroring via reverse proxy chaining
+  - [x] Service mirroring via reverse proxy chaining — `mirrorctl` (2026-02-07)
   - [x] Gossip-based exposure config sync — `vortexctl mesh sync` (2026-02-05)
   - [x] Hierarchical submastering/multimixslaving — `vortexctl submaster` (2026-02-05)
 

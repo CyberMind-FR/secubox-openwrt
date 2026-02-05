@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-02-05_
+_Last updated: 2026-02-07_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -419,4 +419,178 @@ _Last updated: 2026-02-05_
       - Mesh section: gossip state, First Peek, peer count, published services
       - Actions: Sync Mesh, Initialize as Master, Join as Slave, Delegate Zone
     - **RPCD methods**: status, get_slaves, get_peers, get_published, master_init, delegate, revoke, slave_join, mesh_sync, mesh_publish
+    - Part of v0.19 MirrorNetworking roadmap (Couche 3).
+
+36. **Network Anomaly Detection Agent (2026-02-06)**
+    - Created `secubox-network-anomaly` — AI-powered network traffic anomaly detection.
+    - **Detection modules** (5 total):
+      - `bandwidth_anomaly`: Traffic spike detection via EMA baseline comparison
+      - `connection_flood`: Connection count threshold monitoring
+      - `port_scan`: Unique destination port enumeration detection
+      - `dns_anomaly`: DNS query volume anomaly detection
+      - `protocol_anomaly`: TCP/UDP ratio deviation (flags >50% UDP as suspicious)
+    - **Data collection**:
+      - Interface bandwidth from `/sys/class/net/*/statistics/`
+      - Connection tracking from `/proc/net/nf_conntrack`
+      - DNS queries from dnsmasq/AdGuard logs
+    - **CLI commands** (`network-anomalyctl`):
+      - `status`, `run`, `daemon` — service control
+      - `analyze` — LocalAI-powered threat assessment
+      - `list-alerts`, `ack <id>`, `clear-alerts` — alert management
+      - `baseline [reset]` — EMA baseline control
+    - **UCI configuration**:
+      - Thresholds: bandwidth_spike_percent (200%), new_connections_per_min (50), unique_ports_per_host (20), dns_queries_per_min (100)
+      - Detection flags: per-detector enable/disable
+      - LocalAI integration: url, model, min_confidence (75%)
+      - Auto-block: optional CrowdSec integration
+    - Created `luci-app-network-anomaly` — LuCI dashboard.
+      - Status panel: daemon state, LocalAI, alert count, connection count
+      - Health checks: daemon, LocalAI, auto-block, interval, last run
+      - Network stats: real-time RX/TX, connections, unique ports
+      - Actions: Run Detection, AI Analysis, Reset Baseline, Clear Alerts
+      - Alerts table: time, type, severity, message, ack button
+    - **RPCD methods**: status, get_alerts, get_stats, run, ack_alert, clear_alerts, reset_baseline, analyze
+    - Part of v0.19 AI Gateway roadmap (Couche 2).
+
+37. **LocalRecall AI Memory System (2026-02-06)**
+    - Created `secubox-localrecall` — persistent memory for AI agents.
+    - **Memory categories**:
+      - `threats`: Security threat patterns and detections
+      - `decisions`: Agent decisions with outcomes (approved/rejected/auto)
+      - `patterns`: Learned behavioral patterns
+      - `configs`: Configuration snapshots and changes
+      - `conversations`: AI conversation context
+    - **Memory storage**:
+      - JSON-based storage in `/var/lib/localrecall/memories.json`
+      - EMA-based importance scoring (1-10)
+      - Access tracking with timestamps and counts
+      - Category-based indexing
+    - **CLI commands** (`localrecallctl`):
+      - `status`, `add`, `get`, `search`, `list`, `recent`, `important`
+      - `delete`, `cleanup`, `export`, `import`
+      - `summarize`, `context`, `stats`
+    - **LocalAI integration**:
+      - `summarize_memories()` — AI-powered memory summarization
+      - `auto_memorize()` — Extract key facts from text
+      - `get_agent_context()` — Build context for agent tasks
+      - `record_decision()`, `record_threat()` — Structured memory helpers
+    - **UCI configuration**:
+      - Retention: max_memories (1000), retention_days (90)
+      - Categories: enable/disable per category
+      - Agents: enable/disable per agent
+      - Cleanup: auto_cleanup, cleanup_hour, keep_important
+    - Created `luci-app-localrecall` — LuCI dashboard.
+      - Stats: total/threats/decisions/patterns counts
+      - Categories panel with icons and counts
+      - Agent breakdown panel
+      - Actions: AI Summary, Search, Cleanup, Export
+      - Add memory form with category, importance, content
+      - Recent memories table with delete
+    - **RPCD methods**: status, get_memories, search, stats, add, delete, cleanup, summarize, export, import
+    - Part of v0.19 AI Gateway roadmap (Couche 2).
+
+38. **AI Insights Dashboard (2026-02-06)**
+    - Created `luci-app-ai-insights` — unified AI security insights dashboard.
+    - **Security Posture Score**:
+      - 0-100 score with color-coded display (Excellent/Good/Fair/Poor/Critical)
+      - Dynamic factor calculation: LocalAI status, agent online counts, CrowdSec alerts, CVE severity
+      - Real-time score updates via polling
+    - **Agent Status Grid**:
+      - Visual cards for 4 agents: Threat Analyst, DNS Guard, Network Anomaly, CVE Triage
+      - Online/offline status with color indicators
+      - Alert count badges per agent
+    - **Aggregated Alerts**:
+      - Unified view of alerts from all agents
+      - Source-colored badges (rule/alert/cve)
+      - Relative timestamps
+    - **Actions**:
+      - Run All Agents — triggers detection cycles on all agents
+      - AI Analysis — LocalAI-powered security assessment with recommendations
+      - View Timeline — security events from system log (24h)
+      - Link to LocalRecall memory dashboard
+    - **RPCD methods**: status, get_alerts, get_posture, get_timeline, run_all, analyze
+    - Part of v0.19 AI Gateway roadmap (Couche 2).
+
+39. **MirrorNet Core Packages (2026-02-07)**
+    - Created `secubox-mirrornet` — mesh orchestration core with 5 library modules.
+    - **Identity module** (`identity.sh`):
+      - DID generation: `did:plc:<16-char-fingerprint>` (AT Protocol compatible)
+      - HMAC-SHA256 keypair management with Ed25519 fallback
+      - Key rotation with backup, identity document export/import
+      - Peer identity storage and resolution
+    - **Reputation module** (`reputation.sh`):
+      - Trust scoring (0-100) with decay and ban thresholds
+      - Event logging: sync_success/failed, valid/invalid_ioc, fast/slow_response, offline/online
+      - Trust levels: excellent (80+), good (60+), moderate (40+), low (20+), untrusted
+      - Ban threshold (default 10), min_trust threshold (default 20)
+    - **Mirror module** (`mirror.sh`):
+      - Service mirroring via reverse proxy chaining
+      - Upstream management with priority-based failover
+      - HAProxy backend configuration generation
+      - Health check integration with automatic failover
+    - **Gossip module** (`gossip.sh`):
+      - Enhanced gossip protocol with priority routing (critical > high > normal > low > background)
+      - TTL-based message forwarding with configurable max_hops (default 5)
+      - Deduplication with 5-minute window
+      - Message types: ioc, peer_status, config_sync, service_announce, mirror_update, reputation_update
+    - **Health module** (`health.sh`):
+      - Per-peer latency and packet loss monitoring
+      - HTTP health checks with configurable endpoints
+      - Anomaly detection against EMA baselines
+      - Alert generation with acknowledgment workflow
+    - **CLI** (`mirrorctl`): 30+ commands for identity, reputation, mirror, gossip, health, daemon
+    - **UCI configuration**: roles (master/submaster/peer), gossip interval, health thresholds, mirror settings
+    - Created `luci-app-secubox-mirror` — LuCI dashboard.
+      - Identity card: DID, hostname, role, version
+      - Status grid: peers, messages, services, alerts
+      - Peer reputation table with trust levels and reset action
+      - Gossip stats: sent/received/forwarded/dropped
+      - Health alerts with acknowledgment
+      - Mirrored services table
+    - **RPCD methods**: status, get_identity, get_peers, get_reputation, get_health, get_mirrors, get_gossip_stats, get_alerts, reset_reputation, ack_alert, add_mirror, trigger_failover, broadcast
+    - Part of v0.19 MirrorNetworking roadmap (Couche 3).
+
+40. **SecuBox Identity Package (2026-02-07)**
+    - Created `secubox-identity` — standalone DID identity management.
+    - **Core module** (`core.sh`):
+      - DID generation: `did:plc:<fingerprint>` from machine-id + MAC
+      - Identity document creation (DID Document format with @context)
+      - Peer identity import/export
+      - Identity backup and restore
+    - **Keys module** (`keys.sh`):
+      - HMAC-SHA256 keypair generation (Ed25519 fallback if available)
+      - Key rotation with configurable backup
+      - Sign/verify operations
+      - Key rotation check (configurable rotation_days: default 90)
+    - **Trust module** (`trust.sh`):
+      - Peer trust scoring (0-100)
+      - Trust events: valid/invalid_signature, successful/failed_exchange, verified_identity, referred_by_trusted
+      - Trust levels: verified, trusted, neutral, suspicious, untrusted
+      - Ban functionality
+    - **CLI** (`identityctl`): 25+ commands for DID, keys, peers, trust, backup
+    - **UCI configuration**: did_method, key algorithm, rotation settings, trust thresholds
+
+41. **P2P Intel Package (2026-02-07)**
+    - Created `secubox-p2p-intel` — signed IOC sharing for mesh.
+    - **Collector module** (`collector.sh`):
+      - Source integrations: CrowdSec, mitmproxy, WAF, DNS Guard
+      - Severity classification: critical, high, medium, low
+      - Scenario-based severity mapping
+    - **Signer module** (`signer.sh`):
+      - Cryptographic signing of individual IOCs and batches
+      - Batch hash verification (SHA256)
+      - Identity integration for signer DID
+    - **Validator module** (`validator.sh`):
+      - Source trust verification (min_source_trust threshold)
+      - Age validation (max_age_hours: default 168)
+      - Format validation (IP, domain, URL, hash)
+      - Local IP whitelist protection
+    - **Applier module** (`applier.sh`):
+      - Application methods: nftables (ipset), iptables, CrowdSec
+      - Ban duration configuration (default 24h)
+      - Approval workflow: auto-apply or queue for manual review
+      - Pending queue management (approve/reject)
+    - **CLI** (`p2p-intelctl`): 20+ commands for collect, sign, share, validate, apply, approve
+    - **UCI configuration**: sources enable/disable, signing, validation settings, application method, auto-apply
+    - **Daemon**: Configurable collect_interval (default 300s), auto_collect, auto_share, auto_apply
     - Part of v0.19 MirrorNetworking roadmap (Couche 3).
