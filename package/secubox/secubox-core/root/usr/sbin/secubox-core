@@ -1219,6 +1219,10 @@ daemon_mode() {
     # Wait for initial cache population
     sleep 1
 
+    # Initialize vhosts (in background to not block daemon startup)
+    ( sleep 5; /usr/sbin/secubox-vhost init >/dev/null 2>&1 || true ) &
+    log debug "Vhost initialization scheduled"
+
     # Initialize LED heartbeat
     led_init
     led_heartbeat boot

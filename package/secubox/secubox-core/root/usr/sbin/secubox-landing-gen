@@ -1,0 +1,108 @@
+#!/bin/sh
+#
+# SecuBox Landing Page Generator
+# Dynamically generates landing page from HAProxy vhosts and Streamlit instances
+#
+
+LANDING_PAGE="/www/secubox-landing.html"
+DOMAIN=$(uci -q get secubox.external.base_domain)
+[ -z "$DOMAIN" ] && DOMAIN=$(uci -q get vortex-dns.main.wildcard_domain)
+[ -z "$DOMAIN" ] && DOMAIN="secubox.local"
+NODE=$(echo "$DOMAIN" | cut -d. -f1)
+
+# Start HTML
+cat > "$LANDING_PAGE" << 'HTMLHEAD'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecuBox - NODENAME</title>
+    <style>
+        :root { --bg: #0a0a0f; --fg: #e0e0e0; --accent: #00ffff; --accent2: #ff00ff; --card-bg: rgba(255,255,255,0.05); }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: var(--bg); color: var(--fg); font-family: "Courier New", monospace; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 2rem; }
+        .container { max-width: 1000px; width: 100%; }
+        h1 { font-size: 2.5rem; background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: center; margin-bottom: 0.5rem; }
+        .node-id { font-size: 1.2rem; color: var(--accent); text-align: center; margin-bottom: 2rem; }
+        .section { margin-bottom: 2rem; }
+        .section-title { font-size: 1rem; color: #888; margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 2px; border-bottom: 1px solid #333; padding-bottom: 0.5rem; }
+        .services { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1rem; }
+        .service { background: var(--card-bg); border: 1px solid rgba(0,255,255,0.2); border-radius: 8px; padding: 1rem; transition: all 0.2s; }
+        .service:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 4px 20px rgba(0,255,255,0.1); }
+        .service a { color: var(--accent); text-decoration: none; font-weight: bold; }
+        .service a:hover { text-decoration: underline; }
+        .service-desc { font-size: 0.8rem; color: #666; margin-top: 0.3rem; }
+        .streamlit { border-color: rgba(255,0,255,0.3); }
+        .streamlit a { color: var(--accent2); }
+        .footer { margin-top: 2rem; color: #444; font-size: 0.8rem; text-align: center; }
+        .pulse { animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>SecuBox</h1>
+        <div class="node-id">DOMAINNAME</div>
+        <div class="section">
+            <div class="section-title">Web Services</div>
+            <div class="services">
+HTMLHEAD
+
+# Replace placeholders
+sed -i "s/NODENAME/$NODE/g" "$LANDING_PAGE"
+sed -i "s/DOMAINNAME/$DOMAIN/g" "$LANDING_PAGE"
+
+# Add HAProxy vhosts
+haproxyctl vhost list 2>/dev/null | grep "$DOMAIN" | grep -v "^Virtual" | awk '{print $1}' | sed "s/\.$DOMAIN//" | sort -u | while read svc; do
+    [ -z "$svc" ] && continue
+    [ "$svc" = "$DOMAIN" ] && continue
+    case "$svc" in
+        console) desc="LuCI Console" ;;
+        control) desc="Control Panel" ;;
+        evolution) desc="Evolution Dashboard" ;;
+        glances) desc="System Monitoring" ;;
+        metrics) desc="Netdata Metrics" ;;
+        play) desc="Streamlit Apps" ;;
+        factory) desc="Mesh Onboarding" ;;
+        crowdsec) desc="CrowdSec Dashboard" ;;
+        git|gitea) desc="Git Repository" ;;
+        mail) desc="Mail Server" ;;
+        localai) desc="LocalAI LLM" ;;
+        *) desc="Service" ;;
+    esac
+    echo "                <div class=\"service\"><a href=\"https://$svc.$DOMAIN\" target=\"_blank\">$svc</a><div class=\"service-desc\">$desc</div></div>" >> "$LANDING_PAGE"
+done
+
+# Close web services, start Streamlit section
+cat >> "$LANDING_PAGE" << 'HTMLMID'
+            </div>
+        </div>
+        <div class="section">
+            <div class="section-title">Streamlit Apps</div>
+            <div class="services">
+HTMLMID
+
+# Add Streamlit instances
+uci show streamlit 2>/dev/null | grep "\.app=" | while read line; do
+    name=$(echo "$line" | cut -d. -f2)
+    port=$(uci -q get "streamlit.$name.port")
+    enabled=$(uci -q get "streamlit.$name.enabled")
+    [ "$enabled" != "1" ] && continue
+    [ -z "$port" ] && continue
+    echo "                <div class=\"service streamlit\"><a href=\"http://$DOMAIN:$port\" target=\"_blank\">$name</a><div class=\"service-desc\">Port $port</div></div>" >> "$LANDING_PAGE"
+done
+
+# Close HTML
+cat >> "$LANDING_PAGE" << HTMLFOOT
+            </div>
+        </div>
+        <div class="footer">
+            <span class="pulse">●</span> SecuBox Framework — Generated $(date +"%Y-%m-%d %H:%M")
+        </div>
+    </div>
+</body>
+</html>
+HTMLFOOT
+
+echo "Landing page generated: $LANDING_PAGE"

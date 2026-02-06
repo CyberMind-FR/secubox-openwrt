@@ -1,0 +1,165 @@
+#!/bin/sh
+# SecuBox LED Pulse - Tri-Color Status with Critical Alert Mode
+# Matches control panel (port 8511) + SPUNK ALERT for critical failures
+
+LED_GREEN1='/sys/class/leds/green:led1'
+LED_RED1='/sys/class/leds/red:led1'
+LED_BLUE1='/sys/class/leds/blue:led1'
+
+CACHE_FILE="/tmp/secubox/health-status.json"
+
+led_set() {
+    local led="$1" val="$2"
+    echo "${val:-0}" > "$led/brightness" 2>/dev/null
+}
+
+set_color() {
+    local r="$1" g="$2" b="$3"
+    led_set "$LED_RED1" "$r"
+    led_set "$LED_GREEN1" "$g"
+    led_set "$LED_BLUE1" "$b"
+}
+
+all_off() { set_color 0 0 0; }
+
+get_json_val() {
+    local key="$1"
+    jsonfilter -i "$CACHE_FILE" -e "@.$key" 2>/dev/null
+}
+
+# Check for CRITICAL services - these trigger SPUNK ALERT
+check_critical_services() {
+    local critical=0
+
+    # HAProxy must be running (PERMANENT priority)
+    if ! lxc-attach -n haproxy -- pgrep haproxy >/dev/null 2>&1; then
+        critical=1
+    fi
+
+    # CrowdSec must be running (URGENT priority)
+    if ! pgrep crowdsec >/dev/null 2>&1; then
+        critical=1
+    fi
+
+    # Check if services are down from cache
+    local haproxy_ok=$(get_json_val "services.haproxy")
+    local crowdsec_ok=$(get_json_val "services.crowdsec")
+
+    [ "$haproxy_ok" = "0" ] && critical=1
+    [ "$crowdsec_ok" = "0" ] && critical=1
+
+    return $critical
+}
+
+# SPUNK ALERT - Rapid red flashing for critical failures
+spunk_alert() {
+    echo "SPUNK ALERT - Critical service down!" >&2
+    echo "CRITICAL" > /tmp/secubox/led-status
+
+    local i
+    for i in 1 2 3 4 5; do
+        # Rapid red flash
+        set_color 255 0 0
+        local x=0; while [ $x -lt 25000 ]; do x=$((x+1)); done
+        all_off
+        x=0; while [ $x -lt 25000 ]; do x=$((x+1)); done
+    done
+
+    # Brief pause before next check
+    sleep 1
+}
+
+# Calculate colors based on metrics
+calc_health_color() {
+    local score=$(get_json_val "score")
+    [ -z "$score" ] && score=100
+    if [ "$score" -ge 80 ]; then echo "green"
+    elif [ "$score" -ge 50 ]; then echo "yellow"
+    else echo "red"; fi
+}
+
+calc_cpu_color() {
+    local cpu=$(get_json_val "resources.cpu_load" | cut -d'.' -f1)
+    [ -z "$cpu" ] && cpu=0
+    local pct=$((cpu * 25))
+    if [ "$pct" -lt 60 ]; then echo "green"
+    elif [ "$pct" -lt 85 ]; then echo "yellow"
+    else echo "red"; fi
+}
+
+calc_mem_color() {
+    local mem=$(get_json_val "resources.memory_percent")
+    [ -z "$mem" ] && mem=50
+    if [ "$mem" -lt 60 ]; then echo "green"
+    elif [ "$mem" -lt 85 ]; then echo "yellow"
+    else echo "red"; fi
+}
+
+# Pulse with specific color
+pulse_color() {
+    case "$1" in
+        green)  set_color 0 255 0 ;;
+        yellow) set_color 255 165 0 ;;
+        red)    set_color 255 0 0 ;;
+        cyan)   set_color 0 255 255 ;;
+        *)      set_color 0 128 0 ;;
+    esac
+}
+
+dim_color() {
+    case "$1" in
+        green)  set_color 0 64 0 ;;
+        yellow) set_color 64 42 0 ;;
+        red)    set_color 64 0 0 ;;
+        cyan)   set_color 0 64 64 ;;
+        *)      set_color 0 32 0 ;;
+    esac
+}
+
+# Busy wait for ms (BusyBox compatible)
+busy_wait() {
+    local count=$(($1 * 100))
+    local x=0
+    while [ $x -lt $count ]; do x=$((x+1)); done
+}
+
+echo 'SecuBox LED Tri-Color + SPUNK ALERT starting...'
+all_off
+
+# Main loop
+while true; do
+    # PRIORITY 1: Check for critical service failures
+    if ! check_critical_services; then
+        spunk_alert
+        continue
+    fi
+
+    # Normal operation: Tri-color heartbeat
+    health_color=$(calc_health_color)
+    cpu_color=$(calc_cpu_color)
+    mem_color=$(calc_mem_color)
+
+    echo "$health_color $cpu_color $mem_color" > /tmp/secubox/led-status
+
+    # Triple-pulse cascade (Health -> CPU -> Memory)
+    # Pulse 1: Health
+    pulse_color "$health_color"
+    busy_wait 150
+    dim_color "$health_color"
+    busy_wait 100
+
+    # Pulse 2: CPU
+    pulse_color "$cpu_color"
+    busy_wait 150
+    dim_color "$cpu_color"
+    busy_wait 100
+
+    # Pulse 3: Memory
+    pulse_color "$mem_color"
+    busy_wait 150
+    all_off
+    busy_wait 500
+
+    # Pause between heartbeats
+    sleep 1
+done

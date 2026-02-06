@@ -1,0 +1,462 @@
+#!/bin/sh
+#
+# SecuBox Vhost Manager
+# Manages subdomain mappings for external (*.secubox.in) and local (*.sb.local) domains
+#
+
+. /lib/functions.sh
+
+CONFIG="secubox"
+DNSMASQ_CONF="/tmp/dnsmasq.d/secubox-vhosts.conf"
+LANDING_PAGE="/www/secubox-landing.html"
+
+log_info() { logger -t secubox-vhost -p info "$*"; }
+log_error() { logger -t secubox-vhost -p err "$*"; }
+
+# Get external base domain (e.g., gk2.secubox.in)
+get_external_domain() {
+	local base
+	config_load "$CONFIG"
+	config_get base external base_domain ""
+
+	# Try to auto-detect from vortex-dns if not set
+	if [ -z "$base" ]; then
+		base=$(uci -q get vortex-dns.main.wildcard_domain)
+	fi
+
+	echo "$base"
+}
+
+# Get local base domain (e.g., gk2.sb.local)
+get_local_domain() {
+	local base external_base local_suffix
+	config_load "$CONFIG"
+	config_get local_suffix local base_domain "sb.local"
+
+	external_base=$(get_external_domain)
+	if [ -n "$external_base" ]; then
+		# Extract node prefix (e.g., "gk2" from "gk2.secubox.in")
+		local prefix=$(echo "$external_base" | cut -d. -f1)
+		echo "${prefix}.${local_suffix}"
+	else
+		echo "$local_suffix"
+	fi
+}
+
+# Generate dnsmasq configuration for local domains
+generate_dnsmasq() {
+	local local_domain lan_ip
+	local_domain=$(get_local_domain)
+	lan_ip=$(uci -q get network.lan.ipaddr || echo "192.168.255.1")
+
+	mkdir -p "$(dirname "$DNSMASQ_CONF")"
+
+	cat > "$DNSMASQ_CONF" << EOF
+# SecuBox Vhost Local DNS
+# Auto-generated - do not edit
+# Wildcard for *.${local_domain}
+address=/${local_domain}/${lan_ip}
+EOF
+
+	log_info "Generated dnsmasq config for ${local_domain} -> ${lan_ip}"
+}
+
+# Add HAProxy vhost for a service
+add_haproxy_vhost() {
+	local subdomain="$1"
+	local backend="$2"
+	local port="$3"
+	local description="$4"
+
+	local external_domain local_domain
+	external_domain=$(get_external_domain)
+	local_domain=$(get_local_domain)
+
+	[ -z "$external_domain" ] && {
+		log_error "No external domain configured"
+		return 1
+	}
+
+	local ext_fqdn="${subdomain}.${external_domain}"
+	local local_fqdn="${subdomain}.${local_domain}"
+
+	# Check if haproxyctl is available
+	command -v haproxyctl >/dev/null 2>&1 || {
+		log_error "haproxyctl not found"
+		return 1
+	}
+
+	# Add external vhost
+	haproxyctl vhost add "$ext_fqdn" "${backend}:${port}" >/dev/null 2>&1
+
+	# Add local vhost
+	haproxyctl vhost add "$local_fqdn" "${backend}:${port}" >/dev/null 2>&1
+
+	log_info "Added vhosts: ${ext_fqdn}, ${local_fqdn} -> ${backend}:${port}"
+}
+
+# Remove HAProxy vhost for a service
+remove_haproxy_vhost() {
+	local subdomain="$1"
+
+	local external_domain local_domain
+	external_domain=$(get_external_domain)
+	local_domain=$(get_local_domain)
+
+	local ext_fqdn="${subdomain}.${external_domain}"
+	local local_fqdn="${subdomain}.${local_domain}"
+
+	command -v haproxyctl >/dev/null 2>&1 || return 1
+
+	haproxyctl vhost remove "$ext_fqdn" >/dev/null 2>&1
+	haproxyctl vhost remove "$local_fqdn" >/dev/null 2>&1
+
+	log_info "Removed vhosts: ${ext_fqdn}, ${local_fqdn}"
+}
+
+# Generate default landing page
+generate_landing_page() {
+	local external_domain node_name
+	external_domain=$(get_external_domain)
+	node_name=$(echo "$external_domain" | cut -d. -f1)
+
+	cat > "$LANDING_PAGE" << 'LANDING_EOF'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecuBox - NODE_NAME</title>
+    <style>
+        :root {
+            --bg: #0a0a0f;
+            --fg: #e0e0e0;
+            --accent: #00ffff;
+            --accent2: #ff00ff;
+            --card-bg: rgba(255,255,255,0.05);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: var(--bg);
+            color: var(--fg);
+            font-family: 'Courier New', monospace;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+        .container {
+            max-width: 800px;
+            text-align: center;
+        }
+        h1 {
+            font-size: 3rem;
+            background: linear-gradient(90deg, var(--accent), var(--accent2));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 1rem;
+        }
+        .node-id {
+            font-size: 1.5rem;
+            color: var(--accent);
+            margin-bottom: 2rem;
+            font-weight: bold;
+        }
+        .services {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 2rem;
+        }
+        .service {
+            background: var(--card-bg);
+            border: 1px solid rgba(0,255,255,0.2);
+            border-radius: 8px;
+            padding: 1rem;
+            transition: all 0.3s ease;
+        }
+        .service:hover {
+            border-color: var(--accent);
+            transform: translateY(-2px);
+        }
+        .service a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+        .service a:hover {
+            text-decoration: underline;
+        }
+        .service-name {
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+        .service-desc {
+            font-size: 0.85rem;
+            color: #888;
+        }
+        .footer {
+            margin-top: 3rem;
+            color: #555;
+            font-size: 0.85rem;
+        }
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>SecuBox</h1>
+        <div class="node-id">NODE_NAME.secubox.in</div>
+        <p>Modular OpenWrt Security Appliance</p>
+
+        <div class="services" id="services">
+            <div class="service">
+                <div class="service-name"><a href="https://console.NODE_DOMAIN">Console</a></div>
+                <div class="service-desc">LuCI Management Interface</div>
+            </div>
+            <div class="service">
+                <div class="service-name"><a href="https://control.NODE_DOMAIN">Control</a></div>
+                <div class="service-desc">Control Panel</div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <span class="pulse">&#x25CF;</span> Powered by SecuBox Framework
+        </div>
+    </div>
+
+    <script>
+        // Replace placeholders with actual values
+        document.body.innerHTML = document.body.innerHTML
+            .replace(/NODE_NAME/g, 'NODE_NAME_PLACEHOLDER')
+            .replace(/NODE_DOMAIN/g, 'NODE_DOMAIN_PLACEHOLDER');
+    </script>
+</body>
+</html>
+LANDING_EOF
+
+	# Replace placeholders
+	sed -i "s/NODE_NAME_PLACEHOLDER/${node_name}/g" "$LANDING_PAGE"
+	sed -i "s/NODE_DOMAIN_PLACEHOLDER/${external_domain}/g" "$LANDING_PAGE"
+
+	log_info "Generated landing page at ${LANDING_PAGE}"
+}
+
+# Sync all enabled vhosts from config
+sync_vhosts() {
+	config_load "$CONFIG"
+
+	_add_vhost_cb() {
+		local section="$1"
+		local enabled subdomain backend port description
+
+		config_get enabled "$section" enabled "0"
+		config_get subdomain "$section" subdomain ""
+		config_get backend "$section" backend "127.0.0.1"
+		config_get port "$section" port ""
+		config_get description "$section" description ""
+
+		[ "$enabled" = "1" ] && [ -n "$subdomain" ] && [ -n "$port" ] && {
+			add_haproxy_vhost "$subdomain" "$backend" "$port" "$description"
+		}
+	}
+
+	config_foreach _add_vhost_cb vhost
+
+	# Reload HAProxy if available
+	command -v haproxyctl >/dev/null 2>&1 && haproxyctl reload >/dev/null 2>&1
+}
+
+# Initialize all vhost configuration
+init() {
+	log_info "Initializing SecuBox vhosts"
+
+	# Generate dnsmasq config for local domains
+	generate_dnsmasq
+
+	# Reload dnsmasq if available
+	/etc/init.d/dnsmasq restart >/dev/null 2>&1 || true
+
+	# Generate landing page
+	generate_landing_page
+
+	# Sync HAProxy vhosts
+	sync_vhosts
+
+	log_info "SecuBox vhosts initialized"
+}
+
+# Set external base domain
+set_domain() {
+	local domain="$1"
+
+	[ -z "$domain" ] && {
+		echo "Usage: secubox-vhost set-domain <domain>"
+		echo "Example: secubox-vhost set-domain gk2.secubox.in"
+		return 1
+	}
+
+	uci set "${CONFIG}.external.base_domain=${domain}"
+	uci commit "$CONFIG"
+
+	log_info "Set external domain to ${domain}"
+	echo "External domain set to: ${domain}"
+	echo "Local domain will be: $(get_local_domain)"
+
+	# Re-initialize
+	init
+}
+
+# List current vhosts
+list_vhosts() {
+	local external_domain local_domain
+	external_domain=$(get_external_domain)
+	local_domain=$(get_local_domain)
+
+	echo "External domain: ${external_domain:-<not set>}"
+	echo "Local domain: ${local_domain:-<not set>}"
+	echo ""
+	echo "Configured vhosts:"
+	echo "=================="
+
+	config_load "$CONFIG"
+
+	_list_vhost_cb() {
+		local section="$1"
+		local enabled subdomain backend port description
+
+		config_get enabled "$section" enabled "0"
+		config_get subdomain "$section" subdomain ""
+		config_get backend "$section" backend ""
+		config_get port "$section" port ""
+		config_get description "$section" description ""
+
+		[ -n "$subdomain" ] && {
+			local status="disabled"
+			[ "$enabled" = "1" ] && status="enabled"
+			printf "  %-12s %-20s %s:%s [%s]\n" "$subdomain" "$description" "$backend" "$port" "$status"
+		}
+	}
+
+	config_foreach _list_vhost_cb vhost
+}
+
+# Enable a vhost
+enable_vhost() {
+	local subdomain="$1"
+
+	[ -z "$subdomain" ] && {
+		echo "Usage: secubox-vhost enable <subdomain>"
+		return 1
+	}
+
+	uci set "${CONFIG}.${subdomain}.enabled=1"
+	uci commit "$CONFIG"
+
+	sync_vhosts
+	echo "Enabled vhost: ${subdomain}"
+}
+
+# Disable a vhost
+disable_vhost() {
+	local subdomain="$1"
+
+	[ -z "$subdomain" ] && {
+		echo "Usage: secubox-vhost disable <subdomain>"
+		return 1
+	}
+
+	uci set "${CONFIG}.${subdomain}.enabled=0"
+	uci commit "$CONFIG"
+
+	remove_haproxy_vhost "$subdomain"
+	command -v haproxyctl >/dev/null 2>&1 && haproxyctl reload >/dev/null 2>&1
+
+	echo "Disabled vhost: ${subdomain}"
+}
+
+# Add a new vhost
+add_vhost() {
+	local subdomain="$1"
+	local port="$2"
+	local backend="${3:-127.0.0.1}"
+	local description="${4:-Custom service}"
+
+	[ -z "$subdomain" ] || [ -z "$port" ] && {
+		echo "Usage: secubox-vhost add <subdomain> <port> [backend] [description]"
+		echo "Example: secubox-vhost add myapp 8080 127.0.0.1 'My Application'"
+		return 1
+	}
+
+	uci set "${CONFIG}.${subdomain}=vhost"
+	uci set "${CONFIG}.${subdomain}.subdomain=${subdomain}"
+	uci set "${CONFIG}.${subdomain}.backend=${backend}"
+	uci set "${CONFIG}.${subdomain}.port=${port}"
+	uci set "${CONFIG}.${subdomain}.description=${description}"
+	uci set "${CONFIG}.${subdomain}.enabled=1"
+	uci commit "$CONFIG"
+
+	add_haproxy_vhost "$subdomain" "$backend" "$port" "$description"
+	command -v haproxyctl >/dev/null 2>&1 && haproxyctl reload >/dev/null 2>&1
+
+	local external_domain=$(get_external_domain)
+	echo "Added vhost: ${subdomain}.${external_domain} -> ${backend}:${port}"
+}
+
+# Main command dispatcher
+case "$1" in
+	init)
+		init
+		;;
+	set-domain)
+		shift
+		set_domain "$@"
+		;;
+	list)
+		list_vhosts
+		;;
+	enable)
+		shift
+		enable_vhost "$@"
+		;;
+	disable)
+		shift
+		disable_vhost "$@"
+		;;
+	add)
+		shift
+		add_vhost "$@"
+		;;
+	sync)
+		sync_vhosts
+		;;
+	landing)
+		generate_landing_page
+		;;
+	dnsmasq)
+		generate_dnsmasq
+		;;
+	*)
+		echo "SecuBox Vhost Manager"
+		echo ""
+		echo "Usage: secubox-vhost <command> [args]"
+		echo ""
+		echo "Commands:"
+		echo "  init                  Initialize all vhost configuration"
+		echo "  set-domain <domain>   Set external base domain (e.g., gk2.secubox.in)"
+		echo "  list                  List configured vhosts"
+		echo "  enable <subdomain>    Enable a vhost"
+		echo "  disable <subdomain>   Disable a vhost"
+		echo "  add <sub> <port>      Add a new vhost"
+		echo "  sync                  Sync vhosts to HAProxy"
+		echo "  landing               Regenerate landing page"
+		echo "  dnsmasq               Regenerate dnsmasq config"
+		;;
+esac

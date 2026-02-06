@@ -1099,6 +1099,276 @@ gitea_list_repos() {
 	json_close_obj
 }
 
+# Get app source code for editing
+get_source() {
+	read -r input
+	local name
+	name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+
+	if [ -z "$name" ]; then
+		json_error "Missing app name"
+		return
+	fi
+
+	local data_path
+	config_load "$CONFIG"
+	config_get data_path main data_path "/srv/streamlit"
+
+	# Find the app file (either top-level .py or subdirectory with app.py)
+	local app_file=""
+	if [ -f "$data_path/apps/${name}.py" ]; then
+		app_file="$data_path/apps/${name}.py"
+	elif [ -f "$data_path/apps/${name}/app.py" ]; then
+		app_file="$data_path/apps/${name}/app.py"
+	elif [ -d "$data_path/apps/${name}" ]; then
+		app_file=$(find "$data_path/apps/${name}" -maxdepth 2 -name "*.py" -type f | head -1)
+	fi
+
+	if [ -z "$app_file" ] || [ ! -f "$app_file" ]; then
+		json_error "App source not found"
+		return
+	fi
+
+	# Build JSON output manually to avoid jshn argument size limits
+	local tmpfile="/tmp/source_output_$$.json"
+	printf '{"result":{"success":true,"name":"%s","path":"%s","content":"' "$name" "$app_file" > "$tmpfile"
+	# Encode source as base64 to handle special characters
+	base64 -w 0 < "$app_file" >> "$tmpfile"
+	printf '"}}\n' >> "$tmpfile"
+	cat "$tmpfile"
+	rm -f "$tmpfile"
+}
+
+# Save edited app source code
+save_source() {
+	local tmpinput="/tmp/rpcd_save_$$.json"
+	cat > "$tmpinput"
+
+	local name content
+	name=$(jsonfilter -i "$tmpinput" -e '@.name' 2>/dev/null)
+	name=$(echo "$name" | sed 's/[^a-zA-Z0-9_]/_/g; s/^_*//; s/_*$//')
+
+	if [ -z "$name" ]; then
+		rm -f "$tmpinput"
+		json_error "Missing name"
+		return
+	fi
+
+	local data_path
+	config_load "$CONFIG"
+	config_get data_path main data_path "/srv/streamlit"
+
+	# Find the app file
+	local app_file=""
+	if [ -f "$data_path/apps/${name}.py" ]; then
+		app_file="$data_path/apps/${name}.py"
+	elif [ -f "$data_path/apps/${name}/app.py" ]; then
+		app_file="$data_path/apps/${name}/app.py"
+	elif [ -d "$data_path/apps/${name}" ]; then
+		app_file=$(find "$data_path/apps/${name}" -maxdepth 2 -name "*.py" -type f | head -1)
+	fi
+
+	if [ -z "$app_file" ]; then
+		# New app - create as top-level .py
+		app_file="$data_path/apps/${name}.py"
+	fi
+
+	# Extract and decode base64 content
+	local b64file="/tmp/rpcd_b64_save_$$.txt"
+	jsonfilter -i "$tmpinput" -e '@.content' > "$b64file" 2>/dev/null
+	rm -f "$tmpinput"
+
+	if [ ! -s "$b64file" ]; then
+		rm -f "$b64file"
+		json_error "Missing content"
+		return
+	fi
+
+	# Create backup before overwriting
+	[ -f "$app_file" ] && cp "$app_file" "${app_file}.bak"
+
+	mkdir -p "$(dirname "$app_file")"
+	base64 -d < "$b64file" > "$app_file" 2>/dev/null
+	local rc=$?
+	rm -f "$b64file"
+
+	if [ $rc -eq 0 ] && [ -s "$app_file" ]; then
+		json_success "Source saved: $name"
+	else
+		# Restore backup on failure
+		[ -f "${app_file}.bak" ] && mv "${app_file}.bak" "$app_file"
+		json_error "Failed to save source"
+	fi
+}
+
+# Emancipate app - KISS ULTIME MODE multi-channel exposure
+emancipate() {
+	read -r input
+	local name domain
+	name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+	domain=$(echo "$input" | jsonfilter -e '@.domain' 2>/dev/null)
+
+	if [ -z "$name" ]; then
+		json_error "Missing app name"
+		return
+	fi
+
+	# Check if app has an instance with a port
+	config_load "$CONFIG"
+	local port
+	port=$(uci -q get "${CONFIG}.${name}.port")
+	if [ -z "$port" ]; then
+		# Try to find instance with matching app
+		for section in $(uci -q show "$CONFIG" | grep "\.app=" | grep "='${name}'" | cut -d. -f2); do
+			port=$(uci -q get "${CONFIG}.${section}.port")
+			[ -n "$port" ] && break
+		done
+	fi
+
+	if [ -z "$port" ]; then
+		json_error "No instance found for app. Create an instance first."
+		return
+	fi
+
+	# Run emancipate in background
+	/usr/sbin/streamlitctl emancipate "$name" "$domain" >/var/log/streamlit-emancipate.log 2>&1 &
+	local pid=$!
+
+	json_init_obj
+	json_add_boolean "success" 1
+	json_add_string "message" "Emancipation started for $name"
+	json_add_string "domain" "$domain"
+	json_add_int "port" "$port"
+	json_add_int "pid" "$pid"
+	json_close_obj
+}
+
+# Test uploaded app - validate syntax and imports before finalize
+test_upload() {
+	read -r input
+	local name
+	name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+	name=$(echo "$name" | sed 's/[^a-zA-Z0-9_]/_/g; s/^_*//; s/_*$//')
+
+	if [ -z "$name" ]; then
+		json_error "Missing app name"
+		return
+	fi
+
+	# Check if staging file exists
+	local staging="/tmp/streamlit_upload_${name}.b64"
+	if [ ! -s "$staging" ]; then
+		json_error "No pending upload for $name"
+		return
+	fi
+
+	# Decode to temp file for testing
+	local tmppy="/tmp/test_upload_${name}.py"
+	base64 -d < "$staging" > "$tmppy" 2>/dev/null
+
+	if [ ! -s "$tmppy" ]; then
+		rm -f "$tmppy"
+		json_error "Failed to decode upload data"
+		return
+	fi
+
+	local errors=""
+	local warnings=""
+	local file_size=$(stat -c %s "$tmppy" 2>/dev/null || echo "0")
+	local line_count=$(wc -l < "$tmppy" 2>/dev/null || echo "0")
+
+	# Check 1: Basic file validation
+	if [ "$file_size" -lt 10 ]; then
+		errors="File too small (${file_size} bytes)"
+		rm -f "$tmppy"
+		json_init_obj
+		json_add_boolean "valid" 0
+		json_add_string "errors" "$errors"
+		json_close_obj
+		return
+	fi
+
+	# Check 2: Python syntax validation (inside container if running)
+	local syntax_valid=1
+	local syntax_error=""
+	if lxc_running; then
+		# Copy file into container for validation
+		cp "$tmppy" "$LXC_PATH/$LXC_NAME/rootfs/tmp/test_syntax.py" 2>/dev/null
+		syntax_error=$(lxc-attach -n "$LXC_NAME" -- python3 -m py_compile /tmp/test_syntax.py 2>&1)
+		if [ $? -ne 0 ]; then
+			syntax_valid=0
+			errors="Python syntax error: $syntax_error"
+		fi
+		rm -f "$LXC_PATH/$LXC_NAME/rootfs/tmp/test_syntax.py"
+	else
+		# Container not running - just check for obvious issues
+		# Check for shebang or encoding issues
+		if head -1 "$tmppy" | grep -q '^\xef\xbb\xbf'; then
+			warnings="File has UTF-8 BOM marker"
+		fi
+	fi
+
+	# Check 3: Look for Streamlit import
+	local has_streamlit=0
+	if grep -qE '^\s*(import streamlit|from streamlit)' "$tmppy"; then
+		has_streamlit=1
+	fi
+	if [ "$has_streamlit" = "0" ]; then
+		warnings="${warnings:+$warnings; }No streamlit import found - may not be a Streamlit app"
+	fi
+
+	# Check 4: Check for obvious security issues (informational)
+	if grep -qE 'subprocess\.(call|run|Popen)|os\.system|eval\(' "$tmppy"; then
+		warnings="${warnings:+$warnings; }Contains shell/eval calls - review code"
+	fi
+
+	rm -f "$tmppy"
+
+	json_init_obj
+	json_add_boolean "valid" "$syntax_valid"
+	json_add_string "errors" "$errors"
+	json_add_string "warnings" "$warnings"
+	json_add_int "size" "$file_size"
+	json_add_int "lines" "$line_count"
+	json_add_boolean "has_streamlit_import" "$has_streamlit"
+	json_add_boolean "container_running" "$( lxc_running && echo 1 || echo 0 )"
+	json_close_obj
+}
+
+# Get emancipation status for an app
+get_emancipation() {
+	read -r input
+	local name
+	name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+
+	if [ -z "$name" ]; then
+		json_error "Missing app name"
+		return
+	fi
+
+	config_load "$CONFIG"
+	local emancipated emancipated_at domain port
+	emancipated=$(uci -q get "${CONFIG}.${name}.emancipated")
+	emancipated_at=$(uci -q get "${CONFIG}.${name}.emancipated_at")
+	domain=$(uci -q get "${CONFIG}.${name}.emancipated_domain")
+	port=$(uci -q get "${CONFIG}.${name}.port")
+
+	# Also check instances
+	if [ -z "$port" ]; then
+		for section in $(uci -q show "$CONFIG" | grep "\.app=" | grep "='${name}'" | cut -d. -f2); do
+			port=$(uci -q get "${CONFIG}.${section}.port")
+			[ -n "$port" ] && break
+		done
+	fi
+
+	json_init_obj
+	json_add_boolean "emancipated" "$( [ "$emancipated" = "1" ] && echo 1 || echo 0 )"
+	json_add_string "emancipated_at" "$emancipated_at"
+	json_add_string "domain" "$domain"
+	json_add_int "port" "${port:-0}"
+	json_close_obj
+}
+
 # Check install progress
 get_install_progress() {
 	local log_file="/var/log/streamlit-install.log"
@@ -1175,6 +1445,7 @@ case "$1" in
 			"upload_app": {"name": "str", "content": "str"},
 			"upload_chunk": {"name": "str", "data": "str", "index": 0},
 			"upload_finalize": {"name": "str", "is_zip": "str"},
+			"test_upload": {"name": "str"},
 			"preview_zip": {"content": "str"},
 			"upload_zip": {"name": "str", "content": "str", "selected_files": []},
 			"get_install_progress": {},
@@ -1189,7 +1460,11 @@ case "$1" in
 			"save_gitea_config": {"enabled": "str", "url": "str", "user": "str", "token": "str"},
 			"gitea_clone": {"name": "str", "repo": "str"},
 			"gitea_pull": {"name": "str"},
-			"gitea_list_repos": {}
+			"gitea_list_repos": {},
+			"get_source": {"name": "str"},
+			"save_source": {"name": "str", "content": "str"},
+			"emancipate": {"name": "str", "domain": "str"},
+			"get_emancipation": {"name": "str"}
 		}
 		EOF
 		;;
@@ -1249,6 +1524,9 @@ case "$1" in
 			upload_finalize)
 				upload_finalize
 				;;
+			test_upload)
+				test_upload
+				;;
 			preview_zip)
 				preview_zip
 				;;
@@ -1293,6 +1571,18 @@ case "$1" in
 				;;
 			gitea_list_repos)
 				gitea_list_repos
+				;;
+			get_source)
+				get_source
+				;;
+			save_source)
+				save_source
+				;;
+			emancipate)
+				emancipate
+				;;
+			get_emancipation)
+				get_emancipation
 				;;
 			*)
 				json_error "Unknown method: $2"

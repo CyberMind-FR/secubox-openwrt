@@ -438,9 +438,10 @@ lxc.arch = $(uname -m)
 lxc.net.0.type = none
 
 # Mount points
-lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+lxc.mount.auto = proc:mixed sys:ro
 lxc.mount.entry = $APPS_PATH srv/apps none bind,create=dir 0 0
 lxc.mount.entry = $data_path/logs srv/logs none bind,create=dir 0 0
+lxc.mount.entry = /tmp/secubox tmp/secubox none bind,create=dir 0 0
 
 # Environment
 lxc.environment = STREAMLIT_THEME_BASE=$theme_base
