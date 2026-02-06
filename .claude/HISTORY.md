@@ -663,3 +663,21 @@ _Last updated: 2026-02-07_
       - RPCD `fix_ports` method wrapping CLI command
       - Visual feedback with modal spinner
     - Updated container.sh to include `dovecot-pop3d` in initial package list.
+
+44. **MetaBlogizer KISS ULTIME MODE (2026-02-07)**
+    - Added `metablogizerctl emancipate <name>` — one-command full exposure workflow.
+    - **Workflow steps** (automated in sequence):
+      - DNS Registration: Creates A record via `dnsctl` (Gandi/OVH based on availability)
+      - Vortex Mesh: Publishes to mesh via `vortexctl mesh publish`
+      - HAProxy: Creates backend, server, and vhost with SSL/ACME enabled
+      - SSL Certificate: Requests ACME cert via `haproxyctl cert add` (webroot mode)
+      - Zero-downtime Reload: Applies HAProxy config via SIGUSR2
+    - **Helper functions**:
+      - `_emancipate_dns()`: Public IP detection, subdomain extraction, dnsctl integration
+      - `_emancipate_vortex()`: Mesh publication if vortex-dns enabled
+      - `_emancipate_haproxy()`: UCI backend/server/vhost creation, haproxyctl generate
+      - `_emancipate_ssl()`: ACME certificate request with status feedback
+      - `_emancipate_reload()`: Graceful HAProxy reload with restart fallback
+    - **Usage**: `metablogizerctl create myblog blog.example.com && metablogizerctl emancipate myblog`
+    - **Tracking**: Stores `emancipated=1` and `emancipated_at` timestamp in UCI
+    - Part of Punk Exposure architecture (multi-channel emancipation).
