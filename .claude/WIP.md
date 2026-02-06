@@ -283,9 +283,35 @@ Required components:
 | LocalAI 3.9 | DONE |
 | LocalAI Emancipation | DONE (Tor + DNS + mDNS) |
 
+### v1.0.0 Progress
+
+| Item | Status |
+|------|--------|
+| Config Advisor | DONE |
+| ANSSI CSPN Compliance | DONE |
+| Remediation Engine | DONE |
+| LuCI Dashboard | DONE |
+
+### Just Completed (2026-02-07)
+
+- **Config Advisor Package** — DONE
+  - Created `secubox-config-advisor` - ANSSI CSPN compliance checking daemon
+  - 7 check categories, 25+ security rules
+  - Risk scoring (0-100) with grade (A-F) and risk level
+  - Auto-remediation for 7 checks with dry-run mode
+  - LocalAI integration for AI-powered suggestions
+  - `config-advisorctl` CLI with 20+ commands
+
+- **Config Advisor Dashboard** — DONE
+  - Created `luci-app-config-advisor` - LuCI dashboard
+  - Score display with grade circle and risk level
+  - Compliance view by category with pass/fail/warn badges
+  - Remediation view with apply/preview buttons
+  - Settings for framework, weights, categories, LocalAI
+
 ### Certifications
 
-- ANSSI CSPN: Data Classifier + Mistral EU + offline mode
+- ANSSI CSPN: Config Advisor compliance tool DONE
 - GDPR: Currently compliant
 - ISO 27001, NIS2, SOC2: Planned for v1.1+
 

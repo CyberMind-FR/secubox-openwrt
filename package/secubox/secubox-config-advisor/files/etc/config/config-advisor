@@ -1,0 +1,37 @@
+config advisor 'main'
+	option enabled '1'
+	option check_interval '3600'
+	# Check every hour
+	option auto_remediate '0'
+	# Manual remediation by default
+	option notification_enabled '1'
+
+config localai 'localai'
+	option enabled '1'
+	option url 'http://127.0.0.1:8091'
+	option model 'mistral'
+	option min_confidence '75'
+
+config compliance 'compliance'
+	option framework 'anssi_cspn'
+	# Frameworks: anssi_cspn, cis, nist, custom
+	option strict_mode '0'
+	# Strict mode fails on warnings
+	option report_format 'json'
+
+config scoring 'scoring'
+	option weight_critical '40'
+	option weight_high '25'
+	option weight_medium '20'
+	option weight_low '10'
+	option weight_info '5'
+	option passing_score '70'
+
+config categories 'categories'
+	option network '1'
+	option firewall '1'
+	option authentication '1'
+	option encryption '1'
+	option services '1'
+	option logging '1'
+	option updates '1'

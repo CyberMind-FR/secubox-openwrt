@@ -1,0 +1,38 @@
+{
+	"admin/services/config-advisor": {
+		"title": "Config Advisor",
+		"order": 85,
+		"action": {
+			"type": "view",
+			"path": "config-advisor/dashboard"
+		},
+		"depends": {
+			"acl": ["luci-app-config-advisor"],
+			"uci": {"config-advisor": true}
+		}
+	},
+	"admin/services/config-advisor/compliance": {
+		"title": "Compliance",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "config-advisor/compliance"
+		}
+	},
+	"admin/services/config-advisor/remediation": {
+		"title": "Remediation",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "config-advisor/remediation"
+		}
+	},
+	"admin/services/config-advisor/settings": {
+		"title": "Settings",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "config-advisor/settings"
+		}
+	}
+}

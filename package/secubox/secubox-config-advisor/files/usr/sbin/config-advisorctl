@@ -1,0 +1,272 @@
+#!/bin/sh
+# Config Advisor CLI - Security configuration analysis and hardening
+# Usage: config-advisorctl <command> [options]
+
+VERSION="0.1.0"
+
+# Load libraries
+[ -f /usr/lib/config-advisor/checks.sh ] && . /usr/lib/config-advisor/checks.sh
+[ -f /usr/lib/config-advisor/anssi.sh ] && . /usr/lib/config-advisor/anssi.sh
+[ -f /usr/lib/config-advisor/scoring.sh ] && . /usr/lib/config-advisor/scoring.sh
+[ -f /usr/lib/config-advisor/remediate.sh ] && . /usr/lib/config-advisor/remediate.sh
+
+DAEMON_INTERVAL=3600
+
+usage() {
+    cat <<EOF
+Config Advisor CLI v$VERSION - Security Configuration Analysis
+
+Usage: config-advisorctl <command> [options]
+
+Check Commands:
+  check                     Run all security checks
+  check-category <cat>      Run checks for specific category
+  results                   Show check results
+
+Compliance Commands:
+  compliance                Run ANSSI CSPN compliance check
+  compliance-status         Show compliance status
+  compliance-report [fmt]   Generate report (text/json/markdown)
+  is-compliant              Check if system passes compliance
+
+Scoring Commands:
+  score                     Calculate security score
+  score-history [n]         Show score history (last n entries)
+  score-trend               Show score trend
+  risk-summary              Show risk summary
+
+Remediation Commands:
+  remediate <check_id>      Apply remediation for check
+  remediate-dry <check_id>  Preview remediation (dry run)
+  remediate-safe            Apply all safe remediations
+  remediate-pending         Show pending remediations
+  suggest <check_id>        Get remediation suggestion (AI)
+
+Daemon Commands:
+  daemon                    Run as daemon (foreground)
+  status                    Show advisor status
+
+Categories:
+  network, firewall, authentication, encryption, services, logging, updates
+
+General:
+  help                      Show this help
+  version                   Show version
+
+Examples:
+  config-advisorctl check
+  config-advisorctl compliance
+  config-advisorctl remediate FW-002
+  config-advisorctl compliance-report markdown > report.md
+
+EOF
+}
+
+# Get status
+cmd_status() {
+    local enabled framework
+    enabled=$(uci -q get config-advisor.main.enabled || echo "0")
+    framework=$(uci -q get config-advisor.compliance.framework || echo "anssi_cspn")
+
+    local last_check=0
+    local results_file="/var/lib/config-advisor/results.json"
+    if [ -f "$results_file" ]; then
+        last_check=$(stat -c %Y "$results_file" 2>/dev/null || echo "0")
+    fi
+
+    local score_data="{}"
+    if [ -f /var/lib/config-advisor/score.json ]; then
+        score_data=$(cat /var/lib/config-advisor/score.json)
+    fi
+
+    local compliance_data="{}"
+    if [ -f /var/lib/config-advisor/compliance.json ]; then
+        compliance_data=$(cat /var/lib/config-advisor/compliance.json)
+    fi
+
+    cat <<EOF
+{
+  "version": "$VERSION",
+  "enabled": $enabled,
+  "framework": "$framework",
+  "last_check": $last_check,
+  "localai": {
+    "enabled": $(uci -q get config-advisor.localai.enabled || echo "0"),
+    "url": "$(uci -q get config-advisor.localai.url || echo "http://127.0.0.1:8091")"
+  },
+  "score": $(jsonfilter -i /var/lib/config-advisor/score.json -e '@.score' 2>/dev/null || echo "null"),
+  "grade": "$(jsonfilter -i /var/lib/config-advisor/score.json -e '@.grade' 2>/dev/null || echo "?")",
+  "risk_level": "$(jsonfilter -i /var/lib/config-advisor/score.json -e '@.risk_level' 2>/dev/null || echo "unknown")",
+  "compliance_rate": $(jsonfilter -i /var/lib/config-advisor/compliance.json -e '@.compliance_rate' 2>/dev/null || echo "null")
+}
+EOF
+}
+
+# Full check and score
+cmd_full_check() {
+    echo "Running security checks..."
+    run_all_checks >/dev/null
+
+    echo "Running compliance check..."
+    anssi_run_compliance >/dev/null
+
+    echo "Calculating score..."
+    scoring_calculate
+}
+
+# Daemon loop
+cmd_daemon() {
+    local check_interval
+    check_interval=$(uci -q get config-advisor.main.check_interval || echo "3600")
+
+    logger -t config-advisor "Daemon starting (interval: ${check_interval}s)"
+
+    while true; do
+        cmd_full_check >/dev/null 2>&1
+
+        # Check for auto-remediate
+        local auto_remediate
+        auto_remediate=$(uci -q get config-advisor.main.auto_remediate || echo "0")
+
+        if [ "$auto_remediate" = "1" ]; then
+            remediate_apply_safe 0 >/dev/null 2>&1
+        fi
+
+        # Send notification if enabled and score is failing
+        local notification_enabled
+        notification_enabled=$(uci -q get config-advisor.main.notification_enabled || echo "0")
+
+        if [ "$notification_enabled" = "1" ] && ! scoring_is_passing; then
+            local score
+            score=$(jsonfilter -i /var/lib/config-advisor/score.json -e '@.score' 2>/dev/null || echo "0")
+            logger -t config-advisor "WARNING: Security score is $score (below threshold)"
+        fi
+
+        sleep "$check_interval"
+    done
+}
+
+# Main command dispatcher
+case "$1" in
+    # Checks
+    check)
+        cmd_full_check
+        ;;
+    check-category)
+        [ -z "$2" ] && { echo "Usage: config-advisorctl check-category <category>"; exit 1; }
+        checks_init
+        case "$2" in
+            network)
+                check_ipv6_disabled
+                check_mgmt_restricted
+                check_syn_flood_protection
+                ;;
+            firewall)
+                check_default_deny
+                check_drop_invalid
+                check_wan_ports_closed
+                ;;
+            authentication)
+                check_root_password_set
+                check_ssh_key_auth
+                check_ssh_no_root_password
+                ;;
+            encryption)
+                check_https_enabled
+                check_wireguard_configured
+                check_dns_encrypted
+                ;;
+            services)
+                check_crowdsec_enabled
+                check_services_localhost
+                ;;
+            logging)
+                check_syslog_enabled
+                check_log_rotation
+                ;;
+            *)
+                echo "Unknown category: $2"
+                exit 1
+                ;;
+        esac
+        get_results
+        ;;
+    results)
+        get_results
+        ;;
+
+    # Compliance
+    compliance)
+        anssi_run_compliance
+        ;;
+    compliance-status)
+        anssi_get_status
+        ;;
+    compliance-report)
+        anssi_generate_report "${2:-text}"
+        ;;
+    is-compliant)
+        if anssi_is_compliant; then
+            echo "COMPLIANT"
+            exit 0
+        else
+            echo "NOT COMPLIANT"
+            exit 1
+        fi
+        ;;
+
+    # Scoring
+    score)
+        scoring_calculate
+        ;;
+    score-history)
+        scoring_get_history "${2:-30}"
+        ;;
+    score-trend)
+        scoring_get_trend
+        ;;
+    risk-summary)
+        scoring_risk_summary
+        ;;
+
+    # Remediation
+    remediate)
+        [ -z "$2" ] && { echo "Usage: config-advisorctl remediate <check_id>"; exit 1; }
+        remediate_apply "$2" 0
+        ;;
+    remediate-dry)
+        [ -z "$2" ] && { echo "Usage: config-advisorctl remediate-dry <check_id>"; exit 1; }
+        remediate_apply "$2" 1
+        ;;
+    remediate-safe)
+        remediate_apply_safe 0
+        ;;
+    remediate-pending)
+        remediate_get_pending
+        ;;
+    suggest)
+        [ -z "$2" ] && { echo "Usage: config-advisorctl suggest <check_id>"; exit 1; }
+        remediate_suggest "$2"
+        ;;
+
+    # Daemon
+    daemon)
+        cmd_daemon
+        ;;
+    status)
+        cmd_status
+        ;;
+
+    # General
+    version)
+        echo "Config Advisor CLI v$VERSION"
+        ;;
+    help|--help|-h|"")
+        usage
+        ;;
+    *)
+        echo "Unknown command: $1"
+        echo "Run 'config-advisorctl help' for usage"
+        exit 1
+        ;;
+esac

@@ -1,0 +1,257 @@
+{
+  "framework": "ANSSI CSPN",
+  "version": "1.0",
+  "categories": {
+    "network": {
+      "name": "Network Security",
+      "rules": [
+        {
+          "id": "NET-001",
+          "name": "Disable IPv6 if not required",
+          "severity": "medium",
+          "check": "ipv6_disabled",
+          "description": "IPv6 should be disabled if not actively used to reduce attack surface",
+          "remediation": "Set network.globals.ula_prefix to empty and disable IPv6 on interfaces"
+        },
+        {
+          "id": "NET-002",
+          "name": "Restrict management access",
+          "severity": "high",
+          "check": "mgmt_restricted",
+          "description": "SSH and LuCI should only be accessible from trusted networks",
+          "remediation": "Configure firewall rules to restrict SSH (22) and HTTPS (443) to LAN only"
+        },
+        {
+          "id": "NET-003",
+          "name": "Disable unused interfaces",
+          "severity": "low",
+          "check": "unused_interfaces",
+          "description": "Unused network interfaces should be disabled",
+          "remediation": "Disable or remove unused interface configurations"
+        },
+        {
+          "id": "NET-004",
+          "name": "Enable SYN flood protection",
+          "severity": "high",
+          "check": "syn_flood_protection",
+          "description": "SYN flood protection should be enabled on WAN interface",
+          "remediation": "Enable synflood_protect in firewall config"
+        }
+      ]
+    },
+    "firewall": {
+      "name": "Firewall Configuration",
+      "rules": [
+        {
+          "id": "FW-001",
+          "name": "Default deny policy",
+          "severity": "critical",
+          "check": "default_deny",
+          "description": "Firewall should have default deny policy for WAN zone",
+          "remediation": "Set input=REJECT, output=ACCEPT, forward=REJECT for WAN zone"
+        },
+        {
+          "id": "FW-002",
+          "name": "Drop invalid packets",
+          "severity": "high",
+          "check": "drop_invalid",
+          "description": "Invalid packets should be dropped",
+          "remediation": "Enable drop_invalid in firewall defaults"
+        },
+        {
+          "id": "FW-003",
+          "name": "No open ports on WAN",
+          "severity": "high",
+          "check": "wan_ports_closed",
+          "description": "No unnecessary ports should be open on WAN interface",
+          "remediation": "Review and remove unnecessary port forwards and WAN input rules"
+        },
+        {
+          "id": "FW-004",
+          "name": "Enable connection tracking",
+          "severity": "medium",
+          "check": "conntrack_enabled",
+          "description": "Connection tracking should be properly configured",
+          "remediation": "Ensure flow_offloading is configured appropriately"
+        }
+      ]
+    },
+    "authentication": {
+      "name": "Authentication & Access Control",
+      "rules": [
+        {
+          "id": "AUTH-001",
+          "name": "Strong root password",
+          "severity": "critical",
+          "check": "root_password_set",
+          "description": "Root password must be set and strong",
+          "remediation": "Set a strong root password using passwd command"
+        },
+        {
+          "id": "AUTH-002",
+          "name": "SSH key authentication",
+          "severity": "high",
+          "check": "ssh_key_auth",
+          "description": "SSH should prefer key-based authentication over password",
+          "remediation": "Add SSH public keys and consider disabling password auth"
+        },
+        {
+          "id": "AUTH-003",
+          "name": "Disable SSH root password login",
+          "severity": "high",
+          "check": "ssh_no_root_password",
+          "description": "SSH root login with password should be disabled",
+          "remediation": "Set PasswordAuth to off in dropbear config"
+        },
+        {
+          "id": "AUTH-004",
+          "name": "Session timeout configured",
+          "severity": "medium",
+          "check": "session_timeout",
+          "description": "LuCI session timeout should be configured",
+          "remediation": "Set appropriate session timeout in uhttpd/rpcd config"
+        }
+      ]
+    },
+    "encryption": {
+      "name": "Encryption & Cryptography",
+      "rules": [
+        {
+          "id": "CRYPT-001",
+          "name": "HTTPS enabled for LuCI",
+          "severity": "critical",
+          "check": "https_enabled",
+          "description": "LuCI must be accessed over HTTPS only",
+          "remediation": "Enable HTTPS in uhttpd and redirect HTTP to HTTPS"
+        },
+        {
+          "id": "CRYPT-002",
+          "name": "Strong TLS configuration",
+          "severity": "high",
+          "check": "tls_strong",
+          "description": "TLS should use strong ciphers and protocols (TLS 1.2+)",
+          "remediation": "Configure uhttpd/nginx with modern TLS settings"
+        },
+        {
+          "id": "CRYPT-003",
+          "name": "WireGuard encryption",
+          "severity": "medium",
+          "check": "wireguard_configured",
+          "description": "VPN tunnels should use WireGuard for mesh connectivity",
+          "remediation": "Configure WireGuard for secure mesh communication"
+        },
+        {
+          "id": "CRYPT-004",
+          "name": "DNS over TLS/HTTPS",
+          "severity": "medium",
+          "check": "dns_encrypted",
+          "description": "DNS queries should be encrypted (DoT/DoH)",
+          "remediation": "Configure AdGuard Home or stubby for encrypted DNS"
+        }
+      ]
+    },
+    "services": {
+      "name": "Service Hardening",
+      "rules": [
+        {
+          "id": "SVC-001",
+          "name": "Disable unnecessary services",
+          "severity": "medium",
+          "check": "minimal_services",
+          "description": "Only required services should be running",
+          "remediation": "Disable unused services in /etc/init.d/"
+        },
+        {
+          "id": "SVC-002",
+          "name": "Services bound to localhost",
+          "severity": "high",
+          "check": "services_localhost",
+          "description": "Internal services should bind to localhost only",
+          "remediation": "Configure services to listen on 127.0.0.1 instead of 0.0.0.0"
+        },
+        {
+          "id": "SVC-003",
+          "name": "CrowdSec protection enabled",
+          "severity": "high",
+          "check": "crowdsec_enabled",
+          "description": "CrowdSec should be running for threat protection",
+          "remediation": "Install and enable CrowdSec with firewall bouncer"
+        },
+        {
+          "id": "SVC-004",
+          "name": "Automatic security updates",
+          "severity": "medium",
+          "check": "auto_updates",
+          "description": "Security updates should be applied automatically or regularly",
+          "remediation": "Configure opkg-upgrade or scheduled update checks"
+        }
+      ]
+    },
+    "logging": {
+      "name": "Logging & Monitoring",
+      "rules": [
+        {
+          "id": "LOG-001",
+          "name": "System logging enabled",
+          "severity": "high",
+          "check": "syslog_enabled",
+          "description": "System logging must be enabled and configured",
+          "remediation": "Ensure logd/syslog-ng is running and configured"
+        },
+        {
+          "id": "LOG-002",
+          "name": "Log rotation configured",
+          "severity": "medium",
+          "check": "log_rotation",
+          "description": "Logs should be rotated to prevent disk exhaustion",
+          "remediation": "Configure log rotation size and count in system config"
+        },
+        {
+          "id": "LOG-003",
+          "name": "Auth logging enabled",
+          "severity": "high",
+          "check": "auth_logging",
+          "description": "Authentication events should be logged",
+          "remediation": "Enable auth logging in dropbear and uhttpd"
+        },
+        {
+          "id": "LOG-004",
+          "name": "Remote logging configured",
+          "severity": "low",
+          "check": "remote_logging",
+          "description": "Logs should be sent to remote syslog for persistence",
+          "remediation": "Configure remote syslog server in system config"
+        }
+      ]
+    },
+    "updates": {
+      "name": "Updates & Patches",
+      "rules": [
+        {
+          "id": "UPD-001",
+          "name": "System up to date",
+          "severity": "high",
+          "check": "system_uptodate",
+          "description": "System packages should be up to date",
+          "remediation": "Run opkg update && opkg upgrade"
+        },
+        {
+          "id": "UPD-002",
+          "name": "No vulnerable packages",
+          "severity": "critical",
+          "check": "no_cve_packages",
+          "description": "No packages with known CVEs should be installed",
+          "remediation": "Update or remove packages with known vulnerabilities"
+        },
+        {
+          "id": "UPD-003",
+          "name": "Firmware version current",
+          "severity": "medium",
+          "check": "firmware_current",
+          "description": "OpenWrt firmware should be reasonably current",
+          "remediation": "Consider sysupgrade to latest stable release"
+        }
+      ]
+    }
+  }
+}

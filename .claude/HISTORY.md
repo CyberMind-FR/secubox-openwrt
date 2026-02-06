@@ -594,3 +594,48 @@ _Last updated: 2026-02-07_
     - **UCI configuration**: sources enable/disable, signing, validation settings, application method, auto-apply
     - **Daemon**: Configurable collect_interval (default 300s), auto_collect, auto_share, auto_apply
     - Part of v0.19 MirrorNetworking roadmap (Couche 3).
+
+42. **Config Advisor - ANSSI CSPN Compliance (2026-02-07)**
+    - Created `secubox-config-advisor` — security configuration analysis and hardening tool.
+    - **ANSSI CSPN compliance framework**:
+      - 7 check categories: network, firewall, authentication, encryption, services, logging, updates
+      - 25+ security check rules with severity levels (critical, high, medium, low, info)
+      - JSON rules database in `/usr/share/config-advisor/anssi-rules.json`
+    - **Security check modules** (`checks.sh`):
+      - Network: IPv6, management access restriction, SYN flood protection
+      - Firewall: default deny policy, drop invalid packets, WAN port exposure
+      - Authentication: root password, SSH key auth, SSH password auth
+      - Encryption: HTTPS enabled, WireGuard configured, DNS encryption
+      - Services: CrowdSec running, services bound to localhost
+      - Logging: syslog enabled, log rotation configured
+    - **Risk scoring module** (`scoring.sh`):
+      - 0-100 score with severity weights (critical=40, high=25, medium=20, low=10, info=5)
+      - Grade calculation (A-F) based on thresholds (90/80/70/60)
+      - Risk level classification: critical, high, medium, low, minimal
+      - Score history tracking and trend analysis
+    - **ANSSI compliance module** (`anssi.sh`):
+      - Compliance rate calculation (percentage of passing rules)
+      - Report generation in text, JSON, and Markdown formats
+      - Category filtering and strict mode
+    - **Remediation module** (`remediate.sh`):
+      - Auto-remediation for 7 checks: NET-002, NET-004, FW-001, FW-002, AUTH-003, CRYPT-001, LOG-002
+      - Safe vs manual remediation separation
+      - Dry-run mode for preview
+      - LocalAI integration for AI-powered suggestions
+      - Pending approvals queue
+    - **CLI** (`config-advisorctl`):
+      - Check commands: `check`, `check-category`, `results`
+      - Compliance commands: `compliance`, `compliance-status`, `compliance-report`, `is-compliant`
+      - Scoring commands: `score`, `score-history`, `score-trend`, `risk-summary`
+      - Remediation commands: `remediate`, `remediate-dry`, `remediate-safe`, `remediate-pending`, `suggest`
+      - Daemon mode with configurable check interval
+    - Created `luci-app-config-advisor` — LuCI dashboard.
+      - Dashboard: score circle, grade, risk level, compliance rate, last check time
+      - Check results table with status icons
+      - Score history table
+      - Compliance view: summary cards, progress bar, results by category
+      - Remediation view: quick actions, failed checks with apply buttons, pending approvals
+      - Settings: framework selection, scoring weights, category toggles, LocalAI config
+    - **RPCD methods**: status, results, score, compliance, check, pending, history, suggest, remediate, remediate_safe, set_config
+    - **UCI configuration**: main (enabled, check_interval, auto_remediate), compliance (framework, strict_mode), scoring (passing_score, weights), categories (enable/disable), localai (url, model)
+    - Part of v1.0.0 certification roadmap (ANSSI CSPN compliance tooling).

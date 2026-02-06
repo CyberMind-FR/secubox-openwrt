@@ -1,0 +1,17 @@
+{
+	"luci-app-config-advisor": {
+		"description": "Grant access to Config Advisor",
+		"read": {
+			"ubus": {
+				"luci.config-advisor": ["status", "results", "score", "compliance", "pending", "history", "suggest"]
+			},
+			"uci": ["config-advisor"]
+		},
+		"write": {
+			"ubus": {
+				"luci.config-advisor": ["check", "remediate", "remediate_safe", "set_config"]
+			},
+			"uci": ["config-advisor"]
+		}
+	}
+}
