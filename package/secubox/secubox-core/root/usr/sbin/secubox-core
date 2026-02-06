@@ -1127,9 +1127,9 @@ led_heartbeat_loop() {
     local r2=0 g2=255 b2=0  # Threat: green
     local r3=0 g3=255 b3=0  # Capacity: green
 
-    # Pulse timing (in 0.1s units for fine control)
+    # Pulse timing (ticks at 0.33s each = tiers de second)
     local beat_gap=1     # Gap between beats in triple
-    local cycle_pause=8  # Pause after triple (longer rest)
+    local cycle_pause=6  # Pause after triple (longer rest)
     local tick=0         # Current tick in cycle
 
     while true; do
@@ -1225,8 +1225,8 @@ led_heartbeat_loop() {
         tick=$((tick + 1))
         [ "$tick" -ge "$total_cycle" ] && tick=0
 
-        # Fine timing: 0.15s per tick for smooth animation
-        sleep 0.15
+        # Timing: 0.33s per tick (tiers de second)
+        sleep 0.33
     done
 }
 
