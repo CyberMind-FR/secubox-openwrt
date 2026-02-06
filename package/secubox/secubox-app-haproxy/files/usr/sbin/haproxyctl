@@ -553,6 +553,10 @@ _add_vhost_acl() {
 
 	config_get domain "$section" domain
 	config_get backend "$section" backend
+	# Validate backend is not IP:port (common misconfiguration)
+	case "$backend" in
+		*:*) log_warn "Vhost $section has IP:port backend , should be backend name"; return ;;
+	esac
 	config_get ssl "$section" ssl "0"
 
 	[ -n "$domain" ] || return
