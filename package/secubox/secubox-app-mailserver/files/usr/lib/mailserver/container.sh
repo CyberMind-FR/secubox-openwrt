@@ -30,7 +30,7 @@ lxc.net.0.ipv4.address = auto
 lxc.cgroup2.memory.max = 536870912
 lxc.seccomp.profile =
 
-lxc.mount.entry = $data_path/mail var/mail none bind,create=dir 0 0
+lxc.mount.entry = $data_path/mail home/vmail none bind,create=dir 0 0
 lxc.mount.entry = $data_path/config etc/postfix none bind,create=dir 0 0
 lxc.mount.entry = $data_path/ssl etc/ssl/mail none bind,create=dir 0 0
 
@@ -42,7 +42,7 @@ EOF
 	echo "Bootstrapping Alpine rootfs..."
 	local rootfs="$LXC_DIR/$name/rootfs"
 
-	mkdir -p "$rootfs"/{dev,proc,sys,tmp,var/log,var/mail,etc/{postfix,dovecot,ssl/mail}}
+	mkdir -p "$rootfs"/{dev,proc,sys,tmp,var/log,home/vmail,etc/{postfix,dovecot,ssl/mail}}
 
 	# Download and extract Alpine minirootfs
 	local arch="aarch64"
@@ -92,15 +92,15 @@ postconf -e 'virtual_mailbox_domains = /etc/postfix/vdomains'
 # Alpine Postfix uses LMDB, not BerkeleyDB hash
 postconf -e 'virtual_mailbox_maps = lmdb:/etc/postfix/vmailbox'
 postconf -e 'virtual_alias_maps = lmdb:/etc/postfix/valias'
-postconf -e 'virtual_mailbox_base = /var/mail'
+postconf -e 'virtual_mailbox_base = /home/vmail'
 # Copy resolv.conf to Postfix chroot for DNS lookups
 mkdir -p /var/spool/postfix/etc
 cp /etc/resolv.conf /var/spool/postfix/etc/
 postconf -e 'virtual_uid_maps = static:1000'
 postconf -e 'virtual_gid_maps = static:1000'
-# Create vmail user
+# Create vmail user with home at /home/vmail
 addgroup -g 1000 vmail
-adduser -D -u 1000 -G vmail -h /var/mail vmail
+adduser -D -u 1000 -G vmail -h /home/vmail vmail
 # Enable services
 rc-update add postfix default
 rc-update add dovecot default

@@ -26,15 +26,17 @@ user_add() {
 	# Validate
 	echo "$email" | grep -qE '^[^@]+@[^@]+\.[^@]+$' || { echo "Invalid email format"; return 1; }
 
-	# Create mailbox directory
-	local maildir="$data_path/mail/$domain/$user"
+	# Create mailbox directory with Maildir structure
+	# Dovecot expects ~/Maildir/ so we create $domain/$user/Maildir/
+	local maildir="$data_path/mail/$domain/$user/Maildir"
 	mkdir -p "$maildir"/{cur,new,tmp}
-	chown -R 1000:1000 "$maildir"
+	chown -R 1000:1000 "$data_path/mail/$domain/$user"
 
-	# Add to virtual mailbox map
+	# Add to virtual mailbox map (path relative to virtual_mailbox_base)
+	# Must end with Maildir/ to match Dovecot's mail_location = maildir:~/Maildir
 	local vmailbox="$data_path/config/vmailbox"
 	touch "$vmailbox"
-	grep -q "^$email" "$vmailbox" || echo "$email $domain/$user/" >> "$vmailbox"
+	grep -q "^$email" "$vmailbox" || echo "$email $domain/$user/Maildir/" >> "$vmailbox"
 
 	# Generate password hash
 	if [ -z "$password" ]; then
