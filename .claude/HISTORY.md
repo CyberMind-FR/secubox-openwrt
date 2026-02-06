@@ -776,3 +776,39 @@ _Last updated: 2026-02-07_
       - Updated vmailbox entries to use `$domain/$user/Maildir/` suffix
     - Bumped `secubox-app-mailserver` version to 1.0.0-r2.
     - New mail verified delivering correctly to Maildir location.
+
+53. **LED Fix & Double-Buffer Status Cache (2026-02-07)**
+    - **LED mmc0 removed**: The 4th LED (mmc0) was causing the heartbeat loop to hang.
+      - Removed `LED_MMC0` variable, `led_mmc0_heartbeat()` function, and mmc0 calls from loop
+      - Now only 3 RGB LEDs controlled: led1 (health), led2 (threat), led3 (capacity)
+    - **Double-buffer status caching**: Prevents blocking when multiple dashboards/APIs call status functions.
+      - New `status_collector_loop()` runs in background, updates cache files atomically
+      - Cache files: `/tmp/secubox/{health,threat,capacity}.json` with staggered intervals (15s/9s/3s)
+      - Fast readers `get_health_score()`, `get_threat_level()`, `get_capacity()` — no subprocess calls
+      - LED loop and dashboards/APIs now read from cache instantly
+      - Uses atomic `mv` pattern for consistent reads during writes
+    - Daemon starts status collector before LED loop for cache warmup.
+
+54. **Triple-Pulse LED Heartbeat & Streamlit Emancipate (2026-02-06)**
+    - **Triple-pulse LED heartbeat**: Organic "bump-bump-bump (pause)" pattern across RGB LEDs.
+      - LED1 (health) leads, LED2 (threat) follows décalé, LED3 (capacity) trails
+      - BusyBox-compatible: no fractional sleep, uses rapid burst + 3s rest
+      - Intensity transitions (30-100%) create smooth cascade effect
+    - **Avahi-publish fix**: Prevent duplicate processes via PID file tracking.
+    - **Streamlit emancipate command**: KISS ULTIME MODE for full exposure workflow.
+      - DNS A record (Gandi/OVH via dnsctl)
+      - Vortex DNS mesh publication
+      - HAProxy vhost with SSL + backend creation
+      - ACME certificate request
+      - Zero-downtime reload
+      - Usage: `streamlitctl emancipate <app> [domain]`
+    - **Evolution dashboard real-time upgrade**:
+      - Auto-refresh with configurable intervals (30s/1m/2m/5m)
+      - Real-time system metrics from double-buffer cache
+      - Live console with debug level emojis (🔴🟠🟢🔵🟣)
+      - Multiple log sources: SecuBox, Kernel, CrowdSec, System
+    - **SecuBox Console app** (`secubox_console.py`):
+      - Dedicated real-time console with 5s auto-refresh
+      - Cyberpunk theme with metric cards
+      - Live at: https://console.gk2.secubox.in/
+    - **Commits**: 301dccec, a47ae965, 22caf0c9, aab58a2b, 7b77f839

@@ -53,6 +53,12 @@ _Last updated: 2026-02-07_
 
 ### Just Completed (2026-02-07)
 
+- **LED Fix & Double-Buffer Status Cache** — DONE (2026-02-07)
+  - Removed mmc0 LED (was blocking heartbeat loop)
+  - Added `status_collector_loop()` background daemon
+  - Cache files: `/tmp/secubox/{health,threat,capacity}.json`
+  - Fast readers for LED loop and dashboards (no subprocess calls)
+
 - **MetaBlogizer KISS ULTIME MODE** — DONE (2026-02-07)
   - Added `metablogizerctl emancipate` command
   - One-command workflow: DNS + Vortex + HAProxy + SSL + Reload
