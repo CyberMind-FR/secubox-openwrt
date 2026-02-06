@@ -761,3 +761,18 @@ _Last updated: 2026-02-07_
       - CrowdSec: RUNNING
       - DNS (named): RUNNING
     - **External URLs verified**: gk2.secubox.in, evolution.gk2.secubox.in, control.gk2.secubox.in all returning HTTP 200
+
+52. **Mailserver Postfix/Dovecot Maildir Path Alignment (2026-02-07)**
+    - Fixed emails delivered but invisible in Roundcube webmail.
+    - **Root cause**: Path mismatch between Postfix delivery and Dovecot mail_location.
+      - Postfix delivered to: `/home/vmail/$domain/$user/new/`
+      - Dovecot expected: `/home/vmail/$domain/$user/Maildir/new/`
+    - **container.sh fixes**:
+      - Changed mount point from `var/mail` to `home/vmail`
+      - Changed `virtual_mailbox_base` from `/var/mail` to `/home/vmail`
+      - Changed vmail user home from `/var/mail` to `/home/vmail`
+    - **users.sh fixes**:
+      - Create `$domain/$user/Maildir/{cur,new,tmp}` structure (was `$domain/$user/{cur,new,tmp}`)
+      - Updated vmailbox entries to use `$domain/$user/Maildir/` suffix
+    - Bumped `secubox-app-mailserver` version to 1.0.0-r2.
+    - New mail verified delivering correctly to Maildir location.

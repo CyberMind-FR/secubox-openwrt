@@ -136,6 +136,13 @@ _Last updated: 2026-02-07_
   - Added both IPv4 and IPv6 forwarding rules
   - Persisted in `/etc/firewall.user`
 
+- **Postfix/Dovecot Maildir Path Alignment** — DONE (2026-02-07)
+  - Root cause: Postfix delivered to `/home/vmail/$domain/$user/new/` but Dovecot looks in `~/Maildir/new/`
+  - Emails were delivered but invisible in Roundcube
+  - Fix in `container.sh`: Mount to `home/vmail`, virtual_mailbox_base = `/home/vmail`
+  - Fix in `users.sh`: Create `$domain/$user/Maildir/{cur,new,tmp}` structure
+  - Updated vmailbox format to include `Maildir/` suffix
+
 - **Inbound Port 25 Blocked by Free ISP** — KNOWN ISSUE
   - Free ISP blocks inbound port 25 on residential lines
   - Outbound mail works, inbound from external fails
