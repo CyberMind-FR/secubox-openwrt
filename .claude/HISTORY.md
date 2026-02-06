@@ -698,3 +698,66 @@ _Last updated: 2026-02-07_
       - Displays domain links and vortex node URLs
       - Deduplicated service list with clickable links
     - Bumped `secubox-core` version to 0.10.0-r12.
+
+46. **4-LED Status Dashboard (2026-02-06)**
+    - Enhanced `secubox-core` with dedicated 4-LED status dashboard for MochaBin.
+    - **LED assignments**:
+      - `led1` (RGB): Global health status — green (healthy), yellow (warning), red (critical)
+      - `led2` (RGB): Security threat level — green (safe), blue (activity), red (threats)
+      - `led3` (RGB): Global capacity meter — color varies by CPU + network combined load
+      - `mmc0`: Classic heartbeat — steady when stable, rapid blink on state changes
+    - **Fast reactive loop**: 1.5-second heartbeat interval (down from 60s)
+    - **Health scoring**: Combines services status, memory, disk usage
+    - **Threat detection**: CrowdSec alerts + mitmproxy threat events
+    - **Capacity monitoring**: Real-time CPU load + network throughput from `/proc`
+    - Bumped `secubox-core` version to 0.10.0-r14.
+
+47. **File Integrity Monitoring (2026-02-06)**
+    - Created `secubox-integrity` — SHA256-based file integrity monitor.
+    - **Monitored files**:
+      - `/srv/haproxy/config/haproxy.cfg`
+      - `/etc/config/haproxy`, `/etc/config/firewall`, `/etc/config/network`
+      - `/etc/config/wireless`, `/etc/config/dropbear`
+      - `/etc/passwd`, `/etc/shadow`
+    - **CLI commands**: init, check, status, clear
+    - **Cron integration**: Runs every 5 minutes via `/etc/cron.d/secubox-integrity`
+    - **LED alert**: Triggers LED event pulse on file changes
+    - **Logging**: System log and `/var/log/secubox/integrity.log`
+    - Added to `secubox-core` Makefile with install rules.
+
+48. **Custom Error Pages (2026-02-06)**
+    - Created "End of the Internet" custom error page for HAProxy backend failures.
+    - **Error pages generated**: 502, 503, 504 HTTP responses
+    - **Design**: Full-page artistic "End of the Internet" message
+    - **Location**: `/srv/haproxy/errors/{502,503,504}.http`
+    - **Integration**: HAProxy serves custom pages for backend errors
+
+49. **Local Mesh Domain Configuration (2026-02-07)**
+    - Configured `.sblocal` as local mesh domain suffix for internal service discovery.
+    - **DNS setup**: Added to dnsmasq local zones
+    - **Host entries**: c3box.sblocal, evolution.sblocal, gk2.sblocal, gitea.sblocal, bazi.sblocal
+    - **HAProxy vhosts**: HTTP vhosts for sblocal domains (no SSL, internal only)
+    - **Purpose**: Local network service discovery without external DNS dependency
+    - Enables LAN clients to access services via `<service>.sblocal`
+
+50. **Evolution Streamlit Local Mirror (2026-02-07)**
+    - Migrated Evolution dashboard from GitHub to local Gitea mirror.
+    - **Source change**: `raw.githubusercontent.com` → `localhost:3001/gandalf/secubox-openwrt`
+    - **Benefits**: Instant loading, no external dependency, works offline
+    - **Cache TTL**: Reduced from 5 minutes to 1 minute for faster updates
+    - **Gitea raw URL format**: `/raw/branch/master/<path>`
+
+51. **LXC Container Stability & HAProxy Recovery (2026-02-07)**
+    - **Root cause identified**: cgroup v2 incompatibility with `lxc.mount.auto = cgroup:mixed`
+    - **Fix applied to ALL containers**: Removed `cgroup:mixed`, added cgroup v2 device permissions
+    - **HAProxy fix**: Added `lxc.mount.auto = proc:mixed sys:ro` for /proc mount
+    - **Containers fixed**: haproxy, streamlit, gitea, domoticz, glances, hexojs, lyrion, magicmirror2, mailserver, mitmproxy, picobrew, zigbee2mqtt
+    - **HAProxy config regeneration**: Config was truncated to global/defaults only — regenerated full config with frontends/backends
+    - **Streamlit apps restored**: Added `secubox_control:8511` to instances.conf, all 9 apps running
+    - **Services confirmed operational**:
+      - HAProxy: RUNNING with full SSL termination
+      - Streamlit: 9 apps on ports 8501-8511
+      - Gitea: RUNNING
+      - CrowdSec: RUNNING
+      - DNS (named): RUNNING
+    - **External URLs verified**: gk2.secubox.in, evolution.gk2.secubox.in, control.gk2.secubox.in all returning HTTP 200

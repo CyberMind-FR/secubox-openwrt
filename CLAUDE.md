@@ -251,3 +251,64 @@ Full architectural spec: `package/secubox/PUNK-EXPOSURE.md`
 | `secubox-p2p` | Mesh channel + gossip sync |
 | `secubox-master-link` | Node onboarding + trust hierarchy |
 | `luci-app-service-registry` | Aggregated service catalog + health checks |
+
+### Emancipate CLI Commands
+
+**Multi-channel exposure in one command:**
+```bash
+# Full emancipation (Tor + DNS + Mesh)
+secubox-exposure emancipate <service> <port> <domain> --all
+
+# Selective channels
+secubox-exposure emancipate myapp 8080 myapp.secubox.in --dns --mesh
+secubox-exposure emancipate secret 8888 --tor  # Tor only, no domain needed
+
+# MetaBlogizer KISS workflow
+metablogizerctl create myblog blog.example.com
+metablogizerctl emancipate myblog  # Auto: DNS + Vortex + HAProxy + SSL + Reload
+
+# Revoke exposure
+secubox-exposure revoke myapp --all
+```
+
+**Vortex DNS mesh publishing:**
+```bash
+# Publish service to mesh
+vortexctl mesh publish <service> <domain>
+
+# Check mesh status
+vortexctl status
+```
+
+## Documentation Update Workflow
+
+**When source code evolves, always update documentation:**
+
+1. **HISTORY.md** — Append new entry with date and feature summary
+2. **WIP.md** — Move completed items to "Recently Completed", update "Next Up"
+3. **Package README.md** — Update if CLI commands or features change
+4. **Catalog JSON** — Update if package version or description changes
+
+**Commit message format for documentation:**
+```bash
+git commit -m "docs: Update tracking files for <feature>"
+```
+
+**README update triggers:**
+- New CLI command added
+- New RPCD method added
+- Configuration options changed
+- Dependencies changed
+- Major feature added
+
+**Quick documentation check:**
+```bash
+# See what's changed
+git diff --stat
+
+# Update tracking files if source files were modified
+if git diff --name-only | grep -qE 'package/secubox/'; then
+  echo "Update .claude/HISTORY.md with changes"
+  echo "Update .claude/WIP.md if task completed"
+fi
+```
