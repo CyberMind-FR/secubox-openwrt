@@ -109,6 +109,28 @@ _Last updated: 2026-02-07_
   - Fix: Added `mailctl fix-ports` command to enable all mail ports
   - Also added password reset for mail users in LuCI dashboard
 
+- **BIND Zone Returning Internal IP** — RESOLVED (2026-02-07)
+  - Root cause: `/etc/bind/zones/secubox.in.zone` had 192.168.255.1 (internal) instead of public IP
+  - External DNS queries returned non-routable internal IP
+  - Fix: Updated zone file with public IP 82.67.100.75 for all records
+
+- **IPv6 DNS Support** — DONE (2026-02-07)
+  - Added AAAA records to BIND zone and Gandi DNS
+  - IPv6: `2a01:e0a:dec:c4e0:250:43ff:fe84:fb2f`
+  - Records: @, mail, ns0, ns1, wildcard
+
+- **nftables Mail Forwarding Rules** — DONE (2026-02-07)
+  - Root cause: nftables `forward_wan` chain blocked DNAT'd mail traffic
+  - iptables DNAT worked but nftables dropped packets before forwarding
+  - Fix: Added explicit accept rules for mail ports (25,143,465,587,993,995)
+  - Added both IPv4 and IPv6 forwarding rules
+  - Persisted in `/etc/firewall.user`
+
+- **Inbound Port 25 Blocked by Free ISP** — KNOWN ISSUE
+  - Free ISP blocks inbound port 25 on residential lines
+  - Outbound mail works, inbound from external fails
+  - Workaround options: VPS relay, Mailgun/SendGrid, or contact Free support
+
 ### Just Completed
 
 - **Unified Backup Manager** — DONE (2026-02-05)
