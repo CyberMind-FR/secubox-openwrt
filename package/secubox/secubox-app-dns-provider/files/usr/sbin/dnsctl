@@ -5,6 +5,7 @@
 VERSION="1.0.0"
 CONFIG="dns-provider"
 ADAPTER_DIR="/usr/lib/secubox/dns"
+OVERRIDE_ZONE=""
 
 # Colors
 RED='\033[0;31m'
@@ -18,6 +19,15 @@ warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 uci_get() { uci -q get ${CONFIG}.$1; }
+
+# Parse global options
+while [ "${1#-}" != "$1" ]; do
+	case "$1" in
+		-z) OVERRIDE_ZONE="$2"; shift 2 ;;
+		--zone=*) OVERRIDE_ZONE="${1#--zone=}"; shift ;;
+		*) break ;;
+	esac
+done
 
 # ============================================================================
 # Provider Loading
@@ -47,7 +57,11 @@ load_provider() {
 }
 
 get_zone() {
-	uci_get main.zone
+	if [ -n "$OVERRIDE_ZONE" ]; then
+		echo "$OVERRIDE_ZONE"
+	else
+		uci_get main.zone
+	fi
 }
 
 # ============================================================================

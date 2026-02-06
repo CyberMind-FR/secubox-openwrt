@@ -121,9 +121,15 @@ get_next_port() {
 	echo $port
 }
 
+# Convert site name to UCI section name (hyphens -> underscores)
+get_section() {
+	echo "site_$(echo "$1" | tr '-' '_')"
+}
+
 site_exists() {
 	local name="$1"
-	uci -q get ${CONFIG}.site_${name} >/dev/null 2>&1
+	local section=$(get_section "$name")
+	uci -q get ${CONFIG}.${section} >/dev/null 2>&1
 }
 
 cmd_list() {
@@ -529,19 +535,9 @@ EOF
 _emancipate_dns() {
 	local name="$1"
 	local domain="$2"
-	local zone=$(uci -q get dns-provider.main.zone)
+	local default_zone=$(uci -q get dns-provider.main.zone)
 	local provider=$(uci -q get dns-provider.main.provider)
-
-	[ -z "$zone" ] && { log_warn "[DNS] No zone configured, skipping external DNS"; return 1; }
-
-	# Extract subdomain from domain
-	local subdomain=$(echo "$domain" | sed "s/\.${zone}$//")
-
-	# Get public IP
-	local public_ip=$(curl -s --connect-timeout 5 https://ipv4.icanhazip.com 2>/dev/null | tr -d '\n')
-	[ -z "$public_ip" ] && { log_warn "[DNS] Cannot detect public IP, skipping DNS"; return 1; }
-
-	log_info "[DNS] Registering $subdomain.$zone -> $public_ip via $provider"
+	local vortex_wildcard=$(uci -q get vortex-dns.master.wildcard_domain)
 
 	# Check if dnsctl is available
 	if ! command -v dnsctl >/dev/null 2>&1; then
@@ -549,17 +545,47 @@ _emancipate_dns() {
 		return 1
 	fi
 
-	# Check if provider is available
-	if ! dnsctl test >/dev/null 2>&1; then
-		log_warn "[DNS] Provider $provider not configured or credentials invalid"
-		log_warn "[DNS] Skipping external DNS registration"
-		return 1
+	# Get public IP
+	local public_ip=$(curl -s --connect-timeout 5 https://ipv4.icanhazip.com 2>/dev/null | tr -d '\n')
+	[ -z "$public_ip" ] && { log_warn "[DNS] Cannot detect public IP, skipping DNS"; return 1; }
+
+	# Detect zone from domain suffix (try known zones)
+	local zone=""
+	local subdomain=""
+	for z in "secubox.in" "maegia.tv" "cybermind.fr"; do
+		if echo "$domain" | grep -q "\.${z}$"; then
+			zone="$z"
+			subdomain=$(echo "$domain" | sed "s/\.${z}$//")
+			break
+		elif [ "$domain" = "$z" ]; then
+			zone="$z"
+			subdomain="@"
+			break
+		fi
+	done
+
+	# Fallback to default zone if no match
+	if [ -z "$zone" ]; then
+		zone="$default_zone"
+		subdomain=$(echo "$domain" | sed "s/\.${zone}$//")
 	fi
 
-	# Add A record
-	dnsctl add A "$subdomain" "$public_ip" 3600
+	[ -z "$zone" ] && { log_warn "[DNS] No zone detected, skipping external DNS"; return 1; }
 
-	# Verify propagation (non-blocking)
+	log_info "[DNS] Registering $subdomain.$zone -> $public_ip via $provider"
+
+	# Register on the published domain's zone
+	dnsctl -z "$zone" add A "$subdomain" "$public_ip" 3600
+
+	# Also register on vortex node subdomain (e.g., bday.gk2.secubox.in)
+	if [ -n "$vortex_wildcard" ]; then
+		local vortex_zone=$(echo "$vortex_wildcard" | sed 's/^[^.]*\.//')
+		local vortex_node=$(echo "$vortex_wildcard" | cut -d. -f1)
+		local vortex_subdomain="${name}.${vortex_node}"
+		log_info "[DNS] Registering $vortex_subdomain.$vortex_zone -> $public_ip (vortex node)"
+		dnsctl -z "$vortex_zone" add A "$vortex_subdomain" "$public_ip" 3600
+	fi
+
 	log_info "[DNS] Verify with: dnsctl verify $domain"
 }
 
@@ -678,7 +704,8 @@ cmd_emancipate() {
 		return 1
 	fi
 
-	local domain=$(uci_get site_${name}.domain)
+	local section=$(get_section "$name")
+	local domain=$(uci_get ${section}.domain)
 	[ -z "$domain" ] && { log_error "Site domain not configured"; return 1; }
 
 	echo ""
@@ -703,8 +730,8 @@ cmd_emancipate() {
 	_emancipate_reload
 
 	# Mark site as emancipated
-	uci set ${CONFIG}.site_${name}.emancipated="1"
-	uci set ${CONFIG}.site_${name}.emancipated_at="$(date -Iseconds)"
+	uci set ${CONFIG}.${section}.emancipated="1"
+	uci set ${CONFIG}.${section}.emancipated_at="$(date -Iseconds)"
 	uci commit ${CONFIG}
 
 	echo ""
