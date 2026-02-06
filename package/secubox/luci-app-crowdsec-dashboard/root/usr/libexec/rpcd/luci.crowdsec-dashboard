@@ -7,10 +7,20 @@
 . /usr/share/libubox/jshn.sh
 
 SECCUBOX_LOG="/usr/sbin/secubox-log"
+CROWDSEC_CACHE="/tmp/secubox/crowdsec.json"
 
 secubox_log() {
 	[ -x "$SECCUBOX_LOG" ] || return
 	"$SECCUBOX_LOG" --tag "crowdsec" --message "$1" >/dev/null 2>&1
+}
+
+# Read cached status for fast API responses
+get_cached_status() {
+	if [ -f "$CROWDSEC_CACHE" ]; then
+		cat "$CROWDSEC_CACHE"
+	else
+		echo '{"running":0,"version":"unknown","alerts":0,"bans":0,"bouncers":0,"machines":0,"timestamp":0}'
+	fi
 }
 
 CSCLI="/usr/bin/cscli"
@@ -2416,7 +2426,7 @@ get_overview() {
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"get_overview":{},"decisions":{},"alerts":{"limit":"number"},"metrics":{},"bouncers":{},"machines":{},"hub":{},"status":{},"ban":{"ip":"string","duration":"string","reason":"string"},"unban":{"ip":"string"},"stats":{},"secubox_logs":{},"collect_debug":{},"waf_status":{},"metrics_config":{},"configure_metrics":{"enable":"string"},"collections":{},"install_collection":{"collection":"string"},"remove_collection":{"collection":"string"},"update_hub":{},"register_bouncer":{"bouncer_name":"string"},"delete_bouncer":{"bouncer_name":"string"},"firewall_bouncer_status":{},"control_firewall_bouncer":{"action":"string"},"firewall_bouncer_config":{},"update_firewall_bouncer_config":{"key":"string","value":"string"},"nftables_stats":{},"check_wizard_needed":{},"wizard_state":{},"repair_lapi":{},"repair_capi":{},"reset_wizard":{},"console_status":{},"console_enroll":{"key":"string","name":"string"},"console_disable":{},"service_control":{"action":"string"},"configure_acquisition":{"syslog_enabled":"string","firewall_enabled":"string","ssh_enabled":"string","http_enabled":"string","syslog_path":"string"},"acquisition_config":{},"acquisition_metrics":{},"health_check":{},"capi_metrics":{},"hub_available":{},"install_hub_item":{"item_type":"string","item_name":"string"},"remove_hub_item":{"item_type":"string","item_name":"string"},"get_settings":{},"save_settings":{"enrollment_key":"string","machine_name":"string","auto_enroll":"string"}}'
+		echo '{"get_overview":{},"decisions":{},"alerts":{"limit":"number"},"metrics":{},"bouncers":{},"machines":{},"hub":{},"status":{},"status_cached":{},"ban":{"ip":"string","duration":"string","reason":"string"},"unban":{"ip":"string"},"stats":{},"secubox_logs":{},"collect_debug":{},"waf_status":{},"metrics_config":{},"configure_metrics":{"enable":"string"},"collections":{},"install_collection":{"collection":"string"},"remove_collection":{"collection":"string"},"update_hub":{},"register_bouncer":{"bouncer_name":"string"},"delete_bouncer":{"bouncer_name":"string"},"firewall_bouncer_status":{},"control_firewall_bouncer":{"action":"string"},"firewall_bouncer_config":{},"update_firewall_bouncer_config":{"key":"string","value":"string"},"nftables_stats":{},"check_wizard_needed":{},"wizard_state":{},"repair_lapi":{},"repair_capi":{},"reset_wizard":{},"console_status":{},"console_enroll":{"key":"string","name":"string"},"console_disable":{},"service_control":{"action":"string"},"configure_acquisition":{"syslog_enabled":"string","firewall_enabled":"string","ssh_enabled":"string","http_enabled":"string","syslog_path":"string"},"acquisition_config":{},"acquisition_metrics":{},"health_check":{},"capi_metrics":{},"hub_available":{},"install_hub_item":{"item_type":"string","item_name":"string"},"remove_hub_item":{"item_type":"string","item_name":"string"},"get_settings":{},"save_settings":{"enrollment_key":"string","machine_name":"string","auto_enroll":"string"}}'
 		;;
 	call)
 		case "$2" in
@@ -2442,6 +2452,9 @@ case "$1" in
 				;;
 			status)
 				get_status
+				;;
+			status_cached)
+				get_cached_status
 				;;
 			ban)
 				read -r input

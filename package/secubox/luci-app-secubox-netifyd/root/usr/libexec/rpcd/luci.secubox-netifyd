@@ -15,6 +15,16 @@ SOCKET_DUMP="/run/netifyd/sink-request.json"
 LOG_FILE="/var/log/secubox-netifyd.log"
 FLOW_CACHE="/tmp/netifyd-flows.json"
 STATS_CACHE="/tmp/netifyd-stats.json"
+NETIFYD_CACHE="/tmp/secubox/netifyd.json"
+
+# Read cached status for fast API responses
+get_cached_status() {
+	if [ -f "$NETIFYD_CACHE" ]; then
+		cat "$NETIFYD_CACHE"
+	else
+		echo '{"running":0,"version":"","flows":0,"devices":0,"dns_cache":0,"rx_bytes":0,"tx_bytes":0,"rx_packets":0,"tx_packets":0,"timestamp":0}'
+	fi
+}
 NETIFYD_SINK_CONF="/etc/netifyd.d/secubox-sink.conf"
 NETIFYD_PLUGIN_LIBDIR="/usr/lib/netifyd"
 NETIFYD_PLUGIN_CONF_DIR="/etc/netifyd/plugins.d"
@@ -1033,6 +1043,7 @@ case "$1" in
 		cat <<'EOF'
 {
 	"get_service_status": {},
+	"status_cached": {},
 	"get_netifyd_status": {},
 	"get_realtime_flows": {},
 	"get_flow_statistics": {},
@@ -1065,6 +1076,7 @@ EOF
 	call)
 		case "$2" in
 			get_service_status) get_service_status ;;
+			status_cached) get_cached_status ;;
 			get_netifyd_status) get_netifyd_status ;;
 			get_realtime_flows) get_realtime_flows ;;
 			get_flow_statistics) get_flow_statistics ;;
