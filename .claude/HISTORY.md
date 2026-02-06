@@ -849,7 +849,29 @@ _Last updated: 2026-02-06_
     - Updated `streamlit/api.js` with 4 new API methods
     - Updated ACL permissions in `luci-app-streamlit.json`
 
-57. **SecuBox Vhost Manager (2026-02-06)**
+57. **Fabricator Embedder & Service Profile Watchdog (2026-02-06)**
+    - **Fabricator Embedder Tab**: Added 7th tab "🪟 Embedder" for creating unified portal pages.
+      - Embeds Streamlit apps, MetaBlogizer sites, and custom URLs in single page
+      - Three layouts: Grid (iframe grid), Tabs (tab-switching), Sidebar (navigation panel)
+      - Auto-fetches available services from JSON endpoints
+      - Deploys HTML portal to /www
+    - **Service Profile Snapshot** (`/usr/sbin/secubox-profile-snapshot`):
+      - `snapshot`: Captures current enabled/running services to UCI config
+      - `check`: Returns JSON status comparing current vs expected
+      - `watchdog`: Attempts to restart failed services
+      - `list`: Displays profile with current status
+      - Monitors: Core services (5), LXC containers (3), Streamlit apps (11), MetaBlogizer sites (14)
+    - **Heartbeat Status** (`/usr/sbin/secubox-heartbeat-status`):
+      - Returns JSON health score (0-100) with level (healthy/warning/critical)
+      - Resource metrics: CPU load, memory %, disk %
+      - Service counts: up/down
+      - Exported to `/tmp/secubox/heartbeat.json` and `/www/heartbeat.json`
+    - **Cron Integration**:
+      - Watchdog runs every 5 minutes to auto-restart failed services
+      - Heartbeat updates every minute for LED/dashboard status
+    - **Fabricator Emancipation**: Published at https://fabric.gk2.secubox.in
+
+58. **SecuBox Vhost Manager (2026-02-06)**
     - Created `secubox-vhost` CLI for subdomain management in secubox-core:
       - Manages external (`*.gk2.secubox.in`) and local (`*.gk2.sb.local`) domains
       - Commands: init, set-domain, list, enable, disable, add, sync, landing, dnsmasq
