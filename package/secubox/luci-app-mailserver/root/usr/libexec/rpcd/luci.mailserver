@@ -251,7 +251,13 @@ case "$1" in
 				;;
 
 			user_passwd)
-				json_load "$3"
+				# Read JSON from stdin or $3
+				if [ -n "$3" ]; then
+					json_load "$3"
+				else
+					read -r _input
+					json_load "$_input"
+				fi
 				json_get_var email email
 				json_get_var password password
 

@@ -68,6 +68,13 @@ var callAliasAdd = rpc.declare({
 	expect: {}
 });
 
+var callUserPasswd = rpc.declare({
+	object: 'luci.mailserver',
+	method: 'user_passwd',
+	params: ['email', 'password'],
+	expect: {}
+});
+
 var callDnsSetup = rpc.declare({
 	object: 'luci.mailserver',
 	method: 'dns_setup',
@@ -244,6 +251,11 @@ return view.extend({
 				E('td', { 'class': 'td' }, String(u.messages || 0)),
 				E('td', { 'class': 'td' }, [
 					E('button', {
+						'class': 'btn cbi-button-neutral',
+						'style': 'padding:2px 8px;font-size:12px;margin-right:5px',
+						'click': ui.createHandlerFn(this, this.showResetPasswordModal, u.email)
+					}, 'Reset Password'),
+					E('button', {
 						'class': 'btn cbi-button-remove',
 						'style': 'padding:2px 8px;font-size:12px',
 						'click': ui.createHandlerFn(this, this.doDeleteUser, u.email)
@@ -364,6 +376,50 @@ return view.extend({
 		]);
 	},
 
+	showResetPasswordModal: function(email) {
+		var passwordInput, confirmInput;
+
+		ui.showModal('Reset Password', [
+			E('p', {}, 'Enter new password for: ' + email),
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, 'New Password'),
+				E('div', { 'class': 'cbi-value-field' }, [
+					passwordInput = E('input', { 'type': 'password', 'class': 'cbi-input-text' })
+				])
+			]),
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, 'Confirm'),
+				E('div', { 'class': 'cbi-value-field' }, [
+					confirmInput = E('input', { 'type': 'password', 'class': 'cbi-input-text' })
+				])
+			]),
+			E('div', { 'class': 'right' }, [
+				E('button', {
+					'class': 'btn',
+					'click': ui.hideModal
+				}, 'Cancel'),
+				' ',
+				E('button', {
+					'class': 'btn cbi-button-action',
+					'click': ui.createHandlerFn(this, function() {
+						var password = passwordInput.value;
+						var confirm = confirmInput.value;
+						if (!password) {
+							ui.addNotification(null, E('p', 'Password required'), 'error');
+							return;
+						}
+						if (password !== confirm) {
+							ui.addNotification(null, E('p', 'Passwords do not match'), 'error');
+							return;
+						}
+						ui.hideModal();
+						return this.doResetPassword(email, password);
+					})
+				}, 'Reset Password')
+			])
+		]);
+	},
+
 	doStart: function() {
 		ui.showModal('Starting Server', [
 			E('p', { 'class': 'spinning' }, 'Starting mail server...')
@@ -418,6 +474,20 @@ return view.extend({
 		return callAliasAdd(alias, target).then(function() {
 			ui.hideModal();
 			window.location.reload();
+		});
+	},
+
+	doResetPassword: function(email, password) {
+		ui.showModal('Resetting Password', [
+			E('p', { 'class': 'spinning' }, 'Resetting password for: ' + email)
+		]);
+		return callUserPasswd(email, password).then(function(res) {
+			ui.hideModal();
+			if (res.code === 0) {
+				ui.addNotification(null, E('p', 'Password reset for: ' + email), 'success');
+			} else {
+				ui.addNotification(null, E('p', 'Failed: ' + (res.error || res.output)), 'error');
+			}
 		});
 	},
 
