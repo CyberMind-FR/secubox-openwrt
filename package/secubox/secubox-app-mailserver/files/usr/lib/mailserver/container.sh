@@ -71,7 +71,7 @@ EOF
 	cat > "$rootfs/root/setup.sh" << 'SETUP'
 #!/bin/sh
 apk update
-apk add postfix postfix-pcre dovecot dovecot-lmtpd dovecot-pigeonhole-plugin rspamd opendkim
+apk add postfix postfix-pcre dovecot dovecot-lmtpd dovecot-pop3d dovecot-pigeonhole-plugin rspamd opendkim
 # Configure Dovecot for local plaintext auth (needed for Docker webmail containers)
 echo "disable_plaintext_auth = no" >> /etc/dovecot/dovecot.conf
 # Configure postfix

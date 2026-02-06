@@ -639,3 +639,27 @@ _Last updated: 2026-02-07_
     - **RPCD methods**: status, results, score, compliance, check, pending, history, suggest, remediate, remediate_safe, set_config
     - **UCI configuration**: main (enabled, check_interval, auto_remediate), compliance (framework, strict_mode), scoring (passing_score, weights), categories (enable/disable), localai (url, model)
     - Part of v1.0.0 certification roadmap (ANSSI CSPN compliance tooling).
+
+43. **Mail Server Port Fixes & Password Reset (2026-02-07)**
+    - Fixed mail ports 587 (Submission), 465 (SMTPS), and 995 (POP3S) not listening.
+    - **Root causes identified**:
+      - Postfix master.cf missing submission and smtps service entries
+      - Dovecot 10-master.conf had pop3s listener commented out
+      - `dovecot-pop3d` package not installed in Alpine LXC container
+    - **mailctl fix-ports command**:
+      - Adds submission (587) service to Postfix master.cf with SASL auth
+      - Adds smtps (465) service with TLS wrapper mode
+      - Installs `dovecot-pop3d` if missing
+      - Uncomments pop3/pop3s listeners in Dovecot 10-master.conf
+      - Enables SSL on pop3s (995) and imaps (993) listeners
+      - Restarts Postfix and Dovecot to apply changes
+    - **LuCI password reset feature**:
+      - Added "Reset Password" button in mail users table
+      - Modal dialog with password and confirmation fields
+      - RPCD `user_passwd` method with stdin JSON fallback
+      - `callUserPasswd` RPC declaration in overview.js
+    - **LuCI Fix Ports button**:
+      - Added to Quick Actions section
+      - RPCD `fix_ports` method wrapping CLI command
+      - Visual feedback with modal spinner
+    - Updated container.sh to include `dovecot-pop3d` in initial package list.

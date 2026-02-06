@@ -102,6 +102,13 @@ _Last updated: 2026-02-07_
   - This blocked Thunderbird from connecting to external mail (ssl0.ovh.net)
   - Fix: Added `-i $WAN_IF` to only redirect inbound WAN traffic
 
+- **Mail Ports 587/465/995 Not Listening** — RESOLVED (2026-02-07)
+  - Root cause: Postfix master.cf missing submission/smtps entries
+  - Dovecot 10-master.conf had pop3s commented out
+  - `dovecot-pop3d` package not installed in container
+  - Fix: Added `mailctl fix-ports` command to enable all mail ports
+  - Also added password reset for mail users in LuCI dashboard
+
 ### Just Completed
 
 - **Unified Backup Manager** — DONE (2026-02-05)

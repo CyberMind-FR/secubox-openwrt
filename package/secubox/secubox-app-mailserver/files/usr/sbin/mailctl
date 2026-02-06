@@ -324,6 +324,95 @@ cmd_fix_postfix() {
 	log "If you still see errors, restart the container: mailctl restart"
 }
 
+cmd_fix_ports() {
+	local container=$(uci_get main.container)
+	container="${container:-mailserver}"
+
+	log "Enabling submission (587), smtps (465), and POP3S (995) ports..."
+
+	lxc-attach -n "$container" -- sh -c '
+		# Enable submission port (587) in master.cf
+		if ! grep -q "^submission " /etc/postfix/master.cf; then
+			echo "submission inet n       -       n       -       -       smtpd" >> /etc/postfix/master.cf
+			echo "  -o syslog_name=postfix/submission" >> /etc/postfix/master.cf
+			echo "  -o smtpd_tls_security_level=encrypt" >> /etc/postfix/master.cf
+			echo "  -o smtpd_sasl_auth_enable=yes" >> /etc/postfix/master.cf
+			echo "  -o smtpd_tls_auth_only=yes" >> /etc/postfix/master.cf
+			echo "  -o smtpd_reject_unlisted_recipient=no" >> /etc/postfix/master.cf
+			echo "  -o smtpd_recipient_restrictions=permit_sasl_authenticated,reject" >> /etc/postfix/master.cf
+			echo "  -o milter_macro_daemon_name=ORIGINATING" >> /etc/postfix/master.cf
+		fi
+
+		# Enable smtps port (465) in master.cf
+		if ! grep -q "^smtps " /etc/postfix/master.cf; then
+			echo "smtps     inet  n       -       n       -       -       smtpd" >> /etc/postfix/master.cf
+			echo "  -o syslog_name=postfix/smtps" >> /etc/postfix/master.cf
+			echo "  -o smtpd_tls_wrappermode=yes" >> /etc/postfix/master.cf
+			echo "  -o smtpd_sasl_auth_enable=yes" >> /etc/postfix/master.cf
+			echo "  -o smtpd_reject_unlisted_recipient=no" >> /etc/postfix/master.cf
+			echo "  -o smtpd_recipient_restrictions=permit_sasl_authenticated,reject" >> /etc/postfix/master.cf
+			echo "  -o milter_macro_daemon_name=ORIGINATING" >> /etc/postfix/master.cf
+		fi
+
+		# Restart Postfix to apply master.cf changes
+		postfix stop 2>/dev/null
+		postfix start
+
+		# Install dovecot-pop3d if missing
+		if [ ! -f /usr/libexec/dovecot/pop3 ]; then
+			apk add dovecot-pop3d 2>/dev/null
+		fi
+
+		# Configure Dovecot for POP3S (995)
+		if [ -f /etc/dovecot/dovecot.conf ]; then
+			# Enable POP3 protocol
+			if ! grep -q "protocols.*pop3" /etc/dovecot/dovecot.conf; then
+				sed -i "s/^protocols = .*/& pop3/" /etc/dovecot/dovecot.conf
+			fi
+			# If no protocols line exists, add one
+			grep -q "^protocols" /etc/dovecot/dovecot.conf || \
+				echo "protocols = imap pop3 lmtp" >> /etc/dovecot/dovecot.conf
+
+			# Configure POP3S listener - uncomment ports in 10-master.conf
+			if [ -f /etc/dovecot/conf.d/10-master.conf ]; then
+				# Uncomment and enable pop3s with SSL
+				sed -i "/service pop3-login/,/^}/ {
+					s/#port = 110/port = 110/
+					s/#port = 995/port = 995/
+					s/#ssl = yes/ssl = yes/
+				}" /etc/dovecot/conf.d/10-master.conf
+
+				# Also ensure IMAPS is properly enabled
+				sed -i "/service imap-login/,/^}/ {
+					s/#port = 143/port = 143/
+					s/#port = 993/port = 993/
+					s/#ssl = yes/ssl = yes/
+				}" /etc/dovecot/conf.d/10-master.conf
+			fi
+		fi
+
+		# Restart Dovecot to apply changes
+		rc-service dovecot restart 2>/dev/null || {
+			killall dovecot 2>/dev/null
+			sleep 1
+			dovecot
+		}
+	'
+
+	log "Ports enabled. Checking status..."
+	sleep 2
+
+	# Verify ports
+	local ports_status=$(lxc-attach -n "$container" -- netstat -tln 2>/dev/null)
+	for port in 587 465 995; do
+		if echo "$ports_status" | grep -q ":$port "; then
+			log "Port $port: listening"
+		else
+			warn "Port $port: still not listening"
+		fi
+	done
+}
+
 # ============================================================================
 # Logs & Diagnostics
 # ============================================================================
@@ -550,6 +639,7 @@ Diagnostics:
   test <email>         Send test email
   ssl-status           Show SSL cert info
   fix-postfix          Fix LMDB maps and DNS resolution
+  fix-ports            Enable submission/smtps/pop3s ports
 
 Examples:
   mailctl install
@@ -582,6 +672,7 @@ case "${1:-}" in
 	test)        shift; cmd_test "$@" ;;
 	report)      shift; cmd_report "$@" ;;
 	fix-postfix) shift; cmd_fix_postfix "$@" ;;
+	fix-ports)   shift; cmd_fix_ports "$@" ;;
 	help|--help|-h|'') show_help ;;
 	*)           error "Unknown command: $1"; show_help >&2; exit 1 ;;
 esac

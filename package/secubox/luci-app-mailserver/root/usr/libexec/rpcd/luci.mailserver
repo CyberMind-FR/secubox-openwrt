@@ -27,7 +27,8 @@ case "$1" in
 			"ssl_setup": {},
 			"webmail_configure": {},
 			"mesh_backup": {},
-			"mesh_sync": { "mode": "string" }
+			"mesh_sync": { "mode": "string" },
+			"fix_ports": {}
 		}
 		EOF
 		;;
@@ -329,6 +330,14 @@ case "$1" in
 
 				json_init
 				output=$($MAILCTL mesh sync "$mode" 2>&1)
+				json_add_int "code" "$?"
+				json_add_string "output" "$output"
+				json_dump
+				;;
+
+			fix_ports)
+				json_init
+				output=$($MAILCTL fix-ports 2>&1)
 				json_add_int "code" "$?"
 				json_add_string "output" "$output"
 				json_dump

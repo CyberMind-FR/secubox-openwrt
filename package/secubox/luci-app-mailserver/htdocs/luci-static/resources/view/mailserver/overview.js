@@ -99,6 +99,12 @@ var callMeshBackup = rpc.declare({
 	expect: {}
 });
 
+var callFixPorts = rpc.declare({
+	object: 'luci.mailserver',
+	method: 'fix_ports',
+	expect: {}
+});
+
 return view.extend({
 	load: function() {
 		return Promise.all([
@@ -188,7 +194,11 @@ return view.extend({
 					E('button', {
 						'class': 'btn cbi-button-neutral',
 						'click': ui.createHandlerFn(this, this.doMeshBackup)
-					}, 'Mesh Backup')
+					}, 'Mesh Backup'),
+					E('button', {
+						'class': 'btn cbi-button-neutral',
+						'click': ui.createHandlerFn(this, this.doFixPorts)
+					}, 'Fix Ports')
 				])
 			]),
 
@@ -541,6 +551,21 @@ return view.extend({
 			} else {
 				ui.addNotification(null, E('p', res.output), 'error');
 			}
+		});
+	},
+
+	doFixPorts: function() {
+		ui.showModal('Fixing Ports', [
+			E('p', { 'class': 'spinning' }, 'Enabling submission (587), smtps (465), and POP3S (995) ports...')
+		]);
+		return callFixPorts().then(function(res) {
+			ui.hideModal();
+			if (res.code === 0) {
+				ui.addNotification(null, E('p', 'Ports enabled successfully'), 'success');
+			} else {
+				ui.addNotification(null, E('p', res.output || 'Some ports may still not be listening'), 'warning');
+			}
+			window.location.reload();
 		});
 	},
 
