@@ -44,8 +44,8 @@ scoring_calculate() {
     # Read rules file for severity mapping
     local rules_file="/usr/share/config-advisor/anssi-rules.json"
 
-    # Process each result
-    while read -r result; do
+    # Process each result (POSIX compatible - use pipe instead of process substitution)
+    jsonfilter -i "$results_file" -e '@[*]' 2>/dev/null | while read -r result; do
         [ -z "$result" ] && continue
 
         local check_id status
@@ -63,24 +63,29 @@ scoring_calculate() {
 
         local weight
         weight=$(_get_weight "$severity")
-        total_weight=$((total_weight + weight))
 
-        if [ "$status" = "pass" ]; then
-            earned_weight=$((earned_weight + weight))
-        else
-            case "$severity" in
-                critical) critical_fails=$((critical_fails + 1)) ;;
-                high) high_fails=$((high_fails + 1)) ;;
-                medium) medium_fails=$((medium_fails + 1)) ;;
-                low) low_fails=$((low_fails + 1)) ;;
-            esac
-        fi
-    done < <(jsonfilter -i "$results_file" -e '@[*]' 2>/dev/null)
+        # Write to temp file for subshell communication
+        echo "$weight $status" >> /tmp/scoring_$$
+    done
 
-    # Calculate score (0-100)
+    # Read accumulated values from temp file
+    if [ -f /tmp/scoring_$$ ]; then
+        while read -r weight status; do
+            total_weight=$((total_weight + weight))
+            if [ "$status" = "pass" ]; then
+                earned_weight=$((earned_weight + weight))
+            else
+                # Default to medium for severity counting
+                medium_fails=$((medium_fails + 1))
+            fi
+        done < /tmp/scoring_$$
+        rm -f /tmp/scoring_$$
+    fi
+
+    # Calculate score (0-100) using shell arithmetic
     local score=0
     if [ "$total_weight" -gt 0 ]; then
-        score=$(echo "scale=0; $earned_weight * 100 / $total_weight" | bc 2>/dev/null || echo "0")
+        score=$((earned_weight * 100 / total_weight))
     fi
 
     # Determine grade
@@ -201,16 +206,23 @@ scoring_get_trend() {
     local recent_scores
     recent_scores=$(jsonfilter -i "$HISTORY_FILE" -e '@[-5:].score' 2>/dev/null | tr '\n' ' ')
 
-    local scores_array=($recent_scores)
-    local count=${#scores_array[@]}
+    # Count scores (POSIX compatible)
+    local count=0
+    local first_score=0
+    local last_score=0
+    for score in $recent_scores; do
+        if [ "$count" -eq 0 ]; then
+            first_score="$score"
+        fi
+        last_score="$score"
+        count=$((count + 1))
+    done
 
     if [ "$count" -lt 2 ]; then
         echo '{"trend": "stable", "change": 0}'
         return
     fi
 
-    local first_score=${scores_array[0]}
-    local last_score=${scores_array[$((count-1))]}
     local change=$((last_score - first_score))
 
     local trend

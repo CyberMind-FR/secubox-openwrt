@@ -118,7 +118,7 @@ anssi_run_compliance() {
     "warnings": $warnings,
     "info": $info
   },
-  "compliance_rate": $(echo "scale=1; $passed * 100 / $total" | bc 2>/dev/null || echo "0"),
+  "compliance_rate": $([ "$total" -gt 0 ] && echo $((passed * 100 / total)) || echo "0"),
   "results": $results
 }
 EOF

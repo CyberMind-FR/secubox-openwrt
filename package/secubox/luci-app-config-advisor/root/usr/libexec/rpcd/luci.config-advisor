@@ -9,176 +9,175 @@
 [ -f /usr/lib/config-advisor/scoring.sh ] && . /usr/lib/config-advisor/scoring.sh
 [ -f /usr/lib/config-advisor/remediate.sh ] && . /usr/lib/config-advisor/remediate.sh
 
+handle_status() {
+    json_init
+    json_add_string "version" "$(config-advisorctl version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo '0.1.0')"
+    json_add_boolean "enabled" "$(uci -q get config-advisor.main.enabled || echo 0)"
+    json_add_string "framework" "$(uci -q get config-advisor.compliance.framework || echo 'anssi_cspn')"
+
+    local last_check=0
+    if [ -f /var/lib/config-advisor/results.json ]; then
+        last_check=$(stat -c %Y /var/lib/config-advisor/results.json 2>/dev/null || echo 0)
+    fi
+    json_add_int "last_check" "$last_check"
+
+    local score grade risk_level
+    if [ -f /var/lib/config-advisor/score.json ]; then
+        score=$(jsonfilter -i /var/lib/config-advisor/score.json -e '@.score' 2>/dev/null || echo 0)
+        grade=$(jsonfilter -i /var/lib/config-advisor/score.json -e '@.grade' 2>/dev/null || echo '?')
+        risk_level=$(jsonfilter -i /var/lib/config-advisor/score.json -e '@.risk_level' 2>/dev/null || echo 'unknown')
+    else
+        score=0
+        grade="?"
+        risk_level="unknown"
+    fi
+    json_add_int "score" "$score"
+    json_add_string "grade" "$grade"
+    json_add_string "risk_level" "$risk_level"
+
+    local compliance_rate=0
+    if [ -f /var/lib/config-advisor/compliance.json ]; then
+        compliance_rate=$(jsonfilter -i /var/lib/config-advisor/compliance.json -e '@.compliance_rate' 2>/dev/null || echo 0)
+    fi
+    json_add_int "compliance_rate" "${compliance_rate%.*}"
+
+    json_add_object "localai"
+    json_add_boolean "enabled" "$(uci -q get config-advisor.localai.enabled || echo 0)"
+    json_add_string "url" "$(uci -q get config-advisor.localai.url || echo 'http://127.0.0.1:8091')"
+    json_close_object
+
+    json_dump
+}
+
+handle_results() {
+    if [ -f /var/lib/config-advisor/results.json ]; then
+        echo "{\"results\":$(cat /var/lib/config-advisor/results.json)}"
+    else
+        echo '{"results":[]}'
+    fi
+}
+
+handle_score() {
+    if [ -f /var/lib/config-advisor/score.json ]; then
+        cat /var/lib/config-advisor/score.json
+    else
+        echo '{"error":"No score available"}'
+    fi
+}
+
+handle_compliance() {
+    if [ -f /var/lib/config-advisor/compliance.json ]; then
+        cat /var/lib/config-advisor/compliance.json
+    else
+        echo '{"error":"No compliance report available"}'
+    fi
+}
+
+handle_check() {
+    run_all_checks >/dev/null 2>&1
+    anssi_run_compliance >/dev/null 2>&1
+    scoring_calculate >/dev/null 2>&1
+
+    json_init
+    json_add_boolean "success" 1
+    json_add_string "message" "Check completed"
+    json_dump
+}
+
+handle_pending() {
+    if [ -f /var/lib/config-advisor/pending_remediations.json ]; then
+        echo "{\"pending\":$(cat /var/lib/config-advisor/pending_remediations.json)}"
+    else
+        echo '{"pending":[]}'
+    fi
+}
+
+handle_history() {
+    read -r input
+    json_load "$input"
+    json_get_var count count
+    [ -z "$count" ] && count=30
+
+    if [ -f /var/lib/config-advisor/score_history.json ]; then
+        local history
+        history=$(jsonfilter -i /var/lib/config-advisor/score_history.json -e "@[-$count:]" 2>/dev/null || echo "[]")
+        echo "{\"history\":$history}"
+    else
+        echo '{"history":[]}'
+    fi
+}
+
+handle_suggest() {
+    read -r input
+    json_load "$input"
+    json_get_var check_id check_id
+
+    if [ -z "$check_id" ]; then
+        echo '{"error":"check_id required"}'
+    else
+        remediate_suggest "$check_id"
+    fi
+}
+
+handle_remediate() {
+    read -r input
+    json_load "$input"
+    json_get_var check_id check_id
+    json_get_var dry_run dry_run
+
+    if [ -z "$check_id" ]; then
+        echo '{"error":"check_id required"}'
+    else
+        [ "$dry_run" = "1" ] || [ "$dry_run" = "true" ] && dry_run=1 || dry_run=0
+        remediate_apply "$check_id" "$dry_run"
+    fi
+}
+
+handle_remediate_safe() {
+    read -r input
+    json_load "$input"
+    json_get_var dry_run dry_run
+
+    [ "$dry_run" = "1" ] || [ "$dry_run" = "true" ] && dry_run=1 || dry_run=0
+    remediate_apply_safe "$dry_run"
+}
+
+handle_set_config() {
+    read -r input
+    json_load "$input"
+    json_get_var key key
+    json_get_var value value
+
+    if [ -z "$key" ]; then
+        echo '{"error":"key required"}'
+    else
+        uci set "config-advisor.$key=$value"
+        uci commit config-advisor
+
+        json_init
+        json_add_boolean "success" 1
+        json_dump
+    fi
+}
+
 case "$1" in
     list)
         echo '{"status":{},"results":{},"score":{},"compliance":{},"check":{},"pending":{},"history":{"count":30},"suggest":{"check_id":"string"},"remediate":{"check_id":"string","dry_run":false},"remediate_safe":{"dry_run":false},"set_config":{"key":"string","value":"string"}}'
         ;;
     call)
         case "$2" in
-            status)
-                # Get advisor status
-                json_init
-                json_add_string "version" "$(config-advisorctl version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo '0.1.0')"
-                json_add_boolean "enabled" "$(uci -q get config-advisor.main.enabled || echo 0)"
-                json_add_string "framework" "$(uci -q get config-advisor.compliance.framework || echo 'anssi_cspn')"
-
-                # Last check timestamp
-                local last_check=0
-                if [ -f /var/lib/config-advisor/results.json ]; then
-                    last_check=$(stat -c %Y /var/lib/config-advisor/results.json 2>/dev/null || echo 0)
-                fi
-                json_add_int "last_check" "$last_check"
-
-                # Score info
-                local score grade risk_level
-                if [ -f /var/lib/config-advisor/score.json ]; then
-                    score=$(jsonfilter -i /var/lib/config-advisor/score.json -e '@.score' 2>/dev/null || echo 0)
-                    grade=$(jsonfilter -i /var/lib/config-advisor/score.json -e '@.grade' 2>/dev/null || echo '?')
-                    risk_level=$(jsonfilter -i /var/lib/config-advisor/score.json -e '@.risk_level' 2>/dev/null || echo 'unknown')
-                else
-                    score=0
-                    grade="?"
-                    risk_level="unknown"
-                fi
-                json_add_int "score" "$score"
-                json_add_string "grade" "$grade"
-                json_add_string "risk_level" "$risk_level"
-
-                # Compliance rate
-                local compliance_rate=0
-                if [ -f /var/lib/config-advisor/compliance.json ]; then
-                    compliance_rate=$(jsonfilter -i /var/lib/config-advisor/compliance.json -e '@.compliance_rate' 2>/dev/null || echo 0)
-                fi
-                json_add_int "compliance_rate" "${compliance_rate%.*}"
-
-                # LocalAI status
-                json_add_object "localai"
-                json_add_boolean "enabled" "$(uci -q get config-advisor.localai.enabled || echo 0)"
-                json_add_string "url" "$(uci -q get config-advisor.localai.url || echo 'http://127.0.0.1:8091')"
-                json_close_object
-
-                json_dump
-                ;;
-
-            results)
-                # Get check results
-                if [ -f /var/lib/config-advisor/results.json ]; then
-                    echo "{\"results\":$(cat /var/lib/config-advisor/results.json)}"
-                else
-                    echo '{"results":[]}'
-                fi
-                ;;
-
-            score)
-                # Get score details
-                if [ -f /var/lib/config-advisor/score.json ]; then
-                    cat /var/lib/config-advisor/score.json
-                else
-                    echo '{"error":"No score available"}'
-                fi
-                ;;
-
-            compliance)
-                # Get compliance report
-                if [ -f /var/lib/config-advisor/compliance.json ]; then
-                    cat /var/lib/config-advisor/compliance.json
-                else
-                    echo '{"error":"No compliance report available"}'
-                fi
-                ;;
-
-            check)
-                # Run full check
-                run_all_checks >/dev/null 2>&1
-                anssi_run_compliance >/dev/null 2>&1
-                scoring_calculate >/dev/null 2>&1
-
-                json_init
-                json_add_boolean "success" 1
-                json_add_string "message" "Check completed"
-                json_dump
-                ;;
-
-            pending)
-                # Get pending remediations
-                if [ -f /var/lib/config-advisor/pending_remediations.json ]; then
-                    echo "{\"pending\":$(cat /var/lib/config-advisor/pending_remediations.json)}"
-                else
-                    echo '{"pending":[]}'
-                fi
-                ;;
-
-            history)
-                read -r input
-                json_load "$input"
-                json_get_var count count
-                [ -z "$count" ] && count=30
-
-                if [ -f /var/lib/config-advisor/score_history.json ]; then
-                    local history
-                    history=$(jsonfilter -i /var/lib/config-advisor/score_history.json -e "@[-$count:]" 2>/dev/null || echo "[]")
-                    echo "{\"history\":$history}"
-                else
-                    echo '{"history":[]}'
-                fi
-                ;;
-
-            suggest)
-                read -r input
-                json_load "$input"
-                json_get_var check_id check_id
-
-                if [ -z "$check_id" ]; then
-                    echo '{"error":"check_id required"}'
-                else
-                    remediate_suggest "$check_id"
-                fi
-                ;;
-
-            remediate)
-                read -r input
-                json_load "$input"
-                json_get_var check_id check_id
-                json_get_var dry_run dry_run
-
-                if [ -z "$check_id" ]; then
-                    echo '{"error":"check_id required"}'
-                else
-                    [ "$dry_run" = "1" ] || [ "$dry_run" = "true" ] && dry_run=1 || dry_run=0
-                    remediate_apply "$check_id" "$dry_run"
-                fi
-                ;;
-
-            remediate_safe)
-                read -r input
-                json_load "$input"
-                json_get_var dry_run dry_run
-
-                [ "$dry_run" = "1" ] || [ "$dry_run" = "true" ] && dry_run=1 || dry_run=0
-                remediate_apply_safe "$dry_run"
-                ;;
-
-            set_config)
-                read -r input
-                json_load "$input"
-                json_get_var key key
-                json_get_var value value
-
-                if [ -z "$key" ]; then
-                    echo '{"error":"key required"}'
-                else
-                    uci set "config-advisor.$key=$value"
-                    uci commit config-advisor
-
-                    json_init
-                    json_add_boolean "success" 1
-                    json_dump
-                fi
-                ;;
-
-            *)
-                echo '{"error":"Unknown method"}'
-                ;;
+            status) handle_status ;;
+            results) handle_results ;;
+            score) handle_score ;;
+            compliance) handle_compliance ;;
+            check) handle_check ;;
+            pending) handle_pending ;;
+            history) handle_history ;;
+            suggest) handle_suggest ;;
+            remediate) handle_remediate ;;
+            remediate_safe) handle_remediate_safe ;;
+            set_config) handle_set_config ;;
+            *) echo '{"error":"Unknown method"}' ;;
         esac
         ;;
 esac
