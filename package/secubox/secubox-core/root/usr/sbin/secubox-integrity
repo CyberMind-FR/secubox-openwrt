@@ -1,0 +1,79 @@
+#!/bin/sh
+# SecuBox File Integrity Monitor
+# Monitors critical system files for unauthorized changes
+
+WATCH_FILES="
+/srv/haproxy/config/haproxy.cfg
+/etc/config/haproxy
+/etc/config/firewall
+/etc/config/network
+/etc/config/wireless
+/etc/config/dropbear
+/etc/passwd
+/etc/shadow
+"
+
+HASH_FILE="/var/run/secubox/integrity.sha256"
+ALERT_FILE="/tmp/secubox/integrity-alert"
+LOG_FILE="/var/log/secubox/integrity.log"
+
+mkdir -p /var/run/secubox /tmp/secubox /var/log/secubox
+
+log() {
+    echo "$(date "+%Y-%m-%d %H:%M:%S") $*" >> "$LOG_FILE"
+    logger -t secubox-integrity "$*"
+}
+
+case "$1" in
+    init)
+        # Initialize baseline hashes
+        > "$HASH_FILE"
+        for f in $WATCH_FILES; do
+            [ -f "$f" ] && sha256sum "$f" >> "$HASH_FILE"
+        done
+        log "Baseline initialized with $(wc -l < "$HASH_FILE") files"
+        echo "Baseline created: $HASH_FILE"
+        ;;
+    check)
+        [ -f "$HASH_FILE" ] || { echo "No baseline. Run: secubox-integrity init"; exit 1; }
+        CHANGES=$(sha256sum -c "$HASH_FILE" 2>/dev/null | grep -v ": OK$")
+        if [ -n "$CHANGES" ]; then
+            echo "$CHANGES" > "$ALERT_FILE"
+            log "ALERT: File changes detected!"
+            echo "$CHANGES" | while read line; do
+                log "  $line"
+            done
+            # Trigger LED event pulse
+            echo "alert" > /tmp/secubox/led-event 2>/dev/null
+            echo "ALERT: Files modified!"
+            echo "$CHANGES"
+            exit 1
+        else
+            echo "OK: All files intact"
+            exit 0
+        fi
+        ;;
+    status)
+        if [ -f "$ALERT_FILE" ]; then
+            echo "ALERT: Changes detected:"
+            cat "$ALERT_FILE"
+        else
+            echo "OK: No alerts"
+        fi
+        [ -f "$HASH_FILE" ] && echo "Baseline: $(wc -l < "$HASH_FILE") files monitored"
+        ;;
+    clear)
+        rm -f "$ALERT_FILE"
+        log "Alerts cleared"
+        echo "Alerts cleared"
+        ;;
+    *)
+        echo "Usage: secubox-integrity {init|check|status|clear}"
+        echo ""
+        echo "Commands:"
+        echo "  init   - Create baseline hashes for monitored files"
+        echo "  check  - Verify files against baseline"
+        echo "  status - Show current alert status"
+        echo "  clear  - Clear alerts after review"
+        ;;
+esac

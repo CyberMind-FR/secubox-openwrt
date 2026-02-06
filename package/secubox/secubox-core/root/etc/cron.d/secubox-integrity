@@ -1,0 +1,3 @@
+# SecuBox File Integrity Monitor
+# Check critical files every 5 minutes
+*/5 * * * * root /usr/sbin/secubox-integrity check >/dev/null 2>&1
