@@ -51,6 +51,10 @@ user_add() {
 	echo "$email:$hash" >> "${passfile}.tmp"
 	mv "${passfile}.tmp" "$passfile"
 
+	# Sync to Dovecot inside container
+	local dovecot_entry="$email:$hash:1000:1000::/home/vmail/$domain/$user"
+	lxc-attach -n "$container" -- sh -c "grep -v '^$email:' /etc/dovecot/users > /tmp/users.tmp 2>/dev/null; echo '$dovecot_entry' >> /tmp/users.tmp; mv /tmp/users.tmp /etc/dovecot/users"
+
 	# Postmap
 	lxc-attach -n "$container" -- postmap /etc/postfix/vmailbox 2>/dev/null
 
@@ -119,7 +123,14 @@ user_passwd() {
 	local hash=$(lxc-attach -n "$container" -- doveadm pw -s SHA512-CRYPT -p "$password" 2>/dev/null)
 	[ -z "$hash" ] && hash=$(openssl passwd -6 "$password")
 
+	# Update host passfile
 	sed -i "s|^$email:.*|$email:$hash|" "$passfile"
+
+	# Sync to Dovecot inside container
+	local user=$(echo "$email" | cut -d@ -f1)
+	local domain=$(echo "$email" | cut -d@ -f2)
+	local dovecot_entry="$email:$hash:1000:1000::/home/vmail/$domain/$user"
+	lxc-attach -n "$container" -- sh -c "grep -v '^$email:' /etc/dovecot/users > /tmp/users.tmp 2>/dev/null; echo '$dovecot_entry' >> /tmp/users.tmp; mv /tmp/users.tmp /etc/dovecot/users"
 
 	echo "Password changed for: $email"
 }
