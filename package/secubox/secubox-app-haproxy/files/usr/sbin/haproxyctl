@@ -858,12 +858,238 @@ cmd_cert_list() {
 	fi
 }
 
+# Check if we have local BIND for a zone
+has_local_bind_zone() {
+	local domain="$1"
+	local zone_file="/etc/bind/zones/${domain}.zone"
+	[ -f "$zone_file" ] && command -v rndc >/dev/null 2>&1
+}
+
+# Add TXT record to local BIND zone
+bind_add_txt() {
+	local subdomain="$1"
+	local zone="$2"
+	local value="$3"
+	local zone_file="/etc/bind/zones/${zone}.zone"
+
+	[ ! -f "$zone_file" ] && return 1
+
+	# Update serial (format: YYYYMMDDNN)
+	local current_serial=$(grep -oP '\d{10}(?=\s*;\s*Serial)' "$zone_file" 2>/dev/null)
+	local today=$(date +%Y%m%d)
+	local new_serial
+
+	if [ -n "$current_serial" ]; then
+		local serial_date="${current_serial:0:8}"
+		local serial_num="${current_serial:8:2}"
+		if [ "$serial_date" = "$today" ]; then
+			serial_num=$((10#$serial_num + 1))
+			new_serial=$(printf "%s%02d" "$today" "$serial_num")
+		else
+			new_serial="${today}01"
+		fi
+		sed -i "s/$current_serial/$new_serial/" "$zone_file"
+	fi
+
+	# Add TXT record (before the ; IPv6 comment or at end)
+	local record="$subdomain IN TXT \"$value\""
+	if grep -q "; IPv6" "$zone_file"; then
+		sed -i "/; IPv6/i $record" "$zone_file"
+	else
+		echo "$record" >> "$zone_file"
+	fi
+
+	# Reload BIND
+	rndc reload "$zone" 2>/dev/null || rndc reload 2>/dev/null
+	log_info "Added TXT record: $subdomain.$zone -> $value"
+}
+
+# Remove TXT record from local BIND zone
+bind_remove_txt() {
+	local subdomain="$1"
+	local zone="$2"
+	local value="$3"
+	local zone_file="/etc/bind/zones/${zone}.zone"
+
+	[ ! -f "$zone_file" ] && return 1
+
+	# Remove the specific TXT record
+	sed -i "/$subdomain IN TXT \"$value\"/d" "$zone_file"
+
+	# Update serial
+	local current_serial=$(grep -oP '\d{10}(?=\s*;\s*Serial)' "$zone_file" 2>/dev/null)
+	if [ -n "$current_serial" ]; then
+		local today=$(date +%Y%m%d)
+		local serial_date="${current_serial:0:8}"
+		local serial_num="${current_serial:8:2}"
+		if [ "$serial_date" = "$today" ]; then
+			serial_num=$((10#$serial_num + 1))
+		else
+			serial_num=1
+		fi
+		local new_serial=$(printf "%s%02d" "$today" "$serial_num")
+		sed -i "s/$current_serial/$new_serial/" "$zone_file"
+	fi
+
+	rndc reload "$zone" 2>/dev/null || rndc reload 2>/dev/null
+	log_info "Removed TXT record: $subdomain.$zone"
+}
+
+# Get DNS provider configuration for DNS-01 challenge
+get_dns_provider_env() {
+	local provider=$(uci -q get dns-provider.main.provider)
+	[ -z "$provider" ] && return 1
+
+	case "$provider" in
+		local|bind)
+			# Using local BIND - acme.sh will use our custom hook
+			echo "dns_local_bind"
+			;;
+		gandi)
+			local api_key=$(uci -q get dns-provider.gandi.api_key)
+			[ -z "$api_key" ] && return 1
+			export GANDI_LIVEDNS_KEY="$api_key"
+			echo "dns_gandi_livedns"
+			;;
+		ovh)
+			local app_key=$(uci -q get dns-provider.ovh.app_key)
+			local app_secret=$(uci -q get dns-provider.ovh.app_secret)
+			local consumer_key=$(uci -q get dns-provider.ovh.consumer_key)
+			local endpoint=$(uci -q get dns-provider.ovh.endpoint)
+			[ -z "$app_key" ] || [ -z "$app_secret" ] || [ -z "$consumer_key" ] && return 1
+			export OVH_AK="$app_key"
+			export OVH_AS="$app_secret"
+			export OVH_CK="$consumer_key"
+			export OVH_END="${endpoint:-ovh-eu}"
+			echo "dns_ovh"
+			;;
+		cloudflare)
+			local api_token=$(uci -q get dns-provider.cloudflare.api_token)
+			[ -z "$api_token" ] && return 1
+			export CF_Token="$api_token"
+			echo "dns_cloudflare"
+			;;
+		*)
+			return 1
+			;;
+	esac
+	return 0
+}
+
+# Create acme.sh DNS hook for local BIND
+create_local_dns_hook() {
+	local hook_dir="/etc/acme/dnsapi"
+	ensure_dir "$hook_dir"
+
+	cat > "$hook_dir/dns_local_bind.sh" << 'HOOK'
+#!/bin/sh
+# acme.sh DNS hook for local BIND zones
+
+dns_local_bind_add() {
+    local fulldomain="$1"
+    local txtvalue="$2"
+
+    # Extract zone from domain (e.g., _acme-challenge.gk2.secubox.in -> secubox.in)
+    local zone=$(echo "$fulldomain" | awk -F. '{print $(NF-1)"."$NF}')
+    local subdomain="${fulldomain%.$zone}"
+
+    local zone_file="/etc/bind/zones/${zone}.zone"
+    [ ! -f "$zone_file" ] && { echo "Zone file not found: $zone_file"; return 1; }
+
+    # Update serial
+    local current_serial=$(grep -oP '\d{10}(?=\s*;\s*Serial)' "$zone_file" 2>/dev/null)
+    if [ -n "$current_serial" ]; then
+        local today=$(date +%Y%m%d)
+        local serial_date="${current_serial:0:8}"
+        local serial_num="${current_serial:8:2}"
+        if [ "$serial_date" = "$today" ]; then
+            serial_num=$((10#$serial_num + 1))
+        else
+            serial_num=1
+        fi
+        local new_serial=$(printf "%s%02d" "$today" "$serial_num")
+        sed -i "s/$current_serial/$new_serial/" "$zone_file"
+    fi
+
+    # Add TXT record
+    local record="$subdomain IN TXT \"$txtvalue\""
+    if grep -q "; IPv6" "$zone_file"; then
+        sed -i "/; IPv6/i $record" "$zone_file"
+    else
+        echo "$record" >> "$zone_file"
+    fi
+
+    # Reload BIND (use kill -HUP since rndc may not be configured)
+    local bind_pid=$(pidof named 2>/dev/null)
+    if [ -n "$bind_pid" ]; then
+        kill -HUP "$bind_pid" 2>/dev/null
+    fi
+    rndc reload "$zone" 2>/dev/null || rndc reload 2>/dev/null || true
+    echo "Added: $fulldomain TXT $txtvalue"
+
+    # Wait for DNS propagation
+    sleep 5
+    return 0
+}
+
+dns_local_bind_rm() {
+    local fulldomain="$1"
+    local txtvalue="$2"
+
+    local zone=$(echo "$fulldomain" | awk -F. '{print $(NF-1)"."$NF}')
+    local subdomain="${fulldomain%.$zone}"
+    local zone_file="/etc/bind/zones/${zone}.zone"
+
+    [ ! -f "$zone_file" ] && return 0
+
+    # Remove the TXT record
+    sed -i "/$subdomain IN TXT \"$txtvalue\"/d" "$zone_file"
+
+    # Update serial
+    local current_serial=$(grep -oP '\d{10}(?=\s*;\s*Serial)' "$zone_file" 2>/dev/null)
+    if [ -n "$current_serial" ]; then
+        local today=$(date +%Y%m%d)
+        local serial_date="${current_serial:0:8}"
+        local serial_num="${current_serial:8:2}"
+        if [ "$serial_date" = "$today" ]; then
+            serial_num=$((10#$serial_num + 1))
+        else
+            serial_num=1
+        fi
+        local new_serial=$(printf "%s%02d" "$today" "$serial_num")
+        sed -i "s/$current_serial/$new_serial/" "$zone_file"
+    fi
+
+    # Reload BIND
+    local bind_pid=$(pidof named 2>/dev/null)
+    if [ -n "$bind_pid" ]; then
+        kill -HUP "$bind_pid" 2>/dev/null
+    fi
+    rndc reload "$zone" 2>/dev/null || rndc reload 2>/dev/null || true
+    echo "Removed: $fulldomain TXT $txtvalue"
+    return 0
+}
+HOOK
+	chmod +x "$hook_dir/dns_local_bind.sh"
+}
+
 cmd_cert_add() {
 	require_root
 	load_config
 
 	local domain="$1"
 	[ -z "$domain" ] && { log_error "Domain required"; return 1; }
+
+	# Detect if this is a wildcard certificate request
+	local is_wildcard=0
+	local base_domain="$domain"
+	case "$domain" in
+		\*.*)
+			is_wildcard=1
+			base_domain="${domain#\*.}"
+			log_info "Wildcard certificate requested for $domain"
+			;;
+	esac
 
 	# Ensure HAProxy config has ACME backend (for webroot mode)
 	log_info "Ensuring HAProxy config is up to date..."
@@ -885,6 +1111,37 @@ cmd_cert_add() {
 	esac
 
 	[ -z "$email" ] && { log_error "ACME email not configured. Set in LuCI > Services > HAProxy > Settings"; return 1; }
+
+	# For wildcard certs, DNS-01 challenge is REQUIRED
+	local dns_plugin=""
+	local use_local_bind=0
+	if [ "$is_wildcard" = "1" ]; then
+		# First check if we have local BIND for this zone
+		# Extract parent zone from domain (e.g., *.gk2.secubox.in -> secubox.in)
+		# Use awk instead of rev which isn't available on OpenWrt
+		local parent_zone=$(echo "$base_domain" | awk -F. '{print $(NF-1)"."$NF}')
+		if has_local_bind_zone "$parent_zone"; then
+			log_info "Local BIND zone found for $parent_zone"
+			use_local_bind=1
+			dns_plugin="dns_local_bind"
+			create_local_dns_hook
+		else
+			# Try external DNS provider
+			dns_plugin=$(get_dns_provider_env)
+		fi
+
+		if [ -z "$dns_plugin" ]; then
+			log_error "DNS provider not configured. Wildcard certificates require DNS-01 challenge."
+			log_error "Options:"
+			log_error "  1. Use local BIND: ensure /etc/bind/zones/<zone>.zone exists"
+			log_error "  2. Configure external DNS: LuCI > Services > DNS Provider"
+			log_error "     uci set dns-provider.main.provider='gandi'"
+			log_error "     uci set dns-provider.gandi.api_key='YOUR_API_KEY'"
+			log_error "     uci commit dns-provider"
+			return 1
+		fi
+		log_info "Using DNS-01 challenge with $dns_plugin"
+	fi
 
 	# Warn about staging mode
 	if [ "$staging" = "1" ]; then
@@ -923,56 +1180,77 @@ cmd_cert_add() {
 			"$ACME_SH" --register-account -m "$email" --server letsencrypt $staging_flag --home "$LE_WORKING_DIR" || true
 		fi
 
-		# Setup webroot for ACME challenges (HAProxy routes /.well-known/acme-challenge/ here)
-		local ACME_WEBROOT="/var/www/acme-challenge"
-		ensure_dir "$ACME_WEBROOT/.well-known/acme-challenge"
-		chmod 755 "$ACME_WEBROOT" "$ACME_WEBROOT/.well-known" "$ACME_WEBROOT/.well-known/acme-challenge"
-
-		# Start simple webserver for ACME challenges (if not already running)
-		local ACME_PORT=8402
-		if ! netstat -tln 2>/dev/null | grep -q ":$ACME_PORT "; then
-			log_info "Starting ACME challenge webserver on port $ACME_PORT..."
-			# Use busybox httpd (available on OpenWrt)
-			start-stop-daemon -S -b -x /usr/sbin/httpd -- -p $ACME_PORT -h "$ACME_WEBROOT" -f 2>/dev/null || \
-				busybox httpd -p $ACME_PORT -h "$ACME_WEBROOT" &
-			sleep 1
-		fi
-
-		# Ensure HAProxy is running with ACME backend
-		if ! lxc_running; then
-			log_info "Starting HAProxy..."
-			/etc/init.d/haproxy start 2>/dev/null || true
-			sleep 2
-		fi
-
-		# Issue certificate using webroot mode (NO HAProxy restart needed!)
-		log_info "Issuing certificate (webroot mode - HAProxy stays running)..."
 		local acme_result=0
-		"$ACME_SH" --issue -d "$domain" \
-			--server letsencrypt \
-			--webroot "$ACME_WEBROOT" \
-			--keylength "$key_type" \
-			$staging_flag \
-			--home "$LE_WORKING_DIR" || acme_result=$?
+
+		if [ "$is_wildcard" = "1" ]; then
+			# DNS-01 challenge for wildcard certificates
+			log_info "Issuing wildcard certificate via DNS-01 challenge..."
+			log_info "This will create a TXT record at _acme-challenge.$base_domain"
+
+			"$ACME_SH" --issue -d "$domain" -d "$base_domain" \
+				--server letsencrypt \
+				--dns "$dns_plugin" \
+				--keylength "$key_type" \
+				$staging_flag \
+				--home "$LE_WORKING_DIR" || acme_result=$?
+		else
+			# HTTP-01 challenge for regular domains (webroot mode)
+			# Setup webroot for ACME challenges (HAProxy routes /.well-known/acme-challenge/ here)
+			local ACME_WEBROOT="/var/www/acme-challenge"
+			ensure_dir "$ACME_WEBROOT/.well-known/acme-challenge"
+			chmod 755 "$ACME_WEBROOT" "$ACME_WEBROOT/.well-known" "$ACME_WEBROOT/.well-known/acme-challenge"
+
+			# Start simple webserver for ACME challenges (if not already running)
+			local ACME_PORT=8402
+			if ! netstat -tln 2>/dev/null | grep -q ":$ACME_PORT "; then
+				log_info "Starting ACME challenge webserver on port $ACME_PORT..."
+				# Use busybox httpd (available on OpenWrt)
+				start-stop-daemon -S -b -x /usr/sbin/httpd -- -p $ACME_PORT -h "$ACME_WEBROOT" -f 2>/dev/null || \
+					busybox httpd -p $ACME_PORT -h "$ACME_WEBROOT" &
+				sleep 1
+			fi
+
+			# Ensure HAProxy is running with ACME backend
+			if ! lxc_running; then
+				log_info "Starting HAProxy..."
+				/etc/init.d/haproxy start 2>/dev/null || true
+				sleep 2
+			fi
+
+			# Issue certificate using webroot mode (NO HAProxy restart needed!)
+			log_info "Issuing certificate (webroot mode - HAProxy stays running)..."
+			"$ACME_SH" --issue -d "$domain" \
+				--server letsencrypt \
+				--webroot "$ACME_WEBROOT" \
+				--keylength "$key_type" \
+				$staging_flag \
+				--home "$LE_WORKING_DIR" || acme_result=$?
+		fi
 
 		# acme.sh returns 0 on success, 2 on "skip/already valid" - both are OK
 		# Install the certificate to our certs path
+		# For wildcard, use sanitized filename (replace * with _wildcard_)
+		local cert_filename="$domain"
+		case "$domain" in
+			\*.*) cert_filename="_wildcard_.${domain#\*.}" ;;
+		esac
+
 		if [ "$acme_result" -eq 0 ] || [ "$acme_result" -eq 2 ]; then
 			log_info "Installing certificate..."
 			"$ACME_SH" --install-cert -d "$domain" \
 				--home "$LE_WORKING_DIR" \
-				--cert-file "$CERTS_PATH/$domain.crt" \
-				--key-file "$CERTS_PATH/$domain.key" \
-				--fullchain-file "$CERTS_PATH/$domain.fullchain.pem" \
+				--cert-file "$CERTS_PATH/$cert_filename.crt" \
+				--key-file "$CERTS_PATH/$cert_filename.key" \
+				--fullchain-file "$CERTS_PATH/$cert_filename.fullchain.pem" \
 				--reloadcmd "/etc/init.d/haproxy reload" 2>/dev/null || true
 
 			# HAProxy needs combined file: fullchain + private key
 			log_info "Creating combined PEM for HAProxy..."
-			cat "$CERTS_PATH/$domain.fullchain.pem" "$CERTS_PATH/$domain.key" > "$CERTS_PATH/$domain.pem"
-			chmod 600 "$CERTS_PATH/$domain.pem"
+			cat "$CERTS_PATH/$cert_filename.fullchain.pem" "$CERTS_PATH/$cert_filename.key" > "$CERTS_PATH/$cert_filename.pem"
+			chmod 600 "$CERTS_PATH/$cert_filename.pem"
 
 			# Clean up intermediate files - HAProxy only needs the .pem file
-			rm -f "$CERTS_PATH/$domain.crt" "$CERTS_PATH/$domain.key" "$CERTS_PATH/$domain.fullchain.pem" "$CERTS_PATH/$domain.crt.key" 2>/dev/null
+			rm -f "$CERTS_PATH/$cert_filename.crt" "$CERTS_PATH/$cert_filename.key" "$CERTS_PATH/$cert_filename.fullchain.pem" "$CERTS_PATH/$cert_filename.crt.key" 2>/dev/null
 
 			# Reload HAProxy to pick up new cert
 			log_info "Reloading HAProxy to use new certificate..."
@@ -980,14 +1258,24 @@ cmd_cert_add() {
 		fi
 
 		# Check if certificate was created
-		if [ ! -f "$CERTS_PATH/$domain.pem" ]; then
-			log_error "Certificate issuance failed. Check:"
-			log_error "  1. Domain $domain points to this server's public IP"
-			log_error "  2. Port 80 is accessible from internet"
-			log_error "  3. HAProxy is running with ACME backend (haproxyctl generate)"
+		if [ ! -f "$CERTS_PATH/$cert_filename.pem" ]; then
+			if [ "$is_wildcard" = "1" ]; then
+				log_error "Wildcard certificate issuance failed. Check:"
+				log_error "  1. DNS provider API credentials are correct"
+				log_error "  2. You have permission to modify DNS for $base_domain"
+				log_error "  3. DNS propagation may take time (try again in a few minutes)"
+			else
+				log_error "Certificate issuance failed. Check:"
+				log_error "  1. Domain $domain points to this server's public IP"
+				log_error "  2. Port 80 is accessible from internet"
+				log_error "  3. HAProxy is running with ACME backend (haproxyctl generate)"
+			fi
 			return 1
 		fi
-		log_info "Certificate ready: $CERTS_PATH/$domain.pem"
+		log_info "Certificate ready: $CERTS_PATH/$cert_filename.pem"
+
+		# Update domain variable for UCI storage
+		domain="$cert_filename"
 	elif command -v certbot >/dev/null 2>&1; then
 		certbot certonly --standalone -d "$domain" \
 			--email "$email" --agree-tos -n \

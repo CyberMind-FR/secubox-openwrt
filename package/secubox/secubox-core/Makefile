@@ -6,7 +6,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-core
 PKG_VERSION:=0.10.0
-PKG_RELEASE:=12
+PKG_RELEASE:=13
 PKG_ARCH:=all
 PKG_LICENSE:=GPL-2.0
 PKG_MAINTAINER:=SecuBox Team

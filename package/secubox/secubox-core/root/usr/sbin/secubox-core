@@ -16,11 +16,28 @@ PID_FILE="/var/run/secubox/core.pid"
 STATE_DIR="/var/run/secubox"
 WATCHDOG_STATE="/var/run/secubox/watchdog.json"
 
-# LED paths for MochaBin (RGB LEDs: led1, led2, led3)
-LED_GREEN="/sys/class/leds/green:led1"
-LED_RED="/sys/class/leds/red:led1"
-LED_BLUE="/sys/class/leds/blue:led1"
+# LED paths for MochaBin (RGB LEDs: led1, led2, led3 + mmc0)
+# led1: Global health status (green=ok, yellow=degraded, red=critical)
+# led2: Security threat level (green=safe, red=attack)
+# led3: Global capacity meter (CPU + Network)
+# mmc0: Classic heartbeat when states are stable
+LED_GREEN1="/sys/class/leds/green:led1"
+LED_GREEN2="/sys/class/leds/green:led2"
+LED_GREEN3="/sys/class/leds/green:led3"
+LED_RED1="/sys/class/leds/red:led1"
+LED_RED2="/sys/class/leds/red:led2"
+LED_RED3="/sys/class/leds/red:led3"
+LED_BLUE1="/sys/class/leds/blue:led1"
+LED_BLUE2="/sys/class/leds/blue:led2"
+LED_BLUE3="/sys/class/leds/blue:led3"
+LED_MMC0="/sys/class/leds/mmc0::"
+# Legacy aliases for compatibility
+LED_GREEN="$LED_GREEN1"
+LED_RED="$LED_RED1"
+LED_BLUE="$LED_BLUE1"
 LED_ENABLED=0
+LED_COLOR_CYCLE=0  # Cycles 0-5 for rainbow colors
+LED_PREV_STATE=""  # Track previous state for change detection
 
 # Services to monitor (init.d name:check_method:restart_delay)
 # check_method: pid, docker, lxc, port:PORT
@@ -29,16 +46,142 @@ MONITORED_SERVICES=""
 # LED helper functions
 led_init() {
     # Check if LEDs are available (MochaBin or compatible)
-    if [ -d "$LED_GREEN" ] && [ -d "$LED_RED" ]; then
+    if [ -d "$LED_GREEN1" ] && [ -d "$LED_RED1" ]; then
         LED_ENABLED=1
-        # Set trigger to none for manual control
-        echo none > "$LED_GREEN/trigger" 2>/dev/null
-        echo none > "$LED_RED/trigger" 2>/dev/null
-        echo none > "$LED_BLUE/trigger" 2>/dev/null
-        log debug "LED heartbeat enabled (MochaBin detected)"
+        # Set trigger to none for manual control on RGB LEDs
+        for led in "$LED_RED1" "$LED_GREEN1" "$LED_BLUE1" \
+                   "$LED_RED2" "$LED_GREEN2" "$LED_BLUE2" \
+                   "$LED_RED3" "$LED_GREEN3" "$LED_BLUE3"; do
+            echo none > "$led/trigger" 2>/dev/null
+            echo 0 > "$led/brightness" 2>/dev/null
+        done
+        # mmc0 LED: start with heartbeat trigger (stable state)
+        if [ -d "$LED_MMC0" ]; then
+            echo heartbeat > "$LED_MMC0/trigger" 2>/dev/null
+        fi
+        log debug "LED enabled: led1=health, led2=security, led3=capacity, mmc0=heartbeat"
     else
         log debug "LED heartbeat disabled (no compatible LEDs)"
     fi
+}
+
+# mmc0 classic heartbeat control
+# When states are stable: heartbeat trigger (classic pulse)
+# When states change: rapid blink to indicate activity
+led_mmc0_heartbeat() {
+    [ -d "$LED_MMC0" ] || return 0
+    local stable="$1"  # 1=stable, 0=changing
+
+    if [ "$stable" = "1" ]; then
+        # Classic heartbeat - stable state
+        local current=$(cat "$LED_MMC0/trigger" 2>/dev/null)
+        [ "$current" != "heartbeat" ] && echo heartbeat > "$LED_MMC0/trigger" 2>/dev/null
+    else
+        # Rapid blink - state change detected
+        echo timer > "$LED_MMC0/trigger" 2>/dev/null
+        echo 50 > "$LED_MMC0/delay_on" 2>/dev/null
+        echo 50 > "$LED_MMC0/delay_off" 2>/dev/null
+    fi
+}
+
+# Set all colors for a specific LED (1, 2, or 3)
+led_set_rgb() {
+    local led_num="$1"  # 1, 2, or 3
+    local r="$2" g="$3" b="$4"
+    case "$led_num" in
+        1)
+            echo "$r" > "$LED_RED1/brightness" 2>/dev/null
+            echo "$g" > "$LED_GREEN1/brightness" 2>/dev/null
+            echo "$b" > "$LED_BLUE1/brightness" 2>/dev/null
+            ;;
+        2)
+            echo "$r" > "$LED_RED2/brightness" 2>/dev/null
+            echo "$g" > "$LED_GREEN2/brightness" 2>/dev/null
+            echo "$b" > "$LED_BLUE2/brightness" 2>/dev/null
+            ;;
+        3)
+            echo "$r" > "$LED_RED3/brightness" 2>/dev/null
+            echo "$g" > "$LED_GREEN3/brightness" 2>/dev/null
+            echo "$b" > "$LED_BLUE3/brightness" 2>/dev/null
+            ;;
+    esac
+}
+
+# Turn off all LEDs on one LED unit
+led_off() {
+    local led_num="$1"
+    led_set_rgb "$led_num" 0 0 0
+}
+
+# Global capacity LED on led3 - combines CPU + Network activity
+# Color gradient: Green (idle) -> Cyan (light) -> Yellow (moderate) -> Orange (busy) -> Red (max)
+# Network state file for delta calculation
+NET_PREV_FILE="/tmp/secubox/net_prev"
+
+led_global_capacity() {
+    [ "$LED_ENABLED" = "1" ] || return 0
+
+    # === CPU Load (0-100%) ===
+    local load=$(cat /proc/loadavg 2>/dev/null | cut -d' ' -f1)
+    local ncpu=$(grep -c ^processor /proc/cpuinfo 2>/dev/null || echo 4)
+    local load_int=$(echo "$load" | cut -d. -f1)
+    local load_dec=$(echo "$load" | cut -d. -f2 | cut -c1-2)
+    [ -z "$load_dec" ] && load_dec=0
+    local cpu_pct=$(( (load_int * 100 + load_dec) * 100 / ncpu / 100 ))
+    [ "$cpu_pct" -gt 100 ] && cpu_pct=100
+
+    # === Network Activity (0-100%) ===
+    # Sum all interface bytes
+    local net_now=0
+    for iface in /sys/class/net/*/statistics/rx_bytes; do
+        [ -f "$iface" ] || continue
+        local rx=$(cat "$iface" 2>/dev/null || echo 0)
+        local tx=$(cat "${iface%rx_bytes}tx_bytes" 2>/dev/null || echo 0)
+        net_now=$((net_now + rx + tx))
+    done
+
+    # Calculate delta from previous reading
+    local net_prev=$(cat "$NET_PREV_FILE" 2>/dev/null || echo "$net_now")
+    echo "$net_now" > "$NET_PREV_FILE"
+    local net_delta=$((net_now - net_prev))
+    [ "$net_delta" -lt 0 ] && net_delta=0
+
+    # Convert to percentage (scale: 10MB/s = 100%)
+    # 10MB = 10485760 bytes, measured over ~1.5s interval
+    local net_pct=$((net_delta * 100 / 15728640))
+    [ "$net_pct" -gt 100 ] && net_pct=100
+
+    # === Combine: weighted average (60% CPU, 40% network) ===
+    local pct=$(( (cpu_pct * 60 + net_pct * 40) / 100 ))
+    [ "$pct" -gt 100 ] && pct=100
+
+    # === Color gradient with more variety ===
+    local r g b
+    if [ "$pct" -le 20 ]; then
+        # Green (idle) - pure green
+        r=0; g=255; b=0
+    elif [ "$pct" -le 40 ]; then
+        # Green to Cyan (light activity)
+        r=0; g=255; b=$(( (pct - 20) * 12 ))
+    elif [ "$pct" -le 60 ]; then
+        # Cyan to Yellow (moderate)
+        r=$(( (pct - 40) * 12 ))
+        g=255
+        b=$((255 - (pct - 40) * 12))
+    elif [ "$pct" -le 80 ]; then
+        # Yellow to Orange (busy)
+        r=255
+        g=$((255 - (pct - 60) * 8))
+        b=0
+    else
+        # Orange to Red (max capacity)
+        r=255
+        g=$((100 - (pct - 80) * 5))
+        [ "$g" -lt 0 ] && g=0
+        b=0
+    fi
+
+    led_set_rgb 3 "$r" "$g" "$b"
 }
 
 led_set() {
@@ -56,34 +199,154 @@ led_pulse() {
     ( sleep 1 && led_set "$led" 0 ) &
 }
 
-# Heartbeat function - shows system status via LED
-# Green pulse = healthy, Red pulse = warning/error
+# Security threat level for LED2
+# Reads from CrowdSec alerts and mitmproxy threats
+THREAT_CACHE_FILE="/tmp/secubox/threat_level"
+
+get_threat_level() {
+    # Check cache age (refresh every 10s)
+    local cache_age=999
+    if [ -f "$THREAT_CACHE_FILE" ]; then
+        local now=$(date +%s)
+        local mtime=$(stat -c %Y "$THREAT_CACHE_FILE" 2>/dev/null || echo 0)
+        cache_age=$((now - mtime))
+    fi
+
+    if [ "$cache_age" -lt 10 ]; then
+        cat "$THREAT_CACHE_FILE" 2>/dev/null || echo 0
+        return
+    fi
+
+    # Count recent threats (last 5 minutes)
+    local threats=0
+
+    # CrowdSec alerts
+    if [ -f "/var/log/crowdsec.log" ]; then
+        local cs_alerts=$(tail -100 /var/log/crowdsec.log 2>/dev/null | grep -c "alert" || echo 0)
+        threats=$((threats + cs_alerts))
+    fi
+
+    # CrowdSec decisions (active bans)
+    if command -v cscli >/dev/null 2>&1; then
+        local bans=$(cscli decisions list -o raw 2>/dev/null | wc -l || echo 0)
+        threats=$((threats + bans / 2))
+    fi
+
+    # mitmproxy threats today
+    local mitm_threats=$(uci -q get mitmproxy.stats.threats_today 2>/dev/null || echo 0)
+    threats=$((threats + mitm_threats / 10))
+
+    # Normalize to 0-100
+    [ "$threats" -gt 100 ] && threats=100
+    echo "$threats" > "$THREAT_CACHE_FILE"
+    echo "$threats"
+}
+
+# Get global health score from services
+HEALTH_CACHE_FILE="/tmp/secubox/health_score"
+
+get_health_score() {
+    # Check cache age (refresh every 15s)
+    local cache_age=999
+    if [ -f "$HEALTH_CACHE_FILE" ]; then
+        local now=$(date +%s)
+        local mtime=$(stat -c %Y "$HEALTH_CACHE_FILE" 2>/dev/null || echo 0)
+        cache_age=$((now - mtime))
+    fi
+
+    if [ "$cache_age" -lt 15 ]; then
+        cat "$HEALTH_CACHE_FILE" 2>/dev/null || echo 100
+        return
+    fi
+
+    local score=100
+    local penalty=0
+
+    # Check critical services
+    pgrep haproxy >/dev/null 2>&1 || penalty=$((penalty + 20))
+    pgrep crowdsec >/dev/null 2>&1 || penalty=$((penalty + 15))
+    lxc-info -n haproxy 2>/dev/null | grep -q RUNNING || penalty=$((penalty + 20))
+
+    # Check system resources
+    local mem_free=$(grep MemAvailable /proc/meminfo 2>/dev/null | awk '{print $2}')
+    local mem_total=$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}')
+    if [ -n "$mem_free" ] && [ -n "$mem_total" ] && [ "$mem_total" -gt 0 ]; then
+        local mem_pct=$((mem_free * 100 / mem_total))
+        [ "$mem_pct" -lt 10 ] && penalty=$((penalty + 25))
+        [ "$mem_pct" -lt 20 ] && penalty=$((penalty + 10))
+    fi
+
+    # Check disk space
+    local disk_pct=$(df / 2>/dev/null | tail -1 | awk '{print $5}' | tr -d '%')
+    [ -n "$disk_pct" ] && [ "$disk_pct" -gt 90 ] && penalty=$((penalty + 20))
+
+    score=$((100 - penalty))
+    [ "$score" -lt 0 ] && score=0
+    echo "$score" > "$HEALTH_CACHE_FILE"
+    echo "$score"
+}
+
+# Heartbeat function - 3 dedicated LEDs
+# LED1: Global health (green=healthy, yellow=degraded, red=critical) with pulse
+# LED2: Security threat meter (green=safe, yellow=activity, orange=elevated, red=attack)
+# LED3: Global capacity (CPU+Network) - handled by led_global_capacity()
 led_heartbeat() {
     [ "$LED_ENABLED" = "1" ] || return 0
     local status="$1"  # healthy, warning, error
 
-    case "$status" in
-        healthy)
-            # Single green flash
-            led_set "$LED_GREEN" 255
-            ( sleep 1 && echo 0 > "${LED_GREEN}/brightness" 2>/dev/null ) &
-            ;;
-        warning)
-            # Double red flash
-            led_set "$LED_RED" 255
-            ( sleep 1 && echo 0 > "${LED_RED}/brightness" && sleep 1 && echo 255 > "${LED_RED}/brightness" && sleep 1 && echo 0 > "${LED_RED}/brightness" ) &
-            ;;
-        error)
-            # Long red flash
-            led_set "$LED_RED" 255
-            ( sleep 2 && echo 0 > "${LED_RED}/brightness" 2>/dev/null ) &
-            ;;
-        boot)
-            # Blue pulse during startup
-            led_set "$LED_BLUE" 255
-            ( sleep 2 && echo 0 > "${LED_BLUE}/brightness" 2>/dev/null ) &
-            ;;
-    esac
+    # LED1: Global health status with rainbow pulse effect
+    local health=$(get_health_score)
+    local r1 g1 b1
+
+    if [ "$health" -ge 80 ]; then
+        # Healthy - Green with subtle color cycling
+        case "$((LED_COLOR_CYCLE % 3))" in
+            0) r1=0; g1=255; b1=0 ;;      # Pure green
+            1) r1=0; g1=255; b1=50 ;;     # Green-cyan
+            2) r1=50; g1=255; b1=0 ;;     # Green-yellow
+        esac
+    elif [ "$health" -ge 50 ]; then
+        # Degraded - Yellow/Orange cycling
+        case "$((LED_COLOR_CYCLE % 3))" in
+            0) r1=255; g1=255; b1=0 ;;    # Yellow
+            1) r1=255; g1=200; b1=0 ;;    # Gold
+            2) r1=255; g1=150; b1=0 ;;    # Orange
+        esac
+    else
+        # Critical - Red pulsing
+        case "$((LED_COLOR_CYCLE % 3))" in
+            0) r1=255; g1=0; b1=0 ;;      # Red
+            1) r1=255; g1=50; b1=0 ;;     # Red-orange
+            2) r1=200; g1=0; b1=50 ;;     # Red-magenta
+        esac
+    fi
+    led_set_rgb 1 "$r1" "$g1" "$b1"
+    LED_COLOR_CYCLE=$(( (LED_COLOR_CYCLE + 1) % 6 ))
+
+    # LED2: Security threat level
+    local threat=$(get_threat_level)
+    local r2 g2 b2
+
+    if [ "$threat" -le 5 ]; then
+        # Green - all quiet
+        r2=0; g2=255; b2=0
+    elif [ "$threat" -le 20 ]; then
+        # Green-Yellow - minor activity
+        r2=$((threat * 10)); g2=255; b2=0
+    elif [ "$threat" -le 50 ]; then
+        # Yellow - elevated activity
+        r2=255; g2=255; b2=0
+    elif [ "$threat" -le 75 ]; then
+        # Orange - significant threats
+        r2=255; g2=$((180 - (threat - 50) * 4)); b2=0
+    else
+        # Red - under attack / high threat
+        r2=255; g2=$((50 - (threat - 75) * 2))
+        [ "$g2" -lt 0 ] && g2=0
+        b2=0
+    fi
+
+    led_set_rgb 2 "$r2" "$g2" "$b2"
 }
 
 # Auto-discover SecuBox services from ctl scripts
@@ -488,6 +751,100 @@ get_watchdog_services() {
     echo "$core_services"
 }
 
+# Event pulse - flash led3 with specific color when events happen
+# Usage: echo "config|task|alert" > /tmp/secubox/led-event
+led_event_pulse() {
+    local event_file="/tmp/secubox/led-event"
+    [ -f "$event_file" ] || return 1
+
+    local event=$(cat "$event_file" 2>/dev/null)
+    rm -f "$event_file"
+    [ -z "$event" ] && return 1
+
+    # Flash pattern based on event type
+    case "$event" in
+        config)
+            # White flash for config changes
+            led_set_rgb 3 255 255 255
+            ;;
+        task)
+            # Cyan flash for scheduled tasks
+            led_set_rgb 3 0 255 255
+            ;;
+        alert)
+            # Magenta flash for alerts
+            led_set_rgb 3 255 0 255
+            ;;
+        network)
+            # Blue flash for network events
+            led_set_rgb 3 0 100 255
+            ;;
+        *)
+            # Purple for unknown events
+            led_set_rgb 3 180 0 255
+            ;;
+    esac
+    return 0
+}
+
+# Fast LED heartbeat background loop
+# Runs independently at 1.5s intervals for reactive visual feedback
+# led1: Global health status
+# led2: Security threat level
+# led3: Global capacity meter (CPU + Network) with event pulse overlay
+# mmc0: Classic heartbeat when states stable, rapid blink on changes
+led_heartbeat_loop() {
+    local status_file="/tmp/secubox/led-status"
+    echo "healthy" > "$status_file"
+
+    local prev_health=0
+    local prev_threat=0
+    local stable_counter=0
+
+    while true; do
+        local status=$(cat "$status_file" 2>/dev/null || echo "healthy")
+
+        # Get current states
+        local cur_health=$(get_health_score)
+        local cur_threat=$(get_threat_level)
+
+        # Detect state changes
+        local health_delta=$((cur_health - prev_health))
+        [ "$health_delta" -lt 0 ] && health_delta=$((-health_delta))
+        local threat_delta=$((cur_threat - prev_threat))
+        [ "$threat_delta" -lt 0 ] && threat_delta=$((-threat_delta))
+
+        # Check if states are stable (delta < 5)
+        if [ "$health_delta" -lt 5 ] && [ "$threat_delta" -lt 5 ]; then
+            stable_counter=$((stable_counter + 1))
+        else
+            stable_counter=0
+        fi
+
+        # mmc0: classic heartbeat when stable for 3+ cycles
+        if [ "$stable_counter" -ge 3 ]; then
+            led_mmc0_heartbeat 1  # Stable
+        else
+            led_mmc0_heartbeat 0  # Changing
+        fi
+
+        prev_health=$cur_health
+        prev_threat=$cur_threat
+
+        # Update RGB LEDs
+        led_heartbeat "$status"
+
+        # Check for event pulse first (overrides capacity momentarily)
+        if led_event_pulse; then
+            sleep 0.3  # Brief flash
+        fi
+
+        # Global capacity on led3
+        led_global_capacity
+        sleep 1.2
+    done
+}
+
 # Daemon mode
 daemon_mode() {
     log info "SecuBox Core daemon starting (version $SECUBOX_VERSION)"
@@ -508,6 +865,13 @@ daemon_mode() {
     # LED heartbeat setting (enabled by default)
     local led_heartbeat_enabled=$(uci -q get secubox.main.led_heartbeat || echo "1")
 
+    # Start fast LED heartbeat in background
+    if [ "$led_heartbeat_enabled" = "1" ]; then
+        led_heartbeat_loop &
+        LED_HEARTBEAT_PID=$!
+        log debug "LED heartbeat loop started (PID: $LED_HEARTBEAT_PID)"
+    fi
+
     # Main daemon loop
     local health_counter=0
     local health_cycles=$((health_interval / watchdog_interval))
@@ -523,14 +887,10 @@ daemon_mode() {
         if [ "$health_counter" -ge "$health_cycles" ]; then
             local health_output=$(run_health_check)
             echo "$health_output" > /tmp/secubox/health-status.json
-            # Extract status for LED
+            # Extract status for LED and update status file
             last_health_status=$(echo "$health_output" | jsonfilter -e '@.status' 2>/dev/null || echo "healthy")
+            echo "$last_health_status" > /tmp/secubox/led-status
             health_counter=0
-        fi
-
-        # LED heartbeat pulse (once per watchdog cycle)
-        if [ "$led_heartbeat_enabled" = "1" ]; then
-            led_heartbeat "$last_health_status"
         fi
 
         # Sleep until next check
