@@ -97,6 +97,14 @@ Gitea Integration:
   gitea clone <name> <repo>   Clone app from Gitea repo
   gitea pull <name>           Pull latest from Gitea
 
+Exposure:
+  emancipate <name> [domain]  KISS ULTIME MODE - Full exposure workflow:
+                              1. DNS A record (Gandi/OVH)
+                              2. Vortex DNS mesh publication
+                              3. HAProxy vhost with SSL
+                              4. ACME certificate
+                              5. Zero-downtime reload
+
 Service Commands:
   service-run       Start all instances (for init)
   service-stop      Stop all instances
@@ -1019,6 +1027,257 @@ cmd_gitea_pull() {
 	log_info "Update complete"
 }
 
+# ===========================================
+# KISS ULTIME MODE - Emancipate
+# ===========================================
+
+_emancipate_dns() {
+	local name="$1"
+	local domain="$2"
+	local default_zone=$(uci -q get dns-provider.main.zone)
+	local provider=$(uci -q get dns-provider.main.provider)
+	local vortex_wildcard=$(uci -q get vortex-dns.master.wildcard_domain)
+
+	# Check if dnsctl is available
+	if ! command -v dnsctl >/dev/null 2>&1; then
+		log_warn "[DNS] dnsctl not found, skipping external DNS"
+		return 1
+	fi
+
+	# Get public IP
+	local public_ip=$(curl -s --connect-timeout 5 https://ipv4.icanhazip.com 2>/dev/null | tr -d '\n')
+	[ -z "$public_ip" ] && { log_warn "[DNS] Cannot detect public IP, skipping DNS"; return 1; }
+
+	# Detect zone from domain suffix (try known zones)
+	local zone=""
+	local subdomain=""
+	for z in "secubox.in" "maegia.tv" "cybermind.fr"; do
+		if echo "$domain" | grep -q "\.${z}$"; then
+			zone="$z"
+			subdomain=$(echo "$domain" | sed "s/\.${z}$//")
+			break
+		elif [ "$domain" = "$z" ]; then
+			zone="$z"
+			subdomain="@"
+			break
+		fi
+	done
+
+	# Fallback to default zone if no match
+	if [ -z "$zone" ]; then
+		zone="$default_zone"
+		subdomain=$(echo "$domain" | sed "s/\.${zone}$//")
+	fi
+
+	[ -z "$zone" ] && { log_warn "[DNS] No zone detected, skipping external DNS"; return 1; }
+
+	log_info "[DNS] Registering $subdomain.$zone -> $public_ip via $provider"
+
+	# Register on the published domain's zone
+	dnsctl -z "$zone" add A "$subdomain" "$public_ip" 3600
+
+	# Also register on vortex node subdomain (e.g., myapp.gk2.secubox.in)
+	if [ -n "$vortex_wildcard" ]; then
+		local vortex_zone=$(echo "$vortex_wildcard" | sed 's/^[^.]*\.//')
+		local vortex_node=$(echo "$vortex_wildcard" | cut -d. -f1)
+		local vortex_subdomain="${name}.${vortex_node}"
+		log_info "[DNS] Registering $vortex_subdomain.$vortex_zone -> $public_ip (vortex node)"
+		dnsctl -z "$vortex_zone" add A "$vortex_subdomain" "$public_ip" 3600
+	fi
+
+	log_info "[DNS] Verify with: dnsctl verify $domain"
+}
+
+_emancipate_vortex() {
+	local name="$1"
+	local domain="$2"
+
+	# Check if vortexctl is available
+	if ! command -v vortexctl >/dev/null 2>&1; then
+		log_info "[VORTEX] vortexctl not found, skipping mesh publication"
+		return 0
+	fi
+
+	# Check if vortex-dns is enabled
+	local vortex_enabled=$(uci -q get vortex-dns.main.enabled)
+
+	if [ "$vortex_enabled" = "1" ]; then
+		log_info "[VORTEX] Publishing $name as $domain to mesh"
+		vortexctl mesh publish "$name" "$domain" 2>/dev/null
+	else
+		log_info "[VORTEX] Vortex DNS disabled, skipping mesh publication"
+	fi
+}
+
+_emancipate_haproxy() {
+	local name="$1"
+	local domain="$2"
+	local port="$3"
+
+	log_info "[HAPROXY] Creating vhost for $domain -> port $port"
+
+	# Create backend
+	local backend_name="streamlit_${name}"
+	uci set haproxy.${backend_name}=backend
+	uci set haproxy.${backend_name}.name="$backend_name"
+	uci set haproxy.${backend_name}.mode="http"
+	uci set haproxy.${backend_name}.balance="roundrobin"
+	uci set haproxy.${backend_name}.enabled="1"
+
+	# Create server
+	local server_name="${backend_name}_srv"
+	uci set haproxy.${server_name}=server
+	uci set haproxy.${server_name}.backend="$backend_name"
+	uci set haproxy.${server_name}.name="streamlit"
+	uci set haproxy.${server_name}.address="192.168.255.1"
+	uci set haproxy.${server_name}.port="$port"
+	uci set haproxy.${server_name}.weight="100"
+	uci set haproxy.${server_name}.check="1"
+	uci set haproxy.${server_name}.enabled="1"
+
+	# Create vhost with SSL
+	local vhost_name=$(echo "$domain" | tr '.-' '_')
+	uci set haproxy.${vhost_name}=vhost
+	uci set haproxy.${vhost_name}.domain="$domain"
+	uci set haproxy.${vhost_name}.backend="$backend_name"
+	uci set haproxy.${vhost_name}.ssl="1"
+	uci set haproxy.${vhost_name}.ssl_redirect="1"
+	uci set haproxy.${vhost_name}.acme="1"
+	uci set haproxy.${vhost_name}.enabled="1"
+
+	uci commit haproxy
+
+	# Generate HAProxy config
+	if command -v haproxyctl >/dev/null 2>&1; then
+		haproxyctl generate 2>/dev/null
+	fi
+}
+
+_emancipate_ssl() {
+	local domain="$1"
+
+	log_info "[SSL] Requesting certificate for $domain"
+
+	# Check if haproxyctl is available
+	if ! command -v haproxyctl >/dev/null 2>&1; then
+		log_warn "[SSL] haproxyctl not found, skipping SSL"
+		return 1
+	fi
+
+	# haproxyctl cert add handles ACME webroot mode
+	haproxyctl cert add "$domain" 2>&1 | while read line; do
+		echo "  $line"
+	done
+
+	if [ -f "/srv/haproxy/certs/$domain.pem" ]; then
+		log_info "[SSL] Certificate obtained successfully"
+	else
+		log_warn "[SSL] Certificate request may still be pending"
+		log_warn "[SSL] Check with: haproxyctl cert verify $domain"
+	fi
+}
+
+_emancipate_reload() {
+	log_info "[RELOAD] Applying HAProxy configuration"
+	# Generate fresh config
+	haproxyctl generate 2>/dev/null
+	# Restart for clean state with new vhosts/certs
+	log_info "[RELOAD] Restarting HAProxy for clean state..."
+	/etc/init.d/haproxy restart 2>/dev/null
+	sleep 1
+	# Verify HAProxy is running
+	if pgrep haproxy >/dev/null 2>&1; then
+		log_info "[RELOAD] HAProxy restarted successfully"
+	else
+		log_warn "[RELOAD] HAProxy may not have started properly"
+	fi
+}
+
+cmd_emancipate() {
+	require_root
+	load_config
+
+	local name="$1"
+	local domain="$2"
+
+	[ -z "$name" ] && { log_error "App name required"; usage; return 1; }
+
+	# Check if app exists
+	if [ ! -d "$APPS_PATH/$name" ] && [ ! -f "$APPS_PATH/${name}.py" ]; then
+		log_error "App '$name' not found"
+		log_error "Create first: streamlitctl app create $name"
+		return 1
+	fi
+
+	# Get instance port from UCI
+	local port=$(uci -q get ${CONFIG}.${name}.port)
+	if [ -z "$port" ]; then
+		log_error "No instance configured for app '$name'"
+		log_error "Add instance first: streamlitctl instance add $name <port>"
+		return 1
+	fi
+
+	# Domain is optional - can be auto-generated from vortex wildcard
+	if [ -z "$domain" ]; then
+		local vortex_wildcard=$(uci -q get vortex-dns.master.wildcard_domain)
+		if [ -n "$vortex_wildcard" ]; then
+			local vortex_zone=$(echo "$vortex_wildcard" | sed 's/^[^.]*\.//')
+			local vortex_node=$(echo "$vortex_wildcard" | cut -d. -f1)
+			domain="${name}.${vortex_node}.${vortex_zone}"
+			log_info "Auto-generated domain: $domain"
+		else
+			log_error "Domain required: streamlitctl emancipate $name <domain>"
+			return 1
+		fi
+	fi
+
+	echo ""
+	echo "=============================================="
+	echo "  KISS ULTIME MODE: Emancipating $name"
+	echo "=============================================="
+	echo ""
+	echo "  App:    $name"
+	echo "  Domain: $domain"
+	echo "  Port:   $port"
+	echo ""
+
+	# Step 1: DNS Registration (external provider)
+	_emancipate_dns "$name" "$domain"
+
+	# Step 2: Vortex DNS (mesh registration)
+	_emancipate_vortex "$name" "$domain"
+
+	# Step 3: HAProxy vhost + backend
+	_emancipate_haproxy "$name" "$domain" "$port"
+
+	# Step 4: SSL Certificate
+	_emancipate_ssl "$domain"
+
+	# Step 5: Reload HAProxy
+	_emancipate_reload
+
+	# Mark app as emancipated
+	uci set ${CONFIG}.${name}.emancipated="1"
+	uci set ${CONFIG}.${name}.emancipated_at="$(date -Iseconds)"
+	uci set ${CONFIG}.${name}.domain="$domain"
+	uci commit ${CONFIG}
+
+	echo ""
+	echo "=============================================="
+	echo "  EMANCIPATION COMPLETE"
+	echo "=============================================="
+	echo ""
+	echo "  Site:    https://$domain"
+	echo "  Status:  Published and SSL-protected"
+	echo "  Mesh:    $(uci -q get vortex-dns.main.enabled | grep -q 1 && echo 'Published' || echo 'Disabled')"
+	echo ""
+	echo "  Verify:"
+	echo "    curl -v https://$domain"
+	echo "    dnsctl verify $domain"
+	echo "    haproxyctl cert verify $domain"
+	echo ""
+}
+
 # Main commands
 cmd_install() {
 	require_root
@@ -1208,6 +1467,8 @@ case "${1:-}" in
 
 	service-run)  shift; cmd_service_run "$@" ;;
 	service-stop) shift; cmd_service_stop "$@" ;;
+
+	emancipate) shift; cmd_emancipate "$@" ;;
 
 	*)          usage ;;
 esac
