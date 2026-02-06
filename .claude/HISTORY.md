@@ -681,3 +681,20 @@ _Last updated: 2026-02-07_
     - **Usage**: `metablogizerctl create myblog blog.example.com && metablogizerctl emancipate myblog`
     - **Tracking**: Stores `emancipated=1` and `emancipated_at` timestamp in UCI
     - Part of Punk Exposure architecture (multi-channel emancipation).
+
+45. **LED Heartbeat & Vortex Dashboard Services (2026-02-06)**
+    - Added LED heartbeat to `secubox-core` daemon for MochaBin RGB LEDs (led1).
+    - **LED status indicators**:
+      - Green flash: System healthy
+      - Double red flash: Warning state (services down, high resource usage)
+      - Long red flash: Error state
+      - Blue flash: Boot/startup
+    - **Configuration**:
+      - `uci set secubox.main.led_heartbeat='1'` (enabled by default)
+      - `uci set secubox.main.watchdog_interval='60'` (pulse every 60s)
+    - **LED auto-detection**: Only activates if `/sys/class/leds/green:led1` exists.
+    - **Vortex DNS dashboard enhancement**:
+      - Added "Node Services" section showing published services
+      - Displays domain links and vortex node URLs
+      - Deduplicated service list with clickable links
+    - Bumped `secubox-core` version to 0.10.0-r12.
