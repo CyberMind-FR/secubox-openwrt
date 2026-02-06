@@ -50,12 +50,19 @@ var callMeshSync = rpc.declare({
 	expect: {}
 });
 
+var callGetPublished = rpc.declare({
+	object: 'luci.vortex-dns',
+	method: 'get_published',
+	expect: { services: [] }
+});
+
 return view.extend({
 	load: function() {
 		return Promise.all([
 			callStatus(),
 			callGetSlaves(),
-			callGetPeers()
+			callGetPeers(),
+			callGetPublished()
 		]);
 	},
 
@@ -63,6 +70,7 @@ return view.extend({
 		var status = data[0] || {};
 		var slaves = data[1] || [];
 		var peers = data[2] || [];
+		var published = data[3] || [];
 
 		var view = E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, 'Vortex DNS'),
@@ -102,6 +110,9 @@ return view.extend({
 
 			// Mesh Peers Section
 			this.renderPeersSection(status.mesh, peers),
+
+			// Published Services Section
+			this.renderServicesSection(published, status.master),
 
 			// Actions Section
 			this.renderActionsSection(status)
@@ -222,6 +233,58 @@ return view.extend({
 					]);
 				})))
 			]) : E('p', { 'style': 'color: #888; margin-top: 8px;' }, 'No peers connected')
+		]);
+	},
+
+	renderServicesSection: function(services, master) {
+		var wildcard = master ? master.wildcard_domain : null;
+		var nodePrefix = wildcard ? wildcard.split('.')[0] : null;
+
+		// Deduplicate services by name
+		var seen = {};
+		var uniqueServices = [];
+		(services || []).forEach(function(s) {
+			if (!seen[s.name]) {
+				seen[s.name] = true;
+				uniqueServices.push(s);
+			}
+		});
+
+		return E('div', { 'class': 'cbi-section' }, [
+			E('h3', {}, 'Node Services'),
+			E('div', { 'class': 'cbi-section-descr' },
+				wildcard ? 'Services published on *.' + wildcard : 'Published services on this node'),
+
+			uniqueServices.length > 0 ? E('table', { 'class': 'table' }, [
+				E('tr', { 'class': 'tr table-titles' }, [
+					E('th', { 'class': 'th' }, 'Service'),
+					E('th', { 'class': 'th' }, 'Domain'),
+					E('th', { 'class': 'th' }, 'Node URL'),
+					E('th', { 'class': 'th' }, 'Actions')
+				])
+			].concat(uniqueServices.map(function(s) {
+				var nodeUrl = nodePrefix ? 'https://' + s.name + '.' + wildcard : null;
+				return E('tr', { 'class': 'tr' }, [
+					E('td', { 'class': 'td' }, E('strong', {}, s.name)),
+					E('td', { 'class': 'td' }, E('a', {
+						'href': 'https://' + s.domain,
+						'target': '_blank',
+						'style': 'color: #00d4aa;'
+					}, s.domain)),
+					E('td', { 'class': 'td' }, nodeUrl ? E('a', {
+						'href': nodeUrl,
+						'target': '_blank',
+						'style': 'color: #888; font-size: 0.9em;'
+					}, s.name + '.' + wildcard) : '-'),
+					E('td', { 'class': 'td' }, E('a', {
+						'href': 'https://' + s.domain,
+						'target': '_blank',
+						'class': 'btn cbi-button-action',
+						'style': 'padding: 2px 8px; font-size: 0.85em;'
+					}, 'Open'))
+				]);
+			}))) : E('p', { 'style': 'color: #888; margin-top: 8px;' },
+				'No services published. Use "metablogizerctl emancipate" to publish sites.')
 		]);
 	},
 
