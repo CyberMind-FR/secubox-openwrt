@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-07_
+_Last updated: 2026-02-06_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -51,7 +51,24 @@ _Last updated: 2026-02-07_
   - Gossip-based exposure config sync via secubox-p2p
   - Created `luci-app-vortex-dns` dashboard
 
-### Just Completed (2026-02-07)
+### Just Completed (2026-02-06/07)
+
+- **CrowdSec Dashboard Cache System** — DONE (2026-02-06)
+  - Created `/usr/sbin/secubox-crowdsec-collector` v4 background stats collector
+  - Generates `/tmp/secubox/crowdsec-overview.json` every minute via cron
+  - RPCD fast path: reads cache first, falls back to slow cscli calls if stale
+  - Fixes dashboard loading times from 5-10s to <100ms
+
+- **mitmproxy Local IP "Green Known"** — DONE (2026-02-06)
+  - Patched secubox_analytics.py to skip threat logging for trusted local IPs
+  - Local network traffic (192.168.x, 10.x, 172.16-18.x) no longer pollutes threats.log
+  - Autoban still correctly targets only external IPs
+
+- **Control Panel File Compatibility** — DONE (2026-02-06)
+  - Fixed file naming mismatch (health.json vs health-status.json, etc.)
+  - Created symlinks for compatibility
+  - Created missing cache files (threat.json, netifyd.json)
+  - Updated stats collector to maintain symlinks on each run
 
 - **LED Fix & Double-Buffer Status Cache** — DONE (2026-02-07)
   - Removed mmc0 LED (was blocking heartbeat loop)
@@ -66,6 +83,19 @@ _Last updated: 2026-02-07_
   - Vortex DNS mesh publication
   - HAProxy vhost with SSL and ACME
   - Zero-downtime reload via SIGUSR2
+
+- **Streamlit LuCI Dashboard Edit & Emancipate** — DONE (2026-02-06)
+  - Added Edit button with modal code editor (base64 encoding)
+  - Added Emancipate button with KISS ULTIME MODE workflow
+  - RPCD: `get_source`, `save_source`, `emancipate`, `get_emancipation`
+  - API + ACL updated
+
+- **SecuBox Vhost Manager** — DONE (2026-02-06)
+  - Created `secubox-vhost` CLI for subdomain management
+  - External (*.gk2.secubox.in) and local (*.gk2.sb.local) domain support
+  - UCI config for vhosts: console, control, metrics, crowdsec, factory, glances, play
+  - Default landing page generation
+  - Integrated into secubox-core daemon and firstboot
 
 ### Completed (2026-02-06)
 

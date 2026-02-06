@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-02-07_
+_Last updated: 2026-02-06_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -732,7 +732,30 @@ _Last updated: 2026-02-07_
     - **Location**: `/srv/haproxy/errors/{502,503,504}.http`
     - **Integration**: HAProxy serves custom pages for backend errors
 
-49. **Local Mesh Domain Configuration (2026-02-07)**
+49. **CrowdSec Dashboard Cache & Control Panel Fixes (2026-02-06)**
+    - **CrowdSec Overview Collector v4**: Created `/usr/sbin/secubox-crowdsec-collector` for background stats collection.
+      - Generates comprehensive JSON cache at `/tmp/secubox/crowdsec-overview.json`
+      - Collects: service status, decisions (local + CAPI), alerts, bouncers, scenarios, GeoIP, LAPI/CAPI status
+      - WAF stats: autoban status, sensitivity, bans today, threats today
+      - Countries breakdown from alerts (top 10)
+      - Uses jshn for valid JSON generation with subshell-safe array collection
+      - Atomic writes with temp file + mv pattern
+      - Cron entry: runs every minute
+    - **RPCD Fast Path**: Patched `luci.crowdsec-dashboard` to read from cache first.
+      - Cache freshness check (5 minute TTL)
+      - Falls back to original slow cscli calls if cache stale/missing
+    - **mitmproxy Local IP "Green Known"**: Patched `/data/addons/secubox_analytics.py` in mitmproxy container.
+      - Skip threat logging for trusted local IPs (192.168.x.x, 10.x.x.x, 172.16-18.x.x, 127.x.x.x)
+      - Local network traffic no longer pollutes threats.log
+      - Autoban still correctly targets only external IPs
+    - **Control Panel File Compatibility**: Fixed file naming mismatch.
+      - Control Panel expected: health.json, crowdsec.json, mitmproxy.json
+      - Collectors created: health-status.json, crowdsec-stats.json, mitmproxy-stats.json
+      - Created symlinks for compatibility
+      - Created missing files: threat.json, netifyd.json with proper structure
+      - Updated stats collector to maintain symlinks on each run
+
+50. **Local Mesh Domain Configuration (2026-02-07)**
     - Configured `.sblocal` as local mesh domain suffix for internal service discovery.
     - **DNS setup**: Added to dnsmasq local zones
     - **Host entries**: c3box.sblocal, evolution.sblocal, gk2.sblocal, gitea.sblocal, bazi.sblocal
@@ -740,14 +763,14 @@ _Last updated: 2026-02-07_
     - **Purpose**: Local network service discovery without external DNS dependency
     - Enables LAN clients to access services via `<service>.sblocal`
 
-50. **Evolution Streamlit Local Mirror (2026-02-07)**
+51. **Evolution Streamlit Local Mirror (2026-02-07)**
     - Migrated Evolution dashboard from GitHub to local Gitea mirror.
     - **Source change**: `raw.githubusercontent.com` → `localhost:3001/gandalf/secubox-openwrt`
     - **Benefits**: Instant loading, no external dependency, works offline
     - **Cache TTL**: Reduced from 5 minutes to 1 minute for faster updates
     - **Gitea raw URL format**: `/raw/branch/master/<path>`
 
-51. **LXC Container Stability & HAProxy Recovery (2026-02-07)**
+52. **LXC Container Stability & HAProxy Recovery (2026-02-07)**
     - **Root cause identified**: cgroup v2 incompatibility with `lxc.mount.auto = cgroup:mixed`
     - **Fix applied to ALL containers**: Removed `cgroup:mixed`, added cgroup v2 device permissions
     - **HAProxy fix**: Added `lxc.mount.auto = proc:mixed sys:ro` for /proc mount
@@ -762,7 +785,7 @@ _Last updated: 2026-02-07_
       - DNS (named): RUNNING
     - **External URLs verified**: gk2.secubox.in, evolution.gk2.secubox.in, control.gk2.secubox.in all returning HTTP 200
 
-52. **Mailserver Postfix/Dovecot Maildir Path Alignment (2026-02-07)**
+53. **Mailserver Postfix/Dovecot Maildir Path Alignment (2026-02-07)**
     - Fixed emails delivered but invisible in Roundcube webmail.
     - **Root cause**: Path mismatch between Postfix delivery and Dovecot mail_location.
       - Postfix delivered to: `/home/vmail/$domain/$user/new/`
@@ -777,7 +800,7 @@ _Last updated: 2026-02-07_
     - Bumped `secubox-app-mailserver` version to 1.0.0-r2.
     - New mail verified delivering correctly to Maildir location.
 
-53. **LED Fix & Double-Buffer Status Cache (2026-02-07)**
+54. **LED Fix & Double-Buffer Status Cache (2026-02-07)**
     - **LED mmc0 removed**: The 4th LED (mmc0) was causing the heartbeat loop to hang.
       - Removed `LED_MMC0` variable, `led_mmc0_heartbeat()` function, and mmc0 calls from loop
       - Now only 3 RGB LEDs controlled: led1 (health), led2 (threat), led3 (capacity)
@@ -789,7 +812,7 @@ _Last updated: 2026-02-07_
       - Uses atomic `mv` pattern for consistent reads during writes
     - Daemon starts status collector before LED loop for cache warmup.
 
-54. **Triple-Pulse LED Heartbeat & Streamlit Emancipate (2026-02-06)**
+55. **Triple-Pulse LED Heartbeat & Streamlit Emancipate (2026-02-06)**
     - **Triple-pulse LED heartbeat**: Organic "bump-bump-bump (pause)" pattern across RGB LEDs.
       - LED1 (health) leads, LED2 (threat) follows décalé, LED3 (capacity) trails
       - BusyBox-compatible: no fractional sleep, uses rapid burst + 3s rest
@@ -812,3 +835,31 @@ _Last updated: 2026-02-07_
       - Cyberpunk theme with metric cards
       - Live at: https://console.gk2.secubox.in/
     - **Commits**: 301dccec, a47ae965, 22caf0c9, aab58a2b, 7b77f839
+
+56. **Streamlit LuCI Dashboard Edit & Emancipate (2026-02-06)**
+    - Added **Edit button** to Streamlit Apps table for editing app source code:
+      - RPCD methods: `get_source`, `save_source` with base64 encoding
+      - Modal code editor with syntax highlighting (monospace textarea)
+      - Backup creation before save
+    - Added **Emancipate button** for KISS ULTIME MODE exposure:
+      - RPCD methods: `emancipate`, `get_emancipation`
+      - Multi-channel modal showing DNS + Vortex + HAProxy + SSL workflow
+      - Pre-check for existing instance (requires port for exposure)
+      - Tracks emancipation status in UCI
+    - Updated `streamlit/api.js` with 4 new API methods
+    - Updated ACL permissions in `luci-app-streamlit.json`
+
+57. **SecuBox Vhost Manager (2026-02-06)**
+    - Created `secubox-vhost` CLI for subdomain management in secubox-core:
+      - Manages external (`*.gk2.secubox.in`) and local (`*.gk2.sb.local`) domains
+      - Commands: init, set-domain, list, enable, disable, add, sync, landing, dnsmasq
+      - Generates dnsmasq config for local wildcard resolution
+      - Creates HAProxy vhosts for both external and local domains
+      - Generates default landing page at `/www/secubox-landing.html`
+    - Added UCI config section for domain and vhost management:
+      - `config domain 'external'` - base domain, wildcard settings
+      - `config domain 'local'` - local domain suffix (default: sb.local)
+      - `config vhost` sections for: console, control, metrics, crowdsec, factory, glances, play
+    - Integrated into secubox-core daemon startup (vhost init after 5s delay)
+    - Added to uci-defaults for firstboot initialization
+    - Updated Makefile to install `secubox-vhost` script
