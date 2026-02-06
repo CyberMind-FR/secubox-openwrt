@@ -1097,7 +1097,7 @@ led_event_pulse() {
 # Triple-pulse heartbeat with staggered cascade across LEDs
 # Creates organic "bump-bump-bump (pause)" pattern
 # Each LED pulses sequentially with offset timing (décalé)
-LED_PULSE_PHASE=0  # Tracks which LED is in primary pulse
+# BusyBox compatible: uses 1s sleep with rapid triple-pulse burst
 
 led_triple_pulse() {
     local led_num="$1"
@@ -1117,7 +1117,7 @@ led_triple_pulse() {
 # led1: Global health status (primary pulse)
 # led2: Security threat level (offset pulse)
 # led3: Global capacity meter (trailing pulse)
-# Pattern: bump1-bump2-bump3 (pause) with staggered timing
+# Pattern: rapid triple-pulse then 3s rest (BusyBox compatible)
 led_heartbeat_loop() {
     local status_file="/tmp/secubox/led-status"
     echo "healthy" > "$status_file"
@@ -1127,106 +1127,77 @@ led_heartbeat_loop() {
     local r2=0 g2=255 b2=0  # Threat: green
     local r3=0 g3=255 b3=0  # Capacity: green
 
-    # Pulse timing (ticks at 0.33s each = tiers de second)
-    local beat_gap=1     # Gap between beats in triple
-    local cycle_pause=6  # Pause after triple (longer rest)
-    local tick=0         # Current tick in cycle
-
     while true; do
         local status=$(cat "$status_file" 2>/dev/null || echo "healthy")
 
-        # Update base colors from cache (every cycle start)
-        if [ "$tick" -eq 0 ]; then
-            # LED1: Health color
-            local health=$(get_health_score)
-            if [ "$health" -ge 80 ]; then
-                r1=0; g1=255; b1=50
-            elif [ "$health" -ge 50 ]; then
-                r1=255; g1=200; b1=0
-            else
-                r1=255; g1=30; b1=0
-            fi
+        # Update base colors from cache
+        # LED1: Health color
+        local health=$(get_health_score)
+        if [ "$health" -ge 80 ]; then
+            r1=0; g1=255; b1=50
+        elif [ "$health" -ge 50 ]; then
+            r1=255; g1=200; b1=0
+        else
+            r1=255; g1=30; b1=0
+        fi
 
-            # LED2: Threat color
-            local threat=$(get_threat_level)
-            if [ "$threat" -le 10 ]; then
-                r2=0; g2=255; b2=0
-            elif [ "$threat" -le 40 ]; then
-                r2=200; g2=255; b2=0
-            elif [ "$threat" -le 70 ]; then
-                r2=255; g2=150; b2=0
-            else
-                r2=255; g2=0; b2=0
-            fi
+        # LED2: Threat color
+        local threat=$(get_threat_level)
+        if [ "$threat" -le 10 ]; then
+            r2=0; g2=255; b2=0
+        elif [ "$threat" -le 40 ]; then
+            r2=200; g2=255; b2=0
+        elif [ "$threat" -le 70 ]; then
+            r2=255; g2=150; b2=0
+        else
+            r2=255; g2=0; b2=0
+        fi
 
-            # LED3: Capacity color (from cache)
-            local cap=$(get_capacity)
-            if [ "$cap" -le 30 ]; then
-                r3=0; g3=255; b3=100
-            elif [ "$cap" -le 60 ]; then
-                r3=100; g3=255; b3=0
-            elif [ "$cap" -le 80 ]; then
-                r3=255; g3=200; b3=0
-            else
-                r3=255; g3=80; b3=0
-            fi
+        # LED3: Capacity color (from cache)
+        local cap=$(get_capacity)
+        if [ "$cap" -le 30 ]; then
+            r3=0; g3=255; b3=100
+        elif [ "$cap" -le 60 ]; then
+            r3=100; g3=255; b3=0
+        elif [ "$cap" -le 80 ]; then
+            r3=255; g3=200; b3=0
+        else
+            r3=255; g3=80; b3=0
         fi
 
         # Check for event pulse (overrides normal pattern)
         if led_event_pulse; then
-            sleep 0.3
-            tick=0
+            sleep 1
             continue
         fi
 
-        # Triple-pulse cascade pattern with décalé (staggered) timing
-        # Cycle: 0=beat1, 1=gap, 2=beat2, 3=gap, 4=beat3, 5-12=rest
-        local total_cycle=$((3 + 2 * beat_gap + cycle_pause))
-        local phase=$((tick % total_cycle))
+        # === Triple-pulse burst (rapid sequential) ===
+        # Beat 1: LED1 bright
+        led_triple_pulse 1 "$r1" "$g1" "$b1" 100
+        led_triple_pulse 2 "$r2" "$g2" "$b2" 30
+        led_triple_pulse 3 "$r3" "$g3" "$b3" 30
+        # Brief pause via shell overhead (~50ms)
+        :; :; :
 
-        # Calculate intensities for each LED based on phase
-        # LED1 leads, LED2 offset by 1 beat, LED3 offset by 2 beats
-        local int1=30 int2=30 int3=30  # Base dim level
+        # Beat 2: LED2 bright (décalé)
+        led_triple_pulse 1 "$r1" "$g1" "$b1" 40
+        led_triple_pulse 2 "$r2" "$g2" "$b2" 100
+        led_triple_pulse 3 "$r3" "$g3" "$b3" 50
+        :; :; :
 
-        case "$phase" in
-            0)  # First beat - LED1 bright, others dim
-                int1=100
-                ;;
-            1)  # Gap - LED1 fading, LED2 rising
-                int1=60
-                int2=80
-                ;;
-            2)  # Second beat - LED2 bright, LED1 dim, LED3 rising
-                int1=40
-                int2=100
-                int3=60
-                ;;
-            3)  # Gap - LED2 fading, LED3 rising
-                int2=60
-                int3=80
-                ;;
-            4)  # Third beat - LED3 bright, others dim
-                int3=100
-                ;;
-            5)  # Post-triple fade
-                int1=20; int2=20; int3=50
-                ;;
-            *)  # Rest period - all dim with subtle breathing
-                local breath=$((30 + (phase % 3) * 5))
-                int1=$breath; int2=$breath; int3=$breath
-                ;;
-        esac
+        # Beat 3: LED3 bright (décalé)
+        led_triple_pulse 1 "$r1" "$g1" "$b1" 30
+        led_triple_pulse 2 "$r2" "$g2" "$b2" 50
+        led_triple_pulse 3 "$r3" "$g3" "$b3" 100
+        :; :; :
 
-        # Apply intensities
-        led_triple_pulse 1 "$r1" "$g1" "$b1" "$int1"
-        led_triple_pulse 2 "$r2" "$g2" "$b2" "$int2"
-        led_triple_pulse 3 "$r3" "$g3" "$b3" "$int3"
+        # Fade to dim
+        led_triple_pulse 1 "$r1" "$g1" "$b1" 25
+        led_triple_pulse 2 "$r2" "$g2" "$b2" 25
+        led_triple_pulse 3 "$r3" "$g3" "$b3" 35
 
-        tick=$((tick + 1))
-        [ "$tick" -ge "$total_cycle" ] && tick=0
-
-        # Timing: 0.33s per tick (tiers de second)
-        sleep 0.33
+        # Rest period: 3 seconds
+        sleep 3
     done
 }
 
