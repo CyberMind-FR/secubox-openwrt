@@ -175,15 +175,25 @@ _Last updated: 2026-02-07_
   - Quick-add shortcuts for common services (gitea, grafana, jellyfin, etc.)
   - Part of Punk Exposure infrastructure
 
+### Recently Completed (2026-02-07)
+
+- **Mesh Onboarding Testing** — VALIDATED
+  - Token generation: POST `/api/master-link/token` with HMAC tokens + TTL
+  - IPK download: GET `/api/master-link/ipk?token=` serves pre-built 12KB IPK
+  - Dynamic IPK: `ml_ipk_generate` creates join packages on-the-fly
+  - Join flow: request → approval → peer added at depth+1
+  - Blockchain: `peer_approved` blocks recorded correctly
+  - Threat Intel: 288 local IOCs, 67 threat_ioc blocks in chain
+
 ### Next Up — Couche 1
 
 1. **Guacamole Pre-built Binaries**
    - Current LXC build-from-source approach is too slow
    - Need to find/create pre-built ARM64 binaries for guacd + Tomcat
 
-2. **Mesh Onboarding Testing**
-   - End-to-end test of master-link dynamic join IPK generation
-   - Validate P2P threat intelligence with real CrowdSec alerts
+2. **Multi-Node Mesh Testing**
+   - Deploy second SecuBox node to test real peer-to-peer sync
+   - Validate bidirectional threat intelligence sharing
 
 ---
 
