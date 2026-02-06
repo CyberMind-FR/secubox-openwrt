@@ -144,6 +144,34 @@ ssh root@192.168.255.1 '/etc/init.d/rpcd restart'
 - These are not shown in standard LuCI forms but are accessible via `uci -q get`
 - Useful for storing client private keys, internal state, etc.
 
+### ACL Permissions for New RPC Methods
+- **CRITICAL: When adding a new RPCD method, you MUST also add it to the ACL file**
+- Without ACL entry, LuCI will return `-32002: Access denied` error
+- ACL files are located at: `root/usr/share/rpcd/acl.d/<app>.json`
+- Add read-only methods to the `"read"` section, write/action methods to the `"write"` section:
+  ```json
+  {
+    "luci-app-example": {
+      "read": {
+        "ubus": {
+          "luci.example": ["status", "list", "get_info"]
+        }
+      },
+      "write": {
+        "ubus": {
+          "luci.example": ["create", "delete", "update", "action_method"]
+        }
+      }
+    }
+  }
+  ```
+- After deploying ACL changes, restart rpcd AND have user re-login to LuCI:
+  ```bash
+  scp root/usr/share/rpcd/acl.d/<app>.json root@192.168.255.1:/usr/share/rpcd/acl.d/
+  ssh root@192.168.255.1 '/etc/init.d/rpcd restart'
+  ```
+- User must log out and log back into LuCI to get new permissions
+
 ## LuCI JavaScript Frontend
 
 ### RPC `expect` Field Behavior

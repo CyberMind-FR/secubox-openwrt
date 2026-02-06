@@ -209,6 +209,12 @@ return view.extend({
 					}, _('Sync')) : '',
 					' ',
 					E('button', {
+						'class': 'cbi-button cbi-button-apply',
+						'click': ui.createHandlerFn(self, 'handleEmancipate', site),
+						'title': _('KISS ULTIME MODE: DNS + SSL + Mesh')
+					}, site.emancipated ? '✓' : _('Emancipate')),
+					' ',
+					E('button', {
 						'class': 'cbi-button cbi-button-remove',
 						'click': ui.createHandlerFn(self, 'handleDelete', site),
 						'title': _('Delete')
@@ -697,6 +703,95 @@ return view.extend({
 				}}, _('Delete'))
 			])
 		]);
+	},
+
+	handleEmancipate: function(site) {
+		var self = this;
+		ui.showModal(_('Emancipate Site'), [
+			E('p', {}, _('KISS ULTIME MODE will configure:')),
+			E('ul', {}, [
+				E('li', {}, _('DNS registration (Gandi/OVH)')),
+				E('li', {}, _('Vortex DNS mesh publication')),
+				E('li', {}, _('HAProxy vhost with SSL')),
+				E('li', {}, _('ACME certificate issuance'))
+			]),
+			E('p', { 'style': 'margin-top:1em' }, _('Emancipate "') + site.name + '" (' + site.domain + ')?'),
+			E('div', { 'class': 'right', 'style': 'margin-top:1em' }, [
+				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
+				' ',
+				E('button', { 'class': 'cbi-button cbi-button-apply', 'click': function() {
+					ui.hideModal();
+					self.runEmancipateAsync(site);
+				}}, _('Emancipate'))
+			])
+		]);
+	},
+
+	runEmancipateAsync: function(site) {
+		var self = this;
+		var outputPre = E('pre', { 'style': 'max-height:300px;overflow:auto;background:#f5f5f5;padding:10px;font-size:11px;white-space:pre-wrap' }, _('Starting...'));
+
+		ui.showModal(_('Emancipating'), [
+			E('p', { 'class': 'spinning' }, _('Running KISS ULTIME MODE workflow...')),
+			outputPre
+		]);
+
+		api.emancipate(site.id).then(function(r) {
+			if (!r.success) {
+				ui.hideModal();
+				ui.showModal(_('Emancipation Failed'), [
+					E('p', { 'style': 'color:#a00' }, r.error || _('Failed to start')),
+					E('div', { 'class': 'right', 'style': 'margin-top:1em' }, [
+						E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Close'))
+					])
+				]);
+				return;
+			}
+
+			// Poll for completion
+			var jobId = r.job_id;
+			var pollInterval = setInterval(function() {
+				api.emancipateStatus(jobId).then(function(status) {
+					if (status.output) {
+						outputPre.textContent = status.output;
+						outputPre.scrollTop = outputPre.scrollHeight;
+					}
+
+					if (status.complete) {
+						clearInterval(pollInterval);
+						ui.hideModal();
+
+						if (status.status === 'success') {
+							ui.showModal(_('Emancipation Complete'), [
+								E('p', { 'style': 'color:#0a0' }, _('Site emancipated successfully!')),
+								E('pre', { 'style': 'max-height:300px;overflow:auto;background:#f5f5f5;padding:10px;font-size:11px;white-space:pre-wrap' }, status.output || ''),
+								E('div', { 'class': 'right', 'style': 'margin-top:1em' }, [
+									E('button', { 'class': 'cbi-button cbi-button-action', 'click': function() {
+										ui.hideModal();
+										window.location.reload();
+									}}, _('OK'))
+								])
+							]);
+						} else {
+							ui.showModal(_('Emancipation Failed'), [
+								E('p', { 'style': 'color:#a00' }, _('Workflow failed')),
+								E('pre', { 'style': 'max-height:200px;overflow:auto;background:#fee;padding:10px;font-size:11px;white-space:pre-wrap' }, status.output || ''),
+								E('div', { 'class': 'right', 'style': 'margin-top:1em' }, [
+									E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Close'))
+								])
+							]);
+						}
+					}
+				}).catch(function(e) {
+					clearInterval(pollInterval);
+					ui.hideModal();
+					ui.addNotification(null, E('p', _('Poll error: ') + e.message), 'error');
+				});
+			}, 2000); // Poll every 2 seconds
+		}).catch(function(e) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', _('Error: ') + e.message), 'error');
+		});
 	},
 
 	copyToClipboard: function(text) {

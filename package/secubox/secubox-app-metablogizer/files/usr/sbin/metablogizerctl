@@ -654,10 +654,18 @@ _emancipate_ssl() {
 
 _emancipate_reload() {
 	log_info "[RELOAD] Applying HAProxy configuration"
-	/etc/init.d/haproxy reload 2>/dev/null || {
-		log_warn "[RELOAD] Reload failed, restarting..."
-		/etc/init.d/haproxy restart 2>/dev/null
-	}
+	# Generate fresh config
+	haproxyctl generate 2>/dev/null
+	# Always restart for clean state with new vhosts/certs
+	log_info "[RELOAD] Restarting HAProxy for clean state..."
+	/etc/init.d/haproxy restart 2>/dev/null
+	sleep 1
+	# Verify HAProxy is running
+	if pgrep haproxy >/dev/null 2>&1; then
+		log_info "[RELOAD] HAProxy restarted successfully"
+	else
+		log_warn "[RELOAD] HAProxy may not have started properly"
+	fi
 }
 
 cmd_emancipate() {

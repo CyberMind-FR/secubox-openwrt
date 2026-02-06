@@ -127,6 +127,18 @@ var callSyncConfig = rpc.declare({
 	method: 'sync_config'
 });
 
+var callEmancipate = rpc.declare({
+	object: 'luci.metablogizer',
+	method: 'emancipate',
+	params: ['id']
+});
+
+var callEmancipateStatus = rpc.declare({
+	object: 'luci.metablogizer',
+	method: 'emancipate_status',
+	params: ['job_id']
+});
+
 return baseclass.extend({
 	getStatus: function() {
 		return callStatus();
@@ -247,6 +259,14 @@ return baseclass.extend({
 
 	syncConfig: function() {
 		return callSyncConfig();
+	},
+
+	emancipate: function(id) {
+		return callEmancipate(id);
+	},
+
+	emancipateStatus: function(jobId) {
+		return callEmancipateStatus(jobId);
 	},
 
 	getDashboardData: function() {
