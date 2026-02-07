@@ -1,0 +1,123 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "updated": "2026-02-07",
+    "sources": ["OWASP Top 10", "CERT advisories", "CVE database"]
+  },
+  
+  "categories": {
+    "sqli": {
+      "name": "SQL Injection",
+      "severity": "critical",
+      "enabled": true,
+      "owasp": "A03:2021",
+      "patterns": [
+        {"id": "sqli-001", "pattern": "union\\s+(all\\s+)?select", "desc": "UNION-based injection"},
+        {"id": "sqli-002", "pattern": "[\x27\x22]\\s*(or|and)\\s*[\x27\x22]?\\d", "desc": "Boolean-based injection"},
+        {"id": "sqli-003", "pattern": "(sleep|benchmark|waitfor|pg_sleep)\\s*\\(", "desc": "Time-based blind injection"},
+        {"id": "sqli-004", "pattern": "information_schema\\.", "desc": "Schema enumeration"},
+        {"id": "sqli-005", "pattern": "(load_file|into\\s+outfile|into\\s+dumpfile)", "desc": "File operations"},
+        {"id": "sqli-006", "pattern": "group\\s+by.+having", "desc": "HAVING clause injection"},
+        {"id": "sqli-007", "pattern": "order\\s+by\\s+\\d+(,\\d+)*--", "desc": "ORDER BY injection"}
+      ]
+    },
+    
+    "xss": {
+      "name": "Cross-Site Scripting",
+      "severity": "high",
+      "enabled": true,
+      "owasp": "A03:2021",
+      "patterns": [
+        {"id": "xss-001", "pattern": "<script[^>]*>", "desc": "Script tag injection"},
+        {"id": "xss-002", "pattern": "javascript\\s*:", "desc": "JavaScript protocol"},
+        {"id": "xss-003", "pattern": "on(error|load|click|mouse|focus|blur)\\s*=", "desc": "Event handler injection"},
+        {"id": "xss-004", "pattern": "<iframe[^>]*>", "desc": "Iframe injection"},
+        {"id": "xss-005", "pattern": "<svg[^>]*onload", "desc": "SVG-based XSS"},
+        {"id": "xss-006", "pattern": "expression\\s*\\(", "desc": "CSS expression injection"}
+      ]
+    },
+    
+    "lfi": {
+      "name": "Local File Inclusion",
+      "severity": "critical",
+      "enabled": true,
+      "owasp": "A01:2021",
+      "patterns": [
+        {"id": "lfi-001", "pattern": "\\.\\./", "desc": "Directory traversal"},
+        {"id": "lfi-002", "pattern": "/etc/(passwd|shadow|hosts)", "desc": "System file access"},
+        {"id": "lfi-003", "pattern": "/proc/(self|version|cmdline)", "desc": "Proc filesystem access"},
+        {"id": "lfi-004", "pattern": "php://filter", "desc": "PHP filter wrapper"},
+        {"id": "lfi-005", "pattern": "file://", "desc": "File protocol"},
+        {"id": "lfi-006", "pattern": "expect://", "desc": "Expect wrapper RCE"}
+      ]
+    },
+    
+    "rce": {
+      "name": "Remote Code Execution",
+      "severity": "critical",
+      "enabled": true,
+      "owasp": "A03:2021",
+      "patterns": [
+        {"id": "rce-001", "pattern": ";\\s*(cat|ls|id|whoami|uname|pwd)", "desc": "Command chaining"},
+        {"id": "rce-002", "pattern": "\\|\\s*(cat|ls|id|whoami|bash|sh)", "desc": "Pipe injection"},
+        {"id": "rce-003", "pattern": "\\$\\((cat|ls|id|whoami)", "desc": "Command substitution"},
+        {"id": "rce-004", "pattern": "`(cat|ls|id|whoami|curl|wget)`", "desc": "Backtick execution"},
+        {"id": "rce-005", "pattern": "(curl|wget)\\s+.+\\s*\\|\\s*(bash|sh)", "desc": "Remote script execution"},
+        {"id": "rce-006", "pattern": "\\{\\{.*\\}\\}", "desc": "Template injection (SSTI)"}
+      ]
+    },
+    
+    "cve_2024": {
+      "name": "CVE 2024-2025 Exploits",
+      "severity": "critical",
+      "enabled": true,
+      "patterns": [
+        {"id": "cve-2024-3400", "pattern": "/api/v\\d/totp/user-backup", "desc": "PAN-OS GlobalProtect RCE", "cve": "CVE-2024-3400"},
+        {"id": "cve-2024-21887", "pattern": "/api/v1/totp/user-backup", "desc": "Ivanti Connect Secure", "cve": "CVE-2024-21887"},
+        {"id": "cve-2023-46747", "pattern": "/mgmt/tm/util/bash", "desc": "F5 BIG-IP RCE", "cve": "CVE-2023-46747"},
+        {"id": "cve-2023-22515", "pattern": "/setup/setupadministrator.action", "desc": "Confluence RCE", "cve": "CVE-2023-22515"},
+        {"id": "cve-2024-1709", "pattern": "/SetupWizard\\.aspx", "desc": "ConnectWise ScreenConnect", "cve": "CVE-2024-1709"},
+        {"id": "cve-2024-27198", "pattern": "/app/rest/users/id:\\d+/tokens", "desc": "TeamCity auth bypass", "cve": "CVE-2024-27198"}
+      ]
+    },
+    
+    "scanners": {
+      "name": "Vulnerability Scanners",
+      "severity": "medium",
+      "enabled": true,
+      "patterns": [
+        {"id": "scan-001", "pattern": "(nikto|nmap|sqlmap|burp|zap|acunetix)", "desc": "Scanner user-agent", "check": "user-agent"},
+        {"id": "scan-002", "pattern": "/\\.git/config", "desc": "Git config probe"},
+        {"id": "scan-003", "pattern": "/\\.env", "desc": "Environment file probe"},
+        {"id": "scan-004", "pattern": "/(wp-login|xmlrpc)\\.php", "desc": "WordPress probe"},
+        {"id": "scan-005", "pattern": "/actuator/(health|info|env)", "desc": "Spring Boot actuator"},
+        {"id": "scan-006", "pattern": "/debug/pprof", "desc": "Go pprof debug"}
+      ]
+    },
+    
+    "webmail": {
+      "name": "Webmail Specific",
+      "severity": "high",
+      "enabled": true,
+      "patterns": [
+        {"id": "mail-001", "pattern": "\\.\\./(config|db|data)", "desc": "Roundcube path traversal"},
+        {"id": "mail-002", "pattern": "_action=(upload|import).*\\.(php|phtml)", "desc": "Malicious upload"},
+        {"id": "mail-003", "pattern": "_uid=.*[\\x27\\x22<>]", "desc": "XSS in mail UID"},
+        {"id": "mail-004", "pattern": "installer/", "desc": "Installer access attempt"},
+        {"id": "mail-005", "pattern": "(temp|logs)/.*\\.(php|sh|pl)", "desc": "Script in temp/logs"}
+      ]
+    },
+    
+    "api_abuse": {
+      "name": "API Abuse",
+      "severity": "medium",
+      "enabled": true,
+      "patterns": [
+        {"id": "api-001", "pattern": "/api/.*/admin", "desc": "Admin API access"},
+        {"id": "api-002", "pattern": "graphql.*(__schema|introspection)", "desc": "GraphQL introspection"},
+        {"id": "api-003", "pattern": "\\{.*\\$where.*\\}", "desc": "NoSQL injection"},
+        {"id": "api-004", "pattern": "jwt=.*\\.\\.\\.\\.", "desc": "JWT manipulation"}
+      ]
+    }
+  }
+}

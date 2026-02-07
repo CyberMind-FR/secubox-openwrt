@@ -1,0 +1,36 @@
+#!/bin/sh
+# Sync mitmproxy WAF config from UCI to JSON
+
+CONFIG_FILE="/srv/mitmproxy/waf-config.json"
+
+# Read UCI values
+enabled=$(uci -q get mitmproxy.waf_rules.enabled || echo 1)
+sqli=$(uci -q get mitmproxy.waf_rules.sqli || echo 1)
+xss=$(uci -q get mitmproxy.waf_rules.xss || echo 1)
+lfi=$(uci -q get mitmproxy.waf_rules.lfi || echo 1)
+rce=$(uci -q get mitmproxy.waf_rules.rce || echo 1)
+cve_2024=$(uci -q get mitmproxy.waf_rules.cve_2024 || echo 1)
+scanners=$(uci -q get mitmproxy.waf_rules.scanners || echo 1)
+webmail=$(uci -q get mitmproxy.waf_rules.webmail || echo 1)
+api_abuse=$(uci -q get mitmproxy.waf_rules.api_abuse || echo 1)
+
+# Convert to JSON booleans
+to_bool() { [ "$1" = "1" ] && echo "true" || echo "false"; }
+
+cat > "$CONFIG_FILE" << EOF
+{
+  "enabled": $(to_bool $enabled),
+  "categories": {
+    "sqli": $(to_bool $sqli),
+    "xss": $(to_bool $xss),
+    "lfi": $(to_bool $lfi),
+    "rce": $(to_bool $rce),
+    "cve_2024": $(to_bool $cve_2024),
+    "scanners": $(to_bool $scanners),
+    "webmail": $(to_bool $webmail),
+    "api_abuse": $(to_bool $api_abuse)
+  }
+}
+EOF
+
+echo "[WAF] Config synced to $CONFIG_FILE"
