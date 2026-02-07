@@ -624,7 +624,7 @@ EOF
 
 _generate_backend() {
 	local section="$1"
-	local enabled name mode balance health_check health_check_uri
+	local enabled name mode balance health_check health_check_uri http_request
 
 	config_get enabled "$section" enabled "0"
 	[ "$enabled" = "1" ] || return
@@ -641,6 +641,35 @@ _generate_backend() {
 	echo ""
 	echo "backend $name"
 	echo "    mode $mode"
+
+	# Check for http-request directives
+	# Support both single value and list
+	local http_request_val=""
+	config_get http_request_val "$section" http_request ""
+
+	if [ -n "$http_request_val" ]; then
+		# Single http-request option set
+		echo "    http-request $http_request_val"
+		# If it's a "return" directive, this is a static backend - skip servers
+		case "$http_request_val" in
+			return*) return ;;
+		esac
+	fi
+
+	# Also check for list values (http_request as list)
+	local has_http_request_return=0
+	_emit_and_check_http_request() {
+		local val="$1"
+		echo "    http-request $val"
+		case "$val" in
+			return*) has_http_request_return=1 ;;
+		esac
+	}
+	config_list_foreach "$section" http_request _emit_and_check_http_request
+
+	# If any http-request was a "return" directive, skip servers
+	[ "$has_http_request_return" = "1" ] && return
+
 	echo "    balance $balance"
 
 	# Health check configuration

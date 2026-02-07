@@ -185,7 +185,7 @@ All cloud providers are **opt-in**. Offline resilience: local tier always active
 
 ### v1.0.0 — Full Stack
 
-- [ ] Config Advisor (ANSSI prep)
+- [x] Config Advisor (ANSSI prep) — Done 2026-02-07
 - [ ] P2P Mesh Intelligence
 - [ ] Factory auto-provisioning
 - [ ] VoIP integration

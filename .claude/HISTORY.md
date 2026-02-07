@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-02-06_
+_Last updated: 2026-02-07_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -885,3 +885,22 @@ _Last updated: 2026-02-06_
     - Integrated into secubox-core daemon startup (vhost init after 5s delay)
     - Added to uci-defaults for firstboot initialization
     - Updated Makefile to install `secubox-vhost` script
+
+59. **HAProxy "End of Internet" Default Page & http-request Support (2026-02-07)**
+    - **End of Internet Page** (`/www/end-of-internet.html`):
+      - Cyberpunk-style fallback page for unknown/unmatched domains
+      - Animated matrix rain effect, glitch text, ASCII art logo
+      - Real-time packet counter animation
+      - Displays "REALITY NOT FOUND" error for unregistered domains
+      - Fetches live stats from `/secubox-status.json` if available
+    - **HAProxy Generator Enhancements** (`haproxyctl`):
+      - Added `http-request` UCI option support for backends
+      - Supports both single value and list of http-request directives
+      - Static backends (http-request return) skip server config
+      - Path-rewriting backends (http-request set-path) include servers
+      - Backend validation: rejects IP:port format in backend names
+    - **Default Backend Configuration**:
+      - Set `end_of_internet` as default_backend for both HTTP and HTTPS frontends
+      - Uses http-request set-path to serve /end-of-internet.html via uhttpd
+      - Deployed page to /srv/haproxy for container access
+    - **Commits**: e25509cb (backend validation), this session (http-request support)

@@ -286,7 +286,14 @@
       "Bash(recipient table\" errors because Postfix treated the domain as local\ninstead of virtual.\n\nChanges:\n- Remove $mydomain from mydestination in setup.sh\n- Update fix-postfix command to also fix this issue\n- Ensure vdomains file is properly created\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt commit -m \"$\\(cat <<''EOF''\ndocs: Document mail port hijacking fix\n\nFirewall DNAT rules were redirecting ALL port 993/587/465 traffic\nto local mailserver, blocking external mail server connections.\n\nFix: Add -i $WAN_IF to only redirect inbound WAN traffic.\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt commit -m \"$\\(cat <<''EOF''\nfeat\\(vortex-dns\\): Add LuCI dashboard for mesh DNS management\n\nNew package: luci-app-vortex-dns\n- Dashboard showing mode, status, sync info\n- Master section with delegated zones table\n- Slave section with parent master info\n- Mesh peers section with online status\n- Actions: Initialize master, Join slave, Delegate zone, Mesh sync\n- RPCD handler with 8 methods\n\nAlso fixes:\n- Mail port hijacking: WAN-only DNAT rules\n- Threat-analyst LocalAI port: 8081 → 8091\n- Domoticz password reset\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
-      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt commit -m \"$\\(cat <<''EOF''\nfeat\\(domoticz\\): Add password reset via RPCD\n\nNew RPCD method: reset_password\n- Resets Domoticz admin password via SQLite\n- Accessible from LuCI dashboard\n- MD5 hashes the password before storing\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt commit -m \"$\\(cat <<''EOF''\nfeat\\(domoticz\\): Add password reset via RPCD\n\nNew RPCD method: reset_password\n- Resets Domoticz admin password via SQLite\n- Accessible from LuCI dashboard\n- MD5 hashes the password before storing\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git remote set-url:*)",
+      "Bash(git bundle:*)",
+      "Bash(TOKEN=\"df72316e404f77bc0cf8068ee4833892da13c1ced50d56a4f8bb19fc991c8674\")",
+      "WebFetch(domain:evolution.gk2.secubox.in)",
+      "WebFetch(domain:console.gk2.secubox.in)",
+      "Bash(SCRIPT)",
+      "Bash(tcpdump:*)"
     ]
   }
 }
