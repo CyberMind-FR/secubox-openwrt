@@ -1,0 +1,93 @@
+#!/bin/sh
+# SecuBox Heartbeat Status - Returns JSON for dashboard/LED status
+# Includes DNS, CrowdSec, HAProxy, mitmproxy health
+
+# Get resource metrics
+CPU_LOAD=$(cat /proc/loadavg | cut -d" " -f1)
+MEM_TOTAL=$(grep MemTotal /proc/meminfo | awk "{print \$2}")
+MEM_AVAIL=$(grep MemAvailable /proc/meminfo | awk "{print \$2}")
+MEM_PERCENT=$((100 - (MEM_AVAIL * 100 / MEM_TOTAL)))
+DISK_PERCENT=$(df / | tail -1 | awk "{print \$5}" | tr -d "%")
+
+# Service counts
+SERVICES_UP=$(secubox-profile-snapshot list 2>/dev/null | grep -c "\[UP\]")
+SERVICES_DOWN=$(secubox-profile-snapshot list 2>/dev/null | grep -c "\[DOWN\]")
+CONTAINERS_UP=$(lxc-ls -f 2>/dev/null | grep -c RUNNING)
+
+# DNS Health Check
+DNS_OK=0
+DNS_RESPONSE=""
+if nslookup github.com 127.0.0.1 >/dev/null 2>&1; then
+    DNS_OK=1
+    DNS_RESPONSE="ok"
+else
+    DNS_RESPONSE="failed"
+fi
+
+# BIND running check
+BIND_RUNNING=0
+pgrep named >/dev/null 2>&1 && BIND_RUNNING=1
+
+# CrowdSec health
+CROWDSEC_OK=0
+pgrep crowdsec >/dev/null 2>&1 && CROWDSEC_OK=1
+CROWDSEC_BANS=$(cscli decisions list -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+
+# HAProxy health
+HAPROXY_OK=0
+lxc-info -n haproxy -s 2>/dev/null | grep -q RUNNING && HAPROXY_OK=1
+
+# mitmproxy health
+MITMPROXY_OK=0
+pgrep -f mitmproxy >/dev/null 2>&1 && MITMPROXY_OK=1
+
+# Calculate health score (0-100)
+SCORE=100
+[ "$MEM_PERCENT" -gt 80 ] && SCORE=$((SCORE - 10))
+[ "$DISK_PERCENT" -gt 80 ] && SCORE=$((SCORE - 10))
+[ "$SERVICES_DOWN" -gt 0 ] && SCORE=$((SCORE - (SERVICES_DOWN * 5)))
+[ "$DNS_OK" -eq 0 ] && SCORE=$((SCORE - 20))
+[ "$CROWDSEC_OK" -eq 0 ] && SCORE=$((SCORE - 15))
+[ "$HAPROXY_OK" -eq 0 ] && SCORE=$((SCORE - 15))
+[ "$MITMPROXY_OK" -eq 0 ] && SCORE=$((SCORE - 10))
+
+# Clamp to 0
+[ "$SCORE" -lt 0 ] && SCORE=0
+
+# Determine status level
+if [ "$SCORE" -ge 80 ]; then
+    LEVEL="healthy"
+elif [ "$SCORE" -ge 50 ]; then
+    LEVEL="warning"
+else
+    LEVEL="critical"
+fi
+
+cat << JSON
+{
+  "score": $SCORE,
+  "level": "$LEVEL",
+  "resources": {
+    "cpu_load": "$CPU_LOAD",
+    "memory_percent": $MEM_PERCENT,
+    "storage_percent": $DISK_PERCENT
+  },
+  "services": {
+    "up": $SERVICES_UP,
+    "down": $SERVICES_DOWN,
+    "dns": $DNS_OK,
+    "bind": $BIND_RUNNING,
+    "crowdsec": $CROWDSEC_OK,
+    "haproxy": $HAPROXY_OK,
+    "mitmproxy": $MITMPROXY_OK
+  },
+  "security": {
+    "crowdsec_bans": $CROWDSEC_BANS,
+    "dns_response": "$DNS_RESPONSE"
+  },
+  "containers": {
+    "running": $CONTAINERS_UP
+  },
+  "last_update": "$(date -Iseconds)"
+}
+JSON
