@@ -904,3 +904,9 @@ _Last updated: 2026-02-07_
       - Uses http-request set-path to serve /end-of-internet.html via uhttpd
       - Deployed page to /srv/haproxy for container access
     - **Commits**: e25509cb (backend validation), this session (http-request support)
+
+60. **CrowdSec Dashboard Threat Origins Fix (2026-02-07)**
+    - Fixed `[object Object]` display bug in Threat Origins widget
+    - `parseCountries()` now correctly handles countries as array of objects
+    - Data format: `[{country: "US", count: 67}, ...]` vs plain `{US: 67}`
+    - Commit: 58b6dc1d

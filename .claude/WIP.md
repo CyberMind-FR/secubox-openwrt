@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-06_
+_Last updated: 2026-02-07_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -52,6 +52,17 @@ _Last updated: 2026-02-06_
   - Created `luci-app-vortex-dns` dashboard
 
 ### Just Completed (2026-02-06/07)
+
+- **HAProxy "End of Internet" Default Page** — DONE (2026-02-07)
+  - Cyberpunk fallback page for unknown/unmatched domains
+  - Matrix rain animation, glitch text, ASCII art SecuBox logo
+  - Added `http-request` UCI option support in haproxyctl generator
+  - Path rewriting via `http-request set-path` for static content
+  - Backend validation rejects IP:port misconfiguration
+
+- **CrowdSec Threat Origins Fix** — DONE (2026-02-07)
+  - Fixed `[object Object]` display bug in Threat Origins widget
+  - `parseCountries()` now handles array format `[{country, count}]`
 
 - **CrowdSec Dashboard Cache System** — DONE (2026-02-06)
   - Created `/usr/sbin/secubox-crowdsec-collector` v4 background stats collector
