@@ -5,6 +5,30 @@
 
 . /lib/functions.sh
 . /usr/share/libubox/jshn.sh
+n# Extract ZIP with flatten for single root directories
+extract_zip_flatten() {
+    local zip_file="$1"
+    local target_dir="$2"
+    local tmpextract="/tmp/streamlit_extract_$$"
+    
+    mkdir -p "$tmpextract" "$target_dir"
+    unzip -o "$zip_file" -d "$tmpextract" >/dev/null 2>&1
+    
+    local root_items=$(ls -1 "$tmpextract" 2>/dev/null | wc -l)
+    if [ "$root_items" = "1" ]; then
+        local single_dir="$tmpextract/$(ls -1 "$tmpextract" | head -1)"
+        if [ -d "$single_dir" ]; then
+            mv "$single_dir"/* "$target_dir/" 2>/dev/null
+            mv "$single_dir"/.* "$target_dir/" 2>/dev/null
+        else
+            mv "$single_dir" "$target_dir/"
+        fi
+    else
+        mv "$tmpextract"/* "$target_dir/" 2>/dev/null
+        mv "$tmpextract"/.* "$target_dir/" 2>/dev/null
+    fi
+    rm -rf "$tmpextract"
+}
 
 CONFIG="streamlit"
 LXC_NAME="streamlit"
@@ -616,7 +640,7 @@ upload_finalize() {
 
 		local app_dir="$data_path/apps/$name"
 		mkdir -p "$app_dir"
-		unzip -o "$tmpzip" -d "$app_dir" >/dev/null 2>&1
+		extract_zip_flatten "$tmpzip" "$app_dir"
 		rm -f "$tmpzip"
 
 		local main_py
@@ -934,7 +958,7 @@ upload_zip() {
 		done
 	else
 		# Extract all
-		unzip -o "$tmpzip" -d "$app_dir" >/dev/null 2>&1
+		extract_zip_flatten "$tmpzip" "$app_dir"
 	fi
 
 	rm -f "$tmpzip"

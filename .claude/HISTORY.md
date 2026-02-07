@@ -910,3 +910,11 @@ _Last updated: 2026-02-07_
     - `parseCountries()` now correctly handles countries as array of objects
     - Data format: `[{country: "US", count: 67}, ...]` vs plain `{US: 67}`
     - Commit: 58b6dc1d
+
+22. **Stats Evolution & Fabricator (2026-02-07)**
+    - Silenced CrowdSec kernel log spam (deny_log=0 in bouncer config)
+    - Added metablogizer-json to cron for blog site status updates
+    - Created Widget Fabricator Streamlit app (port 8520): Collectors, Apps, Blogs, Services, Widgets
+    - Added bot whitelist to mitmproxy WAF (Facebook, Google, Bing, etc.) to prevent false positive SSRF alerts
+    - Fixed Streamlit ZIP upload with extract_zip_flatten() for nested root directories
+    - Emancipated yijing-360 and fabricator apps with DNS + SSL
