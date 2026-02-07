@@ -930,3 +930,5 @@ _Last updated: 2026-02-07_
     - Deployed lldh.gk2.secubox.in with full 82-image gallery
     - Added YouTube background music embed with autoplay/loop
     - Toggle button (🎵) for mute/unmute control
+    - Multi-domain SSL: added lldh.ganimed.fr (OVH DNS) as secondary domain
+    - Both domains share same backend (metablog_lldh on port 8914)
