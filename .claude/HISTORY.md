@@ -918,3 +918,15 @@ _Last updated: 2026-02-07_
     - Added bot whitelist to mitmproxy WAF (Facebook, Google, Bing, etc.) to prevent false positive SSRF alerts
     - Fixed Streamlit ZIP upload with extract_zip_flatten() for nested root directories
     - Emancipated yijing-360 and fabricator apps with DNS + SSL
+    - **Fabricator Live Data Update**: All pages now use actual UCI configs and JSON cache files
+      - Collectors: shows real scripts, JSON cache with run/view buttons
+      - Apps: live UCI streamlit instances with test/restart/open
+      - Blogs: reads metablogizer sites from UCI with test/rebuild/expose
+      - Services: real HAProxy vhosts/backends from UCI
+      - Widgets: reads /tmp/secubox/*.json with live stats display
+    - Commit: bfd2ed7c
+
+23. **La Livrée d'Hermès Gallery (2026-02-07)**
+    - Deployed lldh.gk2.secubox.in with full 82-image gallery
+    - Added YouTube background music embed with autoplay/loop
+    - Toggle button (🎵) for mute/unmute control
