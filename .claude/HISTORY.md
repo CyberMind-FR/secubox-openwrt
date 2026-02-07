@@ -932,3 +932,10 @@ _Last updated: 2026-02-07_
     - Toggle button (🎵) for mute/unmute control
     - Multi-domain SSL: added lldh.ganimed.fr (OVH DNS) as secondary domain
     - Both domains share same backend (metablog_lldh on port 8914)
+
+24. **Stats Evolution Plan Complete (2026-02-07)**
+    - **Phase 1**: Stats infrastructure with 17 JSON cache files, cron collectors
+    - **Phase 2**: Landing page JSON symlinks for gk2.secubox.in access
+    - **Phase 3**: Widget Fabricator with live UCI/JSON data on all pages
+    - **Phase 4**: Full integration - Fabricator in landing page instances
+    - All JSON endpoints verified: streamlit-instances, metablogizer-sites, secubox-status, heartbeat
