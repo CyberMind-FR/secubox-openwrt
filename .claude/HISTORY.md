@@ -939,3 +939,8 @@ _Last updated: 2026-02-07_
     - **Phase 3**: Widget Fabricator with live UCI/JSON data on all pages
     - **Phase 4**: Full integration - Fabricator in landing page instances
     - All JSON endpoints verified: streamlit-instances, metablogizer-sites, secubox-status, heartbeat
+
+25. **yijing360 Deployment (2026-02-07)**
+    - Fixed port conflict: console (8515), yijing360 (8521)
+    - Deployed yijing-360.zip with generator.py
+    - Emancipated: yijing360.gk2.secubox.in with SSL
