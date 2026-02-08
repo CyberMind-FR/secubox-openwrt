@@ -1,0 +1,306 @@
+#!/bin/sh
+#
+# SecuBox Clone Auto-Provisioning
+# Runs on first boot of cloned devices to:
+#   1. Resize root partition to full disk
+#   2. Configure as mesh peer
+#   3. Join mesh with token or request approval
+#
+# Environment variables (set by clone builder):
+#   SECUBOX_MASTER      - Master IP address
+#   SECUBOX_CLONE_TOKEN - Pre-approved join token
+#   SECUBOX_AUTO_JOIN   - Auto-join mesh (1=yes, 0=request only)
+#
+
+# Check if we're a clone (marker file or env)
+CLONE_MARKER="/etc/secubox/.clone-provision"
+PROVISION_LOG="/var/log/secubox-clone-provision.log"
+
+# Default values (can be overridden by embedded config)
+MASTER_IP="${SECUBOX_MASTER:-}"
+CLONE_TOKEN="${SECUBOX_CLONE_TOKEN:-}"
+AUTO_JOIN="${SECUBOX_AUTO_JOIN:-1}"
+
+log() {
+	local msg="[$(date +%T)] $*"
+	echo "$msg" >> "$PROVISION_LOG"
+	logger -t secubox-clone "$*"
+	echo "$msg"
+}
+
+# Try to load embedded clone config
+load_clone_config() {
+	# Check for config in /etc/secubox/clone.conf
+	if [ -f /etc/secubox/clone.conf ]; then
+		. /etc/secubox/clone.conf
+		log "Loaded clone config from /etc/secubox/clone.conf"
+		return 0
+	fi
+
+	# Check for TFTP-downloaded config
+	if [ -f /tmp/clone-config.sh ]; then
+		. /tmp/clone-config.sh
+		log "Loaded clone config from /tmp/clone-config.sh"
+		return 0
+	fi
+
+	return 1
+}
+
+# Resize root partition to full disk
+resize_root() {
+	log "Checking root partition resize..."
+
+	ROOT_DEV=$(awk '$2=="/" {print $1}' /proc/mounts)
+	if [ -z "$ROOT_DEV" ]; then
+		log "Cannot determine root device"
+		return 1
+	fi
+
+	# Determine disk and partition number
+	# Handle both /dev/mmcblk0p2 and /dev/sda2 formats
+	if echo "$ROOT_DEV" | grep -q "mmcblk\|nvme"; then
+		# MMC/NVMe style: /dev/mmcblk0p2 -> /dev/mmcblk0 + 2
+		DISK=$(echo "$ROOT_DEV" | sed 's/p[0-9]*$//')
+		PART_NUM=$(echo "$ROOT_DEV" | grep -o 'p[0-9]*$' | tr -d 'p')
+	else
+		# SCSI style: /dev/sda2 -> /dev/sda + 2
+		DISK=$(echo "$ROOT_DEV" | sed 's/[0-9]*$//')
+		PART_NUM=$(echo "$ROOT_DEV" | grep -o '[0-9]*$')
+	fi
+
+	if [ -z "$DISK" ] || [ -z "$PART_NUM" ]; then
+		log "Cannot parse disk/partition from $ROOT_DEV"
+		return 1
+	fi
+
+	log "Root device: $ROOT_DEV (disk: $DISK, partition: $PART_NUM)"
+
+	# Get current and potential sizes
+	local current_size=$(df -m / | tail -1 | awk '{print $2}')
+	log "Current root size: ${current_size}MB"
+
+	# Check if parted is available
+	if ! command -v parted >/dev/null 2>&1; then
+		log "parted not available, skipping resize"
+		return 1
+	fi
+
+	# Get disk total size
+	local disk_size=$(parted -s "$DISK" unit MB print 2>/dev/null | \
+		grep "^Disk $DISK" | sed 's/.*: //' | tr -d 'MB')
+
+	if [ -n "$disk_size" ]; then
+		log "Disk size: ${disk_size}MB"
+
+		# Only resize if there's significant space to gain (>10%)
+		local potential_gain=$((disk_size - current_size))
+		if [ "$potential_gain" -gt "$((current_size / 10))" ]; then
+			log "Resizing partition $PART_NUM to 100%..."
+
+			# Resize partition
+			if parted -s "$DISK" resizepart "$PART_NUM" 100% 2>/dev/null; then
+				log "Partition resized"
+
+				# Resize filesystem
+				if resize2fs "$ROOT_DEV" 2>/dev/null; then
+					sync
+					local new_size=$(df -m / | tail -1 | awk '{print $2}')
+					log "Filesystem resized: ${current_size}MB -> ${new_size}MB"
+				else
+					log "resize2fs failed (may need reboot)"
+				fi
+			else
+				log "parted resize failed"
+			fi
+		else
+			log "Partition already at optimal size"
+		fi
+	fi
+
+	return 0
+}
+
+# Discover master via mDNS or network scan
+discover_master() {
+	# If master already set, use it
+	if [ -n "$MASTER_IP" ]; then
+		log "Master IP from config: $MASTER_IP"
+		echo "$MASTER_IP"
+		return 0
+	fi
+
+	log "Discovering master..."
+
+	# Try mDNS if avahi is available
+	if command -v avahi-browse >/dev/null 2>&1; then
+		local mdns_master=$(avahi-browse -rt _secubox._tcp 2>/dev/null | \
+			grep -oP '\d+\.\d+\.\d+\.\d+' | head -1)
+		if [ -n "$mdns_master" ]; then
+			log "Found master via mDNS: $mdns_master"
+			echo "$mdns_master"
+			return 0
+		fi
+	fi
+
+	# Try common gateway (often the master)
+	local gateway=$(ip route | grep default | awk '{print $3}' | head -1)
+	if [ -n "$gateway" ]; then
+		# Check if it responds to SecuBox P2P port
+		if nc -z -w2 "$gateway" 7331 2>/dev/null; then
+			log "Found master at gateway: $gateway"
+			echo "$gateway"
+			return 0
+		fi
+	fi
+
+	# Scan common SecuBox subnets
+	for subnet in 192.168.255 192.168.1 192.168.0; do
+		if nc -z -w1 "${subnet}.1" 7331 2>/dev/null; then
+			log "Found master via scan: ${subnet}.1"
+			echo "${subnet}.1"
+			return 0
+		fi
+	done
+
+	log "No master discovered"
+	return 1
+}
+
+# Configure as mesh peer
+configure_peer() {
+	local master="$1"
+
+	log "Configuring as mesh peer (upstream: $master)..."
+
+	# Set master-link configuration
+	uci -q batch <<-EOF
+		set master-link.main=master-link
+		set master-link.main.enabled='1'
+		set master-link.main.role='peer'
+		set master-link.main.upstream='$master'
+		set master-link.main.auto_approve='0'
+		commit master-link
+	EOF
+
+	# Mark as clone
+	mkdir -p /etc/secubox
+	echo "$master" > /etc/secubox/.clone-master
+	date -Iseconds > /etc/secubox/.clone-provisioned
+
+	log "Peer configuration saved"
+}
+
+# Join mesh network
+join_mesh() {
+	local master="$1"
+	local token="$2"
+
+	if [ -n "$token" ]; then
+		log "Joining mesh with pre-approved token..."
+
+		# Use master-link join with token
+		if [ -x /usr/lib/secubox/master-link.sh ]; then
+			if /usr/lib/secubox/master-link.sh join "$master" "$token" 2>/dev/null; then
+				log "Joined mesh successfully with token"
+				return 0
+			else
+				log "Token join failed, falling back to request"
+			fi
+		fi
+	fi
+
+	# Request join (requires manual approval on master)
+	if [ "$AUTO_JOIN" = "1" ]; then
+		log "Requesting mesh join (needs approval on master)..."
+
+		if [ -x /usr/lib/secubox/master-link.sh ]; then
+			if /usr/lib/secubox/master-link.sh request_join "$master" 2>/dev/null; then
+				log "Join request sent to master"
+				return 0
+			fi
+		fi
+	else
+		log "Auto-join disabled, manual mesh setup required"
+	fi
+
+	return 1
+}
+
+# Start SecuBox services
+start_services() {
+	log "Starting SecuBox services..."
+
+	# Enable and start core service
+	if [ -x /etc/init.d/secubox-core ]; then
+		/etc/init.d/secubox-core enable
+		/etc/init.d/secubox-core start
+	fi
+
+	# Enable master-link for mesh
+	if [ -x /etc/init.d/secubox-master-link ]; then
+		/etc/init.d/secubox-master-link enable
+		/etc/init.d/secubox-master-link start
+	fi
+
+	log "Services started"
+}
+
+# Main provisioning flow
+main() {
+	log "═══════════════════════════════════════════"
+	log "SecuBox Clone Provisioning Starting"
+	log "═══════════════════════════════════════════"
+
+	# Load any embedded config
+	load_clone_config
+
+	# Step 1: Resize root partition
+	log "Step 1/4: Resize root partition"
+	resize_root || log "Resize skipped or failed"
+
+	# Step 2: Discover master
+	log "Step 2/4: Discover master"
+	MASTER_IP=$(discover_master)
+	if [ -z "$MASTER_IP" ]; then
+		log "No master found - standalone mode"
+		log "Manual mesh setup required: secubox master-link join <master-ip>"
+	fi
+
+	# Step 3: Configure as peer
+	if [ -n "$MASTER_IP" ]; then
+		log "Step 3/4: Configure as mesh peer"
+		configure_peer "$MASTER_IP"
+
+		# Step 4: Join mesh
+		log "Step 4/4: Join mesh"
+		join_mesh "$MASTER_IP" "$CLONE_TOKEN"
+	else
+		log "Step 3/4: Skipped (no master)"
+		log "Step 4/4: Skipped (no master)"
+	fi
+
+	# Start services
+	start_services
+
+	# Summary
+	log "═══════════════════════════════════════════"
+	log "Clone Provisioning Complete"
+	log "───────────────────────────────────────────"
+	log "Root size: $(df -h / | tail -1 | awk '{print $2}')"
+	log "Master: ${MASTER_IP:-none}"
+	log "Mesh status: $(uci -q get master-link.main.role 2>/dev/null || echo 'unconfigured')"
+	log "═══════════════════════════════════════════"
+
+	# Mark provisioning complete (prevents re-run)
+	touch "$CLONE_MARKER"
+}
+
+# Run if not already provisioned
+if [ ! -f "$CLONE_MARKER" ]; then
+	main
+else
+	logger -t secubox-clone "Clone already provisioned, skipping"
+fi
+
+exit 0

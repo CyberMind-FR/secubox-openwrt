@@ -194,6 +194,89 @@ ml_token_cleanup() {
 	echo "{\"cleaned\":$cleaned}"
 }
 
+# Generate clone-specific token with auto-approve
+# Used by secubox-cloner for station cloning
+ml_clone_token_generate() {
+	ml_init
+
+	local ttl="${1:-86400}"  # 24 hours default for clones
+	local token_type="${2:-clone}"
+
+	local now=$(date +%s)
+	local expires=$((now + ttl))
+	local rand=$(head -c 32 /dev/urandom 2>/dev/null | sha256sum | cut -d' ' -f1)
+	[ -z "$rand" ] && rand=$(date +%s%N | sha256sum | cut -d' ' -f1)
+
+	# HMAC token using master key
+	local key_data=$(cat "$KEYFILE" 2>/dev/null)
+	local token=$(echo "${key_data}:clone:${rand}:${now}" | sha256sum | cut -d' ' -f1)
+	local token_hash=$(echo "$token" | sha256sum | cut -d' ' -f1)
+
+	# Store token in UCI with auto_approve flag
+	local section_id="clone_$(echo "$token_hash" | cut -c1-8)"
+	uci -q batch <<-EOF
+		set master-link.${section_id}=token
+		set master-link.${section_id}.hash='${token_hash}'
+		set master-link.${section_id}.created='${now}'
+		set master-link.${section_id}.expires='${expires}'
+		set master-link.${section_id}.peer_fp=''
+		set master-link.${section_id}.status='active'
+		set master-link.${section_id}.type='${token_type}'
+		set master-link.${section_id}.auto_approve='1'
+	EOF
+	uci commit master-link
+
+	# Store full token locally for validation
+	echo "$token" > "$ML_TOKENS_DIR/${token_hash}"
+
+	# Record in blockchain
+	local fp=$(factory_fingerprint 2>/dev/null)
+	chain_add_block "clone_token_generated" \
+		"{\"token_hash\":\"$token_hash\",\"type\":\"$token_type\",\"expires\":$expires,\"created_by\":\"$fp\"}" \
+		"$(echo "clone_token:${token_hash}:${now}" | sha256sum | cut -d' ' -f1)" >/dev/null 2>&1
+
+	# Build join URL
+	local my_addr=$(uci -q get network.lan.ipaddr)
+	[ -z "$my_addr" ] && my_addr=$(ip -4 addr show br-lan 2>/dev/null | grep -oP 'inet \K[0-9.]+' | head -1)
+
+	logger -t master-link "Clone token generated: ${token_hash} (auto-approve, expires: $(date -d @$expires -Iseconds 2>/dev/null || echo $expires))"
+
+	cat <<-EOF
+	{
+		"token": "$token",
+		"token_hash": "$token_hash",
+		"type": "$token_type",
+		"auto_approve": true,
+		"expires": $expires,
+		"ttl": $ttl,
+		"master_ip": "$my_addr",
+		"url": "http://${my_addr}:${MESH_PORT}/master-link/?token=${token}&type=clone"
+	}
+	EOF
+}
+
+# Check if token is a clone token with auto-approve
+ml_token_is_auto_approve() {
+	local token="$1"
+	local token_hash=$(echo "$token" | sha256sum | cut -d' ' -f1)
+
+	# Find token in UCI
+	local sections=$(uci -q show master-link 2>/dev/null | grep "=token$" | sed "s/master-link\.\(.*\)=token/\1/")
+	for sec in $sections; do
+		local hash=$(uci -q get "master-link.${sec}.hash")
+		if [ "$hash" = "$token_hash" ]; then
+			local auto=$(uci -q get "master-link.${sec}.auto_approve")
+			if [ "$auto" = "1" ]; then
+				echo "true"
+				return 0
+			fi
+			break
+		fi
+	done
+	echo "false"
+	return 1
+}
+
 # ============================================================================
 # Join Protocol
 # ============================================================================
@@ -236,9 +319,12 @@ ml_join_request() {
 
 	logger -t master-link "Join request from $peer_hostname ($peer_fp) at $peer_addr"
 
-	# Check auto-approve
+	# Check auto-approve: either global setting or token-specific (clone tokens)
 	local auto_approve=$(uci -q get master-link.main.auto_approve)
-	if [ "$auto_approve" = "1" ]; then
+	local token_auto=$(ml_token_is_auto_approve "$token")
+
+	if [ "$auto_approve" = "1" ] || [ "$token_auto" = "true" ]; then
+		logger -t master-link "Auto-approving join for $peer_fp (global=$auto_approve, token=$token_auto)"
 		ml_join_approve "$peer_fp"
 		return $?
 	fi
@@ -870,6 +956,37 @@ case "${1:-}" in
 		;;
 	token-cleanup)
 		ml_token_cleanup
+		;;
+	clone-token|generate-clone-token)
+		# Generate clone-specific auto-approve token
+		# Usage: master-link.sh clone-token [ttl]
+		ml_clone_token_generate "${2:-86400}" "clone"
+		;;
+	register-token)
+		# Register external token (for secubox-cloner integration)
+		# Usage: master-link.sh register-token <token> <ttl> <type>
+		local ext_token="$2"
+		local ext_ttl="${3:-86400}"
+		local ext_type="${4:-clone}"
+		local token_hash=$(echo "$ext_token" | sha256sum | cut -d' ' -f1)
+		local now=$(date +%s)
+		local expires=$((now + ext_ttl))
+		local section_id="ext_$(echo "$token_hash" | cut -c1-8)"
+		uci -q batch <<-EOF
+			set master-link.${section_id}=token
+			set master-link.${section_id}.hash='${token_hash}'
+			set master-link.${section_id}.created='${now}'
+			set master-link.${section_id}.expires='${expires}'
+			set master-link.${section_id}.peer_fp=''
+			set master-link.${section_id}.status='active'
+			set master-link.${section_id}.type='${ext_type}'
+			set master-link.${section_id}.auto_approve='1'
+		EOF
+		uci commit master-link
+		mkdir -p "$ML_TOKENS_DIR"
+		echo "$ext_token" > "$ML_TOKENS_DIR/${token_hash}"
+		logger -t master-link "External token registered: ${token_hash} (type=$ext_type, expires=$(date -d @$expires -Iseconds 2>/dev/null || echo $expires))"
+		echo "{\"registered\":true,\"token_hash\":\"$token_hash\",\"expires\":$expires}"
 		;;
 	join-request)
 		ml_join_request "$2" "$3" "$4" "$5"

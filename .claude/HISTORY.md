@@ -944,3 +944,49 @@ _Last updated: 2026-02-07_
     - Fixed port conflict: console (8515), yijing360 (8521)
     - Deployed yijing-360.zip with generator.py
     - Emancipated: yijing360.gk2.secubox.in with SSL
+
+26. **HAProxy Multi-Certificate SNI Fix (2026-02-07)**
+    - Fixed multi-domain SSL certificate handling using `crt-list` instead of directory mode
+    - Added `generate_certs_list()` function in haproxyctl to create certs.list from .pem files
+    - Updated `haproxy-sync-certs` to regenerate certs.list after syncing ACME certs
+    - HTTPS frontend now uses `crt-list /opt/haproxy/certs/certs.list` for reliable SNI matching
+    - Each certificate's SANs and CN are extracted to create explicit domain-to-cert mappings
+    - Fallback to directory mode if certs.list doesn't exist (backwards compatible)
+
+27. **HAProxy Backend IP Fix (2026-02-07)**
+    - Fixed localhost (127.0.0.1) usage in HAProxy backends - must use 192.168.255.1 (host bridge IP)
+    - HAProxy runs in LXC container, cannot reach host services via 127.0.0.1
+    - Added auto-conversion in RPCD handler: 127.0.0.1/localhost → 192.168.255.1
+    - Fixed CLI tools: secubox-exposure, jellyfinctl, jitsctl, simplexctl, secubox-subdomain
+    - Fixed Fabricator Streamlit Services page backend creation
+    - Fixed HAProxy config templates for jitsi
+
+28. **Station Cloner/Deployer Implementation (2026-02-08)**
+    - Created `secubox-tools/secubox-clone-station.sh` — host-side cloning orchestrator for dual USB serial.
+      - Commands: detect, pull, flash, verify, clone (full workflow), console, uboot, env-backup
+      - Integrates with MOKATOOL (`mochabin_tool.py`) for serial console automation
+      - Uses ASU API (firmware-selector.openwrt.org) for building clone images
+      - TFTP serving for network boot with auto-generated U-Boot commands
+    - Created `secubox-core/root/usr/sbin/secubox-cloner` — on-device clone manager CLI.
+      - Commands: build, serve, token, status, list, export
+      - Builds ext4 images for same device type (required for partition resize)
+      - Generates clone provision scripts for TFTP download
+      - Integrates with master-link for mesh join tokens
+    - Created `secubox-core/root/etc/uci-defaults/50-secubox-clone-provision` — first-boot provisioning.
+      - Step 1: Resize root partition to full disk (parted + resize2fs)
+      - Step 2: Discover master via mDNS or network scan
+      - Step 3: Configure as mesh peer (master-link UCI)
+      - Step 4: Join mesh with token or request approval
+    - Enhanced `secubox-master-link`:
+      - Added `ml_clone_token_generate()` for auto-approve clone tokens (24h TTL)
+      - Added `ml_token_is_auto_approve()` for token type detection
+      - Updated `ml_join_request()` to auto-approve clone tokens
+      - New CLI commands: clone-token, register-token
+    - Updated `secubox` CLI:
+      - Added `secubox clone` command group (build, serve, token, status, list, export)
+      - Added `secubox master-link` command group (status, peers, token, clone-token, join, approve, pending)
+    - **Clone workflow**:
+      1. Master: `secubox clone build && secubox clone serve --start`
+      2. Host: `./secubox-clone-station.sh clone` (detects, pulls, flashes target)
+      3. Target boots, resizes root, auto-joins mesh with pre-approved token
+    - Part of v0.19 mesh deployment automation.

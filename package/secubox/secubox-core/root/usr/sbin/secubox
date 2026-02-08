@@ -23,27 +23,28 @@ Modular OpenWrt Security Appliance Framework
 ${BOLD}Usage:${NC} secubox <command> [subcommand] [options]
 
 ${BOLD}Commands:${NC}
-  ${GREEN}app${NC}        Manage modules and AppStore
-  ${GREEN}feed${NC}       Manage catalog feed sources
-  ${GREEN}profile${NC}    Manage profiles and templates
-  ${GREEN}skill${NC}      Discover and manage skills
-  ${GREEN}feedback${NC}   Report issues and find resolutions
-  ${GREEN}device${NC}     Device information and management
-  ${GREEN}net${NC}        Network management
-  ${GREEN}diag${NC}       Diagnostics and health checks
-  ${GREEN}landing${NC}    Generate landing pages from vhosts
-  ${GREEN}ai${NC}         AI copilot (optional)
+  ${GREEN}app${NC}          Manage modules and AppStore
+  ${GREEN}feed${NC}         Manage catalog feed sources
+  ${GREEN}profile${NC}      Manage profiles and templates
+  ${GREEN}skill${NC}        Discover and manage skills
+  ${GREEN}feedback${NC}     Report issues and find resolutions
+  ${GREEN}device${NC}       Device information and management
+  ${GREEN}net${NC}          Network management
+  ${GREEN}diag${NC}         Diagnostics and health checks
+  ${GREEN}landing${NC}      Generate landing pages from vhosts
+  ${GREEN}clone${NC}        Station cloning and deployment
+  ${GREEN}master-link${NC}  Mesh network management
+  ${GREEN}ai${NC}           AI copilot (optional)
 
 ${BOLD}Examples:${NC}
   secubox app list
   secubox app install wireguard-vpn
   secubox feed list
-  secubox feed add my-feed http://example.com/catalog.json --type unpublished
-  secubox profile export --name "My Setup" --include-feeds
-  secubox skill list
-  secubox feedback report luci-app-example --type bug --summary "Crash on load"
+  secubox profile export --name "My Setup"
   secubox diag health
   secubox device status
+  secubox clone build && secubox clone serve --start
+  secubox master-link status
 
 Run ${BOLD}secubox <command> help${NC} for command-specific help.
 EOF
@@ -464,6 +465,105 @@ EOF
 	esac
 }
 
+# Clone commands
+cmd_clone() {
+	case "$1" in
+		build)
+			shift
+			/usr/sbin/secubox-cloner build "$@"
+			;;
+		serve)
+			shift
+			/usr/sbin/secubox-cloner serve "$@"
+			;;
+		token)
+			shift
+			/usr/sbin/secubox-cloner token "$@"
+			;;
+		status)
+			/usr/sbin/secubox-cloner status
+			;;
+		list)
+			/usr/sbin/secubox-cloner list
+			;;
+		export)
+			shift
+			/usr/sbin/secubox-cloner export "$@"
+			;;
+		help|*)
+			cat <<EOF
+${BOLD}secubox clone${NC} - Station cloning and deployment
+
+${BOLD}Usage:${NC}
+  secubox clone build [--resize SIZE]   Build clone image for current device
+  secubox clone serve [--start|--stop]  Manage TFTP clone server
+  secubox clone token [--auto-approve]  Generate clone join token
+  secubox clone status                  Show cloner status
+  secubox clone list                    List pending/joined clones
+  secubox clone export [FILE]           Export clone image
+
+${BOLD}Clone Workflow:${NC}
+  1. ${GREEN}secubox clone build${NC}        Build clone image for same device type
+  2. ${GREEN}secubox clone serve --start${NC} Start TFTP server
+  3. Boot target from TFTP (see U-Boot commands)
+  4. ${GREEN}secubox clone list${NC}         Verify clone joined mesh
+
+${BOLD}Examples:${NC}
+  secubox clone build
+  secubox clone token --auto-approve
+  secubox clone serve --start
+EOF
+			;;
+	esac
+}
+
+# Master-link shortcut commands
+cmd_master_link() {
+	case "$1" in
+		status)
+			/usr/lib/secubox/master-link.sh status
+			;;
+		peers)
+			/usr/lib/secubox/master-link.sh peers
+			;;
+		token)
+			/usr/lib/secubox/master-link.sh token-generate
+			;;
+		clone-token)
+			/usr/lib/secubox/master-link.sh clone-token
+			;;
+		join)
+			shift
+			/usr/lib/secubox/master-link.sh join "$@"
+			;;
+		approve)
+			/usr/lib/secubox/master-link.sh join-approve "$2"
+			;;
+		pending)
+			ls -la /var/lib/secubox-master-link/requests/ 2>/dev/null || echo "No pending requests"
+			;;
+		help|*)
+			cat <<EOF
+${BOLD}secubox master-link${NC} - Mesh network management
+
+${BOLD}Usage:${NC}
+  secubox master-link status        Show mesh status
+  secubox master-link peers         List mesh peers
+  secubox master-link token         Generate join token
+  secubox master-link clone-token   Generate auto-approve clone token
+  secubox master-link join <ip>     Join a mesh (as peer)
+  secubox master-link approve <fp>  Approve pending join request
+  secubox master-link pending       List pending join requests
+
+${BOLD}Examples:${NC}
+  secubox master-link status
+  secubox master-link token
+  secubox master-link approve abc123
+EOF
+			;;
+	esac
+}
+
 # Main command router
 case "$1" in
 	app)
@@ -505,6 +605,14 @@ case "$1" in
 	ai)
 		shift
 		cmd_ai "$@"
+		;;
+	clone|cloner)
+		shift
+		cmd_clone "$@"
+		;;
+	master-link|mesh)
+		shift
+		cmd_master_link "$@"
 		;;
 	-v|--version|version)
 		echo "SecuBox v${SECUBOX_VERSION}"

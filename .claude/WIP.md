@@ -51,7 +51,15 @@ _Last updated: 2026-02-07_
   - Gossip-based exposure config sync via secubox-p2p
   - Created `luci-app-vortex-dns` dashboard
 
-### Just Completed (2026-02-06/07)
+### Just Completed (2026-02-06/08)
+
+- **Station Cloner/Deployer** — DONE (2026-02-08)
+  - Host-side `secubox-clone-station.sh` with MOKATOOL integration for dual USB serial control
+  - On-device `secubox-cloner` CLI for build/serve/token/export
+  - First-boot provisioning script with partition resize and mesh join
+  - Master-link clone tokens with auto-approve for seamless onboarding
+  - Added `secubox clone` and `secubox master-link` CLI command groups
+  - Full workflow: build image on master → TFTP serve → flash target → auto-join mesh
 
 - **HAProxy "End of Internet" Default Page** — DONE (2026-02-07)
   - Cyberpunk fallback page for unknown/unmatched domains
