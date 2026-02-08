@@ -65,6 +65,14 @@ config vhost 'cybermood_www'
 	option acme '1'
 	option enabled '1'
 
+config vhost 'cybermood_presse'
+	option domain 'presse.cybermood.eu'
+	option backend 'cybermood_presse'
+	option ssl '1'
+	option ssl_redirect '1'
+	option acme '1'
+	option enabled '1'
+
 # Example vhost
 #config vhost 'example'
 #	option domain 'example.com'
@@ -84,8 +92,23 @@ config backend 'cybermood_web'
 config server 'cybermood_srv'
 	option backend 'cybermood_web'
 	option name 'cybermood-srv'
-	option address '127.0.0.1'
+	option address '192.168.255.1'
 	option port '4000'
+	option check '1'
+	option enabled '1'
+
+# CyberMood Presse backend
+config backend 'cybermood_presse'
+	option name 'cybermood-presse'
+	option mode 'http'
+	option balance 'roundrobin'
+	option enabled '1'
+
+config server 'cybermood_presse_srv'
+	option backend 'cybermood_presse'
+	option name 'cybermood-presse-srv'
+	option address '192.168.255.1'
+	option port '4001'
 	option check '1'
 	option enabled '1'
 
@@ -123,6 +146,11 @@ config certificate 'cert_cybermood'
 
 config certificate 'cert_cybermood_www'
 	option domain 'www.cybermood.eu'
+	option type 'acme'
+	option enabled '1'
+
+config certificate 'cert_cybermood_presse'
+	option domain 'presse.cybermood.eu'
 	option type 'acme'
 	option enabled '1'
 
