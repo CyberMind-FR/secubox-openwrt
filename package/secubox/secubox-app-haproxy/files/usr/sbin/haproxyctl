@@ -566,6 +566,9 @@ EOF
 	config_load haproxy
 	config_foreach _add_ssl_redirect vhost
 
+	# Add path-based ACLs BEFORE vhost ACLs (path rules take precedence)
+	config_foreach _add_path_acl acl "http"
+
 	# Add vhost ACLs for HTTP
 	config_foreach _add_vhost_acl vhost "http"
 
@@ -597,6 +600,9 @@ frontend https-in
     http-request set-header X-Real-IP %[src]
 EOF
 		fi
+		# Add path-based ACLs BEFORE vhost ACLs (path rules take precedence)
+		config_foreach _add_path_acl acl "https"
+
 		# Add vhost ACLs for HTTPS
 		config_foreach _add_vhost_acl vhost "https"
 
@@ -621,6 +627,68 @@ _add_ssl_redirect() {
 	local acl_name=$(echo "$domain" | tr '.' '_' | tr '-' '_')
 	echo "    acl host_${acl_name} hdr(host) -i $domain"
 	echo "    http-request redirect scheme https code 301 if host_${acl_name} !{ ssl_fc } !is_acme_challenge"
+}
+
+# Generate path-based ACLs from UCI 'acl' sections
+# These are processed BEFORE vhost ACLs so path rules take precedence
+_add_path_acl() {
+	local section="$1"
+	local proto="$2"
+	local enabled type pattern backend host priority
+
+	config_get enabled "$section" enabled "1"
+	[ "$enabled" = "1" ] || return
+
+	config_get type "$section" type
+	config_get pattern "$section" pattern
+	config_get backend "$section" backend
+	config_get host "$section" host
+	config_get priority "$section" priority "100"
+
+	# Validate required fields
+	[ -n "$type" ] || return
+	[ -n "$pattern" ] || return
+	[ -n "$backend" ] || return
+
+	# Generate ACL name from section name
+	local acl_name=$(echo "$section" | tr '.' '_' | tr '-' '_')
+	local host_acl_name=""
+
+	# If host is specified, we need a host ACL too
+	if [ -n "$host" ]; then
+		host_acl_name=$(echo "$host" | tr '.' '_' | tr '-' '_')
+		echo "    acl host_${host_acl_name} hdr(host) -i $host"
+	fi
+
+	# Generate path ACL based on type
+	case "$type" in
+		path_beg)
+			echo "    acl ${acl_name} path_beg $pattern"
+			;;
+		path_end)
+			echo "    acl ${acl_name} path_end $pattern"
+			;;
+		path)
+			echo "    acl ${acl_name} path $pattern"
+			;;
+		path_reg)
+			echo "    acl ${acl_name} path_reg $pattern"
+			;;
+		path_dir)
+			echo "    acl ${acl_name} path_dir $pattern"
+			;;
+		*)
+			log_warn "Unknown ACL type: $type for $section"
+			return
+			;;
+	esac
+
+	# Generate use_backend rule
+	if [ -n "$host_acl_name" ]; then
+		echo "    use_backend $backend if host_${host_acl_name} ${acl_name}"
+	else
+		echo "    use_backend $backend if ${acl_name}"
+	fi
 }
 
 _add_vhost_acl() {
@@ -738,24 +806,12 @@ _generate_backend() {
 	echo "backend $name"
 	echo "    mode $mode"
 
-	# Check for http-request directives
-	# Support both single value and list
-	local http_request_val=""
-	config_get http_request_val "$section" http_request ""
-
-	if [ -n "$http_request_val" ]; then
-		# Single http-request option set
-		echo "    http-request $http_request_val"
-		# If it's a "return" directive, this is a static backend - skip servers
-		case "$http_request_val" in
-			return*) return ;;
-		esac
-	fi
-
-	# Also check for list values (http_request as list)
+	# Check for http-request directives (always as list)
 	local has_http_request_return=0
+	local has_http_requests=0
 	_emit_and_check_http_request() {
 		local val="$1"
+		has_http_requests=1
 		echo "    http-request $val"
 		case "$val" in
 			return*) has_http_request_return=1 ;;
