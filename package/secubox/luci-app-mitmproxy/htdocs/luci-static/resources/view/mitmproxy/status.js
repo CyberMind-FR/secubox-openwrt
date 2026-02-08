@@ -14,6 +14,11 @@ var callAlerts = rpc.declare({
 	method: 'alerts'
 });
 
+var callSubdomainMetrics = rpc.declare({
+	object: 'luci.mitmproxy',
+	method: 'subdomain_metrics'
+});
+
 var callStart = rpc.declare({
 	object: 'luci.mitmproxy',
 	method: 'start'
@@ -61,7 +66,8 @@ return view.extend({
 	load: function() {
 		return Promise.all([
 			callStatus().catch(function() { return {}; }),
-			callAlerts().catch(function() { return { alerts: [] }; })
+			callAlerts().catch(function() { return { alerts: [] }; }),
+			callSubdomainMetrics().catch(function() { return { metrics: { subdomains: {} } }; })
 		]);
 	},
 
@@ -69,6 +75,8 @@ return view.extend({
 		var status = data[0] || {};
 		var alertsData = data[1] || {};
 		var alerts = alertsData.alerts || [];
+		var metricsData = data[2] || {};
+		var subdomains = (metricsData.metrics && metricsData.metrics.subdomains) || {};
 		var self = this;
 
 		var view = E('div', { 'class': 'cbi-map' }, [
@@ -282,62 +290,61 @@ return view.extend({
 				])
 			]),
 
-			// Security Threats Card
+			// Subdomain Metrics Card
 			E('div', { 'class': 'cbi-section' }, [
 				E('h3', {}, [
-					_('Security Threats'),
+					_('Subdomain Metrics'),
 					' ',
 					E('span', { 'style': 'font-size: 14px; font-weight: normal; color: #666;' },
-						'(' + alerts.length + ' detected)')
+						'(' + Object.keys(subdomains).length + ' domains)')
 				]),
-				alerts.length > 0 ?
+				Object.keys(subdomains).length > 0 ?
 					E('div', {}, [
-						E('div', { 'style': 'margin-bottom: 12px;' }, [
-							E('button', {
-								'class': 'btn cbi-button',
-								'click': function() {
-									if (confirm(_('Clear all alerts?'))) {
-										callClearAlerts().then(function() { location.reload(); });
-									}
-								}
-							}, _('Clear Alerts'))
-						]),
 						E('table', { 'class': 'table', 'style': 'font-size: 13px;' }, [
 							E('tr', { 'class': 'tr cbi-section-table-titles' }, [
-								E('th', { 'class': 'th' }, _('Severity')),
-								E('th', { 'class': 'th' }, _('Type')),
-								E('th', { 'class': 'th' }, _('Path')),
-								E('th', { 'class': 'th' }, _('Source')),
-								E('th', { 'class': 'th' }, _('Time'))
+								E('th', { 'class': 'th' }, _('Subdomain')),
+								E('th', { 'class': 'th', 'style': 'text-align: right;' }, _('Requests')),
+								E('th', { 'class': 'th', 'style': 'text-align: right;' }, _('Threats')),
+								E('th', { 'class': 'th' }, _('Protocol')),
+								E('th', { 'class': 'th' }, _('Top URI')),
+								E('th', { 'class': 'th' }, _('Countries'))
 							])
-						].concat(alerts.slice(-20).reverse().map(function(alert) {
-							// Handle both old format (method/path) and new format (request)
-							var requestStr = alert.request || ((alert.method || 'GET') + ' ' + (alert.path || '-'));
-							var sourceIp = alert.source_ip || alert.ip || '-';
-							var timeStr = alert.timestamp || alert.time || '';
-							var timeDisplay = timeStr ? timeStr.split('T')[1].split('.')[0] : '-';
+						].concat(Object.keys(subdomains).sort(function(a, b) {
+							return (subdomains[b].requests || 0) - (subdomains[a].requests || 0);
+						}).slice(0, 25).map(function(domain) {
+							var m = subdomains[domain];
+							var protocols = m.protocols || {};
+							var protocolStr = Object.keys(protocols).map(function(p) {
+								return p.toUpperCase() + ':' + protocols[p];
+							}).join(' ');
+							var topUris = m.top_uris || {};
+							var topUri = Object.keys(topUris).sort(function(a, b) {
+								return topUris[b] - topUris[a];
+							})[0] || '-';
+							var countries = m.countries || {};
+							var topCountries = Object.keys(countries).sort(function(a, b) {
+								return countries[b] - countries[a];
+							}).slice(0, 3).join(', ');
+							var threatPct = m.requests > 0 ? ((m.threats / m.requests) * 100).toFixed(1) : 0;
 
 							return E('tr', { 'class': 'tr' }, [
-								E('td', { 'class': 'td' }, [
-									E('span', {
-										'style': 'background: ' + severityColor(alert.severity) + '; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; text-transform: uppercase;'
-									}, severityIcon(alert.severity) + ' ' + (alert.severity || 'unknown'))
+								E('td', { 'class': 'td', 'style': 'font-weight: 500;' }, domain),
+								E('td', { 'class': 'td', 'style': 'text-align: right;' }, String(m.requests || 0)),
+								E('td', { 'class': 'td', 'style': 'text-align: right;' }, [
+									m.threats > 0 ? E('span', {
+										'style': 'background: ' + (threatPct > 10 ? '#e74c3c' : threatPct > 1 ? '#f39c12' : '#27ae60') + '; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px;'
+									}, String(m.threats)) : E('span', { 'style': 'color: #27ae60;' }, '0')
 								]),
-								E('td', { 'class': 'td' }, (alert.pattern || alert.type || '-').replace(/_/g, ' ')),
-								E('td', { 'class': 'td', 'style': 'max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;' },
-									requestStr),
-								E('td', { 'class': 'td' }, [
-									sourceIp,
-									alert.country ? E('span', { 'style': 'margin-left: 4px; color: #666;' }, '(' + alert.country + ')') : null
-								]),
-								E('td', { 'class': 'td', 'style': 'white-space: nowrap; color: #666;' }, timeDisplay)
+								E('td', { 'class': 'td', 'style': 'font-size: 11px;' }, protocolStr || '-'),
+								E('td', { 'class': 'td', 'style': 'max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: #666;' }, topUri),
+								E('td', { 'class': 'td', 'style': 'font-size: 11px; color: #666;' }, topCountries || '-')
 							]);
 						})))
 					]) :
 					E('div', { 'class': 'cbi-section-node', 'style': 'text-align: center; padding: 40px; color: #666;' }, [
-						E('div', { 'style': 'font-size: 48px; margin-bottom: 16px;' }, '✅'),
-						E('p', {}, _('No threats detected')),
-						E('p', { 'style': 'font-size: 12px;' }, _('The analytics addon monitors for SQL injection, XSS, command injection, and other attacks.'))
+						E('div', { 'style': 'font-size: 48px; margin-bottom: 16px;' }, '📊'),
+						E('p', {}, _('No traffic data yet')),
+						E('p', { 'style': 'font-size: 12px;' }, _('Subdomain metrics will appear once traffic flows through the WAF.'))
 					])
 			]),
 
