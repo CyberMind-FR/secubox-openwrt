@@ -6,7 +6,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-core
 PKG_VERSION:=0.10.0
-PKG_RELEASE:=14
+PKG_RELEASE:=15
 PKG_ARCH:=all
 PKG_LICENSE:=GPL-2.0
 PKG_MAINTAINER:=SecuBox Team
@@ -102,6 +102,10 @@ define Package/secubox-core/install
 	# TFTP Mesh library
 	$(INSTALL_DIR) $(1)/usr/lib/secubox
 	$(INSTALL_DATA) ./root/usr/lib/secubox/tftp-mesh.sh $(1)/usr/lib/secubox/
+
+	# RPCD method modules
+	$(INSTALL_DIR) $(1)/usr/lib/secubox/rpcd.d
+	$(INSTALL_DATA) ./root/usr/lib/secubox/rpcd.d/*.sh $(1)/usr/lib/secubox/rpcd.d/
 
 	# WAN Access hotplug for interface events
 	$(INSTALL_DIR) $(1)/etc/hotplug.d/iface
