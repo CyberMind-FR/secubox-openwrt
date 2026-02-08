@@ -31,6 +31,7 @@ ${BOLD}Commands:${NC}
   ${GREEN}device${NC}     Device information and management
   ${GREEN}net${NC}        Network management
   ${GREEN}diag${NC}       Diagnostics and health checks
+  ${GREEN}landing${NC}    Generate landing pages from vhosts
   ${GREEN}ai${NC}         AI copilot (optional)
 
 ${BOLD}Examples:${NC}
@@ -392,6 +393,41 @@ EOF
 	esac
 }
 
+# Landing page commands
+cmd_landing() {
+	case "$1" in
+		generate|gen)
+			shift
+			/usr/sbin/secubox-landing generate "$@"
+			;;
+		list|ls)
+			/usr/sbin/secubox-landing list
+			;;
+		show)
+			/usr/sbin/secubox-landing show "$2"
+			;;
+		regenerate|regen)
+			/usr/sbin/secubox-landing regenerate
+			;;
+		help|*)
+			cat <<EOF
+${BOLD}secubox landing${NC} - Landing page generator
+
+${BOLD}Usage:${NC}
+  secubox landing list              List all zones and service counts
+  secubox landing show <zone>       Show services for a zone
+  secubox landing generate [zone]   Generate landing page(s)
+  secubox landing regenerate        Regenerate all landing pages
+
+${BOLD}Examples:${NC}
+  secubox landing list
+  secubox landing generate gk2.secubox.in
+  secubox landing regenerate
+EOF
+			;;
+	esac
+}
+
 # AI commands (optional)
 cmd_ai() {
 	# Check if AI is enabled
@@ -461,6 +497,10 @@ case "$1" in
 	diag)
 		shift
 		cmd_diag "$@"
+		;;
+	landing)
+		shift
+		cmd_landing "$@"
 		;;
 	ai)
 		shift

@@ -40,8 +40,54 @@ done
 
 log_info "Certificate sync complete"
 
+# Generate certs.list for multi-certificate SNI support
+CERTS_LIST="$HAPROXY_CERTS_DIR/certs.list"
+CONTAINER_CERTS_PATH="/opt/haproxy/certs"
+
+log_info "Generating certificate list file..."
+> "$CERTS_LIST"
+
+for cert_file in "$HAPROXY_CERTS_DIR"/*.pem; do
+    [ -f "$cert_file" ] || continue
+
+    filename=$(basename "$cert_file")
+    container_cert_path="$CONTAINER_CERTS_PATH/$filename"
+
+    # Extract domain names from certificate SANs
+    domains=$(openssl x509 -in "$cert_file" -noout -text 2>/dev/null | \
+        grep -A1 "Subject Alternative Name" | \
+        tail -n1 | \
+        sed 's/DNS://g' | \
+        tr ',' '\n' | \
+        tr -d ' ')
+
+    # If no SANs, try to get CN
+    if [ -z "$domains" ]; then
+        domains=$(openssl x509 -in "$cert_file" -noout -subject 2>/dev/null | \
+            sed -n 's/.*CN *= *\([^,/]*\).*/\1/p')
+    fi
+
+    if [ -n "$domains" ]; then
+        echo "$domains" | while read -r domain; do
+            [ -n "$domain" ] || continue
+            echo "$container_cert_path $domain" >> "$CERTS_LIST"
+        done
+    else
+        log_info "No domain found in certificate: $filename, adding without SNI filter"
+        echo "$container_cert_path" >> "$CERTS_LIST"
+    fi
+done
+
+# Deduplicate entries
+if [ -f "$CERTS_LIST" ]; then
+    sort -u "$CERTS_LIST" > "$CERTS_LIST.tmp"
+    mv "$CERTS_LIST.tmp" "$CERTS_LIST"
+    count=$(wc -l < "$CERTS_LIST")
+    log_info "Generated certs.list with $count entries"
+fi
+
 # Reload HAProxy if running
-if pgrep -x haproxy >/dev/null 2>&1 || lxc-info -n haproxy -s 2>/dev/null | grep -q RUNNING; then
+if pgrep haproxy >/dev/null 2>&1 || lxc-info -n haproxy -s 2>/dev/null | grep -q RUNNING; then
     log_info "Reloading HAProxy..."
     /etc/init.d/haproxy reload 2>/dev/null || true
 fi

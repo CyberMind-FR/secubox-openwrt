@@ -228,7 +228,7 @@ if service_port and domain:
                 run_cmd(f'uci set haproxy.{backend_name}=backend')
                 run_cmd(f'uci set haproxy.{backend_name}.name="{backend_name}"')
                 run_cmd(f'uci set haproxy.{backend_name}.mode="http"')
-                run_cmd(f'uci set haproxy.{backend_name}.server="srv 127.0.0.1:{service_port} check"')
+                run_cmd(f'uci set haproxy.{backend_name}.server="srv 192.168.255.1:{service_port} check"')
                 run_cmd(f'uci set haproxy.{backend_name}.enabled="1"')
                 
                 run_cmd(f'uci set haproxy.{backend_name}_vhost=vhost')

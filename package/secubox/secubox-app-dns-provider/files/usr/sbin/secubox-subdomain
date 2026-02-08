@@ -82,7 +82,7 @@ use_backend backend_${name//-/_} if host_${name//-/_}_${zone//\./_}
 backend backend_${name//-/_}
     mode http
     option httpchk GET /
-    server ${name} 127.0.0.1:${backend_port} check inter 10s
+    server ${name} 192.168.255.1:${backend_port} check inter 10s
 EOF
 
 	# Step 3: Register in UCI

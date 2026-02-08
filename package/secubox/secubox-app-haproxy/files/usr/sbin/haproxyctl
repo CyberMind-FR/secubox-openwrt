@@ -410,6 +410,69 @@ lxc_exec() {
 }
 
 # ===========================================
+# Certificate List Generation (for multi-cert SNI)
+# ===========================================
+
+# Generate crt-list file for multi-certificate SNI support
+# This is more reliable than directory mode for multi-domain setups
+generate_certs_list() {
+	local certs_list="$CERTS_PATH/certs.list"
+	local container_certs_path="/opt/haproxy/certs"
+
+	log_info "Generating certificate list file..."
+
+	# Start fresh
+	> "$certs_list"
+
+	# Process each .pem file
+	for cert_file in "$CERTS_PATH"/*.pem; do
+		[ -f "$cert_file" ] || continue
+
+		local filename=$(basename "$cert_file")
+		local container_cert_path="$container_certs_path/$filename"
+
+		# Extract domain names from certificate (CN and SANs)
+		local domains=$(openssl x509 -in "$cert_file" -noout -text 2>/dev/null | \
+			grep -A1 "Subject Alternative Name" | \
+			tail -n1 | \
+			sed 's/DNS://g' | \
+			tr ',' '\n' | \
+			tr -d ' ')
+
+		# If no SANs, try to get CN
+		if [ -z "$domains" ]; then
+			domains=$(openssl x509 -in "$cert_file" -noout -subject 2>/dev/null | \
+				sed -n 's/.*CN *= *\([^,/]*\).*/\1/p')
+		fi
+
+		if [ -n "$domains" ]; then
+			# For each domain, add an entry with SNI filter
+			# Format: /path/to/cert.pem [sni_filter]
+			echo "$domains" | while read -r domain; do
+				[ -n "$domain" ] || continue
+				# Handle wildcard certificates - the SNI filter should match the pattern
+				echo "$container_cert_path $domain" >> "$certs_list"
+			done
+		else
+			# Fallback: add cert without SNI filter (will be default)
+			log_warn "No domain found in certificate: $filename"
+			echo "$container_cert_path" >> "$certs_list"
+		fi
+	done
+
+	# Deduplicate entries (same cert may have multiple SANs)
+	if [ -f "$certs_list" ]; then
+		sort -u "$certs_list" > "$certs_list.tmp"
+		mv "$certs_list.tmp" "$certs_list"
+
+		local count=$(wc -l < "$certs_list")
+		log_info "Generated certs.list with $count entries"
+	else
+		log_warn "No certificates found in $CERTS_PATH"
+	fi
+}
+
+# ===========================================
 # Configuration Generation
 # ===========================================
 
@@ -419,6 +482,9 @@ generate_config() {
 	local cfg_file="$CONFIG_PATH/haproxy.cfg"
 
 	log_info "Generating HAProxy configuration..."
+
+	# Generate certs.list for multi-certificate SNI support
+	generate_certs_list
 
 	# Global section
 	cat > "$cfg_file" << EOF
@@ -509,14 +575,28 @@ EOF
 	# HTTPS Frontend (if certificates exist)
 	# Use container path /opt/haproxy/certs/ (not host path)
 	local CONTAINER_CERTS_PATH="/opt/haproxy/certs"
+	local CERTS_LIST_FILE="$CERTS_PATH/certs.list"
 	if [ -d "$CERTS_PATH" ] && ls "$CERTS_PATH"/*.pem >/dev/null 2>&1; then
-		cat << EOF
+		# Use crt-list for proper multi-certificate SNI matching
+		# Falls back to directory mode if certs.list doesn't exist
+		if [ -f "$CERTS_LIST_FILE" ] && [ -s "$CERTS_LIST_FILE" ]; then
+			cat << EOF
+frontend https-in
+    bind *:$https_port,[::]:$https_port ssl crt-list $CONTAINER_CERTS_PATH/certs.list alpn h2,http/1.1
+    mode http
+    http-request set-header X-Forwarded-Proto https
+    http-request set-header X-Real-IP %[src]
+EOF
+		else
+			# Fallback to directory mode if no certs.list
+			cat << EOF
 frontend https-in
     bind *:$https_port,[::]:$https_port ssl crt $CONTAINER_CERTS_PATH/ alpn h2,http/1.1
     mode http
     http-request set-header X-Forwarded-Proto https
     http-request set-header X-Real-IP %[src]
 EOF
+		fi
 		# Add vhost ACLs for HTTPS
 		config_foreach _add_vhost_acl vhost "https"
 

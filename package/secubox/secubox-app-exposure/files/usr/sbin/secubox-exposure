@@ -466,7 +466,7 @@ cmd_ssl_add() {
         uci set "haproxy.${backend_name}.mode=http"
         uci set "haproxy.${backend_name}.balance=roundrobin"
         uci set "haproxy.${backend_name}.enabled=1"
-        uci add_list "haproxy.${backend_name}.server=${service} 127.0.0.1:${local_port} check"
+        uci add_list "haproxy.${backend_name}.server=${service} 192.168.255.1:${local_port} check"
     fi
 
     # Check if vhost already exists

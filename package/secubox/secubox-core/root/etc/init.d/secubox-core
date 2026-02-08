@@ -62,4 +62,7 @@ service_triggers() {
 boot() {
 	# Delay start on boot to allow network to initialize
 	( sleep 10; start "$@"; ) &
+
+	# Regenerate landing pages after network is up
+	( sleep 30; /usr/sbin/secubox-landing regenerate >/dev/null 2>&1; ) &
 }

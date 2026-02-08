@@ -642,6 +642,13 @@ method_create_server() {
 		return
 	fi
 
+	# Auto-convert localhost/127.0.0.1 to 192.168.255.1 (HAProxy runs in LXC)
+	case "$address" in
+		127.0.0.1|localhost|127.0.1.1)
+			address="192.168.255.1"
+			;;
+	esac
+
 	section_id="${backend}_$(echo "$name" | sed 's/[^a-zA-Z0-9]/_/g')"
 
 	uci set "$UCI_CONFIG.$section_id=server"
@@ -685,6 +692,13 @@ method_update_server() {
 		json_dump
 		return
 	fi
+
+	# Auto-convert localhost/127.0.0.1 to 192.168.255.1 (HAProxy runs in LXC)
+	case "$address" in
+		127.0.0.1|localhost|127.0.1.1)
+			address="192.168.255.1"
+			;;
+	esac
 
 	# Check if this is an inline server (id format: backendname_servername)
 	# If so, we need to convert it to a proper server section
