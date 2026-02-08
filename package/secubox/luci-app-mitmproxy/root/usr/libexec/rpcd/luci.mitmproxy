@@ -531,6 +531,34 @@ get_threat_stats() {
 EOFJ
 }
 
+get_subdomain_metrics() {
+	local metrics_file="/tmp/secubox-subdomain-metrics.json"
+	local subdomain_metrics=""
+
+	# Try to get metrics from LXC container
+	if command -v lxc-attach >/dev/null 2>&1; then
+		subdomain_metrics=$(lxc-attach -n "$LXC_NAME" -- cat /tmp/secubox-subdomain-metrics.json 2>/dev/null)
+	fi
+
+	# Fall back to host path
+	if [ -z "$subdomain_metrics" ]; then
+		[ -f "$metrics_file" ] && subdomain_metrics=$(cat "$metrics_file" 2>/dev/null)
+	fi
+
+	# Default empty metrics
+	if [ -z "$subdomain_metrics" ]; then
+		subdomain_metrics='{"updated":null,"subdomains":{}}'
+	fi
+
+	cat <<EOFJ
+{
+	"success": true,
+	"metrics": $subdomain_metrics,
+	"timestamp": "$(date -Iseconds)"
+}
+EOFJ
+}
+
 clear_alerts() {
 	# Clear the host-visible threats log file
 	local log_file="/srv/mitmproxy/threats.log"
@@ -667,7 +695,7 @@ wan_clear() {
 }
 
 list_methods() { cat <<'EOFM'
-{"status":{},"status_cached":{},"settings":{},"save_settings":{"mode":"str","enabled":"bool","proxy_port":"int","web_port":"int","apply_now":"bool","wan_protection_enabled":"bool","wan_interface":"str"},"set_mode":{"mode":"str","apply_now":"bool"},"setup_firewall":{},"clear_firewall":{},"wan_setup":{},"wan_clear":{},"install":{},"start":{},"stop":{},"restart":{},"alerts":{},"threat_stats":{},"clear_alerts":{},"haproxy_enable":{},"haproxy_disable":{},"sync_routes":{}}
+{"status":{},"status_cached":{},"settings":{},"save_settings":{"mode":"str","enabled":"bool","proxy_port":"int","web_port":"int","apply_now":"bool","wan_protection_enabled":"bool","wan_interface":"str"},"set_mode":{"mode":"str","apply_now":"bool"},"setup_firewall":{},"clear_firewall":{},"wan_setup":{},"wan_clear":{},"install":{},"start":{},"stop":{},"restart":{},"alerts":{},"threat_stats":{},"subdomain_metrics":{},"clear_alerts":{},"haproxy_enable":{},"haproxy_disable":{},"sync_routes":{}}
 EOFM
 }
 
@@ -690,6 +718,7 @@ case "$1" in
 			restart) do_restart ;;
 			alerts) get_alerts ;;
 			threat_stats) get_threat_stats ;;
+			subdomain_metrics) get_subdomain_metrics ;;
 			clear_alerts) clear_alerts ;;
 			haproxy_enable) haproxy_enable ;;
 			haproxy_disable) haproxy_disable ;;
