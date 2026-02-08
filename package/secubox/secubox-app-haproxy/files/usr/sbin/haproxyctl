@@ -276,8 +276,7 @@ lxc.arch = $arch
 # Network: use host network for binding ports
 lxc.net.0.type = none
 
-# Mount points - proc/sys needed for lxc-attach, avoid cgroup:mixed which causes failures
-lxc.mount.auto = proc:mixed sys:ro
+# Mount points - avoid cgroup:mixed which causes failures on some systems
 lxc.mount.entry = $data_path opt/haproxy none bind,create=dir 0 0
 
 # Disable seccomp for compatibility
@@ -627,13 +626,14 @@ _add_ssl_redirect() {
 _add_vhost_acl() {
 	local section="$1"
 	local proto="$2"
-	local enabled domain backend ssl
+	local enabled domain backend ssl match_type
 
 	config_get enabled "$section" enabled "0"
 	[ "$enabled" = "1" ] || return
 
 	config_get domain "$section" domain
 	config_get backend "$section" backend
+	config_get match_type "$section" match_type "exact"
 	# Validate backend is not IP:port (common misconfiguration)
 	case "$backend" in
 		*:*) log_warn "Vhost $section has IP:port backend , should be backend name"; return ;;
@@ -646,8 +646,23 @@ _add_vhost_acl() {
 	# For HTTP frontend, skip SSL-only vhosts
 	[ "$proto" = "http" ] && [ "$ssl" = "1" ] && return
 
-	local acl_name=$(echo "$domain" | tr '.' '_' | tr '-' '_')
-	echo "    acl host_${acl_name} hdr(host) -i $domain"
+	local acl_name=$(echo "$domain" | tr "." "_" | tr "-" "_" | tr "*" "wildcard")
+	
+	# Handle different match types
+	case "$match_type" in
+		suffix)
+			# Suffix match for wildcard subdomains (e.g., .gk2.secubox.in)
+			echo "    acl host_${acl_name} hdr(host) -m end -i $domain"
+			;;
+		regex)
+			# Regex match
+			echo "    acl host_${acl_name} hdr(host) -m reg -i $domain"
+			;;
+		*)
+			# Exact match (default)
+			echo "    acl host_${acl_name} hdr(host) -i $domain"
+			;;
+	esac
 	echo "    use_backend $backend if host_${acl_name}"
 }
 
