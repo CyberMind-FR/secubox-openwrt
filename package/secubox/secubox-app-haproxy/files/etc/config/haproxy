@@ -33,10 +33,10 @@ config frontend 'http_front'
 	option default_backend 'fallback'
 	option enabled '1'
 
-# Example frontend (HTTPS with SNI)
+# Example frontend (HTTPS with SNI using crt-list for multi-cert support)
 config frontend 'https_front'
 	option name 'https-in'
-	option bind '*:443 ssl crt /etc/haproxy/certs/ alpn h2,http/1.1'
+	option bind '*:443 ssl crt-list /opt/haproxy/certs/certs.list alpn h2,http/1.1'
 	option mode 'http'
 	option default_backend 'fallback'
 	option enabled '1'
@@ -48,6 +48,23 @@ config backend 'fallback'
 	option balance 'roundrobin'
 	option enabled '1'
 
+# CyberMood.eu vhost
+config vhost 'cybermood'
+	option domain 'cybermood.eu'
+	option backend 'cybermood_web'
+	option ssl '1'
+	option ssl_redirect '1'
+	option acme '1'
+	option enabled '1'
+
+config vhost 'cybermood_www'
+	option domain 'www.cybermood.eu'
+	option backend 'cybermood_web'
+	option ssl '1'
+	option ssl_redirect '1'
+	option acme '1'
+	option enabled '1'
+
 # Example vhost
 #config vhost 'example'
 #	option domain 'example.com'
@@ -56,6 +73,21 @@ config backend 'fallback'
 #	option ssl_redirect '1'
 #	option acme '1'
 #	option enabled '1'
+
+# CyberMood.eu backend
+config backend 'cybermood_web'
+	option name 'cybermood-web'
+	option mode 'http'
+	option balance 'roundrobin'
+	option enabled '1'
+
+config server 'cybermood_srv'
+	option backend 'cybermood_web'
+	option name 'cybermood-srv'
+	option address '127.0.0.1'
+	option port '4000'
+	option check '1'
+	option enabled '1'
 
 # Example backend with servers
 #config backend 'web_servers'
@@ -82,6 +114,17 @@ config acme 'acme'
 	option staging '0'
 	option key_type 'ec-256'
 	option renew_days '30'
+
+# CyberMood.eu certificate (ACME)
+config certificate 'cert_cybermood'
+	option domain 'cybermood.eu'
+	option type 'acme'
+	option enabled '1'
+
+config certificate 'cert_cybermood_www'
+	option domain 'www.cybermood.eu'
+	option type 'acme'
+	option enabled '1'
 
 # Certificate entry (manual or ACME)
 #config certificate 'cert_example'
