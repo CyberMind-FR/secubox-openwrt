@@ -262,9 +262,9 @@ FILES = {
     "README": f"{GITHUB_BASE}/README.md"
 }
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=60)  # 1-minute cache for real-time sync
 def fetch_file(url):
-    """Fetch file content from GitHub"""
+    """Fetch file content from GitHub (real-time sync)"""
     try:
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
@@ -793,7 +793,7 @@ def main():
     <div style="text-align: center; color: #808090; padding: 1rem;">
         <small>
             SecuBox Evolution Dashboard • Auto-synced with GitHub master branch<br>
-            Devel status: 1 min • Docs: 5 min •
+            All tabs refresh every 60 seconds •
             <a href="https://github.com/gkerma/secubox-openwrt" style="color: #00d4aa;">View on GitHub</a>
         </small>
     </div>
