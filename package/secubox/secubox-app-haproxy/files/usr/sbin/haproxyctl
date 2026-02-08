@@ -276,7 +276,8 @@ lxc.arch = $arch
 # Network: use host network for binding ports
 lxc.net.0.type = none
 
-# Mount points - avoid cgroup:mixed which causes failures on some systems
+# Mount points - proc/sys needed for lxc-attach, avoid cgroup:mixed which causes failures
+lxc.mount.auto = proc:mixed sys:ro
 lxc.mount.entry = $data_path opt/haproxy none bind,create=dir 0 0
 
 # Disable seccomp for compatibility
