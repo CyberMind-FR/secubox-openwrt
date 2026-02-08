@@ -2,13 +2,15 @@
 """
 SecuBox Evolution Dashboard
 Interactive Streamlit landing page showing project evolution, history, WIP, TODO, and README
+Real-time GitHub commits integration for development status tracking
 """
 
 import streamlit as st
 import requests
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from collections import Counter
+import time
 
 # Page config
 st.set_page_config(
@@ -161,11 +163,98 @@ st.markdown("""
         background: #00d4aa;
         border-radius: 50%;
     }
+
+    .commit-card {
+        background: #12121a;
+        border: 1px solid #2a2a3a;
+        border-radius: 8px;
+        padding: 1rem;
+        margin: 0.5rem 0;
+        transition: all 0.3s ease;
+    }
+
+    .commit-card:hover {
+        border-color: #00a0ff;
+        transform: translateX(4px);
+    }
+
+    .commit-hash {
+        font-family: 'JetBrains Mono', monospace;
+        color: #00a0ff;
+        font-size: 0.85rem;
+        background: #00a0ff22;
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        display: inline-block;
+    }
+
+    .commit-message {
+        color: #e0e0e0;
+        font-weight: 500;
+        margin: 0.5rem 0;
+        word-break: break-word;
+    }
+
+    .commit-meta {
+        color: #808090;
+        font-size: 0.8rem;
+    }
+
+    .commit-author {
+        color: #00d4aa;
+    }
+
+    .commit-time {
+        color: #ffa500;
+    }
+
+    .live-indicator {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: #00d4aa;
+        font-size: 0.85rem;
+    }
+
+    .live-dot {
+        width: 8px;
+        height: 8px;
+        background: #00d4aa;
+        border-radius: 50%;
+        animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.5; transform: scale(1.2); }
+    }
+
+    .devel-status {
+        background: linear-gradient(135deg, #12121a 0%, #1a1a2e 100%);
+        border: 1px solid #2a2a3a;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+    }
+
+    .devel-title {
+        color: #00a0ff;
+        font-size: 1.2rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+    }
+
+    .commit-type-feat { border-left: 3px solid #00d4aa; }
+    .commit-type-fix { border-left: 3px solid #ff6b6b; }
+    .commit-type-docs { border-left: 3px solid #ffa500; }
+    .commit-type-refactor { border-left: 3px solid #a855f7; }
+    .commit-type-chore { border-left: 3px solid #808090; }
 </style>
 """, unsafe_allow_html=True)
 
 # GitHub raw URLs
 GITHUB_BASE = "https://raw.githubusercontent.com/gkerma/secubox-openwrt/master"
+GITHUB_API = "https://api.github.com/repos/gkerma/secubox-openwrt"
 FILES = {
     "HISTORY": f"{GITHUB_BASE}/.claude/HISTORY.md",
     "WIP": f"{GITHUB_BASE}/.claude/WIP.md",
@@ -183,6 +272,110 @@ def fetch_file(url):
         return None
     except:
         return None
+
+@st.cache_data(ttl=60)  # 1-minute cache for near real-time updates
+def fetch_commits(limit=30):
+    """Fetch recent commits from GitHub API"""
+    try:
+        response = requests.get(
+            f"{GITHUB_API}/commits",
+            params={"per_page": limit},
+            headers={"Accept": "application/vnd.github.v3+json"},
+            timeout=10
+        )
+        if response.status_code == 200:
+            return response.json()
+        return []
+    except:
+        return []
+
+@st.cache_data(ttl=60)
+def fetch_repo_info():
+    """Fetch repository information"""
+    try:
+        response = requests.get(
+            GITHUB_API,
+            headers={"Accept": "application/vnd.github.v3+json"},
+            timeout=10
+        )
+        if response.status_code == 200:
+            return response.json()
+        return {}
+    except:
+        return {}
+
+def parse_commit_type(message):
+    """Extract commit type from conventional commit message"""
+    patterns = {
+        'feat': r'^feat(\([^)]+\))?:',
+        'fix': r'^fix(\([^)]+\))?:',
+        'docs': r'^docs(\([^)]+\))?:',
+        'refactor': r'^refactor(\([^)]+\))?:',
+        'chore': r'^chore(\([^)]+\))?:',
+        'test': r'^test(\([^)]+\))?:',
+        'style': r'^style(\([^)]+\))?:',
+        'perf': r'^perf(\([^)]+\))?:',
+    }
+    for ctype, pattern in patterns.items():
+        if re.match(pattern, message, re.I):
+            return ctype
+    return 'other'
+
+def format_time_ago(iso_date):
+    """Convert ISO date to human-readable 'time ago' format"""
+    try:
+        dt = datetime.fromisoformat(iso_date.replace('Z', '+00:00'))
+        now = datetime.now(dt.tzinfo)
+        diff = now - dt
+
+        if diff.days > 30:
+            return dt.strftime("%b %d, %Y")
+        elif diff.days > 0:
+            return f"{diff.days}d ago"
+        elif diff.seconds > 3600:
+            return f"{diff.seconds // 3600}h ago"
+        elif diff.seconds > 60:
+            return f"{diff.seconds // 60}m ago"
+        else:
+            return "just now"
+    except:
+        return iso_date[:10]
+
+def get_commit_stats(commits):
+    """Calculate commit statistics"""
+    if not commits:
+        return {}
+
+    stats = {
+        'total': len(commits),
+        'types': Counter(),
+        'authors': Counter(),
+        'today': 0,
+        'this_week': 0,
+    }
+
+    now = datetime.now()
+    for c in commits:
+        commit = c.get('commit', {})
+        message = commit.get('message', '').split('\n')[0]
+        stats['types'][parse_commit_type(message)] += 1
+
+        author = commit.get('author', {}).get('name', 'Unknown')
+        stats['authors'][author] += 1
+
+        try:
+            date_str = commit.get('author', {}).get('date', '')
+            if date_str:
+                dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                days_ago = (now - dt.replace(tzinfo=None)).days
+                if days_ago == 0:
+                    stats['today'] += 1
+                if days_ago < 7:
+                    stats['this_week'] += 1
+        except:
+            pass
+
+    return stats
 
 def parse_history(content):
     """Parse HISTORY.md to extract milestones"""
@@ -249,7 +442,7 @@ def count_features(content):
 def main():
     # Header
     st.markdown('<h1 class="main-header">🛡️ SecuBox Evolution</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="sub-header">Real-time project tracking • History • WIP • TODO • Documentation</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-header">Live GitHub commits • History • WIP • TODO • Documentation</p>', unsafe_allow_html=True)
 
     # Fetch all files
     with st.spinner("Fetching latest data from GitHub..."):
@@ -328,14 +521,156 @@ def main():
         st.markdown("[GitHub Repository](https://github.com/gkerma/secubox-openwrt)")
         st.markdown("[SecuBox Portal](https://secubox.in)")
 
+        st.markdown("---")
+        st.markdown("### 🚀 Devel Status")
+        st.markdown('<span class="live-indicator"><span class="live-dot"></span> Live</span>', unsafe_allow_html=True)
+
         if st.button("🔄 Refresh Data"):
             st.cache_data.clear()
             st.rerun()
 
+    # Fetch commits for devel status
+    commits = fetch_commits(30)
+    commit_stats = get_commit_stats(commits)
+    repo_info = fetch_repo_info()
+
     # Main tabs
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📜 History", "🔧 WIP", "📋 TODO", "📖 README", "📈 Timeline"])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["🚀 Devel", "📜 History", "🔧 WIP", "📋 TODO", "📖 README", "📈 Timeline"])
 
     with tab1:
+        st.markdown("## 🚀 Development Status")
+
+        # Live indicator
+        st.markdown("""
+        <div class="live-indicator">
+            <span class="live-dot"></span>
+            Live GitHub Activity • Updates every minute
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # Dev metrics row
+        dcol1, dcol2, dcol3, dcol4 = st.columns(4)
+
+        with dcol1:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value" style="color: #00a0ff;">{commit_stats.get('today', 0)}</div>
+                <div class="metric-label">Commits Today</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with dcol2:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value" style="color: #a855f7;">{commit_stats.get('this_week', 0)}</div>
+                <div class="metric-label">This Week</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with dcol3:
+            contributors = len(commit_stats.get('authors', {}))
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value" style="color: #ffa500;">{contributors}</div>
+                <div class="metric-label">Contributors</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with dcol4:
+            stars = repo_info.get('stargazers_count', 0)
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value" style="color: #ffd700;">⭐ {stars}</div>
+                <div class="metric-label">GitHub Stars</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # Commit type distribution
+        if commit_stats.get('types'):
+            st.markdown("### 📊 Commit Types")
+            type_colors = {
+                'feat': '🟢', 'fix': '🔴', 'docs': '🟡',
+                'refactor': '🟣', 'chore': '⚪', 'other': '⚫',
+                'test': '🔵', 'style': '🟠', 'perf': '💜'
+            }
+            type_cols = st.columns(len(commit_stats['types']))
+            for i, (ctype, count) in enumerate(sorted(commit_stats['types'].items(), key=lambda x: -x[1])):
+                with type_cols[i % len(type_cols)]:
+                    emoji = type_colors.get(ctype, '⚫')
+                    st.metric(f"{emoji} {ctype}", count)
+
+        st.markdown("---")
+
+        # Recent commits list
+        st.markdown("### 📝 Recent Commits")
+
+        if commits:
+            for c in commits[:15]:
+                sha = c.get('sha', '')[:7]
+                commit = c.get('commit', {})
+                message = commit.get('message', '').split('\n')[0][:80]
+                author = commit.get('author', {}).get('name', 'Unknown')
+                date_str = commit.get('author', {}).get('date', '')
+                time_ago = format_time_ago(date_str)
+                url = c.get('html_url', '#')
+
+                # Determine commit type for styling
+                ctype = parse_commit_type(message)
+                type_class = f"commit-type-{ctype}" if ctype != 'other' else ''
+
+                st.markdown(f"""
+                <div class="commit-card {type_class}">
+                    <a href="{url}" target="_blank" style="text-decoration: none;">
+                        <span class="commit-hash">{sha}</span>
+                    </a>
+                    <div class="commit-message">{message}</div>
+                    <div class="commit-meta">
+                        <span class="commit-author">👤 {author}</span>
+                        &nbsp;•&nbsp;
+                        <span class="commit-time">🕐 {time_ago}</span>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            # Show more button
+            with st.expander("📜 View All Commits (30)"):
+                for c in commits[15:]:
+                    sha = c.get('sha', '')[:7]
+                    commit = c.get('commit', {})
+                    message = commit.get('message', '').split('\n')[0][:80]
+                    author = commit.get('author', {}).get('name', 'Unknown')
+                    date_str = commit.get('author', {}).get('date', '')
+                    time_ago = format_time_ago(date_str)
+
+                    st.markdown(f"""
+                    <div class="commit-card">
+                        <span class="commit-hash">{sha}</span>
+                        <div class="commit-message">{message}</div>
+                        <div class="commit-meta">
+                            <span class="commit-author">👤 {author}</span> • <span class="commit-time">🕐 {time_ago}</span>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+        else:
+            st.warning("Could not fetch commits from GitHub API")
+
+        # Repo quick stats
+        if repo_info:
+            st.markdown("---")
+            st.markdown("### 📈 Repository Stats")
+            rcol1, rcol2, rcol3 = st.columns(3)
+            with rcol1:
+                st.metric("🍴 Forks", repo_info.get('forks_count', 0))
+            with rcol2:
+                st.metric("👀 Watchers", repo_info.get('watchers_count', 0))
+            with rcol3:
+                st.metric("❗ Open Issues", repo_info.get('open_issues_count', 0))
+
+    with tab2:
         st.markdown("## 📜 Project History")
 
         if search_query and history:
@@ -358,7 +693,7 @@ def main():
         else:
             st.error("Could not fetch HISTORY.md")
 
-    with tab2:
+    with tab3:
         st.markdown("## 🔧 Work In Progress")
 
         if search_query and wip:
@@ -369,7 +704,7 @@ def main():
         else:
             st.error("Could not fetch WIP.md")
 
-    with tab3:
+    with tab4:
         st.markdown("## 📋 TODO List")
 
         if search_query and todo:
@@ -402,7 +737,7 @@ def main():
         else:
             st.error("Could not fetch TODO.md")
 
-    with tab4:
+    with tab5:
         st.markdown("## 📖 README")
 
         if search_query and readme:
@@ -413,7 +748,7 @@ def main():
         else:
             st.error("Could not fetch README.md")
 
-    with tab5:
+    with tab6:
         st.markdown("## 📈 Evolution Timeline")
 
         if milestones:
@@ -458,7 +793,7 @@ def main():
     <div style="text-align: center; color: #808090; padding: 1rem;">
         <small>
             SecuBox Evolution Dashboard • Auto-synced with GitHub master branch<br>
-            Data refreshes every 5 minutes •
+            Devel status: 1 min • Docs: 5 min •
             <a href="https://github.com/gkerma/secubox-openwrt" style="color: #00d4aa;">View on GitHub</a>
         </small>
     </div>

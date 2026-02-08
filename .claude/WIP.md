@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-07_
+_Last updated: 2026-02-08_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -52,6 +52,14 @@ _Last updated: 2026-02-07_
   - Created `luci-app-vortex-dns` dashboard
 
 ### Just Completed (2026-02-06/08)
+
+- **Evolution Dashboard Real-Time Commits** — DONE (2026-02-08)
+  - New "🚀 Devel" tab with live GitHub commits (1-min cache)
+  - Commits Today / This Week / Contributors / Stars metrics
+  - Commit type distribution with color-coding (feat/fix/docs/refactor)
+  - Recent commits with hash, message, author, relative time
+  - Repository stats (forks, watchers, open issues)
+  - Cyberpunk-themed commit cards with pulsing live indicator
 
 - **Station Cloner/Deployer** — DONE (2026-02-08)
   - Host-side `secubox-clone-station.sh` with MOKATOOL integration for dual USB serial control

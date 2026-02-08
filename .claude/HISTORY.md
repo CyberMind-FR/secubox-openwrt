@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-02-07_
+_Last updated: 2026-02-08_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -990,3 +990,24 @@ _Last updated: 2026-02-07_
       2. Host: `./secubox-clone-station.sh clone` (detects, pulls, flashes target)
       3. Target boots, resizes root, auto-joins mesh with pre-approved token
     - Part of v0.19 mesh deployment automation.
+
+29. **Evolution Dashboard Real-Time Commits (2026-02-08)**
+    - Enhanced `secubox-app-streamlit-evolution` with live GitHub commits display.
+    - New "🚀 Devel" tab (first tab) showing real-time development activity:
+      - Commits Today / This Week / Contributors / Stars metrics
+      - Commit type distribution (feat/fix/docs/refactor/chore)
+      - Recent commits list with:
+        - Short hash (7 chars) with link to GitHub
+        - Commit message (80 char truncated)
+        - Author name
+        - Relative time (e.g., "2h ago", "just now")
+      - Commit type color-coding (green=feat, red=fix, orange=docs, purple=refactor)
+      - Repository stats (forks, watchers, open issues)
+    - GitHub API integration:
+      - `fetch_commits(limit=30)` with 1-minute cache TTL for near real-time updates
+      - `fetch_repo_info()` for repository statistics
+      - `parse_commit_type()` for conventional commit parsing
+      - `format_time_ago()` for human-readable timestamps
+      - `get_commit_stats()` for daily/weekly aggregation
+    - Cyberpunk theme styling for commits (matching existing dashboard theme)
+    - Live indicator animation (pulsing green dot)
