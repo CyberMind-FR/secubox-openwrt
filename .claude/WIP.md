@@ -83,6 +83,14 @@ _Last updated: 2026-02-08 (evening)_
   - 9 active backends documented
   - Wildcard certificate ready for mesh
 
+- **HAProxy Path-Based ACL Routing** — DONE (2026-02-08)
+  - Added `_add_path_acl()` function to haproxyctl for UCI `acl` sections
+  - Support for path_beg, path_end, path, path_reg, path_dir match types
+  - Path ACLs processed before vhost ACLs (higher priority)
+  - Fixed http_request list handling to avoid duplicate output
+  - Enables `gk2.secubox.in/evolution` → `streamlit_evolution` routing
+  - Fixed stale HAProxy process using old config file
+
 ### Just Completed (2026-02-06/08)
 
 - **Evolution Dashboard Real-Time Commits** — DONE (2026-02-08)
