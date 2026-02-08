@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-08 (evening)_
+_Last updated: 2026-02-08 (night)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -90,6 +90,14 @@ _Last updated: 2026-02-08 (evening)_
   - Fixed http_request list handling to avoid duplicate output
   - Enables `gk2.secubox.in/evolution` → `streamlit_evolution` routing
   - Fixed stale HAProxy process using old config file
+
+- **Gandi DNS Secondary Setup** — DONE (2026-02-08)
+  - Configured BIND master to allow zone transfers to Gandi (217.70.177.40)
+  - Added `also-notify` and `notify yes` for automatic zone updates
+  - Synced all BIND zone records to Gandi LiveDNS via API
+  - Updated registrar nameservers to Gandi LiveDNS (ns-*.gandi.net)
+  - DNS propagation verified: all A, MX, wildcard records resolving correctly
+  - Architecture: Registrar → Gandi LiveDNS ← synced from → BIND master
 
 ### Just Completed (2026-02-06/08)
 
