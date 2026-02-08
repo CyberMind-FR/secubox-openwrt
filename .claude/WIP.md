@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-08_
+_Last updated: 2026-02-08 (evening)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -50,6 +50,38 @@ _Last updated: 2026-02-08_
   - First Peek auto-registration of services
   - Gossip-based exposure config sync via secubox-p2p
   - Created `luci-app-vortex-dns` dashboard
+
+### Just Completed (2026-02-08 PM)
+
+- **Vortex Hub Wildcard Routing** — DONE (2026-02-08)
+  - HAProxy wildcard domain support (`*.gk2.secubox.in`)
+  - Subdomain-to-path rewriting: `{sub}.gk2.secubox.in/x` → `/{sub}/x`
+  - New `match_type` option: exact, suffix, regex
+  - Vortex fallback backend with `X-Vortex-Node` headers
+  - Prepares infrastructure for distributed mesh node publishing
+
+- **Mitmproxy WAF Subdomain Metrics** — DONE (2026-02-08)
+  - Track requests/threats per subdomain in `secubox_analytics.py`
+  - New RPCD method: `subdomain_metrics`
+  - Metrics: requests, threats, protocols, methods, status codes, top URIs, countries
+  - LuCI dashboard shows subdomain metrics instead of alerts
+
+- **RPCD luci.secubox Modular Refactor** — DONE (2026-02-08)
+  - Split 2544-line monolithic handler into 14 modules
+  - Thin dispatcher + `/usr/lib/secubox/rpcd.d/*.sh` modules
+  - Modules: core, modules, profiles, snapshots, health, dashboard, appstore, state, network, feeds, skills, feedback, p2p
+  - Shared utilities in `_common.sh`
+
+- **HAProxy Backend IP Fixes** — DONE (2026-02-08)
+  - Fixed all `127.0.0.1` → `192.168.255.1` in backend configs
+  - Cleaned up duplicate vhosts and invalid IP:port backend formats
+  - Fixed `presse.cybermood.eu` routing
+  - Fixed `streamlit_evolution` stale config in container
+
+- **GK2 Node Service Mapping** — DONE (2026-02-08)
+  - Complete map of 10 published domains
+  - 9 active backends documented
+  - Wildcard certificate ready for mesh
 
 ### Just Completed (2026-02-06/08)
 
