@@ -173,6 +173,14 @@ Certificates:
   cert renew [domain] Renew certificate(s)
   cert remove <domain> Remove certificate
 
+Path ACLs:
+  path list           List all path ACLs
+  path sync <prefix> <host>  Auto-generate path ACLs from backends
+                             (e.g., path sync /gk2 secubox.in)
+  path add <pattern> <backend> <host>  Add path ACL
+  path remove <name>  Remove path ACL
+  path clear <prefix> Remove all path ACLs with prefix
+
 Service Commands:
   service-run         Run in foreground (for init)
   service-stop        Stop service
@@ -1834,6 +1842,174 @@ cmd_service_stop() {
 }
 
 # ===========================================
+# Path ACL Management
+# ===========================================
+
+cmd_path_list() {
+	config_load haproxy
+	echo "Path ACLs:"
+	echo "=========================================="
+	printf "%-20s %-25s %-25s %s\n" "NAME" "PATTERN" "BACKEND" "HOST"
+	echo "------------------------------------------"
+	config_foreach _print_path_acl acl
+}
+
+_print_path_acl() {
+	local section="$1"
+	local enabled pattern backend host type
+	config_get enabled "$section" enabled "1"
+	[ "$enabled" = "1" ] || return
+	config_get type "$section" type
+	config_get pattern "$section" pattern
+	config_get backend "$section" backend
+	config_get host "$section" host
+	[ -n "$pattern" ] || return
+	printf "%-20s %-25s %-25s %s\n" "$section" "$pattern" "$backend" "$host"
+}
+
+cmd_path_sync() {
+	local prefix="${1:-/gk2}"
+	local host="${2:-secubox.in}"
+
+	log_info "Syncing path ACLs: prefix=$prefix host=$host"
+
+	# Collect backend names
+	local backends=""
+	config_load haproxy
+
+	_collect_backend_name() {
+		local section="$1"
+		local name enabled
+		config_get name "$section" name "$section"
+		config_get enabled "$section" enabled "1"
+		[ "$enabled" = "1" ] || return
+
+		# Skip system backends
+		case "$name" in
+			fallback|acme_challenge|end_of_internet|vortex_*|luci_default) return ;;
+		esac
+
+		backends="$backends $name"
+	}
+
+	config_foreach _collect_backend_name backend
+
+	log_info "Found backends: $backends"
+
+	# Generate path ACL for each backend
+	local added=0
+	for backend in $backends; do
+		# Extract short name from backend (e.g., metablog_gk2 -> gk2, streamlit_evolution -> evolution)
+		local short_name=""
+		case "$backend" in
+			metablog_*)    short_name="${backend#metablog_}" ;;
+			streamlit_*)   short_name="${backend#streamlit_}" ;;
+			jellyfin_*)    short_name="${backend#jellyfin_}" ;;
+			*)             short_name="$backend" ;;
+		esac
+
+		local acl_name="path_$(echo "${prefix#/}" | tr '/' '_')_${short_name}"
+		local pattern="${prefix}/${short_name}"
+
+		# Check if ACL already exists
+		if uci -q get haproxy.${acl_name} >/dev/null 2>&1; then
+			log_debug "ACL exists: $acl_name"
+			continue
+		fi
+
+		log_info "Adding: $pattern -> $backend"
+		uci set haproxy.${acl_name}=acl
+		uci set haproxy.${acl_name}.type="path_beg"
+		uci set haproxy.${acl_name}.pattern="$pattern"
+		uci set haproxy.${acl_name}.backend="$backend"
+		uci set haproxy.${acl_name}.host="$host"
+		uci set haproxy.${acl_name}.enabled="1"
+		added=$((added + 1))
+	done
+
+	uci commit haproxy
+	log_info "Added $added new path ACLs"
+
+	# Regenerate and reload
+	if [ "$added" -gt 0 ]; then
+		generate_config
+		cmd_reload
+	fi
+}
+
+cmd_path_add() {
+	local pattern="$1"
+	local backend="$2"
+	local host="${3:-secubox.in}"
+
+	[ -n "$pattern" ] || { log_error "Pattern required"; return 1; }
+	[ -n "$backend" ] || { log_error "Backend required"; return 1; }
+
+	local acl_name="path_$(echo "${pattern#/}" | tr '/' '_' | tr '-' '_')"
+
+	log_info "Adding path ACL: $pattern -> $backend (host: $host)"
+
+	uci set haproxy.${acl_name}=acl
+	uci set haproxy.${acl_name}.type="path_beg"
+	uci set haproxy.${acl_name}.pattern="$pattern"
+	uci set haproxy.${acl_name}.backend="$backend"
+	uci set haproxy.${acl_name}.host="$host"
+	uci set haproxy.${acl_name}.enabled="1"
+	uci commit haproxy
+
+	generate_config
+	cmd_reload
+}
+
+cmd_path_remove() {
+	local name="$1"
+	[ -n "$name" ] || { log_error "ACL name required"; return 1; }
+
+	if uci -q get haproxy.${name} >/dev/null 2>&1; then
+		uci delete haproxy.${name}
+		uci commit haproxy
+		log_info "Removed path ACL: $name"
+		generate_config
+		cmd_reload
+	else
+		log_error "Path ACL not found: $name"
+		return 1
+	fi
+}
+
+cmd_path_clear() {
+	local prefix="$1"
+	[ -n "$prefix" ] || { log_error "Prefix required (e.g., /gk2)"; return 1; }
+
+	local acl_prefix="path_$(echo "${prefix#/}" | tr '/' '_')"
+	local removed=0
+
+	config_load haproxy
+
+	_check_and_remove_acl() {
+		local section="$1"
+		case "$section" in
+			${acl_prefix}_*)
+				uci delete haproxy.${section}
+				removed=$((removed + 1))
+				log_info "Removed: $section"
+				;;
+		esac
+	}
+
+	config_foreach _check_and_remove_acl acl
+
+	if [ "$removed" -gt 0 ]; then
+		uci commit haproxy
+		log_info "Removed $removed path ACLs with prefix $prefix"
+		generate_config
+		cmd_reload
+	else
+		log_info "No path ACLs found with prefix $prefix"
+	fi
+}
+
+# ===========================================
 # Main
 # ===========================================
 
@@ -1888,6 +2064,18 @@ case "${1:-}" in
 			verify) shift; cmd_cert_verify "$@" ;;
 			remove) shift; rm -f "$CERTS_PATH/$1.pem"; uci delete haproxy.cert_${1//[.-]/_} 2>/dev/null ;;
 			*)      echo "Usage: haproxyctl cert {list|add|import|renew|verify|remove}" ;;
+		esac
+		;;
+
+	path)
+		shift
+		case "${1:-}" in
+			list)   shift; cmd_path_list "$@" ;;
+			sync)   shift; cmd_path_sync "$@" ;;
+			add)    shift; cmd_path_add "$@" ;;
+			remove) shift; cmd_path_remove "$@" ;;
+			clear)  shift; cmd_path_clear "$@" ;;
+			*)      echo "Usage: haproxyctl path {list|sync|add|remove|clear}" ;;
 		esac
 		;;
 
