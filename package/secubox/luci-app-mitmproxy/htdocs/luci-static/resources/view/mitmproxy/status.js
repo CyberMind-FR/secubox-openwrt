@@ -54,6 +54,17 @@ var callSyncRoutes = rpc.declare({
 	method: 'sync_routes'
 });
 
+var callBans = rpc.declare({
+	object: 'luci.mitmproxy',
+	method: 'bans'
+});
+
+var callUnban = rpc.declare({
+	object: 'luci.mitmproxy',
+	method: 'unban',
+	params: ['ip']
+});
+
 function severityColor(sev) {
 	return { critical: '#e74c3c', high: '#e67e22', medium: '#f39c12', low: '#3498db' }[sev] || '#666';
 }
@@ -67,7 +78,8 @@ return view.extend({
 		return Promise.all([
 			callStatus().catch(function() { return {}; }),
 			callAlerts().catch(function() { return { alerts: [] }; }),
-			callSubdomainMetrics().catch(function() { return { metrics: { subdomains: {} } }; })
+			callSubdomainMetrics().catch(function() { return { metrics: { subdomains: {} } }; }),
+			callBans().catch(function() { return { total: 0, mitmproxy_autoban: 0, crowdsec: 0, bans: [] }; })
 		]);
 	},
 
@@ -77,6 +89,8 @@ return view.extend({
 		var alerts = alertsData.alerts || [];
 		var metricsData = data[2] || {};
 		var subdomains = (metricsData.metrics && metricsData.metrics.subdomains) || {};
+		var bansData = data[3] || {};
+		var bans = bansData.bans || [];
 		var self = this;
 
 		var view = E('div', { 'class': 'cbi-map' }, [
@@ -216,6 +230,77 @@ return view.extend({
 						]) : null
 					])
 				])
+			]),
+
+			// Active Bans Card
+			E('div', { 'class': 'cbi-section' }, [
+				E('h3', {}, [
+					_('Active Bans'),
+					' ',
+					E('span', { 'style': 'font-size: 14px; font-weight: normal; color: #666;' },
+						'(' + (bansData.total || 0) + ' total: ' + (bansData.mitmproxy_autoban || 0) + ' WAF, ' + (bansData.crowdsec || 0) + ' CrowdSec)')
+				]),
+				bans.length > 0 ?
+					E('div', {}, [
+						E('table', { 'class': 'table', 'style': 'font-size: 13px;' }, [
+							E('tr', { 'class': 'tr cbi-section-table-titles' }, [
+								E('th', { 'class': 'th' }, _('IP Address')),
+								E('th', { 'class': 'th' }, _('Reason')),
+								E('th', { 'class': 'th' }, _('Source')),
+								E('th', { 'class': 'th' }, _('Country')),
+								E('th', { 'class': 'th' }, _('Expires')),
+								E('th', { 'class': 'th', 'style': 'width: 80px;' }, _('Action'))
+							])
+						].concat(bans.slice(0, 50).map(function(ban) {
+							var decision = (ban.decisions && ban.decisions[0]) || {};
+							var ip = decision.value || ban.source?.ip || '-';
+							var reason = decision.scenario || ban.scenario || '-';
+							var origin = decision.origin || 'unknown';
+							var country = ban.source?.cn || '-';
+							var duration = decision.duration || '-';
+
+							// Shorten reason for display
+							if (reason.length > 50) {
+								reason = reason.substring(0, 47) + '...';
+							}
+
+							return E('tr', { 'class': 'tr' }, [
+								E('td', { 'class': 'td', 'style': 'font-family: monospace; font-weight: 500;' }, ip),
+								E('td', { 'class': 'td', 'style': 'max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;', 'title': decision.scenario || ban.scenario }, reason),
+								E('td', { 'class': 'td' }, [
+									E('span', {
+										'style': 'background: ' + (origin === 'cscli' ? '#e67e22' : origin === 'crowdsec' ? '#3498db' : '#95a5a6') + '; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; text-transform: uppercase;'
+									}, origin === 'cscli' ? 'WAF' : origin)
+								]),
+								E('td', { 'class': 'td', 'style': 'font-size: 11px;' }, country),
+								E('td', { 'class': 'td', 'style': 'font-size: 11px; color: #666;' }, duration),
+								E('td', { 'class': 'td' }, [
+									E('button', {
+										'class': 'btn cbi-button cbi-button-remove',
+										'style': 'font-size: 11px; padding: 2px 8px;',
+										'click': function() {
+											if (!confirm(_('Unban IP %s?').format(ip))) return;
+											ui.showModal(_('Unbanning...'), [E('p', { 'class': 'spinning' }, _('Removing ban for ') + ip)]);
+											callUnban(ip).then(function(res) {
+												ui.hideModal();
+												if (res && res.success) {
+													ui.addNotification(null, E('p', {}, _('Unbanned: ') + ip), 'success');
+													location.reload();
+												} else {
+													ui.addNotification(null, E('p', {}, _('Failed to unban: ') + (res.error || 'Unknown error')), 'error');
+												}
+											});
+										}
+									}, _('Unban'))
+								])
+							]);
+						})))
+					]) :
+					E('div', { 'class': 'cbi-section-node', 'style': 'text-align: center; padding: 40px; color: #27ae60;' }, [
+						E('div', { 'style': 'font-size: 48px; margin-bottom: 16px;' }, '✅'),
+						E('p', {}, _('No active bans')),
+						E('p', { 'style': 'font-size: 12px; color: #666;' }, _('All traffic is currently allowed.'))
+					])
 			]),
 
 			// HAProxy Backend Inspection Card
