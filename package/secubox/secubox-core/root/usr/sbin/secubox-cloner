@@ -531,7 +531,7 @@ show_status() {
 	# Build state
 	echo "Clone Images:"
 	if [ -d "$CLONE_DIR" ]; then
-		for img in "$CLONE_DIR"/*.img "$CLONE_DIR"/*.img.gz 2>/dev/null; do
+		ls "$CLONE_DIR"/*.img "$CLONE_DIR"/*.img.gz 2>/dev/null | while read img; do
 			[ -f "$img" ] || continue
 			local size=$(ls -lh "$img" 2>/dev/null | awk '{print $5}')
 			echo "  - $(basename "$img") ($size)"
@@ -557,7 +557,7 @@ show_status() {
 	echo "Clone Tokens:"
 	local token_count=0
 	if [ -d "$TOKENS_DIR" ]; then
-		for tf in "$TOKENS_DIR"/*.json 2>/dev/null; do
+		ls "$TOKENS_DIR"/*.json 2>/dev/null | while read tf; do
 			[ -f "$tf" ] || continue
 			local token=$(jsonfilter -i "$tf" -e '@.token' 2>/dev/null | cut -c1-16)
 			local used=$(jsonfilter -i "$tf" -e '@.used' 2>/dev/null)
@@ -630,6 +630,176 @@ export_image() {
 }
 
 # ============================================================================
+# Serial Flash Operations
+# ============================================================================
+
+SERIAL_PORT="/dev/ttyUSB0"
+SERIAL_BAUD="115200"
+
+serial_detect() {
+	log "Detecting serial ports..."
+	local found=0
+	for port in /dev/ttyUSB* /dev/ttyACM*; do
+		if [ -c "$port" ]; then
+			echo "  Found: $port"
+			found=1
+		fi
+	done
+	if [ "$found" = "0" ]; then
+		warn "No serial ports found"
+		return 1
+	fi
+
+	# Check if default port exists
+	if [ -c "$SERIAL_PORT" ]; then
+		log "Default port $SERIAL_PORT is available"
+	fi
+}
+
+serial_configure() {
+	local port="${1:-$SERIAL_PORT}"
+	if [ ! -c "$port" ]; then
+		error "Serial port $port not found"
+		return 1
+	fi
+
+	# Configure serial port
+	stty -F "$port" "$SERIAL_BAUD" cs8 -cstopb -parenb raw -echo 2>/dev/null
+	log "Configured $port at $SERIAL_BAUD baud"
+}
+
+serial_send() {
+	local port="${1:-$SERIAL_PORT}"
+	local cmd="$2"
+	local wait="${3:-1}"
+
+	echo "$cmd" > "$port"
+	sleep "$wait"
+}
+
+serial_break() {
+	local port="${1:-$SERIAL_PORT}"
+	log "Sending break sequence to enter U-Boot..."
+
+	serial_configure "$port" || return 1
+
+	# Send multiple newlines/breaks to catch U-Boot
+	for i in 1 2 3 4 5 6 7 8 9 10; do
+		echo "" > "$port"
+		sleep 0.1
+	done
+
+	log "Break sequence sent - check for 'Marvell>>' prompt"
+	log "Use: secubox-cloner flash console"
+}
+
+serial_console() {
+	local port="${1:-$SERIAL_PORT}"
+
+	if ! command -v socat >/dev/null 2>&1; then
+		error "socat not installed. Install with: opkg install socat"
+		return 1
+	fi
+
+	serial_configure "$port" || return 1
+
+	log "Starting interactive console on $port"
+	log "Press Ctrl+C to exit"
+	echo ""
+
+	socat -,raw,echo=0 "$port,b$SERIAL_BAUD,raw,echo=0"
+}
+
+serial_monitor() {
+	local port="${1:-$SERIAL_PORT}"
+
+	serial_configure "$port" || return 1
+
+	log "Monitoring $port (Ctrl+C to exit)..."
+	cat "$port"
+}
+
+serial_flash() {
+	local port="${1:-$SERIAL_PORT}"
+	local image="${2:-secubox-clone.img}"
+	local lan_ip=$(get_lan_ip)
+
+	# Check prerequisites
+	if [ ! -c "$port" ]; then
+		error "Serial port $port not found"
+		return 1
+	fi
+
+	if [ ! -f "$TFTP_ROOT/$image" ]; then
+		error "Image not found: $TFTP_ROOT/$image"
+		error "Run: secubox-cloner build && secubox-cloner serve --start"
+		return 1
+	fi
+
+	local image_size=$(stat -c%s "$TFTP_ROOT/$image" 2>/dev/null)
+	local image_blocks=$((image_size / 512))
+
+	log "=== SecuBox Serial Flash ==="
+	log "Port: $port"
+	log "TFTP Server: $lan_ip"
+	log "Image: $image ($((image_size / 1024 / 1024)) MB)"
+	log "Blocks: $image_blocks (0x$(printf '%x' $image_blocks))"
+	echo ""
+
+	serial_configure "$port" || return 1
+
+	log "Step 1: Setting up network..."
+	serial_send "$port" "setenv serverip $lan_ip" 2
+	serial_send "$port" "setenv ipaddr 192.168.255.100" 2
+	serial_send "$port" "setenv netmask 255.255.255.0" 1
+
+	log "Step 2: Downloading image via TFTP..."
+	serial_send "$port" "tftpboot 0x6000000 $image" 120
+
+	log "Step 3: Writing to MMC..."
+	serial_send "$port" "mmc dev 1" 3
+	serial_send "$port" "mmc write 0x6000000 0 0x$(printf '%x' $image_blocks)" 180
+
+	log "Step 4: Booting..."
+	serial_send "$port" "reset" 3
+
+	log "Flash commands sent!"
+	log "Monitor progress: secubox-cloner flash console"
+}
+
+serial_uboot_cmds() {
+	local lan_ip=$(get_lan_ip)
+	local image="secubox-clone.img"
+
+	if [ -f "$TFTP_ROOT/$image" ]; then
+		local image_size=$(stat -c%s "$TFTP_ROOT/$image" 2>/dev/null)
+		local image_blocks=$((image_size / 512))
+	else
+		local image_blocks="0x100000"
+	fi
+
+	echo ""
+	echo -e "${BOLD}U-Boot Commands for Manual Flash:${NC}"
+	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	echo ""
+	echo "# 1. Set network (at Marvell>> prompt)"
+	echo "setenv serverip $lan_ip"
+	echo "setenv ipaddr 192.168.255.100"
+	echo "setenv netmask 255.255.255.0"
+	echo ""
+	echo "# 2. Download image"
+	echo "tftpboot 0x6000000 $image"
+	echo ""
+	echo "# 3. Write to eMMC"
+	echo "mmc dev 1"
+	echo "mmc write 0x6000000 0 0x$(printf '%x' $image_blocks)"
+	echo ""
+	echo "# 4. Boot"
+	echo "reset"
+	echo ""
+}
+
+# ============================================================================
 # Usage
 # ============================================================================
 
@@ -647,6 +817,14 @@ Commands:
   list                      List pending and joined clones
   export [FILE]             Export clone image to file
 
+Serial Flash Commands:
+  flash detect              Detect available serial ports
+  flash break [PORT]        Send break to enter U-Boot
+  flash console [PORT]      Interactive serial console (socat)
+  flash monitor [PORT]      Monitor serial output
+  flash run [PORT] [IMAGE]  Send U-Boot flash commands
+  flash uboot               Print manual U-Boot commands
+
 Options:
   --resize SIZE             Pre-resize image (e.g., 16G for eMMC)
   --auto-approve            Token auto-approves clone join (no manual step)
@@ -655,6 +833,11 @@ Examples:
   # Build and serve clone image
   secubox-cloner build
   secubox-cloner serve --start
+
+  # Flash a clone device via serial
+  secubox-cloner flash break        # Enter U-Boot on target
+  secubox-cloner flash run          # Send TFTP flash commands
+  secubox-cloner flash console      # Monitor progress
 
   # Generate auto-approve token
   secubox-cloner token --auto-approve
@@ -715,6 +898,41 @@ case "${1:-}" in
 	export)
 		shift
 		export_image "$@"
+		;;
+
+	flash)
+		shift
+		case "${1:-help}" in
+			detect)
+				serial_detect
+				;;
+			break)
+				serial_break "${2:-$SERIAL_PORT}"
+				;;
+			console)
+				serial_console "${2:-$SERIAL_PORT}"
+				;;
+			monitor)
+				serial_monitor "${2:-$SERIAL_PORT}"
+				;;
+			run)
+				serial_flash "${2:-$SERIAL_PORT}" "${3:-secubox-clone.img}"
+				;;
+			uboot|commands|cmd)
+				serial_uboot_cmds
+				;;
+			*)
+				echo "Usage: secubox-cloner flash <command> [port]"
+				echo ""
+				echo "Commands:"
+				echo "  detect              Detect available serial ports"
+				echo "  break [PORT]        Send break to enter U-Boot"
+				echo "  console [PORT]      Interactive serial console"
+				echo "  monitor [PORT]      Monitor serial output"
+				echo "  run [PORT] [IMAGE]  Send U-Boot flash commands"
+				echo "  uboot               Print manual U-Boot commands"
+				;;
+		esac
 		;;
 
 	help|--help|-h|"")

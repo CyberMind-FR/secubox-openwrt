@@ -801,13 +801,192 @@ cmd_console() {
 
 cmd_uboot() {
     local device="${1:-}"
+    local mode="${2:-break}"  # break, poweron, or wait
     load_detected
 
     [[ -z "$device" ]] && device="${TARGET_DEV:-}"
     [[ -z "$device" ]] && { log_error "No device specified"; return 1; }
 
-    log_info "Breaking into U-Boot on $device..."
-    mokatool break --port "$device" --baud "$BAUDRATE"
+    case "$mode" in
+        poweron|power)
+            uboot_poweron_intercept "$device"
+            ;;
+        wait)
+            uboot_wait_prompt "$device"
+            ;;
+        break|*)
+            log_info "Breaking into U-Boot on $device..."
+            mokatool break --port "$device" --baud "$BAUDRATE"
+            ;;
+    esac
+}
+
+# Intercept U-Boot at power-on by sending continuous breaks
+uboot_poweron_intercept() {
+    local device="$1"
+    local timeout="${2:-30}"  # 30 second window for power-on
+
+    log_step "U-Boot Power-On Intercept: $device"
+    echo -e "${YELLOW}>>> Power on the target device NOW <<<${NC}"
+    echo ""
+    log_info "Sending break characters for ${timeout}s..."
+    log_info "Watching for U-Boot prompt (Marvell>>, =>, Hit any key)"
+    echo ""
+
+    # Use Python for precise timing and pattern detection
+    python3 -c "
+import serial
+import time
+import sys
+import select
+
+device = '$device'
+baudrate = $BAUDRATE
+timeout = $timeout
+
+# U-Boot prompt patterns
+UBOOT_PATTERNS = [
+    b'Marvell>>',
+    b'=>',
+    b'U-Boot>',
+    b'Hit any key',
+    b'autoboot:',
+    b'starting in',
+]
+
+try:
+    ser = serial.Serial(device, baudrate, timeout=0.1)
+    ser.reset_input_buffer()
+
+    start_time = time.time()
+    buffer = b''
+    found_uboot = False
+    last_send = 0
+    send_interval = 0.05  # Send break every 50ms
+
+    print('Monitoring serial output...')
+    print('-' * 60)
+
+    while time.time() - start_time < timeout:
+        # Send break characters rapidly
+        now = time.time()
+        if now - last_send >= send_interval:
+            ser.write(b'\r\n\x03')  # CR LF + Ctrl-C
+            last_send = now
+
+        # Read any available data
+        if ser.in_waiting:
+            data = ser.read(ser.in_waiting)
+            buffer += data
+
+            # Display output (decode safely)
+            try:
+                text = data.decode('utf-8', errors='replace')
+                sys.stdout.write(text)
+                sys.stdout.flush()
+            except:
+                pass
+
+            # Check for U-Boot patterns
+            for pattern in UBOOT_PATTERNS:
+                if pattern in buffer:
+                    print()
+                    print('-' * 60)
+                    print(f'\\n*** U-Boot detected! Pattern: {pattern.decode()} ***')
+                    found_uboot = True
+                    break
+
+            if found_uboot:
+                # Send a few more breaks to ensure we stopped autoboot
+                for _ in range(5):
+                    ser.write(b'\\r\\n')
+                    time.sleep(0.1)
+                break
+
+            # Keep buffer from growing too large
+            if len(buffer) > 4096:
+                buffer = buffer[-2048:]
+
+        time.sleep(0.01)
+
+    print()
+    print('-' * 60)
+
+    if found_uboot:
+        print('SUCCESS: U-Boot prompt intercepted!')
+        print(f'Device ready at: {device}')
+        print()
+        print('Use: ./secubox-clone-station.sh console {}'.format(device))
+        sys.exit(0)
+    else:
+        print('TIMEOUT: U-Boot prompt not detected')
+        print('Ensure device is powered on and serial is connected')
+        sys.exit(1)
+
+    ser.close()
+
+except serial.SerialException as e:
+    print(f'Serial error: {e}')
+    sys.exit(1)
+except KeyboardInterrupt:
+    print('\\nInterrupted')
+    sys.exit(130)
+" 2>&1
+
+    return $?
+}
+
+# Wait passively for U-Boot prompt (device already booting)
+uboot_wait_prompt() {
+    local device="$1"
+    local timeout="${2:-60}"
+
+    log_step "Waiting for U-Boot prompt on $device..."
+
+    python3 -c "
+import serial
+import time
+import sys
+
+device = '$device'
+baudrate = $BAUDRATE
+timeout = $timeout
+
+UBOOT_PATTERNS = [b'Marvell>>', b'=>', b'U-Boot>', b'Hit any key']
+
+try:
+    ser = serial.Serial(device, baudrate, timeout=0.5)
+    start_time = time.time()
+    buffer = b''
+
+    while time.time() - start_time < timeout:
+        if ser.in_waiting:
+            data = ser.read(ser.in_waiting)
+            buffer += data
+            sys.stdout.write(data.decode('utf-8', errors='replace'))
+            sys.stdout.flush()
+
+            for pattern in UBOOT_PATTERNS:
+                if pattern in buffer:
+                    print(f'\\n\\n*** U-Boot prompt detected: {pattern.decode()} ***')
+                    # Send break to stop autoboot
+                    ser.write(b'\\r\\n')
+                    time.sleep(0.2)
+                    ser.write(b'\\r\\n')
+                    sys.exit(0)
+
+            if len(buffer) > 4096:
+                buffer = buffer[-2048:]
+
+        time.sleep(0.05)
+
+    print('\\nTIMEOUT: No U-Boot prompt detected')
+    sys.exit(1)
+
+except Exception as e:
+    print(f'Error: {e}')
+    sys.exit(1)
+" 2>&1
 }
 
 cmd_env_backup() {
@@ -859,7 +1038,10 @@ Commands:
   clone                     Full workflow: detect → pull → flash → verify
 
   console [DEV]             Connect to serial console (via MOKATOOL)
-  uboot [DEV]               Break into U-Boot prompt
+  uboot [DEV] [MODE]        Enter U-Boot prompt
+                              break   - Send break to running device (default)
+                              poweron - Intercept at power-on (aggressive)
+                              wait    - Wait passively for U-Boot output
   env-backup [DEV] [FILE]   Backup U-Boot environment
 
 Options:
@@ -875,11 +1057,16 @@ Examples:
   # Auto-detect devices
   ./secubox-clone-station.sh detect
 
+  # Enter U-Boot at power-on (intercept boot)
+  ./secubox-clone-station.sh uboot /dev/ttyUSB1 poweron
+  # Then power on the target device - script catches U-Boot
+
   # Full clone workflow
   ./secubox-clone-station.sh clone
 
   # Manual workflow
   ./secubox-clone-station.sh pull --master /dev/ttyUSB0
+  ./secubox-clone-station.sh uboot /dev/ttyUSB1 poweron  # Power on target
   ./secubox-clone-station.sh flash --target /dev/ttyUSB1
 
   # Interactive console
@@ -925,7 +1112,17 @@ case "${1:-}" in
         ;;
     uboot)
         shift
-        cmd_uboot "$@"
+        # cmd_uboot [device] [mode: break|poweron|wait]
+        device="${1:-}"
+        mode="${2:-break}"
+        # If first arg looks like a mode, shift it
+        case "$device" in
+            break|poweron|power|wait)
+                mode="$device"
+                device=""
+                ;;
+        esac
+        cmd_uboot "$device" "$mode"
         ;;
     env-backup|env-dump)
         shift
