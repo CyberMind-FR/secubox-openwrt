@@ -1,0 +1,97 @@
+#!/bin/sh
+# Sync WireGuard peer endpoints to mitmproxy WAF whitelist
+# This ensures VPN peers are never banned by the WAF
+#
+# Run this:
+# - On boot (via init script)
+# - When WireGuard config changes (via UCI hook)
+# - Periodically (via cron)
+
+ENDPOINTS_FILE="/srv/mitmproxy/wireguard-endpoints.json"
+
+# Extract all WireGuard peer endpoints from UCI
+get_wg_endpoints() {
+    local endpoints=""
+
+    # Get all wireguard interfaces
+    for iface in $(uci show network 2>/dev/null | grep "proto='wireguard'" | cut -d. -f2); do
+        # Get peers for this interface
+        for peer in $(uci show network 2>/dev/null | grep "network\.@wireguard_${iface}\[" | grep "endpoint_host" | cut -d= -f1); do
+            endpoint=$(uci -q get "$peer" 2>/dev/null | cut -d: -f1)
+            if [ -n "$endpoint" ]; then
+                # Skip if it's a hostname (contains letters)
+                case "$endpoint" in
+                    *[a-zA-Z]*)
+                        # Resolve hostname to IP
+                        resolved=$(nslookup "$endpoint" 2>/dev/null | grep "Address" | tail -1 | awk '{print $2}')
+                        if [ -n "$resolved" ] && [ "$resolved" != "#53" ]; then
+                            endpoint="$resolved"
+                        else
+                            continue
+                        fi
+                        ;;
+                esac
+
+                if [ -n "$endpoints" ]; then
+                    endpoints="$endpoints, \"$endpoint\""
+                else
+                    endpoints="\"$endpoint\""
+                fi
+            fi
+        done
+    done
+
+    # Also check direct endpoint_host in wireguard peer sections
+    for peer in $(uci show network 2>/dev/null | grep "\.endpoint_host=" | cut -d= -f1); do
+        endpoint=$(uci -q get "$peer" 2>/dev/null | cut -d: -f1)
+        if [ -n "$endpoint" ]; then
+            case "$endpoint" in
+                *[a-zA-Z]*)
+                    resolved=$(nslookup "$endpoint" 2>/dev/null | grep "Address" | tail -1 | awk '{print $2}')
+                    if [ -n "$resolved" ] && [ "$resolved" != "#53" ]; then
+                        endpoint="$resolved"
+                    else
+                        continue
+                    fi
+                    ;;
+            esac
+
+            # Check if already in list
+            case "$endpoints" in
+                *"$endpoint"*) ;;
+                *)
+                    if [ -n "$endpoints" ]; then
+                        endpoints="$endpoints, \"$endpoint\""
+                    else
+                        endpoints="\"$endpoint\""
+                    fi
+                    ;;
+            esac
+        fi
+    done
+
+    echo "$endpoints"
+}
+
+# Main
+endpoints=$(get_wg_endpoints)
+
+# Write JSON file
+cat > "$ENDPOINTS_FILE" << EOF
+{
+    "updated": "$(date -Iseconds)",
+    "endpoints": [$endpoints]
+}
+EOF
+
+# Count endpoints
+if [ -n "$endpoints" ]; then
+    count=$(echo "$endpoints" | tr ',' '\n' | wc -l)
+else
+    count=0
+fi
+
+logger -t mitmproxy-wg "Synced $count WireGuard endpoint(s) to WAF whitelist"
+
+# If verbose mode
+[ "$1" = "-v" ] && cat "$ENDPOINTS_FILE"

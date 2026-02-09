@@ -30,6 +30,28 @@ AUTOBAN_FILE = "/data/autoban-requests.log"
 AUTOBAN_CONFIG = "/data/autoban.json"
 # Subdomain metrics file
 SUBDOMAIN_METRICS_FILE = "/tmp/secubox-subdomain-metrics.json"
+# WireGuard endpoints file (written by host from UCI wireguard config)
+# Contains public IPs of WireGuard peers that should never be banned
+WIREGUARD_ENDPOINTS_FILE = "/data/wireguard-endpoints.json"
+
+# ============================================================================
+# TRUSTED PATH WHITELIST - Skip threat detection for legitimate management
+# ============================================================================
+
+# Paths that should NOT trigger threat detection (legitimate admin interfaces)
+TRUSTED_PATH_PREFIXES = [
+    '/cgi-bin/luci',      # OpenWrt LuCI web interface
+    '/luci-static/',      # LuCI static assets
+    '/ubus/',             # OpenWrt ubus API
+    '/cgi-bin/cgi-',      # OpenWrt CGI scripts
+]
+
+# Hosts that should have relaxed detection (local management)
+TRUSTED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    '192.168.255.1',      # Default SecuBox LAN IP
+]
 
 # ============================================================================
 # THREAT DETECTION PATTERNS
@@ -489,6 +511,7 @@ class SecuBoxAnalytics:
         self.blocked_ips = set()
         self.autoban_config = {}
         self.autoban_requested = set()  # Track IPs we've already requested to ban
+        self.wireguard_endpoints = set()  # WireGuard peer endpoint IPs (never ban)
         # Attempt tracking for sensitivity-based auto-ban
         # Structure: {ip: [(timestamp, severity, reason), ...]}
         self.threat_attempts = defaultdict(list)
@@ -508,7 +531,8 @@ class SecuBoxAnalytics:
         self._load_geoip()
         self._load_blocked_ips()
         self._load_autoban_config()
-        ctx.log.info("SecuBox Analytics addon v2.3 loaded - Enhanced threat detection with subdomain metrics")
+        self._load_wireguard_endpoints()
+        ctx.log.info("SecuBox Analytics addon v2.4 loaded - Enhanced threat detection with WireGuard protection")
 
     def _load_geoip(self):
         """Load GeoIP database if available"""
@@ -694,6 +718,26 @@ class SecuBoxAnalytics:
             ctx.log.warn(f"Could not load auto-ban config: {e}")
             self.autoban_config = {'enabled': False}
 
+    def _load_wireguard_endpoints(self):
+        """
+        Load WireGuard peer endpoint IPs from config file.
+        These IPs are NEVER banned to ensure VPN tunnel connectivity.
+
+        The host should write this file from UCI wireguard config:
+        /data/wireguard-endpoints.json = {"endpoints": ["1.2.3.4", "5.6.7.8"]}
+        """
+        try:
+            if os.path.exists(WIREGUARD_ENDPOINTS_FILE):
+                with open(WIREGUARD_ENDPOINTS_FILE, 'r') as f:
+                    data = json.load(f)
+                    endpoints = data.get('endpoints', [])
+                    if isinstance(endpoints, list):
+                        self.wireguard_endpoints = set(endpoints)
+                        if self.wireguard_endpoints:
+                            ctx.log.info(f"WireGuard endpoints loaded: {len(self.wireguard_endpoints)} IPs protected from auto-ban")
+        except Exception as e:
+            ctx.log.debug(f"Could not load WireGuard endpoints: {e}")
+
     def _clean_old_attempts(self, ip: str, window: int):
         """Remove attempts older than the window for an IP"""
         now = time.time()
@@ -744,7 +788,12 @@ class SecuBoxAnalytics:
         if ip in whitelist:
             return False, ''
 
-        # Skip local IPs
+        # Skip WireGuard peer endpoint IPs (critical for VPN connectivity)
+        if ip in self.wireguard_endpoints:
+            return False, ''
+
+        # Skip local/private IPs (includes WireGuard tunnels which typically use 10.x.x.x)
+        # RFC 1918 private ranges: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
         if ip.startswith(('10.', '172.16.', '172.17.', '172.18.', '172.19.',
                           '172.20.', '172.21.', '172.22.', '172.23.', '172.24.',
                           '172.25.', '172.26.', '172.27.', '172.28.', '172.29.',
@@ -866,10 +915,9 @@ class SecuBoxAnalytics:
             # Permissive: always require threshold to be met
             return self._check_threshold(ip, threshold, window)
 
-        else:  # moderate
-            # Moderate: critical threats ban immediately, others follow threshold
-            if is_critical_threat:
-                return True, threat_reason
+        else:  # moderate (default)
+            # Moderate: ALWAYS require threshold to be met, never immediate ban
+            # This prevents accidental bans from single requests (e.g., legitimate LuCI login)
             return self._check_threshold(ip, threshold, window)
 
     def _request_autoban(self, ip: str, reason: str, severity: str = 'high'):
@@ -974,8 +1022,29 @@ class SecuBoxAnalytics:
             'device': device
         }
 
+    def _is_trusted_path(self, request: http.Request) -> bool:
+        """Check if request path is in trusted whitelist (e.g., LuCI management)"""
+        path = request.path.lower()
+        host = request.host.lower() if request.host else ''
+
+        # Check trusted hosts
+        for trusted_host in TRUSTED_HOSTS:
+            if trusted_host in host:
+                return True
+
+        # Check trusted path prefixes
+        for prefix in TRUSTED_PATH_PREFIXES:
+            if path.startswith(prefix.lower()):
+                return True
+
+        return False
+
     def _detect_bot_behavior(self, request: http.Request) -> dict:
         """Detect bot-like behavior based on request patterns"""
+        # Skip detection for trusted management paths
+        if self._is_trusted_path(request):
+            return {'is_bot_behavior': False, 'behavior_type': None, 'pattern': None, 'severity': None}
+
         path = request.path.lower()
 
         for pattern in BOT_BEHAVIOR_PATHS:
@@ -1021,6 +1090,10 @@ class SecuBoxAnalytics:
 
     def _detect_scan(self, request: http.Request) -> dict:
         """Comprehensive threat detection with categorized patterns"""
+        # Skip path-based detection for trusted management paths (LuCI, etc.)
+        # Still check for injection attacks in body/params as those are dangerous everywhere
+        is_trusted = self._is_trusted_path(request)
+
         path = request.path.lower()
         full_url = request.pretty_url.lower()
         query = request.query
@@ -1046,13 +1119,14 @@ class SecuBoxAnalytics:
         combined = ' '.join(search_targets)
         threats = []
 
-        # Check path-based scans
-        for pattern in PATH_SCAN_PATTERNS:
-            if re.search(pattern, path, re.IGNORECASE):
-                return {
-                    'is_scan': True, 'pattern': pattern, 'type': 'path_scan',
-                    'severity': 'medium', 'category': 'reconnaissance'
-                }
+        # Check path-based scans (skip for trusted paths like LuCI)
+        if not is_trusted:
+            for pattern in PATH_SCAN_PATTERNS:
+                if re.search(pattern, path, re.IGNORECASE):
+                    return {
+                        'is_scan': True, 'pattern': pattern, 'type': 'path_scan',
+                        'severity': 'medium', 'category': 'reconnaissance'
+                    }
 
         # Check SQL Injection
         for pattern in SQL_INJECTION_PATTERNS:
