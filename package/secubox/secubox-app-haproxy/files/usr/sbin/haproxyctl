@@ -567,7 +567,10 @@ EOF
 	config_foreach _add_ssl_redirect vhost
 
 	# Add path-based ACLs BEFORE vhost ACLs (path rules take precedence)
-	config_foreach _add_path_acl acl "http"
+	# Two-phase: collect then emit sorted by pattern length (longest first)
+	rm -f "$PATH_ACL_TMPFILE"
+	config_foreach _collect_path_acl acl
+	_emit_sorted_path_acls
 
 	# Add vhost ACLs for HTTP
 	config_foreach _add_vhost_acl vhost "http"
@@ -601,7 +604,10 @@ frontend https-in
 EOF
 		fi
 		# Add path-based ACLs BEFORE vhost ACLs (path rules take precedence)
-		config_foreach _add_path_acl acl "https"
+		# Two-phase: collect then emit sorted by pattern length (longest first)
+		rm -f "$PATH_ACL_TMPFILE"
+		config_foreach _collect_path_acl acl
+		_emit_sorted_path_acls
 
 		# Add vhost ACLs for HTTPS
 		config_foreach _add_vhost_acl vhost "https"
@@ -629,11 +635,13 @@ _add_ssl_redirect() {
 	echo "    http-request redirect scheme https code 301 if host_${acl_name} !{ ssl_fc } !is_acme_challenge"
 }
 
-# Generate path-based ACLs from UCI 'acl' sections
-# These are processed BEFORE vhost ACLs so path rules take precedence
-_add_path_acl() {
+# Path ACL collection temp file
+PATH_ACL_TMPFILE="/tmp/haproxy_path_acls.$$"
+
+# Collect path-based ACLs from UCI 'acl' sections into temp file for sorting
+# Format: pattern_length|section|type|pattern|backend|host
+_collect_path_acl() {
 	local section="$1"
-	local proto="$2"
 	local enabled type pattern backend host priority
 
 	config_get enabled "$section" enabled "1"
@@ -650,45 +658,66 @@ _add_path_acl() {
 	[ -n "$pattern" ] || return
 	[ -n "$backend" ] || return
 
-	# Generate ACL name from section name
-	local acl_name=$(echo "$section" | tr '.' '_' | tr '-' '_')
-	local host_acl_name=""
+	# Calculate pattern length for sorting (longer patterns first)
+	local pattern_len=${#pattern}
 
-	# If host is specified, we need a host ACL too
-	if [ -n "$host" ]; then
-		host_acl_name=$(echo "$host" | tr '.' '_' | tr '-' '_')
-		echo "    acl host_${host_acl_name} hdr(host) -i $host"
-	fi
+	# Write to temp file: length|section|type|pattern|backend|host
+	echo "${pattern_len}|${section}|${type}|${pattern}|${backend}|${host}" >> "$PATH_ACL_TMPFILE"
+}
 
-	# Generate path ACL based on type
-	case "$type" in
-		path_beg)
-			echo "    acl ${acl_name} path_beg $pattern"
-			;;
-		path_end)
-			echo "    acl ${acl_name} path_end $pattern"
-			;;
-		path)
-			echo "    acl ${acl_name} path $pattern"
-			;;
-		path_reg)
-			echo "    acl ${acl_name} path_reg $pattern"
-			;;
-		path_dir)
-			echo "    acl ${acl_name} path_dir $pattern"
-			;;
-		*)
-			log_warn "Unknown ACL type: $type for $section"
-			return
-			;;
-	esac
+# Emit sorted path ACLs (longest patterns first for correct matching)
+# This ensures /gk2/evolution matches before /gk2
+_emit_sorted_path_acls() {
+	[ -f "$PATH_ACL_TMPFILE" ] || return
 
-	# Generate use_backend rule
-	if [ -n "$host_acl_name" ]; then
-		echo "    use_backend $backend if host_${host_acl_name} ${acl_name}"
-	else
-		echo "    use_backend $backend if ${acl_name}"
-	fi
+	local seen_hosts=""
+
+	# Sort by pattern length (descending, numeric) and emit
+	sort -t'|' -k1 -rn "$PATH_ACL_TMPFILE" | while IFS='|' read -r len section type pattern backend host; do
+		local acl_name=$(echo "$section" | tr '.' '_' | tr '-' '_')
+		local host_acl_name=""
+
+		# If host is specified, emit host ACL only once
+		if [ -n "$host" ]; then
+			host_acl_name=$(echo "$host" | tr '.' '_' | tr '-' '_')
+			# Check if we've already emitted this host ACL
+			case "$seen_hosts" in
+				*"|$host_acl_name|"*) ;;
+				*)
+					echo "    acl host_${host_acl_name} hdr(host) -i $host"
+					seen_hosts="${seen_hosts}|${host_acl_name}|"
+					;;
+			esac
+		fi
+
+		# Generate path ACL based on type
+		case "$type" in
+			path_beg)
+				echo "    acl ${acl_name} path_beg $pattern"
+				;;
+			path_end)
+				echo "    acl ${acl_name} path_end $pattern"
+				;;
+			path)
+				echo "    acl ${acl_name} path $pattern"
+				;;
+			path_reg)
+				echo "    acl ${acl_name} path_reg $pattern"
+				;;
+			path_dir)
+				echo "    acl ${acl_name} path_dir $pattern"
+				;;
+		esac
+
+		# Generate use_backend rule
+		if [ -n "$host_acl_name" ]; then
+			echo "    use_backend $backend if host_${host_acl_name} ${acl_name}"
+		else
+			echo "    use_backend $backend if ${acl_name}"
+		fi
+	done
+
+	rm -f "$PATH_ACL_TMPFILE"
 }
 
 _add_vhost_acl() {
