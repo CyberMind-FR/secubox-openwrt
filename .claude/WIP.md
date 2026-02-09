@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-08 (night)_
+_Last updated: 2026-02-09 (early morning)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -83,13 +83,16 @@ _Last updated: 2026-02-08 (night)_
   - 9 active backends documented
   - Wildcard certificate ready for mesh
 
-- **HAProxy Path-Based ACL Routing** — DONE (2026-02-08)
+- **HAProxy Path-Based ACL Routing** — DONE (2026-02-08/09)
   - Added `_add_path_acl()` function to haproxyctl for UCI `acl` sections
   - Support for path_beg, path_end, path, path_reg, path_dir match types
   - Path ACLs processed before vhost ACLs (higher priority)
   - Fixed http_request list handling to avoid duplicate output
-  - Enables `gk2.secubox.in/evolution` → `streamlit_evolution` routing
-  - Fixed stale HAProxy process using old config file
+  - **Pattern Length Sorting** (2026-02-09): ACLs now sorted by pattern length (longest first)
+    - Two-phase: `_collect_path_acl()` + `_emit_sorted_path_acls()`
+    - Ensures `/gk2/evolution` matches before `/gk2`
+  - Apex domain routing: `secubox.in/gk2/**` instead of `*.gk2.secubox.in`
+  - Tested: `/gk2`, `/gk2/evolution`, `/gk2/control` all routing correctly
 
 - **Gandi DNS Secondary Setup** — DONE (2026-02-08)
   - Configured BIND master to allow zone transfers to Gandi (217.70.177.40)
