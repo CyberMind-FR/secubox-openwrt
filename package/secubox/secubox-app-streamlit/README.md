@@ -212,7 +212,7 @@ To expose Streamlit apps via HAProxy vhost:
 uci add haproxy backend
 uci set haproxy.@backend[-1].name='streamlit_myapp'
 uci set haproxy.@backend[-1].mode='http'
-uci add_list haproxy.@backend[-1].server='myapp 127.0.0.1:8502'
+uci add_list haproxy.@backend[-1].server='myapp 192.168.255.1:8502'
 uci commit haproxy
 
 # Add vhost

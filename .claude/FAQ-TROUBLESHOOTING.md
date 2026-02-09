@@ -174,6 +174,42 @@ uci commit firewall
 
 ## HAProxy Issues
 
+### Issue: Multi-domain SSL certificates not matching correctly (SNI issues)
+
+**Symptoms:**
+- Wrong certificate served for some domains
+- SSL handshake failures for specific domains
+- Browser shows certificate name mismatch warnings
+
+**Root Cause:**
+HAProxy directory mode (`crt /path/to/certs/`) uses certificate filenames for SNI matching, which can be unreliable with multiple certificates. The certificate CN/SAN extraction is automatic but may not match the expected domain.
+
+**Solution:**
+Use `crt-list` instead of directory mode for explicit domain-to-certificate mapping.
+
+1. Generate `certs.list` file that maps each certificate to its domains:
+```bash
+haproxyctl generate
+# or manually regenerate:
+haproxy-sync-certs
+```
+
+2. The certs.list format is:
+```
+/opt/haproxy/certs/example.com.pem example.com
+/opt/haproxy/certs/example.com.pem www.example.com
+/opt/haproxy/certs/api.example.com.pem api.example.com
+```
+
+3. HAProxy config uses:
+```
+bind *:443 ssl crt-list /opt/haproxy/certs/certs.list alpn h2,http/1.1
+```
+
+This was fixed in haproxyctl (2026-02-07) to automatically generate certs.list from certificate SANs.
+
+---
+
 ### Issue: HAProxy fails with "unable to find required use_backend"
 
 **Symptoms:**
