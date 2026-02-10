@@ -293,26 +293,52 @@ remove_ban() {
 # Get aggregated stats for dashboard
 get_dashboard_stats() {
 	check_cscli
-	
+
 	json_init
 
-	# Count decisions - local + CAPI
-	local local_decisions capi_decisions decisions_count
-	local_decisions=$(run_cscli decisions list --no-api -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+	# Count decisions - use jq if available, fallback to grep
+	local decisions_count=0 local_decisions=0 capi_decisions=0
+	local decisions_json
+	decisions_json=$(run_cscli decisions list -o json 2>/dev/null)
+	if [ -n "$decisions_json" ] && [ "$decisions_json" != "null" ] && [ "$decisions_json" != "[]" ]; then
+		if command -v jq >/dev/null 2>&1; then
+			decisions_count=$(echo "$decisions_json" | jq 'length' 2>/dev/null)
+		else
+			decisions_count=$(echo "$decisions_json" | grep -c '"id":' 2>/dev/null)
+		fi
+	fi
+	# Count CAPI decisions from metrics
 	capi_decisions=$(run_cscli metrics 2>/dev/null | grep 'CAPI.*ban' | awk -F'|' '{sum += $5} END {print sum+0}')
-	decisions_count=$((local_decisions + capi_decisions))
+	local_decisions=$((decisions_count - capi_decisions))
+	[ "$local_decisions" -lt 0 ] && local_decisions=0
 	json_add_int "total_decisions" "${decisions_count:-0}"
 	json_add_int "local_decisions" "${local_decisions:-0}"
 	json_add_int "capi_decisions" "${capi_decisions:-0}"
 
-	# Count alerts (last 24h)
-	local alerts_count
-	alerts_count=$(run_cscli alerts list -o json --since 24h 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+	# Count alerts (last 24h) - use jq if available
+	local alerts_count=0
+	local alerts_json
+	alerts_json=$(run_cscli alerts list -o json --since 24h 2>/dev/null)
+	if [ -n "$alerts_json" ] && [ "$alerts_json" != "null" ] && [ "$alerts_json" != "[]" ]; then
+		if command -v jq >/dev/null 2>&1; then
+			alerts_count=$(echo "$alerts_json" | jq 'length' 2>/dev/null)
+		else
+			alerts_count=$(echo "$alerts_json" | grep -c '"id":' 2>/dev/null)
+		fi
+	fi
 	json_add_int "alerts_24h" "${alerts_count:-0}"
 
-	# Count bouncers
-	local bouncers_count
-	bouncers_count=$(run_cscli bouncers list -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+	# Count bouncers - use jq if available
+	local bouncers_count=0
+	local bouncers_json
+	bouncers_json=$(run_cscli bouncers list -o json 2>/dev/null)
+	if [ -n "$bouncers_json" ] && [ "$bouncers_json" != "null" ] && [ "$bouncers_json" != "[]" ]; then
+		if command -v jq >/dev/null 2>&1; then
+			bouncers_count=$(echo "$bouncers_json" | jq 'length' 2>/dev/null)
+		else
+			bouncers_count=$(echo "$bouncers_json" | grep -c '"name":' 2>/dev/null)
+		fi
+	fi
 	json_add_int "bouncers" "${bouncers_count:-0}"
 	
 	# Top scenarios (from cscli metrics - includes CAPI blocklist breakdown)
