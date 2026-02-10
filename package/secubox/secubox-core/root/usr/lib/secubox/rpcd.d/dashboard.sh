@@ -86,29 +86,31 @@ _do_active_sessions() {
 	json_add_int "ssh" "${ssh_sessions:-0}"
 	json_close_object
 
-	# External visitor IPs on HTTPS
+	# HTTPS visitors - use temp file to avoid subshell issue with pipe | while
 	json_add_array "https_visitors"
 	netstat -tn 2>/dev/null | grep ":443.*ESTABLISHED" | grep -v "127.0.0.1" | \
-		awk '{print $5}' | cut -d: -f1 | sort -u | head -10 | while read -r ip; do
+		awk '{print $5}' | cut -d: -f1 | sort -u | head -10 > /tmp/https_visitors.tmp
+	while read -r ip; do
 		[ -n "$ip" ] && json_add_string "" "$ip"
-	done
+	done < /tmp/https_visitors.tmp
+	rm -f /tmp/https_visitors.tmp
 	json_close_array
 
 	# Top accessed endpoints (from mitmproxy log)
 	json_add_array "top_endpoints"
 	if [ -f "/srv/mitmproxy/threats.log" ]; then
 		tail -200 /srv/mitmproxy/threats.log 2>/dev/null | \
-			jq -r '.request' 2>/dev/null | cut -d' ' -f2 | cut -d'?' -f1 | \
-			sort | uniq -c | sort -rn | head -8 | \
-			awk '{print "{\"path\":\"" $2 "\",\"count\":" $1 "}"}' | while read -r line; do
-			# Parse and add as object
-			local path=$(echo "$line" | jq -r '.path' 2>/dev/null)
-			local count=$(echo "$line" | jq -r '.count' 2>/dev/null)
-			json_add_object ""
-			json_add_string "path" "$path"
-			json_add_int "count" "$count"
-			json_close_object
-		done
+			jq -r '.request // empty' 2>/dev/null | cut -d' ' -f2 | cut -d'?' -f1 | \
+			sort | uniq -c | sort -rn | head -8 > /tmp/top_endpoints.tmp
+		while read -r count path; do
+			[ -n "$path" ] && {
+				json_add_object ""
+				json_add_string "path" "$path"
+				json_add_int "count" "${count:-0}"
+				json_close_object
+			}
+		done < /tmp/top_endpoints.tmp
+		rm -f /tmp/top_endpoints.tmp
 	fi
 	json_close_array
 
@@ -117,14 +119,16 @@ _do_active_sessions() {
 	if [ -f "/srv/mitmproxy/threats.log" ]; then
 		tail -100 /srv/mitmproxy/threats.log 2>/dev/null | \
 			jq -r '[.source_ip, .country] | @tsv' 2>/dev/null | \
-			sort -u | head -10 | while read -r ip country; do
+			sort -u | head -10 > /tmp/recent_visitors.tmp
+		while read -r ip country; do
 			[ -n "$ip" ] && {
 				json_add_object ""
 				json_add_string "ip" "$ip"
 				json_add_string "country" "${country:-??}"
 				json_close_object
 			}
-		done
+		done < /tmp/recent_visitors.tmp
+		rm -f /tmp/recent_visitors.tmp
 	fi
 	json_close_array
 
