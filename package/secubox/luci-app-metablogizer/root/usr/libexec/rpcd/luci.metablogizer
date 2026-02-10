@@ -953,6 +953,8 @@ method_upload_finalize() {
 
 	if [ $rc -eq 0 ]; then
 		fix_permissions "$site_path"
+		# Auto-push to Gitea if configured (background, use site name not UCI section id)
+		metablogizerctl gitea push "$name" >/dev/null 2>&1 &
 		json_init
 		json_add_boolean "success" 1
 		json_add_string "filename" "$filename"

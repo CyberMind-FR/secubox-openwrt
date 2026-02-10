@@ -663,6 +663,8 @@ upload_finalize() {
 			uci set "${CONFIG}.${name}.path=$main_py"
 			uci set "${CONFIG}.${name}.enabled=1"
 			uci commit "$CONFIG"
+			# Auto-push to Gitea if configured (background)
+			streamlitctl gitea push "$name" >/dev/null 2>&1 &
 			json_success "ZIP app deployed: $name"
 		else
 			json_error "No Python files found in archive"
@@ -680,6 +682,8 @@ upload_finalize() {
 			uci set "${CONFIG}.${name}.path=${name}.py"
 			uci set "${CONFIG}.${name}.enabled=1"
 			uci commit "$CONFIG"
+			# Auto-push to Gitea if configured (background)
+			streamlitctl gitea push "$name" >/dev/null 2>&1 &
 			json_success "App uploaded: $name"
 		else
 			rm -f "$app_file"

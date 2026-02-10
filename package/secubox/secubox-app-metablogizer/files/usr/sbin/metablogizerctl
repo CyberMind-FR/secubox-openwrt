@@ -454,20 +454,22 @@ cmd_gitea_push() {
 		return 1
 	fi
 
-	# Load Gitea config
-	local gitea_enabled=$(uci_get main.gitea_enabled)
-	local gitea_url=$(uci_get main.gitea_url)
-	local gitea_user=$(uci_get main.gitea_user)
-	local gitea_token=$(uci_get main.gitea_token)
+	# Load Gitea config from dedicated gitea section
+	local gitea_enabled=$(uci_get gitea.enabled)
+	local gitea_url=$(uci_get gitea.url)
+	local gitea_user=$(uci_get gitea.user)
+	local gitea_token=$(uci_get gitea.token)
 
 	[ -z "$gitea_url" ] && gitea_url="http://localhost:3000"
 
 	if [ -z "$gitea_token" ]; then
 		log_error "Gitea token not configured"
 		log_info "Configure with:"
-		log_info "  uci set metablogizer.main.gitea_url='http://192.168.255.1:3000'"
-		log_info "  uci set metablogizer.main.gitea_user='admin'"
-		log_info "  uci set metablogizer.main.gitea_token='your-token'"
+		log_info "  uci set metablogizer.gitea=gitea"
+		log_info "  uci set metablogizer.gitea.enabled=1"
+		log_info "  uci set metablogizer.gitea.url='http://192.168.255.1:3001'"
+		log_info "  uci set metablogizer.gitea.user='admin'"
+		log_info "  uci set metablogizer.gitea.token='your-token'"
 		log_info "  uci commit metablogizer"
 		return 1
 	fi
