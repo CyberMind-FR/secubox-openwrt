@@ -21,6 +21,8 @@
                     "get_system_health",
                     "get_alerts",
                     "get_dashboard_data",
+                    "get_system_overview",
+                    "get_active_sessions",
                     "get_theme",
                     "first_run_status",
                     "list_apps",

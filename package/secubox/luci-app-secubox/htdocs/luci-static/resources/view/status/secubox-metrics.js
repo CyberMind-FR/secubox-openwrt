@@ -15,17 +15,25 @@ var callGetVisitStats = rpc.declare({
 	expect: { }
 });
 
+var callGetActiveSessions = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_active_sessions',
+	expect: { }
+});
+
 return view.extend({
 	load: function() {
 		return Promise.all([
 			callGetSystemOverview(),
-			callGetVisitStats().catch(function() { return {}; })
+			callGetVisitStats().catch(function() { return {}; }),
+			callGetActiveSessions().catch(function() { return {}; })
 		]);
 	},
 
 	render: function(results) {
 		var overview = results[0] || {};
 		var visitStats = results[1] || {};
+		var sessions = results[2] || {};
 		var sys = overview.system || {};
 		var net = overview.network || {};
 		var svc = overview.services || {};
@@ -33,6 +41,9 @@ return view.extend({
 		var byCountry = visitStats.by_country || [];
 		var byHost = visitStats.by_host || [];
 		var botsHumans = visitStats.bots_vs_humans || {};
+		var sessionCounts = sessions.counts || {};
+		var recentVisitors = sessions.recent_visitors || [];
+		var topEndpoints = sessions.top_endpoints || [];
 
 		var style = E('style', {}, `
 			.metrics-container {
@@ -70,6 +81,10 @@ return view.extend({
 				background: rgba(0,255,136,0.1);
 				border-color: rgba(0,255,136,0.4);
 			}
+			.metrics-section.sessions {
+				background: rgba(255,200,0,0.1);
+				border-color: rgba(255,200,0,0.4);
+			}
 			.metrics-section h3 {
 				margin: 0 0 12px 0;
 				font-size: 14px;
@@ -84,6 +99,10 @@ return view.extend({
 			.metrics-section.traffic h3 {
 				color: #00ff88;
 				border-color: rgba(0,255,136,0.4);
+			}
+			.metrics-section.sessions h3 {
+				color: #ffc800;
+				border-color: rgba(255,200,0,0.4);
 			}
 			.metrics-row {
 				display: flex;
@@ -103,6 +122,9 @@ return view.extend({
 			}
 			.metrics-section.traffic .metrics-value {
 				color: #00ff88;
+			}
+			.metrics-section.sessions .metrics-value {
+				color: #ffc800;
 			}
 			.metrics-bar {
 				height: 8px;
@@ -132,15 +154,21 @@ return view.extend({
 			.country-tag .flag {
 				margin-right: 4px;
 			}
-			.host-list {
+			.host-list, .visitor-list, .endpoint-list {
 				font-size: 11px;
 				margin-top: 8px;
 			}
-			.host-item {
+			.host-item, .visitor-item, .endpoint-item {
 				display: flex;
 				justify-content: space-between;
 				padding: 3px 0;
 				border-bottom: 1px solid rgba(0,255,136,0.1);
+			}
+			.visitor-item {
+				border-color: rgba(255,200,0,0.1);
+			}
+			.endpoint-item {
+				border-color: rgba(255,200,0,0.1);
 			}
 		`);
 
@@ -161,6 +189,26 @@ return view.extend({
 			return E('div', { 'class': 'host-item' }, [
 				E('span', {}, host),
 				E('span', { 'class': 'metrics-value' }, String(h.count || 0))
+			]);
+		});
+
+		// Build recent visitors list
+		var visitorItems = recentVisitors.slice(0, 6).map(function(v) {
+			var flag = v.country && v.country.length === 2 ?
+				String.fromCodePoint(...[...v.country.toUpperCase()].map(c => 0x1F1E6 - 65 + c.charCodeAt(0))) : '';
+			return E('div', { 'class': 'visitor-item' }, [
+				E('span', {}, (v.ip || '-').substring(0, 15)),
+				E('span', { 'class': 'metrics-value' }, flag + ' ' + (v.country || '??'))
+			]);
+		});
+
+		// Build top endpoints list
+		var endpointItems = topEndpoints.slice(0, 5).map(function(e) {
+			var path = e.path || '-';
+			if (path.length > 28) path = path.substring(0, 25) + '...';
+			return E('div', { 'class': 'endpoint-item' }, [
+				E('span', {}, path),
+				E('span', { 'class': 'metrics-value' }, String(e.count || 0))
 			]);
 		});
 
@@ -211,7 +259,40 @@ return view.extend({
 					])
 				]),
 
-				// Web Traffic - NEW
+				// Active Sessions - NEW
+				E('div', { 'class': 'metrics-section sessions' }, [
+					E('h3', {}, 'ACTIVE SESSIONS'),
+					E('div', { 'class': 'metrics-row' }, [
+						E('span', { 'class': 'metrics-label' }, 'Tor Circuits'),
+						E('span', { 'class': 'metrics-value' }, sessionCounts.tor_circuits || 0)
+					]),
+					E('div', { 'class': 'metrics-row' }, [
+						E('span', { 'class': 'metrics-label' }, 'HTTPS Visitors'),
+						E('span', { 'class': 'metrics-value' }, sessionCounts.https || 0)
+					]),
+					E('div', { 'class': 'metrics-row' }, [
+						E('span', { 'class': 'metrics-label' }, 'Streamlit'),
+						E('span', { 'class': 'metrics-value' }, sessionCounts.streamlit || 0)
+					]),
+					E('div', { 'class': 'metrics-row' }, [
+						E('span', { 'class': 'metrics-label' }, 'Mitmproxy'),
+						E('span', { 'class': 'metrics-value' }, sessionCounts.mitmproxy || 0)
+					]),
+					E('div', { 'class': 'metrics-row' }, [
+						E('span', { 'class': 'metrics-label' }, 'SSH'),
+						E('span', { 'class': 'metrics-value' }, sessionCounts.ssh || 0)
+					])
+				]),
+
+				// Recent Visitors - NEW
+				E('div', { 'class': 'metrics-section sessions' }, [
+					E('h3', {}, 'RECENT VISITORS'),
+					E('div', { 'class': 'visitor-list' }, visitorItems.length ? visitorItems : [
+						E('div', { 'style': 'color:#666' }, 'No recent visitors')
+					])
+				]),
+
+				// Web Traffic
 				E('div', { 'class': 'metrics-section traffic' }, [
 					E('h3', {}, 'WEB TRAFFIC'),
 					E('div', { 'class': 'metrics-row' }, [
@@ -233,10 +314,10 @@ return view.extend({
 					E('div', { 'class': 'country-list' }, countryTags)
 				]),
 
-				// Top Hosts - NEW
-				E('div', { 'class': 'metrics-section traffic' }, [
-					E('h3', {}, 'TOP HOSTS'),
-					E('div', { 'class': 'host-list' }, hostItems.length ? hostItems : [
+				// Top Endpoints - NEW
+				E('div', { 'class': 'metrics-section sessions' }, [
+					E('h3', {}, 'TOP ENDPOINTS'),
+					E('div', { 'class': 'endpoint-list' }, endpointItems.length ? endpointItems : [
 						E('div', { 'style': 'color:#666' }, 'No data')
 					])
 				]),
@@ -314,7 +395,8 @@ return view.extend({
 		poll.add(L.bind(function() {
 			return Promise.all([
 				callGetSystemOverview(),
-				callGetVisitStats().catch(function() { return {}; })
+				callGetVisitStats().catch(function() { return {}; }),
+				callGetActiveSessions().catch(function() { return {}; })
 			]).then(L.bind(function(newResults) {
 				this.updateMetrics(container, newResults);
 			}, this));

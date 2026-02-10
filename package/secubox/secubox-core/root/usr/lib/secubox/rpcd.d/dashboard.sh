@@ -8,6 +8,7 @@
 list_methods_dashboard() {
 	add_method "get_dashboard_data"
 	add_method "get_system_overview"
+	add_method "get_active_sessions"
 	add_method "get_public_ips"
 	add_method "refresh_public_ips"
 	add_method_str "quick_action" "action"
@@ -26,6 +27,9 @@ handle_dashboard() {
 			;;
 		get_system_overview)
 			_do_system_overview
+			;;
+		get_active_sessions)
+			_do_active_sessions
 			;;
 		get_public_ips)
 			_do_public_ips
@@ -59,6 +63,72 @@ _do_system_overview() {
 		json_add_string "error" "secubox-dashboard not installed"
 		json_dump
 	fi
+}
+
+# Active Sessions - connections, visitors, endpoints
+_do_active_sessions() {
+	json_init
+
+	# Count active connections by service
+	local tor_circuits=0 streamlit_sessions=0 mitmproxy_sessions=0 https_sessions=0 ssh_sessions=0
+
+	tor_circuits=$(netstat -tn 2>/dev/null | grep -c ":9040.*ESTABLISHED")
+	streamlit_sessions=$(netstat -tn 2>/dev/null | grep -c ":8510.*ESTABLISHED")
+	mitmproxy_sessions=$(netstat -tn 2>/dev/null | grep -c ":8081.*ESTABLISHED")
+	https_sessions=$(netstat -tn 2>/dev/null | grep ":443.*ESTABLISHED" | grep -cv "127.0.0.1")
+	ssh_sessions=$(who 2>/dev/null | wc -l)
+
+	json_add_object "counts"
+	json_add_int "tor_circuits" "${tor_circuits:-0}"
+	json_add_int "streamlit" "${streamlit_sessions:-0}"
+	json_add_int "mitmproxy" "${mitmproxy_sessions:-0}"
+	json_add_int "https" "${https_sessions:-0}"
+	json_add_int "ssh" "${ssh_sessions:-0}"
+	json_close_object
+
+	# External visitor IPs on HTTPS
+	json_add_array "https_visitors"
+	netstat -tn 2>/dev/null | grep ":443.*ESTABLISHED" | grep -v "127.0.0.1" | \
+		awk '{print $5}' | cut -d: -f1 | sort -u | head -10 | while read -r ip; do
+		[ -n "$ip" ] && json_add_string "" "$ip"
+	done
+	json_close_array
+
+	# Top accessed endpoints (from mitmproxy log)
+	json_add_array "top_endpoints"
+	if [ -f "/srv/mitmproxy/threats.log" ]; then
+		tail -200 /srv/mitmproxy/threats.log 2>/dev/null | \
+			jq -r '.request' 2>/dev/null | cut -d' ' -f2 | cut -d'?' -f1 | \
+			sort | uniq -c | sort -rn | head -8 | \
+			awk '{print "{\"path\":\"" $2 "\",\"count\":" $1 "}"}' | while read -r line; do
+			# Parse and add as object
+			local path=$(echo "$line" | jq -r '.path' 2>/dev/null)
+			local count=$(echo "$line" | jq -r '.count' 2>/dev/null)
+			json_add_object ""
+			json_add_string "path" "$path"
+			json_add_int "count" "$count"
+			json_close_object
+		done
+	fi
+	json_close_array
+
+	# Recent unique visitors with country
+	json_add_array "recent_visitors"
+	if [ -f "/srv/mitmproxy/threats.log" ]; then
+		tail -100 /srv/mitmproxy/threats.log 2>/dev/null | \
+			jq -r '[.source_ip, .country] | @tsv' 2>/dev/null | \
+			sort -u | head -10 | while read -r ip country; do
+			[ -n "$ip" ] && {
+				json_add_object ""
+				json_add_string "ip" "$ip"
+				json_add_string "country" "${country:-??}"
+				json_close_object
+			}
+		done
+	fi
+	json_close_array
+
+	json_dump
 }
 
 # Dashboard summary data (optimized - no slow appstore call)
