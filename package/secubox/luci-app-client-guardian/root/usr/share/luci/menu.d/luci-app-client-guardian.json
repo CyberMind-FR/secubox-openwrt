@@ -9,73 +9,17 @@
 			"acl": ["luci-app-client-guardian"]
 		}
 	},
-	"admin/secubox/security/guardian/overview": {
-		"title": "Overview",
+	"admin/secubox/security/guardian/clients": {
+		"title": "Clients",
 		"order": 10,
 		"action": {
 			"type": "view",
 			"path": "client-guardian/overview"
 		}
 	},
-	"admin/secubox/security/guardian/wizard": {
-		"title": "Setup Wizard",
-		"order": 15,
-		"action": {
-			"type": "view",
-			"path": "client-guardian/wizard"
-		}
-	},
-	"admin/secubox/security/guardian/clients": {
-		"title": "Clients",
-		"order": 20,
-		"action": {
-			"type": "view",
-			"path": "client-guardian/clients"
-		}
-	},
-	"admin/secubox/security/guardian/zones": {
-		"title": "Network Zones",
-		"order": 25,
-		"action": {
-			"type": "view",
-			"path": "client-guardian/zones"
-		}
-	},
-	"admin/secubox/security/guardian/autozoning": {
-		"title": "Auto-Zoning Rules",
-		"order": 30,
-		"action": {
-			"type": "view",
-			"path": "client-guardian/autozoning"
-		}
-	},
-	"admin/secubox/security/guardian/logs": {
-		"title": "Event Logs",
-		"order": 40,
-		"action": {
-			"type": "view",
-			"path": "client-guardian/logs"
-		}
-	},
-	"admin/secubox/security/guardian/alerts": {
-		"title": "Alerts & Notifications",
-		"order": 50,
-		"action": {
-			"type": "view",
-			"path": "client-guardian/alerts"
-		}
-	},
-	"admin/secubox/security/guardian/parental": {
-		"title": "Parental Controls",
-		"order": 60,
-		"action": {
-			"type": "view",
-			"path": "client-guardian/parental"
-		}
-	},
 	"admin/secubox/security/guardian/settings": {
 		"title": "Settings",
-		"order": 90,
+		"order": 20,
 		"action": {
 			"type": "view",
 			"path": "client-guardian/settings"
