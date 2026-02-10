@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-02-08_
+_Last updated: 2026-02-10_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -1011,3 +1011,32 @@ _Last updated: 2026-02-08_
       - `get_commit_stats()` for daily/weekly aggregation
     - Cyberpunk theme styling for commits (matching existing dashboard theme)
     - Live indicator animation (pulsing green dot)
+
+30. **SecuBox Metrics Dashboard (2026-02-09)**
+    - Added new SecuBox Metrics view under Status menu.
+    - Features web traffic country statistics panel.
+    - Integrated with `luci.secubox-security-threats` RPCD backend.
+    - Visit stats include: requests by country, by host, by type, bots vs humans.
+    - Tag: v0.19.14
+
+31. **CrowdSec Dashboard Decision Count Fix (2026-02-09)**
+    - Fixed Active Bans showing 0 when 100+ decisions existed.
+    - Root cause: `--no-api` flag returned empty, jsonfilter couldn't count arrays.
+    - Fix: Use `cscli decisions list -o json | jq 'length'` with grep fallback.
+    - Tag: v0.19.15
+
+32. **Active Sessions Panel (2026-02-10)**
+    - Added active sessions panel to SecuBox Metrics.
+    - Tracks: Tor circuits, HTTPS visitors, Streamlit sessions, Mitmproxy connections, SSH sessions.
+    - New RPCD method `get_active_sessions` in dashboard.sh.
+    - Uses netstat/who for session counting.
+    - Tag: v0.19.15
+
+33. **Live Real-Time Metrics Dashboard (2026-02-10)**
+    - Rewrote secubox-metrics.js for continuous live updates.
+    - 3-second polling interval with poll.add().
+    - Data-attributes for efficient DOM targeting (no page rebuilds).
+    - CSS pulse animation on value changes.
+    - Live indicator with timestamp display.
+    - Efficient updateValue/updateBar/updateList methods.
+    - Tag: v0.19.16
