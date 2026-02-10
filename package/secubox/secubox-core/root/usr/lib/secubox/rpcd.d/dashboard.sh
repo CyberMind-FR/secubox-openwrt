@@ -7,6 +7,7 @@
 # Register methods
 list_methods_dashboard() {
 	add_method "get_dashboard_data"
+	add_method "get_system_overview"
 	add_method "get_public_ips"
 	add_method "refresh_public_ips"
 	add_method_str "quick_action" "action"
@@ -22,6 +23,9 @@ handle_dashboard() {
 	case "$method" in
 		get_dashboard_data)
 			_do_dashboard_data
+			;;
+		get_system_overview)
+			_do_system_overview
 			;;
 		get_public_ips)
 			_do_public_ips
@@ -44,6 +48,17 @@ handle_dashboard() {
 			return 1
 			;;
 	esac
+}
+
+# System Overview - Full infographic data
+_do_system_overview() {
+	if [ -x "/usr/sbin/secubox-dashboard" ]; then
+		/usr/sbin/secubox-dashboard json
+	else
+		json_init
+		json_add_string "error" "secubox-dashboard not installed"
+		json_dump
+	fi
 }
 
 # Dashboard summary data (optimized - no slow appstore call)

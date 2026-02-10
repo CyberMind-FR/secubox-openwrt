@@ -51,6 +51,13 @@ var callGetHealth = rpc.declare({
 	expect: { }
 });
 
+// System Overview (infographic dashboard)
+var callGetSystemOverview = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_system_overview',
+	expect: { }
+});
+
 var callGetAlerts = rpc.declare({
 	object: 'luci.secubox',
 	method: 'get_alerts',
@@ -458,6 +465,7 @@ return baseclass.extend({
 	getHealth: debugRPC('getHealth', callGetHealth, { retries: 1 }),
 	getAlerts: debugRPC('getAlerts', callGetAlerts, { retries: 1 }),
 	getLogs: debugRPC('getLogs', callGetLogs),
+	getSystemOverview: debugRPC('getSystemOverview', callGetSystemOverview, { retries: 1 }),
 
 	// Catalog Sources (critical - more retries)
 	getCatalogSources: debugRPC('getCatalogSources', callGetCatalogSources, { retries: 3, retryDelay: 2000 }),
