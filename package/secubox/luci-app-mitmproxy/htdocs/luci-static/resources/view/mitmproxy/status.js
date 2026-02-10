@@ -232,6 +232,70 @@ return view.extend({
 				])
 			]),
 
+			// Recent Alerts Card
+			E('div', { 'class': 'cbi-section' }, [
+				E('h3', {}, [
+					_('Recent Alerts'),
+					' ',
+					E('span', { 'style': 'font-size: 14px; font-weight: normal; color: #666;' },
+						'(' + alerts.length + ' alerts)')
+				]),
+				alerts.length > 0 ?
+					E('div', {}, [
+						E('table', { 'class': 'table', 'style': 'font-size: 13px;' }, [
+							E('tr', { 'class': 'tr cbi-section-table-titles' }, [
+								E('th', { 'class': 'th' }, _('Time')),
+								E('th', { 'class': 'th' }, _('IP')),
+								E('th', { 'class': 'th' }, _('Country')),
+								E('th', { 'class': 'th' }, _('Type')),
+								E('th', { 'class': 'th' }, _('Severity')),
+								E('th', { 'class': 'th' }, _('Details'))
+							])
+						].concat(alerts.slice(0, 25).map(function(alert) {
+							var time = alert.time ? alert.time.split('T')[1]?.split('.')[0] || alert.time : '-';
+							var ip = alert.ip || '-';
+							var country = alert.country || '-';
+							var type = alert.type || alert.pattern || '-';
+							var severity = alert.severity || 'medium';
+							var details = alert.pattern || alert.category || alert.cve || alert.path || '-';
+
+							return E('tr', { 'class': 'tr' }, [
+								E('td', { 'class': 'td', 'style': 'font-family: monospace; font-size: 11px; color: #666;' }, time),
+								E('td', { 'class': 'td', 'style': 'font-family: monospace; font-weight: 500;' }, ip),
+								E('td', { 'class': 'td', 'style': 'font-size: 11px;' }, country),
+								E('td', { 'class': 'td' }, [
+									E('span', {
+										'style': 'background: #3498db; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; text-transform: uppercase;'
+									}, type)
+								]),
+								E('td', { 'class': 'td' }, [
+									E('span', {
+										'style': 'color: ' + severityColor(severity) + '; font-weight: 500;'
+									}, severityIcon(severity) + ' ' + severity)
+								]),
+								E('td', { 'class': 'td', 'style': 'max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: #666;', 'title': details }, details)
+							]);
+						}))),
+						alerts.length > 25 ? E('p', { 'style': 'text-align: center; color: #666; font-size: 12px; margin-top: 8px;' },
+							_('Showing 25 of ') + alerts.length + _(' alerts')) : null,
+						E('div', { 'style': 'margin-top: 12px;' }, [
+							E('button', {
+								'class': 'btn cbi-button cbi-button-reset',
+								'click': function() {
+									if (!confirm(_('Clear all alerts?'))) return;
+									ui.showModal(_('Clearing...'), [E('p', { 'class': 'spinning' }, _('Clearing alerts...'))]);
+									callClearAlerts().then(function() { ui.hideModal(); location.reload(); });
+								}
+							}, _('Clear Alerts'))
+						])
+					]) :
+					E('div', { 'class': 'cbi-section-node', 'style': 'text-align: center; padding: 40px; color: #27ae60;' }, [
+						E('div', { 'style': 'font-size: 48px; margin-bottom: 16px;' }, '✅'),
+						E('p', {}, _('No recent alerts')),
+						E('p', { 'style': 'font-size: 12px; color: #666;' }, _('All traffic appears normal.'))
+					])
+			]),
+
 			// Active Bans Card
 			E('div', { 'class': 'cbi-section' }, [
 				E('h3', {}, [
