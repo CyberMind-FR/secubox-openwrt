@@ -252,12 +252,14 @@ return view.extend({
 								E('th', { 'class': 'th' }, _('Details'))
 							])
 						].concat(alerts.slice(0, 25).map(function(alert) {
-							var time = alert.time ? alert.time.split('T')[1]?.split('.')[0] || alert.time : '-';
-							var ip = alert.ip || '-';
+							// Backend uses: timestamp, source_ip, country, type, severity, pattern, category, cve, request
+							var timeStr = alert.timestamp || alert.time || '';
+							var time = timeStr ? (timeStr.split('T')[1] || '').split('.')[0] || timeStr.substring(11, 19) : '-';
+							var ip = alert.source_ip || alert.ip || '-';
 							var country = alert.country || '-';
 							var type = alert.type || alert.pattern || '-';
 							var severity = alert.severity || 'medium';
-							var details = alert.pattern || alert.category || alert.cve || alert.path || '-';
+							var details = alert.pattern || alert.category || alert.cve || alert.request || '-';
 
 							return E('tr', { 'class': 'tr' }, [
 								E('td', { 'class': 'td', 'style': 'font-family: monospace; font-size: 11px; color: #666;' }, time),
