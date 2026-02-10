@@ -5,7 +5,8 @@
 
 . /lib/functions.sh
 . /usr/share/libubox/jshn.sh
-n# Extract ZIP with flatten for single root directories
+
+# Extract ZIP with flatten for single root directories
 extract_zip_flatten() {
     local zip_file="$1"
     local target_dir="$2"
