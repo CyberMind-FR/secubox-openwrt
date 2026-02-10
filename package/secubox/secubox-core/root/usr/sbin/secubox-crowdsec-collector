@@ -1,0 +1,155 @@
+#!/bin/sh
+# SecuBox CrowdSec Overview Collector v5
+# Generates JSON cache for dashboard - simplified alerts collection
+
+CACHE_DIR="/tmp/secubox"
+CACHE_FILE="$CACHE_DIR/crowdsec-overview.json"
+CACHE_TMP="$CACHE_DIR/crowdsec-overview.tmp"
+CSCLI="/usr/bin/cscli"
+
+. /usr/share/libubox/jshn.sh
+
+mkdir -p "$CACHE_DIR"
+
+generate_overview() {
+    local cs_running=0
+    pgrep crowdsec >/dev/null 2>&1 && cs_running=1
+
+    local bouncer_running=0
+    pgrep -f "crowdsec-firewall-bouncer" >/dev/null 2>&1 && bouncer_running=1
+
+    local version="unknown"
+    [ -x "$CSCLI" ] && version=$("$CSCLI" version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    [ -z "$version" ] && version="unknown"
+
+    local decisions_count=0 local_decisions=0 capi_decisions=0
+    local alerts_count=0 bouncers_count=0 scenario_count=0
+
+    if [ "$cs_running" = "1" ] && [ -x "$CSCLI" ]; then
+        local_decisions=$("$CSCLI" decisions list --no-api -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+        [ -z "$local_decisions" ] && local_decisions=0
+        decisions_count=$local_decisions
+        alerts_count=$("$CSCLI" alerts list -o json --since 24h --limit 500 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+        [ -z "$alerts_count" ] && alerts_count=0
+        bouncers_count=$("$CSCLI" bouncers list -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+        [ -z "$bouncers_count" ] && bouncers_count=0
+        scenario_count=$("$CSCLI" scenarios list -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+        [ -z "$scenario_count" ] && scenario_count=0
+    fi
+
+    local geoip_enabled=0
+    [ -f "/srv/crowdsec/data/GeoLite2-City.mmdb" ] && geoip_enabled=1
+    [ -f "/var/lib/crowdsec/data/GeoLite2-City.mmdb" ] && geoip_enabled=1
+
+    local acquisition_count=0
+    [ -d "/etc/crowdsec/acquis.d" ] && acquisition_count=$(ls -1 /etc/crowdsec/acquis.d/*.yaml 2>/dev/null | wc -l)
+
+    local lapi_ok=0
+    local lapi_port=8080
+    lapi_port=$(grep -oE ':[0-9]+/?$' /etc/crowdsec/local_api_credentials.yaml 2>/dev/null | tr -d ':/' || echo 8080)
+    [ -z "$lapi_port" ] && lapi_port=8080
+    local lapi_port_hex=$(printf '%04X' "$lapi_port")
+    [ "$cs_running" = "1" ] && grep -qi ":${lapi_port_hex} " /proc/net/tcp 2>/dev/null && lapi_ok=1
+
+    local capi_enrolled=0
+    [ -f /etc/crowdsec/online_api_credentials.yaml ] && capi_enrolled=1
+
+    local waf_autoban_enabled=$(uci -q get mitmproxy.autoban.enabled 2>/dev/null || echo 0)
+    local waf_sensitivity=$(uci -q get mitmproxy.autoban.sensitivity 2>/dev/null || echo "moderate")
+    local waf_bans_today=0 waf_threats_today=0 waf_autoban_total=0
+
+    [ "$cs_running" = "1" ] && waf_bans_today=$("$CSCLI" decisions list -o json 2>/dev/null | grep -c "mitmproxy-waf" 2>/dev/null || echo 0)
+
+    local threats_log="/srv/mitmproxy/threats.log"
+    if [ -f "$threats_log" ]; then
+        local today=$(date -u +%Y-%m-%d)
+        waf_threats_today=$(grep -c "\"timestamp\": \"$today" "$threats_log" 2>/dev/null || echo 0)
+    fi
+
+    local autoban_log="/srv/mitmproxy/autoban-processed.log"
+    [ -f "$autoban_log" ] && waf_autoban_total=$(wc -l < "$autoban_log" 2>/dev/null || echo 0)
+
+    # Countries
+    local countries_json="[]"
+    if [ "$cs_running" = "1" ]; then
+        countries_json=$("$CSCLI" alerts list -o json --limit 200 2>/dev/null | \
+            jsonfilter -e '@[*].source.cn' 2>/dev/null | \
+            grep -v '^$' | sort | uniq -c | sort -rn | head -10 | \
+            awk 'BEGIN{printf "["} NR>1{printf ","} {printf "{\"country\":\"%s\",\"count\":%d}", $2, $1} END{printf "]"}')
+        [ -z "$countries_json" ] && countries_json="[]"
+    fi
+
+    # Alerts - extract using jsonfilter per-alert
+    local alerts_json="[]"
+    if [ "$cs_running" = "1" ]; then
+        local alerts_tmp="/tmp/cs_alerts_$$.json"
+        "$CSCLI" alerts list -o json --limit 8 2>/dev/null > "$alerts_tmp"
+        if [ -s "$alerts_tmp" ]; then
+            alerts_json="["
+            local first=1
+            for i in 0 1 2 3 4 5 6 7; do
+                local created=$(jsonfilter -i "$alerts_tmp" -e "@[$i].created_at" 2>/dev/null)
+                [ -z "$created" ] && break
+                local scenario=$(jsonfilter -i "$alerts_tmp" -e "@[$i].scenario" 2>/dev/null)
+                local source_ip=$(jsonfilter -i "$alerts_tmp" -e "@[$i].source.ip" 2>/dev/null)
+                [ "$first" = "1" ] && first=0 || alerts_json="$alerts_json,"
+                alerts_json="$alerts_json{\"created_at\":\"$created\",\"scenario\":\"$scenario\",\"source_ip\":\"$source_ip\"}"
+            done
+            alerts_json="$alerts_json]"
+        fi
+        rm -f "$alerts_tmp"
+    fi
+
+    # Build JSON
+    json_init
+    json_add_string "crowdsec" "$([ "$cs_running" = "1" ] && echo running || echo stopped)"
+    json_add_string "bouncer" "$([ "$bouncer_running" = "1" ] && echo running || echo stopped)"
+    json_add_string "version" "$version"
+    json_add_int "total_decisions" "${decisions_count:-0}"
+    json_add_int "local_decisions" "${local_decisions:-0}"
+    json_add_int "capi_decisions" "0"
+    json_add_int "active_bans" "${local_decisions:-0}"
+    json_add_int "alerts_24h" "${alerts_count:-0}"
+    json_add_int "bouncer_count" "${bouncers_count:-0}"
+    json_add_int "scenario_count" "${scenario_count:-0}"
+    json_add_int "acquisition_count" "${acquisition_count:-0}"
+    json_add_boolean "geoip_enabled" "$geoip_enabled"
+    json_add_string "dropped_packets" "0"
+    json_add_string "dropped_bytes" "0"
+    json_add_string "processed_packets" "0"
+    json_add_string "processed_bytes" "0"
+    json_add_string "lapi_status" "$([ "$lapi_ok" = "1" ] && echo available || echo unavailable)"
+    json_add_boolean "capi_enrolled" "$capi_enrolled"
+    json_add_boolean "waf_autoban_enabled" "$waf_autoban_enabled"
+    json_add_string "waf_sensitivity" "$waf_sensitivity"
+    json_add_int "waf_bans_today" "${waf_bans_today:-0}"
+    json_add_int "waf_threats_today" "${waf_threats_today:-0}"
+    json_add_int "waf_autoban_total" "${waf_autoban_total:-0}"
+    json_add_string "last_update" "$(date -Iseconds)"
+
+    local base_json=$(json_dump)
+    base_json=$(echo "$base_json" | sed 's/}$//')
+
+    {
+        echo "$base_json,"
+        printf '"countries": %s,\n' "$countries_json"
+        printf '"alerts_raw": %s\n' "$alerts_json"
+        echo "}"
+    } > "$CACHE_TMP"
+
+    if jsonfilter -i "$CACHE_TMP" -e "@" >/dev/null 2>&1; then
+        mv -f "$CACHE_TMP" "$CACHE_FILE"
+        echo "CrowdSec overview cache updated: $CACHE_FILE"
+    else
+        {
+            echo "$base_json,"
+            printf '"countries": %s,\n' "$countries_json"
+            printf '"alerts_raw": []\n'
+            echo "}"
+        } > "$CACHE_TMP"
+        mv -f "$CACHE_TMP" "$CACHE_FILE"
+        echo "CrowdSec overview cache updated (fallback): $CACHE_FILE"
+    fi
+}
+
+generate_overview
