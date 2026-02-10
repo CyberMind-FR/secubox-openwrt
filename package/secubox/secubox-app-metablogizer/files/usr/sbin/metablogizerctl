@@ -39,6 +39,7 @@ Site Commands:
   sync <name>           Sync site from git repo
   publish <name>        Publish site (create HAProxy vhost)
   gitea push <name>     Create Gitea repo and push site content
+  gitea init-all        Initialize Gitea repos for all existing sites
   emancipate <name>     KISS ULTIME MODE - Full exposure workflow:
                         1. DNS A record (Gandi/OVH)
                         2. Vortex DNS mesh publication
@@ -258,6 +259,13 @@ EOF
 	log_info "Site created: $name"
 	log_info "Directory: $SITES_ROOT/$name"
 	log_info "Local URL: http://localhost:$port"
+
+	# Auto-push to Gitea if enabled
+	local gitea_token_cfg=$(uci_get main.gitea_token)
+	if [ -n "$gitea_token_cfg" ]; then
+		log_info "Auto-pushing to Gitea..."
+		cmd_gitea_push "$name"
+	fi
 
 	echo ""
 	echo "Next: Run 'metablogizerctl publish $name' to create HAProxy vhost"
@@ -537,6 +545,69 @@ cmd_gitea_push() {
 	uci commit "$CONFIG"
 
 	log_info "Push complete: ${gitea_url}/${gitea_user}/${repo_name}"
+}
+
+# Initialize Gitea for all existing sites
+cmd_gitea_init_all() {
+	local gitea_token=$(uci_get main.gitea_token)
+
+	if [ -z "$gitea_token" ]; then
+		log_error "Gitea token not configured"
+		log_info "Configure with:"
+		log_info "  uci set metablogizer.main.gitea_url='http://192.168.255.1:3000'"
+		log_info "  uci set metablogizer.main.gitea_user='admin'"
+		log_info "  uci set metablogizer.main.gitea_token='your-token'"
+		log_info "  uci commit metablogizer"
+		return 1
+	fi
+
+	log_info "Initializing Gitea repositories for all sites..."
+	echo ""
+
+	local success=0
+	local failed=0
+
+	# Load config and iterate over sites
+	config_load "$CONFIG"
+
+	_init_site_gitea() {
+		local section="$1"
+		local name
+		config_get name "$section" name
+
+		[ -z "$name" ] && return
+
+		# Check if site directory exists
+		if [ ! -d "$SITES_ROOT/$name" ]; then
+			log_warn "[$name] Site directory not found, skipping"
+			return
+		fi
+
+		# Check if already has a repo configured
+		local existing_repo
+		config_get existing_repo "$section" gitea_repo
+
+		if [ -n "$existing_repo" ]; then
+			log_info "[$name] Already linked to $existing_repo, syncing..."
+		else
+			log_info "[$name] Creating Gitea repository..."
+		fi
+
+		if cmd_gitea_push "$name"; then
+			success=$((success + 1))
+		else
+			failed=$((failed + 1))
+		fi
+		echo ""
+	}
+
+	config_foreach _init_site_gitea site
+
+	echo "========================================"
+	echo "Gitea initialization complete"
+	echo "  Success: $success"
+	echo "  Failed:  $failed"
+	echo "========================================"
 }
 
 cmd_runtime() {
@@ -872,8 +943,9 @@ case "${1:-}" in
 	gitea)
 		shift
 		case "${1:-}" in
-			push) shift; cmd_gitea_push "$@" ;;
-			*)    echo "Usage: metablogizerctl gitea push <name>"; exit 1 ;;
+			push)     shift; cmd_gitea_push "$@" ;;
+			init-all) shift; cmd_gitea_init_all "$@" ;;
+			*)        echo "Usage: metablogizerctl gitea {push|init-all} [name]"; exit 1 ;;
 		esac
 		;;
 	help|--help|-h) usage ;;

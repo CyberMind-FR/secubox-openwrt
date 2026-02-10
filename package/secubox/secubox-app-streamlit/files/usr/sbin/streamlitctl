@@ -97,6 +97,7 @@ Gitea Integration:
   gitea clone <name> <repo>   Clone app from Gitea repo
   gitea pull <name>           Pull latest from Gitea
   gitea push <name>           Create Gitea repo and push app content
+  gitea init-all              Initialize Gitea repos for all existing apps
 
 Exposure:
   emancipate <name> [domain]  KISS ULTIME MODE - Full exposure workflow:
@@ -624,6 +625,13 @@ CONFIGTEMPLATE
 	uci commit "$CONFIG"
 
 	log_info "App '$name' created at $app_dir"
+
+	# Auto-push to Gitea if enabled
+	if [ "$gitea_enabled" = "1" ] && [ -n "$gitea_token" ]; then
+		log_info "Auto-pushing to Gitea..."
+		cmd_gitea_push "$name"
+	fi
+
 	log_info "Next steps:"
 	log_info "  1. Edit $app_dir/app.py"
 	log_info "  2. Add dependencies to $app_dir/requirements.txt"
@@ -715,6 +723,12 @@ cmd_app_deploy() {
 	uci commit "$CONFIG"
 
 	log_info "App '$name' deployed to $app_dir"
+
+	# Auto-push to Gitea if enabled
+	if [ "$gitea_enabled" = "1" ] && [ -n "$gitea_token" ]; then
+		log_info "Auto-pushing to Gitea..."
+		cmd_gitea_push "$name"
+	fi
 
 	# Auto-package for P2P distribution
 	if [ -x /usr/sbin/secubox-content-pkg ]; then
@@ -1120,6 +1134,54 @@ cmd_gitea_push() {
 	uci commit "$CONFIG"
 
 	log_info "Push complete: ${gitea_url}/${gitea_user}/${repo_name}"
+}
+
+# Initialize Gitea for all existing apps
+cmd_gitea_init_all() {
+	require_root
+	load_config
+
+	if [ "$gitea_enabled" != "1" ]; then
+		log_error "Gitea integration not enabled"
+		log_info "Enable with: uci set streamlit.gitea.enabled=1 && uci commit streamlit"
+		return 1
+	fi
+
+	if [ -z "$gitea_token" ]; then
+		log_error "Gitea token not configured"
+		return 1
+	fi
+
+	log_info "Initializing Gitea repositories for all apps..."
+	echo ""
+
+	local success=0
+	local failed=0
+
+	# Process all app directories
+	if [ -d "$APPS_PATH" ]; then
+		for app_dir in "$APPS_PATH"/*/; do
+			[ -d "$app_dir" ] || continue
+			local name=$(basename "$app_dir")
+
+			# Skip if already has a repo configured
+			local existing_repo=$(uci -q get ${CONFIG}.${name}.repo)
+			if [ -n "$existing_repo" ]; then
+				log_info "[$name] Already linked to $existing_repo, syncing..."
+				cmd_gitea_push "$name" && success=$((success + 1)) || failed=$((failed + 1))
+			else
+				log_info "[$name] Creating Gitea repository..."
+				cmd_gitea_push "$name" && success=$((success + 1)) || failed=$((failed + 1))
+			fi
+			echo ""
+		done
+	fi
+
+	echo "========================================"
+	echo "Gitea initialization complete"
+	echo "  Success: $success"
+	echo "  Failed:  $failed"
+	echo "========================================"
 }
 
 # ===========================================
@@ -1553,11 +1615,12 @@ case "${1:-}" in
 	gitea)
 		shift
 		case "${1:-}" in
-			setup) shift; cmd_gitea_setup "$@" ;;
-			clone) shift; cmd_gitea_clone "$@" ;;
-			pull)  shift; cmd_gitea_pull "$@" ;;
-			push)  shift; cmd_gitea_push "$@" ;;
-			*)     echo "Usage: streamlitctl gitea {setup|clone|pull|push}"; exit 1 ;;
+			setup)    shift; cmd_gitea_setup "$@" ;;
+			clone)    shift; cmd_gitea_clone "$@" ;;
+			pull)     shift; cmd_gitea_pull "$@" ;;
+			push)     shift; cmd_gitea_push "$@" ;;
+			init-all) shift; cmd_gitea_init_all "$@" ;;
+			*)        echo "Usage: streamlitctl gitea {setup|clone|pull|push|init-all}"; exit 1 ;;
 		esac
 		;;
 
