@@ -1964,7 +1964,16 @@ get_health_check() {
 	# Total decisions count (local + CAPI from metrics)
 	local local_decisions=0 capi_decisions=0 decisions_count=0
 	if [ -x "$CSCLI" ]; then
-		local_decisions=$(run_cscli decisions list --no-api -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+		# Count decisions using jq (jsonfilter can't count arrays properly)
+		local dec_json
+		dec_json=$(run_cscli decisions list -o json 2>/dev/null)
+		if [ -n "$dec_json" ] && [ "$dec_json" != "null" ] && [ "$dec_json" != "[]" ]; then
+			if command -v jq >/dev/null 2>&1; then
+				local_decisions=$(echo "$dec_json" | jq 'length' 2>/dev/null)
+			else
+				local_decisions=$(echo "$dec_json" | grep -c '"id":' 2>/dev/null)
+			fi
+		fi
 		capi_decisions=$(run_cscli metrics 2>/dev/null | grep 'CAPI.*ban' | awk -F'|' '{sum += $5} END {print sum+0}')
 		decisions_count=$((local_decisions + capi_decisions))
 	fi
@@ -2265,8 +2274,16 @@ get_overview() {
 	local bouncers_count=0
 
 	if [ "$cs_running" = "1" ] && [ -x "$CSCLI" ]; then
-		# Local decisions (from local scenarios)
-		local_decisions=$(run_cscli decisions list --no-api -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+		# Count local decisions using jq (jsonfilter can't count arrays properly)
+		local decisions_json
+		decisions_json=$(run_cscli decisions list -o json 2>/dev/null)
+		if [ -n "$decisions_json" ] && [ "$decisions_json" != "null" ] && [ "$decisions_json" != "[]" ]; then
+			if command -v jq >/dev/null 2>&1; then
+				local_decisions=$(echo "$decisions_json" | jq 'length' 2>/dev/null)
+			else
+				local_decisions=$(echo "$decisions_json" | grep -c '"id":' 2>/dev/null)
+			fi
+		fi
 
 		# CAPI decisions (blocklists) - parse from metrics output
 		capi_decisions=$(run_cscli metrics 2>/dev/null | grep 'CAPI.*ban' | awk -F'|' '{sum += $5} END {print sum+0}')
@@ -2274,7 +2291,16 @@ get_overview() {
 		# Total decisions
 		decisions_count=$((local_decisions + capi_decisions))
 
-		alerts_count=$(run_cscli alerts list -o json --since 24h --limit 100 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+		# Alerts count using jq
+		local alerts_json
+		alerts_json=$(run_cscli alerts list -o json --since 24h --limit 100 2>/dev/null)
+		if [ -n "$alerts_json" ] && [ "$alerts_json" != "null" ] && [ "$alerts_json" != "[]" ]; then
+			if command -v jq >/dev/null 2>&1; then
+				alerts_count=$(echo "$alerts_json" | jq 'length' 2>/dev/null)
+			else
+				alerts_count=$(echo "$alerts_json" | grep -c '"id":' 2>/dev/null)
+			fi
+		fi
 		bouncers_count=$(run_cscli bouncers list -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
 	fi
 
