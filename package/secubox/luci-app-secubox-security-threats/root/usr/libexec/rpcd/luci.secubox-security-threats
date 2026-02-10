@@ -112,6 +112,7 @@ case "$1" in
 		json_init
 		json_add_object "status"; json_close_object
 		json_add_object "get_security_stats"; json_close_object
+		json_add_object "get_visit_stats"; json_close_object
 		json_add_object "get_active_threats"; json_close_object
 		json_add_object "get_blocked_ips"; json_close_object
 		json_add_object "block_threat"
@@ -148,6 +149,30 @@ case "$1" in
 
 			get_security_stats)
 				get_security_stats
+				;;
+
+			get_visit_stats)
+				# Parse threats.log for visit statistics
+				_log_file="/srv/mitmproxy/threats.log"
+				if [ -f "$_log_file" ] && command -v jq >/dev/null 2>&1; then
+					# Get stats from last 1000 entries
+					tail -1000 "$_log_file" 2>/dev/null | jq -sc '
+						{
+							total_requests: length,
+							by_country: (group_by(.country) | map({country: .[0].country, count: length}) | sort_by(.count) | reverse | .[0:10]),
+							by_host: (group_by(.host) | map({host: .[0].host, count: length}) | sort_by(.count) | reverse | .[0:10]),
+							by_type: (group_by(.type) | map({type: .[0].type, count: length}) | sort_by(.count) | reverse),
+							by_severity: (group_by(.severity) | map({severity: .[0].severity, count: length})),
+							bots_vs_humans: {
+								bots: (map(select(.is_bot == true)) | length),
+								humans: (map(select(.is_bot != true)) | length)
+							},
+							top_urls: (group_by(.request) | map({url: .[0].request, count: length}) | sort_by(.count) | reverse | .[0:10])
+						}
+					' 2>/dev/null || echo '{"total_requests":0,"by_country":[],"by_host":[],"by_type":[],"by_severity":[],"bots_vs_humans":{"bots":0,"humans":0},"top_urls":[]}'
+				else
+					echo '{"total_requests":0,"by_country":[],"by_host":[],"by_type":[],"by_severity":[],"bots_vs_humans":{"bots":0,"humans":0},"top_urls":[]}'
+				fi
 				;;
 
 			get_active_threats)

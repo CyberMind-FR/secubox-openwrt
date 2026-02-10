@@ -20,6 +20,7 @@ return L.view.extend({
 		var intel = data.threatIntel || {};
 		var meshIocs = data.meshIocs || [];
 		var meshPeers = data.meshPeers || [];
+		var visitStats = data.visitStats || {};
 
 		poll.add(L.bind(function() { this.handleRefresh(); }, this), 15);
 
@@ -27,6 +28,7 @@ return L.view.extend({
 			E('style', {}, this.getStyles()),
 			this.renderStatusBar(status),
 			this.renderFirewallStats(stats),
+			this.renderVisitStats(visitStats),
 			this.renderMeshIntel(intel, meshIocs, meshPeers),
 			this.renderThreats(threats),
 			this.renderBlocked(blocked)
@@ -82,6 +84,89 @@ return L.view.extend({
 					]);
 				})
 			)
+		]);
+	},
+
+	renderVisitStats: function(stats) {
+		if (!stats || !stats.total_requests) return null;
+
+		var countries = stats.by_country || [];
+		var hosts = stats.by_host || [];
+		var urls = stats.top_urls || [];
+		var bots = stats.bots_vs_humans || {};
+
+		return E('div', { 'class': 'si-section' }, [
+			E('h3', {}, 'Traffic Analytics (' + stats.total_requests + ' requests)'),
+
+			// Summary cards
+			E('div', { 'class': 'si-stats-grid' }, [
+				{ label: 'Total Requests', value: API.formatNumber(stats.total_requests), cls: 'blue' },
+				{ label: 'Bot Traffic', value: API.formatNumber(bots.bots || 0), cls: 'orange' },
+				{ label: 'Human Traffic', value: API.formatNumber(bots.humans || 0), cls: 'green' },
+				{ label: 'Countries', value: String(countries.length), cls: 'purple' }
+			].map(function(item) {
+				return E('div', { 'class': 'si-stat ' + item.cls }, [
+					E('div', { 'class': 'si-stat-val' }, item.value),
+					E('div', { 'class': 'si-stat-label' }, item.label)
+				]);
+			})),
+
+			// Two-column layout for tables
+			E('div', { 'style': 'display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px;' }, [
+				// Countries table
+				E('div', { 'class': 'si-subsection' }, [
+					E('h4', {}, 'Top Countries'),
+					E('table', { 'class': 'table' }, [
+						E('tr', { 'class': 'tr table-titles' }, [
+							E('th', { 'class': 'th' }, 'Country'),
+							E('th', { 'class': 'th' }, 'Requests')
+						])
+					].concat(
+						countries.slice(0, 8).map(function(c) {
+							return E('tr', { 'class': 'tr' }, [
+								E('td', { 'class': 'td' }, c.country || '??'),
+								E('td', { 'class': 'td' }, String(c.count || 0))
+							]);
+						})
+					))
+				]),
+
+				// Hosts table
+				E('div', { 'class': 'si-subsection' }, [
+					E('h4', {}, 'Top Hosts'),
+					E('table', { 'class': 'table' }, [
+						E('tr', { 'class': 'tr table-titles' }, [
+							E('th', { 'class': 'th' }, 'Host'),
+							E('th', { 'class': 'th' }, 'Requests')
+						])
+					].concat(
+						hosts.slice(0, 8).map(function(h) {
+							return E('tr', { 'class': 'tr' }, [
+								E('td', { 'class': 'td si-mono' }, h.host || '-'),
+								E('td', { 'class': 'td' }, String(h.count || 0))
+							]);
+						})
+					))
+				])
+			]),
+
+			// Top URLs
+			E('div', { 'class': 'si-subsection', 'style': 'margin-top:20px;' }, [
+				E('h4', {}, 'Top URLs'),
+				E('table', { 'class': 'table' }, [
+					E('tr', { 'class': 'tr table-titles' }, [
+						E('th', { 'class': 'th' }, 'URL'),
+						E('th', { 'class': 'th' }, 'Hits')
+					])
+				].concat(
+					urls.slice(0, 10).map(function(u) {
+						return E('tr', { 'class': 'tr' }, [
+							E('td', { 'class': 'td si-mono si-pattern', 'style': 'max-width:400px;' }, u.url || '-'),
+							E('td', { 'class': 'td' }, String(u.count || 0))
+						]);
+					})
+				))
+			])
 		]);
 	},
 
