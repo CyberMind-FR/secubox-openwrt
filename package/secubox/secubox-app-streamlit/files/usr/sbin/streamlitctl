@@ -96,6 +96,7 @@ Gitea Integration:
   gitea setup                 Configure git credentials
   gitea clone <name> <repo>   Clone app from Gitea repo
   gitea pull <name>           Pull latest from Gitea
+  gitea push <name>           Create Gitea repo and push app content
 
 Exposure:
   emancipate <name> [domain]  KISS ULTIME MODE - Full exposure workflow:
@@ -1028,6 +1029,99 @@ cmd_gitea_pull() {
 	log_info "Update complete"
 }
 
+# Create Gitea repo via API and push local content
+cmd_gitea_push() {
+	require_root
+	load_config
+
+	local name="$1"
+	[ -z "$name" ] && { log_error "App name required"; return 1; }
+
+	if [ "$gitea_enabled" != "1" ]; then
+		log_error "Gitea integration not enabled"
+		log_info "Enable with: uci set streamlit.gitea.enabled=1 && uci commit streamlit"
+		return 1
+	fi
+
+	if [ -z "$gitea_token" ]; then
+		log_error "Gitea token not configured"
+		return 1
+	fi
+
+	local app_dir="$APPS_PATH/$name"
+
+	if [ ! -d "$app_dir" ]; then
+		log_error "App '$name' not found at $app_dir"
+		return 1
+	fi
+
+	local gitea_host=$(echo "$gitea_url" | sed 's|^https\?://||' | sed 's|/.*||')
+	local gitea_proto=$(echo "$gitea_url" | grep -q '^https' && echo "https" || echo "http")
+	local repo_name="streamlit-$name"
+
+	log_info "Creating Gitea repository: $repo_name"
+
+	# Check if repo exists, create if not
+	local repo_check=$(curl -s -o /dev/null -w "%{http_code}" \
+		-H "Authorization: token $gitea_token" \
+		"${gitea_url}/api/v1/repos/${gitea_user}/${repo_name}" 2>/dev/null)
+
+	if [ "$repo_check" != "200" ]; then
+		log_info "Repository doesn't exist, creating..."
+		local create_result=$(curl -s -X POST \
+			-H "Authorization: token $gitea_token" \
+			-H "Content-Type: application/json" \
+			-d "{\"name\":\"${repo_name}\",\"description\":\"Streamlit app: ${name}\",\"private\":false,\"auto_init\":false}" \
+			"${gitea_url}/api/v1/user/repos" 2>/dev/null)
+
+		if ! echo "$create_result" | grep -q "\"name\":"; then
+			log_error "Failed to create repository"
+			log_error "Response: $create_result"
+			return 1
+		fi
+		log_info "Repository created: ${gitea_user}/${repo_name}"
+	else
+		log_info "Repository exists: ${gitea_user}/${repo_name}"
+	fi
+
+	# Initialize git in app directory if needed
+	cd "$app_dir"
+
+	if [ ! -d ".git" ]; then
+		log_info "Initializing git repository..."
+		git init
+		git config user.name "$gitea_user"
+		git config user.email "${gitea_user}@localhost"
+	fi
+
+	# Set remote
+	local remote_url="${gitea_proto}://${gitea_user}:${gitea_token}@${gitea_host}/${gitea_user}/${repo_name}.git"
+	git remote remove origin 2>/dev/null
+	git remote add origin "$remote_url"
+
+	# Add, commit and push
+	log_info "Adding files and committing..."
+	git add -A
+	git commit -m "Auto-push from SecuBox Streamlit at $(date -Iseconds)" 2>/dev/null || \
+		log_info "No changes to commit"
+
+	log_info "Pushing to Gitea..."
+	git push -u origin HEAD:main --force 2>&1 || {
+		# Try master branch as fallback
+		git push -u origin HEAD:master --force 2>&1 || {
+			log_error "Failed to push to Gitea"
+			return 1
+		}
+	}
+
+	# Save repo reference in UCI
+	uci set "${CONFIG}.${name}.repo=${gitea_user}/${repo_name}"
+	uci set "${CONFIG}.${name}.gitea_synced=$(date -Iseconds)"
+	uci commit "$CONFIG"
+
+	log_info "Push complete: ${gitea_url}/${gitea_user}/${repo_name}"
+}
+
 # ===========================================
 # KISS ULTIME MODE - Emancipate
 # ===========================================
@@ -1462,7 +1556,8 @@ case "${1:-}" in
 			setup) shift; cmd_gitea_setup "$@" ;;
 			clone) shift; cmd_gitea_clone "$@" ;;
 			pull)  shift; cmd_gitea_pull "$@" ;;
-			*)     echo "Usage: streamlitctl gitea {setup|clone|pull}"; exit 1 ;;
+			push)  shift; cmd_gitea_push "$@" ;;
+			*)     echo "Usage: streamlitctl gitea {setup|clone|pull|push}"; exit 1 ;;
 		esac
 		;;
 

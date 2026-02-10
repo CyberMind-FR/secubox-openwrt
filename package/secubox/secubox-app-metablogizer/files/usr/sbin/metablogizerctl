@@ -38,6 +38,7 @@ Site Commands:
   delete <name>         Delete site
   sync <name>           Sync site from git repo
   publish <name>        Publish site (create HAProxy vhost)
+  gitea push <name>     Create Gitea repo and push site content
   emancipate <name>     KISS ULTIME MODE - Full exposure workflow:
                         1. DNS A record (Gandi/OVH)
                         2. Vortex DNS mesh publication
@@ -409,7 +410,8 @@ cmd_sync() {
 	local name="$1"
 	[ -z "$name" ] && { log_error "Site name required"; return 1; }
 
-	local gitea_repo=$(uci_get site_${name}.gitea_repo)
+	local section=$(get_section "$name")
+	local gitea_repo=$(uci_get ${section}.gitea_repo)
 	[ -z "$gitea_repo" ] && { log_error "No git repo configured for $name"; return 1; }
 
 	local site_dir="$SITES_ROOT/$name"
@@ -432,6 +434,109 @@ cmd_sync() {
 	fix_permissions "$site_dir"
 
 	log_info "Sync complete"
+}
+
+# Create Gitea repo via API and push local site content
+cmd_gitea_push() {
+	local name="$1"
+	[ -z "$name" ] && { log_error "Site name required"; return 1; }
+
+	if ! site_exists "$name"; then
+		log_error "Site '$name' not found"
+		return 1
+	fi
+
+	# Load Gitea config
+	local gitea_enabled=$(uci_get main.gitea_enabled)
+	local gitea_url=$(uci_get main.gitea_url)
+	local gitea_user=$(uci_get main.gitea_user)
+	local gitea_token=$(uci_get main.gitea_token)
+
+	[ -z "$gitea_url" ] && gitea_url="http://localhost:3000"
+
+	if [ -z "$gitea_token" ]; then
+		log_error "Gitea token not configured"
+		log_info "Configure with:"
+		log_info "  uci set metablogizer.main.gitea_url='http://192.168.255.1:3000'"
+		log_info "  uci set metablogizer.main.gitea_user='admin'"
+		log_info "  uci set metablogizer.main.gitea_token='your-token'"
+		log_info "  uci commit metablogizer"
+		return 1
+	fi
+
+	local site_dir="$SITES_ROOT/$name"
+
+	if [ ! -d "$site_dir" ]; then
+		log_error "Site '$name' not found at $site_dir"
+		return 1
+	fi
+
+	local gitea_host=$(echo "$gitea_url" | sed 's|^https\?://||' | sed 's|/.*||')
+	local gitea_proto=$(echo "$gitea_url" | grep -q '^https' && echo "https" || echo "http")
+	local repo_name="metablog-$name"
+
+	log_info "Creating Gitea repository: $repo_name"
+
+	# Check if repo exists, create if not
+	local repo_check=$(curl -s -o /dev/null -w "%{http_code}" \
+		-H "Authorization: token $gitea_token" \
+		"${gitea_url}/api/v1/repos/${gitea_user}/${repo_name}" 2>/dev/null)
+
+	if [ "$repo_check" != "200" ]; then
+		log_info "Repository doesn't exist, creating..."
+		local create_result=$(curl -s -X POST \
+			-H "Authorization: token $gitea_token" \
+			-H "Content-Type: application/json" \
+			-d "{\"name\":\"${repo_name}\",\"description\":\"MetaBlogizer site: ${name}\",\"private\":false,\"auto_init\":false}" \
+			"${gitea_url}/api/v1/user/repos" 2>/dev/null)
+
+		if ! echo "$create_result" | grep -q "\"name\":"; then
+			log_error "Failed to create repository"
+			log_error "Response: $create_result"
+			return 1
+		fi
+		log_info "Repository created: ${gitea_user}/${repo_name}"
+	else
+		log_info "Repository exists: ${gitea_user}/${repo_name}"
+	fi
+
+	# Initialize git in site directory if needed
+	cd "$site_dir"
+
+	if [ ! -d ".git" ]; then
+		log_info "Initializing git repository..."
+		git init
+		git config user.name "$gitea_user"
+		git config user.email "${gitea_user}@localhost"
+	fi
+
+	# Set remote
+	local remote_url="${gitea_proto}://${gitea_user}:${gitea_token}@${gitea_host}/${gitea_user}/${repo_name}.git"
+	git remote remove origin 2>/dev/null
+	git remote add origin "$remote_url"
+
+	# Add, commit and push
+	log_info "Adding files and committing..."
+	git add -A
+	git commit -m "Auto-push from SecuBox MetaBlogizer at $(date -Iseconds)" 2>/dev/null || \
+		log_info "No changes to commit"
+
+	log_info "Pushing to Gitea..."
+	git push -u origin HEAD:main --force 2>&1 || {
+		# Try master branch as fallback
+		git push -u origin HEAD:master --force 2>&1 || {
+			log_error "Failed to push to Gitea"
+			return 1
+		}
+	}
+
+	# Save repo reference in UCI
+	local section=$(get_section "$name")
+	uci set "${CONFIG}.${section}.gitea_repo=${gitea_user}/${repo_name}"
+	uci set "${CONFIG}.${section}.gitea_synced=$(date -Iseconds)"
+	uci commit "$CONFIG"
+
+	log_info "Push complete: ${gitea_url}/${gitea_user}/${repo_name}"
 }
 
 cmd_runtime() {
@@ -764,6 +869,13 @@ case "${1:-}" in
 	runtime)        shift; cmd_runtime "$@" ;;
 	status)         shift; cmd_status "$@" ;;
 	install-nginx)  shift; cmd_install_nginx "$@" ;;
+	gitea)
+		shift
+		case "${1:-}" in
+			push) shift; cmd_gitea_push "$@" ;;
+			*)    echo "Usage: metablogizerctl gitea push <name>"; exit 1 ;;
+		esac
+		;;
 	help|--help|-h) usage ;;
 	*)              usage ;;
 esac
