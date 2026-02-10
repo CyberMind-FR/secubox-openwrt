@@ -497,7 +497,7 @@ cmd_gitea_push() {
 		local create_result=$(curl -s -X POST \
 			-H "Authorization: token $gitea_token" \
 			-H "Content-Type: application/json" \
-			-d "{\"name\":\"${repo_name}\",\"description\":\"MetaBlogizer site: ${name}\",\"private\":false,\"auto_init\":false}" \
+			-d "{\"name\":\"${repo_name}\",\"description\":\"MetaBlogizer site: ${name}\",\"private\":true,\"auto_init\":false}" \
 			"${gitea_url}/api/v1/user/repos" 2>/dev/null)
 
 		if ! echo "$create_result" | grep -q "\"name\":"; then
