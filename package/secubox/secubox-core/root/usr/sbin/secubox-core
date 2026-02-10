@@ -681,8 +681,8 @@ discover_secubox_services() {
                 services="$services mitmproxy:lxc:10"
                 ;;
             metablogizerctl)
-                svc_name="metablogizer"
-                services="$services metablogizer:lxc:10"
+                # MetaBlogizer uses per-site uhttpd instances, not LXC
+                # Skip watchdog for this service - managed via init.d/metablogizer
                 ;;
             hexojsctl)
                 svc_name="hexojs"
