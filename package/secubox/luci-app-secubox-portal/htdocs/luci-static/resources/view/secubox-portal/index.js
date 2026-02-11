@@ -670,16 +670,28 @@ return view.extend({
 
 	hideNavigation: function() {
 		document.body.classList.add('c3-portal-mode');
-		['#mainmenu', '.main-left', 'header.main-header', 'nav[role="navigation"]', 'aside'].forEach(function(sel) {
+		// Hide all LuCI chrome: header, nav, sidebar, footer
+		[
+			'#mainmenu', '.main-left', 'header.main-header', 'header',
+			'nav[role="navigation"]', 'aside', 'footer', '.container > header',
+			'.pull-right', '#indicators', '.brand', '#topmenu', '#tabmenu'
+		].forEach(function(sel) {
 			var el = document.querySelector(sel);
 			if (el) el.style.display = 'none';
 		});
-		var main = document.querySelector('.main-right') || document.querySelector('#maincontent');
+		// Full viewport for portal
+		var main = document.querySelector('.main-right') || document.querySelector('#maincontent') || document.querySelector('.container');
 		if (main) {
 			main.style.marginLeft = '0';
+			main.style.marginTop = '0';
 			main.style.width = '100%';
 			main.style.padding = '0';
+			main.style.maxWidth = 'none';
 		}
+		// Hide body padding/margin from LuCI
+		document.body.style.padding = '0';
+		document.body.style.margin = '0';
+		document.body.style.overflow = 'hidden';
 	},
 
 	injectCSS: function() {
