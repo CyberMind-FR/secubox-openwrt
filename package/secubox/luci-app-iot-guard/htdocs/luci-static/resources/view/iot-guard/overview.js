@@ -2,6 +2,7 @@
 'require view';
 'require rpc';
 'require poll';
+'require secubox/kiss-theme';
 
 var callStatus = rpc.declare({
 	object: 'luci.iot-guard',
@@ -28,27 +29,19 @@ var callScan = rpc.declare({
 	expect: {}
 });
 
-// Device class icons (emoji-free)
+// Device class icons
 var CLASS_ICONS = {
-	camera: '[CAM]',
-	thermostat: '[TMP]',
-	lighting: '[LGT]',
-	plug: '[PLG]',
-	assistant: '[AST]',
-	media: '[MED]',
-	lock: '[LCK]',
-	sensor: '[SNS]',
-	diy: '[DIY]',
-	mixed: '[MIX]',
-	unknown: '[???]'
-};
-
-// Risk colors
-var RISK_COLORS = {
-	high: '#ff4444',
-	medium: '#ffaa00',
-	low: '#44cc44',
-	unknown: '#888888'
+	camera: '📷',
+	thermostat: '🌡️',
+	lighting: '💡',
+	plug: '🔌',
+	assistant: '🎤',
+	media: '📺',
+	lock: '🔒',
+	sensor: '📡',
+	diy: '🛠️',
+	mixed: '🔗',
+	unknown: '❓'
 };
 
 return view.extend({
@@ -70,43 +63,7 @@ return view.extend({
 		var status = data[0] || {};
 		var devices = (data[1] && data[1].devices) || [];
 		var anomalies = (data[2] && data[2].anomalies) || [];
-
-		var view = E('div', { 'class': 'cbi-map', 'style': 'padding: 20px;' }, [
-			// Header
-			E('h2', { 'style': 'margin-bottom: 5px;' }, 'IoT Guard'),
-			E('div', { 'style': 'color: #666; margin-bottom: 20px;' }, 'Device Isolation & Security Monitoring'),
-
-			// Status Cards Row
-			E('div', { 'style': 'display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 25px;' }, [
-				this.renderStatCard('Devices', status.total_devices || 0, '#4a9eff'),
-				this.renderStatCard('Isolated', status.isolated || 0, '#ffaa00'),
-				this.renderStatCard('Blocked', status.blocked || 0, '#ff4444'),
-				this.renderStatCard('High Risk', status.high_risk || 0, '#ff4444'),
-				this.renderStatCard('Anomalies', status.anomalies || 0, '#ff6600'),
-				this.renderScoreCard('Security Score', status.security_score || 0)
-			]),
-
-			// Action buttons
-			E('div', { 'style': 'margin-bottom: 25px;' }, [
-				E('button', {
-					'class': 'cbi-button cbi-button-action',
-					'click': L.bind(this.handleScan, this)
-				}, 'Scan Network'),
-				E('a', {
-					'href': L.url('admin/secubox/services/iot-guard/devices'),
-					'class': 'cbi-button',
-					'style': 'margin-left: 10px;'
-				}, 'View All Devices')
-			]),
-
-			// Device Grid by Risk
-			E('h3', { 'style': 'margin-top: 25px; margin-bottom: 15px;' }, 'Devices by Risk Level'),
-			this.renderDeviceGrid(devices),
-
-			// Recent Anomalies
-			E('h3', { 'style': 'margin-top: 30px; margin-bottom: 15px;' }, 'Recent Anomalies'),
-			this.renderAnomaliesTable(anomalies)
-		]);
+		var self = this;
 
 		// Poll for updates
 		poll.add(L.bind(function() {
@@ -115,39 +72,89 @@ return view.extend({
 			}, this));
 		}, this), 10);
 
-		return view;
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0 0 8px 0;' }, '📡 IoT Guard'),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 0;' }, 'Device Isolation & Security Monitoring')
+			]),
+
+			// Stats Grid
+			E('div', { 'class': 'kiss-grid kiss-grid-auto', 'style': 'margin-bottom: 24px;' }, [
+				this.renderStatCard('Devices', status.total_devices || 0, 'var(--kiss-blue)'),
+				this.renderStatCard('Isolated', status.isolated || 0, 'var(--kiss-yellow)'),
+				this.renderStatCard('Blocked', status.blocked || 0, 'var(--kiss-red)'),
+				this.renderStatCard('High Risk', status.high_risk || 0, 'var(--kiss-red)'),
+				this.renderStatCard('Anomalies', status.anomalies || 0, 'var(--kiss-orange)'),
+				this.renderScoreCard('Security Score', status.security_score || 0)
+			]),
+
+			// Action buttons
+			E('div', { 'class': 'kiss-card', 'style': 'display: flex; gap: 12px; flex-wrap: wrap;' }, [
+				E('button', {
+					'class': 'kiss-btn kiss-btn-green',
+					'click': L.bind(this.handleScan, this)
+				}, '🔍 Scan Network'),
+				E('a', {
+					'href': L.url('admin/secubox/services/iot-guard/devices'),
+					'class': 'kiss-btn',
+					'style': 'text-decoration: none;'
+				}, '📋 View All Devices'),
+				E('a', {
+					'href': L.url('admin/secubox/services/iot-guard/settings'),
+					'class': 'kiss-btn',
+					'style': 'text-decoration: none;'
+				}, '⚙️ Settings')
+			]),
+
+			// Device Grid by Risk
+			E('div', { 'class': 'kiss-card' }, [
+				E('div', { 'class': 'kiss-card-title' }, '🎯 Devices by Risk Level'),
+				this.renderDeviceGrid(devices)
+			]),
+
+			// Recent Anomalies
+			E('div', { 'class': 'kiss-card' }, [
+				E('div', { 'class': 'kiss-card-title' }, '⚠️ Recent Anomalies'),
+				this.renderAnomaliesTable(anomalies)
+			])
+		];
+
+		return KissTheme.wrap(content, 'admin/secubox/services/iot-guard');
 	},
 
 	renderStatCard: function(label, value, color) {
-		return E('div', {
-			'style': 'background: linear-gradient(135deg, ' + color + '22, ' + color + '11); ' +
-				'border: 1px solid ' + color + '44; border-radius: 8px; padding: 15px 20px; ' +
-				'min-width: 120px; text-align: center;'
-		}, [
+		return E('div', { 'class': 'kiss-stat', 'style': 'border-left: 3px solid ' + color + ';' }, [
 			E('div', {
-				'style': 'font-size: 28px; font-weight: bold; color: ' + color + ';',
+				'class': 'kiss-stat-value',
+				'style': 'color: ' + color + ';',
 				'data-stat': label.toLowerCase().replace(' ', '-')
 			}, String(value)),
-			E('div', { 'style': 'color: #666; font-size: 12px; margin-top: 5px;' }, label)
+			E('div', { 'class': 'kiss-stat-label' }, label)
 		]);
 	},
 
 	renderScoreCard: function(label, score) {
-		var color = score >= 70 ? '#44cc44' : (score >= 40 ? '#ffaa00' : '#ff4444');
-		return E('div', {
-			'style': 'background: linear-gradient(135deg, ' + color + '22, ' + color + '11); ' +
-				'border: 1px solid ' + color + '44; border-radius: 8px; padding: 15px 20px; ' +
-				'min-width: 140px; text-align: center;'
-		}, [
+		var color = score >= 70 ? 'var(--kiss-green)' : (score >= 40 ? 'var(--kiss-yellow)' : 'var(--kiss-red)');
+		return E('div', { 'class': 'kiss-stat', 'style': 'border-left: 3px solid ' + color + ';' }, [
 			E('div', {
-				'style': 'font-size: 28px; font-weight: bold; color: ' + color + ';',
+				'class': 'kiss-stat-value',
+				'style': 'color: ' + color + ';',
 				'data-stat': 'security-score'
 			}, score + '%'),
-			E('div', { 'style': 'color: #666; font-size: 12px; margin-top: 5px;' }, label)
+			E('div', { 'class': 'kiss-stat-label' }, label)
 		]);
 	},
 
 	renderDeviceGrid: function(devices) {
+		var self = this;
+		var RISK_COLORS = {
+			high: 'var(--kiss-red)',
+			medium: 'var(--kiss-yellow)',
+			low: 'var(--kiss-green)',
+			unknown: 'var(--kiss-muted)'
+		};
+
 		var groups = { high: [], medium: [], low: [], unknown: [] };
 
 		devices.forEach(function(d) {
@@ -164,76 +171,78 @@ return view.extend({
 		['high', 'medium', 'low'].forEach(function(risk) {
 			if (groups[risk].length === 0) return;
 
-			rows.push(E('div', { 'style': 'margin-bottom: 15px;' }, [
+			rows.push(E('div', { 'style': 'margin-bottom: 16px;' }, [
 				E('div', {
-					'style': 'color: ' + RISK_COLORS[risk] + '; font-weight: bold; margin-bottom: 8px; text-transform: uppercase;'
+					'style': 'color: ' + RISK_COLORS[risk] + '; font-weight: 600; margin-bottom: 10px; font-size: 12px; text-transform: uppercase; letter-spacing: 1px;'
 				}, risk + ' Risk (' + groups[risk].length + ')'),
 				E('div', { 'style': 'display: flex; flex-wrap: wrap; gap: 10px;' },
 					groups[risk].slice(0, 12).map(function(d) {
-						return this.renderDeviceChip(d);
-					}, this)
+						return self.renderDeviceChip(d, RISK_COLORS);
+					})
 				)
 			]));
-		}, this);
+		});
 
 		if (rows.length === 0) {
-			return E('div', { 'style': 'color: #888; padding: 20px; text-align: center;' },
-				'No IoT devices detected. Click "Scan Network" to discover devices.');
+			return E('div', { 'style': 'color: var(--kiss-muted); padding: 30px; text-align: center;' }, [
+				E('div', { 'style': 'font-size: 48px; margin-bottom: 12px;' }, '📡'),
+				E('p', {}, 'No IoT devices detected.'),
+				E('p', { 'style': 'font-size: 12px;' }, 'Click "Scan Network" to discover devices.')
+			]);
 		}
 
 		return E('div', {}, rows);
 	},
 
-	renderDeviceChip: function(device) {
+	renderDeviceChip: function(device, RISK_COLORS) {
 		var icon = CLASS_ICONS[device.device_class] || CLASS_ICONS.unknown;
 		var color = RISK_COLORS[device.risk_level] || RISK_COLORS.unknown;
 
 		var statusBadge = '';
-		if (device.isolated) statusBadge = ' [ISO]';
-		else if (device.blocked) statusBadge = ' [BLK]';
-		else if (device.trusted) statusBadge = ' [OK]';
+		if (device.isolated) statusBadge = ' 🔸';
+		else if (device.blocked) statusBadge = ' 🚫';
+		else if (device.trusted) statusBadge = ' ✓';
 
 		var label = device.hostname || device.ip || device.mac.substring(9);
 
 		return E('a', {
 			'href': L.url('admin/secubox/services/iot-guard/devices') + '?mac=' + encodeURIComponent(device.mac),
-			'style': 'background: #1a1a2e; border: 1px solid ' + color + '66; border-radius: 6px; ' +
-				'padding: 8px 12px; color: #eee; text-decoration: none; display: inline-flex; ' +
-				'align-items: center; gap: 8px; font-size: 13px;',
+			'class': 'kiss-btn',
+			'style': 'text-decoration: none; border-color: ' + color + '66;',
 			'title': device.vendor + ' - ' + device.mac
 		}, [
-			E('span', { 'style': 'color: ' + color + '; font-weight: bold;' }, icon),
+			E('span', {}, icon),
 			E('span', {}, label.length > 15 ? label.substring(0, 12) + '...' : label),
-			statusBadge ? E('span', { 'style': 'color: #888; font-size: 11px;' }, statusBadge) : ''
+			statusBadge ? E('span', { 'style': 'font-size: 10px;' }, statusBadge) : ''
 		]);
 	},
 
 	renderAnomaliesTable: function(anomalies) {
 		if (!anomalies || anomalies.length === 0) {
-			return E('div', {
-				'style': 'background: #0a2a0a; border: 1px solid #2a4a2a; border-radius: 8px; ' +
-					'padding: 20px; text-align: center; color: #4a8a4a;'
-			}, 'No recent anomalies detected');
+			return E('div', { 'style': 'text-align: center; padding: 30px; color: var(--kiss-green);' }, [
+				E('div', { 'style': 'font-size: 48px; margin-bottom: 12px;' }, '✅'),
+				E('p', {}, 'No recent anomalies detected')
+			]);
 		}
 
 		var rows = anomalies.map(function(a) {
-			var sevColor = a.severity === 'high' ? '#ff4444' : (a.severity === 'medium' ? '#ffaa00' : '#888');
+			var sevColor = a.severity === 'high' ? 'var(--kiss-red)' : (a.severity === 'medium' ? 'var(--kiss-yellow)' : 'var(--kiss-muted)');
 			return E('tr', {}, [
-				E('td', { 'style': 'padding: 8px; border-bottom: 1px solid #333;' }, a.timestamp ? a.timestamp.substring(11, 16) : '-'),
-				E('td', { 'style': 'padding: 8px; border-bottom: 1px solid #333;' }, a.hostname || a.mac),
-				E('td', { 'style': 'padding: 8px; border-bottom: 1px solid #333;' }, a.type),
-				E('td', { 'style': 'padding: 8px; border-bottom: 1px solid #333; color: ' + sevColor + ';' }, a.severity),
-				E('td', { 'style': 'padding: 8px; border-bottom: 1px solid #333; color: #888;' }, a.description)
+				E('td', { 'class': 'td' }, a.timestamp ? a.timestamp.substring(11, 16) : '-'),
+				E('td', { 'class': 'td' }, a.hostname || a.mac),
+				E('td', { 'class': 'td' }, a.type),
+				E('td', { 'class': 'td', 'style': 'color: ' + sevColor + '; font-weight: 600;' }, a.severity),
+				E('td', { 'class': 'td', 'style': 'color: var(--kiss-muted);' }, a.description)
 			]);
 		});
 
-		return E('table', { 'style': 'width: 100%; border-collapse: collapse;' }, [
-			E('thead', {}, E('tr', { 'style': 'background: #222;' }, [
-				E('th', { 'style': 'padding: 10px; text-align: left;' }, 'Time'),
-				E('th', { 'style': 'padding: 10px; text-align: left;' }, 'Device'),
-				E('th', { 'style': 'padding: 10px; text-align: left;' }, 'Type'),
-				E('th', { 'style': 'padding: 10px; text-align: left;' }, 'Severity'),
-				E('th', { 'style': 'padding: 10px; text-align: left;' }, 'Description')
+		return E('table', { 'class': 'kiss-table' }, [
+			E('thead', {}, E('tr', {}, [
+				E('th', { 'class': 'th' }, 'Time'),
+				E('th', { 'class': 'th' }, 'Device'),
+				E('th', { 'class': 'th' }, 'Type'),
+				E('th', { 'class': 'th' }, 'Severity'),
+				E('th', { 'class': 'th' }, 'Description')
 			])),
 			E('tbody', {}, rows)
 		]);

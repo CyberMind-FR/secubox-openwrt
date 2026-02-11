@@ -3,6 +3,7 @@
 'require rpc';
 'require ui';
 'require poll';
+'require secubox/kiss-theme';
 
 var callStatus = rpc.declare({
 	object: 'luci.system-hub',
@@ -184,20 +185,25 @@ return view.extend({
 
 	renderQuickActions: function() {
 		return E('div', { 'class': 'sh-section' }, [
-			E('h3', {}, 'Quick Actions'),
+			E('h3', {}, '⚡ Quick Actions'),
 			E('div', { 'class': 'sh-actions' }, [
 				E('button', {
-					'class': 'cbi-button cbi-button-action',
+					'class': 'kiss-btn',
 					'click': function() { window.location.href = L.url('admin/system/system'); }
-				}, '\u2699 System Settings'),
+				}, '⚙️ System Settings'),
 				E('button', {
-					'class': 'cbi-button',
+					'class': 'kiss-btn',
 					'click': function() { window.location.href = L.url('admin/system/reboot'); }
-				}, '\uD83D\uDD04 Reboot'),
+				}, '🔄 Reboot'),
 				E('button', {
-					'class': 'cbi-button',
+					'class': 'kiss-btn',
 					'click': function() { window.location.href = L.url('admin/system/flash'); }
-				}, '\uD83D\uDCE6 Backup/Flash')
+				}, '📦 Backup/Flash'),
+				E('a', {
+					'href': L.url('admin/secubox/system/system-hub/health'),
+					'class': 'kiss-btn',
+					'style': 'text-decoration: none;'
+				}, '❤️ Health Check')
 			])
 		]);
 	},
@@ -303,51 +309,52 @@ return view.extend({
 			});
 		}, 5);
 
-		return E('div', { 'class': 'sh-dashboard' }, [
-			E('style', {}, [
-				'.sh-dashboard { max-width: 1200px; }',
-				'.sh-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }',
-				'.sh-card { background: #fff; border-radius: 8px; padding: 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }',
-				'.sh-card-icon { width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; color: #fff; flex-shrink: 0; }',
-				'.sh-card-value { font-size: 18px; font-weight: 700; }',
-				'.sh-card-label { font-size: 12px; color: #666; }',
-				'.sh-section { background: #fff; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }',
-				'.sh-section h3 { margin: 0 0 16px 0; font-size: 16px; font-weight: 600; color: #333; }',
-				'.sh-actions { display: flex; gap: 10px; flex-wrap: wrap; }',
-				'.sh-resources { display: flex; flex-direction: column; gap: 16px; }',
-				'.sh-resource { }',
-				'.sh-resource-header { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 13px; }',
-				'.sh-resource-bar { height: 12px; background: #eee; border-radius: 6px; overflow: hidden; }',
-				'.sh-resource-fill { height: 100%; transition: width 0.3s, background 0.3s; border-radius: 6px; }',
-				'.sh-resource-percent { font-size: 12px; color: #666; margin-top: 4px; text-align: right; }',
-				'.sh-status-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; color: #fff; font-size: 11px; font-weight: 600; }',
-				'.table { width: 100%; border-collapse: collapse; }',
-				'.table th, .table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #eee; }',
-				'.table th { background: #f8f9fa; font-weight: 600; font-size: 12px; text-transform: uppercase; color: #666; }',
-				'.table tbody tr:hover { background: #f8f9fa; }',
-				'@media (prefers-color-scheme: dark) {',
-				'  .sh-card { background: #2d2d2d; }',
-				'  .sh-card-label { color: #aaa; }',
-				'  .sh-card-value { color: #fff; }',
-				'  .sh-section { background: #2d2d2d; }',
-				'  .sh-section h3 { color: #eee; }',
-				'  .sh-resource-header { color: #ccc; }',
-				'  .sh-resource-bar { background: #444; }',
-				'  .table th { background: #333; color: #aaa; }',
-				'  .table td { border-color: #444; color: #ccc; }',
-				'  .table tbody tr:hover { background: #333; }',
-				'}'
-			].join('\n')),
-			E('h2', { 'style': 'margin-bottom: 20px' }, '\u2699\uFE0F System Control Center'),
-			E('p', { 'style': 'color: #666; margin-bottom: 24px' },
-				'Unified system monitoring and management dashboard.'),
+		// Additional KISS-compatible styles
+		var extraStyles = `
+.sh-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.sh-card { background: var(--kiss-card); border: 1px solid var(--kiss-line); border-radius: 10px; padding: 16px; display: flex; align-items: center; gap: 12px; }
+.sh-card-icon { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #fff; flex-shrink: 0; }
+.sh-card-value { font-size: 18px; font-weight: 700; color: var(--kiss-text); }
+.sh-card-label { font-size: 11px; color: var(--kiss-muted); }
+.sh-section { background: var(--kiss-card); border: 1px solid var(--kiss-line); border-radius: 12px; padding: 20px; }
+.sh-section h3 { margin: 0 0 16px 0; font-size: 16px; font-weight: 700; color: var(--kiss-text); }
+.sh-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.sh-resources { display: flex; flex-direction: column; gap: 16px; }
+.sh-resource-header { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 13px; color: var(--kiss-muted); }
+.sh-resource-bar { height: 10px; background: rgba(255,255,255,0.06); border-radius: 5px; overflow: hidden; }
+.sh-resource-fill { height: 100%; transition: width 0.3s, background 0.3s; border-radius: 5px; }
+.sh-resource-percent { font-size: 11px; color: var(--kiss-muted); margin-top: 4px; text-align: right; }
+.sh-status-badge { display: inline-block; padding: 3px 10px; border-radius: 4px; color: #fff; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; }
+`;
+		// Inject extra styles
+		if (!document.querySelector('#sh-kiss-extra')) {
+			var style = document.createElement('style');
+			style.id = 'sh-kiss-extra';
+			style.textContent = extraStyles;
+			document.head.appendChild(style);
+		}
+
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0 0 8px 0;' }, '📊 System Hub'),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 0;' }, 'Unified system monitoring and management dashboard')
+			]),
+
+			// Status Cards
 			this.renderStatusCards(status, health),
-			E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 20px;' }, [
+
+			// Two column grid
+			E('div', { 'class': 'kiss-grid kiss-grid-2', 'style': 'margin-bottom: 20px;' }, [
 				this.renderResourceBars(health, status),
 				this.renderQuickActions()
 			]),
+
+			// Services Table
 			this.renderServicesTable(services)
-		]);
+		];
+
+		return KissTheme.wrap(content, 'admin/secubox/system/system-hub');
 	},
 
 	handleSave: null,
