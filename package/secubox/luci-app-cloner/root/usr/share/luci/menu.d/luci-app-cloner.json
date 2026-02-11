@@ -1,0 +1,13 @@
+{
+	"admin/secubox/system/cloner": {
+		"title": "Cloning Station",
+		"order": 50,
+		"action": {
+			"type": "view",
+			"path": "cloner/overview"
+		},
+		"depends": {
+			"acl": ["luci-app-cloner"]
+		}
+	}
+}

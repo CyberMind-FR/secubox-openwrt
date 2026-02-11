@@ -1,0 +1,326 @@
+#!/bin/sh
+#
+# RPCD handler for SecuBox Cloner
+#
+
+. /usr/share/libubox/jshn.sh
+
+CLONE_DIR="/srv/secubox/clone"
+TFTP_ROOT="/srv/tftp"
+TOKENS_DIR="/var/run/secubox/clone-tokens"
+STATE_FILE="/var/run/secubox/cloner.state"
+
+# Detect device type
+detect_device() {
+	local board_name=""
+	[ -f /tmp/sysinfo/board_name ] && board_name=$(cat /tmp/sysinfo/board_name)
+	[ -z "$board_name" ] && board_name=$(uci -q get system.@system[0].hostname 2>/dev/null)
+
+	case "$board_name" in
+		*mochabin*|*MOCHAbin*|globalscale,mochabin) echo "mochabin" ;;
+		*espressobin*ultra*) echo "espressobin-ultra" ;;
+		*espressobin*) echo "espressobin-v7" ;;
+		*x86*|*generic*) echo "x86-64" ;;
+		*) echo "unknown" ;;
+	esac
+}
+
+get_lan_ip() {
+	uci -q get network.lan.ipaddr 2>/dev/null || echo "192.168.255.1"
+}
+
+do_status() {
+	local device_type lan_ip hostname tftp_enabled
+	local has_image image_size image_name token_count clone_count
+
+	json_init
+
+	# Device info
+	device_type=$(detect_device)
+	lan_ip=$(get_lan_ip)
+	hostname=$(uci -q get system.@system[0].hostname || echo "secubox")
+
+	json_add_string "device_type" "$device_type"
+	json_add_string "lan_ip" "$lan_ip"
+	json_add_string "hostname" "$hostname"
+
+	# TFTP status
+	tftp_enabled=$(uci -q get dhcp.@dnsmasq[0].enable_tftp)
+	json_add_boolean "tftp_running" "$([ "$tftp_enabled" = "1" ] && echo 1 || echo 0)"
+	json_add_string "tftp_root" "$TFTP_ROOT"
+
+	# Image status
+	has_image=0
+	image_size=""
+	image_name=""
+	if [ -f "$TFTP_ROOT/secubox-clone.img" ]; then
+		has_image=1
+		image_size=$(ls -lh "$TFTP_ROOT/secubox-clone.img" 2>/dev/null | awk '{print $5}')
+		image_name="secubox-clone.img"
+	fi
+	json_add_boolean "has_image" "$has_image"
+	json_add_string "image_size" "${image_size:-0}"
+	json_add_string "image_name" "${image_name:-}"
+
+	# Token count
+	token_count=0
+	[ -d "$TOKENS_DIR" ] && token_count=$(ls "$TOKENS_DIR"/*.json 2>/dev/null | wc -l)
+	json_add_int "token_count" "$token_count"
+
+	# Clone count (from master-link peer-list)
+	clone_count=0
+	if [ -x /usr/lib/secubox/master-link.sh ]; then
+		clone_count=$(/usr/lib/secubox/master-link.sh peer-list 2>/dev/null | grep -c "^[0-9]" || echo 0)
+	fi
+	json_add_int "clone_count" "$clone_count"
+
+	# Build state
+	if [ -f "$STATE_FILE" ]; then
+		. "$STATE_FILE"
+		json_add_string "last_build" "${BUILD_TIME:-}"
+	else
+		json_add_string "last_build" ""
+	fi
+
+	json_dump
+}
+
+do_list_images() {
+	local img name
+
+	json_init
+	json_add_array "images"
+
+	# TFTP ready image
+	if [ -f "$TFTP_ROOT/secubox-clone.img" ]; then
+		json_add_object ""
+		json_add_string "name" "secubox-clone.img"
+		json_add_string "path" "$TFTP_ROOT/secubox-clone.img"
+		json_add_string "size" "$(ls -lh "$TFTP_ROOT/secubox-clone.img" | awk '{print $5}')"
+		json_add_boolean "tftp_ready" 1
+		json_close_object
+	fi
+
+	# Clone directory images
+	if [ -d "$CLONE_DIR" ]; then
+		for img in "$CLONE_DIR"/*.img "$CLONE_DIR"/*.img.gz; do
+			[ -f "$img" ] || continue
+			name=$(basename "$img")
+			json_add_object ""
+			json_add_string "name" "$name"
+			json_add_string "path" "$img"
+			json_add_string "size" "$(ls -lh "$img" | awk '{print $5}')"
+			json_add_boolean "tftp_ready" 0
+			json_close_object
+		done
+	fi
+
+	json_close_array
+	json_dump
+}
+
+do_list_tokens() {
+	local tf token created used auto
+
+	json_init
+	json_add_array "tokens"
+
+	if [ -d "$TOKENS_DIR" ]; then
+		for tf in "$TOKENS_DIR"/*.json; do
+			[ -f "$tf" ] || continue
+			token=$(jsonfilter -i "$tf" -e '@.token' 2>/dev/null)
+			created=$(jsonfilter -i "$tf" -e '@.created' 2>/dev/null)
+			used=$(jsonfilter -i "$tf" -e '@.used' 2>/dev/null)
+			auto=$(jsonfilter -i "$tf" -e '@.auto_approve' 2>/dev/null)
+
+			json_add_object ""
+			json_add_string "token" "$token"
+			json_add_string "token_short" "${token:0:16}..."
+			json_add_string "created" "$created"
+			json_add_boolean "used" "$([ "$used" = "true" ] && echo 1 || echo 0)"
+			json_add_boolean "auto_approve" "$([ "$auto" = "true" ] && echo 1 || echo 0)"
+			json_close_object
+		done
+	fi
+
+	json_close_array
+	json_dump
+}
+
+do_list_clones() {
+	local peer_ip peer_name peer_status
+
+	json_init
+	json_add_array "clones"
+
+	# Get peer list from WireGuard interfaces (most reliable source)
+	# Each wg peer is a potential clone
+	for wg in /etc/config/network; do
+		# Get WireGuard peers from UCI
+		uci -q show network 2>/dev/null | grep "\.public_key=" | while read -r line; do
+			peer_name=$(echo "$line" | cut -d'.' -f2)
+			# Skip if not a wireguard peer
+			echo "$peer_name" | grep -q "^wg" || continue
+			peer_ip=$(uci -q get "network.${peer_name}.endpoint_host" 2>/dev/null)
+			[ -n "$peer_ip" ] || continue
+			json_add_object ""
+			json_add_string "info" "$peer_name ($peer_ip)"
+			json_add_string "name" "$peer_name"
+			json_add_string "ip" "$peer_ip"
+			json_add_string "status" "active"
+			json_close_object
+		done
+		break  # Only need to run once
+	done
+
+	# Also check master-link peer-list if available
+	if [ -x /usr/lib/secubox/master-link.sh ]; then
+		/usr/lib/secubox/master-link.sh peer-list 2>/dev/null | grep "^[0-9]" > /tmp/cloner_peers.tmp 2>/dev/null
+		while read -r line; do
+			[ -n "$line" ] || continue
+			json_add_object ""
+			json_add_string "info" "$line"
+			json_add_string "status" "mesh"
+			json_close_object
+		done < /tmp/cloner_peers.tmp 2>/dev/null
+		rm -f /tmp/cloner_peers.tmp
+	fi
+
+	json_close_array
+	json_dump
+}
+
+do_generate_token() {
+	local input auto_approve token token_file
+
+	read input
+	auto_approve=$(echo "$input" | jsonfilter -e '@.auto_approve' 2>/dev/null)
+
+	mkdir -p "$TOKENS_DIR"
+	token=$(head -c 32 /dev/urandom | sha256sum | cut -d' ' -f1)
+	token_file="$TOKENS_DIR/${token}.json"
+
+	cat > "$token_file" <<EOF
+{
+  "token": "$token",
+  "created": "$(date -Iseconds)",
+  "ttl": 86400,
+  "auto_approve": $([ "$auto_approve" = "true" ] && echo "true" || echo "false"),
+  "type": "clone",
+  "used": false
+}
+EOF
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "token" "$token"
+	json_add_string "token_short" "${token:0:16}..."
+	json_dump
+}
+
+do_build_image() {
+	json_init
+
+	if [ -x /usr/sbin/secubox-cloner ]; then
+		(/usr/sbin/secubox-cloner build 2>&1 > /tmp/cloner-build.log) &
+		json_add_boolean "success" 1
+		json_add_string "message" "Build started in background"
+	else
+		json_add_boolean "success" 0
+		json_add_string "message" "secubox-cloner not installed"
+	fi
+
+	json_dump
+}
+
+do_tftp_start() {
+	json_init
+
+	uci -q set dhcp.@dnsmasq[0].enable_tftp='1'
+	uci -q set dhcp.@dnsmasq[0].tftp_root="$TFTP_ROOT"
+	uci commit dhcp
+	/etc/init.d/dnsmasq restart 2>/dev/null
+
+	json_add_boolean "success" 1
+	json_add_string "message" "TFTP server started"
+	json_dump
+}
+
+do_tftp_stop() {
+	json_init
+
+	uci -q set dhcp.@dnsmasq[0].enable_tftp='0'
+	uci commit dhcp
+	/etc/init.d/dnsmasq restart 2>/dev/null
+
+	json_add_boolean "success" 1
+	json_add_string "message" "TFTP server stopped"
+	json_dump
+}
+
+do_delete_token() {
+	local input token
+
+	read input
+	token=$(echo "$input" | jsonfilter -e '@.token' 2>/dev/null)
+
+	json_init
+	if [ -n "$token" ] && [ -f "$TOKENS_DIR/${token}.json" ]; then
+		rm -f "$TOKENS_DIR/${token}.json"
+		json_add_boolean "success" 1
+		json_add_string "message" "Token deleted"
+	else
+		json_add_boolean "success" 0
+		json_add_string "message" "Token not found"
+	fi
+	json_dump
+}
+
+do_delete_image() {
+	local input name
+
+	read input
+	name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+
+	json_init
+	if [ -n "$name" ]; then
+		rm -f "$CLONE_DIR/$name" "$TFTP_ROOT/$name" 2>/dev/null
+		json_add_boolean "success" 1
+		json_add_string "message" "Image deleted"
+	else
+		json_add_boolean "success" 0
+		json_add_string "message" "Image not found"
+	fi
+	json_dump
+}
+
+case "$1" in
+	list)
+		echo '{'
+		echo '"status":{},'
+		echo '"list_images":{},'
+		echo '"list_tokens":{},'
+		echo '"list_clones":{},'
+		echo '"generate_token":{"auto_approve":"Boolean"},'
+		echo '"build_image":{},'
+		echo '"tftp_start":{},'
+		echo '"tftp_stop":{},'
+		echo '"delete_token":{"token":"String"},'
+		echo '"delete_image":{"name":"String"}'
+		echo '}'
+		;;
+	call)
+		case "$2" in
+			status) do_status ;;
+			list_images) do_list_images ;;
+			list_tokens) do_list_tokens ;;
+			list_clones) do_list_clones ;;
+			generate_token) do_generate_token ;;
+			build_image) do_build_image ;;
+			tftp_start) do_tftp_start ;;
+			tftp_stop) do_tftp_stop ;;
+			delete_token) do_delete_token ;;
+			delete_image) do_delete_image ;;
+		esac
+		;;
+esac
