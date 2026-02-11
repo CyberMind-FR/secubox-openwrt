@@ -20,11 +20,12 @@ get_wpad_status() {
 	# Check PAC file
 	[ -f /www/wpad.dat ] && enabled=1
 
-	# Check DHCP option 252
-	local dhcp_opt=$(uci -q get dhcp.lan.dhcp_option_force)
+	# Check DHCP option 252 (check both dhcp_option and dhcp_option_force)
+	local dhcp_opt=$(uci -q get dhcp.lan.dhcp_option)
+	[ -z "$dhcp_opt" ] && dhcp_opt=$(uci -q get dhcp.lan.dhcp_option_force)
 	if echo "$dhcp_opt" | grep -q "252"; then
 		dhcp_configured=1
-		pac_url=$(echo "$dhcp_opt" | sed 's/252,//')
+		pac_url=$(echo "$dhcp_opt" | grep -oE 'http://[^ ]+wpad[^ ]*' | head -1)
 	fi
 
 	# Check WPAD enforcement
