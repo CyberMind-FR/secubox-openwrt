@@ -120,6 +120,15 @@ _Last updated: 2026-02-09 (early morning)_
   - Added `secubox clone` and `secubox master-link` CLI command groups
   - Full workflow: build image on master → TFTP serve → flash target → auto-join mesh
 
+- **Cloning Station LuCI Dashboard** — DONE (2026-02-11)
+  - Created `luci-app-cloner` package with KISS-style dashboard
+  - Status cards: device type, TFTP status, token count, clone count
+  - Quick actions: Build Image, Start/Stop TFTP, New/Auto-Approve Token
+  - Clone images table with size and TFTP-ready indicator
+  - Token management with delete functionality
+  - U-Boot flash commands display when TFTP active
+  - RPCD handler: 10 methods (status, list_images, list_tokens, list_clones, etc.)
+
 - **HAProxy "End of Internet" Default Page** — DONE (2026-02-07)
   - Cyberpunk fallback page for unknown/unmatched domains
   - Matrix rain animation, glitch text, ASCII art SecuBox logo

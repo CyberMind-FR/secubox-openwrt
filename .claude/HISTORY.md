@@ -1040,3 +1040,13 @@ _Last updated: 2026-02-10_
     - Live indicator with timestamp display.
     - Efficient updateValue/updateBar/updateList methods.
     - Tag: v0.19.16
+
+34. **Cloning Station LuCI Dashboard (2026-02-11)**
+    - Created `luci-app-cloner` package for station cloning management.
+    - Dashboard shows: device type, TFTP status, image info, tokens, clones.
+    - Quick actions: Build Image, Start/Stop TFTP, New Token, Auto-Approve Token.
+    - Clone images table with TFTP-ready status.
+    - Token management with create/delete functionality.
+    - U-Boot flash commands display when TFTP is running.
+    - RPCD handler with 10 methods for status, images, tokens, clones.
+    - Tag: v0.19.20

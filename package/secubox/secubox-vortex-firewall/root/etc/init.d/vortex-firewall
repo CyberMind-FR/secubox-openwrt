@@ -1,0 +1,28 @@
+#!/bin/sh /etc/rc.common
+# Vortex DNS Firewall - DNS-level threat blocking
+
+START=95
+STOP=10
+USE_PROCD=1
+
+PROG=/usr/sbin/vortex-firewall
+
+start_service() {
+    $PROG start
+}
+
+stop_service() {
+    $PROG stop
+}
+
+service_triggers() {
+    procd_add_reload_trigger "vortex-firewall"
+}
+
+reload_service() {
+    $PROG intel update
+}
+
+status() {
+    $PROG status
+}

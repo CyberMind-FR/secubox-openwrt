@@ -6,8 +6,9 @@
 # Cloned devices auto-resize root and join mesh as peers.
 #
 # Usage:
-#   secubox-cloner build [--resize SIZE]    Build clone image for current device
+#   secubox-cloner build [--device TYPE] [--resize SIZE]  Build clone image
 #   secubox-cloner serve [--start|--stop]   Manage TFTP clone server
+#   secubox-cloner devices                  List supported device types
 #   secubox-cloner token [--auto-approve]   Generate clone join token
 #   secubox-cloner status                   Show cloner status
 #   secubox-cloner list                     List pending/joined clones
@@ -96,16 +97,26 @@ get_device_id() {
 # ============================================================================
 
 build_image() {
-	local resize_target="${1:-}"
+	local device_type="${1:-}"
+	local resize_target="${2:-}"
 
 	log "Building clone image..."
 
-	# Detect device type
-	local device_type=$(detect_device)
-	if [ "$device_type" = "unknown" ]; then
-		error "Could not detect device type"
-		return 1
+	# Use specified device type or detect current
+	if [ -z "$device_type" ]; then
+		device_type=$(detect_device)
 	fi
+
+	# Validate device type
+	case "$device_type" in
+		mochabin|espressobin-v7|espressobin-ultra|x86-64)
+			;;
+		*)
+			error "Unknown device type: $device_type"
+			error "Supported: mochabin, espressobin-v7, espressobin-ultra, x86-64"
+			return 1
+			;;
+	esac
 
 	log "Device type: $device_type"
 
@@ -113,14 +124,14 @@ build_image() {
 	mkdir -p "$CLONE_DIR"
 	mkdir -p "$TFTP_ROOT"
 
-	# Method 1: Export current firmware (if sysupgrade backup works)
-	# This creates a perfect clone of the running system
+	# Image paths - each device type has its own image
 	local image_name="secubox-clone-${device_type}.img"
 	local image_path="$CLONE_DIR/$image_name"
+	local tftp_image="$TFTP_ROOT/${image_name}"
 
-	# Check if we have a pre-built image we can use
-	local existing_image=$(ls -t "$CLONE_DIR"/*.img.gz 2>/dev/null | head -1)
-	if [ -n "$existing_image" ]; then
+	# Check if we have a pre-built image for this device type
+	local existing_image=$(ls -t "$CLONE_DIR"/secubox-clone-${device_type}.img* 2>/dev/null | head -1)
+	if [ -n "$existing_image" ] && [ -f "$existing_image" ]; then
 		log "Using existing image: $existing_image"
 		image_path="$existing_image"
 	else
@@ -144,10 +155,9 @@ build_image() {
 		resize_image "$image_path" "$resize_target"
 	fi
 
-	# Copy to TFTP root
+	# Copy to TFTP root with device-specific name
 	log "Copying to TFTP root..."
 	if [ -f "$image_path" ]; then
-		local tftp_image="$TFTP_ROOT/secubox-clone.img"
 		if echo "$image_path" | grep -q "\.gz$"; then
 			gunzip -c "$image_path" > "$tftp_image"
 		else
@@ -155,18 +165,36 @@ build_image() {
 		fi
 		log "Clone image ready: $tftp_image"
 		log "Size: $(ls -lh "$tftp_image" | awk '{print $5}')"
+
+		# Also create generic symlink for backward compatibility
+		ln -sf "$image_name" "$TFTP_ROOT/secubox-clone.img" 2>/dev/null
 	fi
 
 	# Save state
 	cat > "$STATE_FILE" <<EOF
 DEVICE_TYPE="$device_type"
 IMAGE_PATH="$image_path"
-TFTP_IMAGE="$TFTP_ROOT/secubox-clone.img"
+TFTP_IMAGE="$tftp_image"
 BUILD_TIME="$(date -Iseconds)"
 LAN_IP="$(get_lan_ip)"
 EOF
 
 	return 0
+
+}
+
+# List supported devices
+list_devices() {
+	echo ""
+	echo -e "${BOLD}Supported Device Types${NC}"
+	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	echo "  mochabin          Globalscale MOCHAbin (Cortex-A72)"
+	echo "  espressobin-v7    Globalscale ESPRESSObin v7 (Cortex-A53)"
+	echo "  espressobin-ultra Globalscale ESPRESSObin Ultra"
+	echo "  x86-64            Generic x86-64 PC"
+	echo ""
+	echo "Current device: $(detect_device)"
+	echo ""
 }
 
 build_via_asu() {
@@ -863,14 +891,21 @@ EOF
 case "${1:-}" in
 	build)
 		shift
+		device_type=""
 		resize=""
 		while [ $# -gt 0 ]; do
 			case "$1" in
+				--device|-d) device_type="$2"; shift 2 ;;
 				--resize) resize="$2"; shift 2 ;;
+				mochabin|espressobin-v7|espressobin-ultra|x86-64) device_type="$1"; shift ;;
 				*) shift ;;
 			esac
 		done
-		build_image "$resize"
+		build_image "$device_type" "$resize"
+		;;
+
+	devices)
+		list_devices
 		;;
 
 	serve)

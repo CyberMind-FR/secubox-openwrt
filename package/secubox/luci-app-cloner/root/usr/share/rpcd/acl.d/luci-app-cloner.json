@@ -1,0 +1,15 @@
+{
+	"luci-app-cloner": {
+		"description": "Grant access to SecuBox Cloning Station",
+		"read": {
+			"ubus": {
+				"luci.cloner": ["status", "list_images", "list_tokens", "list_clones", "list_devices"]
+			}
+		},
+		"write": {
+			"ubus": {
+				"luci.cloner": ["generate_token", "build_image", "tftp_start", "tftp_stop", "delete_token", "delete_image"]
+			}
+		}
+	}
+}

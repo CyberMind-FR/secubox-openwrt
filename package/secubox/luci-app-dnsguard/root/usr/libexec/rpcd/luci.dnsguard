@@ -295,7 +295,7 @@ method_guard_status() {
 		# Detector status
 		json_add_object "detectors"
 		for det in dga tunneling rate_anomaly known_bad tld_anomaly; do
-			local det_enabled=$(uci -q get "dns-guard.detector_${det}.enabled")
+			local det_enabled=$(uci -q get "dns-guard.\${det}.enabled")
 			json_add_boolean "$det" "${det_enabled:-0}"
 		done
 		json_close_object
