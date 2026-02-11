@@ -23,9 +23,34 @@
 					"get_health",
 					"get_components",
 					"list_services"
-				]
+				],
+				"system": ["board", "info"]
 			}
 		},
 		"write": {}
+	},
+	"unauthenticated": {
+		"description": "Public access for SecuBox Portal",
+		"read": {
+			"ubus": {
+				"luci.secubox": [
+					"modules",
+					"getModules",
+					"modules_by_category",
+					"get_theme",
+					"getStatus",
+					"getHealth",
+					"get_services"
+				],
+				"luci.system-hub": [
+					"status",
+					"get_system_info",
+					"get_health",
+					"get_components",
+					"list_services"
+				],
+				"system": ["board", "info"]
+			}
+		}
 	}
 }

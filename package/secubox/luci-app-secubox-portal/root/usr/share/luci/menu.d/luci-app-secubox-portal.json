@@ -68,7 +68,16 @@
 		"title": "SecuBox",
 		"order": 99,
 		"action": {
-			"type": "firstchild"
+			"type": "alias",
+			"path": "secubox-public/portal"
+		}
+	},
+	"secubox-public/portal": {
+		"title": "C3BOX Portal",
+		"order": 1,
+		"action": {
+			"type": "view",
+			"path": "secubox-portal/index"
 		}
 	},
 	"secubox-public/bugbounty": {
