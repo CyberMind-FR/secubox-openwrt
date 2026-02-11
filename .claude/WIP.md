@@ -335,6 +335,19 @@ _Last updated: 2026-02-11_
   - Blockchain: `peer_approved` blocks recorded correctly
   - Threat Intel: 288 local IOCs, 67 threat_ioc blocks in chain
 
+### Just Completed (2026-02-11)
+
+- **IoT Guard Implementation** — DONE (2026-02-11)
+  - Created `secubox-iot-guard` package for IoT device isolation and security
+  - OUI-based classification with 100+ IoT manufacturer prefixes
+  - 10 device classes with risk scoring (0-100)
+  - Anomaly detection: bandwidth spikes, new destinations, port scans, time anomalies
+  - Integration: Client Guardian (zones), MAC Guardian (L2), Vortex Firewall (DNS), Bandwidth Manager (QoS)
+  - CLI: `iot-guardctl` with status/list/show/scan/isolate/trust/block/anomalies/cloud-map
+  - Created `luci-app-iot-guard` with KISS-style dashboard
+  - 4 views: Overview, Devices, Policies, Settings
+  - RPCD handler with 11 methods + public ACL for unauthenticated access
+
 ### Next Up — Couche 1
 
 1. **Guacamole Pre-built Binaries**

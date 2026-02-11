@@ -1,0 +1,27 @@
+{
+  "class": "camera",
+  "description": "IP cameras, video doorbells, security cameras",
+  "expected_behavior": {
+    "bandwidth": {
+      "avg_kbps_in": 50,
+      "avg_kbps_out": 500,
+      "peak_kbps_out": 5000,
+      "continuous_stream": true
+    },
+    "activity_hours": "24/7",
+    "common_ports": [80, 443, 554, 8080, 8443],
+    "cloud_services": ["ring.com", "nest.com", "wyze.com", "eufy.com", "arlo.com"],
+    "protocols": ["http", "https", "rtsp", "rtmp"]
+  },
+  "risk_indicators": {
+    "high": [
+      "uploading_to_unknown_cloud",
+      "large_data_transfer_at_night",
+      "connection_to_foreign_ip"
+    ],
+    "medium": [
+      "new_cloud_destination",
+      "port_change"
+    ]
+  }
+}

@@ -1089,3 +1089,36 @@ _Last updated: 2026-02-10_
     - Alert Timeline with severity-colored items.
     - 15-second live polling for health, alerts, IPs.
     - Full dark mode support.
+
+58. **IoT Guard Implementation (2026-02-11)**
+    - Created `secubox-iot-guard` package — IoT device isolation, classification, and security monitoring.
+    - **Device Classification**:
+      - OUI-based classification with 100+ IoT manufacturer prefixes
+      - 10 device classes: camera, thermostat, lighting, plug, assistant, media, lock, sensor, diy, mixed
+      - Traffic-based classification from cloud dependency tracking
+      - Hostname-based classification fallback
+    - **Risk Scoring**:
+      - 0-100 risk score with vendor risk, anomaly penalty, cloud dependency penalty
+      - Risk levels: low (20), medium (50), high (80)
+      - Auto-isolation threshold configurable (default 80)
+    - **Anomaly Detection**:
+      - Bandwidth spike detection (Nx above baseline)
+      - New destination tracking
+      - Port scan behavior detection
+      - Time-based anomaly (unusual activity hours)
+    - **Integration Points**:
+      - Client Guardian: Zone assignment (IoT zone)
+      - MAC Guardian: L2 blocking/trust
+      - Vortex Firewall: DNS filtering for IoT malware feeds
+      - Bandwidth Manager: Rate limiting
+    - **CLI** (`iot-guardctl`): status, list, show, scan, isolate, trust, block, anomalies, cloud-map, daemon
+    - **UCI Configuration**: main settings, zone policy, vendor rules, allowlist, blocklist
+    - **Baseline Profiles**: JSON profiles for camera, thermostat, plug, assistant device classes
+    - Created `luci-app-iot-guard` — LuCI dashboard with KISS-style views.
+    - **Dashboard Views**:
+      - Overview: Security score, device counts, risk distribution, anomaly timeline
+      - Devices: Filterable table with device details, isolate/trust/block actions
+      - Policies: Vendor classification rules management
+      - Settings: UCI form for configuration
+    - **RPCD Handler**: 11 methods (status, get_devices, get_device, get_anomalies, scan, isolate/trust/block_device, get_vendor_rules, add/delete_vendor_rule, get_cloud_map)
+    - **ACL**: Public access for status and device list via `unauthenticated` group

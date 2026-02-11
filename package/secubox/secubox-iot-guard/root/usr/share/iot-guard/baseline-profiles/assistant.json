@@ -1,0 +1,26 @@
+{
+  "class": "assistant",
+  "description": "Voice assistants (Echo, Google Home, HomePod)",
+  "expected_behavior": {
+    "bandwidth": {
+      "avg_kbps_in": 10,
+      "avg_kbps_out": 20,
+      "peak_kbps_out": 500,
+      "continuous_stream": false
+    },
+    "activity_hours": "24/7",
+    "common_ports": [443, 8443, 4070],
+    "cloud_services": ["alexa.amazon.com", "google.com", "apple.com"],
+    "protocols": ["https", "mqtt", "coap"]
+  },
+  "risk_indicators": {
+    "high": [
+      "continuous_audio_upload",
+      "connection_to_foreign_ip"
+    ],
+    "medium": [
+      "high_query_rate",
+      "new_skill_connection"
+    ]
+  }
+}

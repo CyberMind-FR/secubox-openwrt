@@ -1,0 +1,25 @@
+{
+  "class": "thermostat",
+  "description": "Smart thermostats, HVAC controllers",
+  "expected_behavior": {
+    "bandwidth": {
+      "avg_kbps_in": 1,
+      "avg_kbps_out": 5,
+      "peak_kbps_out": 50,
+      "continuous_stream": false
+    },
+    "activity_hours": "24/7",
+    "common_ports": [443, 8080],
+    "cloud_services": ["home.nest.com", "ecobee.com", "tado.com"],
+    "protocols": ["https", "mqtt"]
+  },
+  "risk_indicators": {
+    "high": [
+      "high_bandwidth_usage",
+      "connection_to_unknown_ip"
+    ],
+    "medium": [
+      "frequent_cloud_queries"
+    ]
+  }
+}

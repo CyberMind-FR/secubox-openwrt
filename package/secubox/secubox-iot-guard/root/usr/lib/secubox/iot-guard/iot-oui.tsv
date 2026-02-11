@@ -1,0 +1,100 @@
+# IoT Guard - OUI Database
+# Format: OUI_PREFIX	Vendor	Class	Risk
+#
+# OUI prefixes for common IoT device manufacturers
+# Used for auto-classification of devices on the network
+#
+40:B4:CD	Ring	camera	medium
+44:73:D6	Ring	camera	medium
+18:B4:30	Nest Labs	thermostat	low
+64:16:66	Nest Labs	thermostat	low
+F4:F5:D8	Google Nest	thermostat	low
+00:17:88	Philips Hue	bridge	low
+EC:B5:FA	Philips Hue	bridge	low
+28:6C:07	Xiaomi	mixed	high
+78:11:DC	Xiaomi	mixed	high
+64:CC:2E	Xiaomi	mixed	high
+DC:4F:22	Tuya	mixed	high
+10:D5:61	Tuya	mixed	high
+50:C7:BF	TP-Link Kasa	plug	medium
+68:FF:7B	TP-Link Kasa	plug	medium
+B0:BE:76	TP-Link Tapo	plug	medium
+54:AF:97	TP-Link Tapo	camera	medium
+2C:AA:8E	Wyze	camera	medium
+D0:3F:27	Wyze	camera	medium
+60:01:94	Espressif	diy	high
+24:0A:C4	Espressif	diy	high
+84:CC:A8	Espressif	diy	high
+A4:CF:12	Espressif	diy	high
+EC:FA:BC	Espressif	diy	high
+30:AE:A4	Espressif	diy	high
+F0:27:2D	Amazon Echo	assistant	medium
+FC:65:DE	Amazon Echo	assistant	medium
+68:37:E9	Amazon Echo	assistant	medium
+4C:EF:C0	Amazon Echo	assistant	medium
+74:C2:46	Amazon Echo	assistant	medium
+30:FD:38	Google Home	assistant	medium
+1C:F2:9A	Google Home	assistant	medium
+48:D6:D5	Google Home	assistant	medium
+F4:F5:E8	Google Home	assistant	medium
+00:0E:58	Sonos	media	low
+78:28:CA	Sonos	media	low
+94:9F:3E	Sonos	media	low
+B8:E9:37	Sonos	media	low
+B8:27:EB	Raspberry Pi	diy	high
+DC:A6:32	Raspberry Pi	diy	high
+E4:5F:01	Raspberry Pi	diy	high
+D8:3A:DD	Raspberry Pi	diy	high
+2C:CF:67	Raspberry Pi	diy	high
+AC:BC:32	Samsung SmartThings	mixed	medium
+24:FB:65	Samsung SmartThings	mixed	medium
+D0:03:4B	Samsung TV	media	medium
+78:BD:BC	Samsung TV	media	medium
+38:B1:DB	Samsung Appliance	appliance	medium
+CC:2D:21	Tenda	networking	medium
+7C:A9:6B	Synology	nas	low
+00:11:32	Synology	nas	low
+78:8A:20	Ubiquiti	networking	low
+B4:FB:E4	Ubiquiti	networking	low
+80:2A:A8	Ubiquiti	networking	low
+E8:AB:FA	Shenzhen	mixed	high
+98:DA:C4	TP-Link	networking	medium
+6C:5A:B0	TP-Link	networking	medium
+D8:6C:63	TP-Link	networking	medium
+44:A5:6E	Murata (Sony)	gaming	medium
+BC:D0:74	Apple HomeKit	mixed	low
+7C:50:49	Apple HomeKit	mixed	low
+00:16:6C	Samsung	media	medium
+00:1E:75	LG	media	medium
+A8:23:FE	LG	media	medium
+3C:BD:D8	LG	media	medium
+00:1D:D8	Microsoft Xbox	gaming	medium
+28:18:78	Microsoft Xbox	gaming	medium
+7C:ED:8D	Microsoft Xbox	gaming	medium
+00:04:4B	Nvidia Shield	media	medium
+04:03:D6	Nintendo	gaming	medium
+98:B6:E9	Nintendo	gaming	medium
+7C:BB:8A	Nintendo	gaming	medium
+78:2B:CB	Dell Wyse	thin_client	low
+74:D4:35	Gree Electric	hvac	medium
+E4:5E:1B	Orvibo	plug	high
+D0:73:D5	Lifx	lighting	low
+D0:73:D5	Lifx	lighting	low
+1C:3E:84	Apple TV	media	low
+40:98:AD	Apple TV	media	low
+B0:34:95	Apple TV	media	low
+EC:B5:06	Apple TV	media	low
+38:42:0B	Panasonic	appliance	medium
+00:E0:4C	Realtek	networking	medium
+D4:01:29	Roku	media	medium
+AC:3A:7A	Roku	media	medium
+B0:A7:37	Roku	media	medium
+84:EA:ED	Roku	media	medium
+D4:E8:80	Netgear Arlo	camera	medium
+94:E9:EE	Eufy	camera	medium
+18:FE:34	Espressif	diy	high
+5C:CF:7F	Espressif	diy	high
+CC:50:E3	Espressif	diy	high
+48:3F:DA	Espressif	diy	high
+F0:08:D1	Espressif	diy	high
+84:F3:EB	Espressif	diy	high
