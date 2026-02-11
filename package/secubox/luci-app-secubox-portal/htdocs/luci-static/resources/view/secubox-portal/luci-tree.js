@@ -1,329 +1,226 @@
 'use strict';
 'require view';
 'require dom';
-'require poll';
-
-// SecuBox LuCI Tree - Clickable navigation map
-var LUCI_TREE = {
-    "SecuBox": {
-        path: "admin/secubox",
-        icon: "shield",
-        children: {
-            "Dashboard": { path: "admin/secubox/dashboard", icon: "dashboard" },
-            "App Store": { path: "admin/secubox/apps", icon: "store" },
-            "Modules": { path: "admin/secubox/modules", icon: "cubes" },
-            "Alerts": { path: "admin/secubox/alerts", icon: "bell" },
-            "Settings": { path: "admin/secubox/settings", icon: "cog" },
-            "Help": { path: "admin/secubox/help", icon: "question" }
-        }
-    },
-    "Admin Control": {
-        path: "admin/secubox/admin",
-        icon: "user-shield",
-        children: {
-            "Control Panel": { path: "admin/secubox/admin/dashboard", icon: "sliders" },
-            "Cyber Console": { path: "admin/secubox/admin/cyber-dashboard", icon: "terminal" },
-            "Apps Manager": { path: "admin/secubox/admin/apps", icon: "boxes" },
-            "Profiles": { path: "admin/secubox/admin/profiles", icon: "id-card" },
-            "Skills": { path: "admin/secubox/admin/skills", icon: "magic" },
-            "System Health": { path: "admin/secubox/admin/health", icon: "heartbeat" }
-        }
-    },
-    "Security": {
-        path: "admin/secubox/security",
-        icon: "lock",
-        children: {
-            "CrowdSec": {
-                path: "admin/secubox/security/crowdsec",
-                icon: "shield-alt",
-                children: {
-                    "Overview": { path: "admin/secubox/security/crowdsec/overview" },
-                    "Decisions": { path: "admin/secubox/security/crowdsec/decisions" },
-                    "Alerts": { path: "admin/secubox/security/crowdsec/alerts" },
-                    "Bouncers": { path: "admin/secubox/security/crowdsec/bouncers" },
-                    "Setup": { path: "admin/secubox/security/crowdsec/setup" }
-                }
-            },
-            "mitmproxy": {
-                path: "admin/secubox/security/mitmproxy",
-                icon: "eye",
-                children: {
-                    "Status": { path: "admin/secubox/security/mitmproxy/status" },
-                    "Settings": { path: "admin/secubox/security/mitmproxy/settings" }
-                }
-            },
-            "Client Guardian": { path: "admin/secubox/security/guardian", icon: "users" },
-            "DNS Guard": { path: "admin/secubox/security/dnsguard", icon: "dns" },
-            "Threat Analyst": { path: "admin/secubox/security/threat-analyst", icon: "brain" },
-            "Network Anomaly": { path: "admin/secubox/security/network-anomaly", icon: "chart-line" },
-            "Auth Guardian": { path: "admin/secubox/security/auth-guardian", icon: "key" },
-            "Key Storage": { path: "admin/secubox/security/ksm-manager", icon: "vault" }
-        }
-    },
-    "AI Gateway": {
-        path: "admin/secubox/ai",
-        icon: "robot",
-        children: {
-            "AI Insights": { path: "admin/secubox/ai/insights", icon: "lightbulb" },
-            "LocalRecall": { path: "admin/secubox/ai/localrecall", icon: "memory" }
-        }
-    },
-    "MirrorBox": {
-        path: "admin/secubox/mirrorbox",
-        icon: "network-wired",
-        children: {
-            "Overview": { path: "admin/secubox/mirrorbox/overview", icon: "home" },
-            "P2P Hub": { path: "admin/secubox/mirrorbox/hub", icon: "hubspot" },
-            "Peers": { path: "admin/secubox/mirrorbox/peers", icon: "users" },
-            "Services": { path: "admin/secubox/mirrorbox/services", icon: "server" },
-            "Factory": { path: "admin/secubox/mirrorbox/factory", icon: "industry" },
-            "App Store": { path: "admin/secubox/mirrorbox/packages", icon: "store" },
-            "Dev Status": { path: "admin/secubox/mirrorbox/devstatus", icon: "code" }
-        }
-    },
-    "Network": {
-        path: "admin/secubox/network",
-        icon: "sitemap",
-        children: {
-            "Network Modes": { path: "admin/secubox/network/modes", icon: "random" },
-            "DNS Providers": { path: "admin/secubox/network/dns-provider", icon: "globe" },
-            "Service Exposure": { path: "admin/secubox/network/exposure", icon: "broadcast-tower" },
-            "Bandwidth Manager": { path: "admin/secubox/network/bandwidth-manager", icon: "tachometer-alt" },
-            "Traffic Shaper": { path: "admin/secubox/network/traffic-shaper", icon: "filter" },
-            "MQTT Bridge": { path: "admin/secubox/network/mqtt-bridge", icon: "exchange-alt" }
-        }
-    },
-    "Monitoring": {
-        path: "admin/secubox/monitoring",
-        icon: "chart-bar",
-        children: {
-            "Netdata": { path: "admin/secubox/monitoring/netdata", icon: "chart-area" },
-            "Glances": { path: "admin/secubox/monitoring/glances", icon: "eye" },
-            "Media Flow": { path: "admin/secubox/monitoring/mediaflow", icon: "film" }
-        }
-    },
-    "System": {
-        path: "admin/secubox/system",
-        icon: "server",
-        children: {
-            "System Hub": { path: "admin/secubox/system/system-hub", icon: "cogs" },
-            "Cloning Station": { path: "admin/secubox/system/cloner", icon: "clone" }
-        }
-    },
-    "Device Intel": {
-        path: "admin/secubox/device-intel",
-        icon: "microchip",
-        children: {
-            "Dashboard": { path: "admin/secubox/device-intel/dashboard" },
-            "Devices": { path: "admin/secubox/device-intel/devices" },
-            "Mesh": { path: "admin/secubox/device-intel/mesh" }
-        }
-    },
-    "InterceptoR": {
-        path: "admin/secubox/interceptor",
-        icon: "filter",
-        children: {
-            "Overview": { path: "admin/secubox/interceptor/overview" }
-        }
-    },
-    "Services (LuCI)": {
-        path: "admin/services",
-        icon: "puzzle-piece",
-        children: {
-            "Service Registry": { path: "admin/services/service-registry", icon: "list" },
-            "HAProxy": { path: "admin/services/haproxy", icon: "random" },
-            "WireGuard": { path: "admin/services/wireguard", icon: "shield-alt" },
-            "Tor Shield": { path: "admin/services/tor-shield", icon: "user-secret" },
-            "VHost Manager": { path: "admin/services/vhosts", icon: "server" },
-            "CDN Cache": { path: "admin/services/cdn-cache", icon: "database" },
-            "LocalAI": { path: "admin/services/localai", icon: "brain" },
-            "Ollama": { path: "admin/services/ollama", icon: "comment-dots" },
-            "Nextcloud": { path: "admin/services/nextcloud", icon: "cloud" },
-            "Jellyfin": { path: "admin/services/jellyfin", icon: "film" },
-            "Jitsi Meet": { path: "admin/services/jitsi", icon: "video" },
-            "SimpleX Chat": { path: "admin/services/simplex", icon: "comments" },
-            "Domoticz": { path: "admin/services/domoticz", icon: "home" },
-            "Lyrion": { path: "admin/services/lyrion", icon: "music" },
-            "MagicMirror": { path: "admin/services/magicmirror2", icon: "desktop" },
-            "MAC Guardian": { path: "admin/services/mac-guardian", icon: "wifi" },
-            "Mail Server": { path: "admin/services/mailserver", icon: "envelope" },
-            "Mesh Link": { path: "admin/services/secubox-mesh", icon: "project-diagram" },
-            "MirrorNet": { path: "admin/services/mirrornet", icon: "network-wired" },
-            "Gitea": { path: "admin/services/gitea", icon: "code-branch" },
-            "Hexo CMS": { path: "admin/services/hexojs", icon: "blog" },
-            "MetaBlogizer": { path: "admin/services/metablogizer", icon: "rss" },
-            "Streamlit": { path: "admin/services/streamlit", icon: "stream" },
-            "PicoBrew": { path: "admin/services/picobrew", icon: "beer" },
-            "CyberFeed": { path: "admin/services/cyberfeed", icon: "newspaper" },
-            "Vortex DNS": { path: "admin/services/vortex-dns", icon: "globe" },
-            "Vortex Firewall": { path: "admin/services/vortex-firewall", icon: "fire" },
-            "Config Advisor": { path: "admin/services/config-advisor", icon: "clipboard-check" },
-            "Threat Monitor": { path: "admin/services/threat-monitor", icon: "exclamation-triangle" },
-            "Network Diagnostics": { path: "admin/services/network-diagnostics", icon: "stethoscope" },
-            "Backup Manager": { path: "admin/system/backup", icon: "save" }
-        }
-    },
-    "IoT & Automation": {
-        path: "admin/secubox/services",
-        icon: "microchip",
-        children: {
-            "IoT Guard": { path: "admin/secubox/services/iot-guard", icon: "shield-alt" },
-            "Zigbee2MQTT": { path: "admin/secubox/zigbee2mqtt", icon: "broadcast-tower" },
-            "nDPId": { path: "admin/secubox/ndpid", icon: "search" },
-            "Netifyd": { path: "admin/secubox/netifyd", icon: "chart-network" }
-        }
-    }
-};
 
 return view.extend({
-    render: function() {
-        var container = E('div', { 'class': 'cbi-map', 'style': 'background:#111;min-height:100vh;padding:20px;' }, [
-            E('style', {}, `
-                .luci-tree { font-family: monospace; color: #0f0; }
-                .luci-tree a { color: #0ff; text-decoration: none; }
-                .luci-tree a:hover { color: #fff; text-decoration: underline; }
-                .tree-section { margin: 15px 0; padding: 10px; background: #1a1a1a; border-left: 3px solid #0f0; border-radius: 4px; }
-                .tree-section-title { font-size: 18px; color: #0f0; margin-bottom: 10px; cursor: pointer; }
-                .tree-section-title:hover { color: #0ff; }
-                .tree-item { padding: 3px 0 3px 20px; border-left: 1px dashed #333; }
-                .tree-item:last-child { border-left-color: transparent; }
-                .tree-item::before { content: "├── "; color: #555; }
-                .tree-item:last-child::before { content: "└── "; }
-                .tree-nested { margin-left: 20px; }
-                .tree-icon { margin-right: 8px; opacity: 0.7; }
-                .tree-header { text-align: center; margin-bottom: 30px; }
-                .tree-header h1 { color: #0f0; font-size: 28px; margin: 0; }
-                .tree-header p { color: #888; }
-                .tree-stats { display: flex; justify-content: center; gap: 30px; margin: 20px 0; }
-                .tree-stat { text-align: center; padding: 10px 20px; background: #222; border-radius: 8px; }
-                .tree-stat-value { font-size: 24px; color: #0ff; }
-                .tree-stat-label { font-size: 12px; color: #888; }
-                .tree-search { margin: 20px auto; max-width: 400px; }
-                .tree-search input { width: 100%; padding: 10px; background: #222; border: 1px solid #333; color: #fff; border-radius: 4px; }
-                .tree-search input:focus { outline: none; border-color: #0f0; }
-                .tree-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 15px; }
-            `),
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null,
 
-            E('div', { 'class': 'tree-header' }, [
-                E('h1', {}, 'SecuBox LuCI Navigation Tree'),
-                E('p', {}, 'Clickable map of all LuCI dashboards and modules')
-            ]),
+	load: function() {
+		return Promise.resolve();
+	},
 
-            E('div', { 'class': 'tree-stats' }, [
-                E('div', { 'class': 'tree-stat' }, [
-                    E('div', { 'class': 'tree-stat-value' }, Object.keys(LUCI_TREE).length.toString()),
-                    E('div', { 'class': 'tree-stat-label' }, 'Categories')
-                ]),
-                E('div', { 'class': 'tree-stat' }, [
-                    E('div', { 'class': 'tree-stat-value', 'id': 'total-links' }, '...'),
-                    E('div', { 'class': 'tree-stat-label' }, 'Total Links')
-                ]),
-                E('div', { 'class': 'tree-stat' }, [
-                    E('div', { 'class': 'tree-stat-value' }, '60+'),
-                    E('div', { 'class': 'tree-stat-label' }, 'LuCI Apps')
-                ])
-            ]),
+	render: function() {
+		var TREE = [
+			{ cat: 'SecuBox Core', items: [
+				{ name: 'Dashboard', path: 'admin/secubox/dashboard' },
+				{ name: 'App Store', path: 'admin/secubox/apps' },
+				{ name: 'Modules', path: 'admin/secubox/modules' },
+				{ name: 'Alerts', path: 'admin/secubox/alerts' },
+				{ name: 'Settings', path: 'admin/secubox/settings' }
+			]},
+			{ cat: 'Admin Control', items: [
+				{ name: 'Control Panel', path: 'admin/secubox/admin/dashboard' },
+				{ name: 'Cyber Console', path: 'admin/secubox/admin/cyber-dashboard' },
+				{ name: 'Apps Manager', path: 'admin/secubox/admin/apps' },
+				{ name: 'Profiles', path: 'admin/secubox/admin/profiles' },
+				{ name: 'Skills', path: 'admin/secubox/admin/skills' },
+				{ name: 'System Health', path: 'admin/secubox/admin/health' },
+				{ name: 'System Logs', path: 'admin/secubox/admin/logs' }
+			]},
+			{ cat: 'Security', items: [
+				{ name: 'CrowdSec Overview', path: 'admin/secubox/security/crowdsec/overview' },
+				{ name: 'CrowdSec Decisions', path: 'admin/secubox/security/crowdsec/decisions' },
+				{ name: 'CrowdSec Alerts', path: 'admin/secubox/security/crowdsec/alerts' },
+				{ name: 'CrowdSec Bouncers', path: 'admin/secubox/security/crowdsec/bouncers' },
+				{ name: 'mitmproxy Status', path: 'admin/secubox/security/mitmproxy/status' },
+				{ name: 'mitmproxy Settings', path: 'admin/secubox/security/mitmproxy/settings' },
+				{ name: 'Client Guardian', path: 'admin/secubox/security/guardian' },
+				{ name: 'DNS Guard', path: 'admin/secubox/security/dnsguard' },
+				{ name: 'Threat Analyst', path: 'admin/secubox/security/threat-analyst' },
+				{ name: 'Network Anomaly', path: 'admin/secubox/security/network-anomaly' },
+				{ name: 'Auth Guardian', path: 'admin/secubox/security/auth-guardian' },
+				{ name: 'Key Storage Manager', path: 'admin/secubox/security/ksm-manager' }
+			]},
+			{ cat: 'AI Gateway', items: [
+				{ name: 'AI Insights', path: 'admin/secubox/ai/insights' },
+				{ name: 'LocalRecall', path: 'admin/secubox/ai/localrecall' }
+			]},
+			{ cat: 'MirrorBox P2P', items: [
+				{ name: 'Overview', path: 'admin/secubox/mirrorbox/overview' },
+				{ name: 'P2P Hub', path: 'admin/secubox/mirrorbox/hub' },
+				{ name: 'Peers', path: 'admin/secubox/mirrorbox/peers' },
+				{ name: 'Services', path: 'admin/secubox/mirrorbox/services' },
+				{ name: 'Factory', path: 'admin/secubox/mirrorbox/factory' },
+				{ name: 'App Store', path: 'admin/secubox/mirrorbox/packages' },
+				{ name: 'Dev Status', path: 'admin/secubox/mirrorbox/devstatus' }
+			]},
+			{ cat: 'Network', items: [
+				{ name: 'Network Modes', path: 'admin/secubox/network/modes' },
+				{ name: 'DNS Providers', path: 'admin/secubox/network/dns-provider' },
+				{ name: 'Service Exposure', path: 'admin/secubox/network/exposure' },
+				{ name: 'Bandwidth Manager', path: 'admin/secubox/network/bandwidth-manager' },
+				{ name: 'Traffic Shaper', path: 'admin/secubox/network/traffic-shaper' },
+				{ name: 'MQTT Bridge', path: 'admin/secubox/network/mqtt-bridge' },
+				{ name: 'Network Tweaks', path: 'admin/network/network-tweaks' }
+			]},
+			{ cat: 'Monitoring', items: [
+				{ name: 'Netdata Dashboard', path: 'admin/secubox/monitoring/netdata' },
+				{ name: 'Glances', path: 'admin/secubox/monitoring/glances' },
+				{ name: 'Media Flow', path: 'admin/secubox/monitoring/mediaflow' }
+			]},
+			{ cat: 'System', items: [
+				{ name: 'System Hub', path: 'admin/secubox/system/system-hub' },
+				{ name: 'Cloning Station', path: 'admin/secubox/system/cloner' }
+			]},
+			{ cat: 'Device Intelligence', items: [
+				{ name: 'Dashboard', path: 'admin/secubox/device-intel/dashboard' },
+				{ name: 'Devices', path: 'admin/secubox/device-intel/devices' },
+				{ name: 'Mesh', path: 'admin/secubox/device-intel/mesh' }
+			]},
+			{ cat: 'InterceptoR', items: [
+				{ name: 'Overview', path: 'admin/secubox/interceptor/overview' }
+			]},
+			{ cat: 'IoT & Automation', items: [
+				{ name: 'IoT Guard', path: 'admin/secubox/services/iot-guard' },
+				{ name: 'Zigbee2MQTT', path: 'admin/secubox/zigbee2mqtt' },
+				{ name: 'nDPId', path: 'admin/secubox/ndpid' },
+				{ name: 'Netifyd', path: 'admin/secubox/netifyd' }
+			]},
+			{ cat: 'Services - Proxy & VPN', items: [
+				{ name: 'HAProxy', path: 'admin/services/haproxy' },
+				{ name: 'VHost Manager', path: 'admin/services/vhosts' },
+				{ name: 'WireGuard', path: 'admin/services/wireguard' },
+				{ name: 'Tor Shield', path: 'admin/services/tor-shield' },
+				{ name: 'CDN Cache', path: 'admin/services/cdn-cache' }
+			]},
+			{ cat: 'Services - AI & Chat', items: [
+				{ name: 'LocalAI', path: 'admin/services/localai' },
+				{ name: 'Ollama', path: 'admin/services/ollama' },
+				{ name: 'SimpleX Chat', path: 'admin/services/simplex' },
+				{ name: 'Jitsi Meet', path: 'admin/services/jitsi' }
+			]},
+			{ cat: 'Services - Media & Cloud', items: [
+				{ name: 'Nextcloud', path: 'admin/services/nextcloud' },
+				{ name: 'Jellyfin', path: 'admin/services/jellyfin' },
+				{ name: 'Lyrion', path: 'admin/services/lyrion' },
+				{ name: 'MagicMirror', path: 'admin/services/magicmirror2' },
+				{ name: 'MMPM', path: 'admin/services/mmpm' },
+				{ name: 'Streamlit', path: 'admin/services/streamlit' }
+			]},
+			{ cat: 'Services - Home & IoT', items: [
+				{ name: 'Domoticz', path: 'admin/services/domoticz' },
+				{ name: 'MAC Guardian', path: 'admin/services/mac-guardian' },
+				{ name: 'Mesh Link', path: 'admin/services/secubox-mesh' }
+			]},
+			{ cat: 'Services - Dev & CMS', items: [
+				{ name: 'Gitea', path: 'admin/services/gitea' },
+				{ name: 'Hexo CMS', path: 'admin/services/hexojs' },
+				{ name: 'MetaBlogizer', path: 'admin/services/metablogizer' },
+				{ name: 'Metabolizer', path: 'admin/services/metabolizer' },
+				{ name: 'PicoBrew', path: 'admin/services/picobrew' }
+			]},
+			{ cat: 'Services - DNS & Security', items: [
+				{ name: 'Service Registry', path: 'admin/services/service-registry' },
+				{ name: 'Vortex DNS', path: 'admin/services/vortex-dns' },
+				{ name: 'Vortex Firewall', path: 'admin/services/vortex-firewall' },
+				{ name: 'Threat Monitor', path: 'admin/services/threat-monitor' },
+				{ name: 'CyberFeed', path: 'admin/services/cyberfeed' },
+				{ name: 'Config Advisor', path: 'admin/services/config-advisor' },
+				{ name: 'Network Diagnostics', path: 'admin/services/network-diagnostics' }
+			]},
+			{ cat: 'Public Portal', items: [
+				{ name: 'C3BOX Portal', path: 'secubox-public/portal' },
+				{ name: 'Crowdfunding', path: 'secubox-public/crowdfunding' },
+				{ name: 'Bug Bounty', path: 'secubox-public/bugbounty' },
+				{ name: 'Dev Status', path: 'secubox-public/devstatus' }
+			]}
+		];
 
-            E('div', { 'class': 'tree-search' }, [
-                E('input', {
-                    'type': 'text',
-                    'placeholder': 'Search modules...',
-                    'id': 'tree-search-input',
-                    'oninput': 'filterTree(this.value)'
-                })
-            ]),
+		var totalLinks = 0;
+		TREE.forEach(function(cat) { totalLinks += cat.items.length; });
 
-            E('div', { 'class': 'luci-tree tree-grid', 'id': 'tree-container' })
-        ]);
+		var style = E('style', {}, [
+			'.luci-tree-page { background: #111; min-height: 100vh; padding: 20px; font-family: monospace; }',
+			'.luci-tree-header { text-align: center; margin-bottom: 30px; }',
+			'.luci-tree-header h1 { color: #0f0; font-size: 24px; margin: 0 0 10px 0; }',
+			'.luci-tree-header p { color: #888; margin: 0; }',
+			'.luci-tree-stats { display: flex; justify-content: center; gap: 30px; margin: 20px 0; flex-wrap: wrap; }',
+			'.luci-tree-stat { text-align: center; padding: 10px 20px; background: #222; border-radius: 8px; }',
+			'.luci-tree-stat-value { font-size: 24px; color: #0ff; }',
+			'.luci-tree-stat-label { font-size: 12px; color: #888; }',
+			'.luci-tree-search { margin: 20px auto; max-width: 400px; }',
+			'.luci-tree-search input { width: 100%; padding: 10px; background: #222; border: 1px solid #333; color: #fff; border-radius: 4px; box-sizing: border-box; }',
+			'.luci-tree-search input:focus { outline: none; border-color: #0f0; }',
+			'.luci-tree-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; }',
+			'.luci-tree-section { background: #1a1a1a; border-left: 3px solid #0f0; border-radius: 4px; padding: 15px; }',
+			'.luci-tree-section-title { color: #0f0; font-size: 16px; margin: 0 0 10px 0; border-bottom: 1px solid #333; padding-bottom: 8px; }',
+			'.luci-tree-item { padding: 4px 0; }',
+			'.luci-tree-item a { color: #0ff; text-decoration: none; }',
+			'.luci-tree-item a:hover { color: #fff; text-decoration: underline; }',
+			'.luci-tree-item::before { content: "- "; color: #555; }'
+		].join('\n'));
 
-        // Build tree
-        var treeContainer = container.querySelector('#tree-container');
-        var totalLinks = 0;
+		var header = E('div', { 'class': 'luci-tree-header' }, [
+			E('h1', {}, 'SecuBox LuCI Navigation Tree'),
+			E('p', {}, 'Clickable map of all LuCI dashboards and modules')
+		]);
 
-        function buildTreeNode(name, node, level) {
-            var items = [];
-            totalLinks++;
+		var stats = E('div', { 'class': 'luci-tree-stats' }, [
+			E('div', { 'class': 'luci-tree-stat' }, [
+				E('div', { 'class': 'luci-tree-stat-value' }, String(TREE.length)),
+				E('div', { 'class': 'luci-tree-stat-label' }, 'Categories')
+			]),
+			E('div', { 'class': 'luci-tree-stat' }, [
+				E('div', { 'class': 'luci-tree-stat-value' }, String(totalLinks)),
+				E('div', { 'class': 'luci-tree-stat-label' }, 'Total Links')
+			]),
+			E('div', { 'class': 'luci-tree-stat' }, [
+				E('div', { 'class': 'luci-tree-stat-value' }, '60+'),
+				E('div', { 'class': 'luci-tree-stat-label' }, 'LuCI Apps')
+			])
+		]);
 
-            var link = E('a', {
-                'href': '/cgi-bin/luci/' + node.path,
-                'target': '_blank',
-                'class': 'tree-link'
-            }, name);
+		var searchInput = E('input', {
+			'type': 'text',
+			'placeholder': 'Search modules...',
+			'id': 'tree-search'
+		});
 
-            if (node.children) {
-                var nested = E('div', { 'class': 'tree-nested' });
-                Object.keys(node.children).forEach(function(childName) {
-                    var childItems = buildTreeNode(childName, node.children[childName], level + 1);
-                    childItems.forEach(function(item) {
-                        nested.appendChild(E('div', { 'class': 'tree-item', 'data-name': childName.toLowerCase() }, [item]));
-                    });
-                });
-                items.push(link);
-                items.push(nested);
-            } else {
-                items.push(link);
-            }
+		searchInput.addEventListener('input', function(ev) {
+			var q = ev.target.value.toLowerCase();
+			var sections = document.querySelectorAll('.luci-tree-section');
+			sections.forEach(function(sec) {
+				var items = sec.querySelectorAll('.luci-tree-item');
+				var hasMatch = sec.querySelector('.luci-tree-section-title').textContent.toLowerCase().indexOf(q) >= 0;
+				items.forEach(function(item) {
+					var match = item.textContent.toLowerCase().indexOf(q) >= 0;
+					item.style.display = match ? '' : 'none';
+					if (match) hasMatch = true;
+				});
+				sec.style.display = hasMatch ? '' : 'none';
+			});
+		});
 
-            return items;
-        }
+		var search = E('div', { 'class': 'luci-tree-search' }, [searchInput]);
 
-        Object.keys(LUCI_TREE).forEach(function(sectionName) {
-            var section = LUCI_TREE[sectionName];
-            var sectionDiv = E('div', { 'class': 'tree-section', 'data-section': sectionName.toLowerCase() });
+		var grid = E('div', { 'class': 'luci-tree-grid' });
 
-            var titleLink = E('a', {
-                'href': '/cgi-bin/luci/' + section.path,
-                'target': '_blank',
-                'class': 'tree-section-title'
-            }, sectionName);
+		TREE.forEach(function(category) {
+			var section = E('div', { 'class': 'luci-tree-section' }, [
+				E('div', { 'class': 'luci-tree-section-title' }, category.cat)
+			]);
 
-            sectionDiv.appendChild(titleLink);
+			category.items.forEach(function(item) {
+				section.appendChild(E('div', { 'class': 'luci-tree-item' }, [
+					E('a', { 'href': '/cgi-bin/luci/' + item.path, 'target': '_blank' }, item.name)
+				]));
+			});
 
-            if (section.children) {
-                Object.keys(section.children).forEach(function(childName) {
-                    var childItems = buildTreeNode(childName, section.children[childName], 1);
-                    childItems.forEach(function(item) {
-                        sectionDiv.appendChild(E('div', { 'class': 'tree-item', 'data-name': childName.toLowerCase() }, [item]));
-                    });
-                });
-            }
+			grid.appendChild(section);
+		});
 
-            treeContainer.appendChild(sectionDiv);
-        });
-
-        container.querySelector('#total-links').textContent = totalLinks.toString();
-
-        // Add search filter script
-        var script = E('script', {}, `
-            function filterTree(query) {
-                query = query.toLowerCase();
-                var sections = document.querySelectorAll('.tree-section');
-                sections.forEach(function(section) {
-                    var sectionName = section.dataset.section;
-                    var items = section.querySelectorAll('.tree-item');
-                    var hasMatch = sectionName.includes(query);
-
-                    items.forEach(function(item) {
-                        var name = item.dataset.name || '';
-                        var text = item.textContent.toLowerCase();
-                        if (text.includes(query) || name.includes(query)) {
-                            item.style.display = '';
-                            hasMatch = true;
-                        } else {
-                            item.style.display = 'none';
-                        }
-                    });
-
-                    section.style.display = hasMatch ? '' : 'none';
-                });
-            }
-        `);
-        container.appendChild(script);
-
-        return container;
-    },
-
-    handleSaveApply: null,
-    handleSave: null,
-    handleReset: null
+		return E('div', { 'class': 'luci-tree-page' }, [style, header, stats, search, grid]);
+	}
 });
