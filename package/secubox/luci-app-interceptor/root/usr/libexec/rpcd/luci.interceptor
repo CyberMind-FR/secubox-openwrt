@@ -177,38 +177,38 @@ case "$1" in
 				get_failover_status
 
 				# Overall health score (0-100)
-				local score=0
-				local pillars_active=0
+				score=0
+				pillars_active=0
 
 				# WPAD
-				[ "$(uci -q get network_tweaks.global.wpad_enforce)" = "1" ] || [ -f /www/wpad.dat ] && {
+				if [ "$(uci -q get network_tweaks.global.wpad_enforce)" = "1" ] || [ -f /www/wpad.dat ]; then
 					score=$((score + 20))
 					pillars_active=$((pillars_active + 1))
-				}
+				fi
 
 				# mitmproxy running
-				pgrep -x mitmproxy >/dev/null 2>&1 || lxc-ls --running 2>/dev/null | grep -q "secbx-mitmproxy" && {
+				if pgrep mitmproxy >/dev/null 2>&1 || lxc-ls --running 2>/dev/null | grep -q "secbx-mitmproxy"; then
 					score=$((score + 20))
 					pillars_active=$((pillars_active + 1))
-				}
+				fi
 
 				# CDN Cache running
-				pgrep squid >/dev/null 2>&1 && {
+				if pgrep squid >/dev/null 2>&1; then
 					score=$((score + 20))
 					pillars_active=$((pillars_active + 1))
-				}
+				fi
 
 				# Cookie Tracker enabled
-				[ "$(uci -q get cookie-tracker.main.enabled)" = "1" ] && {
+				if [ "$(uci -q get cookie-tracker.main.enabled)" = "1" ]; then
 					score=$((score + 20))
 					pillars_active=$((pillars_active + 1))
-				}
+				fi
 
 				# API Failover enabled
-				[ "$(uci -q get cdn-cache.api_failover.enabled)" = "1" ] && {
+				if [ "$(uci -q get cdn-cache.api_failover.enabled)" = "1" ]; then
 					score=$((score + 20))
 					pillars_active=$((pillars_active + 1))
-				}
+				fi
 
 				json_add_object "summary"
 					json_add_int "health_score" "$score"
