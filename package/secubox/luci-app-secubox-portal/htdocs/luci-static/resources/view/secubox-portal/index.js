@@ -123,7 +123,53 @@ var NAV_ITEMS = [
 	{ id: 'security', icon: '\uD83D\uDEE1\uFE0F', label: 'DNS Guard', section: 'Security' },
 	{ id: 'services', icon: '\uD83D\uDCE6', label: 'Services', section: 'Security' },
 	{ id: 'cloning', icon: '\uD83D\uDCE5', label: 'Cloning Station', section: 'Deploy' },
-	{ id: 'mesh', icon: '\uD83D\uDCE1', label: 'Mesh MaaS', section: 'Deploy' }
+	{ id: 'mesh', icon: '\uD83D\uDCE1', label: 'Mesh MaaS', section: 'Deploy' },
+	{ id: 'tree', icon: '\uD83C\uDF33', label: 'LuCI Tree', section: 'Navigate' }
+];
+
+// ========== LUCI TREE DATA ==========
+var LUCI_TREE = [
+	{ cat: 'SecuBox Core', icon: '\uD83D\uDCE6', items: [
+		{ name: 'Dashboard', path: 'admin/secubox/dashboard' },
+		{ name: 'App Store', path: 'admin/secubox/apps' },
+		{ name: 'Modules', path: 'admin/secubox/modules' },
+		{ name: 'Settings', path: 'admin/secubox/settings' }
+	]},
+	{ cat: 'Security', icon: '\uD83D\uDEE1\uFE0F', items: [
+		{ name: 'CrowdSec', path: 'admin/secubox/security/crowdsec/overview' },
+		{ name: 'mitmproxy', path: 'admin/secubox/security/mitmproxy/status' },
+		{ name: 'Client Guardian', path: 'admin/secubox/security/guardian' },
+		{ name: 'DNS Guard', path: 'admin/secubox/security/dnsguard' },
+		{ name: 'InterceptoR', path: 'admin/secubox/interceptor/overview' }
+	]},
+	{ cat: 'Network', icon: '\uD83C\uDF10', items: [
+		{ name: 'Network Modes', path: 'admin/secubox/network/modes' },
+		{ name: 'DNS Providers', path: 'admin/secubox/network/dns-provider' },
+		{ name: 'Service Exposure', path: 'admin/secubox/network/exposure' },
+		{ name: 'Traffic Shaper', path: 'admin/secubox/network/traffic-shaper' }
+	]},
+	{ cat: 'Services', icon: '\u2699\uFE0F', items: [
+		{ name: 'HAProxy', path: 'admin/services/haproxy' },
+		{ name: 'WireGuard', path: 'admin/services/wireguard' },
+		{ name: 'Tor Shield', path: 'admin/services/tor-shield' },
+		{ name: 'CDN Cache', path: 'admin/services/cdn-cache' },
+		{ name: 'IoT Guard', path: 'admin/secubox/services/iot-guard' }
+	]},
+	{ cat: 'Monitoring', icon: '\uD83D\uDCCA', items: [
+		{ name: 'Netdata', path: 'admin/secubox/monitoring/netdata' },
+		{ name: 'Glances', path: 'admin/secubox/monitoring/glances' },
+		{ name: 'Media Flow', path: 'admin/secubox/monitoring/mediaflow' }
+	]},
+	{ cat: 'System', icon: '\uD83D\uDDA5\uFE0F', items: [
+		{ name: 'System Hub', path: 'admin/secubox/system/system-hub' },
+		{ name: 'Cloning Station', path: 'admin/secubox/system/cloner' },
+		{ name: 'LuCI Tree', path: 'admin/secubox/luci-tree' }
+	]},
+	{ cat: 'MirrorBox P2P', icon: '\uD83D\uDCE1', items: [
+		{ name: 'Overview', path: 'admin/secubox/mirrorbox/overview' },
+		{ name: 'Peers', path: 'admin/secubox/mirrorbox/peers' },
+		{ name: 'Services', path: 'admin/secubox/mirrorbox/services' }
+	]}
 ];
 
 var SCREEN_TITLES = {
@@ -132,7 +178,8 @@ var SCREEN_TITLES = {
 	security: '\uD83D\uDEE1\uFE0F DNS Guard',
 	services: '\uD83D\uDCE6 Services Stack',
 	cloning: '\uD83D\uDCE5 Cloning Station',
-	mesh: '\uD83D\uDCE1 Mesh Federation'
+	mesh: '\uD83D\uDCE1 Mesh Federation',
+	tree: '\uD83C\uDF33 LuCI Navigation Tree'
 };
 
 // ========== CSS GENERATOR ==========
@@ -417,6 +464,36 @@ function generateCSS(theme) {
 	75% { transform: rotateX(8deg) rotateY(270deg); }
 	100% { transform: rotateX(-8deg) rotateY(360deg); }
 }
+/* Tree navigation */
+.c3-tree-toggle {
+	display: flex; align-items: center; justify-content: space-between;
+	padding: 8px 16px; cursor: pointer; font-size: 12px; font-weight: 600;
+	color: var(--muted); border-top: 1px solid var(--line); margin-top: 8px;
+	transition: all 0.2s;
+}
+.c3-tree-toggle:hover { color: var(--text); background: rgba(255,255,255,0.02); }
+.c3-tree-toggle.open { color: var(--green); }
+.c3-tree-toggle-icon { transition: transform 0.2s; }
+.c3-tree-toggle.open .c3-tree-toggle-icon { transform: rotate(90deg); }
+.c3-tree-wrap { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+.c3-tree-wrap.open { max-height: 2000px; }
+.c3-tree-cat {
+	padding: 6px 12px 6px 20px; cursor: pointer; font-size: 11px;
+	color: var(--muted); display: flex; align-items: center; gap: 6px;
+	transition: all 0.2s; border-left: 2px solid transparent;
+}
+.c3-tree-cat:hover { color: var(--cyan); background: rgba(34,211,238,0.05); }
+.c3-tree-cat.open { color: var(--cyan); border-left-color: var(--cyan); }
+.c3-tree-cat-icon { font-size: 12px; }
+.c3-tree-cat-arrow { margin-left: auto; font-size: 10px; transition: transform 0.2s; }
+.c3-tree-cat.open .c3-tree-cat-arrow { transform: rotate(90deg); }
+.c3-tree-items { max-height: 0; overflow: hidden; transition: max-height 0.25s ease; }
+.c3-tree-items.open { max-height: 500px; }
+.c3-tree-item {
+	display: block; padding: 5px 12px 5px 32px; font-size: 11px;
+	color: var(--muted); text-decoration: none; transition: all 0.15s;
+}
+.c3-tree-item:hover { color: var(--green); background: rgba(0,200,83,0.05); padding-left: 36px; }
 /* Responsive */
 @media (max-width: 900px) {
 	.c3-sidebar { transform: translateX(-100%); }
@@ -597,7 +674,8 @@ return view.extend({
 				this.renderSecurityScreen(),
 				this.renderServicesScreen(modulesData, initServices),
 				this.renderCloningScreen(),
-				this.renderMeshScreen()
+				this.renderMeshScreen(),
+				this.renderTreeScreen()
 			])
 		]);
 
@@ -723,12 +801,54 @@ return view.extend({
 			return items;
 		}).flat();
 
+		// Build tree navigation
+		var treeCategories = LUCI_TREE.map(function(cat) {
+			var catId = 'tree-cat-' + cat.cat.replace(/\s+/g, '-').toLowerCase();
+			var itemsEl = C('div', { 'class': 'c3-tree-items', 'id': catId + '-items' },
+				cat.items.map(function(item) {
+					return C('a', {
+						'class': 'c3-tree-item',
+						'href': '/cgi-bin/luci/' + item.path,
+						'target': '_blank'
+					}, item.name);
+				})
+			);
+			var catEl = C('div', {
+				'class': 'c3-tree-cat',
+				'id': catId,
+				'onClick': function() {
+					this.classList.toggle('open');
+					itemsEl.classList.toggle('open');
+				}
+			}, [
+				C('span', { 'class': 'c3-tree-cat-icon' }, cat.icon),
+				cat.cat,
+				C('span', { 'class': 'c3-tree-cat-arrow' }, '\u25B6')
+			]);
+			return C('div', {}, [catEl, itemsEl]);
+		});
+
+		var treeToggle = C('div', {
+			'class': 'c3-tree-toggle',
+			'onClick': function() {
+				this.classList.toggle('open');
+				document.getElementById('c3-tree-wrap').classList.toggle('open');
+			}
+		}, [
+			C('span', {}, '\uD83C\uDF33 LuCI Quick Nav'),
+			C('span', { 'class': 'c3-tree-toggle-icon' }, '\u25B6')
+		]);
+
+		var treeWrap = C('div', { 'class': 'c3-tree-wrap', 'id': 'c3-tree-wrap' }, treeCategories);
+
 		return C('nav', { 'class': 'c3-sidebar', 'id': 'c3-sidebar' }, [
 			C('div', { 'class': 'c3-sidebar-logo' }, [
 				Logo(),
 				C('div', { 'class': 'c3-logo-sub' }, 'SECUBOX \u00B7 CYBERMIND.FR')
 			]),
 			C('div', { 'class': 'c3-nav' }, navItems),
+			treeToggle,
+			treeWrap,
 			C('div', { 'class': 'c3-sidebar-footer' }, [
 				C('div', { 'class': 'c3-morph', 'id': 'c3-morph' }),
 				C('div', { 'class': 'c3-footer-ver' }, 'OpenWrt 24.10 \u00B7 v0.20')
@@ -738,6 +858,29 @@ return view.extend({
 
 	renderTopbar: function() {
 		var self = this;
+		var isLoggedIn = L.env && L.env.sessionid && L.env.sessionid !== '00000000000000000000000000000000';
+
+		var rightItems = [
+			Badge('\uD83D\uDD12 SHIELD ACTIVE', 'green'),
+			Badge('\uD83D\uDCE1 MESH CONNECTED', 'blue'),
+			C('span', { 'class': 'c3-badge c3-badge-green', 'id': 'c3-refresh-badge' }, '\u27F3 LIVE')
+		];
+
+		// Add login/logout button
+		if (isLoggedIn) {
+			rightItems.push(C('a', {
+				'href': '/cgi-bin/luci/admin/logout',
+				'class': 'c3-btn',
+				'style': 'text-decoration:none;margin-left:8px;'
+			}, '\uD83D\uDEAA Logout'));
+		} else {
+			rightItems.push(C('a', {
+				'href': '/cgi-bin/luci/admin',
+				'class': 'c3-btn',
+				'style': 'text-decoration:none;margin-left:8px;border-color:var(--green);color:var(--green);'
+			}, '\uD83D\uDD11 Login'));
+		}
+
 		return C('header', { 'class': 'c3-topbar' }, [
 			C('div', { 'class': 'c3-topbar-left' }, [
 				C('button', {
@@ -748,11 +891,7 @@ return view.extend({
 				}, '\u2630'),
 				C('span', { 'class': 'c3-topbar-title', 'id': 'c3-topbar-title' }, SCREEN_TITLES[this.currentScreen])
 			]),
-			C('div', { 'class': 'c3-topbar-right' }, [
-				Badge('\uD83D\uDD12 SHIELD ACTIVE', 'green'),
-				Badge('\uD83D\uDCE1 MESH CONNECTED', 'blue'),
-				C('span', { 'class': 'c3-badge c3-badge-green', 'id': 'c3-refresh-badge' }, '\u27F3 LIVE')
-			])
+			C('div', { 'class': 'c3-topbar-right' }, rightItems)
 		]);
 	},
 
@@ -1130,6 +1269,45 @@ return view.extend({
 				MeshFeat('\uD83E\uDDE0', 'Shared Intel', 'CrowdSec decisions \uD83D\uDCE4\nThreat feeds sync \uD83D\uDD04\nBlocklist fusion \uD83D\uDCCB\nReal-time alerts \uD83D\uDEA8'),
 				MeshFeat('\uD83D\uDE80', 'MaaS Deploy', 'Master \u2192 fleet push \uD83D\uDCE1\nConfig sync \uD83D\uDD04\nLanding pages\ngk2.secubox.in \uD83C\uDF0D'),
 				MeshFeat('\uD83C\uDFC5', 'ANSSI Path', 'CSPN certification\nENISA compliance \u2705\nAudit trail \uD83D\uDCDC\nSovereign \uD83C\uDDEB\uD83C\uDDF7')
+			])
+		]);
+	},
+
+	renderTreeScreen: function() {
+		var treeGrid = LUCI_TREE.map(function(cat) {
+			return C('div', { 'class': 'c3-panel', 'style': 'border-left:3px solid var(--green);' }, [
+				C('div', { 'class': 'c3-panel-title' }, [
+					C('span', {}, cat.icon + ' '),
+					cat.cat
+				]),
+				C('div', {}, cat.items.map(function(item) {
+					return C('div', { 'style': 'padding:6px 0;' }, [
+						C('a', {
+							'href': '/cgi-bin/luci/' + item.path,
+							'target': '_blank',
+							'style': 'color:var(--cyan);text-decoration:none;font-size:13px;'
+						}, [
+							C('span', { 'style': 'color:var(--muted);margin-right:8px;' }, '\u2192'),
+							item.name
+						])
+					]);
+				}))
+			]);
+		});
+
+		return C('section', { 'class': 'c3-screen', 'id': 'c3-screen-tree' }, [
+			C('div', { 'style': 'margin-bottom:20px;' }, [
+				C('h2', { 'style': 'font-size:22px;font-weight:700;margin-bottom:6px;' }, '\uD83C\uDF33 LuCI Navigation Tree'),
+				C('p', { 'style': 'color:var(--muted);font-size:14px;' }, 'Quick access to all SecuBox LuCI dashboards and modules. Click any link to open in a new tab.')
+			]),
+			C('div', { 'style': 'display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;' }, treeGrid),
+			C('div', { 'style': 'margin-top:24px;text-align:center;' }, [
+				C('a', {
+					'href': '/cgi-bin/luci/admin/secubox/luci-tree',
+					'target': '_blank',
+					'class': 'c3-btn',
+					'style': 'text-decoration:none;border-color:var(--green);color:var(--green);'
+				}, '\uD83D\uDD0D Open Full LuCI Tree View')
 			])
 		]);
 	},
