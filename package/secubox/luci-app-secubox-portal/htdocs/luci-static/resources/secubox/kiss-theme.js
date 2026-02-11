@@ -14,6 +14,29 @@
  */
 
 window.KissTheme = window.KissTheme || {
+	// Navigation config - shared across all views
+	nav: [
+		{ cat: 'Main', items: [
+			{ icon: '🏠', name: 'Home', path: 'admin/secubox-home' },
+			{ icon: '📊', name: 'System Hub', path: 'admin/secubox/system/system-hub' }
+		]},
+		{ cat: 'Security', items: [
+			{ icon: '🧙', name: 'InterceptoR', path: 'admin/secubox/interceptor/overview' },
+			{ icon: '🛡️', name: 'CrowdSec', path: 'admin/secubox/security/crowdsec/overview' },
+			{ icon: '🔍', name: 'mitmproxy', path: 'admin/secubox/security/mitmproxy/status' },
+			{ icon: '🌐', name: 'DNS Guard', path: 'admin/secubox/security/dnsguard' }
+		]},
+		{ cat: 'Services', items: [
+			{ icon: '📡', name: 'IoT Guard', path: 'admin/secubox/services/iot-guard' },
+			{ icon: '💾', name: 'CDN Cache', path: 'admin/services/cdn-cache' },
+			{ icon: '🔗', name: 'HAProxy', path: 'admin/services/haproxy' },
+			{ icon: '🔒', name: 'WireGuard', path: 'admin/services/wireguard' }
+		]},
+		{ cat: 'Navigate', items: [
+			{ icon: '🌳', name: 'LuCI Tree', path: 'admin/secubox/luci-tree' }
+		]}
+	],
+
 	// Core palette
 	colors: {
 		bg: '#0a0e17',
@@ -120,9 +143,53 @@ window.KissTheme = window.KissTheme || {
 .kiss-panel-red { border-left: 3px solid var(--kiss-red); }
 .kiss-panel-blue { border-left: 3px solid var(--kiss-blue); }
 .kiss-panel-orange { border-left: 3px solid var(--kiss-orange); }
+/* Sidebar layout */
+.kiss-with-sidebar { display: flex; }
+.kiss-sidebar {
+	position: fixed; left: 0; top: 0; bottom: 0; width: 200px;
+	background: linear-gradient(180deg, #0d1321 0%, var(--kiss-bg) 100%);
+	border-right: 1px solid var(--kiss-line); z-index: 100;
+	display: flex; flex-direction: column; overflow-y: auto;
+}
+.kiss-sidebar-logo {
+	padding: 16px; border-bottom: 1px solid var(--kiss-line); text-align: center;
+}
+.kiss-logo-text { font-weight: 900; font-size: 24px; letter-spacing: -1px; }
+.kiss-logo-sub { font-size: 9px; color: var(--kiss-muted); letter-spacing: 2px; margin-top: 4px; }
+.kiss-nav { flex: 1; padding: 8px 0; }
+.kiss-nav-section {
+	padding: 8px 12px 4px; font-size: 9px; letter-spacing: 2px;
+	text-transform: uppercase; color: var(--kiss-muted);
+}
+.kiss-nav-item {
+	display: flex; align-items: center; gap: 10px; padding: 8px 16px;
+	text-decoration: none; font-size: 13px; color: var(--kiss-muted);
+	transition: all 0.2s; border-left: 2px solid transparent;
+}
+.kiss-nav-item:hover { background: rgba(255,255,255,0.03); color: var(--kiss-text); }
+.kiss-nav-item.active { color: var(--kiss-green); background: rgba(0,200,83,0.05); border-left-color: var(--kiss-green); }
+.kiss-nav-icon { font-size: 16px; width: 20px; text-align: center; }
+.kiss-main { margin-left: 200px; padding: 20px; flex: 1; min-height: 100vh; }
+/* Toggle */
+#kiss-toggle {
+	position: fixed; top: 10px; right: 10px; z-index: 99999;
+	font-size: 32px; cursor: pointer; opacity: 0.7; transition: all 0.3s;
+	background: rgba(0,0,0,0.5); border-radius: 50%; width: 50px; height: 50px;
+	display: flex; align-items: center; justify-content: center;
+}
+#kiss-toggle:hover { opacity: 1; transform: scale(1.1); }
 /* Responsive */
 @media (max-width: 768px) {
 	.kiss-grid-2, .kiss-grid-3, .kiss-grid-4 { grid-template-columns: 1fr; }
+	.kiss-sidebar { width: 60px; }
+	.kiss-sidebar-logo, .kiss-nav-section { display: none; }
+	.kiss-nav-item { padding: 12px; justify-content: center; }
+	.kiss-nav-item span:last-child { display: none; }
+	.kiss-main { margin-left: 60px; }
+}
+@media (max-width: 480px) {
+	.kiss-sidebar { display: none; }
+	.kiss-main { margin-left: 0; }
 }
 `;
 	},
@@ -283,6 +350,50 @@ window.KissTheme = window.KissTheme || {
 			'class': 'kiss-btn' + (type ? ' kiss-btn-' + type : ''),
 			'onClick': onClick
 		}, label);
+	},
+
+	// Render sidebar navigation
+	renderSidebar: function(activePath) {
+		var self = this;
+		var currentPath = activePath || window.location.pathname.replace('/cgi-bin/luci/', '');
+		var navItems = [];
+
+		this.nav.forEach(function(cat) {
+			navItems.push(self.E('div', { 'class': 'kiss-nav-section' }, cat.cat));
+			cat.items.forEach(function(item) {
+				var isActive = currentPath.indexOf(item.path) !== -1;
+				navItems.push(self.E('a', {
+					'href': '/cgi-bin/luci/' + item.path,
+					'class': 'kiss-nav-item' + (isActive ? ' active' : '')
+				}, [
+					self.E('span', { 'class': 'kiss-nav-icon' }, item.icon),
+					self.E('span', {}, item.name)
+				]));
+			});
+		});
+
+		return this.E('nav', { 'class': 'kiss-sidebar' }, [
+			this.E('div', { 'class': 'kiss-sidebar-logo' }, [
+				this.E('div', { 'class': 'kiss-logo-text' }, [
+					this.E('span', { 'style': 'color: var(--kiss-green);' }, 'C'),
+					this.E('span', { 'style': 'color: var(--kiss-red); font-size: 14px; vertical-align: super;' }, '3'),
+					this.E('span', { 'style': 'color: var(--kiss-blue);' }, 'B'),
+					this.E('span', { 'style': 'color: #37474F;' }, 'O'),
+					this.E('span', { 'style': 'color: var(--kiss-green);' }, 'X')
+				]),
+				this.E('div', { 'class': 'kiss-logo-sub' }, 'SECUBOX')
+			]),
+			this.E('div', { 'class': 'kiss-nav' }, navItems)
+		]);
+	},
+
+	// Create full page with sidebar
+	wrap: function(content, activePath) {
+		this.apply();
+		return this.E('div', { 'class': 'kiss-root kiss-with-sidebar' }, [
+			this.renderSidebar(activePath),
+			this.E('div', { 'class': 'kiss-main' }, Array.isArray(content) ? content : [content])
+		]);
 	}
 };
 
