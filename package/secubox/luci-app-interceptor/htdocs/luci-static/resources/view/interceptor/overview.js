@@ -9,172 +9,219 @@ var callGetStatus = rpc.declare({
 	expect: {}
 });
 
-var PILLAR_ICONS = {
-	wpad: '&#x1F310;',      // Globe for WPAD
-	mitm: '&#x1F6E1;',      // Shield for mitmproxy
-	cdn_cache: '&#x1F4BE;', // Disk for CDN Cache
-	cookie_tracker: '&#x1F36A;', // Cookie for Cookie Tracker
-	api_failover: '&#x26A1;'    // Lightning for API Failover
-};
+var PILLARS = [
+	{ id: 'wpad', name: 'WPAD', icon: '🌐', desc: 'Auto-proxy discovery' },
+	{ id: 'mitm', name: 'MITM Proxy', icon: '🛡️', desc: 'Traffic inspection' },
+	{ id: 'cdn_cache', name: 'CDN Cache', icon: '💾', desc: 'Content caching' },
+	{ id: 'cookie_tracker', name: 'Cookies', icon: '🍪', desc: 'Tracker detection' },
+	{ id: 'api_failover', name: 'API Failover', icon: '⚡', desc: 'Graceful degradation' }
+];
 
-var PILLAR_NAMES = {
-	wpad: 'WPAD Redirector',
-	mitm: 'MITM Proxy',
-	cdn_cache: 'CDN Cache',
-	cookie_tracker: 'Cookie Tracker',
-	api_failover: 'API Failover'
-};
+var QUICK_LINKS = [
+	{ name: 'Network Tweaks', path: 'admin/network/network-tweaks', icon: '🌐' },
+	{ name: 'mitmproxy', path: 'admin/secubox/security/mitmproxy/status', icon: '🔍' },
+	{ name: 'CDN Cache', path: 'admin/services/cdn-cache', icon: '💾' },
+	{ name: 'CrowdSec', path: 'admin/secubox/security/crowdsec/overview', icon: '🛡️' }
+];
 
 return view.extend({
 	load: function() {
-		return callGetStatus();
-	},
-
-	renderHealthScore: function(data) {
-		var summary = data.summary || {};
-		var score = summary.health_score || 0;
-		var pillars_active = summary.pillars_active || 0;
-		var pillars_total = summary.pillars_total || 5;
-
-		var scoreColor = score >= 80 ? '#4caf50' : score >= 50 ? '#ff9800' : '#f44336';
-
-		return E('div', { 'class': 'cbi-section', 'style': 'text-align: center; padding: 30px;' }, [
-			E('div', { 'style': 'font-size: 64px; margin-bottom: 10px;' }, [
-				E('span', { 'style': 'color: ' + scoreColor + '; font-weight: bold;' }, score + '%')
-			]),
-			E('div', { 'style': 'font-size: 18px; color: #888;' },
-				'InterceptoR Health Score'),
-			E('div', { 'style': 'font-size: 14px; color: #666; margin-top: 10px;' },
-				pillars_active + ' of ' + pillars_total + ' pillars active')
-		]);
-	},
-
-	renderPillarCard: function(id, data, name, icon) {
-		var pillarData = data[id] || {};
-		var enabled = pillarData.enabled || false;
-		var running = pillarData.running !== undefined ? pillarData.running : enabled;
-
-		var statusColor = running ? '#4caf50' : '#f44336';
-		var statusText = running ? 'Active' : 'Inactive';
-
-		var statsHtml = [];
-
-		// Build stats based on pillar type
-		switch(id) {
-			case 'wpad':
-				if (pillarData.dhcp_configured) {
-					statsHtml.push(E('div', { 'style': 'font-size: 12px; color: #888;' },
-						'DHCP: Configured'));
-				}
-				if (pillarData.enforce_enabled) {
-					statsHtml.push(E('div', { 'style': 'font-size: 12px; color: #4caf50;' },
-						'Enforcement: ON'));
-				}
-				break;
-
-			case 'mitm':
-				statsHtml.push(E('div', { 'style': 'font-size: 12px; color: #888;' },
-					'Threats Today: ' + (pillarData.threats_today || 0)));
-				statsHtml.push(E('div', { 'style': 'font-size: 12px; color: #888;' },
-					'Active: ' + (pillarData.active_connections || 0)));
-				break;
-
-			case 'cdn_cache':
-				statsHtml.push(E('div', { 'style': 'font-size: 12px; color: #888;' },
-					'Hit Ratio: ' + (pillarData.hit_ratio || 0) + '%'));
-				statsHtml.push(E('div', { 'style': 'font-size: 12px; color: #888;' },
-					'Saved: ' + (pillarData.saved_mb || 0) + ' MB'));
-				if (pillarData.offline_mode) {
-					statsHtml.push(E('div', { 'style': 'font-size: 12px; color: #ff9800;' },
-						'OFFLINE MODE'));
-				}
-				break;
-
-			case 'cookie_tracker':
-				statsHtml.push(E('div', { 'style': 'font-size: 12px; color: #888;' },
-					'Cookies: ' + (pillarData.total_cookies || 0)));
-				statsHtml.push(E('div', { 'style': 'font-size: 12px; color: #f44336;' },
-					'Trackers: ' + (pillarData.trackers_detected || 0)));
-				statsHtml.push(E('div', { 'style': 'font-size: 12px; color: #888;' },
-					'Blocked: ' + (pillarData.blocked || 0)));
-				break;
-
-			case 'api_failover':
-				statsHtml.push(E('div', { 'style': 'font-size: 12px; color: #888;' },
-					'Stale Serves: ' + (pillarData.stale_serves || 0)));
-				break;
-		}
-
-		return E('div', {
-			'style': 'background: #222; border-radius: 8px; padding: 20px; margin: 10px; ' +
-				'min-width: 200px; flex: 1; text-align: center; ' +
-				'border-left: 4px solid ' + statusColor + ';'
-		}, [
-			E('div', { 'style': 'font-size: 32px; margin-bottom: 10px;' }, icon),
-			E('div', { 'style': 'font-size: 16px; font-weight: bold; margin-bottom: 5px;' }, name),
-			E('div', { 'style': 'font-size: 12px; color: ' + statusColor + '; margin-bottom: 10px;' },
-				statusText),
-			E('div', {}, statsHtml)
-		]);
+		return callGetStatus().catch(function() {
+			return { success: false };
+		});
 	},
 
 	render: function(data) {
+		var self = this;
+
+		// Inject KISS CSS
+		this.injectCSS();
+
 		if (!data || !data.success) {
-			return E('div', { 'class': 'alert-message warning' },
-				'Failed to load InterceptoR status');
+			return E('div', { 'class': 'kiss-root' }, [
+				E('div', { 'class': 'kiss-card kiss-panel-red' }, [
+					E('div', { 'class': 'kiss-card-title' }, '⚠️ InterceptoR Status Unavailable'),
+					E('p', { 'style': 'color: var(--kiss-muted);' }, 'Failed to load status. Check if RPCD service is running.')
+				])
+			]);
 		}
 
-		var pillars = [
-			{ id: 'wpad', name: PILLAR_NAMES.wpad, icon: PILLAR_ICONS.wpad },
-			{ id: 'mitm', name: PILLAR_NAMES.mitm, icon: PILLAR_ICONS.mitm },
-			{ id: 'cdn_cache', name: PILLAR_NAMES.cdn_cache, icon: PILLAR_ICONS.cdn_cache },
-			{ id: 'cookie_tracker', name: PILLAR_NAMES.cookie_tracker, icon: PILLAR_ICONS.cookie_tracker },
-			{ id: 'api_failover', name: PILLAR_NAMES.api_failover, icon: PILLAR_ICONS.api_failover }
-		];
+		var summary = data.summary || {};
+		var score = summary.health_score || 0;
+		var pillarsActive = summary.pillars_active || 0;
 
-		var cards = pillars.map(function(p) {
-			return this.renderPillarCard(p.id, data, p.name, p.icon);
-		}, this);
+		return E('div', { 'class': 'kiss-root' }, [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0 0 8px 0;' }, '🧙 InterceptoR'),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 0;' }, 'The Gandalf Proxy — Transparent traffic interception')
+			]),
 
-		return E('div', { 'class': 'cbi-map' }, [
-			E('h2', { 'style': 'margin-bottom: 5px;' }, 'SecuBox InterceptoR'),
-			E('p', { 'style': 'color: #888; margin-bottom: 20px;' },
-				'The Gandalf Proxy - Transparent traffic interception and protection'),
-
-			// Health Score
-			this.renderHealthScore(data),
+			// Health Score Card
+			E('div', { 'class': 'kiss-card', 'style': 'text-align: center; padding: 30px; margin-bottom: 20px;' }, [
+				E('div', { 'style': 'font-size: 56px; font-weight: 900; color: ' + this.scoreColor(score) + ';' }, score + '%'),
+				E('div', { 'style': 'font-size: 14px; color: var(--kiss-muted); margin-top: 8px;' }, 'Health Score'),
+				E('div', { 'style': 'font-size: 12px; color: var(--kiss-cyan); margin-top: 4px;' },
+					pillarsActive + ' of 5 pillars active')
+			]),
 
 			// Pillars Grid
-			E('h3', { 'style': 'margin-top: 30px;' }, 'Interception Pillars'),
-			E('div', {
-				'style': 'display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 15px;'
-			}, cards),
+			E('div', { 'class': 'kiss-grid kiss-grid-auto', 'style': 'margin-bottom: 24px;' },
+				PILLARS.map(function(p) {
+					return self.renderPillar(p, data[p.id] || {});
+				})
+			),
 
 			// Quick Links
-			E('h3', { 'style': 'margin-top: 30px;' }, 'Quick Links'),
-			E('div', { 'style': 'display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px;' }, [
-				E('a', {
-					'href': '/cgi-bin/luci/admin/secubox/network-tweaks',
-					'class': 'cbi-button',
-					'style': 'text-decoration: none;'
-				}, 'Network Tweaks (WPAD)'),
-				E('a', {
-					'href': '/cgi-bin/luci/admin/secubox/mitmproxy/overview',
-					'class': 'cbi-button',
-					'style': 'text-decoration: none;'
-				}, 'mitmproxy'),
-				E('a', {
-					'href': '/cgi-bin/luci/admin/secubox/cdn-cache/overview',
-					'class': 'cbi-button',
-					'style': 'text-decoration: none;'
-				}, 'CDN Cache'),
-				E('a', {
-					'href': '/cgi-bin/luci/admin/secubox/crowdsec/overview',
-					'class': 'cbi-button',
-					'style': 'text-decoration: none;'
-				}, 'CrowdSec')
+			E('div', { 'class': 'kiss-card' }, [
+				E('div', { 'class': 'kiss-card-title' }, '🔗 Quick Links'),
+				E('div', { 'style': 'display: flex; flex-wrap: wrap; gap: 10px;' },
+					QUICK_LINKS.map(function(link) {
+						return E('a', {
+							'href': '/cgi-bin/luci/' + link.path,
+							'class': 'kiss-btn',
+							'style': 'text-decoration: none;'
+						}, link.icon + ' ' + link.name);
+					})
+				)
 			])
 		]);
+	},
+
+	renderPillar: function(pillar, data) {
+		var enabled = data.enabled || false;
+		var running = data.running !== undefined ? data.running : enabled;
+		var statusColor = running ? 'var(--kiss-green)' : 'var(--kiss-red)';
+		var statusText = running ? 'Active' : 'Inactive';
+
+		var stats = [];
+		switch(pillar.id) {
+			case 'mitm':
+				stats.push('Threats: ' + (data.threats_today || 0));
+				stats.push('Connections: ' + (data.active_connections || 0));
+				break;
+			case 'cdn_cache':
+				stats.push('Hit Ratio: ' + (data.hit_ratio || 0) + '%');
+				if (data.offline_mode) stats.push('⚠️ OFFLINE');
+				break;
+			case 'cookie_tracker':
+				stats.push('Cookies: ' + (data.total_cookies || 0));
+				stats.push('Trackers: ' + (data.trackers_detected || 0));
+				break;
+			case 'wpad':
+				if (data.dhcp_configured) stats.push('DHCP: ✓');
+				if (data.enforce_enabled) stats.push('Enforce: ✓');
+				break;
+			case 'api_failover':
+				stats.push('Stale serves: ' + (data.stale_serves || 0));
+				break;
+		}
+
+		return E('div', { 'class': 'kiss-card', 'style': 'text-align: center; border-left: 3px solid ' + statusColor + ';' }, [
+			E('div', { 'style': 'font-size: 32px; margin-bottom: 8px;' }, pillar.icon),
+			E('div', { 'style': 'font-weight: 700; font-size: 14px;' }, pillar.name),
+			E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted); margin-bottom: 8px;' }, pillar.desc),
+			E('div', { 'style': 'font-size: 11px; color: ' + statusColor + '; font-weight: 600;' }, statusText),
+			stats.length ? E('div', { 'style': 'font-size: 10px; color: var(--kiss-muted); margin-top: 8px;' },
+				stats.join(' • ')) : null
+		]);
+	},
+
+	scoreColor: function(score) {
+		if (score >= 80) return 'var(--kiss-green)';
+		if (score >= 50) return 'var(--kiss-yellow)';
+		return 'var(--kiss-red)';
+	},
+
+	kissMode: true,
+
+	injectCSS: function() {
+		var self = this;
+		if (document.querySelector('#kiss-interceptor-css')) return;
+
+		var css = `
+:root {
+	--kiss-bg: #0a0e17; --kiss-bg2: #111827; --kiss-card: #161e2e;
+	--kiss-line: #1e293b; --kiss-text: #e2e8f0; --kiss-muted: #94a3b8;
+	--kiss-green: #00C853; --kiss-red: #FF1744; --kiss-blue: #2979FF;
+	--kiss-cyan: #22d3ee; --kiss-yellow: #fbbf24;
+}
+.kiss-root {
+	background: var(--kiss-bg); color: var(--kiss-text);
+	font-family: 'Segoe UI', sans-serif; min-height: 100vh; padding: 20px;
+}
+.kiss-card {
+	background: var(--kiss-card); border: 1px solid var(--kiss-line);
+	border-radius: 12px; padding: 20px; margin-bottom: 16px;
+}
+.kiss-card-title { font-weight: 700; font-size: 16px; margin-bottom: 12px; }
+.kiss-grid { display: grid; gap: 16px; }
+.kiss-grid-auto { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+.kiss-btn {
+	padding: 10px 16px; border-radius: 8px; font-size: 13px; font-weight: 600;
+	cursor: pointer; border: 1px solid var(--kiss-line); background: var(--kiss-bg2);
+	color: var(--kiss-text); transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px;
+}
+.kiss-btn:hover { border-color: rgba(0,200,83,0.3); background: rgba(0,200,83,0.05); }
+.kiss-panel-red { border-left: 3px solid var(--kiss-red); }
+#kiss-toggle {
+	position: fixed; top: 10px; right: 10px; z-index: 99999;
+	font-size: 32px; cursor: pointer; opacity: 0.7; transition: all 0.3s;
+	background: rgba(0,0,0,0.5); border-radius: 50%; width: 50px; height: 50px;
+	display: flex; align-items: center; justify-content: center;
+}
+#kiss-toggle:hover { opacity: 1; transform: scale(1.1); }
+@media (max-width: 600px) { .kiss-grid-auto { grid-template-columns: 1fr 1fr; } }
+`;
+		var style = document.createElement('style');
+		style.id = 'kiss-interceptor-css';
+		style.textContent = css;
+		document.head.appendChild(style);
+
+		// Add toggle button
+		if (!document.querySelector('#kiss-toggle')) {
+			var toggle = document.createElement('div');
+			toggle.id = 'kiss-toggle';
+			toggle.innerHTML = '👁️';
+			toggle.title = 'Toggle KISS/LuCI mode';
+			toggle.onclick = function() { self.toggleMode(); };
+			document.body.appendChild(toggle);
+		}
+
+		// Hide LuCI chrome
+		this.hideChrome();
+	},
+
+	hideChrome: function() {
+		document.body.style.background = 'var(--kiss-bg)';
+		['#mainmenu', '.main-left', 'header', 'footer', '#topmenu', '#tabmenu'].forEach(function(sel) {
+			var el = document.querySelector(sel);
+			if (el) el.style.display = 'none';
+		});
+		var main = document.querySelector('.main-right') || document.querySelector('#maincontent');
+		if (main) { main.style.marginLeft = '0'; main.style.padding = '0'; main.style.maxWidth = 'none'; }
+	},
+
+	showChrome: function() {
+		document.body.style.background = '';
+		['#mainmenu', '.main-left', 'header', 'footer', '#topmenu', '#tabmenu'].forEach(function(sel) {
+			var el = document.querySelector(sel);
+			if (el) el.style.display = '';
+		});
+		var main = document.querySelector('.main-right') || document.querySelector('#maincontent');
+		if (main) { main.style.marginLeft = ''; main.style.padding = ''; main.style.maxWidth = ''; }
+	},
+
+	toggleMode: function() {
+		this.kissMode = !this.kissMode;
+		var toggle = document.getElementById('kiss-toggle');
+		if (this.kissMode) {
+			toggle.innerHTML = '👁️';
+			this.hideChrome();
+		} else {
+			toggle.innerHTML = '👁️‍🗨️';
+			this.showChrome();
+		}
 	},
 
 	handleSaveApply: null,

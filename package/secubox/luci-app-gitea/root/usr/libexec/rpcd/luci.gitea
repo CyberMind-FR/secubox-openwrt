@@ -634,6 +634,152 @@ create_repo() {
 	fi
 }
 
+# Get git repo status (for local development tracking)
+get_repo_status() {
+	read -r input
+	local repo_path
+	repo_path=$(echo "$input" | jsonfilter -e '@.path' 2>/dev/null)
+
+	# Default to secubox-openwrt if no path specified
+	[ -z "$repo_path" ] && repo_path="/root/secubox-openwrt"
+
+	if [ ! -d "$repo_path/.git" ]; then
+		json_error "Not a git repository: $repo_path"
+		return
+	fi
+
+	cd "$repo_path" || { json_error "Cannot access $repo_path"; return; }
+
+	local branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+	local remote_branch=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "")
+	local commit_hash=$(git rev-parse --short HEAD 2>/dev/null || echo "")
+	local commit_msg=$(git log -1 --pretty=%s 2>/dev/null || echo "")
+	local commit_date=$(git log -1 --pretty=%ci 2>/dev/null || echo "")
+
+	# Commits ahead/behind
+	local ahead=0 behind=0
+	if [ -n "$remote_branch" ]; then
+		ahead=$(git rev-list --count HEAD ^${remote_branch} 2>/dev/null || echo "0")
+		behind=$(git rev-list --count ${remote_branch} ^HEAD 2>/dev/null || echo "0")
+	fi
+
+	# Diff stats
+	local staged=$(git diff --cached --numstat 2>/dev/null | wc -l)
+	local modified=$(git diff --numstat 2>/dev/null | wc -l)
+	local untracked=$(git ls-files --others --exclude-standard 2>/dev/null | wc -l)
+
+	# Lines changed
+	local lines_added=$(git diff --numstat 2>/dev/null | awk '{sum+=$1} END {print sum+0}')
+	local lines_deleted=$(git diff --numstat 2>/dev/null | awk '{sum+=$2} END {print sum+0}')
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "repo_path" "$repo_path"
+	json_add_string "branch" "$branch"
+	json_add_string "remote_branch" "$remote_branch"
+	json_add_string "commit_hash" "$commit_hash"
+	json_add_string "commit_msg" "$commit_msg"
+	json_add_string "commit_date" "$commit_date"
+	json_add_int "ahead" "${ahead:-0}"
+	json_add_int "behind" "${behind:-0}"
+	json_add_int "staged" "${staged:-0}"
+	json_add_int "modified" "${modified:-0}"
+	json_add_int "untracked" "${untracked:-0}"
+	json_add_int "lines_added" "${lines_added:-0}"
+	json_add_int "lines_deleted" "${lines_deleted:-0}"
+	json_dump
+}
+
+# Get recent commits for evolution graph
+get_commit_history() {
+	read -r input
+	local repo_path limit
+	repo_path=$(echo "$input" | jsonfilter -e '@.path' 2>/dev/null)
+	limit=$(echo "$input" | jsonfilter -e '@.limit' 2>/dev/null)
+
+	[ -z "$repo_path" ] && repo_path="/root/secubox-openwrt"
+	[ -z "$limit" ] && limit=20
+
+	if [ ! -d "$repo_path/.git" ]; then
+		json_error "Not a git repository: $repo_path"
+		return
+	fi
+
+	cd "$repo_path" || { json_error "Cannot access $repo_path"; return; }
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_array "commits"
+
+	git log --pretty=format:'%H|%h|%s|%an|%ae|%ci|%cr' -n "$limit" 2>/dev/null | while IFS='|' read -r hash short_hash msg author email date relative; do
+		# Get stats for this commit
+		local stats=$(git show --stat --format='' "$hash" 2>/dev/null | tail -1)
+		local files_changed=$(echo "$stats" | grep -oP '\d+(?= files? changed)' || echo "0")
+		local insertions=$(echo "$stats" | grep -oP '\d+(?= insertions?)' || echo "0")
+		local deletions=$(echo "$stats" | grep -oP '\d+(?= deletions?)' || echo "0")
+
+		json_add_object ""
+		json_add_string "hash" "$hash"
+		json_add_string "short_hash" "$short_hash"
+		json_add_string "message" "$msg"
+		json_add_string "author" "$author"
+		json_add_string "date" "$date"
+		json_add_string "relative" "$relative"
+		json_add_int "files_changed" "${files_changed:-0}"
+		json_add_int "insertions" "${insertions:-0}"
+		json_add_int "deletions" "${deletions:-0}"
+		json_close_object
+	done
+
+	json_close_array
+	json_dump
+}
+
+# Get daily commit stats for graph
+get_commit_stats() {
+	read -r input
+	local repo_path days
+	repo_path=$(echo "$input" | jsonfilter -e '@.path' 2>/dev/null)
+	days=$(echo "$input" | jsonfilter -e '@.days' 2>/dev/null)
+
+	[ -z "$repo_path" ] && repo_path="/root/secubox-openwrt"
+	[ -z "$days" ] && days=30
+
+	if [ ! -d "$repo_path/.git" ]; then
+		json_error "Not a git repository: $repo_path"
+		return
+	fi
+
+	cd "$repo_path" || { json_error "Cannot access $repo_path"; return; }
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_array "daily_stats"
+
+	# Get commits per day for last N days
+	for i in $(seq 0 $((days - 1))); do
+		local date_str=$(date -d "-${i} days" +%Y-%m-%d 2>/dev/null || date -v-${i}d +%Y-%m-%d 2>/dev/null)
+		[ -z "$date_str" ] && continue
+
+		local count=$(git log --after="${date_str} 00:00" --before="${date_str} 23:59" --oneline 2>/dev/null | wc -l)
+
+		json_add_object ""
+		json_add_string "date" "$date_str"
+		json_add_int "commits" "${count:-0}"
+		json_close_object
+	done
+
+	json_close_array
+
+	# Total stats
+	local total_commits=$(git rev-list --count HEAD 2>/dev/null || echo "0")
+	local total_authors=$(git log --format='%ae' | sort -u | wc -l)
+
+	json_add_int "total_commits" "$total_commits"
+	json_add_int "total_authors" "$total_authors"
+	json_dump
+}
+
 # Create backup
 create_backup() {
 	local result
@@ -789,7 +935,10 @@ case "$1" in
 			"create_backup": {},
 			"list_backups": {},
 			"restore_backup": {"file": "str"},
-			"get_install_progress": {}
+			"get_install_progress": {},
+			"get_repo_status": {"path": "str"},
+			"get_commit_history": {"path": "str", "limit": 20},
+			"get_commit_stats": {"path": "str", "days": 30}
 		}
 		EOF
 		;;
@@ -860,6 +1009,15 @@ case "$1" in
 				;;
 			get_install_progress)
 				get_install_progress
+				;;
+			get_repo_status)
+				get_repo_status
+				;;
+			get_commit_history)
+				get_commit_history
+				;;
+			get_commit_stats)
+				get_commit_stats
 				;;
 			*)
 				json_error "Unknown method: $2"
