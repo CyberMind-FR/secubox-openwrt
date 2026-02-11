@@ -67,6 +67,9 @@ _list_all_methods() {
 	# P2P module
 	type list_methods_p2p >/dev/null 2>&1 && list_methods_p2p
 
+	# Stats module (evolution, timeline, heartbeat line)
+	type list_methods_stats >/dev/null 2>&1 && list_methods_stats
+
 	json_dump
 }
 
@@ -140,6 +143,11 @@ _call_method() {
 	# P2P methods
 	if type handle_p2p >/dev/null 2>&1; then
 		handle_p2p "$method" && return 0
+	fi
+
+	# Stats methods (evolution, timeline, heartbeat line)
+	if type handle_stats >/dev/null 2>&1; then
+		handle_stats "$method" && return 0
 	fi
 
 	# Unknown method

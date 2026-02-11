@@ -6,7 +6,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-core
 PKG_VERSION:=0.10.0
-PKG_RELEASE:=15
+PKG_RELEASE:=16
 PKG_ARCH:=all
 PKG_LICENSE:=GPL-2.0
 PKG_MAINTAINER:=SecuBox Team
@@ -88,6 +88,7 @@ define Package/secubox-core/install
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-feedback $(1)/usr/sbin/
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-tftp-recovery $(1)/usr/sbin/
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-vhost $(1)/usr/sbin/
+	$(INSTALL_BIN) ./root/usr/sbin/secubox-stats-persist $(1)/usr/sbin/
 
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) ./root/usr/bin/secubox-services-status $(1)/usr/bin/
@@ -95,9 +96,10 @@ define Package/secubox-core/install
 	# TFTP Recovery init script
 	$(INSTALL_BIN) ./root/etc/init.d/secubox-tftp-recovery $(1)/etc/init.d/
 
-	# File integrity monitoring cron job
+	# Cron jobs: integrity monitoring and stats persistence
 	$(INSTALL_DIR) $(1)/etc/cron.d
 	$(INSTALL_DATA) ./root/etc/cron.d/secubox-integrity $(1)/etc/cron.d/
+	$(INSTALL_DATA) ./root/etc/cron.d/secubox-stats-persist $(1)/etc/cron.d/
 
 	# TFTP Mesh library
 	$(INSTALL_DIR) $(1)/usr/lib/secubox

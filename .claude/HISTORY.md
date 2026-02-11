@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-02-10_
+_Last updated: 2026-02-11_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -1122,3 +1122,71 @@ _Last updated: 2026-02-10_
       - Settings: UCI form for configuration
     - **RPCD Handler**: 11 methods (status, get_devices, get_device, get_anomalies, scan, isolate/trust/block_device, get_vendor_rules, add/delete_vendor_rule, get_cloud_map)
     - **ACL**: Public access for status and device list via `unauthenticated` group
+
+59. **InterceptoR "Gandalf Proxy" Implementation (2026-02-11)**
+    - Created `luci-app-interceptor` — unified dashboard for 5-pillar transparent traffic interception.
+    - **Dashboard Features**:
+      - Health Score (0-100%) with color-coded display
+      - 5 Pillar Status Cards: WPAD Redirector, MITM Proxy, CDN Cache, Cookie Tracker, API Failover
+      - Per-pillar stats: threats, connections, hit ratio, trackers, stale serves
+      - Quick links to individual module dashboards
+    - **RPCD Handler** (`luci.interceptor`):
+      - `status`: Aggregates status from all 5 pillars
+      - `getPillarStatus`: Individual pillar details
+      - Health score calculation: 20 points per active pillar
+      - Checks: WPAD PAC file, mitmproxy LXC, Squid process, Cookie Tracker UCI, API Failover UCI
+    - Created `secubox-cookie-tracker` package — Cookie classification database + mitmproxy addon.
+      - **SQLite database** (`/var/lib/cookie-tracker/cookies.db`): domain, name, category, seen times, blocked status
+      - **Categories**: essential, functional, analytics, advertising, tracking
+      - **mitmproxy addon** (`mitmproxy-addon.py`): Real-time cookie extraction from Set-Cookie headers
+      - **Known trackers** (`known-trackers.tsv`): 100+ tracker domains (Google Analytics, Facebook, DoubleClick, etc.)
+      - **CLI** (`cookie-trackerctl`): status, list, classify, block, report --json
+      - **Init script**: procd service with SQLite database initialization
+    - Enhanced `luci-app-network-tweaks` with WPAD safety net:
+      - Added `setWpadEnforce`/`getWpadEnforce` RPCD methods
+      - Added `setup_wpad_enforce()` iptables function for non-compliant clients
+      - Redirect TCP 80/443 to Squid proxy for WPAD-ignoring clients
+    - Enhanced `luci-app-cdn-cache` with API failover config:
+      - Added `api_failover` UCI section: stale_if_error, offline_mode, collapsed_forwarding
+      - Modified init.d to generate API failover Squid config (refresh_pattern with stale-if-error)
+      - Created `/etc/hotplug.d/iface/99-cdn-offline` for WAN up/down detection
+      - Automatic offline mode on WAN down, disable on WAN up
+    - Configured `.sblocal` mesh domain via BIND zone file:
+      - Created `/etc/bind/zones/sblocal.zone` for internal service discovery
+      - Added c3box.sblocal A record pointing to 192.168.255.1
+    - Part of InterceptoR transparent proxy architecture (Peek/Poke/Emancipate model).
+
+60. **3-Tier Stats Persistence & Evolution (2026-02-11)**
+    - Created `secubox-stats-persist` — 3-tier caching for never-trashed stats.
+    - **3-Tier Cache Architecture**:
+      - Tier 1: RAM cache (`/tmp/secubox/*.json`) — 3-30 second updates
+      - Tier 2: Volatile buffer — atomic writes with tmp+mv pattern
+      - Tier 3: Persistent storage (`/srv/secubox/stats/`) — survives reboot
+    - **Time-Series Evolution**:
+      - Hourly snapshots (24h retention) per collector
+      - Daily aggregates (30d retention) with min/max/avg
+      - Combined timeline JSON with all collectors
+    - **Heartbeat Line**:
+      - Real-time 60-sample buffer (3min window)
+      - Combined "influence" score: (health×40 + inv_threat×30 + inv_capacity×30)/100
+      - Updated every 3 seconds via daemon loop
+    - **Evolution View**:
+      - 48-hour combined metrics graph
+      - Health, Threat, Capacity, and Influence scores per hour
+      - JSON output for dashboard sparklines
+    - **Boot Recovery**:
+      - On daemon start, recovers cache from persistent storage
+      - Ensures stats continuity across reboots
+    - **RPCD Methods**:
+      - `get_timeline`: 24h evolution for all collectors
+      - `get_evolution`: Combined influence score timeline
+      - `get_heartbeat_line`: Real-time 3min buffer
+      - `get_stats_status`: Persistence status and current values
+      - `get_history`: Historical data for specific collector
+      - `get_collector_cache`: Current cache value for collector
+    - **Cron Jobs**:
+      - Every 5min: Persist cache to /srv (backup)
+      - Every hour: Generate timeline and evolution
+      - Daily: Aggregate hourly to daily, cleanup old data
+    - Integrated into `secubox-core` daemon startup (r16).
+    - Bumped `secubox-core` version to 0.10.0-r16.
