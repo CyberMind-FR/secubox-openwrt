@@ -345,6 +345,11 @@ case "$1" in
 			json_add_string "url" "string"
 			json_add_string "timeout" "integer"
 		json_close_object
+		json_add_object "getWpadEnforce"
+		json_close_object
+		json_add_object "setWpadEnforce"
+			json_add_string "enabled" "boolean"
+		json_close_object
 		json_dump
 		;;
 
@@ -839,6 +844,86 @@ OPKG_EOF
 					json_add_string "status" "$status_msg"
 					json_add_int "response_time_s" "$response_time"
 				json_close_object
+
+				json_dump
+				;;
+
+			getWpadEnforce)
+				# Get WPAD enforcement (iptables redirect) status
+				json_init
+				json_add_boolean "success" 1
+
+				# Check if iptables rules exist for WPAD enforcement
+				enforce_http=0
+				enforce_https=0
+
+				if iptables -t nat -L PREROUTING -n 2>/dev/null | grep -q "SECUBOX_WPAD_HTTP"; then
+					enforce_http=1
+				fi
+				if iptables -t nat -L PREROUTING -n 2>/dev/null | grep -q "SECUBOX_WPAD_HTTPS"; then
+					enforce_https=1
+				fi
+
+				# Check UCI config
+				config_load "$CONFIG"
+				config_get wpad_enforce global wpad_enforce "0"
+
+				json_add_object "wpad_enforce"
+					json_add_boolean "enabled" "$wpad_enforce"
+					json_add_boolean "http_active" "$enforce_http"
+					json_add_boolean "https_active" "$enforce_https"
+				json_close_object
+
+				json_dump
+				;;
+
+			setWpadEnforce)
+				# Enable/disable WPAD enforcement (iptables redirect for non-WPAD clients)
+				read input
+				json_load "$input"
+
+				json_get_var enabled enabled
+
+				# Get router IP and proxy port
+				lan_ip=$(uci get network.lan.ipaddr 2>/dev/null | cut -d'/' -f1)
+				[ -z "$lan_ip" ] && lan_ip="192.168.255.1"
+				proxy_port=$(uci -q get cdn-cache.main.listen_port || echo "3128")
+				lan_iface="br-lan"
+
+				if [ "$enabled" = "1" ] || [ "$enabled" = "true" ]; then
+					# Store setting in UCI
+					uci set ${CONFIG}.global.wpad_enforce='1'
+					uci commit "$CONFIG"
+
+					# Remove existing WPAD enforce rules if any
+					iptables -t nat -D PREROUTING -i "$lan_iface" -p tcp --dport 80 -m comment --comment "SECUBOX_WPAD_HTTP" -j REDIRECT --to-port "$proxy_port" 2>/dev/null
+					iptables -t nat -D PREROUTING -i "$lan_iface" -p tcp --dport 443 -m comment --comment "SECUBOX_WPAD_HTTPS" -j REDIRECT --to-port "$proxy_port" 2>/dev/null
+
+					# Add iptables rules to redirect HTTP/HTTPS to proxy
+					# Skip traffic destined to the router itself
+					iptables -t nat -A PREROUTING -i "$lan_iface" -p tcp --dport 80 ! -d "$lan_ip" -m comment --comment "SECUBOX_WPAD_HTTP" -j REDIRECT --to-port "$proxy_port"
+					iptables -t nat -A PREROUTING -i "$lan_iface" -p tcp --dport 443 ! -d "$lan_ip" -m comment --comment "SECUBOX_WPAD_HTTPS" -j REDIRECT --to-port "$proxy_port"
+
+					logger -t network-tweaks "WPAD enforcement enabled: redirecting HTTP/HTTPS to port $proxy_port"
+
+					json_init
+					json_add_boolean "success" 1
+					json_add_string "message" "WPAD enforcement enabled - traffic redirected to proxy port $proxy_port"
+				else
+					# Store setting in UCI
+					uci set ${CONFIG}.global.wpad_enforce='0'
+					uci commit "$CONFIG"
+
+					# Remove iptables rules
+					iptables -t nat -D PREROUTING -i "$lan_iface" -p tcp --dport 80 -m comment --comment "SECUBOX_WPAD_HTTP" -j REDIRECT --to-port "$proxy_port" 2>/dev/null
+					iptables -t nat -D PREROUTING -i "$lan_iface" -p tcp --dport 443 -m comment --comment "SECUBOX_WPAD_HTTPS" -j REDIRECT --to-port "$proxy_port" 2>/dev/null
+
+					logger -t network-tweaks "WPAD enforcement disabled"
+
+					json_init
+					json_add_boolean "success" 1
+					json_add_string "message" "WPAD enforcement disabled"
+				fi
 
 				json_dump
 				;;

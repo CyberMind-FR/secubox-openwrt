@@ -149,6 +149,28 @@ reload_services() {
 	fi
 }
 
+setup_wpad_enforce() {
+	local enforce
+	enforce=$(uci -q get ${CONFIG_TWEAKS}.global.wpad_enforce)
+	[ "$enforce" != "1" ] && return 0
+
+	local lan_ip proxy_port lan_iface
+	lan_ip=$(uci -q get network.lan.ipaddr | cut -d'/' -f1)
+	[ -z "$lan_ip" ] && lan_ip="192.168.255.1"
+	proxy_port=$(uci -q get cdn-cache.main.listen_port || echo "3128")
+	lan_iface="br-lan"
+
+	# Remove existing rules if any
+	iptables -t nat -D PREROUTING -i "$lan_iface" -p tcp --dport 80 -m comment --comment "SECUBOX_WPAD_HTTP" -j REDIRECT --to-port "$proxy_port" 2>/dev/null
+	iptables -t nat -D PREROUTING -i "$lan_iface" -p tcp --dport 443 -m comment --comment "SECUBOX_WPAD_HTTPS" -j REDIRECT --to-port "$proxy_port" 2>/dev/null
+
+	# Add iptables rules
+	iptables -t nat -A PREROUTING -i "$lan_iface" -p tcp --dport 80 ! -d "$lan_ip" -m comment --comment "SECUBOX_WPAD_HTTP" -j REDIRECT --to-port "$proxy_port"
+	iptables -t nat -A PREROUTING -i "$lan_iface" -p tcp --dport 443 ! -d "$lan_ip" -m comment --comment "SECUBOX_WPAD_HTTPS" -j REDIRECT --to-port "$proxy_port"
+
+	log_msg "WPAD enforcement enabled: redirecting HTTP/HTTPS to port $proxy_port"
+}
+
 cleanup_entries() {
 	log_msg "Cleaning up managed entries..."
 
@@ -198,6 +220,9 @@ sync_all() {
 	fi
 
 	reload_services "$reload_needed"
+
+	# Setup WPAD enforcement iptables rules if enabled
+	setup_wpad_enforce
 
 	log_msg "Synchronization complete"
 }

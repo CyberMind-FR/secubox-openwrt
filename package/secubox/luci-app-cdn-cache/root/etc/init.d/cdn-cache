@@ -251,10 +251,48 @@ cache_log $LOG_DIR/cache.log
 cache_store_log none
 debug_options ALL,$log_level
 
+# === API FAILOVER ===
+EOF
+
+	# Add API failover configuration if enabled
+	local api_enabled stale_if_error offline_mode collapsed_forwarding connect_timeout read_timeout
+	api_enabled=$(uci -q get cdn-cache.api_failover.enabled || echo "1")
+	stale_if_error=$(uci -q get cdn-cache.api_failover.stale_if_error || echo "86400")
+	offline_mode=$(uci -q get cdn-cache.api_failover.offline_mode || echo "0")
+	collapsed_forwarding=$(uci -q get cdn-cache.api_failover.collapsed_forwarding || echo "1")
+	connect_timeout=$(uci -q get cdn-cache.api_failover.connect_timeout || echo "5")
+	read_timeout=$(uci -q get cdn-cache.api_failover.read_timeout || echo "30")
+
+	if [ "$api_enabled" = "1" ]; then
+		cat >> "$SQUID_CONF" << EOF
+# API Failover - serve stale content on backend errors
+refresh_pattern -i /api/ 1 20% 4320 stale-if-error=$stale_if_error ignore-no-store
+refresh_pattern -i \.json\$ 1 20% 4320 stale-if-error=$stale_if_error
+EOF
+
+		if [ "$collapsed_forwarding" = "1" ]; then
+			cat >> "$SQUID_CONF" << EOF
+
+# Collapsed forwarding - combine duplicate requests during backend fetch
+collapsed_forwarding on
+EOF
+		fi
+
+		if [ "$offline_mode" = "1" ]; then
+			cat >> "$SQUID_CONF" << EOF
+
+# Offline mode - serve stale content for all requests
+offline_mode on
+EOF
+		fi
+	fi
+
+	cat >> "$SQUID_CONF" << EOF
+
 # === PERFORMANCE ===
 dns_nameservers 8.8.8.8 8.8.4.4
-connect_timeout 30 seconds
-read_timeout 90 seconds
+connect_timeout $connect_timeout seconds
+read_timeout $read_timeout seconds
 request_timeout 60 seconds
 client_lifetime 1 day
 half_closed_clients off
@@ -262,7 +300,7 @@ pconn_timeout 60 seconds
 quick_abort_min 0 KB
 quick_abort_max 0 KB
 quick_abort_pct 95
-negative_ttl 5 minutes
+negative_ttl 30 seconds
 
 # === CACHE MANAGER ===
 cache_mgr secubox@local

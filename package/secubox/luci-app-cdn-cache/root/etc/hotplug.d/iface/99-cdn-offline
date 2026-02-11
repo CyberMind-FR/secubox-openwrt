@@ -1,0 +1,39 @@
+#!/bin/sh
+# CDN Cache Offline Mode - Auto-detect WAN connectivity
+# Enables offline mode (serve stale) when WAN goes down
+# Disables offline mode when WAN comes back up
+
+# Only handle WAN interface events
+[ "$INTERFACE" = "wan" ] || [ "$INTERFACE" = "wan6" ] || exit 0
+
+# Check if API failover is enabled
+api_enabled=$(uci -q get cdn-cache.api_failover.enabled)
+[ "$api_enabled" = "1" ] || exit 0
+
+case "$ACTION" in
+	ifdown)
+		# WAN went down - enable offline mode
+		logger -t cdn-cache "WAN down ($INTERFACE) - enabling offline mode"
+		uci set cdn-cache.api_failover.offline_mode='1'
+		uci commit cdn-cache
+
+		# Reload Squid to apply offline mode
+		if [ -x /etc/init.d/cdn-cache ]; then
+			/etc/init.d/cdn-cache reload 2>/dev/null &
+		fi
+		;;
+
+	ifup)
+		# WAN came back up - disable offline mode
+		logger -t cdn-cache "WAN up ($INTERFACE) - disabling offline mode"
+		uci set cdn-cache.api_failover.offline_mode='0'
+		uci commit cdn-cache
+
+		# Reload Squid to disable offline mode
+		if [ -x /etc/init.d/cdn-cache ]; then
+			/etc/init.d/cdn-cache reload 2>/dev/null &
+		fi
+		;;
+esac
+
+exit 0

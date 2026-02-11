@@ -5,3 +5,5 @@ config global 'global'
 	option sync_dnsmasq '1'
 	option lan_interface 'lan'
 	option default_ip ''
+	# WPAD enforcement - redirect HTTP/HTTPS from non-WPAD-compliant clients to proxy
+	option wpad_enforce '0'

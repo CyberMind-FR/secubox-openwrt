@@ -1,0 +1,24 @@
+{
+	"luci-app-interceptor": {
+		"description": "Grant access to InterceptoR Dashboard",
+		"read": {
+			"ubus": {
+				"luci.interceptor": ["status", "getPillarStatus"]
+			},
+			"uci": ["network_tweaks", "mitmproxy", "cdn-cache", "cookie-tracker"]
+		},
+		"write": {
+			"ubus": {
+				"luci.interceptor": []
+			}
+		}
+	},
+	"unauthenticated": {
+		"description": "Public access to InterceptoR status",
+		"read": {
+			"ubus": {
+				"luci.interceptor": ["status"]
+			}
+		}
+	}
+}

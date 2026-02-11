@@ -19,7 +19,8 @@ LUCI_PKGARCH:=all
 # - Helper scripts: 755 (if executable)
 # - Config files: 644 (readable by all, writable by root)
 # - CSS/JS files: 644 (set automatically by luci.mk)
-PKG_FILE_MODES:=/usr/libexec/rpcd/luci.cdn-cache:root:root:755
+PKG_FILE_MODES:=/usr/libexec/rpcd/luci.cdn-cache:root:root:755 \
+	/etc/hotplug.d/iface/99-cdn-offline:root:root:755
 
 include $(TOPDIR)/feeds/luci/luci.mk
 

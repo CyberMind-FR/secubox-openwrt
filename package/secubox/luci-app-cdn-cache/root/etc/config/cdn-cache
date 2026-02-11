@@ -87,3 +87,19 @@ config exclusion 'bypass_streaming'
 config statistics 'stats'
 	option retention_days '30'
 	option sample_interval '60'
+
+# API Failover configuration - serve stale content on backend errors
+config api_failover 'api_failover'
+	option enabled '1'
+	# Serve stale content for this many seconds after backend failure
+	option stale_if_error '86400'
+	# Offline mode - serve stale content for all requests (set by hotplug)
+	option offline_mode '0'
+	# Enable collapsed forwarding (combine duplicate requests)
+	option collapsed_forwarding '1'
+	# API URL patterns to cache aggressively
+	list api_patterns '/api/'
+	list api_patterns '.json'
+	# Connection timeouts (seconds)
+	option connect_timeout '5'
+	option read_timeout '30'
