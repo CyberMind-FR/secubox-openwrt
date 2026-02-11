@@ -280,6 +280,102 @@ intel_merge() {
 }
 
 generate_blocklist() {
+    # Detect DNS server
+    local dns_server="dnsmasq"
+    if pgrep -f "/usr/sbin/named" >/dev/null 2>&1 || pidof named >/dev/null 2>&1; then
+        dns_server="bind"
+    fi
+
+    log "Generating blocklist for $dns_server..."
+
+    local count=$(sqlite3 "$BLOCKLIST_DB" "SELECT COUNT(*) FROM domains WHERE blocked=1;")
+
+    if [ "$dns_server" = "bind" ]; then
+        # Generate BIND RPZ zone
+        generate_bind_rpz "$count"
+    else
+        # Generate dnsmasq hosts file
+        generate_dnsmasq_hosts "$count"
+    fi
+}
+
+generate_bind_rpz() {
+    local count="$1"
+    local rpz_zone="/etc/bind/zones/rpz.vortex.zone"
+    local rpz_conf="/etc/bind/named.conf.vortex"
+    local serial=$(date +%Y%m%d%H)
+
+    log "Generating BIND RPZ zone ($count domains)..."
+
+    # Generate RPZ zone file
+    cat > "$rpz_zone" <<EOF
+\$TTL 300
+@   IN  SOA localhost. root.localhost. (
+    $serial ; serial
+    3600    ; refresh
+    600     ; retry
+    86400   ; expire
+    300     ; minimum
+)
+    IN  NS  localhost.
+
+; Vortex DNS Firewall - Response Policy Zone
+; Generated: $(date)
+; Blocked domains: $count
+; Action: NXDOMAIN (block)
+
+EOF
+
+    # Add blocked domains (CNAME . = NXDOMAIN)
+    sqlite3 "$BLOCKLIST_DB" "SELECT domain FROM domains WHERE blocked=1;" | while read -r domain; do
+        echo "$domain CNAME ." >> "$rpz_zone"
+        echo "*.$domain CNAME ." >> "$rpz_zone"
+    done
+
+    log "RPZ zone written: $rpz_zone"
+
+    # Generate BIND config include
+    cat > "$rpz_conf" <<EOF
+// Vortex DNS Firewall - RPZ Configuration
+// Generated: $(date)
+
+zone "rpz.vortex" {
+    type master;
+    file "$rpz_zone";
+    allow-query { none; };
+};
+EOF
+
+    # Check if RPZ is already in named.conf
+    if ! grep -q "response-policy" /etc/bind/named.conf 2>/dev/null; then
+        log "Adding RPZ policy to BIND config..."
+        # Add response-policy to options block
+        sed -i '/^options {/,/^};/ {
+            /^};/ i\    response-policy { zone "rpz.vortex"; };
+        }' /etc/bind/named.conf
+    fi
+
+    # Include vortex config if not already
+    if ! grep -q "named.conf.vortex" /etc/bind/named.conf 2>/dev/null; then
+        echo 'include "/etc/bind/named.conf.vortex";' >> /etc/bind/named.conf
+    fi
+
+    log "BIND RPZ config written: $rpz_conf"
+
+    # Reload BIND
+    if [ -x /etc/init.d/named ]; then
+        /etc/init.d/named reload 2>/dev/null || /etc/init.d/named restart 2>/dev/null
+        log "BIND reloaded"
+    fi
+
+    # Update stats
+    local now=$(date -Iseconds)
+    echo "{\"domains\":$count,\"last_update\":\"$now\",\"blocks\":0,\"queries\":0,\"dns_server\":\"bind\"}" > "$STATS_FILE"
+}
+
+generate_dnsmasq_hosts() {
+    local count="$1"
+
     log "Generating dnsmasq blocklist..."
 
     # Generate hosts file for sinkhole
@@ -290,7 +386,6 @@ generate_blocklist() {
     sqlite3 -separator ' ' "$BLOCKLIST_DB" \
         "SELECT '$SINKHOLE_IP', domain FROM domains WHERE blocked=1;" >> "$BLOCKLIST_HOSTS"
 
-    local count=$(grep -c "^$SINKHOLE_IP" "$BLOCKLIST_HOSTS")
     log "Generated $count sinkhole entries"
 
     # Generate dnsmasq config
