@@ -326,7 +326,8 @@
       "Bash(fuser:*)",
       "Bash(lsof:*)",
       "Bash(arp:*)",
-      "Bash(ip link:*)"
+      "Bash(ip link:*)",
+      "Bash(git describe:*)"
     ]
   }
 }

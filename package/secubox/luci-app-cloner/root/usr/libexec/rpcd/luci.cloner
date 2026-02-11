@@ -86,30 +86,41 @@ do_status() {
 }
 
 do_list_images() {
-	local img name
+	local img name device_type
 
 	json_init
 	json_add_array "images"
 
-	# TFTP ready image
-	if [ -f "$TFTP_ROOT/secubox-clone.img" ]; then
+	# All TFTP-ready images
+	for img in "$TFTP_ROOT"/secubox-clone*.img; do
+		[ -f "$img" ] || continue
+		name=$(basename "$img")
+		# Extract device type from filename
+		device_type=$(echo "$name" | sed -n 's/secubox-clone-\(.*\)\.img/\1/p')
+		[ -z "$device_type" ] && device_type="mochabin"
 		json_add_object ""
-		json_add_string "name" "secubox-clone.img"
-		json_add_string "path" "$TFTP_ROOT/secubox-clone.img"
-		json_add_string "size" "$(ls -lh "$TFTP_ROOT/secubox-clone.img" | awk '{print $5}')"
+		json_add_string "name" "$name"
+		json_add_string "path" "$img"
+		json_add_string "size" "$(ls -lh "$img" | awk '{print $5}')"
+		json_add_string "device" "$device_type"
 		json_add_boolean "tftp_ready" 1
 		json_close_object
-	fi
+	done
 
-	# Clone directory images
+	# Clone directory images (not yet in TFTP)
 	if [ -d "$CLONE_DIR" ]; then
 		for img in "$CLONE_DIR"/*.img "$CLONE_DIR"/*.img.gz; do
 			[ -f "$img" ] || continue
 			name=$(basename "$img")
+			# Skip if already in TFTP
+			[ -f "$TFTP_ROOT/${name%.gz}" ] && continue
+			device_type=$(echo "$name" | sed -n 's/secubox-clone-\(.*\)\.img.*/\1/p')
+			[ -z "$device_type" ] && device_type="unknown"
 			json_add_object ""
 			json_add_string "name" "$name"
 			json_add_string "path" "$img"
 			json_add_string "size" "$(ls -lh "$img" | awk '{print $5}')"
+			json_add_string "device" "$device_type"
 			json_add_boolean "tftp_ready" 0
 			json_close_object
 		done
@@ -219,17 +230,60 @@ EOF
 }
 
 do_build_image() {
+	local input device_type
+
+	read input
+	device_type=$(echo "$input" | jsonfilter -e '@.device_type' 2>/dev/null)
+
 	json_init
 
 	if [ -x /usr/sbin/secubox-cloner ]; then
-		(/usr/sbin/secubox-cloner build 2>&1 > /tmp/cloner-build.log) &
-		json_add_boolean "success" 1
-		json_add_string "message" "Build started in background"
+		if [ -n "$device_type" ]; then
+			(/usr/sbin/secubox-cloner build "$device_type" 2>&1 > /tmp/cloner-build.log) &
+			json_add_boolean "success" 1
+			json_add_string "message" "Build started for $device_type"
+		else
+			(/usr/sbin/secubox-cloner build 2>&1 > /tmp/cloner-build.log) &
+			json_add_boolean "success" 1
+			json_add_string "message" "Build started for current device"
+		fi
 	else
 		json_add_boolean "success" 0
 		json_add_string "message" "secubox-cloner not installed"
 	fi
 
+	json_dump
+}
+
+do_list_devices() {
+	json_init
+	json_add_array "devices"
+
+	json_add_object ""
+	json_add_string "id" "mochabin"
+	json_add_string "name" "Globalscale MOCHAbin"
+	json_add_string "cpu" "Cortex-A72"
+	json_close_object
+
+	json_add_object ""
+	json_add_string "id" "espressobin-v7"
+	json_add_string "name" "Globalscale ESPRESSObin v7"
+	json_add_string "cpu" "Cortex-A53"
+	json_close_object
+
+	json_add_object ""
+	json_add_string "id" "espressobin-ultra"
+	json_add_string "name" "Globalscale ESPRESSObin Ultra"
+	json_add_string "cpu" "Cortex-A53"
+	json_close_object
+
+	json_add_object ""
+	json_add_string "id" "x86-64"
+	json_add_string "name" "Generic x86-64"
+	json_add_string "cpu" "x86_64"
+	json_close_object
+
+	json_close_array
 	json_dump
 }
 
@@ -301,8 +355,9 @@ case "$1" in
 		echo '"list_images":{},'
 		echo '"list_tokens":{},'
 		echo '"list_clones":{},'
+		echo '"list_devices":{},'
 		echo '"generate_token":{"auto_approve":"Boolean"},'
-		echo '"build_image":{},'
+		echo '"build_image":{"device_type":"String"},'
 		echo '"tftp_start":{},'
 		echo '"tftp_stop":{},'
 		echo '"delete_token":{"token":"String"},'
@@ -315,6 +370,7 @@ case "$1" in
 			list_images) do_list_images ;;
 			list_tokens) do_list_tokens ;;
 			list_clones) do_list_clones ;;
+			list_devices) do_list_devices ;;
 			generate_token) do_generate_token ;;
 			build_image) do_build_image ;;
 			tftp_start) do_tftp_start ;;

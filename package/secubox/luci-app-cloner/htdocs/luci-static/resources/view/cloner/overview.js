@@ -37,7 +37,14 @@ var callGenerateToken = rpc.declare({
 
 var callBuildImage = rpc.declare({
 	object: 'luci.cloner',
-	method: 'build_image'
+	method: 'build_image',
+	params: ['device_type']
+});
+
+var callListDevices = rpc.declare({
+	object: 'luci.cloner',
+	method: 'list_devices',
+	expect: { devices: [] }
 });
 
 var callTftpStart = rpc.declare({
@@ -62,7 +69,8 @@ return view.extend({
 			callGetStatus(),
 			callListImages(),
 			callListTokens(),
-			callListClones()
+			callListClones(),
+			callListDevices()
 		]);
 	},
 
@@ -71,6 +79,7 @@ return view.extend({
 		var images = data[1].images || [];
 		var tokens = data[2].tokens || [];
 		var clones = data[3].clones || [];
+		var devices = data[4].devices || [];
 
 		var view = E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, 'Cloning Station'),
@@ -117,13 +126,14 @@ return view.extend({
 				E('h3', {}, 'Clone Images'),
 				E('table', { 'class': 'table', 'id': 'images-table' }, [
 					E('tr', { 'class': 'tr table-titles' }, [
+						E('th', { 'class': 'th' }, 'Device'),
 						E('th', { 'class': 'th' }, 'Name'),
 						E('th', { 'class': 'th' }, 'Size'),
 						E('th', { 'class': 'th' }, 'TFTP Ready'),
 						E('th', { 'class': 'th' }, 'Actions')
 					])
 				].concat(images.length > 0 ? images.map(L.bind(this.renderImageRow, this)) :
-					[E('tr', { 'class': 'tr' }, [E('td', { 'class': 'td', 'colspan': 4, 'style': 'text-align:center;' },
+					[E('tr', { 'class': 'tr' }, [E('td', { 'class': 'td', 'colspan': 5, 'style': 'text-align:center;' },
 						'No images available. Click "Build Image" to create one.')])]
 				))
 			]),
@@ -194,10 +204,17 @@ return view.extend({
 	},
 
 	renderImageRow: function(img) {
+		var deviceBadge = E('span', {
+			'style': 'padding:2px 8px;border-radius:4px;font-size:12px;background:#3b82f622;color:#3b82f6;'
+		}, img.device || 'unknown');
+
 		return E('tr', { 'class': 'tr' }, [
-			E('td', { 'class': 'td', 'style': 'font-family:monospace;' }, img.name),
+			E('td', { 'class': 'td' }, deviceBadge),
+			E('td', { 'class': 'td', 'style': 'font-family:monospace;font-size:12px;' }, img.name),
 			E('td', { 'class': 'td' }, img.size),
-			E('td', { 'class': 'td' }, img.tftp_ready ? 'Yes' : 'No'),
+			E('td', { 'class': 'td' }, img.tftp_ready ?
+				E('span', { 'style': 'color:#22c55e;' }, 'Ready') :
+				E('span', { 'style': 'color:#f59e0b;' }, 'Pending')),
 			E('td', { 'class': 'td' }, '-')
 		]);
 	},
@@ -231,20 +248,34 @@ return view.extend({
 	},
 
 	handleBuild: function() {
-		ui.showModal('Build Clone Image', [
-			E('p', {}, 'This will build a clone image of the current system.'),
-			E('p', {}, 'The image can then be flashed to other devices of the same type.'),
-			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
-				' ',
-				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': L.bind(function() {
-					ui.hideModal();
-					callBuildImage().then(L.bind(function(res) {
-						ui.addNotification(null, E('p', res.message || 'Build started'), 'info');
-					}, this));
-				}, this) }, 'Build')
-			])
-		]);
+		var self = this;
+		callListDevices().then(function(data) {
+			var devices = data.devices || [];
+			var select = E('select', { 'id': 'device-select', 'class': 'cbi-input-select', 'style': 'width:100%;' });
+
+			devices.forEach(function(dev) {
+				select.appendChild(E('option', { 'value': dev.id }, dev.name + ' (' + dev.cpu + ')'));
+			});
+
+			ui.showModal('Build Clone Image', [
+				E('p', {}, 'Select the target device type to build an image for:'),
+				E('div', { 'style': 'margin:15px 0;' }, select),
+				E('p', { 'style': 'color:#888;font-size:12px;' }, 'The image will be built via ASU API and may take several minutes.'),
+				E('div', { 'class': 'right' }, [
+					E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
+					' ',
+					E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() {
+						var deviceType = document.getElementById('device-select').value;
+						ui.hideModal();
+						ui.addNotification(null, E('p', 'Building image for ' + deviceType + '...'), 'info');
+						callBuildImage(deviceType).then(function(res) {
+							ui.addNotification(null, E('p', res.message || 'Build started'), 'info');
+							self.refresh();
+						});
+					} }, 'Build')
+				])
+			]);
+		});
 	},
 
 	handleTftp: function(start) {
