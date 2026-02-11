@@ -14,6 +14,11 @@ var callAlerts = rpc.declare({
 	method: 'alerts'
 });
 
+var callSubdomainMetrics = rpc.declare({
+	object: 'luci.mitmproxy',
+	method: 'subdomain_metrics'
+});
+
 var callStart = rpc.declare({
 	object: 'luci.mitmproxy',
 	method: 'start'
@@ -49,6 +54,17 @@ var callSyncRoutes = rpc.declare({
 	method: 'sync_routes'
 });
 
+var callBans = rpc.declare({
+	object: 'luci.mitmproxy',
+	method: 'bans'
+});
+
+var callUnban = rpc.declare({
+	object: 'luci.mitmproxy',
+	method: 'unban',
+	params: ['ip']
+});
+
 function severityColor(sev) {
 	return { critical: '#e74c3c', high: '#e67e22', medium: '#f39c12', low: '#3498db' }[sev] || '#666';
 }
@@ -61,7 +77,9 @@ return view.extend({
 	load: function() {
 		return Promise.all([
 			callStatus().catch(function() { return {}; }),
-			callAlerts().catch(function() { return { alerts: [] }; })
+			callAlerts().catch(function() { return { alerts: [] }; }),
+			callSubdomainMetrics().catch(function() { return { metrics: { subdomains: {} } }; }),
+			callBans().catch(function() { return { total: 0, mitmproxy_autoban: 0, crowdsec: 0, bans: [] }; })
 		]);
 	},
 
@@ -69,6 +87,10 @@ return view.extend({
 		var status = data[0] || {};
 		var alertsData = data[1] || {};
 		var alerts = alertsData.alerts || [];
+		var metricsData = data[2] || {};
+		var subdomains = (metricsData.metrics && metricsData.metrics.subdomains) || {};
+		var bansData = data[3] || {};
+		var bans = bansData.bans || [];
 		var self = this;
 
 		var view = E('div', { 'class': 'cbi-map' }, [
@@ -210,6 +232,143 @@ return view.extend({
 				])
 			]),
 
+			// Recent Alerts Card
+			E('div', { 'class': 'cbi-section' }, [
+				E('h3', {}, [
+					_('Recent Alerts'),
+					' ',
+					E('span', { 'style': 'font-size: 14px; font-weight: normal; color: #666;' },
+						'(' + alerts.length + ' alerts)')
+				]),
+				alerts.length > 0 ?
+					E('div', {}, [
+						E('table', { 'class': 'table', 'style': 'font-size: 13px;' }, [
+							E('tr', { 'class': 'tr cbi-section-table-titles' }, [
+								E('th', { 'class': 'th' }, _('Time')),
+								E('th', { 'class': 'th' }, _('IP')),
+								E('th', { 'class': 'th' }, _('Country')),
+								E('th', { 'class': 'th' }, _('Type')),
+								E('th', { 'class': 'th' }, _('Severity')),
+								E('th', { 'class': 'th' }, _('Details'))
+							])
+						].concat(alerts.slice(0, 25).map(function(alert) {
+							// Backend uses: timestamp, source_ip, country, type, severity, pattern, category, cve, request
+							var timeStr = alert.timestamp || alert.time || '';
+							var time = timeStr ? (timeStr.split('T')[1] || '').split('.')[0] || timeStr.substring(11, 19) : '-';
+							var ip = alert.source_ip || alert.ip || '-';
+							var country = alert.country || '-';
+							var type = alert.type || alert.pattern || '-';
+							var severity = alert.severity || 'medium';
+							var details = alert.pattern || alert.category || alert.cve || alert.request || '-';
+
+							return E('tr', { 'class': 'tr' }, [
+								E('td', { 'class': 'td', 'style': 'font-family: monospace; font-size: 11px; color: #666;' }, time),
+								E('td', { 'class': 'td', 'style': 'font-family: monospace; font-weight: 500;' }, ip),
+								E('td', { 'class': 'td', 'style': 'font-size: 11px;' }, country),
+								E('td', { 'class': 'td' }, [
+									E('span', {
+										'style': 'background: #3498db; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; text-transform: uppercase;'
+									}, type)
+								]),
+								E('td', { 'class': 'td' }, [
+									E('span', {
+										'style': 'color: ' + severityColor(severity) + '; font-weight: 500;'
+									}, severityIcon(severity) + ' ' + severity)
+								]),
+								E('td', { 'class': 'td', 'style': 'max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: #666;', 'title': details }, details)
+							]);
+						}))),
+						alerts.length > 25 ? E('p', { 'style': 'text-align: center; color: #666; font-size: 12px; margin-top: 8px;' },
+							_('Showing 25 of ') + alerts.length + _(' alerts')) : null,
+						E('div', { 'style': 'margin-top: 12px;' }, [
+							E('button', {
+								'class': 'btn cbi-button cbi-button-reset',
+								'click': function() {
+									if (!confirm(_('Clear all alerts?'))) return;
+									ui.showModal(_('Clearing...'), [E('p', { 'class': 'spinning' }, _('Clearing alerts...'))]);
+									callClearAlerts().then(function() { ui.hideModal(); location.reload(); });
+								}
+							}, _('Clear Alerts'))
+						])
+					]) :
+					E('div', { 'class': 'cbi-section-node', 'style': 'text-align: center; padding: 40px; color: #27ae60;' }, [
+						E('div', { 'style': 'font-size: 48px; margin-bottom: 16px;' }, '✅'),
+						E('p', {}, _('No recent alerts')),
+						E('p', { 'style': 'font-size: 12px; color: #666;' }, _('All traffic appears normal.'))
+					])
+			]),
+
+			// Active Bans Card
+			E('div', { 'class': 'cbi-section' }, [
+				E('h3', {}, [
+					_('Active Bans'),
+					' ',
+					E('span', { 'style': 'font-size: 14px; font-weight: normal; color: #666;' },
+						'(' + (bansData.total || 0) + ' total: ' + (bansData.mitmproxy_autoban || 0) + ' WAF, ' + (bansData.crowdsec || 0) + ' CrowdSec)')
+				]),
+				bans.length > 0 ?
+					E('div', {}, [
+						E('table', { 'class': 'table', 'style': 'font-size: 13px;' }, [
+							E('tr', { 'class': 'tr cbi-section-table-titles' }, [
+								E('th', { 'class': 'th' }, _('IP Address')),
+								E('th', { 'class': 'th' }, _('Reason')),
+								E('th', { 'class': 'th' }, _('Source')),
+								E('th', { 'class': 'th' }, _('Country')),
+								E('th', { 'class': 'th' }, _('Expires')),
+								E('th', { 'class': 'th', 'style': 'width: 80px;' }, _('Action'))
+							])
+						].concat(bans.slice(0, 50).map(function(ban) {
+							var decision = (ban.decisions && ban.decisions[0]) || {};
+							var ip = decision.value || ban.source?.ip || '-';
+							var reason = decision.scenario || ban.scenario || '-';
+							var origin = decision.origin || 'unknown';
+							var country = ban.source?.cn || '-';
+							var duration = decision.duration || '-';
+
+							// Shorten reason for display
+							if (reason.length > 50) {
+								reason = reason.substring(0, 47) + '...';
+							}
+
+							return E('tr', { 'class': 'tr' }, [
+								E('td', { 'class': 'td', 'style': 'font-family: monospace; font-weight: 500;' }, ip),
+								E('td', { 'class': 'td', 'style': 'max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;', 'title': decision.scenario || ban.scenario }, reason),
+								E('td', { 'class': 'td' }, [
+									E('span', {
+										'style': 'background: ' + (origin === 'cscli' ? '#e67e22' : origin === 'crowdsec' ? '#3498db' : '#95a5a6') + '; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; text-transform: uppercase;'
+									}, origin === 'cscli' ? 'WAF' : origin)
+								]),
+								E('td', { 'class': 'td', 'style': 'font-size: 11px;' }, country),
+								E('td', { 'class': 'td', 'style': 'font-size: 11px; color: #666;' }, duration),
+								E('td', { 'class': 'td' }, [
+									E('button', {
+										'class': 'btn cbi-button cbi-button-remove',
+										'style': 'font-size: 11px; padding: 2px 8px;',
+										'click': function() {
+											if (!confirm(_('Unban IP %s?').format(ip))) return;
+											ui.showModal(_('Unbanning...'), [E('p', { 'class': 'spinning' }, _('Removing ban for ') + ip)]);
+											callUnban(ip).then(function(res) {
+												ui.hideModal();
+												if (res && res.success) {
+													ui.addNotification(null, E('p', {}, _('Unbanned: ') + ip), 'success');
+													location.reload();
+												} else {
+													ui.addNotification(null, E('p', {}, _('Failed to unban: ') + (res.error || 'Unknown error')), 'error');
+												}
+											});
+										}
+									}, _('Unban'))
+								])
+							]);
+						})))
+					]) :
+					E('div', { 'class': 'cbi-section-node', 'style': 'text-align: center; padding: 40px; color: #27ae60;' }, [
+						E('div', { 'style': 'font-size: 48px; margin-bottom: 16px;' }, '✅'),
+						E('p', {}, _('No active bans')),
+						E('p', { 'style': 'font-size: 12px; color: #666;' }, _('All traffic is currently allowed.'))
+					])
+			]),
+
 			// HAProxy Backend Inspection Card
 			E('div', { 'class': 'cbi-section' }, [
 				E('h3', {}, _('HAProxy Backend Inspection')),
@@ -282,62 +441,61 @@ return view.extend({
 				])
 			]),
 
-			// Security Threats Card
+			// Subdomain Metrics Card
 			E('div', { 'class': 'cbi-section' }, [
 				E('h3', {}, [
-					_('Security Threats'),
+					_('Subdomain Metrics'),
 					' ',
 					E('span', { 'style': 'font-size: 14px; font-weight: normal; color: #666;' },
-						'(' + alerts.length + ' detected)')
+						'(' + Object.keys(subdomains).length + ' domains)')
 				]),
-				alerts.length > 0 ?
+				Object.keys(subdomains).length > 0 ?
 					E('div', {}, [
-						E('div', { 'style': 'margin-bottom: 12px;' }, [
-							E('button', {
-								'class': 'btn cbi-button',
-								'click': function() {
-									if (confirm(_('Clear all alerts?'))) {
-										callClearAlerts().then(function() { location.reload(); });
-									}
-								}
-							}, _('Clear Alerts'))
-						]),
 						E('table', { 'class': 'table', 'style': 'font-size: 13px;' }, [
 							E('tr', { 'class': 'tr cbi-section-table-titles' }, [
-								E('th', { 'class': 'th' }, _('Severity')),
-								E('th', { 'class': 'th' }, _('Type')),
-								E('th', { 'class': 'th' }, _('Path')),
-								E('th', { 'class': 'th' }, _('Source')),
-								E('th', { 'class': 'th' }, _('Time'))
+								E('th', { 'class': 'th' }, _('Subdomain')),
+								E('th', { 'class': 'th', 'style': 'text-align: right;' }, _('Requests')),
+								E('th', { 'class': 'th', 'style': 'text-align: right;' }, _('Threats')),
+								E('th', { 'class': 'th' }, _('Protocol')),
+								E('th', { 'class': 'th' }, _('Top URI')),
+								E('th', { 'class': 'th' }, _('Countries'))
 							])
-						].concat(alerts.slice(-20).reverse().map(function(alert) {
-							// Handle both old format (method/path) and new format (request)
-							var requestStr = alert.request || ((alert.method || 'GET') + ' ' + (alert.path || '-'));
-							var sourceIp = alert.source_ip || alert.ip || '-';
-							var timeStr = alert.timestamp || alert.time || '';
-							var timeDisplay = timeStr ? timeStr.split('T')[1].split('.')[0] : '-';
+						].concat(Object.keys(subdomains).sort(function(a, b) {
+							return (subdomains[b].requests || 0) - (subdomains[a].requests || 0);
+						}).slice(0, 25).map(function(domain) {
+							var m = subdomains[domain];
+							var protocols = m.protocols || {};
+							var protocolStr = Object.keys(protocols).map(function(p) {
+								return p.toUpperCase() + ':' + protocols[p];
+							}).join(' ');
+							var topUris = m.top_uris || {};
+							var topUri = Object.keys(topUris).sort(function(a, b) {
+								return topUris[b] - topUris[a];
+							})[0] || '-';
+							var countries = m.countries || {};
+							var topCountries = Object.keys(countries).sort(function(a, b) {
+								return countries[b] - countries[a];
+							}).slice(0, 3).join(', ');
+							var threatPct = m.requests > 0 ? ((m.threats / m.requests) * 100).toFixed(1) : 0;
 
 							return E('tr', { 'class': 'tr' }, [
-								E('td', { 'class': 'td' }, [
-									E('span', {
-										'style': 'background: ' + severityColor(alert.severity) + '; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; text-transform: uppercase;'
-									}, severityIcon(alert.severity) + ' ' + (alert.severity || 'unknown'))
+								E('td', { 'class': 'td', 'style': 'font-weight: 500;' }, domain),
+								E('td', { 'class': 'td', 'style': 'text-align: right;' }, String(m.requests || 0)),
+								E('td', { 'class': 'td', 'style': 'text-align: right;' }, [
+									m.threats > 0 ? E('span', {
+										'style': 'background: ' + (threatPct > 10 ? '#e74c3c' : threatPct > 1 ? '#f39c12' : '#27ae60') + '; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px;'
+									}, String(m.threats)) : E('span', { 'style': 'color: #27ae60;' }, '0')
 								]),
-								E('td', { 'class': 'td' }, (alert.pattern || alert.type || '-').replace(/_/g, ' ')),
-								E('td', { 'class': 'td', 'style': 'max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;' },
-									requestStr),
-								E('td', { 'class': 'td' }, [
-									sourceIp,
-									alert.country ? E('span', { 'style': 'margin-left: 4px; color: #666;' }, '(' + alert.country + ')') : null
-								]),
-								E('td', { 'class': 'td', 'style': 'white-space: nowrap; color: #666;' }, timeDisplay)
+								E('td', { 'class': 'td', 'style': 'font-size: 11px;' }, protocolStr || '-'),
+								E('td', { 'class': 'td', 'style': 'max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: #666;' }, topUri),
+								E('td', { 'class': 'td', 'style': 'font-size: 11px; color: #666;' }, topCountries || '-')
 							]);
 						})))
 					]) :
 					E('div', { 'class': 'cbi-section-node', 'style': 'text-align: center; padding: 40px; color: #666;' }, [
-						E('div', { 'style': 'font-size: 48px; margin-bottom: 16px;' }, '✅'),
-						E('p', {}, _('No threats detected')),
-						E('p', { 'style': 'font-size: 12px;' }, _('The analytics addon monitors for SQL injection, XSS, command injection, and other attacks.'))
+						E('div', { 'style': 'font-size: 48px; margin-bottom: 16px;' }, '📊'),
+						E('p', {}, _('No traffic data yet')),
+						E('p', { 'style': 'font-size: 12px;' }, _('Subdomain metrics will appear once traffic flows through the WAF.'))
 					])
 			]),
 

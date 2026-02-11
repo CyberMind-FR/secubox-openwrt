@@ -10,6 +10,16 @@ CONFIG_FILE="/etc/config/client-guardian"
 LOG_FILE="/var/log/client-guardian.log"
 CLIENTS_DB="/tmp/client-guardian-clients.json"
 ALERTS_QUEUE="/tmp/client-guardian-alerts.json"
+CLIENT_GUARDIAN_CACHE="/tmp/secubox/client-guardian.json"
+
+# Read cached status for fast API responses
+get_cached_status() {
+	if [ -f "$CLIENT_GUARDIAN_CACHE" ]; then
+		cat "$CLIENT_GUARDIAN_CACHE"
+	else
+		echo '{"online":0,"approved":0,"quarantine":0,"banned":0,"threats":0,"total":0,"timestamp":0}'
+	fi
+}
 
 # SAFETY LIMITS - prevent accidental mass blocking
 MAX_BLOCKED_DEVICES=10
@@ -1701,11 +1711,12 @@ get_client() {
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"status":{},"clients":{},"zones":{},"parental":{},"alerts":{},"logs":{"limit":"int","level":"str"},"approve_client":{"mac":"str","name":"str","zone":"str","notes":"str"},"ban_client":{"mac":"str","reason":"str"},"quarantine_client":{"mac":"str"},"update_client":{"section":"str","name":"str","zone":"str","notes":"str","daily_quota":"int","static_ip":"str"},"update_zone":{"id":"str","name":"str","bandwidth_limit":"int","content_filter":"str"},"send_test_alert":{"type":"str"},"get_policy":{},"set_policy":{"policy":"str","auto_approve":"bool","session_timeout":"int"},"get_client":{"mac":"str"},"sync_zones":{},"list_profiles":{},"apply_profile":{"profile_id":"str","auto_refresh":"str","refresh_interval":"str","threat_enabled":"str","auto_ban_threshold":"str","auto_quarantine_threshold":"str"},"clear_rules":{},"safety_status":{}}'
+		echo '{"status":{},"status_cached":{},"clients":{},"zones":{},"parental":{},"alerts":{},"logs":{"limit":"int","level":"str"},"approve_client":{"mac":"str","name":"str","zone":"str","notes":"str"},"ban_client":{"mac":"str","reason":"str"},"quarantine_client":{"mac":"str"},"update_client":{"section":"str","name":"str","zone":"str","notes":"str","daily_quota":"int","static_ip":"str"},"update_zone":{"id":"str","name":"str","bandwidth_limit":"int","content_filter":"str"},"send_test_alert":{"type":"str"},"get_policy":{},"set_policy":{"policy":"str","auto_approve":"bool","session_timeout":"int"},"get_client":{"mac":"str"},"sync_zones":{},"list_profiles":{},"apply_profile":{"profile_id":"str","auto_refresh":"str","refresh_interval":"str","threat_enabled":"str","auto_ban_threshold":"str","auto_quarantine_threshold":"str"},"clear_rules":{},"safety_status":{}}'
 		;;
 	call)
 		case "$2" in
 			status) get_status ;;
+			status_cached) get_cached_status ;;
 			clients) get_clients ;;
 			zones) get_zones ;;
 			parental) get_parental ;;

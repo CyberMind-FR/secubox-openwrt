@@ -1,0 +1,82 @@
+#!/bin/sh /etc/rc.common
+
+START=95
+STOP=10
+USE_PROCD=1
+
+NAME="mailserver"
+
+start_service() {
+	local enabled=$(uci -q get mailserver.main.enabled)
+	[ "$enabled" = "1" ] || {
+		echo "Mail server is disabled. Enable with: uci set mailserver.main.enabled=1"
+		return 0
+	}
+
+	local container=$(uci -q get mailserver.main.container)
+	container="${container:-mailserver}"
+
+	if ! lxc-info -n "$container" >/dev/null 2>&1; then
+		echo "Container '$container' not found. Create with: mailctl install"
+		return 1
+	fi
+
+	echo "Starting mail server container: $container"
+	lxc-start -n "$container"
+
+	# Wait for container to get IP
+	sleep 3
+
+	# Start IMAP/SMTP proxies for Docker containers (if socat available)
+	# This allows Docker-based webmail to connect to LXC mailserver
+	if command -v socat >/dev/null 2>&1; then
+		local mail_ip=$(lxc-info -n "$container" -iH 2>/dev/null | head -1)
+		if [ -n "$mail_ip" ]; then
+			# Kill existing proxies
+			pkill -f "socat.*10143" 2>/dev/null
+			pkill -f "socat.*10025" 2>/dev/null
+			# Start IMAP proxy on port 10143 for Docker containers
+			socat TCP-LISTEN:10143,bind=0.0.0.0,fork,reuseaddr TCP:${mail_ip}:143 &
+			# Start SMTP proxy on port 10025 for Docker containers
+			socat TCP-LISTEN:10025,bind=0.0.0.0,fork,reuseaddr TCP:${mail_ip}:25 &
+			echo "Started Docker-to-LXC mail proxies (IMAP:10143, SMTP:10025)"
+		fi
+	fi
+}
+
+stop_service() {
+	local container=$(uci -q get mailserver.main.container)
+	container="${container:-mailserver}"
+
+	# Stop Docker-to-LXC mail proxies
+	pkill -f "socat.*10143" 2>/dev/null
+	pkill -f "socat.*10025" 2>/dev/null
+
+	if lxc-info -n "$container" 2>/dev/null | grep -q "RUNNING"; then
+		echo "Stopping mail server container: $container"
+		lxc-stop -n "$container" -t 30
+	fi
+}
+
+reload_service() {
+	local container=$(uci -q get mailserver.main.container)
+	container="${container:-mailserver}"
+
+	if lxc-info -n "$container" 2>/dev/null | grep -q "RUNNING"; then
+		echo "Reloading mail server services..."
+		lxc-attach -n "$container" -- postfix reload 2>/dev/null
+		lxc-attach -n "$container" -- doveadm reload 2>/dev/null
+	fi
+}
+
+status() {
+	local container=$(uci -q get mailserver.main.container)
+	container="${container:-mailserver}"
+
+	if lxc-info -n "$container" 2>/dev/null | grep -q "RUNNING"; then
+		echo "Mail server: Running"
+		lxc-attach -n "$container" -- postfix status 2>/dev/null
+	else
+		echo "Mail server: Stopped"
+	fi
+}

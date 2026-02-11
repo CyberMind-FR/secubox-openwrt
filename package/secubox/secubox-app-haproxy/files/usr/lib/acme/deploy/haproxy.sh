@@ -47,10 +47,8 @@ deploy() {
 
     echo "Certificate deployed: $HAPROXY_CERTS_DIR/$domain.pem"
 
-    # Reload HAProxy if running
-    if [ -x /etc/init.d/haproxy ]; then
-        /etc/init.d/haproxy reload 2>/dev/null || true
-    fi
+    # Regenerate certs.list for multi-certificate SNI support
+    /usr/sbin/haproxy-sync-certs 2>/dev/null || true
 
     return 0
 }

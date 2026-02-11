@@ -1,0 +1,349 @@
+#!/bin/sh
+# SecuBox Mail Server RPCD Handler
+
+. /usr/share/libubox/jshn.sh
+
+MAILCTL="/usr/sbin/mailctl"
+CONFIG="mailserver"
+
+case "$1" in
+	list)
+		cat <<-EOF
+		{
+			"status": {},
+			"user_list": {},
+			"alias_list": {},
+			"webmail_status": {},
+			"logs": { "lines": "number" },
+			"install": {},
+			"start": {},
+			"stop": {},
+			"restart": {},
+			"user_add": { "email": "string", "password": "string" },
+			"user_del": { "email": "string" },
+			"user_passwd": { "email": "string", "password": "string" },
+			"alias_add": { "alias": "string", "target": "string" },
+			"dns_setup": {},
+			"ssl_setup": {},
+			"webmail_configure": {},
+			"mesh_backup": {},
+			"mesh_sync": { "mode": "string" },
+			"fix_ports": {}
+		}
+		EOF
+		;;
+
+	call)
+		case "$2" in
+			status)
+				json_init
+
+				enabled=$(uci -q get $CONFIG.main.enabled)
+				container=$(uci -q get $CONFIG.main.container)
+				container="${container:-mailserver}"
+				domain=$(uci -q get $CONFIG.main.domain)
+				hostname=$(uci -q get $CONFIG.main.hostname)
+				hostname="${hostname:-mail}"
+				data_path=$(uci -q get $CONFIG.main.data_path)
+				data_path="${data_path:-/srv/mailserver}"
+
+				# Container state
+				state="stopped"
+				lxc-info -n "$container" 2>/dev/null | grep -q "RUNNING" && state="running"
+
+				# User count
+				user_count=0
+				[ -f "$data_path/config/users" ] && user_count=$(wc -l < "$data_path/config/users" 2>/dev/null || echo "0")
+
+				# Storage
+				storage=$(du -sh "$data_path" 2>/dev/null | awk '{print $1}')
+
+				# SSL status
+				ssl_valid=0
+				if [ -f "$data_path/ssl/fullchain.pem" ]; then
+					expiry=$(openssl x509 -in "$data_path/ssl/fullchain.pem" -noout -enddate 2>/dev/null | cut -d= -f2)
+					[ -n "$expiry" ] && ssl_valid=1
+				fi
+
+				# Webmail
+				webmail_container=$(uci -q get $CONFIG.webmail.container)
+				webmail_container="${webmail_container:-secubox-webmail}"
+				webmail_running=0
+				docker ps 2>/dev/null | grep -q "$webmail_container" && webmail_running=1
+
+				# Mesh
+				mesh_enabled=$(uci -q get $CONFIG.mesh.enabled)
+
+				json_add_boolean "enabled" "${enabled:-0}"
+				json_add_string "state" "$state"
+				json_add_string "container" "$container"
+				json_add_string "domain" "${domain:-not set}"
+				json_add_string "hostname" "$hostname"
+				json_add_string "fqdn" "${hostname}.${domain}"
+				json_add_int "users" "$user_count"
+				json_add_string "storage" "${storage:-0}"
+				json_add_boolean "ssl_valid" "$ssl_valid"
+				json_add_boolean "webmail_running" "$webmail_running"
+				json_add_string "webmail_container" "$webmail_container"
+				json_add_boolean "mesh_enabled" "${mesh_enabled:-0}"
+
+				# Port status - check inside container
+				json_add_object "ports"
+				container_ports=""
+				if [ "$state" = "running" ]; then
+					container_ports=$(lxc-attach -n "$container" -- netstat -tln 2>/dev/null)
+				fi
+				for port in 25 587 465 993 995; do
+					if echo "$container_ports" | grep -q ":$port "; then
+						json_add_boolean "$port" 1
+					else
+						json_add_boolean "$port" 0
+					fi
+				done
+				json_close_object
+
+				json_dump
+				;;
+
+			user_list)
+				data_path=$(uci -q get $CONFIG.main.data_path)
+				data_path="${data_path:-/srv/mailserver}"
+
+				json_init
+				json_add_array "users"
+
+				if [ -f "$data_path/config/users" ]; then
+					while IFS=: read -r email hash; do
+						[ -z "$email" ] && continue
+						udomain=$(echo "$email" | cut -d@ -f2)
+						user=$(echo "$email" | cut -d@ -f1)
+						maildir="$data_path/mail/$udomain/$user"
+						size=$(du -sh "$maildir" 2>/dev/null | awk '{print $1}')
+						count=$(find "$maildir" -type f 2>/dev/null | wc -l)
+
+						json_add_object ""
+						json_add_string "email" "$email"
+						json_add_string "size" "${size:-0}"
+						json_add_int "messages" "$count"
+						json_close_object
+					done < "$data_path/config/users"
+				fi
+
+				json_close_array
+				json_dump
+				;;
+
+			alias_list)
+				data_path=$(uci -q get $CONFIG.main.data_path)
+				data_path="${data_path:-/srv/mailserver}"
+
+				json_init
+				json_add_array "aliases"
+
+				if [ -f "$data_path/config/valias" ]; then
+					while read -r aalias target; do
+						[ -z "$aalias" ] && continue
+						json_add_object ""
+						json_add_string "alias" "$aalias"
+						json_add_string "target" "$target"
+						json_close_object
+					done < "$data_path/config/valias"
+				fi
+
+				json_close_array
+				json_dump
+				;;
+
+			webmail_status)
+				webmail_container=$(uci -q get $CONFIG.webmail.container)
+				webmail_container="${webmail_container:-secubox-webmail}"
+				port=$(uci -q get $CONFIG.webmail.port)
+				port="${port:-8026}"
+
+				json_init
+
+				if docker ps 2>/dev/null | grep -q "$webmail_container"; then
+					json_add_boolean "running" 1
+					json_add_string "container" "$webmail_container"
+					json_add_int "port" "$port"
+					json_add_string "url" "http://localhost:$port"
+				else
+					json_add_boolean "running" 0
+				fi
+
+				json_dump
+				;;
+
+			logs)
+				json_load "$3"
+				json_get_var lines lines
+				lines="${lines:-50}"
+
+				container=$(uci -q get $CONFIG.main.container)
+				container="${container:-mailserver}"
+
+				json_init
+				log_output=$(lxc-attach -n "$container" -- tail -n "$lines" /var/log/mail.log 2>/dev/null)
+				json_add_string "logs" "$log_output"
+				json_dump
+				;;
+
+			install)
+				json_init
+				output=$($MAILCTL install 2>&1)
+				rc=$?
+				json_add_int "code" "$rc"
+				json_add_string "output" "$output"
+				json_dump
+				;;
+
+			start)
+				json_init
+				$MAILCTL start 2>&1
+				json_add_int "code" "$?"
+				json_dump
+				;;
+
+			stop)
+				json_init
+				$MAILCTL stop 2>&1
+				json_add_int "code" "$?"
+				json_dump
+				;;
+
+			restart)
+				json_init
+				$MAILCTL restart 2>&1
+				json_add_int "code" "$?"
+				json_dump
+				;;
+
+			user_add)
+				json_load "$3"
+				json_get_var email email
+				json_get_var password password
+
+				json_init
+				if [ -z "$email" ]; then
+					json_add_int "code" 1
+					json_add_string "error" "Email required"
+				else
+					output=$($MAILCTL user add "$email" "$password" 2>&1)
+					json_add_int "code" "$?"
+					json_add_string "output" "$output"
+				fi
+				json_dump
+				;;
+
+			user_del)
+				json_load "$3"
+				json_get_var email email
+
+				json_init
+				if [ -z "$email" ]; then
+					json_add_int "code" 1
+					json_add_string "error" "Email required"
+				else
+					output=$($MAILCTL user del "$email" 2>&1)
+					json_add_int "code" "$?"
+					json_add_string "output" "$output"
+				fi
+				json_dump
+				;;
+
+			user_passwd)
+				# Read JSON from stdin or $3
+				if [ -n "$3" ]; then
+					json_load "$3"
+				else
+					read -r _input
+					json_load "$_input"
+				fi
+				json_get_var email email
+				json_get_var password password
+
+				json_init
+				if [ -z "$email" ] || [ -z "$password" ]; then
+					json_add_int "code" 1
+					json_add_string "error" "Email and password required"
+				else
+					output=$($MAILCTL user passwd "$email" "$password" 2>&1)
+					json_add_int "code" "$?"
+					json_add_string "output" "$output"
+				fi
+				json_dump
+				;;
+
+			alias_add)
+				json_load "$3"
+				json_get_var aalias alias
+				json_get_var target target
+
+				json_init
+				if [ -z "$aalias" ] || [ -z "$target" ]; then
+					json_add_int "code" 1
+					json_add_string "error" "Alias and target required"
+				else
+					output=$($MAILCTL alias add "$aalias" "$target" 2>&1)
+					json_add_int "code" "$?"
+					json_add_string "output" "$output"
+				fi
+				json_dump
+				;;
+
+			dns_setup)
+				json_init
+				output=$($MAILCTL dns-setup 2>&1)
+				json_add_int "code" "$?"
+				json_add_string "output" "$output"
+				json_dump
+				;;
+
+			ssl_setup)
+				json_init
+				output=$($MAILCTL ssl-setup 2>&1)
+				json_add_int "code" "$?"
+				json_add_string "output" "$output"
+				json_dump
+				;;
+
+			webmail_configure)
+				json_init
+				output=$($MAILCTL webmail configure 2>&1)
+				json_add_int "code" "$?"
+				json_add_string "output" "$output"
+				json_dump
+				;;
+
+			mesh_backup)
+				json_init
+				output=$($MAILCTL mesh backup 2>&1)
+				json_add_int "code" "$?"
+				json_add_string "output" "$output"
+				json_dump
+				;;
+
+			mesh_sync)
+				json_load "$3"
+				json_get_var mode mode
+				mode="${mode:-push}"
+
+				json_init
+				output=$($MAILCTL mesh sync "$mode" 2>&1)
+				json_add_int "code" "$?"
+				json_add_string "output" "$output"
+				json_dump
+				;;
+
+			fix_ports)
+				json_init
+				output=$($MAILCTL fix-ports 2>&1)
+				json_add_int "code" "$?"
+				json_add_string "output" "$output"
+				json_dump
+				;;
+		esac
+		;;
+esac
+
+exit 0

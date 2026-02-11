@@ -9,7 +9,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-app-localai
-PKG_VERSION:=2.25.0
+PKG_VERSION:=3.9.0
 PKG_RELEASE:=1
 
 PKG_LICENSE:=MIT

@@ -1,0 +1,77 @@
+#\!/bin/sh
+# SecuBox Detail Collector - Last N entries for LuCI flash views
+
+CACHE_DIR="/tmp/secubox"
+WWW_DIR="/www"
+LIMIT="${1:-5}"
+
+mkdir -p "$CACHE_DIR"
+
+# Collect last N threats with full details
+collect_threats() {
+    local out="$CACHE_DIR/threats-detail.json"
+    if [ -f /srv/mitmproxy/threats.log ]; then
+        printf "{\"updated\":\"%s\",\"count\":%d,\"entries\":[" "$(date -Is)" "$LIMIT" > "$out"
+        tail -n "$LIMIT" /srv/mitmproxy/threats.log | head -n "$LIMIT" | {
+            first=1
+            while IFS= read -r line; do
+                [ "$first" = "1" ] || printf ","
+                first=0
+                printf "%s" "$line"
+            done
+        } >> "$out"
+        printf "]}" >> "$out"
+        cp "$out" "$WWW_DIR/threats-detail.json" 2>/dev/null
+    fi
+}
+
+# Collect last N kernel log entries
+collect_kernel() {
+    local out="$CACHE_DIR/kernel-detail.json"
+    printf "{\"updated\":\"%s\",\"entries\":[" "$(date -Is)" > "$out"
+    dmesg 2>/dev/null | grep -iE "error|warn|fail" | tail -n "$LIMIT" | {
+        first=1
+        while IFS= read -r line; do
+            [ "$first" = "1" ] || printf ","
+            first=0
+            escaped=$(printf "%s" "$line" | sed 's/\\/\\\\/g; s/"/\\"/g')
+            printf "{\"msg\":\"%s\"}" "$escaped"
+        done
+    } >> "$out"
+    printf "]}" >> "$out"
+    cp "$out" "$WWW_DIR/kernel-detail.json" 2>/dev/null
+}
+
+# Collect last N syslog entries
+collect_syslog() {
+    local out="$CACHE_DIR/syslog-detail.json"
+    printf "{\"updated\":\"%s\",\"entries\":[" "$(date -Is)" > "$out"
+    logread 2>/dev/null | tail -n "$LIMIT" | {
+        first=1
+        while IFS= read -r line; do
+            [ "$first" = "1" ] || printf ","
+            first=0
+            escaped=$(printf "%s" "$line" | sed 's/\\/\\\\/g; s/"/\\"/g')
+            printf "{\"msg\":\"%s\"}" "$escaped"
+        done
+    } >> "$out"
+    printf "]}" >> "$out"
+    cp "$out" "$WWW_DIR/syslog-detail.json" 2>/dev/null
+}
+
+# Collect last N CrowdSec alerts
+collect_crowdsec() {
+    local out="$CACHE_DIR/crowdsec-detail.json"
+    printf "{\"updated\":\"%s\",\"entries\":" "$(date -Is)" > "$out"
+    cscli alerts list -l "$LIMIT" -o json 2>/dev/null >> "$out" || echo "[]" >> "$out"
+    printf "}" >> "$out"
+    cp "$out" "$WWW_DIR/crowdsec-detail.json" 2>/dev/null
+}
+
+case "${2:-all}" in
+    threats) collect_threats ;;
+    kernel) collect_kernel ;;
+    syslog) collect_syslog ;;
+    crowdsec) collect_crowdsec ;;
+    all) collect_threats; collect_kernel; collect_syslog; collect_crowdsec ;;
+esac

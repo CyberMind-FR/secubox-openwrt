@@ -1,0 +1,17 @@
+{
+    "luci-app-secubox-mirror": {
+        "description": "Grant access to MirrorNet dashboard",
+        "read": {
+            "uci": ["mirrornet"],
+            "ubus": {
+                "luci.mirrornet": ["status", "get_identity", "get_peers", "get_reputation", "get_health", "get_mirrors", "get_gossip_stats", "get_alerts"]
+            }
+        },
+        "write": {
+            "uci": ["mirrornet"],
+            "ubus": {
+                "luci.mirrornet": ["set_config", "reset_reputation", "ack_alert", "add_mirror", "remove_mirror", "trigger_failover", "broadcast", "run_health_check"]
+            }
+        }
+    }
+}

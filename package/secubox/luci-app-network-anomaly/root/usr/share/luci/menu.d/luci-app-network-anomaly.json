@@ -1,0 +1,14 @@
+{
+	"admin/secubox/security/network-anomaly": {
+		"title": "Network Anomaly",
+		"order": 35,
+		"action": {
+			"type": "view",
+			"path": "network-anomaly/dashboard"
+		},
+		"depends": {
+			"acl": ["luci-app-network-anomaly"],
+			"uci": {"network-anomaly": true}
+		}
+	}
+}

@@ -1,0 +1,408 @@
+#!/bin/sh
+# SecuBox RustDesk Server Manager
+
+CONFIG="rustdesk"
+VERSION="1.1.15"
+DOWNLOAD_URL="https://github.com/rustdesk/rustdesk-server/releases/download/${VERSION}"
+DATA_PATH_DEFAULT="/srv/rustdesk"
+HBBS_PID=""
+HBBR_PID=""
+
+usage() {
+	cat <<'USAGE'
+Usage: rustdeskctl <command>
+
+Commands:
+  install           Download RustDesk server binaries
+  uninstall         Remove binaries (preserves key)
+  status            Show server status and public key
+  keygen            Regenerate authentication key
+  logs [-f]         Show server logs
+  configure-firewall  Open WAN ports (21115-21117)
+  mesh-register     Register with P2P mesh
+  service-run       Internal: run servers via procd
+  service-stop      Internal: stop servers
+USAGE
+}
+
+# ---------- helpers ----------
+
+require_root() { [ "$(id -u)" -eq 0 ]; }
+
+uci_get() {
+	local key="$1"
+	local section="${2:-server}"
+	uci -q get ${CONFIG}.${section}.$key
+}
+
+uci_set() {
+	local key="$1"
+	local value="$2"
+	local section="${3:-server}"
+	uci set ${CONFIG}.${section}.$key="$value"
+}
+
+log_info()  { echo "[INFO] $*"; logger -t rustdeskctl "$*"; }
+log_error() { echo "[ERROR] $*" >&2; logger -t rustdeskctl -p err "$*"; }
+
+ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
+
+defaults() {
+	data_path="$(uci_get data_path || echo $DATA_PATH_DEFAULT)"
+	id_port="$(uci_get id_port || echo 21116)"
+	relay_port="$(uci_get relay_port || echo 21117)"
+}
+
+detect_arch() {
+	case "$(uname -m)" in
+		aarch64) echo "arm64v8" ;;
+		armv7l)  echo "armv7" ;;
+		x86_64)  echo "amd64" ;;
+		*)       echo "amd64" ;;
+	esac
+}
+
+# ---------- installation ----------
+
+cmd_install() {
+	require_root || { log_error "Must run as root"; return 1; }
+	defaults
+
+	local arch=$(detect_arch)
+	local zip_file="/tmp/rustdesk-server.zip"
+	local zip_url="${DOWNLOAD_URL}/rustdesk-server-linux-${arch}.zip"
+
+	log_info "Downloading RustDesk server v${VERSION} for ${arch}..."
+
+	ensure_dir "$data_path"
+	cd "$data_path" || return 1
+
+	# Download
+	wget -q -O "$zip_file" "$zip_url" || {
+		log_error "Failed to download from $zip_url"
+		return 1
+	}
+
+	# Extract
+	unzip -o -q "$zip_file" -d "$data_path" || {
+		log_error "Failed to extract archive"
+		rm -f "$zip_file"
+		return 1
+	}
+	rm -f "$zip_file"
+
+	# Find and move binaries (they may be in a subdirectory)
+	# Check common subdirectory patterns from RustDesk releases
+	for subdir in arm64v8 aarch64-unknown-linux-gnu amd64 x86_64-unknown-linux-gnu armv7; do
+		if [ -d "$data_path/$subdir" ]; then
+			log_info "Moving binaries from $subdir subdirectory..."
+			mv "$data_path/$subdir"/* "$data_path/" 2>/dev/null
+			rmdir "$data_path/$subdir" 2>/dev/null
+			break
+		fi
+	done
+
+	# Make executable
+	chmod +x "$data_path/hbbs" "$data_path/hbbr" 2>/dev/null
+
+	# Verify binaries exist
+	if [ ! -x "$data_path/hbbs" ] || [ ! -x "$data_path/hbbr" ]; then
+		log_error "Binaries not found after extraction"
+		ls -la "$data_path"
+		return 1
+	fi
+
+	# Generate key if not exists
+	if [ ! -f "$data_path/id_ed25519" ]; then
+		log_info "Generating authentication key..."
+		cd "$data_path"
+		# Run hbbs briefly to generate key
+		timeout 3 ./hbbs -p "$id_port" >/dev/null 2>&1 || true
+		sleep 1
+	fi
+
+	# Store key in UCI if generated
+	if [ -f "$data_path/id_ed25519.pub" ]; then
+		local pubkey=$(cat "$data_path/id_ed25519.pub" 2>/dev/null)
+		uci_set key "$pubkey"
+		uci commit "$CONFIG"
+	fi
+
+	log_info "RustDesk server installed successfully"
+	log_info "Data directory: $data_path"
+
+	# Show key
+	if [ -f "$data_path/id_ed25519.pub" ]; then
+		echo ""
+		echo "Public key for client configuration:"
+		cat "$data_path/id_ed25519.pub"
+	fi
+
+	# Enable service
+	uci_set enabled '1'
+	uci commit "$CONFIG"
+	/etc/init.d/rustdesk enable
+	/etc/init.d/rustdesk start
+
+	log_info "Service enabled and started"
+}
+
+cmd_uninstall() {
+	require_root || { log_error "Must run as root"; return 1; }
+	defaults
+
+	log_info "Stopping RustDesk server..."
+	/etc/init.d/rustdesk stop 2>/dev/null
+	/etc/init.d/rustdesk disable 2>/dev/null
+
+	# Remove binaries but keep keys
+	rm -f "$data_path/hbbs" "$data_path/hbbr" 2>/dev/null
+
+	uci_set enabled '0'
+	uci commit "$CONFIG"
+
+	log_info "RustDesk binaries removed (keys preserved in $data_path)"
+}
+
+cmd_keygen() {
+	require_root || { log_error "Must run as root"; return 1; }
+	defaults
+
+	log_info "Regenerating authentication key..."
+
+	# Stop service
+	/etc/init.d/rustdesk stop 2>/dev/null
+
+	# Remove old keys
+	rm -f "$data_path/id_ed25519" "$data_path/id_ed25519.pub" 2>/dev/null
+
+	# Generate new key by running hbbs briefly
+	cd "$data_path"
+	timeout 3 ./hbbs -p "$id_port" >/dev/null 2>&1 || true
+	sleep 1
+
+	if [ -f "$data_path/id_ed25519.pub" ]; then
+		local pubkey=$(cat "$data_path/id_ed25519.pub" 2>/dev/null)
+		uci_set key "$pubkey"
+		uci commit "$CONFIG"
+		log_info "New key generated"
+		echo ""
+		echo "New public key:"
+		cat "$data_path/id_ed25519.pub"
+	else
+		log_error "Failed to generate key"
+		return 1
+	fi
+
+	# Restart service
+	/etc/init.d/rustdesk start
+}
+
+cmd_status() {
+	defaults
+
+	echo "RustDesk Server Status"
+	echo "======================"
+	echo ""
+	echo "Configuration:"
+	echo "  Enabled:     $(uci_get enabled || echo '0')"
+	echo "  ID Port:     $id_port"
+	echo "  Relay Port:  $relay_port"
+	echo "  Data Path:   $data_path"
+	echo ""
+
+	# Check binaries
+	if [ -x "$data_path/hbbs" ]; then
+		echo "Binaries:      Installed"
+	else
+		echo "Binaries:      Not installed (run: rustdeskctl install)"
+		return 0
+	fi
+
+	# Check processes
+	echo ""
+	echo "Processes:"
+	if pgrep -f "hbbs.*-p.*$id_port" >/dev/null 2>&1; then
+		echo "  hbbs (ID):   RUNNING (port $id_port)"
+	else
+		echo "  hbbs (ID):   STOPPED"
+	fi
+
+	if pgrep -f "hbbr.*-p.*$relay_port" >/dev/null 2>&1; then
+		echo "  hbbr (Relay): RUNNING (port $relay_port)"
+	else
+		echo "  hbbr (Relay): STOPPED"
+	fi
+
+	# Show key
+	echo ""
+	if [ -f "$data_path/id_ed25519.pub" ]; then
+		echo "Public Key:"
+		echo "  $(cat "$data_path/id_ed25519.pub")"
+		echo ""
+		echo "Client Configuration:"
+		echo "  ID Server: $(uci -q get network.lan.ipaddr || echo '<router-ip>'):$id_port"
+		echo "  Key: $(cat "$data_path/id_ed25519.pub")"
+	else
+		echo "Public Key:    Not generated"
+	fi
+}
+
+cmd_logs() {
+	defaults
+	local follow=""
+	[ "$1" = "-f" ] && follow="-f"
+
+	if [ -f "$data_path/hbbs.log" ]; then
+		echo "=== hbbs log ==="
+		tail $follow -n 50 "$data_path/hbbs.log"
+	fi
+
+	if [ -f "$data_path/hbbr.log" ]; then
+		echo ""
+		echo "=== hbbr log ==="
+		tail $follow -n 50 "$data_path/hbbr.log"
+	fi
+
+	# Also check system log
+	if [ -z "$follow" ]; then
+		echo ""
+		echo "=== System log ==="
+		logread | grep -E "(hbbs|hbbr|rustdesk)" | tail -20
+	fi
+}
+
+cmd_configure_firewall() {
+	require_root || { log_error "Must run as root"; return 1; }
+	defaults
+
+	local changed=0
+
+	# Check if rules already exist
+	if ! uci show firewall 2>/dev/null | grep -q "RustDesk-ID"; then
+		log_info "Creating firewall rules..."
+
+		# ID server (TCP+UDP)
+		uci add firewall rule
+		uci set firewall.@rule[-1].name='RustDesk-ID-TCP'
+		uci set firewall.@rule[-1].src='wan'
+		uci set firewall.@rule[-1].dest_port="$id_port"
+		uci set firewall.@rule[-1].proto='tcp'
+		uci set firewall.@rule[-1].target='ACCEPT'
+
+		uci add firewall rule
+		uci set firewall.@rule[-1].name='RustDesk-ID-UDP'
+		uci set firewall.@rule[-1].src='wan'
+		uci set firewall.@rule[-1].dest_port="$id_port"
+		uci set firewall.@rule[-1].proto='udp'
+		uci set firewall.@rule[-1].target='ACCEPT'
+
+		# Relay server (TCP)
+		uci add firewall rule
+		uci set firewall.@rule[-1].name='RustDesk-Relay'
+		uci set firewall.@rule[-1].src='wan'
+		uci set firewall.@rule[-1].dest_port="$relay_port"
+		uci set firewall.@rule[-1].proto='tcp'
+		uci set firewall.@rule[-1].target='ACCEPT'
+
+		# NAT test (TCP)
+		uci add firewall rule
+		uci set firewall.@rule[-1].name='RustDesk-NAT'
+		uci set firewall.@rule[-1].src='wan'
+		uci set firewall.@rule[-1].dest_port='21115'
+		uci set firewall.@rule[-1].proto='tcp'
+		uci set firewall.@rule[-1].target='ACCEPT'
+
+		changed=1
+	fi
+
+	if [ "$changed" = "1" ]; then
+		uci commit firewall
+		/etc/init.d/firewall reload
+		log_info "Firewall rules created for ports 21115-21117"
+	else
+		log_info "Firewall rules already exist"
+	fi
+
+	uci_set firewall_wan '1' network
+	uci commit "$CONFIG"
+}
+
+cmd_mesh_register() {
+	defaults
+
+	if [ -x /usr/sbin/secubox-p2p ]; then
+		/usr/sbin/secubox-p2p register-service rustdesk "$id_port" 2>/dev/null
+		log_info "Registered RustDesk with mesh"
+	else
+		log_error "secubox-p2p not available"
+		return 1
+	fi
+}
+
+# ---------- service management ----------
+
+cmd_service_run() {
+	require_root || exit 1
+	defaults
+
+	# Verify binaries
+	[ -x "$data_path/hbbs" ] || { log_error "hbbs not found"; exit 1; }
+	[ -x "$data_path/hbbr" ] || { log_error "hbbr not found"; exit 1; }
+
+	cd "$data_path" || exit 1
+
+	log_info "Starting RustDesk servers..."
+
+	# Start hbbs (ID server)
+	./hbbs -p "$id_port" -r "127.0.0.1:$relay_port" >> "$data_path/hbbs.log" 2>&1 &
+	HBBS_PID=$!
+	echo $HBBS_PID > "$data_path/hbbs.pid"
+
+	sleep 1
+
+	# Start hbbr (relay server)
+	./hbbr -p "$relay_port" >> "$data_path/hbbr.log" 2>&1 &
+	HBBR_PID=$!
+	echo $HBBR_PID > "$data_path/hbbr.pid"
+
+	log_info "hbbs started (PID: $HBBS_PID), hbbr started (PID: $HBBR_PID)"
+
+	# Wait for processes
+	trap 'cmd_service_stop; exit 0' TERM INT
+	wait
+}
+
+cmd_service_stop() {
+	defaults
+
+	log_info "Stopping RustDesk servers..."
+
+	# Kill by PID file
+	[ -f "$data_path/hbbs.pid" ] && kill $(cat "$data_path/hbbs.pid") 2>/dev/null
+	[ -f "$data_path/hbbr.pid" ] && kill $(cat "$data_path/hbbr.pid") 2>/dev/null
+
+	# Cleanup
+	rm -f "$data_path/hbbs.pid" "$data_path/hbbr.pid"
+
+	# Kill any remaining
+	pkill -f "hbbs.*-p.*$id_port" 2>/dev/null
+	pkill -f "hbbr.*-p.*$relay_port" 2>/dev/null
+
+	log_info "Servers stopped"
+}
+
+# ---------- main ----------
+
+case "$1" in
+	install)          cmd_install ;;
+	uninstall)        cmd_uninstall ;;
+	status)           cmd_status ;;
+	keygen)           cmd_keygen ;;
+	logs)             shift; cmd_logs "$@" ;;
+	configure-firewall) cmd_configure_firewall ;;
+	mesh-register)    cmd_mesh_register ;;
+	service-run)      cmd_service_run ;;
+	service-stop)     cmd_service_stop ;;
+	*)                usage; exit 1 ;;
+esac

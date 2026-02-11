@@ -3,15 +3,35 @@
 		"description": "Grant access to SecuBox DNS Guard",
 		"read": {
 			"ubus": {
-				"luci.dnsguard": ["status", "get_providers", "get_config", "test_dns"]
+				"luci.dnsguard": [
+					"status",
+					"get_providers",
+					"get_config",
+					"test_dns",
+					"guard_status",
+					"get_alerts",
+					"get_pending",
+					"get_blocklist",
+					"get_stats",
+					"ai_check"
+				]
 			},
-			"uci": ["dhcp", "network"]
+			"uci": ["dhcp", "network", "dns-guard"]
 		},
 		"write": {
 			"ubus": {
-				"luci.dnsguard": ["set_provider", "smart_config", "apply"]
+				"luci.dnsguard": [
+					"set_provider",
+					"smart_config",
+					"apply",
+					"approve_block",
+					"reject_block",
+					"approve_all",
+					"unblock",
+					"toggle_guard"
+				]
 			},
-			"uci": ["dhcp", "network"]
+			"uci": ["dhcp", "network", "dns-guard"]
 		}
 	}
 }

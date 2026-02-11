@@ -161,12 +161,13 @@ EOF
 }
 
 setup_iptables() {
-	local mode trans_port dns_port dns_over_tor kill_switch
+	local mode trans_port dns_port dns_over_tor kill_switch wan_input_allow
 
 	config_load "$CONFIG"
 	config_get mode main mode 'transparent'
 	config_get kill_switch main kill_switch '1'
 	config_get dns_over_tor main dns_over_tor '1'
+	config_get wan_input_allow main wan_input_allow '0'
 	config_get trans_port trans port '9040'
 	config_get dns_port trans dns_port '9053'
 
@@ -185,6 +186,9 @@ setup_iptables() {
 	done
 	iptables -t filter -F TOR_SHIELD 2>/dev/null
 	iptables -t filter -X TOR_SHIELD 2>/dev/null
+
+	# Clean up nftables rules for server mode
+	cleanup_nftables_wan
 
 	[ "$mode" = "transparent" ] || return 0
 
@@ -221,8 +225,58 @@ setup_iptables() {
 		iptables -t filter -A OUTPUT -j TOR_SHIELD
 	fi
 
+	# Server mode: Allow WAN inbound traffic (for published services)
+	if [ "$wan_input_allow" = "1" ]; then
+		setup_nftables_wan_allow
+	fi
+
 	# LAN client Tor routing via PREROUTING
 	setup_lan_proxy
+}
+
+# nftables helpers for server mode WAN access
+cleanup_nftables_wan() {
+	# Remove any previous tor-shield nftables rules
+	if command -v nft >/dev/null 2>&1; then
+		nft delete chain inet fw4 tor_shield_wan_in 2>/dev/null || true
+	fi
+}
+
+setup_nftables_wan_allow() {
+	# Server mode: Ensure WAN inbound is allowed
+	# This creates nftables rules to allow inbound connections from WAN
+	# Works with OpenWrt firewall4 (nftables-based)
+
+	if ! command -v nft >/dev/null 2>&1; then
+		echo "Warning: nft command not found, WAN input rules may not apply"
+		return 1
+	fi
+
+	# Check if fw4 table exists (OpenWrt firewall4)
+	if ! nft list table inet fw4 >/dev/null 2>&1; then
+		echo "Note: fw4 table not found, using legacy firewall"
+		return 0
+	fi
+
+	# Create chain for Tor Shield WAN input if not exists
+	nft add chain inet fw4 tor_shield_wan_in 2>/dev/null || true
+
+	# Allow all established/related (responses to outgoing)
+	nft add rule inet fw4 tor_shield_wan_in ct state established,related accept 2>/dev/null || true
+
+	# Allow new inbound on common service ports (HAProxy, HTTPS, HTTP)
+	# These are the ports typically used for published services
+	nft add rule inet fw4 tor_shield_wan_in tcp dport 80 accept 2>/dev/null || true
+	nft add rule inet fw4 tor_shield_wan_in tcp dport 443 accept 2>/dev/null || true
+	nft add rule inet fw4 tor_shield_wan_in tcp dport 8443 accept 2>/dev/null || true
+
+	# Hook into input_wan chain (before drop)
+	# First remove any existing jump to avoid duplicates
+	nft delete rule inet fw4 input_wan jump tor_shield_wan_in 2>/dev/null || true
+	# Add jump at the beginning of input_wan
+	nft insert rule inet fw4 input_wan jump tor_shield_wan_in 2>/dev/null || true
+
+	echo "Server mode: WAN inbound allowed on ports 80, 443, 8443"
 }
 
 add_excluded_ip() {
@@ -279,6 +333,9 @@ remove_iptables() {
 	done
 	iptables -t filter -F TOR_SHIELD 2>/dev/null
 	iptables -t filter -X TOR_SHIELD 2>/dev/null
+
+	# Clean up nftables rules for server mode
+	cleanup_nftables_wan
 }
 
 start_service() {

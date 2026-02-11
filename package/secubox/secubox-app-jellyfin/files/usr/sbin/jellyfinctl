@@ -139,7 +139,7 @@ configure_haproxy() {
 	uci -q add haproxy backend
 	uci -q set haproxy.@backend[-1].name='jellyfin_web'
 	uci -q set haproxy.@backend[-1].mode='http'
-	uci -q add_list haproxy.@backend[-1].server="jellyfin 127.0.0.1:$port check"
+	uci -q add_list haproxy.@backend[-1].server="jellyfin 192.168.255.1:$port check"
 
 	# Add vhost
 	uci -q add haproxy vhost

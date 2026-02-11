@@ -28,9 +28,17 @@ return view.extend({
 				}
 			} catch (e) {}
 		}
-		// Also handle direct countries object if present
-		if (data.countries && typeof data.countries === 'object') {
-			for (var k in data.countries) countries[k] = data.countries[k];
+		// Handle countries field - can be array or object
+		if (data.countries) {
+			if (Array.isArray(data.countries)) {
+				// Array of {country, count} objects
+				data.countries.forEach(function(item) {
+					if (item.country) countries[item.country] = item.count || 0;
+				});
+			} else if (typeof data.countries === 'object') {
+				// Plain object {US: 10, FR: 5}
+				for (var k in data.countries) countries[k] = data.countries[k];
+			}
 		}
 		return countries;
 	},

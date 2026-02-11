@@ -1,0 +1,191 @@
+#!/bin/sh
+# Network Anomaly Detection RPCD Handler
+
+. /usr/share/libubox/jshn.sh
+
+CONFIG="network-anomaly"
+STATE_DIR="/var/lib/network-anomaly"
+ALERTS_FILE="$STATE_DIR/alerts.json"
+BASELINE_FILE="$STATE_DIR/baseline.json"
+NETDIAG_CACHE="/tmp/secubox/netdiag.json"
+
+get_cached_status() {
+	if [ -f "$NETDIAG_CACHE" ]; then
+		cat "$NETDIAG_CACHE"
+	else
+		echo '{"enabled":0,"daemon_running":0,"alert_count":0,"unacked_count":0,"localai_status":"offline","timestamp":0}'
+	fi
+}
+
+log_info() { logger -t network-anomaly-rpcd "$*"; }
+
+uci_get() { uci -q get "${CONFIG}.$1"; }
+
+case "$1" in
+	list)
+		cat <<'EOF'
+{
+	"status": {},
+	"status_cached": {},
+	"get_alerts": {"limit": 50},
+	"get_stats": {},
+	"run": {},
+	"ack_alert": {"id": "string"},
+	"clear_alerts": {},
+	"reset_baseline": {},
+	"analyze": {}
+}
+EOF
+		;;
+
+	call)
+		case "$2" in
+			status)
+				enabled=$(uci_get main.enabled)
+				interval=$(uci_get main.interval)
+				auto_block=$(uci_get main.auto_block)
+
+				daemon_running="false"
+				pgrep -f "network-anomalyctl daemon" >/dev/null 2>&1 && daemon_running="true"
+
+				alert_count=0
+				[ -f "$ALERTS_FILE" ] && alert_count=$(jsonfilter -i "$ALERTS_FILE" -e '@[*]' 2>/dev/null | wc -l)
+
+				unacked_count=0
+				[ -f "$ALERTS_FILE" ] && unacked_count=$(grep -c '"acknowledged":false' "$ALERTS_FILE" 2>/dev/null || echo 0)
+
+				last_run=""
+				[ -f "$STATE_DIR/last_run" ] && last_run=$(cat "$STATE_DIR/last_run")
+
+				localai_status="offline"
+				localai_url=$(uci_get main.localai_url)
+				[ -z "$localai_url" ] && localai_url="http://127.0.0.1:8091"
+				wget -q -O /dev/null --timeout=2 "${localai_url}/v1/models" 2>/dev/null && localai_status="online"
+
+				cat <<EOF
+{
+	"enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
+	"daemon_running": $daemon_running,
+	"interval": ${interval:-60},
+	"auto_block": $([ "$auto_block" = "1" ] && echo "true" || echo "false"),
+	"alert_count": $alert_count,
+	"unacked_count": $unacked_count,
+	"last_run": "$last_run",
+	"localai_status": "$localai_status",
+	"localai_url": "$localai_url"
+}
+EOF
+				;;
+
+			status_cached)
+				get_cached_status
+				;;
+
+			get_alerts)
+				read -r input
+				limit=$(echo "$input" | jsonfilter -e '@.limit' 2>/dev/null)
+				[ -z "$limit" ] && limit=50
+
+				alerts='[]'
+				[ -f "$ALERTS_FILE" ] && alerts=$(cat "$ALERTS_FILE")
+
+				printf '{"alerts":%s}' "$alerts"
+				;;
+
+			get_stats)
+				# Collect current network stats
+				rx_bytes=0 tx_bytes=0
+				for iface in $(ls /sys/class/net/ 2>/dev/null | grep -v lo); do
+					rx=$(cat /sys/class/net/$iface/statistics/rx_bytes 2>/dev/null || echo 0)
+					tx=$(cat /sys/class/net/$iface/statistics/tx_bytes 2>/dev/null || echo 0)
+					rx_bytes=$((rx_bytes + rx))
+					tx_bytes=$((tx_bytes + tx))
+				done
+
+				total_conn=0 new_conn=0 established=0
+				if [ -f /proc/net/nf_conntrack ]; then
+					total_conn=$(wc -l < /proc/net/nf_conntrack)
+					new_conn=$(grep -c "TIME_WAIT\|SYN_SENT" /proc/net/nf_conntrack 2>/dev/null || echo 0)
+					established=$(grep -c "ESTABLISHED" /proc/net/nf_conntrack 2>/dev/null || echo 0)
+				fi
+
+				unique_ports=0
+				if [ -f /proc/net/nf_conntrack ]; then
+					unique_ports=$(awk -F'[ =]' '/dport/ {print $NF}' /proc/net/nf_conntrack 2>/dev/null | sort -u | wc -l)
+				fi
+
+				cat <<EOF
+{
+	"timestamp": "$(date -Iseconds)",
+	"rx_bytes": $rx_bytes,
+	"tx_bytes": $tx_bytes,
+	"total_connections": $total_conn,
+	"new_connections": $new_conn,
+	"established": $established,
+	"unique_ports": $unique_ports
+}
+EOF
+				;;
+
+			run)
+				/usr/bin/network-anomalyctl run -q >/dev/null 2>&1 &
+				echo '{"started":true}'
+				;;
+
+			ack_alert)
+				read -r input
+				alert_id=$(echo "$input" | jsonfilter -e '@.id' 2>/dev/null)
+
+				if [ -z "$alert_id" ]; then
+					echo '{"error":"No alert ID provided"}'
+					exit 0
+				fi
+
+				if [ -f "$ALERTS_FILE" ]; then
+					tmp_file="$ALERTS_FILE.tmp"
+					sed "s/\"id\":\"$alert_id\",\\(.*\\)\"acknowledged\":false/\"id\":\"$alert_id\",\\1\"acknowledged\":true/" \
+						"$ALERTS_FILE" > "$tmp_file"
+					mv "$tmp_file" "$ALERTS_FILE"
+					echo '{"success":true}'
+				else
+					echo '{"error":"No alerts file"}'
+				fi
+				;;
+
+			clear_alerts)
+				echo '[]' > "$ALERTS_FILE"
+				echo '{"success":true}'
+				;;
+
+			reset_baseline)
+				rm -f "$BASELINE_FILE"
+				echo '{"success":true}'
+				;;
+
+			analyze)
+				# Start background AI analysis
+				localai_url=$(uci_get main.localai_url)
+				[ -z "$localai_url" ] && localai_url="http://127.0.0.1:8091"
+
+				if ! curl -s --max-time 2 "${localai_url}/v1/models" >/dev/null 2>&1; then
+					echo '{"error":"LocalAI not available"}'
+					exit 0
+				fi
+
+				req_id=$(head -c 8 /dev/urandom | md5sum | head -c 8)
+				req_file="$STATE_DIR/analyze_${req_id}.json"
+				mkdir -p "$STATE_DIR"
+
+				(
+					/usr/bin/network-anomalyctl analyze > "$req_file" 2>&1
+				) &
+
+				echo "{\"pending\":true,\"poll_id\":\"$req_id\"}"
+				;;
+
+			*)
+				echo '{"error":"Unknown method"}'
+				;;
+		esac
+		;;
+esac

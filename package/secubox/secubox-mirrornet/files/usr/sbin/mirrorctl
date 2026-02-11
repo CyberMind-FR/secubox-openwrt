@@ -1,0 +1,290 @@
+#!/bin/sh
+# MirrorNet CLI - Mesh orchestration control
+# Usage: mirrorctl <command> [options]
+
+. /lib/functions.sh
+
+# Load libraries
+[ -f /usr/lib/mirrornet/identity.sh ] && . /usr/lib/mirrornet/identity.sh
+[ -f /usr/lib/mirrornet/reputation.sh ] && . /usr/lib/mirrornet/reputation.sh
+[ -f /usr/lib/mirrornet/mirror.sh ] && . /usr/lib/mirrornet/mirror.sh
+[ -f /usr/lib/mirrornet/gossip.sh ] && . /usr/lib/mirrornet/gossip.sh
+[ -f /usr/lib/mirrornet/health.sh ] && . /usr/lib/mirrornet/health.sh
+
+VERSION="0.1.0"
+DAEMON_INTERVAL=30
+
+usage() {
+    cat <<EOF
+MirrorNet CLI v$VERSION - Mesh Orchestration
+
+Usage: mirrorctl <command> [options]
+
+Identity Commands:
+  did                       Show node DID (did:plc:...)
+  identity                  Export full identity document
+  keygen [key_id]          Generate signing keypair
+  rotate [key_id]          Rotate signing key
+  pubkey [key_id]          Show public key info
+  import-peer <json>       Import peer identity document
+  list-peers               List known peer identities
+
+Reputation Commands:
+  reputation <peer_id>     Get peer reputation score
+  reputation-list          List all peer reputations
+  reputation-events [n]    Show last N reputation events
+  trust-level <peer_id>    Get peer trust level (excellent/good/moderate/low/untrusted)
+  reset-reputation <peer>  Reset peer reputation to initial
+
+Mirror Commands:
+  mirror-add <name> <port> [desc]     Add service to mirror pool
+  mirror-upstream <svc> <peer> <addr> <port> [priority]   Add upstream
+  mirror-check <service_id>           Check all upstreams for service
+  mirror-failover <service_id>        Trigger failover
+  mirror-list                         List mirrored services
+  mirror-status                       Mirror status summary
+  mirror-haproxy <service_id>         Generate HAProxy backend config
+
+Gossip Commands:
+  broadcast <type> <data>  Broadcast message to peers
+  publish-ioc <json>       Publish IOC via gossip
+  announce <name> <port> <type>   Announce service
+  gossip-stats             Show gossip statistics
+  gossip-queue             Show pending messages
+
+Health Commands:
+  health                   Run health check on all peers
+  health-summary           Health status summary
+  ping <address>           Ping and measure latency
+  http-check <addr> [port] HTTP health check
+  alerts [count]           Show health alerts
+  ack-alert <id>           Acknowledge alert
+  baseline <peer_id>       Update health baseline
+
+Daemon Commands:
+  daemon                   Run as daemon (foreground)
+  status                   Show MirrorNet status
+
+General:
+  help                     Show this help
+  version                  Show version
+
+EOF
+}
+
+# Get MirrorNet status
+cmd_status() {
+    local enabled
+    enabled=$(uci -q get mirrornet.main.enabled || echo "0")
+
+    local node_role
+    node_role=$(uci -q get mirrornet.main.node_role || echo "peer")
+
+    local did
+    did=$(identity_get_did 2>/dev/null || echo "not configured")
+
+    local peer_count=0
+    local peers_file="/tmp/secubox-p2p-peers.json"
+    if [ -f "$peers_file" ]; then
+        peer_count=$(jsonfilter -i "$peers_file" -e '@[*]' 2>/dev/null | wc -l)
+    fi
+
+    cat <<EOF
+{
+  "version": "$VERSION",
+  "enabled": $enabled,
+  "node_role": "$node_role",
+  "did": "$did",
+  "peers": $peer_count,
+  "gossip": $(gossip_stats 2>/dev/null || echo '{}'),
+  "health": $(health_summary 2>/dev/null || echo '{}'),
+  "mirror": $(mirror_status 2>/dev/null || echo '{}'),
+  "reputation": {
+    "min_trust": $(uci -q get mirrornet.reputation.min_trust_score || echo 20),
+    "ban_threshold": $(uci -q get mirrornet.reputation.ban_threshold || echo 10)
+  }
+}
+EOF
+}
+
+# Daemon loop
+cmd_daemon() {
+    local gossip_interval health_interval
+    gossip_interval=$(uci -q get mirrornet.main.gossip_interval || echo "30")
+    health_interval=$(uci -q get mirrornet.main.health_interval || echo "60")
+
+    logger -t mirrornet "Daemon starting (gossip: ${gossip_interval}s, health: ${health_interval}s)"
+
+    local last_gossip=0
+    local last_health=0
+
+    while true; do
+        local now
+        now=$(date +%s)
+
+        # Gossip processing
+        if [ $((now - last_gossip)) -ge "$gossip_interval" ]; then
+            gossip_process_queue 2>/dev/null
+            gossip_cleanup_seen 2>/dev/null
+            last_gossip=$now
+        fi
+
+        # Health checks
+        if [ $((now - last_health)) -ge "$health_interval" ]; then
+            health_check_all_peers >/dev/null 2>&1
+            health_clear_alerts >/dev/null 2>&1
+            last_health=$now
+        fi
+
+        # Reputation decay (once per day check)
+        # (handled separately)
+
+        sleep "$DAEMON_INTERVAL"
+    done
+}
+
+# Main command dispatcher
+case "$1" in
+    # Identity
+    did)
+        identity_get_did
+        ;;
+    identity)
+        identity_export
+        ;;
+    keygen)
+        identity_generate_keypair "${2:-primary}"
+        ;;
+    rotate)
+        identity_rotate_key "${2:-primary}"
+        ;;
+    pubkey)
+        identity_get_pubkey "${2:-primary}"
+        ;;
+    import-peer)
+        [ -z "$2" ] && { echo "Usage: mirrorctl import-peer <json>"; exit 1; }
+        identity_import_peer "$2"
+        ;;
+    list-peers)
+        identity_list_peers
+        ;;
+
+    # Reputation
+    reputation)
+        [ -z "$2" ] && { echo "Usage: mirrorctl reputation <peer_id>"; exit 1; }
+        score=$(reputation_get "$2")
+        level=$(reputation_trust_level "$2")
+        echo "{\"peer_id\":\"$2\",\"score\":$score,\"trust_level\":\"$level\"}"
+        ;;
+    reputation-list)
+        reputation_list
+        ;;
+    reputation-events)
+        reputation_events "${2:-50}"
+        ;;
+    trust-level)
+        [ -z "$2" ] && { echo "Usage: mirrorctl trust-level <peer_id>"; exit 1; }
+        reputation_trust_level "$2"
+        ;;
+    reset-reputation)
+        [ -z "$2" ] && { echo "Usage: mirrorctl reset-reputation <peer_id>"; exit 1; }
+        reputation_reset "$2"
+        ;;
+
+    # Mirror
+    mirror-add)
+        [ -z "$2" ] || [ -z "$3" ] && { echo "Usage: mirrorctl mirror-add <name> <port> [description]"; exit 1; }
+        mirror_add_service "$2" "$3" "${4:-}"
+        ;;
+    mirror-upstream)
+        [ -z "$2" ] || [ -z "$3" ] || [ -z "$4" ] || [ -z "$5" ] && { echo "Usage: mirrorctl mirror-upstream <service_id> <peer_id> <address> <port> [priority]"; exit 1; }
+        mirror_add_upstream "$2" "$3" "$4" "$5" "${6:-50}"
+        ;;
+    mirror-check)
+        [ -z "$2" ] && { echo "Usage: mirrorctl mirror-check <service_id>"; exit 1; }
+        mirror_check_service "$2"
+        ;;
+    mirror-failover)
+        [ -z "$2" ] && { echo "Usage: mirrorctl mirror-failover <service_id>"; exit 1; }
+        mirror_failover "$2" ""
+        ;;
+    mirror-list)
+        mirror_list
+        ;;
+    mirror-status)
+        mirror_status
+        ;;
+    mirror-haproxy)
+        [ -z "$2" ] && { echo "Usage: mirrorctl mirror-haproxy <service_id>"; exit 1; }
+        mirror_generate_haproxy_backend "$2" "mirror_$2"
+        ;;
+
+    # Gossip
+    broadcast)
+        [ -z "$2" ] || [ -z "$3" ] && { echo "Usage: mirrorctl broadcast <type> <data_json>"; exit 1; }
+        gossip_broadcast "$2" "$3"
+        ;;
+    publish-ioc)
+        [ -z "$2" ] && { echo "Usage: mirrorctl publish-ioc <ioc_json>"; exit 1; }
+        gossip_publish_ioc "$2"
+        ;;
+    announce)
+        [ -z "$2" ] || [ -z "$3" ] || [ -z "$4" ] && { echo "Usage: mirrorctl announce <name> <port> <type>"; exit 1; }
+        gossip_announce_service "$2" "$3" "$4"
+        ;;
+    gossip-stats)
+        gossip_stats
+        ;;
+    gossip-queue)
+        gossip_get_queue
+        ;;
+
+    # Health
+    health)
+        health_check_all_peers
+        ;;
+    health-summary)
+        health_summary
+        ;;
+    ping)
+        [ -z "$2" ] && { echo "Usage: mirrorctl ping <address>"; exit 1; }
+        health_ping "$2"
+        ;;
+    http-check)
+        [ -z "$2" ] && { echo "Usage: mirrorctl http-check <address> [port]"; exit 1; }
+        health_http_check "$2" "${3:-7331}"
+        ;;
+    alerts)
+        health_get_alerts "${2:-50}"
+        ;;
+    ack-alert)
+        [ -z "$2" ] && { echo "Usage: mirrorctl ack-alert <alert_id>"; exit 1; }
+        health_ack_alert "$2"
+        ;;
+    baseline)
+        [ -z "$2" ] && { echo "Usage: mirrorctl baseline <peer_id>"; exit 1; }
+        # Force baseline update from current metrics
+        health_update_baseline "$2" "{}"
+        ;;
+
+    # Daemon
+    daemon)
+        cmd_daemon
+        ;;
+    status)
+        cmd_status
+        ;;
+
+    # General
+    version)
+        echo "MirrorNet CLI v$VERSION"
+        ;;
+    help|--help|-h|"")
+        usage
+        ;;
+    *)
+        echo "Unknown command: $1"
+        echo "Run 'mirrorctl help' for usage"
+        exit 1
+        ;;
+esac

@@ -61,7 +61,19 @@ var callGetPublishInfo = rpc.declare({
 var callUploadFile = rpc.declare({
 	object: 'luci.metablogizer',
 	method: 'upload_file',
-	params: ['site_id', 'filename', 'content']
+	params: ['id', 'filename', 'content']
+});
+
+var callUploadChunk = rpc.declare({
+	object: 'luci.metablogizer',
+	method: 'upload_chunk',
+	params: ['upload_id', 'data', 'index']
+});
+
+var callUploadFinalize = rpc.declare({
+	object: 'luci.metablogizer',
+	method: 'upload_finalize',
+	params: ['upload_id', 'site_id', 'filename']
 });
 
 var callListFiles = rpc.declare({
@@ -115,6 +127,18 @@ var callSyncConfig = rpc.declare({
 	method: 'sync_config'
 });
 
+var callEmancipate = rpc.declare({
+	object: 'luci.metablogizer',
+	method: 'emancipate',
+	params: ['id']
+});
+
+var callEmancipateStatus = rpc.declare({
+	object: 'luci.metablogizer',
+	method: 'emancipate_status',
+	params: ['job_id']
+});
+
 return baseclass.extend({
 	getStatus: function() {
 		return callStatus();
@@ -158,6 +182,45 @@ return baseclass.extend({
 		return callUploadFile(siteId, filename, content);
 	},
 
+	uploadChunk: function(uploadId, data, index) {
+		return callUploadChunk(uploadId, data, index);
+	},
+
+	uploadFinalize: function(uploadId, siteId, filename) {
+		return callUploadFinalize(uploadId, siteId, filename);
+	},
+
+	/**
+	 * Chunked upload for files > 40KB.
+	 * Splits base64 into ~40KB chunks, sends each via upload_chunk,
+	 * then calls upload_finalize to decode and save.
+	 * @param {string} siteId - UCI site section ID (e.g., "site_myblog")
+	 * @param {string} filename - Destination filename
+	 * @param {string} content - Base64-encoded file content
+	 * @returns {Promise} - Resolves with upload result
+	 */
+	chunkedUpload: function(siteId, filename, content) {
+		var self = this;
+		var CHUNK_SIZE = 40000; // ~40KB per chunk, well under 64KB ubus limit
+		var uploadId = siteId + '_' + Date.now();
+		var chunks = [];
+
+		for (var i = 0; i < content.length; i += CHUNK_SIZE) {
+			chunks.push(content.substring(i, i + CHUNK_SIZE));
+		}
+
+		var promise = Promise.resolve();
+		chunks.forEach(function(chunk, idx) {
+			promise = promise.then(function() {
+				return self.uploadChunk(uploadId, chunk, idx);
+			});
+		});
+
+		return promise.then(function() {
+			return self.uploadFinalize(uploadId, siteId, filename);
+		});
+	},
+
 	listFiles: function(siteId) {
 		return callListFiles(siteId).then(function(res) {
 			return res.files || [];
@@ -196,6 +259,14 @@ return baseclass.extend({
 
 	syncConfig: function() {
 		return callSyncConfig();
+	},
+
+	emancipate: function(id) {
+		return callEmancipate(id);
+	},
+
+	emancipateStatus: function(jobId) {
+		return callEmancipateStatus(jobId);
 	},
 
 	getDashboardData: function() {

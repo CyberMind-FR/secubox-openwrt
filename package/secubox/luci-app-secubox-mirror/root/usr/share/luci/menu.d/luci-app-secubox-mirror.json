@@ -1,0 +1,14 @@
+{
+    "admin/services/mirrornet": {
+        "title": "MirrorNet",
+        "order": 85,
+        "action": {
+            "type": "view",
+            "path": "secubox-mirror/dashboard"
+        },
+        "depends": {
+            "acl": ["luci-app-secubox-mirror"],
+            "uci": {"mirrornet": true}
+        }
+    }
+}

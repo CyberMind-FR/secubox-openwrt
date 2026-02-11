@@ -1,0 +1,14 @@
+{
+	"admin/system/backup": {
+		"title": "Backup Manager",
+		"order": 85,
+		"action": {
+			"type": "view",
+			"path": "backup/overview"
+		},
+		"depends": {
+			"acl": ["luci-app-backup"],
+			"uci": { "backup": true }
+		}
+	}
+}

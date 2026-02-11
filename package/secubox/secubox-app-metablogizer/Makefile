@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-app-metablogizer
-PKG_VERSION:=1.0.0
+PKG_VERSION:=1.1.0
 PKG_RELEASE:=1
 
 include $(INCLUDE_DIR)/package.mk
@@ -17,6 +17,7 @@ endef
 define Package/secubox-app-metablogizer/description
   Static site publisher with auto-vhost creation.
   Supports uhttpd (default) and nginx LXC runtimes.
+  KISS ULTIME MODE: One-command DNS + SSL + Mesh workflow.
 endef
 
 define Package/secubox-app-metablogizer/install

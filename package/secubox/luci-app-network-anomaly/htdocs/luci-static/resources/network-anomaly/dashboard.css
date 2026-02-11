@@ -1,0 +1,300 @@
+/* Network Anomaly Dashboard Styles */
+
+.na-view {
+	max-width: 1200px;
+	margin: 0 auto;
+	padding: 1rem;
+}
+
+.na-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 1.5rem;
+	padding-bottom: 1rem;
+	border-bottom: 1px solid var(--border-color-medium, #ddd);
+}
+
+.na-title {
+	font-size: 1.5rem;
+	font-weight: 600;
+}
+
+.na-status {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.na-dot {
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+}
+
+.na-dot.online {
+	background: #28a745;
+	box-shadow: 0 0 6px #28a745;
+}
+
+.na-dot.offline {
+	background: #dc3545;
+}
+
+.na-stats {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+	gap: 1rem;
+	margin-bottom: 1.5rem;
+}
+
+.na-stat {
+	background: var(--background-color-low, #f8f9fa);
+	border-radius: 8px;
+	padding: 1rem;
+	text-align: center;
+	border-left: 4px solid var(--border-color-medium, #ddd);
+}
+
+.na-stat.success {
+	border-left-color: #28a745;
+}
+
+.na-stat.warning {
+	border-left-color: #ffc107;
+}
+
+.na-stat.danger {
+	border-left-color: #dc3545;
+}
+
+.na-stat-value {
+	font-size: 1.5rem;
+	font-weight: 700;
+}
+
+.na-stat-label {
+	font-size: 0.85rem;
+	color: var(--text-color-low, #666);
+}
+
+.na-grid-2 {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+	gap: 1rem;
+	margin-bottom: 1rem;
+}
+
+.na-card {
+	background: var(--background-color-high, #fff);
+	border: 1px solid var(--border-color-medium, #ddd);
+	border-radius: 8px;
+	margin-bottom: 1rem;
+}
+
+.na-card-header {
+	padding: 0.75rem 1rem;
+	border-bottom: 1px solid var(--border-color-medium, #ddd);
+	font-weight: 600;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+}
+
+.na-card-body {
+	padding: 1rem;
+}
+
+.na-health {
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+}
+
+.na-health-item {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+}
+
+.na-health-icon {
+	width: 24px;
+	height: 24px;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 0.85rem;
+}
+
+.na-health-icon.ok {
+	background: #d4edda;
+	color: #155724;
+}
+
+.na-health-icon.error {
+	background: #f8d7da;
+	color: #721c24;
+}
+
+.na-health-label {
+	font-weight: 500;
+}
+
+.na-health-value {
+	font-size: 0.85rem;
+	color: var(--text-color-low, #666);
+}
+
+.na-network-stats {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+	gap: 0.5rem;
+}
+
+.na-network-stat {
+	display: flex;
+	justify-content: space-between;
+	padding: 0.5rem;
+	background: var(--background-color-low, #f8f9fa);
+	border-radius: 4px;
+}
+
+.na-network-stat-label {
+	color: var(--text-color-low, #666);
+}
+
+.na-network-stat-value {
+	font-weight: 600;
+}
+
+.na-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.75rem;
+}
+
+.na-btn {
+	padding: 0.5rem 1rem;
+	border: none;
+	border-radius: 4px;
+	cursor: pointer;
+	font-size: 0.9rem;
+	transition: opacity 0.2s;
+}
+
+.na-btn:hover {
+	opacity: 0.85;
+}
+
+.na-btn-primary {
+	background: #007bff;
+	color: #fff;
+}
+
+.na-btn-secondary {
+	background: #6c757d;
+	color: #fff;
+}
+
+.na-btn-success {
+	background: #28a745;
+	color: #fff;
+}
+
+.na-btn-warning {
+	background: #ffc107;
+	color: #212529;
+}
+
+.na-btn-danger {
+	background: #dc3545;
+	color: #fff;
+}
+
+.na-btn-sm {
+	padding: 0.25rem 0.5rem;
+	font-size: 0.8rem;
+}
+
+.na-table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+.na-table th,
+.na-table td {
+	padding: 0.75rem;
+	text-align: left;
+	border-bottom: 1px solid var(--border-color-medium, #ddd);
+}
+
+.na-table th {
+	background: var(--background-color-low, #f8f9fa);
+	font-weight: 600;
+}
+
+.na-table tr.na-acked {
+	opacity: 0.6;
+}
+
+.na-badge {
+	display: inline-block;
+	padding: 0.25rem 0.5rem;
+	border-radius: 4px;
+	font-size: 0.75rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	background: var(--background-color-low, #e9ecef);
+}
+
+.na-badge.danger {
+	background: #f8d7da;
+	color: #721c24;
+}
+
+.na-badge.warning {
+	background: #fff3cd;
+	color: #856404;
+}
+
+.na-badge.info {
+	background: #d1ecf1;
+	color: #0c5460;
+}
+
+.na-time {
+	font-size: 0.85rem;
+	color: var(--text-color-low, #666);
+}
+
+.na-alert-type {
+	font-family: monospace;
+}
+
+.na-acked-label {
+	font-size: 0.75rem;
+	color: var(--text-color-low, #999);
+}
+
+.na-empty {
+	color: var(--text-color-low, #666);
+	text-align: center;
+	padding: 2rem;
+}
+
+.spinning::after {
+	content: '';
+	display: inline-block;
+	width: 1em;
+	height: 1em;
+	margin-left: 0.5em;
+	border: 2px solid currentColor;
+	border-right-color: transparent;
+	border-radius: 50%;
+	animation: spin 0.75s linear infinite;
+}
+
+@keyframes spin {
+	to { transform: rotate(360deg); }
+}

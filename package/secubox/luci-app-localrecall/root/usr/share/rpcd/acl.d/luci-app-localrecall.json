@@ -1,0 +1,17 @@
+{
+	"luci-app-localrecall": {
+		"description": "Grant access to LocalRecall AI Memory",
+		"read": {
+			"ubus": {
+				"luci.localrecall": ["status", "get_memories", "search", "stats"]
+			},
+			"uci": ["localrecall"]
+		},
+		"write": {
+			"ubus": {
+				"luci.localrecall": ["add", "delete", "cleanup", "summarize", "export", "import"]
+			},
+			"uci": ["localrecall"]
+		}
+	}
+}

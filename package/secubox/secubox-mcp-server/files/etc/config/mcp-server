@@ -1,0 +1,28 @@
+config mcp-server 'main'
+	option enabled '1'
+
+	# Security: allowed tools (whitelist)
+	# Only tools listed here can be invoked via MCP
+	list allowed_tool 'crowdsec.alerts'
+	list allowed_tool 'crowdsec.decisions'
+	list allowed_tool 'waf.logs'
+	list allowed_tool 'dns.queries'
+	list allowed_tool 'network.flows'
+	list allowed_tool 'system.metrics'
+	list allowed_tool 'wireguard.status'
+	list allowed_tool 'uci.get'
+	# Note: uci.set disabled by default for safety
+	# list allowed_tool 'uci.set'
+
+	# AI-powered tools (require LocalAI running)
+	list allowed_tool 'ai.analyze_threats'
+	list allowed_tool 'ai.cve_lookup'
+	list allowed_tool 'ai.suggest_waf_rules'
+	list allowed_tool 'ai.explain_ban'
+	list allowed_tool 'ai.security_posture'
+
+	# Data classification for sovereignty compliance
+	# local_only: Data never leaves device (default)
+	# sanitized: IPs scrubbed before external use
+	# cloud_direct: Generic data, safe for cloud AI
+	option classification 'local_only'

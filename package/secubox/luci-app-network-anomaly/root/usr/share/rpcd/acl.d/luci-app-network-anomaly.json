@@ -1,0 +1,17 @@
+{
+	"luci-app-network-anomaly": {
+		"description": "Grant access to Network Anomaly Detection",
+		"read": {
+			"ubus": {
+				"luci.network-anomaly": ["status", "get_alerts", "get_stats"]
+			},
+			"uci": ["network-anomaly"]
+		},
+		"write": {
+			"ubus": {
+				"luci.network-anomaly": ["run", "ack_alert", "clear_alerts", "reset_baseline", "analyze"]
+			},
+			"uci": ["network-anomaly"]
+		}
+	}
+}

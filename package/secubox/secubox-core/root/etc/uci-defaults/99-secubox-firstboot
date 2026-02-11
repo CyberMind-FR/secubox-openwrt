@@ -54,6 +54,9 @@ logger -t secubox "Creating initial configuration snapshot"
 /etc/init.d/secubox-core enable
 /etc/init.d/secubox-core start
 
+# Initialize vhost configuration (deferred to allow HAProxy to start)
+( sleep 30; /usr/sbin/secubox-vhost init >/dev/null 2>&1; ) &
+
 # Mark provisioning complete
 touch "$SECUBOX_FIRSTBOOT"
 logger -t secubox "First boot provisioning completed successfully"

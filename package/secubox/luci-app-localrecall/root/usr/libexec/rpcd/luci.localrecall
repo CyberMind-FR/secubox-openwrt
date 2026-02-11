@@ -1,0 +1,220 @@
+#!/bin/sh
+# LocalRecall Memory RPCD Handler
+
+. /usr/share/libubox/jshn.sh
+
+CONFIG="localrecall"
+STORAGE_DIR="/var/lib/localrecall"
+MEMORIES_FILE="$STORAGE_DIR/memories.json"
+
+# Source memory library
+[ -f /usr/lib/localrecall/memory.sh ] && . /usr/lib/localrecall/memory.sh
+[ -f /usr/lib/localrecall/ai.sh ] && . /usr/lib/localrecall/ai.sh
+
+log_info() { logger -t localrecall-rpcd "$*"; }
+
+uci_get() { uci -q get "${CONFIG}.$1"; }
+
+case "$1" in
+	list)
+		cat <<'EOF'
+{
+	"status": {},
+	"get_memories": {"category": "string", "limit": 50},
+	"search": {"query": "string", "limit": 20},
+	"stats": {},
+	"add": {"category": "string", "content": "string", "agent": "string", "importance": 5},
+	"delete": {"id": "string"},
+	"cleanup": {},
+	"summarize": {"category": "string"},
+	"export": {},
+	"import": {"data": "string"}
+}
+EOF
+		;;
+
+	call)
+		case "$2" in
+			status)
+				enabled=$(uci_get main.enabled)
+				storage=$(uci_get main.storage_path)
+				max_mem=$(uci_get main.max_memories)
+				retention=$(uci_get main.retention_days)
+
+				total=0
+				threats=0
+				decisions=0
+				patterns=0
+				configs=0
+				convs=0
+
+				if [ -f "$MEMORIES_FILE" ]; then
+					total=$(jsonfilter -i "$MEMORIES_FILE" -e '@[*]' 2>/dev/null | wc -l)
+					threats=$(jsonfilter -i "$MEMORIES_FILE" -e "@[@.category='threats']" 2>/dev/null | wc -l)
+					decisions=$(jsonfilter -i "$MEMORIES_FILE" -e "@[@.category='decisions']" 2>/dev/null | wc -l)
+					patterns=$(jsonfilter -i "$MEMORIES_FILE" -e "@[@.category='patterns']" 2>/dev/null | wc -l)
+					configs=$(jsonfilter -i "$MEMORIES_FILE" -e "@[@.category='configs']" 2>/dev/null | wc -l)
+					convs=$(jsonfilter -i "$MEMORIES_FILE" -e "@[@.category='conversations']" 2>/dev/null | wc -l)
+				fi
+
+				localai_status="offline"
+				localai_url=$(uci_get main.localai_url)
+				[ -z "$localai_url" ] && localai_url="http://127.0.0.1:8091"
+				wget -q -O /dev/null --timeout=2 "${localai_url}/v1/models" 2>/dev/null && localai_status="online"
+
+				storage_size="0"
+				[ -d "${storage:-/var/lib/localrecall}" ] && storage_size=$(du -s "${storage:-/var/lib/localrecall}" 2>/dev/null | cut -f1)
+
+				cat <<EOF
+{
+	"enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
+	"total": $total,
+	"threats": $threats,
+	"decisions": $decisions,
+	"patterns": $patterns,
+	"configs": $configs,
+	"conversations": $convs,
+	"max_memories": ${max_mem:-1000},
+	"retention_days": ${retention:-90},
+	"storage_size": $storage_size,
+	"localai_status": "$localai_status"
+}
+EOF
+				;;
+
+			get_memories)
+				read -r input
+				category=$(echo "$input" | jsonfilter -e '@.category' 2>/dev/null)
+				limit=$(echo "$input" | jsonfilter -e '@.limit' 2>/dev/null)
+				[ -z "$limit" ] && limit=50
+
+				memories='[]'
+				if [ -f "$MEMORIES_FILE" ]; then
+					if [ -n "$category" ]; then
+						memories=$(jsonfilter -i "$MEMORIES_FILE" -e "@[@.category='$category']" 2>/dev/null | head -n "$limit" | tr '\n' ',' | sed 's/,$//')
+						[ -z "$memories" ] && memories='[]' || memories="[$memories]"
+					else
+						# Get all, sorted by timestamp (most recent first)
+						memories=$(cat "$MEMORIES_FILE")
+					fi
+				fi
+
+				printf '{"memories":%s}' "$memories"
+				;;
+
+			search)
+				read -r input
+				query=$(echo "$input" | jsonfilter -e '@.query' 2>/dev/null)
+				limit=$(echo "$input" | jsonfilter -e '@.limit' 2>/dev/null)
+				[ -z "$limit" ] && limit=20
+
+				results='[]'
+				if [ -n "$query" ] && [ -f "$MEMORIES_FILE" ]; then
+					results=$(grep -i "$query" "$MEMORIES_FILE" 2>/dev/null | head -n "$limit" | tr '\n' ',' | sed 's/,$//')
+					[ -z "$results" ] && results='[]' || results="[$results]"
+				fi
+
+				printf '{"results":%s}' "$results"
+				;;
+
+			stats)
+				# Agent breakdown
+				agent_stats='{}'
+				if [ -f "$MEMORIES_FILE" ]; then
+					ta=$(jsonfilter -i "$MEMORIES_FILE" -e "@[@.agent='threat_analyst']" 2>/dev/null | wc -l)
+					dg=$(jsonfilter -i "$MEMORIES_FILE" -e "@[@.agent='dns_guard']" 2>/dev/null | wc -l)
+					na=$(jsonfilter -i "$MEMORIES_FILE" -e "@[@.agent='network_anomaly']" 2>/dev/null | wc -l)
+					ct=$(jsonfilter -i "$MEMORIES_FILE" -e "@[@.agent='cve_triage']" 2>/dev/null | wc -l)
+					us=$(jsonfilter -i "$MEMORIES_FILE" -e "@[@.agent='user']" 2>/dev/null | wc -l)
+					agent_stats="{\"threat_analyst\":$ta,\"dns_guard\":$dg,\"network_anomaly\":$na,\"cve_triage\":$ct,\"user\":$us}"
+				fi
+
+				printf '{"agents":%s}' "$agent_stats"
+				;;
+
+			add)
+				read -r input
+				category=$(echo "$input" | jsonfilter -e '@.category' 2>/dev/null)
+				content=$(echo "$input" | jsonfilter -e '@.content' 2>/dev/null)
+				agent=$(echo "$input" | jsonfilter -e '@.agent' 2>/dev/null)
+				importance=$(echo "$input" | jsonfilter -e '@.importance' 2>/dev/null)
+
+				[ -z "$category" ] || [ -z "$content" ] && {
+					echo '{"error":"Category and content required"}'
+					exit 0
+				}
+
+				[ -z "$agent" ] && agent="user"
+				[ -z "$importance" ] && importance=5
+
+				mkdir -p "$STORAGE_DIR"
+				id=$(add_memory "$category" "$agent" "$content" '{}' "$importance")
+
+				printf '{"success":true,"id":"%s"}' "$id"
+				;;
+
+			delete)
+				read -r input
+				id=$(echo "$input" | jsonfilter -e '@.id' 2>/dev/null)
+
+				[ -z "$id" ] && {
+					echo '{"error":"Memory ID required"}'
+					exit 0
+				}
+
+				delete_memory "$id"
+				echo '{"success":true}'
+				;;
+
+			cleanup)
+				retention=$(uci_get main.retention_days)
+				keep_imp=$(uci_get cleanup.keep_important)
+
+				deleted=$(cleanup_old "${retention:-90}" "${keep_imp:-1}")
+				printf '{"success":true,"deleted":%d}' "${deleted:-0}"
+				;;
+
+			summarize)
+				read -r input
+				category=$(echo "$input" | jsonfilter -e '@.category' 2>/dev/null)
+
+				localai_url=$(uci_get main.localai_url)
+				[ -z "$localai_url" ] && localai_url="http://127.0.0.1:8091"
+
+				if ! curl -s --max-time 2 "${localai_url}/v1/models" >/dev/null 2>&1; then
+					echo '{"error":"LocalAI not available"}'
+					exit 0
+				fi
+
+				summary=$(summarize_memories "$category" 2>/dev/null)
+				summary=$(printf '%s' "$summary" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ')
+
+				printf '{"summary":"%s"}' "$summary"
+				;;
+
+			export)
+				memories='[]'
+				[ -f "$MEMORIES_FILE" ] && memories=$(cat "$MEMORIES_FILE")
+				printf '{"data":%s}' "$memories"
+				;;
+
+			import)
+				read -r input
+				data=$(echo "$input" | jsonfilter -e '@.data' 2>/dev/null)
+
+				[ -z "$data" ] && {
+					echo '{"error":"No data provided"}'
+					exit 0
+				}
+
+				mkdir -p "$STORAGE_DIR"
+				echo "$data" > "$MEMORIES_FILE"
+				echo '{"success":true}'
+				;;
+
+			*)
+				echo '{"error":"Unknown method"}'
+				;;
+		esac
+		;;
+esac

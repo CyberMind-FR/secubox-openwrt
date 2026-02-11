@@ -1,0 +1,402 @@
+#!/bin/sh
+# SecuBox DNS Guard - AI-Powered DNS Anomaly Detection
+# Copyright (C) 2026 CyberMind.fr
+#
+# Monitors DNS queries for anomalies using ML pattern detection
+# and LocalAI for intelligent threat analysis
+
+CONFIG="dns-guard"
+LIB_DIR="/usr/lib/dns-guard"
+STATE_DIR="/var/lib/dns-guard"
+BLOCKLIST_DIR="/etc/dns-guard/blocklists"
+LOG_TAG="dns-guard"
+
+# Source libraries
+. "$LIB_DIR/analyzer.sh"
+. "$LIB_DIR/detector.sh"
+. "$LIB_DIR/blocklist.sh"
+
+usage() {
+	cat <<'EOF'
+Usage: dns-guard <command> [options]
+
+Commands:
+  run             Run single analysis cycle
+  daemon          Run as background daemon
+  status          Show agent status and statistics
+  analyze         Analyze recent DNS queries (no blocking)
+  detect          Run all detectors on recent queries
+
+Block Management:
+  list-pending    List pending blocks awaiting approval
+  approve <id>    Approve pending block
+  reject <id>     Reject pending block
+  approve-all     Approve all pending blocks
+  clear-pending   Clear all pending blocks
+  show-blocklist  Show current AI-generated blocklist
+
+Query Analysis:
+  check <domain>  Check if a domain is suspicious
+  stats           Show DNS query statistics
+  top-domains     Show top queried domains
+  top-clients     Show top DNS clients
+
+Configuration: /etc/config/dns-guard
+EOF
+}
+
+log_info() { logger -t "$LOG_TAG" "$*"; echo "[INFO] $*"; }
+log_warn() { logger -t "$LOG_TAG" -p warning "$*"; echo "[WARN] $*" >&2; }
+log_error() { logger -t "$LOG_TAG" -p err "$*"; echo "[ERROR] $*" >&2; }
+
+uci_get() { uci -q get "${CONFIG}.$1"; }
+
+load_config() {
+	enabled=$(uci_get main.enabled)
+	interval=$(uci_get main.interval)
+	localai_url=$(uci_get main.localai_url)
+	localai_model=$(uci_get main.localai_model)
+	auto_apply_blocks=$(uci_get main.auto_apply_blocks)
+	min_confidence=$(uci_get main.min_confidence)
+	max_blocks=$(uci_get main.max_blocks_per_cycle)
+	alert_retention=$(uci_get main.alert_retention)
+
+	# Defaults
+	[ -z "$interval" ] && interval=60
+	[ -z "$min_confidence" ] && min_confidence=80
+	[ -z "$max_blocks" ] && max_blocks=10
+	[ -z "$alert_retention" ] && alert_retention=24
+
+	# Ensure state directories exist
+	mkdir -p "$STATE_DIR"
+	mkdir -p "$BLOCKLIST_DIR"
+}
+
+# =============================================================================
+# COMMANDS
+# =============================================================================
+
+cmd_status() {
+	load_config
+	echo "=== DNS Guard Status ==="
+	echo ""
+	echo "Enabled: $([ "$enabled" = "1" ] && echo "Yes" || echo "No")"
+	echo "Interval: ${interval}s"
+	echo "LocalAI: $localai_url"
+	echo "Model: $localai_model"
+	echo ""
+
+	# Check LocalAI availability
+	if wget -q -O /dev/null --timeout=2 "${localai_url}/v1/models" 2>/dev/null; then
+		echo "LocalAI Status: ONLINE"
+	else
+		echo "LocalAI Status: OFFLINE"
+	fi
+
+	echo ""
+	echo "Auto-apply blocks: $([ "$auto_apply_blocks" = "1" ] && echo "Yes" || echo "No (queued)")"
+	echo "Min confidence: ${min_confidence}%"
+	echo "Max blocks/cycle: $max_blocks"
+
+	echo ""
+	echo "=== Detectors ==="
+	for detector in dga tunneling rate_anomaly known_bad tld_anomaly; do
+		local det_enabled=$(uci -q get "dns-guard.${detector}.enabled")
+		local det_desc=$(uci -q get "dns-guard.${detector}.description")
+		printf "  %-15s %s (%s)\n" "$detector" \
+			"$([ "$det_enabled" = "1" ] && echo "[ENABLED]" || echo "[DISABLED]")" \
+			"$det_desc"
+	done
+
+	echo ""
+
+	# Count pending blocks
+	local pending_file="$STATE_DIR/pending_blocks.json"
+	if [ -f "$pending_file" ]; then
+		local count=$(jsonfilter -i "$pending_file" -e '@[*]' 2>/dev/null | wc -l)
+		echo "Pending blocks: $count"
+	else
+		echo "Pending blocks: 0"
+	fi
+
+	# Count active blocks
+	local blocklist_file=$(uci_get target_dnsmasq_blocklist.output_path)
+	[ -z "$blocklist_file" ] && blocklist_file="/etc/dnsmasq.d/dns-guard-blocklist.conf"
+	if [ -f "$blocklist_file" ]; then
+		local active=$(grep -c "^address=" "$blocklist_file" 2>/dev/null || echo "0")
+		echo "Active blocks: $active"
+	else
+		echo "Active blocks: 0"
+	fi
+
+	# Alert count (last 24h)
+	local alerts_file="$STATE_DIR/alerts.json"
+	if [ -f "$alerts_file" ]; then
+		local alert_count=$(jsonfilter -i "$alerts_file" -e '@[*]' 2>/dev/null | wc -l)
+		echo "Alerts (24h): $alert_count"
+	else
+		echo "Alerts (24h): 0"
+	fi
+
+	# Last run
+	if [ -f "$STATE_DIR/last_run" ]; then
+		echo ""
+		echo "Last run: $(cat "$STATE_DIR/last_run")"
+	fi
+}
+
+cmd_run() {
+	load_config
+
+	if [ "$enabled" != "1" ]; then
+		log_warn "DNS Guard disabled in config"
+		return 1
+	fi
+
+	log_info "Starting analysis cycle..."
+
+	# 1. Collect DNS queries
+	local queries=$(collect_dns_queries)
+	local query_count=$(echo "$queries" | wc -l)
+	log_info "Collected $query_count DNS queries"
+
+	if [ "$query_count" -eq 0 ]; then
+		log_info "No new queries to analyze"
+		date > "$STATE_DIR/last_run"
+		return 0
+	fi
+
+	# 2. Run all enabled detectors
+	local anomalies=$(run_all_detectors "$queries")
+	local anomaly_count=$(echo "$anomalies" | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+
+	if [ "$anomaly_count" -eq 0 ]; then
+		log_info "No anomalies detected"
+		date > "$STATE_DIR/last_run"
+		return 0
+	fi
+
+	log_info "Detected $anomaly_count anomalies"
+
+	# 3. Store alerts
+	store_alerts "$anomalies"
+
+	# 4. Analyze with LocalAI for blocking recommendations
+	local analysis=$(analyze_anomalies "$anomalies")
+	if [ -z "$analysis" ]; then
+		log_warn "AI analysis unavailable, using rule-based blocking only"
+		# Fall back to rule-based blocking for high-confidence detections
+		local rule_blocks=$(extract_high_confidence_blocks "$anomalies")
+		if [ -n "$rule_blocks" ]; then
+			process_blocks "$rule_blocks"
+		fi
+	else
+		log_info "AI analysis complete"
+		local ai_blocks=$(extract_ai_recommendations "$analysis")
+		process_blocks "$ai_blocks"
+	fi
+
+	date > "$STATE_DIR/last_run"
+	log_info "Analysis cycle complete"
+}
+
+process_blocks() {
+	local blocks="$1"
+	[ -z "$blocks" ] && return
+
+	local block_count=$(echo "$blocks" | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+	[ "$block_count" -eq 0 ] && return
+
+	# Limit blocks per cycle
+	if [ "$block_count" -gt "$max_blocks" ]; then
+		log_info "Limiting blocks to $max_blocks (found $block_count)"
+		blocks=$(echo "$blocks" | jsonfilter -e "@[0:$max_blocks]")
+	fi
+
+	if [ "$auto_apply_blocks" = "1" ]; then
+		apply_blocks "$blocks"
+		log_info "Applied $block_count domain blocks"
+	else
+		queue_blocks "$blocks"
+		log_info "Queued $block_count domain blocks for approval"
+	fi
+}
+
+cmd_daemon() {
+	load_config
+
+	if [ "$enabled" != "1" ]; then
+		log_error "DNS Guard disabled in config"
+		exit 1
+	fi
+
+	log_info "Starting daemon (interval: ${interval}s)"
+
+	# Cleanup old alerts on startup
+	cleanup_old_alerts
+
+	while true; do
+		cmd_run
+		sleep "$interval"
+	done
+}
+
+cmd_analyze() {
+	load_config
+	log_info "Analyzing DNS queries (no blocking)..."
+
+	local queries=$(collect_dns_queries)
+	local anomalies=$(run_all_detectors "$queries")
+
+	echo "=== DNS Query Analysis ==="
+	echo ""
+	echo "Total queries analyzed: $(echo "$queries" | wc -l)"
+	echo ""
+
+	local anomaly_count=$(echo "$anomalies" | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+	echo "Anomalies detected: $anomaly_count"
+	echo ""
+
+	if [ "$anomaly_count" -gt 0 ]; then
+		echo "=== Anomaly Details ==="
+		echo "$anomalies" | jsonfilter -e '@[*]' 2>/dev/null | while read -r anomaly; do
+			local domain=$(echo "$anomaly" | jsonfilter -e '@.domain' 2>/dev/null)
+			local type=$(echo "$anomaly" | jsonfilter -e '@.type' 2>/dev/null)
+			local confidence=$(echo "$anomaly" | jsonfilter -e '@.confidence' 2>/dev/null)
+			local reason=$(echo "$anomaly" | jsonfilter -e '@.reason' 2>/dev/null)
+			printf "[%s%%] %-12s %s\n" "$confidence" "$type" "$domain"
+			[ -n "$reason" ] && printf "    Reason: %s\n" "$reason"
+		done
+
+		echo ""
+		echo "=== AI Analysis ==="
+		local analysis=$(analyze_anomalies "$anomalies")
+		if [ -n "$analysis" ]; then
+			echo "$analysis"
+		else
+			echo "(LocalAI not available)"
+		fi
+	fi
+}
+
+cmd_detect() {
+	load_config
+	local queries=$(collect_dns_queries)
+	run_all_detectors "$queries"
+}
+
+cmd_check() {
+	local domain="$1"
+	[ -z "$domain" ] && { echo "Usage: dns-guard check <domain>"; return 1; }
+
+	load_config
+	echo "=== Domain Check: $domain ==="
+	echo ""
+
+	# Run each detector individually
+	local result=$(check_domain_all_detectors "$domain")
+	echo "$result"
+
+	# AI analysis for single domain
+	if wget -q -O /dev/null --timeout=2 "${localai_url}/v1/models" 2>/dev/null; then
+		echo ""
+		echo "=== AI Analysis ==="
+		local ai_result=$(analyze_single_domain "$domain")
+		echo "$ai_result"
+	fi
+}
+
+cmd_stats() {
+	load_config
+	show_query_stats
+}
+
+cmd_top_domains() {
+	load_config
+	local limit="${1:-20}"
+	show_top_domains "$limit"
+}
+
+cmd_top_clients() {
+	load_config
+	local limit="${1:-10}"
+	show_top_clients "$limit"
+}
+
+cmd_list_pending() {
+	local pending_file="$STATE_DIR/pending_blocks.json"
+
+	if [ ! -f "$pending_file" ]; then
+		echo "No pending blocks"
+		return 0
+	fi
+
+	echo "=== Pending Domain Blocks ==="
+	echo ""
+	jsonfilter -i "$pending_file" -e '@[*]' 2>/dev/null | while read -r block; do
+		local id=$(echo "$block" | jsonfilter -e '@.id' 2>/dev/null)
+		local domain=$(echo "$block" | jsonfilter -e '@.domain' 2>/dev/null)
+		local type=$(echo "$block" | jsonfilter -e '@.type' 2>/dev/null)
+		local confidence=$(echo "$block" | jsonfilter -e '@.confidence' 2>/dev/null)
+		local created=$(echo "$block" | jsonfilter -e '@.created' 2>/dev/null)
+		printf "[%s] %s (%s, %s%% confidence) - %s\n" "$id" "$domain" "$type" "$confidence" "$created"
+	done
+}
+
+cmd_approve() {
+	local block_id="$1"
+	[ -z "$block_id" ] && { echo "Usage: dns-guard approve <id>"; return 1; }
+
+	load_config
+	approve_pending_block "$block_id"
+}
+
+cmd_approve_all() {
+	load_config
+	approve_all_pending_blocks
+}
+
+cmd_reject() {
+	local block_id="$1"
+	[ -z "$block_id" ] && { echo "Usage: dns-guard reject <id>"; return 1; }
+
+	reject_pending_block "$block_id"
+}
+
+cmd_show_blocklist() {
+	local blocklist_file=$(uci_get target_dnsmasq_blocklist.output_path)
+	[ -z "$blocklist_file" ] && blocklist_file="/etc/dnsmasq.d/dns-guard-blocklist.conf"
+
+	if [ -f "$blocklist_file" ]; then
+		echo "=== DNS Guard Blocklist ==="
+		echo "File: $blocklist_file"
+		echo ""
+		cat "$blocklist_file"
+	else
+		echo "No blocklist file found"
+	fi
+}
+
+# =============================================================================
+# MAIN
+# =============================================================================
+
+case "${1:-}" in
+	run) cmd_run ;;
+	daemon) cmd_daemon ;;
+	status) cmd_status ;;
+	analyze) cmd_analyze ;;
+	detect) cmd_detect ;;
+	check) shift; cmd_check "$@" ;;
+	stats) cmd_stats ;;
+	top-domains) shift; cmd_top_domains "$@" ;;
+	top-clients) shift; cmd_top_clients "$@" ;;
+	list-pending) cmd_list_pending ;;
+	approve) shift; cmd_approve "$@" ;;
+	approve-all) cmd_approve_all ;;
+	reject) shift; cmd_reject "$@" ;;
+	clear-pending) rm -f "$STATE_DIR/pending_blocks.json"; echo "Cleared" ;;
+	show-blocklist) cmd_show_blocklist ;;
+	help|--help|-h|"") usage ;;
+	*) echo "Unknown: $1" >&2; usage >&2; exit 1 ;;
+esac

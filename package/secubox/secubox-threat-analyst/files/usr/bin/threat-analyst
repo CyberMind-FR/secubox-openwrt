@@ -1,0 +1,302 @@
+#!/bin/sh
+# SecuBox Threat Analyst Agent
+# Copyright (C) 2026 CyberMind.fr
+#
+# AI-powered threat analysis and filter generation
+
+CONFIG="threat-analyst"
+LIB_DIR="/usr/lib/threat-analyst"
+STATE_DIR="/var/lib/threat-analyst"
+LOG_TAG="threat-analyst"
+
+# Source libraries
+. "$LIB_DIR/analyzer.sh"
+. "$LIB_DIR/generators.sh"
+. "$LIB_DIR/appliers.sh"
+
+usage() {
+	cat <<'EOF'
+Usage: threat-analyst <command> [options]
+
+Commands:
+  run             Run single analysis cycle
+  daemon          Run as background daemon
+  status          Show agent status
+  analyze         Analyze current threats (no rule generation)
+  generate        Generate rules from recent threats
+  apply           Apply pending rules
+  list-pending    List pending rules awaiting approval
+  approve <id>    Approve pending rule
+  reject <id>     Reject pending rule
+  clear-pending   Clear all pending rules
+
+Filter Commands:
+  gen-mitmproxy   Generate mitmproxy filters only
+  gen-crowdsec    Generate CrowdSec scenario only
+  gen-waf         Generate WAF rules only
+
+Configuration: /etc/config/threat-analyst
+EOF
+}
+
+log_info() { logger -t "$LOG_TAG" "$*"; echo "[INFO] $*"; }
+log_warn() { logger -t "$LOG_TAG" -p warning "$*"; echo "[WARN] $*" >&2; }
+log_error() { logger -t "$LOG_TAG" -p err "$*"; echo "[ERROR] $*" >&2; }
+
+uci_get() { uci -q get "${CONFIG}.$1"; }
+
+load_config() {
+	enabled=$(uci_get main.enabled)
+	interval=$(uci_get main.interval)
+	localai_url=$(uci_get main.localai_url)
+	localai_model=$(uci_get main.localai_model)
+	auto_apply_mitmproxy=$(uci_get main.auto_apply_mitmproxy)
+	auto_apply_crowdsec=$(uci_get main.auto_apply_crowdsec)
+	auto_apply_waf=$(uci_get main.auto_apply_waf)
+	min_confidence=$(uci_get main.min_confidence)
+	max_rules=$(uci_get main.max_rules_per_cycle)
+
+	# Defaults
+	[ -z "$interval" ] && interval=300
+	[ -z "$min_confidence" ] && min_confidence=70
+	[ -z "$max_rules" ] && max_rules=5
+
+	mkdir -p "$STATE_DIR"
+}
+
+# =============================================================================
+# COMMANDS
+# =============================================================================
+
+cmd_status() {
+	load_config
+	echo "=== Threat Analyst Status ==="
+	echo ""
+	echo "Enabled: $([ "$enabled" = "1" ] && echo "Yes" || echo "No")"
+	echo "Interval: ${interval}s"
+	echo "LocalAI: $localai_url"
+	echo "Model: $localai_model"
+	echo ""
+
+	# Check LocalAI availability
+	if wget -q -O /dev/null --timeout=2 "${localai_url}/v1/models" 2>/dev/null; then
+		echo "LocalAI Status: ONLINE"
+	else
+		echo "LocalAI Status: OFFLINE"
+	fi
+
+	echo ""
+	echo "Auto-apply:"
+	echo "  mitmproxy: $([ "$auto_apply_mitmproxy" = "1" ] && echo "Yes" || echo "No (queued)")"
+	echo "  CrowdSec:  $([ "$auto_apply_crowdsec" = "1" ] && echo "Yes" || echo "No (queued)")"
+	echo "  WAF:       $([ "$auto_apply_waf" = "1" ] && echo "Yes" || echo "No (queued)")"
+
+	echo ""
+
+	# Count pending rules
+	local pending_file="$STATE_DIR/pending_rules.json"
+	if [ -f "$pending_file" ]; then
+		local count=$(jsonfilter -i "$pending_file" -e '@[*]' 2>/dev/null | wc -l)
+		echo "Pending rules: $count"
+	else
+		echo "Pending rules: 0"
+	fi
+
+	# Last run
+	if [ -f "$STATE_DIR/last_run" ]; then
+		echo "Last run: $(cat "$STATE_DIR/last_run")"
+	fi
+}
+
+cmd_run() {
+	load_config
+
+	if [ "$enabled" != "1" ]; then
+		log_warn "Agent disabled in config"
+		return 1
+	fi
+
+	log_info "Starting analysis cycle..."
+
+	# 1. Collect threat data from all sources
+	local threats=$(collect_threats)
+	local threat_count=$(echo "$threats" | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+	log_info "Collected $threat_count threats from sources"
+
+	if [ "$threat_count" -eq 0 ]; then
+		log_info "No new threats to analyze"
+		date > "$STATE_DIR/last_run"
+		return 0
+	fi
+
+	# 2. Analyze with LocalAI
+	local analysis=$(analyze_threats "$threats")
+	if [ -z "$analysis" ]; then
+		log_error "AI analysis failed"
+		return 1
+	fi
+
+	log_info "AI analysis complete"
+
+	# 3. Generate rules
+	local rules_generated=0
+
+	# mitmproxy filters
+	if [ "$(uci_get target_mitmproxy_filters.enabled)" = "1" ]; then
+		local mitmproxy_rules=$(generate_mitmproxy_filters "$analysis" "$threats")
+		if [ -n "$mitmproxy_rules" ]; then
+			if [ "$auto_apply_mitmproxy" = "1" ]; then
+				apply_mitmproxy_filters "$mitmproxy_rules"
+				log_info "Applied mitmproxy filters"
+			else
+				queue_rule "mitmproxy" "$mitmproxy_rules"
+				log_info "Queued mitmproxy filters for approval"
+			fi
+			rules_generated=$((rules_generated + 1))
+		fi
+	fi
+
+	# CrowdSec scenarios
+	if [ "$(uci_get target_crowdsec_scenarios.enabled)" = "1" ]; then
+		local crowdsec_rules=$(generate_crowdsec_scenario "$analysis" "$threats")
+		if [ -n "$crowdsec_rules" ]; then
+			if [ "$auto_apply_crowdsec" = "1" ]; then
+				apply_crowdsec_scenario "$crowdsec_rules"
+				log_info "Applied CrowdSec scenario"
+			else
+				queue_rule "crowdsec" "$crowdsec_rules"
+				log_info "Queued CrowdSec scenario for approval"
+			fi
+			rules_generated=$((rules_generated + 1))
+		fi
+	fi
+
+	# WAF rules
+	if [ "$(uci_get target_waf_rules.enabled)" = "1" ]; then
+		local waf_rules=$(generate_waf_rules "$analysis" "$threats")
+		if [ -n "$waf_rules" ]; then
+			if [ "$auto_apply_waf" = "1" ]; then
+				apply_waf_rules "$waf_rules"
+				log_info "Applied WAF rules"
+			else
+				queue_rule "waf" "$waf_rules"
+				log_info "Queued WAF rules for approval"
+			fi
+			rules_generated=$((rules_generated + 1))
+		fi
+	fi
+
+	log_info "Analysis cycle complete. Generated $rules_generated rule sets."
+	date > "$STATE_DIR/last_run"
+}
+
+cmd_daemon() {
+	load_config
+
+	if [ "$enabled" != "1" ]; then
+		log_error "Agent disabled in config"
+		exit 1
+	fi
+
+	log_info "Starting daemon (interval: ${interval}s)"
+
+	while true; do
+		cmd_run
+		sleep "$interval"
+	done
+}
+
+cmd_analyze() {
+	load_config
+	log_info "Analyzing threats (no rule generation)..."
+
+	local threats=$(collect_threats)
+	local threat_count=$(echo "$threats" | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+
+	echo "=== Threat Summary ==="
+	echo "Total threats: $threat_count"
+	echo ""
+
+	if [ "$threat_count" -gt 0 ]; then
+		local analysis=$(analyze_threats "$threats")
+		echo "=== AI Analysis ==="
+		echo "$analysis"
+	fi
+}
+
+cmd_generate() {
+	load_config
+	local target="$1"
+
+	local threats=$(collect_threats)
+	local analysis=$(analyze_threats "$threats")
+
+	case "$target" in
+		mitmproxy|"")
+			echo "=== Generated mitmproxy Filters ==="
+			generate_mitmproxy_filters "$analysis" "$threats"
+			;;
+		crowdsec)
+			echo "=== Generated CrowdSec Scenario ==="
+			generate_crowdsec_scenario "$analysis" "$threats"
+			;;
+		waf)
+			echo "=== Generated WAF Rules ==="
+			generate_waf_rules "$analysis" "$threats"
+			;;
+	esac
+}
+
+cmd_list_pending() {
+	local pending_file="$STATE_DIR/pending_rules.json"
+
+	if [ ! -f "$pending_file" ]; then
+		echo "No pending rules"
+		return 0
+	fi
+
+	echo "=== Pending Rules ==="
+	cat "$pending_file" | jsonfilter -e '@[*]' 2>/dev/null | while read -r rule; do
+		local id=$(echo "$rule" | jsonfilter -e '@.id')
+		local type=$(echo "$rule" | jsonfilter -e '@.type')
+		local created=$(echo "$rule" | jsonfilter -e '@.created')
+		echo "[$id] $type - created $created"
+	done
+}
+
+cmd_approve() {
+	local rule_id="$1"
+	[ -z "$rule_id" ] && { echo "Usage: threat-analyst approve <id>"; return 1; }
+
+	load_config
+	approve_pending_rule "$rule_id"
+}
+
+cmd_reject() {
+	local rule_id="$1"
+	[ -z "$rule_id" ] && { echo "Usage: threat-analyst reject <id>"; return 1; }
+
+	reject_pending_rule "$rule_id"
+}
+
+# =============================================================================
+# MAIN
+# =============================================================================
+
+case "${1:-}" in
+	run) cmd_run ;;
+	daemon) cmd_daemon ;;
+	status) cmd_status ;;
+	analyze) cmd_analyze ;;
+	generate) shift; cmd_generate "$@" ;;
+	apply) apply_all_pending ;;
+	list-pending) cmd_list_pending ;;
+	approve) shift; cmd_approve "$@" ;;
+	reject) shift; cmd_reject "$@" ;;
+	clear-pending) rm -f "$STATE_DIR/pending_rules.json"; echo "Cleared" ;;
+	gen-mitmproxy) load_config; generate_mitmproxy_filters "$(analyze_threats "$(collect_threats)")" "$(collect_threats)" ;;
+	gen-crowdsec) load_config; generate_crowdsec_scenario "$(analyze_threats "$(collect_threats)")" "$(collect_threats)" ;;
+	gen-waf) load_config; generate_waf_rules "$(analyze_threats "$(collect_threats)")" "$(collect_threats)" ;;
+	help|--help|-h|"") usage ;;
+	*) echo "Unknown: $1" >&2; usage >&2; exit 1 ;;
+esac

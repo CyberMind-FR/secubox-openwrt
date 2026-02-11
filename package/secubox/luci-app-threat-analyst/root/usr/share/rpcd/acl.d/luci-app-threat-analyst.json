@@ -1,0 +1,17 @@
+{
+	"luci-app-threat-analyst": {
+		"description": "Grant access to Threat Analyst",
+		"read": {
+			"ubus": {
+				"luci.threat-analyst": ["status", "get_threats", "get_alerts", "get_pending", "chat", "analyze"]
+			},
+			"uci": ["threat-analyst"]
+		},
+		"write": {
+			"ubus": {
+				"luci.threat-analyst": ["generate_rules", "approve_rule", "reject_rule", "run_cycle"]
+			},
+			"uci": ["threat-analyst"]
+		}
+	}
+}

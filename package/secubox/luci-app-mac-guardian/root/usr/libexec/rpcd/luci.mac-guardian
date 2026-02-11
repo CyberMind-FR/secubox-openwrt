@@ -5,10 +5,19 @@
 
 MG_DBFILE="/var/run/mac-guardian/known.db"
 MG_LOGFILE="/var/log/mac-guardian.log"
+MAC_GUARDIAN_CACHE="/tmp/secubox/mac-guardian.json"
+
+get_cached_status() {
+	if [ -f "$MAC_GUARDIAN_CACHE" ]; then
+		cat "$MAC_GUARDIAN_CACHE"
+	else
+		echo '{"running":0,"total":0,"trusted":0,"suspect":0,"blocked":0,"unknown":0,"wifi_stations":0,"dhcp_leases":0,"timestamp":0}'
+	fi
+}
 
 case "$1" in
 	list)
-		echo '{"status":{},"get_clients":{},"get_events":{"count":"int"},"scan":{},"start":{},"stop":{},"restart":{},"trust":{"mac":"str"},"block":{"mac":"str"},"dhcp_status":{},"dhcp_cleanup":{}}'
+		echo '{"status":{},"status_cached":{},"get_clients":{},"get_events":{"count":"int"},"scan":{},"start":{},"stop":{},"restart":{},"trust":{"mac":"str"},"block":{"mac":"str"},"dhcp_status":{},"dhcp_cleanup":{}}'
 		;;
 	call)
 		case "$2" in
@@ -72,6 +81,10 @@ case "$1" in
 				json_close_object
 
 				json_dump
+				;;
+
+			status_cached)
+				get_cached_status
 				;;
 
 			get_clients)

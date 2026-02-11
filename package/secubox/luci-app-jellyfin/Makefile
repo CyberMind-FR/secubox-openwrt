@@ -22,6 +22,9 @@ define Package/luci-app-jellyfin/install
 	$(INSTALL_DIR) $(1)/www/luci-static/resources/view/jellyfin
 	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/jellyfin/*.js $(1)/www/luci-static/resources/view/jellyfin/
 
+	$(INSTALL_DIR) $(1)/www/luci-static/resources/jellyfin
+	$(INSTALL_DATA) ./htdocs/luci-static/resources/jellyfin/*.css $(1)/www/luci-static/resources/jellyfin/
+
 	$(INSTALL_DIR) $(1)/usr/libexec/rpcd
 	$(INSTALL_BIN) ./root/usr/libexec/rpcd/luci.jellyfin $(1)/usr/libexec/rpcd/
 endef

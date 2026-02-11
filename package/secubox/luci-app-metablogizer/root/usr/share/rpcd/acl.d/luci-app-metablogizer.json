@@ -30,12 +30,16 @@
 					"sync_site",
 					"save_settings",
 					"upload_file",
+					"upload_chunk",
+					"upload_finalize",
 					"list_files",
 					"repair_site",
 					"enable_tor",
 					"disable_tor",
 					"import_vhost",
-					"sync_config"
+					"sync_config",
+					"emancipate",
+					"emancipate_status"
 				],
 				"luci.haproxy": [
 					"create_backend",

@@ -1,0 +1,50 @@
+config mirrornet 'main'
+	option enabled '1'
+	option node_role 'peer'
+	# Roles: master, submaster, peer
+	option gossip_interval '30'
+	option health_interval '60'
+	option mirror_enabled '0'
+
+config identity 'identity'
+	option did_method 'plc'
+	# DID format: did:plc:<fingerprint>
+	option key_rotation_days '90'
+	option backup_keys '1'
+
+config reputation 'reputation'
+	option enabled '1'
+	option initial_score '50'
+	# Score range: 0-100
+	option decay_interval '86400'
+	# Daily decay for inactive peers
+	option decay_amount '1'
+	option min_trust_score '20'
+	# Peers below this are untrusted
+	option ban_threshold '10'
+	# Peers below this are banned
+
+config gossip 'gossip'
+	option priority_routing '1'
+	option max_hops '5'
+	option dedup_window '300'
+	# 5 minutes dedup window
+	option batch_size '10'
+	option compression '1'
+
+config mirror 'mirror'
+	option enabled '0'
+	option upstream_timeout '5'
+	option failover_threshold '3'
+	# Failures before failover
+	option health_check_interval '30'
+	option sync_config '1'
+
+config health 'health'
+	option enabled '1'
+	option latency_threshold '500'
+	# ms - mark peer as slow
+	option packet_loss_threshold '10'
+	# % - mark peer as unreliable
+	option bandwidth_sample_interval '300'
+	option anomaly_detection '1'

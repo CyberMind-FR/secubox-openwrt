@@ -8,7 +8,7 @@ CONFIG="jellyfin"
 
 case "$1" in
 	list)
-		echo '{"status":{},"start":{},"stop":{},"restart":{},"install":{},"uninstall":{},"update":{},"configure_haproxy":{},"backup":{},"restore":{"path":"str"},"logs":{"lines":"int"}}'
+		echo '{"status":{},"start":{},"stop":{},"restart":{},"install":{},"uninstall":{},"update":{},"configure_haproxy":{},"backup":{},"restore":{"path":"str"},"logs":{"lines":"int"},"get_wizard_status":{},"set_wizard_complete":{"complete":"int"},"add_media_path":{"path":"str","name":"str","type":"str"},"remove_media_path":{"section":"str"},"get_media_paths":{}}'
 		;;
 	call)
 		case "$2" in
@@ -177,6 +177,129 @@ case "$1" in
 				logs=$(docker logs --tail "$lines" "$CONTAINER" 2>&1 | tail -100)
 				json_init
 				json_add_string "logs" "$logs"
+				json_dump
+				;;
+
+			get_wizard_status)
+				json_init
+
+				# Check if container exists and running
+				installed=0
+				running=0
+				if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER}$"; then
+					installed=1
+					docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER}$" && running=1
+				fi
+
+				# Check if any media paths configured
+				media_count=0
+				for section in $(uci show ${CONFIG} 2>/dev/null | grep "=media$" | cut -d'.' -f2 | cut -d'=' -f1); do
+					media_count=$((media_count + 1))
+				done
+
+				# Check if wizard completed
+				wizard_complete=$(uci -q get ${CONFIG}.main.wizard_complete)
+
+				json_add_boolean "installed" "$installed"
+				json_add_boolean "running" "$running"
+				json_add_int "media_count" "$media_count"
+				json_add_boolean "wizard_complete" "${wizard_complete:-0}"
+
+				# Show wizard if installed but not complete
+				show=0
+				[ "$installed" = "1" ] && [ "${wizard_complete:-0}" != "1" ] && show=1
+				json_add_boolean "show_wizard" "$show"
+
+				json_dump
+				;;
+
+			set_wizard_complete)
+				read -r input
+				complete=$(echo "$input" | jsonfilter -e '@.complete' 2>/dev/null)
+
+				uci set ${CONFIG}.main.wizard_complete="${complete:-1}"
+				uci commit ${CONFIG}
+
+				json_init
+				json_add_boolean "success" 1
+				json_dump
+				;;
+
+			add_media_path)
+				read -r input
+				path=$(echo "$input" | jsonfilter -e '@.path' 2>/dev/null)
+				name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+				type=$(echo "$input" | jsonfilter -e '@.type' 2>/dev/null)
+
+				if [ -z "$path" ]; then
+					json_init
+					json_add_boolean "success" 0
+					json_add_string "error" "Path required"
+					json_dump
+					exit 0
+				fi
+
+				# Generate unique section name
+				section="media_$(echo "${name:-library}" | tr ' ' '_' | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_')"
+
+				# Ensure unique
+				count=1
+				base_section="$section"
+				while uci -q get "${CONFIG}.${section}" >/dev/null 2>&1; do
+					section="${base_section}_${count}"
+					count=$((count + 1))
+				done
+
+				uci set "${CONFIG}.${section}=media"
+				uci set "${CONFIG}.${section}.path=$path"
+				uci set "${CONFIG}.${section}.name=${name:-Library}"
+				uci set "${CONFIG}.${section}.type=${type:-movies}"
+				uci commit ${CONFIG}
+
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "section" "$section"
+				json_dump
+				;;
+
+			remove_media_path)
+				read -r input
+				section=$(echo "$input" | jsonfilter -e '@.section' 2>/dev/null)
+
+				if [ -z "$section" ]; then
+					json_init
+					json_add_boolean "success" 0
+					json_add_string "error" "Section required"
+					json_dump
+					exit 0
+				fi
+
+				uci delete "${CONFIG}.${section}" 2>/dev/null
+				uci commit ${CONFIG}
+
+				json_init
+				json_add_boolean "success" 1
+				json_dump
+				;;
+
+			get_media_paths)
+				json_init
+				json_add_array "paths"
+
+				for section in $(uci show ${CONFIG} 2>/dev/null | grep "=media$" | cut -d'.' -f2 | cut -d'=' -f1); do
+					path=$(uci -q get "${CONFIG}.${section}.path")
+					name=$(uci -q get "${CONFIG}.${section}.name")
+					type=$(uci -q get "${CONFIG}.${section}.type")
+
+					json_add_object ""
+						json_add_string "section" "$section"
+						json_add_string "path" "$path"
+						json_add_string "name" "${name:-$section}"
+						json_add_string "type" "${type:-movies}"
+					json_close_object
+				done
+
+				json_close_array
 				json_dump
 				;;
 		esac

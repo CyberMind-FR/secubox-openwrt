@@ -1,0 +1,14 @@
+{
+	"admin/secubox/ai/localrecall": {
+		"title": "LocalRecall",
+		"order": 40,
+		"action": {
+			"type": "view",
+			"path": "localrecall/dashboard"
+		},
+		"depends": {
+			"acl": ["luci-app-localrecall"],
+			"uci": {"localrecall": true}
+		}
+	}
+}

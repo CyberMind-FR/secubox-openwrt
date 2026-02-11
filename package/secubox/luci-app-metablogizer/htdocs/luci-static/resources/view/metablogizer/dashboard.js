@@ -209,6 +209,12 @@ return view.extend({
 					}, _('Sync')) : '',
 					' ',
 					E('button', {
+						'class': 'cbi-button cbi-button-apply',
+						'click': ui.createHandlerFn(self, 'handleEmancipate', site),
+						'title': _('KISS ULTIME MODE: DNS + SSL + Mesh')
+					}, site.emancipated ? '✓' : _('Emancipate')),
+					' ',
+					E('button', {
 						'class': 'cbi-button cbi-button-remove',
 						'click': ui.createHandlerFn(self, 'handleDelete', site),
 						'title': _('Delete')
@@ -449,23 +455,63 @@ return view.extend({
 		ui.hideModal();
 		ui.showModal(_('Uploading'), [E('p', { 'class': 'spinning' }, _('Uploading files...'))]);
 
-		var sitesRoot = '/srv/metablogizer/sites';
-		Promise.all(this.uploadFiles.map(function(f) {
+		// Process files sequentially to avoid RPC batch conflicts
+		var uploadSequential = function(files, idx, results) {
+			if (idx >= files.length) {
+				return Promise.resolve(results);
+			}
+
+			var f = files[idx];
 			return new Promise(function(resolve) {
 				var reader = new FileReader();
 				reader.onload = function(e) {
+					// Convert ArrayBuffer to base64
+					var bytes = new Uint8Array(e.target.result);
+					var chunks = [];
+					for (var i = 0; i < bytes.length; i += 8192) {
+						chunks.push(String.fromCharCode.apply(null, bytes.slice(i, i + 8192)));
+					}
+					var content = btoa(chunks.join(''));
+
 					var dest = (asIndex && f === firstHtml) ? 'index.html' : f.name;
-					fs.write(sitesRoot + '/' + site.name + '/' + dest, e.target.result)
-						.then(function() { resolve({ ok: true, name: f.name }); })
-						.catch(function() { resolve({ ok: false, name: f.name }); });
+
+					// Use chunked upload for files > 40KB (uhttpd has 64KB JSON body limit)
+					var uploadFn;
+					if (content.length > 40000) {
+						uploadFn = api.chunkedUpload(site.id, dest, content);
+					} else {
+						uploadFn = api.uploadFile(site.id, dest, content);
+					}
+
+					uploadFn
+						.then(function(r) {
+							results.push({ ok: r && r.success, name: f.name });
+							resolve();
+						})
+						.catch(function() {
+							results.push({ ok: false, name: f.name });
+							resolve();
+						});
 				};
-				reader.onerror = function() { resolve({ ok: false, name: f.name }); };
-				reader.readAsText(f);
+				reader.onerror = function() {
+					results.push({ ok: false, name: f.name });
+					resolve();
+				};
+				reader.readAsArrayBuffer(f);
+			}).then(function() {
+				return uploadSequential(files, idx + 1, results);
 			});
-		})).then(function(results) {
+		};
+
+		uploadSequential(this.uploadFiles, 0, []).then(function(results) {
 			ui.hideModal();
 			var ok = results.filter(function(r) { return r.ok; }).length;
-			ui.addNotification(null, E('p', ok + _(' file(s) uploaded successfully')));
+			var failed = results.length - ok;
+			if (failed > 0) {
+				ui.addNotification(null, E('p', ok + _(' file(s) uploaded, ') + failed + _(' failed')), 'warning');
+			} else {
+				ui.addNotification(null, E('p', ok + _(' file(s) uploaded successfully')));
+			}
 			self.uploadFiles = [];
 		});
 	},
@@ -657,6 +703,95 @@ return view.extend({
 				}}, _('Delete'))
 			])
 		]);
+	},
+
+	handleEmancipate: function(site) {
+		var self = this;
+		ui.showModal(_('Emancipate Site'), [
+			E('p', {}, _('KISS ULTIME MODE will configure:')),
+			E('ul', {}, [
+				E('li', {}, _('DNS registration (Gandi/OVH)')),
+				E('li', {}, _('Vortex DNS mesh publication')),
+				E('li', {}, _('HAProxy vhost with SSL')),
+				E('li', {}, _('ACME certificate issuance'))
+			]),
+			E('p', { 'style': 'margin-top:1em' }, _('Emancipate "') + site.name + '" (' + site.domain + ')?'),
+			E('div', { 'class': 'right', 'style': 'margin-top:1em' }, [
+				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
+				' ',
+				E('button', { 'class': 'cbi-button cbi-button-apply', 'click': function() {
+					ui.hideModal();
+					self.runEmancipateAsync(site);
+				}}, _('Emancipate'))
+			])
+		]);
+	},
+
+	runEmancipateAsync: function(site) {
+		var self = this;
+		var outputPre = E('pre', { 'style': 'max-height:300px;overflow:auto;background:#f5f5f5;padding:10px;font-size:11px;white-space:pre-wrap' }, _('Starting...'));
+
+		ui.showModal(_('Emancipating'), [
+			E('p', { 'class': 'spinning' }, _('Running KISS ULTIME MODE workflow...')),
+			outputPre
+		]);
+
+		api.emancipate(site.id).then(function(r) {
+			if (!r.success) {
+				ui.hideModal();
+				ui.showModal(_('Emancipation Failed'), [
+					E('p', { 'style': 'color:#a00' }, r.error || _('Failed to start')),
+					E('div', { 'class': 'right', 'style': 'margin-top:1em' }, [
+						E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Close'))
+					])
+				]);
+				return;
+			}
+
+			// Poll for completion
+			var jobId = r.job_id;
+			var pollInterval = setInterval(function() {
+				api.emancipateStatus(jobId).then(function(status) {
+					if (status.output) {
+						outputPre.textContent = status.output;
+						outputPre.scrollTop = outputPre.scrollHeight;
+					}
+
+					if (status.complete) {
+						clearInterval(pollInterval);
+						ui.hideModal();
+
+						if (status.status === 'success') {
+							ui.showModal(_('Emancipation Complete'), [
+								E('p', { 'style': 'color:#0a0' }, _('Site emancipated successfully!')),
+								E('pre', { 'style': 'max-height:300px;overflow:auto;background:#f5f5f5;padding:10px;font-size:11px;white-space:pre-wrap' }, status.output || ''),
+								E('div', { 'class': 'right', 'style': 'margin-top:1em' }, [
+									E('button', { 'class': 'cbi-button cbi-button-action', 'click': function() {
+										ui.hideModal();
+										window.location.reload();
+									}}, _('OK'))
+								])
+							]);
+						} else {
+							ui.showModal(_('Emancipation Failed'), [
+								E('p', { 'style': 'color:#a00' }, _('Workflow failed')),
+								E('pre', { 'style': 'max-height:200px;overflow:auto;background:#fee;padding:10px;font-size:11px;white-space:pre-wrap' }, status.output || ''),
+								E('div', { 'class': 'right', 'style': 'margin-top:1em' }, [
+									E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Close'))
+								])
+							]);
+						}
+					}
+				}).catch(function(e) {
+					clearInterval(pollInterval);
+					ui.hideModal();
+					ui.addNotification(null, E('p', _('Poll error: ') + e.message), 'error');
+				});
+			}, 2000); // Poll every 2 seconds
+		}).catch(function(e) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', _('Error: ') + e.message), 'error');
+		});
 	},
 
 	copyToClipboard: function(text) {

@@ -1,0 +1,18 @@
+config identity 'main'
+	option enabled '1'
+	option did_method 'plc'
+	# did:plc is the primary method (compatible with AT Protocol)
+
+config keys 'keys'
+	option rotation_days '90'
+	option backup_enabled '1'
+	option algorithm 'hmac-sha256'
+	# Note: Ed25519 preferred but not always available on OpenWrt
+
+config trust 'trust'
+	option enabled '1'
+	option initial_score '50'
+	option min_trust '20'
+	option ban_threshold '10'
+	option verification_required '0'
+	# If 1, requires signature verification for all peer interactions

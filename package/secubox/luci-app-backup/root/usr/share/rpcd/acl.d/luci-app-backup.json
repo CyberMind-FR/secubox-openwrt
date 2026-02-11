@@ -1,0 +1,17 @@
+{
+	"luci-app-backup": {
+		"description": "Grant access to Backup Manager",
+		"read": {
+			"ubus": {
+				"luci.backup": ["status", "list", "container_list"]
+			},
+			"uci": ["backup"]
+		},
+		"write": {
+			"ubus": {
+				"luci.backup": ["create", "restore", "cleanup", "container_backup", "container_restore"]
+			},
+			"uci": ["backup"]
+		}
+	}
+}

@@ -19,7 +19,11 @@
 					"get_gitea_commits",
 					"list_local_backups",
 					"get_dns_bridge_config",
-					"get_wg_mirror_config"
+					"get_wg_mirror_config",
+					"get_feed_peers",
+					"get_peer_packages",
+					"get_all_packages",
+					"get_feed_settings"
 				],
 				"uci": ["get", "state"]
 			},
@@ -55,7 +59,10 @@
 					"pull_service",
 					"set_dns_bridge_config",
 					"set_wg_mirror_config",
-					"sync_wg_mirror"
+					"sync_wg_mirror",
+					"fetch_package",
+					"sync_package_catalog",
+					"set_feed_settings"
 				],
 				"uci": ["set", "delete", "commit", "apply"]
 			},

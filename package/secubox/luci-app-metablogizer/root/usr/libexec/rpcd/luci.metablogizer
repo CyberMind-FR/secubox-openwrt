@@ -783,7 +783,7 @@ method_update_site() {
 	json_dump
 }
 
-# Upload file to site
+# Upload file to site (single request for small files)
 method_upload_file() {
 	local id filename content
 
@@ -846,6 +846,124 @@ method_upload_file() {
 		json_init
 		json_add_boolean "success" 0
 		json_add_string "error" "Failed to write file"
+		json_dump
+	fi
+}
+
+# Chunked upload: receive base64 chunk and append to staging file
+# Used for files > 40KB to bypass uhttpd's 64KB JSON limit
+method_upload_chunk() {
+	local tmpinput="/tmp/rpcd_mb_chunk_$$.json"
+	cat > "$tmpinput"
+
+	local upload_id chunk_data chunk_index
+	upload_id=$(jsonfilter -i "$tmpinput" -e '@.upload_id' 2>/dev/null)
+	chunk_data=$(jsonfilter -i "$tmpinput" -e '@.data' 2>/dev/null)
+	chunk_index=$(jsonfilter -i "$tmpinput" -e '@.index' 2>/dev/null)
+	rm -f "$tmpinput"
+
+	# Sanitize upload_id (alphanumeric + underscore only)
+	upload_id=$(echo "$upload_id" | sed 's/[^a-zA-Z0-9_]/_/g; s/^_*//; s/_*$//')
+
+	if [ -z "$upload_id" ] || [ -z "$chunk_data" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing upload_id or data"
+		json_dump
+		return
+	fi
+
+	local staging="/tmp/metablogizer_upload_${upload_id}.b64"
+
+	# First chunk: create new file; subsequent: append
+	if [ "$chunk_index" = "0" ]; then
+		printf '%s' "$chunk_data" > "$staging"
+	else
+		printf '%s' "$chunk_data" >> "$staging"
+	fi
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Chunk $chunk_index received"
+	json_dump
+}
+
+# Finalize chunked upload: decode accumulated base64 and save to site
+method_upload_finalize() {
+	local tmpinput="/tmp/rpcd_mb_finalize_$$.json"
+	cat > "$tmpinput"
+
+	local upload_id site_id filename
+	upload_id=$(jsonfilter -i "$tmpinput" -e '@.upload_id' 2>/dev/null)
+	site_id=$(jsonfilter -i "$tmpinput" -e '@.site_id' 2>/dev/null)
+	filename=$(jsonfilter -i "$tmpinput" -e '@.filename' 2>/dev/null)
+	rm -f "$tmpinput"
+
+	# Sanitize upload_id
+	upload_id=$(echo "$upload_id" | sed 's/[^a-zA-Z0-9_]/_/g; s/^_*//; s/_*$//')
+
+	if [ -z "$upload_id" ] || [ -z "$site_id" ] || [ -z "$filename" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing upload_id, site_id, or filename"
+		json_dump
+		return
+	fi
+
+	local staging="/tmp/metablogizer_upload_${upload_id}.b64"
+	if [ ! -s "$staging" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "No upload data found for $upload_id"
+		json_dump
+		return
+	fi
+
+	# Get site info
+	local name
+	name=$(get_uci "$site_id" name "")
+	if [ -z "$name" ]; then
+		rm -f "$staging"
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Site not found"
+		json_dump
+		return
+	fi
+
+	SITES_ROOT=$(get_uci main sites_root "$SITES_ROOT")
+	local site_path="$SITES_ROOT/$name"
+	local file_path="$site_path/$filename"
+	local dir_path=$(dirname "$file_path")
+
+	# CRITICAL: Set umask BEFORE any file operations
+	umask 022
+
+	mkdir -p "$dir_path"
+	chmod 755 "$dir_path"
+
+	# Decode base64 staging file to final destination
+	base64 -d < "$staging" > "$file_path" 2>/dev/null
+	local rc=$?
+	rm -f "$staging"
+
+	# Set permissions
+	chmod 644 "$file_path" 2>/dev/null
+	chmod 755 "$site_path" 2>/dev/null
+
+	if [ $rc -eq 0 ]; then
+		fix_permissions "$site_path"
+		# Auto-push to Gitea if configured (background, use site name not UCI section id)
+		metablogizerctl gitea push "$name" >/dev/null 2>&1 &
+		json_init
+		json_add_boolean "success" 1
+		json_add_string "filename" "$filename"
+		json_add_string "path" "$file_path"
+		json_dump
+	else
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Failed to decode and write file"
 		json_dump
 	fi
 }
@@ -1483,6 +1601,119 @@ EOF
 	json_dump
 }
 
+# Emancipate site - KISS ULTIME MODE (DNS + Vortex + HAProxy + SSL)
+# Runs asynchronously to avoid XHR timeout - use emancipate_status to poll
+method_emancipate() {
+	local id
+
+	read -r input
+	json_load "$input"
+	json_get_var id id
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing site id"
+		json_dump
+		return
+	fi
+
+	local name
+	name=$(get_uci "$id" name "")
+
+	if [ -z "$name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Site not found"
+		json_dump
+		return
+	fi
+
+	# Check if metablogizerctl exists
+	if [ ! -x /usr/sbin/metablogizerctl ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "metablogizerctl not installed"
+		json_dump
+		return
+	fi
+
+	# Generate job ID and output file
+	local job_id="emancipate_${name}_$$"
+	local job_dir="/tmp/metablogizer_jobs"
+	local output_file="$job_dir/${job_id}.log"
+	local status_file="$job_dir/${job_id}.status"
+
+	mkdir -p "$job_dir"
+
+	# Run emancipate command in background
+	(
+		echo "running" > "$status_file"
+		/usr/sbin/metablogizerctl emancipate "$name" > "$output_file" 2>&1
+		local rc=$?
+		if [ $rc -eq 0 ]; then
+			echo "success" > "$status_file"
+		else
+			echo "failed" > "$status_file"
+		fi
+	) &
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "job_id" "$job_id"
+	json_add_string "status" "running"
+	json_add_string "site" "$name"
+	json_dump
+}
+
+# Check emancipate job status
+method_emancipate_status() {
+	local job_id
+
+	read -r input
+	json_load "$input"
+	json_get_var job_id job_id
+
+	if [ -z "$job_id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing job_id"
+		json_dump
+		return
+	fi
+
+	local job_dir="/tmp/metablogizer_jobs"
+	local output_file="$job_dir/${job_id}.log"
+	local status_file="$job_dir/${job_id}.status"
+
+	if [ ! -f "$status_file" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Job not found"
+		json_dump
+		return
+	fi
+
+	local status=$(cat "$status_file")
+	local output=""
+	[ -f "$output_file" ] && output=$(cat "$output_file")
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "status" "$status"
+	json_add_string "output" "$output"
+
+	# Clean up completed jobs
+	if [ "$status" = "success" ] || [ "$status" = "failed" ]; then
+		json_add_boolean "complete" 1
+		# Keep files for 5 minutes then cleanup handled by caller or cron
+	else
+		json_add_boolean "complete" 0
+	fi
+
+	json_dump
+}
+
 # Enable Tor hidden service for a site
 method_enable_tor() {
 	local id
@@ -1795,6 +2026,8 @@ case "$1" in
 	"sync_site": { "id": "string" },
 	"get_publish_info": { "id": "string" },
 	"upload_file": { "id": "string", "filename": "string", "content": "string" },
+	"upload_chunk": { "upload_id": "string", "data": "string", "index": 0 },
+	"upload_finalize": { "upload_id": "string", "site_id": "string", "filename": "string" },
 	"list_files": { "id": "string" },
 	"get_settings": {},
 	"save_settings": { "enabled": "boolean", "nginx_container": "string", "sites_root": "string" },
@@ -1806,7 +2039,9 @@ case "$1" in
 	"get_tor_status": {},
 	"discover_vhosts": {},
 	"import_vhost": { "instance": "string", "name": "string", "domain": "string" },
-	"sync_config": {}
+	"sync_config": {},
+	"emancipate": { "id": "string" },
+	"emancipate_status": { "job_id": "string" }
 }
 EOF
 		;;
@@ -1821,6 +2056,8 @@ EOF
 			sync_site)          method_sync_site ;;
 			get_publish_info)   method_get_publish_info ;;
 			upload_file)        method_upload_file ;;
+			upload_chunk)       method_upload_chunk ;;
+			upload_finalize)    method_upload_finalize ;;
 			list_files)         method_list_files ;;
 			get_settings)       method_get_settings ;;
 			save_settings)      method_save_settings ;;
@@ -1833,6 +2070,8 @@ EOF
 			discover_vhosts)    method_discover_vhosts ;;
 			import_vhost)       method_import_vhost ;;
 			sync_config)        method_sync_config ;;
+			emancipate)         method_emancipate ;;
+			emancipate_status)  method_emancipate_status ;;
 			*)                  echo '{"error": "unknown method"}' ;;
 		esac
 		;;

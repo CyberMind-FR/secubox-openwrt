@@ -124,6 +124,13 @@ var callUploadFinalize = rpc.declare({
 	expect: { result: {} }
 });
 
+var callTestUpload = rpc.declare({
+	object: 'luci.streamlit',
+	method: 'test_upload',
+	params: ['name'],
+	expect: { result: {} }
+});
+
 var callUploadZip = rpc.declare({
 	object: 'luci.streamlit',
 	method: 'upload_zip',
@@ -225,6 +232,34 @@ var callGiteaListRepos = rpc.declare({
 	expect: { result: {} }
 });
 
+var callGetSource = rpc.declare({
+	object: 'luci.streamlit',
+	method: 'get_source',
+	params: ['name'],
+	expect: { result: {} }
+});
+
+var callSaveSource = rpc.declare({
+	object: 'luci.streamlit',
+	method: 'save_source',
+	params: ['name', 'content'],
+	expect: { result: {} }
+});
+
+var callEmancipate = rpc.declare({
+	object: 'luci.streamlit',
+	method: 'emancipate',
+	params: ['name', 'domain'],
+	expect: { result: {} }
+});
+
+var callGetEmancipation = rpc.declare({
+	object: 'luci.streamlit',
+	method: 'get_emancipation',
+	params: ['name'],
+	expect: { result: {} }
+});
+
 return baseclass.extend({
 	getStatus: function() {
 		return callGetStatus();
@@ -318,6 +353,14 @@ return baseclass.extend({
 	},
 
 	/**
+	 * Test pending upload - validates Python syntax and checks for Streamlit import.
+	 * Should be called after all chunks are uploaded but before finalize.
+	 */
+	testUpload: function(name) {
+		return callTestUpload(name);
+	},
+
+	/**
 	 * Chunked upload for files > 40KB.
 	 * Splits base64 into ~40KB chunks, sends each via upload_chunk,
 	 * then calls upload_finalize to decode and save.
@@ -402,6 +445,22 @@ return baseclass.extend({
 
 	giteaListRepos: function() {
 		return callGiteaListRepos();
+	},
+
+	getSource: function(name) {
+		return callGetSource(name);
+	},
+
+	saveSource: function(name, content) {
+		return callSaveSource(name, content);
+	},
+
+	emancipate: function(name, domain) {
+		return callEmancipate(name, domain);
+	},
+
+	getEmancipation: function(name) {
+		return callGetEmancipation(name);
 	},
 
 	getDashboardData: function() {

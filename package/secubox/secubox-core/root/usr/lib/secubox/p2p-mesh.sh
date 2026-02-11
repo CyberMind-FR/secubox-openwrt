@@ -284,9 +284,20 @@ discover_peers() {
         echo "$msg" | socat - UDP-DATAGRAM:255.255.255.255:$DISCOVERY_PORT,broadcast
     fi
 
-    # Also try mDNS if available
+    # Also try mDNS if available (only start if not already running)
+    local avahi_pid_file="/tmp/secubox-avahi-mesh.pid"
     if command -v avahi-publish >/dev/null; then
+        # Check if avahi-publish is already running for this service
+        if [ -f "$avahi_pid_file" ]; then
+            local old_pid=$(cat "$avahi_pid_file" 2>/dev/null)
+            if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+                # Already running, skip
+                return 0
+            fi
+        fi
+        # Start new avahi-publish and save PID
         avahi-publish -s "secubox-mesh-$node_id" _secubox._tcp $MESH_PORT &
+        echo $! > "$avahi_pid_file"
     fi
 }
 

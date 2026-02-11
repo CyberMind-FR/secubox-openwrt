@@ -9,6 +9,7 @@
 3. `.claude/HISTORY.md` — Completed milestones with dates (gap analysis reference)
 4. `.claude/context.md` — Module map, stack overview, and templates
 5. `package/secubox/PUNK-EXPOSURE.md` — Architectural spec for exposure features
+6. `.claude/FAQ-TROUBLESHOOTING.md` — **Consult before debugging** — resolved issues and known fixes for LXC cgroups, networking, HAProxy, mitmproxy, DNS
 
 **When the user says "continue" or "next"**, consult WIP.md "Next Up" and TODO.md "Open" to pick the next task. When completing work, update these files to keep them current. New features and fixes must be appended to HISTORY.md with the date.
 
@@ -143,6 +144,34 @@ ssh root@192.168.255.1 '/etc/init.d/rpcd restart'
 - These are not shown in standard LuCI forms but are accessible via `uci -q get`
 - Useful for storing client private keys, internal state, etc.
 
+### ACL Permissions for New RPC Methods
+- **CRITICAL: When adding a new RPCD method, you MUST also add it to the ACL file**
+- Without ACL entry, LuCI will return `-32002: Access denied` error
+- ACL files are located at: `root/usr/share/rpcd/acl.d/<app>.json`
+- Add read-only methods to the `"read"` section, write/action methods to the `"write"` section:
+  ```json
+  {
+    "luci-app-example": {
+      "read": {
+        "ubus": {
+          "luci.example": ["status", "list", "get_info"]
+        }
+      },
+      "write": {
+        "ubus": {
+          "luci.example": ["create", "delete", "update", "action_method"]
+        }
+      }
+    }
+  }
+  ```
+- After deploying ACL changes, restart rpcd AND have user re-login to LuCI:
+  ```bash
+  scp root/usr/share/rpcd/acl.d/<app>.json root@192.168.255.1:/usr/share/rpcd/acl.d/
+  ssh root@192.168.255.1 '/etc/init.d/rpcd restart'
+  ```
+- User must log out and log back into LuCI to get new permissions
+
 ## LuCI JavaScript Frontend
 
 ### RPC `expect` Field Behavior
@@ -222,3 +251,64 @@ Full architectural spec: `package/secubox/PUNK-EXPOSURE.md`
 | `secubox-p2p` | Mesh channel + gossip sync |
 | `secubox-master-link` | Node onboarding + trust hierarchy |
 | `luci-app-service-registry` | Aggregated service catalog + health checks |
+
+### Emancipate CLI Commands
+
+**Multi-channel exposure in one command:**
+```bash
+# Full emancipation (Tor + DNS + Mesh)
+secubox-exposure emancipate <service> <port> <domain> --all
+
+# Selective channels
+secubox-exposure emancipate myapp 8080 myapp.secubox.in --dns --mesh
+secubox-exposure emancipate secret 8888 --tor  # Tor only, no domain needed
+
+# MetaBlogizer KISS workflow
+metablogizerctl create myblog blog.example.com
+metablogizerctl emancipate myblog  # Auto: DNS + Vortex + HAProxy + SSL + Reload
+
+# Revoke exposure
+secubox-exposure revoke myapp --all
+```
+
+**Vortex DNS mesh publishing:**
+```bash
+# Publish service to mesh
+vortexctl mesh publish <service> <domain>
+
+# Check mesh status
+vortexctl status
+```
+
+## Documentation Update Workflow
+
+**When source code evolves, always update documentation:**
+
+1. **HISTORY.md** — Append new entry with date and feature summary
+2. **WIP.md** — Move completed items to "Recently Completed", update "Next Up"
+3. **Package README.md** — Update if CLI commands or features change
+4. **Catalog JSON** — Update if package version or description changes
+
+**Commit message format for documentation:**
+```bash
+git commit -m "docs: Update tracking files for <feature>"
+```
+
+**README update triggers:**
+- New CLI command added
+- New RPCD method added
+- Configuration options changed
+- Dependencies changed
+- Major feature added
+
+**Quick documentation check:**
+```bash
+# See what's changed
+git diff --stat
+
+# Update tracking files if source files were modified
+if git diff --name-only | grep -qE 'package/secubox/'; then
+  echo "Update .claude/HISTORY.md with changes"
+  echo "Update .claude/WIP.md if task completed"
+fi
+```

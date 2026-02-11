@@ -54,6 +54,26 @@ var callVhostList = rpc.declare({
 	expect: {}
 });
 
+var callEmancipate = rpc.declare({
+	object: 'luci.exposure',
+	method: 'emancipate',
+	params: ['service', 'port', 'domain', 'tor', 'dns', 'mesh'],
+	expect: {}
+});
+
+var callRevoke = rpc.declare({
+	object: 'luci.exposure',
+	method: 'revoke',
+	params: ['service', 'tor', 'dns', 'mesh'],
+	expect: {}
+});
+
+var callGetEmancipated = rpc.declare({
+	object: 'luci.exposure',
+	method: 'get_emancipated',
+	expect: {}
+});
+
 return baseclass.extend({
 	scan: function() { return callScan(); },
 	torList: function() { return callTorList(); },
@@ -62,5 +82,8 @@ return baseclass.extend({
 	torAdd: function(s, l, o) { return callTorAdd(s, l, o); },
 	torRemove: function(s) { return callTorRemove(s); },
 	sslAdd: function(s, d, p) { return callSslAdd(s, d, p); },
-	sslRemove: function(s) { return callSslRemove(s); }
+	sslRemove: function(s) { return callSslRemove(s); },
+	emancipate: function(svc, port, domain, tor, dns, mesh) { return callEmancipate(svc, port, domain, tor, dns, mesh); },
+	revoke: function(svc, tor, dns, mesh) { return callRevoke(svc, tor, dns, mesh); },
+	getEmancipated: function() { return callGetEmancipated(); }
 });

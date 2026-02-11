@@ -1,0 +1,205 @@
+/* Jellyfin Setup Wizard Styles */
+
+.jf-wizard {
+	min-width: 500px;
+	max-width: 600px;
+}
+
+.jf-wizard-steps {
+	display: flex;
+	justify-content: space-between;
+	margin-bottom: 24px;
+	padding-bottom: 16px;
+	border-bottom: 1px solid #333;
+}
+
+.jf-wizard-step {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	opacity: 0.5;
+	transition: opacity 0.2s;
+}
+
+.jf-wizard-step.active {
+	opacity: 1;
+}
+
+.jf-wizard-step.completed {
+	opacity: 0.8;
+}
+
+.jf-step-num {
+	width: 28px;
+	height: 28px;
+	border-radius: 50%;
+	background: #333;
+	color: #888;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-weight: 600;
+	margin-bottom: 4px;
+	transition: background 0.2s, color 0.2s;
+}
+
+.jf-wizard-step.active .jf-step-num {
+	background: #00a4dc;
+	color: white;
+}
+
+.jf-wizard-step.completed .jf-step-num {
+	background: #27ae60;
+	color: white;
+}
+
+.jf-step-label {
+	font-size: 12px;
+	color: #888;
+}
+
+.jf-wizard-step.active .jf-step-label {
+	color: #fff;
+}
+
+.jf-wizard-content {
+	min-height: 200px;
+	padding: 16px 0;
+}
+
+.jf-wizard-buttons {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	padding-top: 16px;
+	border-top: 1px solid #333;
+}
+
+/* Status checks */
+.jf-status-check {
+	padding: 10px 12px;
+	background: rgba(255, 255, 255, 0.05);
+	border-radius: 6px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.jf-check-ok {
+	color: #27ae60;
+	font-weight: bold;
+}
+
+.jf-check-pending {
+	color: #888;
+}
+
+/* Media list */
+.jf-media-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-top: 12px;
+}
+
+.jf-media-item {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 10px 12px;
+	background: rgba(255, 255, 255, 0.05);
+	border-radius: 6px;
+	border: 1px solid #333;
+}
+
+.jf-media-item:hover {
+	border-color: #444;
+}
+
+.jf-media-icon {
+	font-size: 20px;
+	flex-shrink: 0;
+}
+
+.jf-media-name {
+	font-weight: 600;
+	flex: 1;
+	color: #fff;
+}
+
+.jf-media-path {
+	color: #888;
+	font-family: 'SF Mono', Monaco, monospace;
+	font-size: 12px;
+}
+
+/* Form groups */
+.jf-form-group {
+	margin-bottom: 16px;
+}
+
+.jf-form-group label {
+	display: block;
+	margin-bottom: 6px;
+	color: #aaa;
+	font-size: 13px;
+}
+
+.jf-form-group input[type="text"] {
+	width: 100%;
+	padding: 8px 10px;
+	background: #1a1a2e;
+	border: 1px solid #333;
+	border-radius: 4px;
+	color: #fff;
+	font-size: 14px;
+}
+
+.jf-form-group input[type="text"]:focus {
+	outline: none;
+	border-color: #00a4dc;
+}
+
+.jf-form-group input[type="text"]::placeholder {
+	color: #555;
+}
+
+/* Checkbox style */
+.jf-checkbox {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	cursor: pointer;
+	user-select: none;
+}
+
+.jf-checkbox input[type="checkbox"] {
+	width: 18px;
+	height: 18px;
+	cursor: pointer;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+	.jf-wizard {
+		min-width: auto;
+		width: 100%;
+	}
+
+	.jf-wizard-steps {
+		gap: 8px;
+	}
+
+	.jf-step-label {
+		display: none;
+	}
+
+	.jf-media-item {
+		flex-wrap: wrap;
+	}
+
+	.jf-media-path {
+		width: 100%;
+		margin-top: 4px;
+	}
+}

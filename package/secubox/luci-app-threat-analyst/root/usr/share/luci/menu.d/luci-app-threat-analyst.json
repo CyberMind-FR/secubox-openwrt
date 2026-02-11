@@ -1,0 +1,14 @@
+{
+	"admin/secubox/security/threat-analyst": {
+		"title": "Threat Analyst",
+		"order": 15,
+		"action": {
+			"type": "view",
+			"path": "threat-analyst/dashboard"
+		},
+		"depends": {
+			"acl": ["luci-app-threat-analyst"],
+			"uci": {"threat-analyst": true}
+		}
+	}
+}

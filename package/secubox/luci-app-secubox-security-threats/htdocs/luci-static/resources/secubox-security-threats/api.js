@@ -26,6 +26,12 @@ var callGetSecurityStats = rpc.declare({
 	expect: { }
 });
 
+var callGetVisitStats = rpc.declare({
+	object: 'luci.secubox-security-threats',
+	method: 'get_visit_stats',
+	expect: { }
+});
+
 var callBlockThreat = rpc.declare({
 	object: 'luci.secubox-security-threats',
 	method: 'block_threat',
@@ -106,7 +112,8 @@ function getDashboardData() {
 		callGetSecurityStats(),
 		callGetThreatIntel().catch(function() { return {}; }),
 		callGetMeshIocs().catch(function() { return { iocs: [] }; }),
-		callGetMeshPeers().catch(function() { return { peers: [] }; })
+		callGetMeshPeers().catch(function() { return { peers: [] }; }),
+		callGetVisitStats().catch(function() { return {}; })
 	]).then(function(results) {
 		return {
 			status: results[0] || {},
@@ -115,7 +122,8 @@ function getDashboardData() {
 			securityStats: results[3] || {},
 			threatIntel: results[4] || {},
 			meshIocs: results[5].iocs || [],
-			meshPeers: results[6].peers || []
+			meshPeers: results[6].peers || [],
+			visitStats: results[7] || {}
 		};
 	});
 }
@@ -125,6 +133,7 @@ return baseclass.extend({
 	getActiveThreats: callGetActiveThreats,
 	getBlockedIPs: callGetBlockedIPs,
 	getSecurityStats: callGetSecurityStats,
+	getVisitStats: callGetVisitStats,
 	blockThreat: callBlockThreat,
 	whitelistHost: callWhitelistHost,
 	removeWhitelist: callRemoveWhitelist,

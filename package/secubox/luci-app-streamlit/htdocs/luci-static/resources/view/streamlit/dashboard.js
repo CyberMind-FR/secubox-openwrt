@@ -281,6 +281,21 @@ return view.extend({
 				E('td', {}, [
 					E('button', {
 						'class': 'cbi-button',
+						'click': function() { self.editApp(appId); }
+					}, _('Edit')),
+					E('button', {
+						'class': 'cbi-button cbi-button-action',
+						'style': 'margin-left: 4px',
+						'click': function() { self.reuploadApp(appId); }
+					}, _('Reupload')),
+					E('button', {
+						'class': 'cbi-button cbi-button-positive',
+						'style': 'margin-left: 4px',
+						'click': function() { self.emancipateApp(appId); }
+					}, _('Emancipate')),
+					E('button', {
+						'class': 'cbi-button',
+						'style': 'margin-left: 4px',
 						'click': function() { self.renameApp(appId, app.name); }
 					}, _('Rename')),
 					!isActive ? E('button', {
@@ -633,17 +648,56 @@ return view.extend({
 			var useChunked = content.length > 40000;
 
 			setTimeout(function() {
-				var uploadFn;
+				var uploadPromise;
 
-				if (useChunked) {
-					uploadFn = api.chunkedUpload(name, content, isZip);
+				if (useChunked && !isZip) {
+					// For chunked .py files: upload chunks, test, then finalize
+					var CHUNK_SIZE = 40000;
+					var chunkList = [];
+					for (var i = 0; i < content.length; i += CHUNK_SIZE) {
+						chunkList.push(content.substring(i, i + CHUNK_SIZE));
+					}
+
+					// Upload all chunks first
+					var chunkPromise = Promise.resolve();
+					chunkList.forEach(function(chunk, idx) {
+						chunkPromise = chunkPromise.then(function() {
+							return api.uploadChunk(name, chunk, idx);
+						});
+					});
+
+					uploadPromise = chunkPromise.then(function() {
+						// After chunks uploaded, test the pending upload
+						return api.testUpload(name);
+					}).then(function(testResult) {
+						if (testResult && !testResult.valid) {
+							// Test failed - show errors and don't finalize
+							poll.start();
+							var errMsg = testResult.errors || _('Invalid Python file');
+							ui.addNotification(null, E('p', {}, _('Validation failed: ') + errMsg), 'error');
+							if (testResult.warnings) {
+								ui.addNotification(null, E('p', {}, _('Warnings: ') + testResult.warnings), 'warning');
+							}
+							return { success: false, message: errMsg };
+						}
+						// Test passed or container not running - show warnings and proceed
+						if (testResult && testResult.warnings) {
+							ui.addNotification(null, E('p', {}, _('Warnings: ') + testResult.warnings), 'warning');
+						}
+						// Finalize upload
+						return api.uploadFinalize(name, '0');
+					});
+				} else if (useChunked && isZip) {
+					// ZIP files don't get syntax tested
+					uploadPromise = api.chunkedUpload(name, content, true);
 				} else if (isZip) {
-					uploadFn = api.uploadZip(name, content, null);
+					uploadPromise = api.uploadZip(name, content, null);
 				} else {
-					uploadFn = api.uploadApp(name, content);
+					// Small .py file - direct upload (no pre-test for non-chunked)
+					uploadPromise = api.uploadApp(name, content);
 				}
 
-				uploadFn.then(function(r) {
+				uploadPromise.then(function(r) {
 					poll.start();
 					if (r && r.success) {
 						ui.addNotification(null, E('p', {}, _('App uploaded: ') + name), 'success');
@@ -662,6 +716,217 @@ return view.extend({
 		};
 
 		reader.readAsArrayBuffer(file);
+	},
+
+	reuploadApp: function(id) {
+		var self = this;
+
+		// Create hidden file input
+		var fileInput = document.createElement('input');
+		fileInput.type = 'file';
+		fileInput.accept = '.py,.zip';
+		fileInput.style.display = 'none';
+		document.body.appendChild(fileInput);
+
+		fileInput.onchange = function() {
+			if (!fileInput.files.length) {
+				document.body.removeChild(fileInput);
+				return;
+			}
+
+			var file = fileInput.files[0];
+			var isZip = file.name.endsWith('.zip');
+			var reader = new FileReader();
+
+			reader.onerror = function() {
+				document.body.removeChild(fileInput);
+				ui.addNotification(null, E('p', {}, _('Failed to read file')), 'error');
+			};
+
+			reader.onload = function(e) {
+				document.body.removeChild(fileInput);
+
+				var bytes = new Uint8Array(e.target.result);
+				var chunks = [];
+				for (var i = 0; i < bytes.length; i += 8192) {
+					chunks.push(String.fromCharCode.apply(null, bytes.slice(i, i + 8192)));
+				}
+				var content = btoa(chunks.join(''));
+
+				ui.showModal(_('Reuploading...'), [
+					E('p', { 'class': 'spinning' }, _('Uploading ') + file.name + ' to ' + id + '...')
+				]);
+
+				poll.stop();
+
+				var useChunked = content.length > 40000;
+				var uploadPromise;
+
+				if (useChunked) {
+					uploadPromise = api.chunkedUpload(id, content, isZip);
+				} else if (isZip) {
+					uploadPromise = api.uploadZip(id, content, null);
+				} else {
+					uploadPromise = api.uploadApp(id, content);
+				}
+
+				uploadPromise.then(function(r) {
+					poll.start();
+					ui.hideModal();
+					if (r && r.success) {
+						ui.addNotification(null, E('p', {}, _('App reuploaded: ') + id), 'success');
+						self.refresh().then(function() { self.updateStatus(); });
+					} else {
+						ui.addNotification(null, E('p', {}, (r && r.message) || _('Reupload failed')), 'error');
+					}
+				}).catch(function(err) {
+					poll.start();
+					ui.hideModal();
+					ui.addNotification(null, E('p', {}, _('Reupload error: ') + (err.message || err)), 'error');
+				});
+			};
+
+			reader.readAsArrayBuffer(file);
+		};
+
+		// Trigger file selection
+		fileInput.click();
+	},
+
+	editApp: function(id) {
+		var self = this;
+
+		ui.showModal(_('Loading...'), [
+			E('p', { 'class': 'spinning' }, _('Loading source code...'))
+		]);
+
+		api.getSource(id).then(function(r) {
+			if (!r || !r.content) {
+				ui.hideModal();
+				ui.addNotification(null, E('p', {}, r.message || _('Failed to load source')), 'error');
+				return;
+			}
+
+			// Decode base64 content
+			var source;
+			try {
+				source = atob(r.content);
+			} catch (e) {
+				ui.hideModal();
+				ui.addNotification(null, E('p', {}, _('Failed to decode source')), 'error');
+				return;
+			}
+
+			ui.hideModal();
+			ui.showModal(_('Edit App: ') + id, [
+				E('div', { 'style': 'margin-bottom: 8px' }, [
+					E('small', { 'style': 'color:#666' }, r.path)
+				]),
+				E('textarea', {
+					'id': 'edit-source',
+					'style': 'width:100%; height:400px; font-family:monospace; font-size:12px; tab-size:4;',
+					'spellcheck': 'false'
+				}, source),
+				E('div', { 'class': 'right', 'style': 'margin-top: 12px' }, [
+					E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
+					E('button', {
+						'class': 'cbi-button cbi-button-positive',
+						'style': 'margin-left: 8px',
+						'click': function() {
+							var newSource = document.getElementById('edit-source').value;
+							var encoded = btoa(newSource);
+							ui.hideModal();
+							ui.showModal(_('Saving...'), [
+								E('p', { 'class': 'spinning' }, _('Saving source code...'))
+							]);
+							api.saveSource(id, encoded).then(function(sr) {
+								ui.hideModal();
+								if (sr && sr.success) {
+									ui.addNotification(null, E('p', {}, _('Source saved')), 'success');
+								} else {
+									ui.addNotification(null, E('p', {}, sr.message || _('Save failed')), 'error');
+								}
+							});
+						}
+					}, _('Save'))
+				])
+			]);
+		});
+	},
+
+	emancipateApp: function(id) {
+		var self = this;
+
+		// First check if app has an instance
+		var hasInstance = this.instances.some(function(inst) { return inst.app === id; });
+		if (!hasInstance) {
+			ui.addNotification(null, E('p', {},
+				_('Create an instance first before emancipating. The instance port is needed for exposure.')), 'warning');
+			return;
+		}
+
+		// Get current emancipation status
+		api.getEmancipation(id).then(function(r) {
+			var currentDomain = (r && r.domain) || '';
+			var isEmancipated = r && r.emancipated;
+
+			ui.showModal(_('Emancipate App: ') + id, [
+				isEmancipated ? E('div', { 'style': 'margin-bottom: 12px; padding: 8px; background: #e8f5e9; border-radius: 4px' }, [
+					E('strong', { 'style': 'color: #2e7d32' }, _('Already emancipated')),
+					E('br'),
+					E('span', {}, _('Domain: ') + currentDomain)
+				]) : '',
+				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, _('Domain')),
+					E('div', { 'class': 'cbi-value-field' },
+						E('input', {
+							'type': 'text',
+							'id': 'emancipate-domain',
+							'class': 'cbi-input-text',
+							'value': currentDomain,
+							'placeholder': _('app.gk2.secubox.in')
+						})
+					),
+					E('div', { 'class': 'cbi-value-description' },
+						_('Leave empty for auto-detection from Vortex wildcard domain'))
+				]),
+				E('div', { 'style': 'margin: 12px 0; padding: 12px; background: #f5f5f5; border-radius: 4px' }, [
+					E('strong', {}, _('KISS ULTIME MODE will:')),
+					E('ul', { 'style': 'margin: 8px 0 0 20px' }, [
+						E('li', {}, _('Register DNS A record')),
+						E('li', {}, _('Publish to Vortex mesh')),
+						E('li', {}, _('Create HAProxy vhost + backend')),
+						E('li', {}, _('Issue SSL certificate via ACME')),
+						E('li', {}, _('Reload HAProxy with zero downtime'))
+					])
+				]),
+				E('div', { 'class': 'right' }, [
+					E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
+					E('button', {
+						'class': 'cbi-button cbi-button-positive',
+						'style': 'margin-left: 8px',
+						'click': function() {
+							var domain = document.getElementById('emancipate-domain').value.trim();
+							ui.hideModal();
+							ui.showModal(_('Emancipating...'), [
+								E('p', { 'class': 'spinning' }, _('Running KISS ULTIME MODE workflow...'))
+							]);
+							api.emancipate(id, domain).then(function(er) {
+								ui.hideModal();
+								if (er && er.success) {
+									var msg = _('Emancipation started for ') + id;
+									if (er.domain) msg += ' at ' + er.domain;
+									ui.addNotification(null, E('p', {}, msg), 'success');
+									self.refresh().then(function() { self.updateStatus(); });
+								} else {
+									ui.addNotification(null, E('p', {}, er.message || _('Emancipation failed')), 'error');
+								}
+							});
+						}
+					}, _('Emancipate'))
+				])
+			]);
+		});
 	},
 
 	renameApp: function(id, currentName) {

@@ -19,7 +19,7 @@ lxc_exists() {
 
 case "$1" in
 	list)
-		echo '{"status":{},"start":{},"stop":{},"restart":{},"install":{},"uninstall":{},"update":{},"configure_mqtt":{},"configure_haproxy":{},"backup":{},"restore":{"path":"str"},"logs":{"lines":"int"}}'
+		echo '{"status":{},"start":{},"stop":{},"restart":{},"install":{},"uninstall":{},"update":{},"configure_mqtt":{},"configure_haproxy":{},"backup":{},"restore":{"path":"str"},"logs":{"lines":"int"},"reset_password":{"password":"str"}}'
 		;;
 	call)
 		case "$2" in
@@ -249,6 +249,35 @@ case "$1" in
 				logs=$(/usr/sbin/domoticzctl logs "$lines" 2>&1)
 				json_init
 				json_add_string "logs" "$logs"
+				json_dump
+				;;
+
+			reset_password)
+				read -r input
+				password=$(echo "$input" | jsonfilter -e '@.password' 2>/dev/null)
+				[ -z "$password" ] && password="password"
+
+				# MD5 hash the password
+				md5hash=$(echo -n "$password" | md5sum | cut -d' ' -f1)
+
+				# Update in Domoticz database (username is base64 encoded 'admin')
+				if lxc_running; then
+					lxc-attach -n "$LXC_NAME" -- sqlite3 /opt/domoticz/db/domoticz.db \
+						"UPDATE Users SET Password='$md5hash' WHERE Username='YWRtaW4=';" 2>/dev/null
+					code=$?
+				else
+					echo '{"success":false,"error":"Container not running"}'
+					exit 0
+				fi
+
+				json_init
+				if [ "$code" = "0" ]; then
+					json_add_boolean "success" 1
+					json_add_string "message" "Password reset successfully"
+				else
+					json_add_boolean "success" 0
+					json_add_string "error" "Failed to reset password"
+				fi
 				json_dump
 				;;
 		esac

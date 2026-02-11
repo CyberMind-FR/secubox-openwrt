@@ -13,8 +13,9 @@ return view.extend({
 			P2PAPI.getServices(),
 			P2PAPI.getSharedServices()
 		]).then(function(results) {
-			self.services = results[0].services || [];
-			self.sharedServices = results[1].shared_services || [];
+			// RPC expect unwraps the response - results[0] IS the services array
+			self.services = Array.isArray(results[0]) ? results[0] : (results[0].services || []);
+			self.sharedServices = Array.isArray(results[1]) ? results[1] : (results[1].shared_services || []);
 			return {};
 		}).catch(function() { return {}; });
 	},

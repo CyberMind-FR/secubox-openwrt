@@ -1,0 +1,55 @@
+config threat-analyst 'main'
+	option enabled '1'
+	option interval '300'
+	option localai_url 'http://127.0.0.1:8081'
+	option localai_model 'tinyllama-1.1b-chat-v1.0.Q4_K_M'
+
+	# Auto-apply generated rules (0=queue for approval, 1=auto-apply)
+	option auto_apply_mitmproxy '1'
+	option auto_apply_crowdsec '0'
+	option auto_apply_waf '0'
+
+	# Minimum confidence score (0-100) to generate rules
+	option min_confidence '70'
+
+	# Maximum rules to generate per cycle
+	option max_rules_per_cycle '5'
+
+# Data sources to monitor
+config source 'crowdsec'
+	option enabled '1'
+	option type 'crowdsec'
+	option path '/var/log/crowdsec.log'
+
+config source 'mitmproxy'
+	option enabled '1'
+	option type 'mitmproxy'
+	option path '/srv/mitmproxy/threats.log'
+
+config source 'netifyd'
+	option enabled '1'
+	option type 'netifyd'
+	option path '/var/run/netifyd/status.json'
+
+# Output targets for generated rules
+config target 'mitmproxy_filters'
+	option enabled '1'
+	option type 'mitmproxy'
+	option output_path '/etc/mitmproxy/ai_filters.py'
+	option reload_cmd '/etc/init.d/mitmproxy reload'
+
+config target 'crowdsec_scenarios'
+	option enabled '1'
+	option type 'crowdsec'
+	option output_path '/etc/crowdsec/scenarios/ai-generated.yaml'
+	option reload_cmd 'cscli hub update && cscli scenarios install /etc/crowdsec/scenarios/ai-generated.yaml --force'
+
+config target 'waf_rules'
+	option enabled '1'
+	option type 'waf'
+	option output_path '/etc/mitmproxy/waf_ai_rules.json'
+	option reload_cmd '/etc/init.d/mitmproxy reload'
+
+# Queue for pending rules (approval workflow)
+config queue 'pending'
+	option path '/var/lib/threat-analyst/pending_rules.json'

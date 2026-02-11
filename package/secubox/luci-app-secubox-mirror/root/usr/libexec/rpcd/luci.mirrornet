@@ -1,0 +1,189 @@
+#!/bin/sh
+# RPCD handler for MirrorNet LuCI dashboard
+
+. /usr/share/libubox/jshn.sh
+
+MIRRORCTL="/usr/sbin/mirrorctl"
+
+case "$1" in
+    list)
+        echo '{
+            "status": {},
+            "get_identity": {},
+            "get_peers": {},
+            "get_reputation": {"peer_id": "str"},
+            "get_reputation_list": {},
+            "get_health": {},
+            "get_mirrors": {},
+            "get_gossip_stats": {},
+            "get_alerts": {"count": "int"},
+            "set_config": {"section": "str", "option": "str", "value": "str"},
+            "reset_reputation": {"peer_id": "str"},
+            "ack_alert": {"alert_id": "str"},
+            "add_mirror": {"name": "str", "port": "int", "description": "str"},
+            "remove_mirror": {"service_id": "str"},
+            "trigger_failover": {"service_id": "str"},
+            "broadcast": {"type": "str", "data": "str"},
+            "run_health_check": {}
+        }'
+        ;;
+
+    call)
+        case "$2" in
+            status)
+                $MIRRORCTL status 2>/dev/null || echo '{"error": "mirrorctl not available"}'
+                ;;
+
+            get_identity)
+                $MIRRORCTL identity 2>/dev/null || echo '{"error": "identity not configured"}'
+                ;;
+
+            get_peers)
+                $MIRRORCTL list-peers 2>/dev/null || echo '[]'
+                ;;
+
+            get_reputation)
+                read -r input
+                json_load "$input"
+                json_get_var peer_id peer_id
+
+                if [ -n "$peer_id" ]; then
+                    $MIRRORCTL reputation "$peer_id" 2>/dev/null
+                else
+                    echo '{"error": "peer_id required"}'
+                fi
+                ;;
+
+            get_reputation_list)
+                $MIRRORCTL reputation-list 2>/dev/null || echo '{}'
+                ;;
+
+            get_health)
+                $MIRRORCTL health-summary 2>/dev/null || echo '{}'
+                ;;
+
+            get_mirrors)
+                $MIRRORCTL mirror-list 2>/dev/null || echo '{"services":[]}'
+                ;;
+
+            get_gossip_stats)
+                $MIRRORCTL gossip-stats 2>/dev/null || echo '{"sent":0,"received":0,"dropped":0,"forwarded":0}'
+                ;;
+
+            get_alerts)
+                read -r input
+                json_load "$input"
+                json_get_var count count
+                [ -z "$count" ] && count=50
+
+                $MIRRORCTL alerts "$count" 2>/dev/null || echo '[]'
+                ;;
+
+            set_config)
+                read -r input
+                json_load "$input"
+                json_get_var section section
+                json_get_var option option
+                json_get_var value value
+
+                if [ -n "$section" ] && [ -n "$option" ]; then
+                    uci set "mirrornet.$section.$option=$value"
+                    uci commit mirrornet
+                    echo '{"success": true}'
+                else
+                    echo '{"error": "section and option required"}'
+                fi
+                ;;
+
+            reset_reputation)
+                read -r input
+                json_load "$input"
+                json_get_var peer_id peer_id
+
+                if [ -n "$peer_id" ]; then
+                    $MIRRORCTL reset-reputation "$peer_id" 2>/dev/null
+                    echo '{"success": true}'
+                else
+                    echo '{"error": "peer_id required"}'
+                fi
+                ;;
+
+            ack_alert)
+                read -r input
+                json_load "$input"
+                json_get_var alert_id alert_id
+
+                if [ -n "$alert_id" ]; then
+                    $MIRRORCTL ack-alert "$alert_id" 2>/dev/null
+                    echo '{"success": true}'
+                else
+                    echo '{"error": "alert_id required"}'
+                fi
+                ;;
+
+            add_mirror)
+                read -r input
+                json_load "$input"
+                json_get_var name name
+                json_get_var port port
+                json_get_var description description
+
+                if [ -n "$name" ] && [ -n "$port" ]; then
+                    service_id=$($MIRRORCTL mirror-add "$name" "$port" "$description" 2>/dev/null)
+                    echo "{\"success\": true, \"service_id\": \"$service_id\"}"
+                else
+                    echo '{"error": "name and port required"}'
+                fi
+                ;;
+
+            remove_mirror)
+                read -r input
+                json_load "$input"
+                json_get_var service_id service_id
+
+                if [ -n "$service_id" ]; then
+                    $MIRRORCTL mirror-remove "$service_id" 2>/dev/null
+                    echo '{"success": true}'
+                else
+                    echo '{"error": "service_id required"}'
+                fi
+                ;;
+
+            trigger_failover)
+                read -r input
+                json_load "$input"
+                json_get_var service_id service_id
+
+                if [ -n "$service_id" ]; then
+                    result=$($MIRRORCTL mirror-failover "$service_id" 2>/dev/null)
+                    echo "{\"success\": true, \"new_upstream\": \"$result\"}"
+                else
+                    echo '{"error": "service_id required"}'
+                fi
+                ;;
+
+            broadcast)
+                read -r input
+                json_load "$input"
+                json_get_var type type
+                json_get_var data data
+
+                if [ -n "$type" ] && [ -n "$data" ]; then
+                    msg_id=$($MIRRORCTL broadcast "$type" "$data" 2>/dev/null)
+                    echo "{\"success\": true, \"message_id\": \"$msg_id\"}"
+                else
+                    echo '{"error": "type and data required"}'
+                fi
+                ;;
+
+            run_health_check)
+                result=$($MIRRORCTL health 2>/dev/null)
+                echo "$result"
+                ;;
+
+            *)
+                echo '{"error": "Unknown method"}'
+                ;;
+        esac
+        ;;
+esac

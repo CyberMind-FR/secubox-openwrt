@@ -10,15 +10,651 @@
 . /lib/functions.sh
 . /usr/share/libubox/jshn.sh
 
-SECUBOX_VERSION="0.8.1"
+SECUBOX_VERSION="0.8.2"
 LOG_FILE="/var/log/secubox/core.log"
 PID_FILE="/var/run/secubox/core.pid"
 STATE_DIR="/var/run/secubox"
 WATCHDOG_STATE="/var/run/secubox/watchdog.json"
 
+# LED paths for MochaBin (RGB LEDs: led1, led2, led3)
+# led1: Global health status (green=ok, yellow=degraded, red=critical)
+# led2: Security threat level (green=safe, red=attack)
+# led3: Global capacity meter (CPU + Network)
+LED_GREEN1="/sys/class/leds/green:led1"
+LED_GREEN2="/sys/class/leds/green:led2"
+LED_GREEN3="/sys/class/leds/green:led3"
+LED_RED1="/sys/class/leds/red:led1"
+LED_RED2="/sys/class/leds/red:led2"
+LED_RED3="/sys/class/leds/red:led3"
+LED_BLUE1="/sys/class/leds/blue:led1"
+LED_BLUE2="/sys/class/leds/blue:led2"
+LED_BLUE3="/sys/class/leds/blue:led3"
+# Legacy aliases for compatibility
+LED_GREEN="$LED_GREEN1"
+LED_RED="$LED_RED1"
+LED_BLUE="$LED_BLUE1"
+LED_ENABLED=0
+LED_COLOR_CYCLE=0  # Cycles 0-5 for rainbow colors
+LED_PREV_STATE=""  # Track previous state for change detection
+
 # Services to monitor (init.d name:check_method:restart_delay)
 # check_method: pid, docker, lxc, port:PORT
 MONITORED_SERVICES=""
+
+# LED helper functions
+led_init() {
+    # Check if LEDs are available (MochaBin or compatible)
+    if [ -d "$LED_GREEN1" ] && [ -d "$LED_RED1" ]; then
+        LED_ENABLED=1
+        # Set trigger to none for manual control on RGB LEDs
+        for led in "$LED_RED1" "$LED_GREEN1" "$LED_BLUE1" \
+                   "$LED_RED2" "$LED_GREEN2" "$LED_BLUE2" \
+                   "$LED_RED3" "$LED_GREEN3" "$LED_BLUE3"; do
+            echo none > "$led/trigger" 2>/dev/null
+            echo 0 > "$led/brightness" 2>/dev/null
+        done
+        log debug "LED enabled: led1=health, led2=security, led3=capacity"
+    else
+        log debug "LED heartbeat disabled (no compatible LEDs)"
+    fi
+}
+
+# Set all colors for a specific LED (1, 2, or 3)
+led_set_rgb() {
+    local led_num="$1"  # 1, 2, or 3
+    local r="$2" g="$3" b="$4"
+    case "$led_num" in
+        1)
+            echo "$r" > "$LED_RED1/brightness" 2>/dev/null
+            echo "$g" > "$LED_GREEN1/brightness" 2>/dev/null
+            echo "$b" > "$LED_BLUE1/brightness" 2>/dev/null
+            ;;
+        2)
+            echo "$r" > "$LED_RED2/brightness" 2>/dev/null
+            echo "$g" > "$LED_GREEN2/brightness" 2>/dev/null
+            echo "$b" > "$LED_BLUE2/brightness" 2>/dev/null
+            ;;
+        3)
+            echo "$r" > "$LED_RED3/brightness" 2>/dev/null
+            echo "$g" > "$LED_GREEN3/brightness" 2>/dev/null
+            echo "$b" > "$LED_BLUE3/brightness" 2>/dev/null
+            ;;
+    esac
+}
+
+# Turn off all LEDs on one LED unit
+led_off() {
+    local led_num="$1"
+    led_set_rgb "$led_num" 0 0 0
+}
+
+# Global capacity LED on led3 - combines CPU + Network activity
+# Color gradient: Green (idle) -> Cyan (light) -> Yellow (moderate) -> Orange (busy) -> Red (max)
+# Network state file for delta calculation
+NET_PREV_FILE="/tmp/secubox/net_prev"
+
+led_global_capacity() {
+    [ "$LED_ENABLED" = "1" ] || return 0
+
+    # === CPU Load (0-100%) ===
+    local load=$(cat /proc/loadavg 2>/dev/null | cut -d' ' -f1)
+    local ncpu=$(grep -c ^processor /proc/cpuinfo 2>/dev/null || echo 4)
+    local load_int=$(echo "$load" | cut -d. -f1)
+    local load_dec=$(echo "$load" | cut -d. -f2 | cut -c1-2)
+    [ -z "$load_dec" ] && load_dec=0
+    local cpu_pct=$(( (load_int * 100 + load_dec) * 100 / ncpu / 100 ))
+    [ "$cpu_pct" -gt 100 ] && cpu_pct=100
+
+    # === Network Activity (0-100%) ===
+    # Sum all interface bytes
+    local net_now=0
+    for iface in /sys/class/net/*/statistics/rx_bytes; do
+        [ -f "$iface" ] || continue
+        local rx=$(cat "$iface" 2>/dev/null || echo 0)
+        local tx=$(cat "${iface%rx_bytes}tx_bytes" 2>/dev/null || echo 0)
+        net_now=$((net_now + rx + tx))
+    done
+
+    # Calculate delta from previous reading
+    local net_prev=$(cat "$NET_PREV_FILE" 2>/dev/null || echo "$net_now")
+    echo "$net_now" > "$NET_PREV_FILE"
+    local net_delta=$((net_now - net_prev))
+    [ "$net_delta" -lt 0 ] && net_delta=0
+
+    # Convert to percentage (scale: 10MB/s = 100%)
+    # 10MB = 10485760 bytes, measured over ~1.5s interval
+    local net_pct=$((net_delta * 100 / 15728640))
+    [ "$net_pct" -gt 100 ] && net_pct=100
+
+    # === Combine: weighted average (60% CPU, 40% network) ===
+    local pct=$(( (cpu_pct * 60 + net_pct * 40) / 100 ))
+    [ "$pct" -gt 100 ] && pct=100
+
+    # === Color gradient with more variety ===
+    local r g b
+    if [ "$pct" -le 20 ]; then
+        # Green (idle) - pure green
+        r=0; g=255; b=0
+    elif [ "$pct" -le 40 ]; then
+        # Green to Cyan (light activity)
+        r=0; g=255; b=$(( (pct - 20) * 12 ))
+    elif [ "$pct" -le 60 ]; then
+        # Cyan to Yellow (moderate)
+        r=$(( (pct - 40) * 12 ))
+        g=255
+        b=$((255 - (pct - 40) * 12))
+    elif [ "$pct" -le 80 ]; then
+        # Yellow to Orange (busy)
+        r=255
+        g=$((255 - (pct - 60) * 8))
+        b=0
+    else
+        # Orange to Red (max capacity)
+        r=255
+        g=$((100 - (pct - 80) * 5))
+        [ "$g" -lt 0 ] && g=0
+        b=0
+    fi
+
+    led_set_rgb 3 "$r" "$g" "$b"
+}
+
+led_set() {
+    local led="$1"
+    local state="$2"  # 0 = off, 1 = on
+    [ "$LED_ENABLED" = "1" ] || return 0
+    [ -f "${led}/brightness" ] && echo "$state" > "${led}/brightness" 2>/dev/null
+}
+
+led_pulse() {
+    local led="$1"
+    [ "$LED_ENABLED" = "1" ] || return 0
+    led_set "$led" 255
+    # Brief flash - actual timing handled by background subshell
+    ( sleep 1 && led_set "$led" 0 ) &
+}
+
+# ============================================================================
+# Double-Buffer Status Cache System
+# Background collector writes to cache files; consumers read instantly
+# ============================================================================
+
+# Cache file paths
+CACHE_DIR="/tmp/secubox"
+HEALTH_CACHE="$CACHE_DIR/health.json"
+THREAT_CACHE="$CACHE_DIR/threat.json"
+CAPACITY_CACHE="$CACHE_DIR/capacity.json"
+
+# Extended cache files for multi-package support
+CROWDSEC_CACHE="$CACHE_DIR/crowdsec.json"
+MITMPROXY_CACHE="$CACHE_DIR/mitmproxy.json"
+NETIFYD_CACHE="$CACHE_DIR/netifyd.json"
+CLIENT_GUARDIAN_CACHE="$CACHE_DIR/client-guardian.json"
+MAC_GUARDIAN_CACHE="$CACHE_DIR/mac-guardian.json"
+NETDIAG_CACHE="$CACHE_DIR/netdiag.json"
+
+# Fast cache readers (no subprocess, instant return)
+get_health_score() {
+    jsonfilter -i "$HEALTH_CACHE" -e '@.score' 2>/dev/null || echo 100
+}
+
+get_threat_level() {
+    jsonfilter -i "$THREAT_CACHE" -e '@.level' 2>/dev/null || echo 0
+}
+
+get_capacity() {
+    jsonfilter -i "$CAPACITY_CACHE" -e '@.combined' 2>/dev/null || echo 0
+}
+
+# ============================================================================
+# Status Collectors (called by background loop)
+# ============================================================================
+
+# Collect health data (every 15s)
+_collect_health() {
+    local score=100
+    local penalty=0
+    local services_ok=0
+    local services_total=0
+
+    # Check critical services
+    services_total=$((services_total + 1))
+    if pgrep haproxy >/dev/null 2>&1; then
+        services_ok=$((services_ok + 1))
+    else
+        penalty=$((penalty + 20))
+    fi
+
+    services_total=$((services_total + 1))
+    if pgrep crowdsec >/dev/null 2>&1; then
+        services_ok=$((services_ok + 1))
+    else
+        penalty=$((penalty + 15))
+    fi
+
+    services_total=$((services_total + 1))
+    if lxc-info -n haproxy 2>/dev/null | grep -q RUNNING; then
+        services_ok=$((services_ok + 1))
+    else
+        penalty=$((penalty + 20))
+    fi
+
+    # Check system resources
+    local mem_free=$(grep MemAvailable /proc/meminfo 2>/dev/null | awk '{print $2}')
+    local mem_total=$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}')
+    local mem_pct=0
+    if [ -n "$mem_free" ] && [ -n "$mem_total" ] && [ "$mem_total" -gt 0 ]; then
+        mem_pct=$((mem_free * 100 / mem_total))
+        [ "$mem_pct" -lt 10 ] && penalty=$((penalty + 25))
+        [ "$mem_pct" -lt 20 ] && penalty=$((penalty + 10))
+    fi
+
+    # Check disk space
+    local disk_pct=$(df / 2>/dev/null | tail -1 | awk '{print $5}' | tr -d '%')
+    [ -z "$disk_pct" ] && disk_pct=0
+    [ "$disk_pct" -gt 90 ] && penalty=$((penalty + 20))
+
+    score=$((100 - penalty))
+    [ "$score" -lt 0 ] && score=0
+
+    printf '{"score":%d,"services_ok":%d,"services_total":%d,"mem_free_pct":%d,"disk_used_pct":%d,"timestamp":%d}\n' \
+        "$score" "$services_ok" "$services_total" "$mem_pct" "$disk_pct" "$(date +%s)"
+}
+
+# Collect threat data (every 10s)
+_collect_threat() {
+    local threats=0
+    local cs_alerts=0
+    local bans=0
+    local mitm_threats=0
+
+    # CrowdSec alerts
+    if [ -f "/var/log/crowdsec.log" ]; then
+        cs_alerts=$(tail -100 /var/log/crowdsec.log 2>/dev/null | grep -c "alert" || echo 0)
+        threats=$((threats + cs_alerts))
+    fi
+
+    # CrowdSec decisions (active bans)
+    if command -v cscli >/dev/null 2>&1; then
+        bans=$(cscli decisions list -o raw 2>/dev/null | wc -l || echo 0)
+        threats=$((threats + bans / 2))
+    fi
+
+    # mitmproxy threats today
+    mitm_threats=$(uci -q get mitmproxy.stats.threats_today 2>/dev/null || echo 0)
+    threats=$((threats + mitm_threats / 10))
+
+    # Normalize to 0-100
+    [ "$threats" -gt 100 ] && threats=100
+
+    printf '{"level":%d,"crowdsec_alerts":%d,"bans":%d,"mitm_threats":%d,"timestamp":%d}\n' \
+        "$threats" "$cs_alerts" "$bans" "$mitm_threats" "$(date +%s)"
+}
+
+# Collect capacity data (every 3s)
+_collect_capacity() {
+    # CPU Load (0-100%)
+    local load=$(cat /proc/loadavg 2>/dev/null | cut -d' ' -f1)
+    local ncpu=$(grep -c ^processor /proc/cpuinfo 2>/dev/null || echo 4)
+    local load_int=$(echo "$load" | cut -d. -f1)
+    local load_dec=$(echo "$load" | cut -d. -f2 | cut -c1-2)
+    [ -z "$load_dec" ] && load_dec=0
+    local cpu_pct=$(( (load_int * 100 + load_dec) * 100 / ncpu / 100 ))
+    [ "$cpu_pct" -gt 100 ] && cpu_pct=100
+
+    # Network Activity (0-100%)
+    local net_now=0
+    for iface in /sys/class/net/*/statistics/rx_bytes; do
+        [ -f "$iface" ] || continue
+        local rx=$(cat "$iface" 2>/dev/null || echo 0)
+        local tx=$(cat "${iface%rx_bytes}tx_bytes" 2>/dev/null || echo 0)
+        net_now=$((net_now + rx + tx))
+    done
+
+    local net_prev=$(cat "$NET_PREV_FILE" 2>/dev/null || echo "$net_now")
+    echo "$net_now" > "$NET_PREV_FILE"
+    local net_delta=$((net_now - net_prev))
+    [ "$net_delta" -lt 0 ] && net_delta=0
+
+    # Convert to percentage (scale: 10MB/s = 100%)
+    local net_pct=$((net_delta * 100 / 15728640))
+    [ "$net_pct" -gt 100 ] && net_pct=100
+
+    # Combined: weighted average (60% CPU, 40% network)
+    local combined=$(( (cpu_pct * 60 + net_pct * 40) / 100 ))
+    [ "$combined" -gt 100 ] && combined=100
+
+    printf '{"cpu_pct":%d,"net_pct":%d,"combined":%d,"timestamp":%d}\n' \
+        "$cpu_pct" "$net_pct" "$combined" "$(date +%s)"
+}
+
+# ============================================================================
+# Extended Package Collectors (for multi-package cache)
+# ============================================================================
+
+# Collect CrowdSec data (every 30s)
+_collect_crowdsec() {
+    local running=0
+    local version="" alerts=0 bans=0 bouncers=0 machines=0
+
+    if pgrep crowdsec >/dev/null 2>&1; then
+        running=1
+        version=$(cscli version 2>/dev/null | head -1 | awk '{print $NF}' || echo "unknown")
+
+        # Alerts count
+        local alerts_json=$(cscli alerts list -o json 2>/dev/null | head -c 50000)
+        if [ -n "$alerts_json" ] && [ "$alerts_json" != "null" ]; then
+            alerts=$(echo "$alerts_json" | grep -c '"id":' || echo 0)
+        fi
+
+        # Decisions/bans count
+        local decisions_json=$(cscli decisions list -o json 2>/dev/null | head -c 10000)
+        if [ -n "$decisions_json" ] && [ "$decisions_json" != "null" ]; then
+            bans=$(echo "$decisions_json" | grep -c '"id":' || echo 0)
+        fi
+
+        # Bouncers count
+        bouncers=$(cscli bouncers list -o json 2>/dev/null | grep -c '"name":' || echo 0)
+
+        # Machines count
+        machines=$(cscli machines list -o json 2>/dev/null | grep -c '"machineId":' || echo 0)
+    fi
+
+    printf '{"running":%d,"version":"%s","alerts":%d,"bans":%d,"bouncers":%d,"machines":%d,"timestamp":%d}\n' \
+        "$running" "$version" "$alerts" "$bans" "$bouncers" "$machines" "$(date +%s)"
+}
+
+# Collect mitmproxy data (every 30s)
+_collect_mitmproxy() {
+    local running=0 threats_today=0 autobans=0 pending=0
+    local wan_enabled=0 lan_enabled=0
+
+    # Check LXC container status
+    if lxc-info -n mitmproxy -s 2>/dev/null | grep -q RUNNING; then
+        running=1
+    fi
+
+    # Read threat stats
+    if [ -f "/srv/mitmproxy/threats.log" ]; then
+        threats_today=$(wc -l < /srv/mitmproxy/threats.log 2>/dev/null || echo 0)
+    fi
+
+    # Autoban stats
+    if [ -f "/srv/mitmproxy/autoban-processed.log" ]; then
+        autobans=$(wc -l < /srv/mitmproxy/autoban-processed.log 2>/dev/null || echo 0)
+    fi
+    if [ -f "/srv/mitmproxy/autoban-requests.log" ]; then
+        pending=$(wc -l < /srv/mitmproxy/autoban-requests.log 2>/dev/null || echo 0)
+    fi
+
+    # Check firewall status
+    wan_enabled=$(uci -q get mitmproxy.main.wan_enabled 2>/dev/null || echo 0)
+    lan_enabled=$(uci -q get mitmproxy.main.enabled 2>/dev/null || echo 0)
+
+    printf '{"running":%d,"threats_today":%d,"autobans":%d,"pending":%d,"wan_enabled":%d,"lan_enabled":%d,"timestamp":%d}\n' \
+        "$running" "$threats_today" "$autobans" "$pending" "$wan_enabled" "$lan_enabled" "$(date +%s)"
+}
+
+# Collect netifyd data (every 15s)
+_collect_netifyd() {
+    local running=0 version="" flows=0 devices=0 dns_cache=0
+    local rx_bytes=0 tx_bytes=0 rx_packets=0 tx_packets=0
+
+    if pidof netifyd >/dev/null 2>&1; then
+        running=1
+        version=$(netifyd -V 2>/dev/null | head -1 || echo "unknown")
+
+        # Parse status.json if available
+        local status_file="/var/run/netifyd/status.json"
+        if [ -f "$status_file" ]; then
+            flows=$(jsonfilter -i "$status_file" -e '@.flows' 2>/dev/null || echo 0)
+            devices=$(jsonfilter -i "$status_file" -e '@.devices' 2>/dev/null || echo 0)
+            dns_cache=$(jsonfilter -i "$status_file" -e '@.dns_hint_cache' 2>/dev/null || echo 0)
+        fi
+    fi
+
+    # Interface stats from sysfs
+    for iface in eth0 eth1 lan wan; do
+        if [ -f "/sys/class/net/$iface/statistics/rx_bytes" ]; then
+            rx_bytes=$((rx_bytes + $(cat /sys/class/net/$iface/statistics/rx_bytes 2>/dev/null || echo 0)))
+            tx_bytes=$((tx_bytes + $(cat /sys/class/net/$iface/statistics/tx_bytes 2>/dev/null || echo 0)))
+            rx_packets=$((rx_packets + $(cat /sys/class/net/$iface/statistics/rx_packets 2>/dev/null || echo 0)))
+            tx_packets=$((tx_packets + $(cat /sys/class/net/$iface/statistics/tx_packets 2>/dev/null || echo 0)))
+        fi
+    done
+
+    printf '{"running":%d,"version":"%s","flows":%d,"devices":%d,"dns_cache":%d,"rx_bytes":%d,"tx_bytes":%d,"rx_packets":%d,"tx_packets":%d,"timestamp":%d}\n' \
+        "$running" "$version" "$flows" "$devices" "$dns_cache" "$rx_bytes" "$tx_bytes" "$rx_packets" "$tx_packets" "$(date +%s)"
+}
+
+# Collect client-guardian data (every 30s)
+_collect_client_guardian() {
+    local online=0 approved=0 quarantine=0 banned=0 threats=0
+
+    # Count ARP entries (online clients)
+    online=$(ip neigh show 2>/dev/null | grep -cE 'REACHABLE|STALE|DELAY' || echo 0)
+
+    # Count by status from UCI
+    local uci_clients=$(uci show client-guardian 2>/dev/null | grep -c "\.mac=" || echo 0)
+    approved=$(uci show client-guardian 2>/dev/null | grep "status='approved'" | wc -l || echo 0)
+    quarantine=$(uci show client-guardian 2>/dev/null | grep "status='quarantine'" | wc -l || echo 0)
+    banned=$(uci show client-guardian 2>/dev/null | grep "status='banned'" | wc -l || echo 0)
+
+    # Count threats from log
+    if [ -f "/var/log/client-guardian.log" ]; then
+        threats=$(grep -c "THREAT\|ALERT" /var/log/client-guardian.log 2>/dev/null || echo 0)
+    fi
+
+    printf '{"online":%d,"approved":%d,"quarantine":%d,"banned":%d,"threats":%d,"total":%d,"timestamp":%d}\n' \
+        "$online" "$approved" "$quarantine" "$banned" "$threats" "$uci_clients" "$(date +%s)"
+}
+
+# Collect mac-guardian data (every 30s)
+_collect_mac_guardian() {
+    local running=0 total=0 trusted=0 suspect=0 blocked=0 unknown=0
+    local wifi_stations=0 dhcp_leases=0
+
+    # Service status
+    pgrep mac-guardian >/dev/null 2>&1 && running=1
+
+    # Parse known.db
+    local db_file="/var/run/mac-guardian/known.db"
+    if [ -f "$db_file" ] && [ -s "$db_file" ]; then
+        total=$(wc -l < "$db_file" 2>/dev/null)
+        [ -z "$total" ] && total=0
+        trusted=$(grep -c '|trusted|' "$db_file" 2>/dev/null) || trusted=0
+        suspect=$(grep -c '|suspect|' "$db_file" 2>/dev/null) || suspect=0
+        blocked=$(grep -c '|blocked|' "$db_file" 2>/dev/null) || blocked=0
+        unknown=$(grep -c '|unknown|' "$db_file" 2>/dev/null) || unknown=0
+    fi
+
+    # WiFi stations
+    for iface in wlan0 wlan1 phy0-ap0 phy1-ap0; do
+        local count
+        count=$(iwinfo "$iface" assoclist 2>/dev/null | grep -c "dBm") || count=0
+        [ -z "$count" ] && count=0
+        wifi_stations=$((wifi_stations + count))
+    done
+
+    # DHCP leases
+    if [ -f "/tmp/dhcp.leases" ]; then
+        dhcp_leases=$(wc -l < /tmp/dhcp.leases 2>/dev/null)
+        [ -z "$dhcp_leases" ] && dhcp_leases=0
+    fi
+
+    printf '{"running":%d,"total":%d,"trusted":%d,"suspect":%d,"blocked":%d,"unknown":%d,"wifi_stations":%d,"dhcp_leases":%d,"timestamp":%d}\n' \
+        "$running" "$total" "$trusted" "$suspect" "$blocked" "$unknown" "$wifi_stations" "$dhcp_leases" "$(date +%s)"
+}
+
+# Collect netdiag data (every 60s)
+_collect_netdiag() {
+    local total_ifaces=0 up_ifaces=0 errors=0 warnings=0
+    local cpu_temp=0 soc_temp=0
+    local total_rx=0 total_tx=0
+
+    # Aggregate interface stats (simpler than building JSON array)
+    for iface_path in /sys/class/net/*/; do
+        local iface=$(basename "$iface_path")
+        [ "$iface" = "lo" ] && continue
+        [ ! -f "$iface_path/statistics/rx_bytes" ] && continue
+
+        total_ifaces=$((total_ifaces + 1))
+
+        local operstate=$(cat "$iface_path/operstate" 2>/dev/null)
+        [ "$operstate" = "up" ] && up_ifaces=$((up_ifaces + 1))
+
+        local rx=$(cat "$iface_path/statistics/rx_bytes" 2>/dev/null)
+        local tx=$(cat "$iface_path/statistics/tx_bytes" 2>/dev/null)
+        local rx_err=$(cat "$iface_path/statistics/rx_errors" 2>/dev/null)
+        local tx_err=$(cat "$iface_path/statistics/tx_errors" 2>/dev/null)
+
+        [ -n "$rx" ] && total_rx=$((total_rx + rx))
+        [ -n "$tx" ] && total_tx=$((total_tx + tx))
+        [ -n "$rx_err" ] && errors=$((errors + rx_err))
+        [ -n "$tx_err" ] && errors=$((errors + tx_err))
+    done
+
+    # Temperature
+    local temp_raw
+    if [ -f "/sys/class/thermal/thermal_zone0/temp" ]; then
+        temp_raw=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null)
+        [ -n "$temp_raw" ] && cpu_temp=$((temp_raw / 1000))
+    fi
+    if [ -f "/sys/class/thermal/thermal_zone1/temp" ]; then
+        temp_raw=$(cat /sys/class/thermal/thermal_zone1/temp 2>/dev/null)
+        [ -n "$temp_raw" ] && soc_temp=$((temp_raw / 1000))
+    fi
+
+    # Count dmesg errors
+    warnings=$(dmesg 2>/dev/null | grep -ciE 'error|fail|timeout') || warnings=0
+    [ -z "$warnings" ] && warnings=0
+
+    printf '{"total_ifaces":%d,"up_ifaces":%d,"errors":%d,"warnings":%d,"total_rx":%d,"total_tx":%d,"cpu_temp":%d,"soc_temp":%d,"timestamp":%d}\n' \
+        "$total_ifaces" "$up_ifaces" "$errors" "$warnings" "$total_rx" "$total_tx" "$cpu_temp" "$soc_temp" "$(date +%s)"
+}
+
+# Background status collector loop
+# Writes to cache files using atomic mv for consistency
+status_collector_loop() {
+    local counter=0
+
+    # Ensure cache directory exists
+    mkdir -p "$CACHE_DIR"
+
+    log debug "Status collector starting"
+
+    while true; do
+        # Capacity (fastest - every 3s)
+        _collect_capacity > "$CAPACITY_CACHE.tmp" 2>/dev/null
+        mv "$CAPACITY_CACHE.tmp" "$CAPACITY_CACHE" 2>/dev/null
+
+        # Threat (every 9s = counter % 3 == 0)
+        if [ $((counter % 3)) -eq 0 ]; then
+            _collect_threat > "$THREAT_CACHE.tmp" 2>/dev/null
+            mv "$THREAT_CACHE.tmp" "$THREAT_CACHE" 2>/dev/null
+        fi
+
+        # Health (every 15s = counter % 5 == 0)
+        if [ $((counter % 5)) -eq 0 ]; then
+            _collect_health > "$HEALTH_CACHE.tmp" 2>/dev/null
+            mv "$HEALTH_CACHE.tmp" "$HEALTH_CACHE" 2>/dev/null
+
+            # Netifyd (every 15s - same as health)
+            _collect_netifyd > "$NETIFYD_CACHE.tmp" 2>/dev/null
+            mv "$NETIFYD_CACHE.tmp" "$NETIFYD_CACHE" 2>/dev/null
+        fi
+
+        # CrowdSec, mitmproxy, client-guardian, mac-guardian (every 30s = counter % 10 == 0)
+        if [ $((counter % 10)) -eq 0 ]; then
+            _collect_crowdsec > "$CROWDSEC_CACHE.tmp" 2>/dev/null
+            mv "$CROWDSEC_CACHE.tmp" "$CROWDSEC_CACHE" 2>/dev/null
+
+            _collect_mitmproxy > "$MITMPROXY_CACHE.tmp" 2>/dev/null
+            mv "$MITMPROXY_CACHE.tmp" "$MITMPROXY_CACHE" 2>/dev/null
+
+            _collect_client_guardian > "$CLIENT_GUARDIAN_CACHE.tmp" 2>/dev/null
+            mv "$CLIENT_GUARDIAN_CACHE.tmp" "$CLIENT_GUARDIAN_CACHE" 2>/dev/null
+
+            _collect_mac_guardian > "$MAC_GUARDIAN_CACHE.tmp" 2>/dev/null
+            mv "$MAC_GUARDIAN_CACHE.tmp" "$MAC_GUARDIAN_CACHE" 2>/dev/null
+        fi
+
+        # Netdiag (every 60s = counter % 20 == 0)
+        if [ $((counter % 20)) -eq 0 ]; then
+            _collect_netdiag > "$NETDIAG_CACHE.tmp" 2>/dev/null
+            mv "$NETDIAG_CACHE.tmp" "$NETDIAG_CACHE" 2>/dev/null
+        fi
+
+        counter=$((counter + 1))
+        # Reset counter to prevent overflow
+        [ "$counter" -ge 1000 ] && counter=0
+
+        sleep 3
+    done
+}
+
+# Heartbeat function - 3 dedicated LEDs
+# LED1: Global health (green=healthy, yellow=degraded, red=critical) with pulse
+# LED2: Security threat meter (green=safe, yellow=activity, orange=elevated, red=attack)
+# LED3: Global capacity (CPU+Network) - handled by led_global_capacity()
+led_heartbeat() {
+    [ "$LED_ENABLED" = "1" ] || return 0
+    local status="$1"  # healthy, warning, error
+
+    # LED1: Global health status with rainbow pulse effect
+    local health=$(get_health_score)
+    local r1 g1 b1
+
+    if [ "$health" -ge 80 ]; then
+        # Healthy - Green with subtle color cycling
+        case "$((LED_COLOR_CYCLE % 3))" in
+            0) r1=0; g1=255; b1=0 ;;      # Pure green
+            1) r1=0; g1=255; b1=50 ;;     # Green-cyan
+            2) r1=50; g1=255; b1=0 ;;     # Green-yellow
+        esac
+    elif [ "$health" -ge 50 ]; then
+        # Degraded - Yellow/Orange cycling
+        case "$((LED_COLOR_CYCLE % 3))" in
+            0) r1=255; g1=255; b1=0 ;;    # Yellow
+            1) r1=255; g1=200; b1=0 ;;    # Gold
+            2) r1=255; g1=150; b1=0 ;;    # Orange
+        esac
+    else
+        # Critical - Red pulsing
+        case "$((LED_COLOR_CYCLE % 3))" in
+            0) r1=255; g1=0; b1=0 ;;      # Red
+            1) r1=255; g1=50; b1=0 ;;     # Red-orange
+            2) r1=200; g1=0; b1=50 ;;     # Red-magenta
+        esac
+    fi
+    led_set_rgb 1 "$r1" "$g1" "$b1"
+    LED_COLOR_CYCLE=$(( (LED_COLOR_CYCLE + 1) % 6 ))
+
+    # LED2: Security threat level
+    local threat=$(get_threat_level)
+    local r2 g2 b2
+
+    if [ "$threat" -le 5 ]; then
+        # Green - all quiet
+        r2=0; g2=255; b2=0
+    elif [ "$threat" -le 20 ]; then
+        # Green-Yellow - minor activity
+        r2=$((threat * 10)); g2=255; b2=0
+    elif [ "$threat" -le 50 ]; then
+        # Yellow - elevated activity
+        r2=255; g2=255; b2=0
+    elif [ "$threat" -le 75 ]; then
+        # Orange - significant threats
+        r2=255; g2=$((180 - (threat - 50) * 4)); b2=0
+    else
+        # Red - under attack / high threat
+        r2=255; g2=$((50 - (threat - 75) * 2))
+        [ "$g2" -lt 0 ] && g2=0
+        b2=0
+    fi
+
+    led_set_rgb 2 "$r2" "$g2" "$b2"
+}
 
 # Auto-discover SecuBox services from ctl scripts
 discover_secubox_services() {
@@ -45,8 +681,8 @@ discover_secubox_services() {
                 services="$services mitmproxy:lxc:10"
                 ;;
             metablogizerctl)
-                svc_name="metablogizer"
-                services="$services metablogizer:lxc:10"
+                # MetaBlogizer uses per-site uhttpd instances, not LXC
+                # Skip watchdog for this service - managed via init.d/metablogizer
                 ;;
             hexojsctl)
                 svc_name="hexojs"
@@ -422,6 +1058,149 @@ get_watchdog_services() {
     echo "$core_services"
 }
 
+# Event pulse - flash led3 with specific color when events happen
+# Usage: echo "config|task|alert" > /tmp/secubox/led-event
+led_event_pulse() {
+    local event_file="/tmp/secubox/led-event"
+    [ -f "$event_file" ] || return 1
+
+    local event=$(cat "$event_file" 2>/dev/null)
+    rm -f "$event_file"
+    [ -z "$event" ] && return 1
+
+    # Flash pattern based on event type
+    case "$event" in
+        config)
+            # White flash for config changes
+            led_set_rgb 3 255 255 255
+            ;;
+        task)
+            # Cyan flash for scheduled tasks
+            led_set_rgb 3 0 255 255
+            ;;
+        alert)
+            # Magenta flash for alerts
+            led_set_rgb 3 255 0 255
+            ;;
+        network)
+            # Blue flash for network events
+            led_set_rgb 3 0 100 255
+            ;;
+        *)
+            # Purple for unknown events
+            led_set_rgb 3 180 0 255
+            ;;
+    esac
+    return 0
+}
+
+# Triple-pulse heartbeat with staggered cascade across LEDs
+# Creates organic "bump-bump-bump (pause)" pattern
+# Each LED pulses sequentially with offset timing (décalé)
+# BusyBox compatible: uses 1s sleep with rapid triple-pulse burst
+
+led_triple_pulse() {
+    local led_num="$1"
+    local r="$2" g="$3" b="$4"
+    local intensity="$5"  # 0-100 for pulse strength
+
+    # Calculate dimmed color based on intensity
+    local ri=$((r * intensity / 100))
+    local gi=$((g * intensity / 100))
+    local bi=$((b * intensity / 100))
+
+    led_set_rgb "$led_num" "$ri" "$gi" "$bi"
+}
+
+# Fast LED heartbeat background loop
+# Runs independently with triple-pulse cascade effect
+# led1: Global health status (primary pulse)
+# led2: Security threat level (offset pulse)
+# led3: Global capacity meter (trailing pulse)
+# Pattern: rapid triple-pulse then 3s rest (BusyBox compatible)
+led_heartbeat_loop() {
+    local status_file="/tmp/secubox/led-status"
+    echo "healthy" > "$status_file"
+
+    # Base colors for each LED (set by status)
+    local r1=0 g1=255 b1=0  # Health: green
+    local r2=0 g2=255 b2=0  # Threat: green
+    local r3=0 g3=255 b3=0  # Capacity: green
+
+    while true; do
+        local status=$(cat "$status_file" 2>/dev/null || echo "healthy")
+
+        # Update base colors from cache
+        # LED1: Health color
+        local health=$(get_health_score)
+        if [ "$health" -ge 80 ]; then
+            r1=0; g1=255; b1=50
+        elif [ "$health" -ge 50 ]; then
+            r1=255; g1=200; b1=0
+        else
+            r1=255; g1=30; b1=0
+        fi
+
+        # LED2: Threat color
+        local threat=$(get_threat_level)
+        if [ "$threat" -le 10 ]; then
+            r2=0; g2=255; b2=0
+        elif [ "$threat" -le 40 ]; then
+            r2=200; g2=255; b2=0
+        elif [ "$threat" -le 70 ]; then
+            r2=255; g2=150; b2=0
+        else
+            r2=255; g2=0; b2=0
+        fi
+
+        # LED3: Capacity color (from cache)
+        local cap=$(get_capacity)
+        if [ "$cap" -le 30 ]; then
+            r3=0; g3=255; b3=100
+        elif [ "$cap" -le 60 ]; then
+            r3=100; g3=255; b3=0
+        elif [ "$cap" -le 80 ]; then
+            r3=255; g3=200; b3=0
+        else
+            r3=255; g3=80; b3=0
+        fi
+
+        # Check for event pulse (overrides normal pattern)
+        if led_event_pulse; then
+            sleep 1
+            continue
+        fi
+
+        # === Triple-pulse burst (rapid sequential) ===
+        # Beat 1: LED1 bright
+        led_triple_pulse 1 "$r1" "$g1" "$b1" 100
+        led_triple_pulse 2 "$r2" "$g2" "$b2" 30
+        led_triple_pulse 3 "$r3" "$g3" "$b3" 30
+        # Brief pause via shell overhead (~50ms)
+        :; :; :
+
+        # Beat 2: LED2 bright (décalé)
+        led_triple_pulse 1 "$r1" "$g1" "$b1" 40
+        led_triple_pulse 2 "$r2" "$g2" "$b2" 100
+        led_triple_pulse 3 "$r3" "$g3" "$b3" 50
+        :; :; :
+
+        # Beat 3: LED3 bright (décalé)
+        led_triple_pulse 1 "$r1" "$g1" "$b1" 30
+        led_triple_pulse 2 "$r2" "$g2" "$b2" 50
+        led_triple_pulse 3 "$r3" "$g3" "$b3" 100
+        :; :; :
+
+        # Fade to dim
+        led_triple_pulse 1 "$r1" "$g1" "$b1" 25
+        led_triple_pulse 2 "$r2" "$g2" "$b2" 25
+        led_triple_pulse 3 "$r3" "$g3" "$b3" 35
+
+        # Rest period: 3 seconds
+        sleep 3
+    done
+}
+
 # Daemon mode
 daemon_mode() {
     log info "SecuBox Core daemon starting (version $SECUBOX_VERSION)"
@@ -429,16 +1208,46 @@ daemon_mode() {
     # Write PID
     echo $$ > "$PID_FILE"
 
+    # Ensure cache directory exists
+    mkdir -p "$CACHE_DIR"
+
+    # Start background status collector (populates cache files)
+    status_collector_loop &
+    STATUS_COLLECTOR_PID=$!
+    log debug "Status collector started (PID: $STATUS_COLLECTOR_PID)"
+
+    # Wait for initial cache population
+    sleep 1
+
+    # Initialize vhosts (in background to not block daemon startup)
+    ( sleep 5; /usr/sbin/secubox-vhost init >/dev/null 2>&1 || true ) &
+    log debug "Vhost initialization scheduled"
+
+    # Initialize LED heartbeat
+    led_init
+    led_heartbeat boot
+
     # Get health check interval
     local health_interval=$(uci -q get secubox.main.health_check_interval || echo "300")
 
     # Get watchdog interval (faster than health check)
     local watchdog_interval=$(uci -q get secubox.main.watchdog_interval || echo "60")
 
+    # LED heartbeat setting (enabled by default)
+    local led_heartbeat_enabled=$(uci -q get secubox.main.led_heartbeat || echo "1")
+
+    # Start fast LED heartbeat in background
+    if [ "$led_heartbeat_enabled" = "1" ]; then
+        led_heartbeat_loop &
+        LED_HEARTBEAT_PID=$!
+        log debug "LED heartbeat loop started (PID: $LED_HEARTBEAT_PID)"
+    fi
+
     # Main daemon loop
     local health_counter=0
     local health_cycles=$((health_interval / watchdog_interval))
     [ "$health_cycles" -lt 1 ] && health_cycles=1
+    local last_health_status="healthy"
 
     while true; do
         # Run watchdog every cycle
@@ -447,7 +1256,11 @@ daemon_mode() {
         # Run health check every N cycles
         health_counter=$((health_counter + 1))
         if [ "$health_counter" -ge "$health_cycles" ]; then
-            run_health_check > /tmp/secubox/health-status.json
+            local health_output=$(run_health_check)
+            echo "$health_output" > /tmp/secubox/health-status.json
+            # Extract status for LED and update status file
+            last_health_status=$(echo "$health_output" | jsonfilter -e '@.status' 2>/dev/null || echo "healthy")
+            echo "$last_health_status" > /tmp/secubox/led-status
             health_counter=0
         fi
 

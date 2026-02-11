@@ -1,0 +1,40 @@
+config p2p_intel 'main'
+	option enabled '1'
+	option auto_collect '1'
+	option collect_interval '300'
+	# Collect IOCs every 5 minutes
+	option auto_share '1'
+	option auto_apply '0'
+	# Manual approval by default
+
+config sources 'sources'
+	option crowdsec '1'
+	option mitmproxy '1'
+	option waf '1'
+	option dns_guard '1'
+
+config validation 'validation'
+	option require_signature '1'
+	option min_source_trust '40'
+	# Minimum trust score to accept IOCs
+	option verify_transitive '1'
+	# Verify IOCs from peers-of-peers
+	option max_age_hours '168'
+	# Reject IOCs older than 7 days
+
+config sharing 'sharing'
+	option min_severity 'medium'
+	# Only share medium+ severity
+	option sign_iocs '1'
+	option include_evidence '0'
+	# Include raw evidence (larger payloads)
+	option batch_size '50'
+
+config application 'application'
+	option apply_method 'nftables'
+	# nftables, iptables, or crowdsec
+	option ipset_name 'p2p_intel_blocked'
+	option ban_duration '86400'
+	# 24 hours default
+	option whitelist_local '1'
+	# Never block local subnets

@@ -1,0 +1,25 @@
+# SecuBox Unified Backup Manager Configuration
+
+config backup 'main'
+	option enabled '1'
+	option storage_path '/srv/backups'
+	option retention_days '30'
+	option max_backups '10'
+	option compress '1'
+
+config schedule 'daily'
+	option enabled '0'
+	option type 'config'
+	option cron '0 3 * * *'
+
+config schedule 'weekly'
+	option enabled '0'
+	option type 'full'
+	option cron '0 4 * * 0'
+
+config remote 'gitea'
+	option enabled '0'
+	option url ''
+	option repo ''
+	option token ''
+	option branch 'master'

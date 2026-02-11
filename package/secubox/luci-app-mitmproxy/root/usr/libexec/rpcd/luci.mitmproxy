@@ -7,6 +7,16 @@ CONFIG="mitmproxy"
 LXC_NAME="mitmproxy"
 LXC_PATH="/srv/lxc"
 LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
+MITMPROXY_CACHE="/tmp/secubox/mitmproxy.json"
+
+# Read cached status for fast API responses
+get_cached_status() {
+	if [ -f "$MITMPROXY_CACHE" ]; then
+		cat "$MITMPROXY_CACHE"
+	else
+		echo '{"running":0,"threats_today":0,"autobans":0,"pending":0,"wan_enabled":0,"lan_enabled":0,"timestamp":0}'
+	fi
+}
 
 uci_get() { uci -q get ${CONFIG}.$1; }
 uci_set() { uci set ${CONFIG}.$1="$2"; }
@@ -521,6 +531,34 @@ get_threat_stats() {
 EOFJ
 }
 
+get_subdomain_metrics() {
+	local metrics_file="/tmp/secubox-subdomain-metrics.json"
+	local subdomain_metrics=""
+
+	# Try to get metrics from LXC container
+	if command -v lxc-attach >/dev/null 2>&1; then
+		subdomain_metrics=$(lxc-attach -n "$LXC_NAME" -- cat /tmp/secubox-subdomain-metrics.json 2>/dev/null)
+	fi
+
+	# Fall back to host path
+	if [ -z "$subdomain_metrics" ]; then
+		[ -f "$metrics_file" ] && subdomain_metrics=$(cat "$metrics_file" 2>/dev/null)
+	fi
+
+	# Default empty metrics
+	if [ -z "$subdomain_metrics" ]; then
+		subdomain_metrics='{"updated":null,"subdomains":{}}'
+	fi
+
+	cat <<EOFJ
+{
+	"success": true,
+	"metrics": $subdomain_metrics,
+	"timestamp": "$(date -Iseconds)"
+}
+EOFJ
+}
+
 clear_alerts() {
 	# Clear the host-visible threats log file
 	local log_file="/srv/mitmproxy/threats.log"
@@ -606,6 +644,64 @@ sync_routes() {
 	json_dump
 }
 
+get_bans() {
+	# Get CrowdSec decisions as JSON and output directly
+	local bans_json="[]"
+	local total=0
+	local autoban=0
+	local crowdsec_count=0
+
+	if command -v cscli >/dev/null 2>&1; then
+		bans_json=$(cscli decisions list -o json 2>/dev/null)
+		if [ -z "$bans_json" ] || [ "$bans_json" = "null" ]; then
+			bans_json="[]"
+		else
+			# Count using grep on the raw JSON - patterns match with/without spaces
+			total=$(echo "$bans_json" | grep -c '"id":' 2>/dev/null) || total=0
+			autoban=$(echo "$bans_json" | grep -c '"origin":.*"cscli"' 2>/dev/null) || autoban=0
+			crowdsec_count=$(echo "$bans_json" | grep -c '"origin":.*"crowdsec"' 2>/dev/null) || crowdsec_count=0
+		fi
+	fi
+
+	# Build response with embedded bans array
+	printf '{"success":true,"total":%d,"mitmproxy_autoban":%d,"crowdsec":%d,"bans":%s}\n' \
+		"$total" "$autoban" "$crowdsec_count" "$bans_json"
+}
+
+unban_ip() {
+	read -r input
+	local ip=$(echo "$input" | jsonfilter -e '@.ip' 2>/dev/null)
+
+	json_init
+
+	if [ -z "$ip" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "IP address required"
+		json_dump
+		return
+	fi
+
+	if ! command -v cscli >/dev/null 2>&1; then
+		json_add_boolean "success" 0
+		json_add_string "error" "CrowdSec not installed"
+		json_dump
+		return
+	fi
+
+	cscli decisions delete --ip "$ip" >/dev/null 2>&1
+	local result=$?
+
+	if [ $result -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Unbanned $ip"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Failed to unban $ip"
+	fi
+
+	json_dump
+}
+
 wan_setup() {
 	json_init
 
@@ -657,7 +753,7 @@ wan_clear() {
 }
 
 list_methods() { cat <<'EOFM'
-{"status":{},"settings":{},"save_settings":{"mode":"str","enabled":"bool","proxy_port":"int","web_port":"int","apply_now":"bool","wan_protection_enabled":"bool","wan_interface":"str"},"set_mode":{"mode":"str","apply_now":"bool"},"setup_firewall":{},"clear_firewall":{},"wan_setup":{},"wan_clear":{},"install":{},"start":{},"stop":{},"restart":{},"alerts":{},"threat_stats":{},"clear_alerts":{},"haproxy_enable":{},"haproxy_disable":{},"sync_routes":{}}
+{"status":{},"status_cached":{},"settings":{},"save_settings":{"mode":"str","enabled":"bool","proxy_port":"int","web_port":"int","apply_now":"bool","wan_protection_enabled":"bool","wan_interface":"str"},"set_mode":{"mode":"str","apply_now":"bool"},"setup_firewall":{},"clear_firewall":{},"wan_setup":{},"wan_clear":{},"install":{},"start":{},"stop":{},"restart":{},"alerts":{},"threat_stats":{},"subdomain_metrics":{},"clear_alerts":{},"haproxy_enable":{},"haproxy_disable":{},"sync_routes":{},"bans":{},"unban":{"ip":"str"}}
 EOFM
 }
 
@@ -666,6 +762,7 @@ case "$1" in
 	call)
 		case "$2" in
 			status) get_status ;;
+			status_cached) get_cached_status ;;
 			settings) get_settings ;;
 			save_settings) save_settings ;;
 			set_mode) set_mode ;;
@@ -679,10 +776,13 @@ case "$1" in
 			restart) do_restart ;;
 			alerts) get_alerts ;;
 			threat_stats) get_threat_stats ;;
+			subdomain_metrics) get_subdomain_metrics ;;
 			clear_alerts) clear_alerts ;;
 			haproxy_enable) haproxy_enable ;;
 			haproxy_disable) haproxy_disable ;;
 			sync_routes) sync_routes ;;
+			bans) get_bans ;;
+			unban) unban_ip ;;
 			*) echo '{"error":"Unknown method"}' ;;
 		esac
 		;;

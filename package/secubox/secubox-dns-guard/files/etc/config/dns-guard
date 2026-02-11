@@ -1,0 +1,79 @@
+config dns-guard 'main'
+	option enabled '1'
+	option interval '60'
+	option localai_url 'http://127.0.0.1:8081'
+	option localai_model 'tinyllama-1.1b-chat-v1.0.Q4_K_M'
+
+	# Auto-apply generated blocklists (0=queue for approval, 1=auto-apply)
+	option auto_apply_blocks '0'
+
+	# Minimum confidence score (0-100) to generate blocks
+	option min_confidence '80'
+
+	# Maximum domains to block per cycle
+	option max_blocks_per_cycle '10'
+
+	# Alert retention (hours)
+	option alert_retention '24'
+
+# Detection modules
+config detector 'dga'
+	option enabled '1'
+	option description 'Domain Generation Algorithm detection'
+	# Minimum entropy threshold for DGA detection (0.0-4.0)
+	option entropy_threshold '3.2'
+	# Minimum domain length for DGA candidate
+	option min_length '12'
+
+config detector 'tunneling'
+	option enabled '1'
+	option description 'DNS tunneling and exfiltration detection'
+	# Maximum legitimate subdomain length
+	option max_subdomain_length '63'
+	# Maximum TXT record query rate per minute
+	option txt_rate_limit '10'
+
+config detector 'rate_anomaly'
+	option enabled '1'
+	option description 'Unusual query rate detection'
+	# Queries per minute threshold per client
+	option queries_per_minute '100'
+	# Unique domains per minute threshold
+	option unique_domains_per_minute '50'
+
+config detector 'known_bad'
+	option enabled '1'
+	option description 'Known malicious domain detection'
+	# Path to blocklist files (space-separated)
+	option blocklist_paths '/etc/dns-guard/blocklists'
+
+config detector 'tld_anomaly'
+	option enabled '1'
+	option description 'Unusual TLD pattern detection'
+	# Suspicious TLDs (comma-separated)
+	option suspicious_tlds 'xyz,top,club,work,date,loan,racing,download,review,click,bid,stream,gdn,icu'
+
+# Query log source
+config source 'dnsmasq'
+	option enabled '1'
+	option type 'dnsmasq'
+	# dnsmasq must be configured with log-queries
+	option log_facility '/var/log/dnsmasq.log'
+
+# Output: dnsmasq blocklist
+config target 'dnsmasq_blocklist'
+	option enabled '1'
+	option type 'dnsmasq'
+	option output_path '/etc/dnsmasq.d/dns-guard-blocklist.conf'
+	option reload_cmd '/etc/init.d/dnsmasq restart'
+
+# Output: AdGuard Home blocklist
+config target 'adguardhome_blocklist'
+	option enabled '0'
+	option type 'adguardhome'
+	option output_path '/etc/adguardhome/filters/dns-guard.txt'
+	option reload_cmd 'killall -HUP AdGuardHome'
+
+# Queue for pending blocks (approval workflow)
+config queue 'pending'
+	option path '/var/lib/dns-guard/pending_blocks.json'

@@ -123,14 +123,16 @@ cmd_status() {
 	fi
 
 	# Show config details
-	local dns_over_tor kill_switch
+	local dns_over_tor kill_switch wan_input_allow
 	config_get dns_over_tor main dns_over_tor '1'
 	config_get kill_switch main kill_switch '1'
+	config_get wan_input_allow main wan_input_allow '0'
 
 	echo ""
 	echo "Configuration:"
 	echo "  DNS over Tor: $([ "$dns_over_tor" = "1" ] && echo "Yes" || echo "No")"
 	echo "  Kill Switch: $([ "$kill_switch" = "1" ] && echo "Yes" || echo "No")"
+	echo "  WAN Input Allow: $([ "$wan_input_allow" = "1" ] && echo "Yes (Server Mode)" || echo "No")"
 
 	# Bridge status
 	local bridges_enabled
@@ -151,18 +153,20 @@ cmd_enable() {
 	# Load preset configuration
 	config_load "$CONFIG"
 
-	local preset_mode preset_dns preset_kill preset_bridges preset_lan_proxy
+	local preset_mode preset_dns preset_kill preset_bridges preset_lan_proxy preset_wan_input
 	config_get preset_mode "$preset" mode 'transparent'
 	config_get preset_dns "$preset" dns_over_tor '1'
 	config_get preset_kill "$preset" kill_switch '1'
 	config_get preset_bridges "$preset" use_bridges '0'
 	config_get preset_lan_proxy "$preset" lan_proxy '0'
+	config_get preset_wan_input "$preset" wan_input_allow '0'
 
 	# Apply preset settings
 	uci set tor-shield.main.enabled='1'
 	uci set tor-shield.main.mode="$preset_mode"
 	uci set tor-shield.main.dns_over_tor="$preset_dns"
 	uci set tor-shield.main.kill_switch="$preset_kill"
+	uci set tor-shield.main.wan_input_allow="$preset_wan_input"
 	uci set tor-shield.trans.lan_proxy="$preset_lan_proxy"
 
 	if [ "$preset_bridges" = "1" ]; then

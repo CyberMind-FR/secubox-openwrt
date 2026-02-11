@@ -1,0 +1,680 @@
+#!/bin/sh
+# SecuBox Mail Server Controller
+
+VERSION="1.0.0"
+CONFIG="mailserver"
+LIB_DIR="/usr/lib/mailserver"
+
+# Load libraries
+. "$LIB_DIR/container.sh"
+. "$LIB_DIR/users.sh"
+. "$LIB_DIR/mesh.sh"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+log() { echo -e "${GREEN}[MAIL]${NC} $1"; }
+warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+error() { echo -e "${RED}[ERROR]${NC} $1"; }
+
+uci_get() { uci -q get ${CONFIG}.$1; }
+
+# ============================================================================
+# Install / Setup
+# ============================================================================
+
+cmd_install() {
+	local container=$(uci_get main.container)
+	container="${container:-mailserver}"
+	local data_path=$(uci_get main.data_path)
+	data_path="${data_path:-/srv/mailserver}"
+
+	log "Installing mail server..."
+
+	# Create container
+	container_create "$container" "$data_path"
+	local rc=$?
+
+	[ $rc -ne 0 ] && return $rc
+
+	# Start container
+	log "Starting container..."
+	lxc-start -n "$container"
+	sleep 5
+
+	# Run setup
+	log "Installing mail packages..."
+	lxc-attach -n "$container" -- /root/setup.sh
+
+	log "Installation complete!"
+	echo ""
+	echo "Next steps:"
+	echo "  1. Configure domain: uci set mailserver.main.domain='yourdomain.com'"
+	echo "  2. Set up DNS:       dnsctl mail-setup"
+	echo "  3. Add SSL cert:     mailctl ssl-setup"
+	echo "  4. Add users:        mailctl user-add user@yourdomain.com"
+	echo "  5. Enable:           uci set mailserver.main.enabled=1 && uci commit"
+}
+
+cmd_uninstall() {
+	local container=$(uci_get main.container)
+	container="${container:-mailserver}"
+
+	warn "This will remove the mail server container and all data!"
+	echo "Continue? (yes/no)"
+	read confirm
+	[ "$confirm" != "yes" ] && { echo "Aborted"; return 1; }
+
+	log "Stopping container..."
+	lxc-stop -n "$container" 2>/dev/null
+
+	log "Removing container..."
+	rm -rf "/srv/lxc/$container"
+
+	log "Mail server removed. Data in $(uci_get main.data_path) preserved."
+}
+
+# ============================================================================
+# Service Control
+# ============================================================================
+
+cmd_start() {
+	/etc/init.d/mailserver start
+}
+
+cmd_stop() {
+	/etc/init.d/mailserver stop
+}
+
+cmd_restart() {
+	/etc/init.d/mailserver stop
+	sleep 2
+	/etc/init.d/mailserver start
+}
+
+cmd_status() {
+	local container=$(uci_get main.container)
+	container="${container:-mailserver}"
+	local domain=$(uci_get main.domain)
+	local hostname=$(uci_get main.hostname)
+
+	echo ""
+	echo "========================================"
+	echo "  SecuBox Mail Server v$VERSION"
+	echo "========================================"
+	echo ""
+
+	# Container status
+	local state="stopped"
+	lxc-info -n "$container" 2>/dev/null | grep -q "RUNNING" && state="running"
+	echo "  Container:   $container ($state)"
+	echo "  Domain:      ${domain:-not set}"
+	echo "  Hostname:    ${hostname:-mail}.${domain:-example.com}"
+	echo ""
+
+	# Port status - check inside container
+	echo "  Ports:"
+	local ports="25 587 465 993 995"
+	local container_ports=""
+	if [ "$state" = "running" ]; then
+		container_ports=$(lxc-attach -n "$container" -- netstat -tln 2>/dev/null)
+	fi
+	for port in $ports; do
+		if echo "$container_ports" | grep -q ":$port "; then
+			echo -e "    $port: ${GREEN}listening${NC}"
+		else
+			echo -e "    $port: ${RED}closed${NC}"
+		fi
+	done
+	echo ""
+
+	# User count
+	local data_path=$(uci_get main.data_path)
+	data_path="${data_path:-/srv/mailserver}"
+	local user_count=$(wc -l < "$data_path/config/users" 2>/dev/null || echo "0")
+	echo "  Users:       $user_count"
+
+	# Storage
+	local storage=$(du -sh "$data_path" 2>/dev/null | awk '{print $1}')
+	echo "  Storage:     ${storage:-0}"
+	echo ""
+}
+
+# ============================================================================
+# User Commands
+# ============================================================================
+
+cmd_user() {
+	local action="$1"
+	shift
+
+	case "$action" in
+		add)     user_add "$@" ;;
+		del)     user_del "$@" ;;
+		list)    user_list ;;
+		passwd)  user_passwd "$@" ;;
+		*)
+			echo "User commands:"
+			echo "  user add <email@domain>  Add mail user"
+			echo "  user del <email@domain>  Delete mail user"
+			echo "  user list                List all users"
+			echo "  user passwd <email>      Change password"
+			;;
+	esac
+}
+
+cmd_alias() {
+	local action="$1"
+	shift
+
+	case "$action" in
+		add)   alias_add "$@" ;;
+		list)  alias_list ;;
+		*)
+			echo "Alias commands:"
+			echo "  alias add <alias> <target>  Add email alias"
+			echo "  alias list                  List aliases"
+			;;
+	esac
+}
+
+# ============================================================================
+# SSL Certificate
+# ============================================================================
+
+cmd_ssl_setup() {
+	local container=$(uci_get main.container)
+	container="${container:-mailserver}"
+	local domain=$(uci_get main.domain)
+	local hostname=$(uci_get main.hostname)
+	hostname="${hostname:-mail}"
+	local fqdn="${hostname}.${domain}"
+
+	log "Setting up SSL for $fqdn..."
+
+	# Check if acme.sh available
+	if ! command -v acme.sh >/dev/null 2>&1; then
+		error "acme.sh not installed. Install with: opkg install acme acme-dnsapi"
+		return 1
+	fi
+
+	# Use DNS-01 via dnsctl
+	log "Requesting certificate via DNS-01..."
+	dnsctl acme-dns01 "$fqdn"
+
+	local cert_dir="/root/.acme.sh/${fqdn}"
+	local data_path=$(uci_get main.data_path)
+	data_path="${data_path:-/srv/mailserver}"
+
+	if [ -f "$cert_dir/fullchain.cer" ]; then
+		cp "$cert_dir/fullchain.cer" "$data_path/ssl/fullchain.pem"
+		cp "$cert_dir/${fqdn}.key" "$data_path/ssl/privkey.pem"
+		chmod 600 "$data_path/ssl/"*.pem
+
+		log "SSL certificates installed to $data_path/ssl/"
+		log "Restarting mail services..."
+		cmd_restart
+	else
+		error "Certificate generation failed"
+		return 1
+	fi
+}
+
+cmd_ssl_status() {
+	local data_path=$(uci_get main.data_path)
+	data_path="${data_path:-/srv/mailserver}"
+
+	if [ -f "$data_path/ssl/fullchain.pem" ]; then
+		echo "SSL Certificate:"
+		openssl x509 -in "$data_path/ssl/fullchain.pem" -noout -subject -dates 2>/dev/null | sed 's/^/  /'
+	else
+		echo "No SSL certificate installed"
+	fi
+}
+
+# ============================================================================
+# DNS Integration
+# ============================================================================
+
+cmd_dns_setup() {
+	local hostname=$(uci_get main.hostname)
+	hostname="${hostname:-mail}"
+
+	log "Setting up DNS records..."
+	dnsctl mail-setup "$hostname"
+}
+
+# ============================================================================
+# Mesh Commands
+# ============================================================================
+
+cmd_mesh() {
+	local action="$1"
+	shift
+
+	case "$action" in
+		backup)     mesh_backup ;;
+		restore)    mesh_restore "$@" ;;
+		sync)       mesh_sync "$@" ;;
+		add-peer)   mesh_add_peer "$@" ;;
+		peers)      mesh_list_peers ;;
+		enable)
+			uci set $CONFIG.mesh.enabled=1
+			uci commit $CONFIG
+			log "Mesh sync enabled"
+			;;
+		disable)
+			uci set $CONFIG.mesh.enabled=0
+			uci commit $CONFIG
+			log "Mesh sync disabled"
+			;;
+		*)
+			echo "Mesh commands:"
+			echo "  mesh backup              Create backup for mesh"
+			echo "  mesh restore <file>      Restore from backup"
+			echo "  mesh sync [push|pull]    Sync with peers"
+			echo "  mesh add-peer <id>       Add mesh peer"
+			echo "  mesh peers               List mesh peers"
+			echo "  mesh enable              Enable mesh sync"
+			echo "  mesh disable             Disable mesh sync"
+			;;
+	esac
+}
+
+# ============================================================================
+# Fix / Repair
+# ============================================================================
+
+cmd_fix_postfix() {
+	local container=$(uci_get main.container)
+	container="${container:-mailserver}"
+	local domain=$(uci_get main.domain)
+
+	log "Fixing Postfix configuration..."
+
+	# Fix LMDB maps (Alpine doesn't support hash maps)
+	lxc-attach -n "$container" -- sh -c "
+		# Use LMDB instead of hash (Alpine Postfix)
+		postconf -e 'virtual_mailbox_maps = lmdb:/etc/postfix/vmailbox'
+		postconf -e 'virtual_alias_maps = lmdb:/etc/postfix/virtual'
+		postconf -e 'virtual_mailbox_domains = /etc/postfix/vdomains'
+
+		# Don't include domain in mydestination (conflicts with virtual)
+		postconf -e 'mydestination = \\\$myhostname, localhost.\\\$mydomain, localhost'
+
+		# Ensure vdomains file exists
+		echo '$domain' > /etc/postfix/vdomains
+
+		# Regenerate LMDB databases
+		[ -f /etc/postfix/vmailbox ] && postmap lmdb:/etc/postfix/vmailbox
+		[ -f /etc/postfix/virtual ] && postmap lmdb:/etc/postfix/virtual
+
+		# Fix Postfix chroot DNS resolution
+		mkdir -p /var/spool/postfix/etc
+		cp /etc/resolv.conf /var/spool/postfix/etc/
+
+		# Reload Postfix
+		postfix reload
+	"
+
+	log "Postfix configuration fixed"
+	log "If you still see errors, restart the container: mailctl restart"
+}
+
+cmd_fix_ports() {
+	local container=$(uci_get main.container)
+	container="${container:-mailserver}"
+
+	log "Enabling submission (587), smtps (465), and POP3S (995) ports..."
+
+	lxc-attach -n "$container" -- sh -c '
+		# Enable submission port (587) in master.cf
+		if ! grep -q "^submission " /etc/postfix/master.cf; then
+			echo "submission inet n       -       n       -       -       smtpd" >> /etc/postfix/master.cf
+			echo "  -o syslog_name=postfix/submission" >> /etc/postfix/master.cf
+			echo "  -o smtpd_tls_security_level=encrypt" >> /etc/postfix/master.cf
+			echo "  -o smtpd_sasl_auth_enable=yes" >> /etc/postfix/master.cf
+			echo "  -o smtpd_tls_auth_only=yes" >> /etc/postfix/master.cf
+			echo "  -o smtpd_reject_unlisted_recipient=no" >> /etc/postfix/master.cf
+			echo "  -o smtpd_recipient_restrictions=permit_sasl_authenticated,reject" >> /etc/postfix/master.cf
+			echo "  -o milter_macro_daemon_name=ORIGINATING" >> /etc/postfix/master.cf
+		fi
+
+		# Enable smtps port (465) in master.cf
+		if ! grep -q "^smtps " /etc/postfix/master.cf; then
+			echo "smtps     inet  n       -       n       -       -       smtpd" >> /etc/postfix/master.cf
+			echo "  -o syslog_name=postfix/smtps" >> /etc/postfix/master.cf
+			echo "  -o smtpd_tls_wrappermode=yes" >> /etc/postfix/master.cf
+			echo "  -o smtpd_sasl_auth_enable=yes" >> /etc/postfix/master.cf
+			echo "  -o smtpd_reject_unlisted_recipient=no" >> /etc/postfix/master.cf
+			echo "  -o smtpd_recipient_restrictions=permit_sasl_authenticated,reject" >> /etc/postfix/master.cf
+			echo "  -o milter_macro_daemon_name=ORIGINATING" >> /etc/postfix/master.cf
+		fi
+
+		# Restart Postfix to apply master.cf changes
+		postfix stop 2>/dev/null
+		postfix start
+
+		# Install dovecot-pop3d if missing
+		if [ ! -f /usr/libexec/dovecot/pop3 ]; then
+			apk add dovecot-pop3d 2>/dev/null
+		fi
+
+		# Configure Dovecot for POP3S (995)
+		if [ -f /etc/dovecot/dovecot.conf ]; then
+			# Enable POP3 protocol
+			if ! grep -q "protocols.*pop3" /etc/dovecot/dovecot.conf; then
+				sed -i "s/^protocols = .*/& pop3/" /etc/dovecot/dovecot.conf
+			fi
+			# If no protocols line exists, add one
+			grep -q "^protocols" /etc/dovecot/dovecot.conf || \
+				echo "protocols = imap pop3 lmtp" >> /etc/dovecot/dovecot.conf
+
+			# Configure POP3S listener - uncomment ports in 10-master.conf
+			if [ -f /etc/dovecot/conf.d/10-master.conf ]; then
+				# Uncomment and enable pop3s with SSL
+				sed -i "/service pop3-login/,/^}/ {
+					s/#port = 110/port = 110/
+					s/#port = 995/port = 995/
+					s/#ssl = yes/ssl = yes/
+				}" /etc/dovecot/conf.d/10-master.conf
+
+				# Also ensure IMAPS is properly enabled
+				sed -i "/service imap-login/,/^}/ {
+					s/#port = 143/port = 143/
+					s/#port = 993/port = 993/
+					s/#ssl = yes/ssl = yes/
+				}" /etc/dovecot/conf.d/10-master.conf
+			fi
+		fi
+
+		# Restart Dovecot to apply changes
+		rc-service dovecot restart 2>/dev/null || {
+			killall dovecot 2>/dev/null
+			sleep 1
+			dovecot
+		}
+	'
+
+	log "Ports enabled. Checking status..."
+	sleep 2
+
+	# Verify ports
+	local ports_status=$(lxc-attach -n "$container" -- netstat -tln 2>/dev/null)
+	for port in 587 465 995; do
+		if echo "$ports_status" | grep -q ":$port "; then
+			log "Port $port: listening"
+		else
+			warn "Port $port: still not listening"
+		fi
+	done
+}
+
+# ============================================================================
+# Logs & Diagnostics
+# ============================================================================
+
+cmd_logs() {
+	local lines="${1:-50}"
+	local container=$(uci_get main.container)
+	container="${container:-mailserver}"
+
+	lxc-attach -n "$container" -- tail -n "$lines" /var/log/mail.log 2>/dev/null
+}
+
+cmd_test() {
+	local email="$1"
+	[ -z "$email" ] && { echo "Usage: mailctl test <email@domain>"; return 1; }
+
+	local container=$(uci_get main.container)
+	container="${container:-mailserver}"
+	local domain=$(uci_get main.domain)
+	local hostname=$(uci_get main.hostname)
+
+	log "Sending test email to $email..."
+
+	lxc-attach -n "$container" -- sh -c "echo 'Test from SecuBox Mail Server' | mail -s 'Test Email' '$email'"
+
+	log "Test email sent. Check inbox."
+}
+
+# ============================================================================
+# Webmail Integration
+# ============================================================================
+
+cmd_webmail() {
+	local action="${1:-status}"
+
+	case "$action" in
+		status)
+			local webmail=$(uci_get webmail.container)
+			webmail="${webmail:-secubox-webmail}"
+			if docker ps 2>/dev/null | grep -q "$webmail"; then
+				local port=$(uci_get webmail.port)
+				echo "Webmail: Running on port ${port:-8026}"
+			else
+				echo "Webmail: Not running"
+			fi
+			;;
+		configure)
+			local domain=$(uci_get main.domain)
+			local hostname=$(uci_get main.hostname)
+			hostname="${hostname:-mail}"
+			local fqdn="${hostname}.${domain}"
+
+			log "Configuring webmail to connect via socat proxy..."
+
+			local webmail=$(uci_get webmail.container)
+			webmail="${webmail:-secubox-webmail}"
+
+			# Docker containers reach host via gateway IP 172.17.0.1
+			# socat proxies IMAP on 10143 and SMTP on 10025
+			local docker_gateway="172.17.0.1"
+			local imap_proxy_port="10143"
+			local smtp_proxy_port="10025"
+
+			# Update Roundcube config to use socat proxy (plaintext, no SSL)
+			# SSL termination happens at HAProxy level for external access
+			docker exec "$webmail" sh -c "cat > /var/www/html/config/config.docker.inc.php << EOF
+<?php
+  \\\$config['db_dsnw'] = 'sqlite:////var/roundcube/db/sqlite.db?mode=0646';
+  \\\$config['db_dsnr'] = '';
+  // Connect to LXC mailserver via socat proxy on host
+  \\\$config['imap_host'] = '${docker_gateway}:${imap_proxy_port}';
+  \\\$config['smtp_host'] = '${docker_gateway}:${smtp_proxy_port}';
+  \\\$config['username_domain'] = '$domain';
+  \\\$config['temp_dir'] = '/tmp/roundcube-temp';
+  \\\$config['skin'] = 'elastic';
+  \\\$config['request_path'] = '/';
+  \\\$config['plugins'] = array_filter(array_unique(array_merge(\\\$config['plugins'], ['archive', 'zipdownload'])));
+EOF"
+
+			log "Webmail configured to use proxy at ${docker_gateway}:${imap_proxy_port}"
+			log "Ensure socat proxies are running (mailserver init.d starts them)"
+			;;
+		*)
+			echo "Webmail commands:"
+			echo "  webmail status       Show webmail status"
+			echo "  webmail configure    Configure webmail for this server"
+			;;
+	esac
+}
+
+# ============================================================================
+# Daily Report
+# ============================================================================
+
+cmd_report() {
+	local action="${1:-generate}"
+	local admin_email=$(uci_get main.admin_email)
+	admin_email="${admin_email:-root}"
+	local container=$(uci_get main.container)
+	container="${container:-mailserver}"
+	local domain=$(uci_get main.domain)
+
+	case "$action" in
+		generate)
+			local report_date=$(date '+%Y-%m-%d')
+			local report_file="/tmp/mail-report-${report_date}.txt"
+
+			cat > "$report_file" << EOF
+========================================
+SecuBox Mail Server Daily Report
+Date: $report_date
+Domain: ${domain:-not set}
+========================================
+
+=== Server Status ===
+$(cmd_status 2>/dev/null | grep -v '====')
+
+=== Mail Queue ===
+$(lxc-attach -n "$container" -- mailq 2>/dev/null | head -20)
+
+=== Recent Mail Log (last 50 lines) ===
+$(lxc-attach -n "$container" -- tail -50 /var/log/mail.log 2>/dev/null)
+
+=== Storage Usage ===
+$(du -sh /srv/mailserver/* 2>/dev/null)
+
+=== Active Connections ===
+$(lxc-attach -n "$container" -- netstat -tn 2>/dev/null | grep -E ':25|:143|:993|:587' | head -20)
+
+EOF
+			echo "Report generated: $report_file"
+			echo "$report_file"
+			;;
+
+		send)
+			local report_file=$(cmd_report generate | tail -1)
+			if [ -f "$report_file" ]; then
+				log "Sending daily report to $admin_email..."
+				lxc-attach -n "$container" -- sh -c "cat '$report_file' | mail -s 'SecuBox Mail Daily Report' '$admin_email'"
+				log "Report sent to $admin_email"
+			else
+				error "Failed to generate report"
+				return 1
+			fi
+			;;
+
+		enable)
+			# Setup cron job for daily report
+			local cron_file="/etc/cron.d/secubox-mail-report"
+			cat > "$cron_file" << 'EOF'
+# SecuBox Mail Server Daily Report
+# Runs at 7:00 AM daily
+0 7 * * * root /usr/sbin/mailctl report send >/dev/null 2>&1
+EOF
+			chmod 644 "$cron_file"
+			log "Daily report enabled (7:00 AM)"
+			;;
+
+		disable)
+			rm -f /etc/cron.d/secubox-mail-report
+			log "Daily report disabled"
+			;;
+
+		*)
+			echo "Report commands:"
+			echo "  report generate      Generate report to file"
+			echo "  report send          Generate and send to admin"
+			echo "  report enable        Enable daily report (7 AM)"
+			echo "  report disable       Disable daily report"
+			;;
+	esac
+}
+
+# ============================================================================
+# Help
+# ============================================================================
+
+show_help() {
+	cat << EOF
+SecuBox Mail Server v$VERSION
+
+Usage: mailctl <command> [options]
+
+Setup:
+  install              Create and configure mail server
+  uninstall            Remove mail server
+  dns-setup            Set up MX/SPF/DKIM/DMARC via dnsctl
+  ssl-setup            Obtain SSL certificate
+
+Service:
+  start                Start mail server
+  stop                 Stop mail server
+  restart              Restart mail server
+  status               Show server status
+
+Users:
+  user add <email>     Add mail user
+  user del <email>     Delete mail user
+  user list            List all users
+  user passwd <email>  Change password
+
+Aliases:
+  alias add <a> <t>    Add email alias
+  alias list           List aliases
+
+Mesh Backup:
+  mesh backup          Create backup
+  mesh restore <file>  Restore from backup
+  mesh sync            Sync with peers
+  mesh peers           List mesh peers
+
+Webmail:
+  webmail status       Show webmail status
+  webmail configure    Configure for this server
+
+Reports:
+  report generate      Generate status report
+  report send          Send report to admin
+  report enable        Enable daily report (7 AM)
+  report disable       Disable daily report
+
+Diagnostics:
+  logs [lines]         View mail logs
+  test <email>         Send test email
+  ssl-status           Show SSL cert info
+  fix-postfix          Fix LMDB maps and DNS resolution
+  fix-ports            Enable submission/smtps/pop3s ports
+
+Examples:
+  mailctl install
+  mailctl user add user@example.com
+  mailctl dns-setup
+  mailctl mesh sync push
+
+EOF
+}
+
+# ============================================================================
+# Main
+# ============================================================================
+
+case "${1:-}" in
+	install)     shift; cmd_install "$@" ;;
+	uninstall)   shift; cmd_uninstall "$@" ;;
+	start)       shift; cmd_start "$@" ;;
+	stop)        shift; cmd_stop "$@" ;;
+	restart)     shift; cmd_restart "$@" ;;
+	status)      shift; cmd_status "$@" ;;
+	user)        shift; cmd_user "$@" ;;
+	alias)       shift; cmd_alias "$@" ;;
+	ssl-setup)   shift; cmd_ssl_setup "$@" ;;
+	ssl-status)  shift; cmd_ssl_status "$@" ;;
+	dns-setup)   shift; cmd_dns_setup "$@" ;;
+	mesh)        shift; cmd_mesh "$@" ;;
+	webmail)     shift; cmd_webmail "$@" ;;
+	logs)        shift; cmd_logs "$@" ;;
+	test)        shift; cmd_test "$@" ;;
+	report)      shift; cmd_report "$@" ;;
+	fix-postfix) shift; cmd_fix_postfix "$@" ;;
+	fix-ports)   shift; cmd_fix_ports "$@" ;;
+	help|--help|-h|'') show_help ;;
+	*)           error "Unknown command: $1"; show_help >&2; exit 1 ;;
+esac
+
+exit 0

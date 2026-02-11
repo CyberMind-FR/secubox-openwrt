@@ -1,0 +1,288 @@
+#!/bin/sh
+# SecuBox Threat Analyst RPCD Handler
+
+. /usr/share/libubox/jshn.sh
+
+CONFIG="threat-analyst"
+STATE_DIR="/var/lib/threat-analyst"
+LIB_DIR="/usr/lib/threat-analyst"
+
+log_info() { logger -t threat-analyst-rpcd "$*"; }
+
+uci_get() { uci -q get "${CONFIG}.$1"; }
+
+# Source libraries for analysis functions
+[ -f "$LIB_DIR/analyzer.sh" ] && {
+	localai_url=$(uci_get main.localai_url)
+	localai_model=$(uci_get main.localai_model)
+	[ -z "$localai_url" ] && localai_url="http://127.0.0.1:8091"
+	[ -z "$localai_model" ] && localai_model="tinyllama-1.1b-chat-v1.0.Q4_K_M"
+	. "$LIB_DIR/analyzer.sh"
+	. "$LIB_DIR/appliers.sh"
+}
+
+case "$1" in
+	list)
+		cat <<'EOF'
+{
+	"status": {},
+	"get_threats": {"limit": 50},
+	"get_alerts": {"limit": 20},
+	"get_pending": {},
+	"chat": {"message": "string"},
+	"analyze": {},
+	"generate_rules": {"target": "string"},
+	"approve_rule": {"id": "string"},
+	"reject_rule": {"id": "string"},
+	"run_cycle": {}
+}
+EOF
+		;;
+
+	call)
+		case "$2" in
+			status)
+				# Get agent status
+				enabled=$(uci_get main.enabled)
+				interval=$(uci_get main.interval)
+				last_run=""
+				[ -f "$STATE_DIR/last_run" ] && last_run=$(cat "$STATE_DIR/last_run")
+
+				# Check LocalAI
+				localai_status="offline"
+				wget -q -O /dev/null --timeout=2 "${localai_url}/v1/models" 2>/dev/null && localai_status="online"
+
+				# Check daemon
+				daemon_running="false"
+				pgrep -f "threat-analyst daemon" >/dev/null 2>&1 && daemon_running="true"
+
+				# Count pending
+				pending_count=0
+				[ -f "$STATE_DIR/pending_rules.json" ] && \
+					pending_count=$(jsonfilter -i "$STATE_DIR/pending_rules.json" -e '@[*]' 2>/dev/null | wc -l)
+
+				# Count recent threats and CVE alerts
+				threat_count=0
+				cve_count=0
+				if command -v cscli >/dev/null 2>&1; then
+					alerts_json=$(cscli alerts list -o json --since 1h 2>/dev/null)
+					threat_count=$(echo "$alerts_json" | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+					# Count CVE-related alerts
+					cve_count=$(echo "$alerts_json" | grep -ic 'cve-' 2>/dev/null)
+					[ -z "$cve_count" ] && cve_count=0
+				fi
+
+				cat <<EOF
+{
+	"enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
+	"daemon_running": $daemon_running,
+	"interval": ${interval:-300},
+	"last_run": "$last_run",
+	"localai_status": "$localai_status",
+	"localai_url": "$localai_url",
+	"pending_rules": $pending_count,
+	"recent_threats": $threat_count,
+	"cve_alerts": $cve_count
+}
+EOF
+				;;
+
+			get_threats)
+				read -r input
+				limit=$(echo "$input" | jsonfilter -e '@.limit' 2>/dev/null)
+				[ -z "$limit" ] && limit=50
+
+				# Get CrowdSec alerts
+				alerts='[]'
+				if command -v cscli >/dev/null 2>&1; then
+					alerts=$(cscli alerts list -o json --limit "$limit" 2>/dev/null || echo '[]')
+				fi
+
+				printf '{"threats":%s}' "$alerts"
+				;;
+
+			get_alerts)
+				read -r input
+				limit=$(echo "$input" | jsonfilter -e '@.limit' 2>/dev/null)
+				[ -z "$limit" ] && limit=20
+
+				# Get mitmproxy threats
+				threats='[]'
+				log_file="/srv/mitmproxy/threats.log"
+				if [ -f "$log_file" ]; then
+					# Build JSON array without jq
+					threats=$({
+						printf '['
+						first=1
+						tail -n "$limit" "$log_file" 2>/dev/null | while IFS= read -r line; do
+							# Skip empty or invalid JSON
+							echo "$line" | jsonfilter -e '@' >/dev/null 2>&1 || continue
+							[ $first -eq 0 ] && printf ','
+							first=0
+							printf '%s' "$line"
+						done
+						printf ']'
+					})
+				fi
+
+				printf '{"alerts":%s}' "$threats"
+				;;
+
+			get_pending)
+				pending='[]'
+				[ -f "$STATE_DIR/pending_rules.json" ] && pending=$(cat "$STATE_DIR/pending_rules.json")
+				printf '{"pending":%s}' "$pending"
+				;;
+
+			chat)
+				read -r input
+				message=$(echo "$input" | jsonfilter -e '@.message' 2>/dev/null)
+
+				if [ -z "$message" ]; then
+					echo '{"error":"No message provided"}'
+					exit 0
+				fi
+
+				# Generate request ID
+				req_id=$(head -c 8 /dev/urandom | md5sum | head -c 8)
+				req_file="$STATE_DIR/chat_${req_id}.json"
+				mkdir -p "$STATE_DIR"
+
+				# Check for pending response from previous request
+				poll_id=$(echo "$input" | jsonfilter -e '@.poll_id' 2>/dev/null)
+				if [ -n "$poll_id" ]; then
+					poll_file="$STATE_DIR/chat_${poll_id}.json"
+					if [ -f "$poll_file" ]; then
+						cat "$poll_file"
+						rm -f "$poll_file"
+					else
+						echo '{"pending":true,"poll_id":"'"$poll_id"'"}'
+					fi
+					exit 0
+				fi
+
+				# Check LocalAI quickly
+				if ! curl -s --max-time 2 "${localai_url}/v1/models" >/dev/null 2>&1; then
+					echo '{"error":"LocalAI not available","suggestion":"Start LocalAI: localaictl start"}'
+					exit 0
+				fi
+
+				# Start background AI query
+				(
+					escaped_message=$(printf '%s' "$message" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ')
+					prompt="You are SecuBox AI security assistant. $escaped_message"
+
+					response=$(curl -s --max-time 120 -X POST "${localai_url}/v1/chat/completions" \
+						-H "Content-Type: application/json" \
+						-d "{\"model\":\"$localai_model\",\"messages\":[{\"role\":\"user\",\"content\":\"$prompt\"}],\"max_tokens\":256,\"temperature\":0.7}" 2>/dev/null)
+
+					if [ -n "$response" ]; then
+						content=$(echo "$response" | jsonfilter -e '@.choices[0].message.content' 2>/dev/null)
+						if [ -n "$content" ]; then
+							content=$(printf '%s' "$content" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ')
+							printf '{"response":"%s"}' "$content" > "$req_file"
+						else
+							echo '{"error":"Empty AI response"}' > "$req_file"
+						fi
+					else
+						echo '{"error":"AI query failed"}' > "$req_file"
+					fi
+				) &
+
+				# Return poll ID immediately
+				echo '{"pending":true,"poll_id":"'"$req_id"'"}'
+				;;
+
+			analyze)
+				# Run analysis without rule generation
+				threats=$(collect_threats 2>/dev/null)
+				analysis=$(analyze_threats "$threats" 2>/dev/null)
+
+				if [ -n "$analysis" ]; then
+					escaped=$(echo "$analysis" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ')
+					printf '{"analysis":"%s"}' "$escaped"
+				else
+					echo '{"error":"Analysis failed"}'
+				fi
+				;;
+
+			generate_rules)
+				read -r input
+				target=$(echo "$input" | jsonfilter -e '@.target' 2>/dev/null)
+				[ -z "$target" ] && target="all"
+
+				# Source generators
+				[ -f "$LIB_DIR/generators.sh" ] && . "$LIB_DIR/generators.sh"
+
+				threats=$(collect_threats 2>/dev/null)
+				analysis=$(analyze_threats "$threats" 2>/dev/null)
+
+				result='{"rules":{'
+				first=1
+
+				if [ "$target" = "all" ] || [ "$target" = "mitmproxy" ]; then
+					[ $first -eq 0 ] && result="${result},"
+					first=0
+					mitm=$(generate_mitmproxy_filters "$analysis" "$threats" 2>/dev/null | base64 -w 0)
+					result="${result}\"mitmproxy\":\"$mitm\""
+				fi
+
+				if [ "$target" = "all" ] || [ "$target" = "crowdsec" ]; then
+					[ $first -eq 0 ] && result="${result},"
+					first=0
+					cs=$(generate_crowdsec_scenario "$analysis" "$threats" 2>/dev/null | base64 -w 0)
+					result="${result}\"crowdsec\":\"$cs\""
+				fi
+
+				if [ "$target" = "all" ] || [ "$target" = "waf" ]; then
+					[ $first -eq 0 ] && result="${result},"
+					first=0
+					waf=$(generate_waf_rules "$analysis" "$threats" 2>/dev/null | base64 -w 0)
+					result="${result}\"waf\":\"$waf\""
+				fi
+
+				result="${result}}}"
+				echo "$result"
+				;;
+
+			approve_rule)
+				read -r input
+				rule_id=$(echo "$input" | jsonfilter -e '@.id' 2>/dev/null)
+
+				if [ -z "$rule_id" ]; then
+					echo '{"error":"No rule ID provided"}'
+					exit 0
+				fi
+
+				if approve_pending_rule "$rule_id" 2>/dev/null; then
+					echo '{"success":true}'
+				else
+					echo '{"success":false,"error":"Failed to approve rule"}'
+				fi
+				;;
+
+			reject_rule)
+				read -r input
+				rule_id=$(echo "$input" | jsonfilter -e '@.id' 2>/dev/null)
+
+				if [ -z "$rule_id" ]; then
+					echo '{"error":"No rule ID provided"}'
+					exit 0
+				fi
+
+				reject_pending_rule "$rule_id" 2>/dev/null
+				echo '{"success":true}'
+				;;
+
+			run_cycle)
+				# Trigger analysis cycle
+				/usr/bin/threat-analyst run >/dev/null 2>&1 &
+				echo '{"started":true}'
+				;;
+
+			*)
+				echo '{"error":"Unknown method"}'
+				;;
+		esac
+		;;
+esac

@@ -36,6 +36,7 @@ config preset 'server'
 	option dns_over_tor '1'
 	option kill_switch '1'
 	option lan_proxy '1'
+	option wan_input_allow '1'
 
 config proxy 'socks'
 	option port '9050'

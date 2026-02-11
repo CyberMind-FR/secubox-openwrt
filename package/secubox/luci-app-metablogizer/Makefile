@@ -11,8 +11,8 @@ LUCI_DEPENDS:=+luci-base +git
 LUCI_PKGARCH:=all
 
 PKG_NAME:=luci-app-metablogizer
-PKG_VERSION:=1.0.0
-PKG_RELEASE:=5
+PKG_VERSION:=1.1.0
+PKG_RELEASE:=1
 PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 PKG_LICENSE:=GPL-2.0
 

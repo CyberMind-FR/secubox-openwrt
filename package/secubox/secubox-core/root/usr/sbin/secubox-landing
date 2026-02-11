@@ -1,0 +1,735 @@
+#!/bin/sh
+#
+# SecuBox Landing Page Generator
+# Generates landing pages from HAProxy vhosts configuration
+# Includes ALL vhosts across all zones, grouped by zone
+#
+
+VERSION="1.1.0"
+SITES_DIR="/srv/metablogizer/sites"
+CERTS_DIR="/etc/haproxy/certs"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+log() { echo -e "${GREEN}[LANDING]${NC} $1"; }
+warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+error() { echo -e "${RED}[ERROR]${NC} $1"; }
+
+# Get public IP
+get_public_ip() {
+	curl -s --connect-timeout 5 https://ipv4.icanhazip.com 2>/dev/null | tr -d '\n'
+}
+
+# Get node name from UCI or hostname
+get_node_name() {
+	local name=$(uci -q get secubox.main.node_name)
+	[ -z "$name" ] && name=$(uci -q get system.@system[0].hostname)
+	[ -z "$name" ] && name="SecuBox"
+	echo "$name"
+}
+
+# Get ALL vhosts (all domains)
+get_all_vhosts() {
+	uci show haproxy 2>/dev/null | grep '\.domain=' | grep -v '_wildcard_' | grep -v 'cert_' | \
+		sed "s/.*domain='\\([^']*\\)'/\\1/" | sort -u
+}
+
+# Extract zone from domain (last 2 parts)
+get_zone_from_domain() {
+	local domain="$1"
+	echo "$domain" | awk -F. '{if(NF>2) print $(NF-1)"."$NF; else print $0}'
+}
+
+# Extract all unique zones from vhosts
+get_zones() {
+	get_all_vhosts | while read domain; do
+		get_zone_from_domain "$domain"
+	done | sort -u
+}
+
+# Get all vhosts for a specific zone
+get_vhosts_for_zone() {
+	local zone="$1"
+	get_all_vhosts | grep "\.${zone}$"
+}
+
+# Check if domain has valid certificate
+has_valid_cert() {
+	local domain="$1"
+	local zone=$(get_zone_from_domain "$domain")
+
+	# Check for exact cert or wildcard
+	[ -f "${CERTS_DIR}/${domain}.pem" ] && return 0
+	[ -f "${CERTS_DIR}/_wildcard_.${zone}.pem" ] && return 0
+
+	# Check ACME certs
+	[ -f "/etc/acme/${domain}/fullchain.pem" ] && return 0
+	[ -f "/etc/acme/_wildcard_.${zone}/fullchain.pem" ] && return 0
+
+	return 1
+}
+
+# Detect service type from backend name
+detect_service_type() {
+	local backend="$1"
+	local domain="$2"
+
+	case "$backend" in
+		streamlit_*|*streamlit*) echo "streamlit" ;;
+		metablog_*|*metablog*) echo "blog" ;;
+		luci|*luci*) echo "admin" ;;
+		*jellyfin*|*media*|*jitsi*) echo "media" ;;
+		*git*|*gitea*) echo "dev" ;;
+		*glances*|*status*|*monitor*|*uptime*) echo "infra" ;;
+		*)
+			# Try to guess from domain
+			case "$domain" in
+				console.*|admin.*|luci.*|c3box.*) echo "admin" ;;
+				git.*|dev.*|devel.*) echo "dev" ;;
+				blog.*|news.*|zine.*|gandalf.*|cyberzine.*) echo "blog" ;;
+				media.*|live.*|meet.*|jitsi.*) echo "media" ;;
+				status.*|glances.*|monitor.*) echo "infra" ;;
+				slides.*|sliders.*) echo "presentation" ;;
+				mail.*) echo "mail" ;;
+				*) echo "service" ;;
+			esac
+			;;
+	esac
+}
+
+# Get backend info for a vhost
+get_vhost_backend() {
+	local domain="$1"
+	local backend=""
+
+	# Find the UCI section for this domain
+	for s in $(uci show haproxy 2>/dev/null | grep "\.domain='${domain}'" | cut -d. -f2 | cut -d= -f1); do
+		backend=$(uci -q get haproxy.${s}.backend)
+		[ -n "$backend" ] && break
+	done
+
+	echo "$backend"
+}
+
+# Check if vhost is enabled
+is_vhost_enabled() {
+	local domain="$1"
+
+	for s in $(uci show haproxy 2>/dev/null | grep "\.domain='${domain}'" | cut -d. -f2 | cut -d= -f1); do
+		local enabled=$(uci -q get haproxy.${s}.enabled)
+		[ "$enabled" = "1" ] && return 0
+	done
+
+	return 1
+}
+
+# Generate HTML for a single service item
+generate_service_html() {
+	local domain="$1"
+	local name="$2"
+	local desc="$3"
+	local type="$4"
+	local has_cert="$5"
+	local extra_class=""
+	local tags=""
+
+	case "$type" in
+		streamlit)
+			extra_class=" streamlit"
+			tags='<span class="tag">STREAMLIT</span>'
+			;;
+		admin)
+			extra_class=" highlight"
+			tags='<span class="tag">ADMIN</span>'
+			;;
+		blog)
+			tags='<span class="tag tag-blog">BLOG</span>'
+			;;
+		media)
+			tags='<span class="tag tag-media">MEDIA</span>'
+			;;
+		dev)
+			tags='<span class="tag tag-dev">DEV</span>'
+			;;
+		presentation)
+			tags='<span class="tag tag-slides">SLIDES</span>'
+			;;
+		mail)
+			tags='<span class="tag tag-mail">MAIL</span>'
+			;;
+		*)
+			tags=""
+			;;
+	esac
+
+	# Add SSL indicator
+	if [ "$has_cert" = "1" ]; then
+		tags="${tags}"'<span class="ssl-ok">🔒</span>'
+	fi
+
+	cat <<EOF
+            <a href="https://${domain}" class="item${extra_class}">
+                <div class="item-left">
+                    <span class="item-name">${name}</span>
+                    <span class="item-desc">${desc}</span>
+                </div>
+                <div class="item-right">
+                    ${tags}
+                    <span class="domain">${domain}</span>
+                </div>
+            </a>
+EOF
+}
+
+# Generate full landing page for a zone (includes ALL zones)
+generate_landing_page() {
+	local primary_zone="$1"
+	local include_all="${2:-1}"  # Include all zones by default
+	local output_dir="${SITES_DIR}/${primary_zone%%.*}"
+	local output_file="${output_dir}/index.html"
+	local node_name=$(get_node_name)
+	local public_ip=$(get_public_ip)
+
+	[ -z "$public_ip" ] && public_ip="N/A"
+
+	log "Generating landing page for zone: $primary_zone"
+
+	# Create output directory
+	mkdir -p "$output_dir"
+
+	# Collect zones to include
+	local zones_to_include=""
+	if [ "$include_all" = "1" ]; then
+		zones_to_include=$(get_zones)
+	else
+		zones_to_include="$primary_zone"
+	fi
+
+	# Count all services
+	local total_count=0
+	local cert_count=0
+
+	# Generate the HTML file header
+	cat > "$output_file" <<HTMLHEAD
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${node_name} - ${primary_zone}</title>
+    <style>
+        :root {
+            --bg: #0a0a0f;
+            --card-bg: #12121a;
+            --accent: #00d4aa;
+            --accent2: #ff6b6b;
+            --accent3: #6b8aff;
+            --text: #e0e0e0;
+            --text-dim: #808090;
+            --border: #2a2a3a;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 1.5rem;
+        }
+        .container { max-width: 1000px; margin: 0 auto; }
+        header {
+            text-align: center;
+            margin-bottom: 2rem;
+            padding: 1.5rem;
+            background: linear-gradient(135deg, #1a1a2e 0%, #0a0a0f 100%);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+        h1 {
+            font-size: 2rem;
+            background: linear-gradient(90deg, var(--accent), #00a0ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.3rem;
+        }
+        .subtitle { color: var(--text-dim); font-size: 0.95rem; }
+        .node-info {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+        .node-info span {
+            background: var(--card-bg);
+            padding: 0.3rem 0.8rem;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 0.8rem;
+        }
+        .stats {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 1rem;
+        }
+        .stat {
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--accent);
+        }
+        .stat-label {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+        }
+        .zone-section {
+            margin-top: 2rem;
+            padding: 1rem;
+            background: var(--card-bg);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+        .zone-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .zone-name {
+            font-size: 1.1rem;
+            color: var(--accent);
+            font-weight: 600;
+        }
+        .zone-count {
+            color: var(--text-dim);
+            font-size: 0.8rem;
+        }
+        .category {
+            margin-top: 1rem;
+            margin-bottom: 0.5rem;
+            padding-bottom: 0.3rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-dim);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+        }
+        .item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.5rem 0.8rem;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.2s;
+        }
+        .item:hover {
+            border-color: var(--accent);
+            transform: translateX(4px);
+            background: rgba(0,212,170,0.05);
+        }
+        .item.streamlit:hover { border-color: var(--accent2); background: rgba(255,107,107,0.05); }
+        .item-left {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            flex: 1;
+        }
+        .item-name {
+            font-weight: 600;
+            color: var(--accent);
+            min-width: 100px;
+            font-size: 0.9rem;
+        }
+        .item.streamlit .item-name { color: var(--accent2); }
+        .item-desc {
+            color: var(--text-dim);
+            font-size: 0.8rem;
+        }
+        .item-right {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .tag {
+            background: var(--accent)22;
+            color: var(--accent);
+            padding: 0.1rem 0.3rem;
+            border-radius: 3px;
+            font-size: 0.6rem;
+            font-weight: 600;
+            font-family: monospace;
+        }
+        .item.streamlit .tag {
+            background: var(--accent2)22;
+            color: var(--accent2);
+        }
+        .tag-blog { background: #9b59b622; color: #9b59b6; }
+        .tag-media { background: #e74c3c22; color: #e74c3c; }
+        .tag-dev { background: #3498db22; color: #3498db; }
+        .tag-slides { background: #f39c1222; color: #f39c12; }
+        .tag-mail { background: #1abc9c22; color: #1abc9c; }
+        .ssl-ok { font-size: 0.7rem; }
+        .domain {
+            font-family: monospace;
+            color: var(--text-dim);
+            font-size: 0.7rem;
+        }
+        footer {
+            text-align: center;
+            margin-top: 2rem;
+            color: var(--text-dim);
+            font-size: 0.75rem;
+        }
+        footer a { color: var(--accent); }
+        .highlight {
+            border-color: var(--accent) !important;
+            background: linear-gradient(135deg, rgba(0,212,170,0.05) 0%, transparent 100%);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>${node_name}</h1>
+            <p class="subtitle">Services distribués sur le noeud Vortex</p>
+            <div class="node-info">
+                <span>*.${primary_zone}</span>
+                <span>${public_ip}</span>
+                <span>Mesh: Enabled</span>
+            </div>
+HTMLHEAD
+
+	# Process each zone
+	local zone_html=""
+	for zone in $zones_to_include; do
+		local vhosts=$(get_vhosts_for_zone "$zone")
+		local zone_count=0
+
+		# Group vhosts by category
+		local streamlit_items=""
+		local blog_items=""
+		local admin_items=""
+		local media_items=""
+		local dev_items=""
+		local infra_items=""
+		local presentation_items=""
+		local mail_items=""
+		local service_items=""
+
+		for domain in $vhosts; do
+			# Skip base zone domains
+			[ "$domain" = "$zone" ] && continue
+
+			# Skip disabled vhosts
+			is_vhost_enabled "$domain" || continue
+
+			local backend=$(get_vhost_backend "$domain")
+			local type=$(detect_service_type "$backend" "$domain")
+
+			# Extract name from subdomain
+			local subdomain=$(echo "$domain" | sed "s/\\.${zone}$//")
+			local name=$(echo "$subdomain" | sed 's/[-_]/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2))}1')
+
+			# Generate description based on type/backend
+			local desc=""
+			case "$type" in
+				streamlit) desc="Streamlit App" ;;
+				blog) desc="Blog / Site" ;;
+				admin) desc="Administration" ;;
+				media) desc="Media / Live" ;;
+				dev) desc="Development" ;;
+				infra) desc="Monitoring" ;;
+				presentation) desc="Slides" ;;
+				mail) desc="Mail Service" ;;
+				*) desc="Service" ;;
+			esac
+
+			# Check certificate
+			local has_cert=0
+			has_valid_cert "$domain" && has_cert=1
+			[ "$has_cert" = "1" ] && cert_count=$((cert_count + 1))
+
+			local item_html=$(generate_service_html "$domain" "$name" "$desc" "$type" "$has_cert")
+			zone_count=$((zone_count + 1))
+			total_count=$((total_count + 1))
+
+			case "$type" in
+				streamlit) streamlit_items="${streamlit_items}${item_html}\n" ;;
+				blog) blog_items="${blog_items}${item_html}\n" ;;
+				admin) admin_items="${admin_items}${item_html}\n" ;;
+				media) media_items="${media_items}${item_html}\n" ;;
+				dev) dev_items="${dev_items}${item_html}\n" ;;
+				infra) infra_items="${infra_items}${item_html}\n" ;;
+				presentation) presentation_items="${presentation_items}${item_html}\n" ;;
+				mail) mail_items="${mail_items}${item_html}\n" ;;
+				*) service_items="${service_items}${item_html}\n" ;;
+			esac
+		done
+
+		# Skip empty zones
+		[ "$zone_count" -eq 0 ] && continue
+
+		# Build zone section
+		zone_html="${zone_html}
+        <div class=\"zone-section\">
+            <div class=\"zone-header\">
+                <span class=\"zone-name\">*.${zone}</span>
+                <span class=\"zone-count\">${zone_count} services</span>
+            </div>"
+
+		# Add categories with content
+		[ -n "$streamlit_items" ] && zone_html="${zone_html}
+            <h3 class=\"category\">Apps Streamlit</h3>
+            <div class=\"list\">
+$(printf "%b" "$streamlit_items")            </div>"
+
+		[ -n "$blog_items" ] && zone_html="${zone_html}
+            <h3 class=\"category\">Sites et Blogs</h3>
+            <div class=\"list\">
+$(printf "%b" "$blog_items")            </div>"
+
+		[ -n "$media_items" ] && zone_html="${zone_html}
+            <h3 class=\"category\">Médias et Live</h3>
+            <div class=\"list\">
+$(printf "%b" "$media_items")            </div>"
+
+		[ -n "$presentation_items" ] && zone_html="${zone_html}
+            <h3 class=\"category\">Présentations</h3>
+            <div class=\"list\">
+$(printf "%b" "$presentation_items")            </div>"
+
+		if [ -n "$admin_items" ] || [ -n "$infra_items" ]; then
+			zone_html="${zone_html}
+            <h3 class=\"category\">Infrastructure</h3>
+            <div class=\"list\">"
+			[ -n "$admin_items" ] && zone_html="${zone_html}
+$(printf "%b" "$admin_items")"
+			[ -n "$infra_items" ] && zone_html="${zone_html}
+$(printf "%b" "$infra_items")"
+			zone_html="${zone_html}
+            </div>"
+		fi
+
+		[ -n "$dev_items" ] && zone_html="${zone_html}
+            <h3 class=\"category\">Développement</h3>
+            <div class=\"list\">
+$(printf "%b" "$dev_items")            </div>"
+
+		[ -n "$mail_items" ] && zone_html="${zone_html}
+            <h3 class=\"category\">Services Mail</h3>
+            <div class=\"list\">
+$(printf "%b" "$mail_items")            </div>"
+
+		[ -n "$service_items" ] && zone_html="${zone_html}
+            <h3 class=\"category\">Autres Services</h3>
+            <div class=\"list\">
+$(printf "%b" "$service_items")            </div>"
+
+		zone_html="${zone_html}
+        </div>"
+	done
+
+	# Add stats to header
+	local zone_count=$(echo "$zones_to_include" | wc -w)
+	cat >> "$output_file" <<STATS
+            <div class="stats">
+                <div class="stat">
+                    <div class="stat-value">${total_count}</div>
+                    <div class="stat-label">Services</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value">${zone_count}</div>
+                    <div class="stat-label">Zones</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value">${cert_count}</div>
+                    <div class="stat-label">SSL Certs</div>
+                </div>
+            </div>
+        </header>
+STATS
+
+	# Add zone sections
+	printf "%s" "$zone_html" >> "$output_file"
+
+	# Footer
+	cat >> "$output_file" <<HTMLFOOTER
+
+        <footer>
+            <p>Propulsé par <a href="https://secubox.in">SecuBox</a> | Vortex DNS Mesh</p>
+            <p style="margin-top: 0.3rem;">Generated: $(date "+%Y-%m-%d %H:%M:%S")</p>
+        </footer>
+    </div>
+</body>
+</html>
+HTMLFOOTER
+
+	log "  Generated: $output_file (${total_count} services, ${zone_count} zones, ${cert_count} certs)"
+}
+
+# ============================================================================
+# Commands
+# ============================================================================
+
+cmd_generate() {
+	local zone="$1"
+	local single_zone="${2:-}"  # --single to only include that zone
+
+	if [ -n "$zone" ]; then
+		if [ "$single_zone" = "--single" ]; then
+			generate_landing_page "$zone" 0
+		else
+			generate_landing_page "$zone" 1
+		fi
+	else
+		# Generate for all zones
+		log "Generating landing pages for all zones..."
+		for z in $(get_zones); do
+			generate_landing_page "$z" 1
+		done
+	fi
+
+	log "Done!"
+}
+
+cmd_list() {
+	echo ""
+	echo "Available Zones:"
+	echo "================"
+	local total=0
+	for z in $(get_zones); do
+		local count=$(get_vhosts_for_zone "$z" | wc -l)
+		printf "  %-30s %3d services\n" "$z" "$count"
+		total=$((total + count))
+	done
+	echo ""
+	echo "Total: $total services across $(get_zones | wc -w) zones"
+	echo ""
+}
+
+cmd_show() {
+	local zone="$1"
+
+	if [ -z "$zone" ]; then
+		# Show all vhosts
+		echo ""
+		echo "All Vhosts:"
+		echo "==========="
+		for domain in $(get_all_vhosts); do
+			local backend=$(get_vhost_backend "$domain")
+			local type=$(detect_service_type "$backend" "$domain")
+			local enabled="✓"
+			is_vhost_enabled "$domain" || enabled="✗"
+			local cert="🔒"
+			has_valid_cert "$domain" || cert="  "
+			printf "  %s %s %-40s [%-10s] → %s\n" "$enabled" "$cert" "$domain" "$type" "${backend:-inline}"
+		done
+		echo ""
+	else
+		echo ""
+		echo "Services for zone: $zone"
+		echo "========================="
+		for domain in $(get_vhosts_for_zone "$zone"); do
+			local backend=$(get_vhost_backend "$domain")
+			local type=$(detect_service_type "$backend" "$domain")
+			local enabled="✓"
+			is_vhost_enabled "$domain" || enabled="✗"
+			local cert="🔒"
+			has_valid_cert "$domain" || cert="  "
+			printf "  %s %s %-40s [%-10s] → %s\n" "$enabled" "$cert" "$domain" "$type" "${backend:-inline}"
+		done
+		echo ""
+	fi
+}
+
+cmd_regenerate_all() {
+	log "Regenerating all landing pages..."
+	for z in $(get_zones); do
+		generate_landing_page "$z" 1
+	done
+	log "All landing pages regenerated!"
+}
+
+show_help() {
+	cat <<EOF
+SecuBox Landing Page Generator v${VERSION}
+
+Usage: secubox-landing <command> [options]
+
+Commands:
+  generate [zone] [--single]
+                      Generate landing page(s)
+                      If zone specified, generate for that zone
+                      --single: only include services from that zone
+                      Default: includes ALL zones on each landing
+
+  list                List all detected zones and service counts
+
+  show [zone]         Show vhosts (optionally filtered by zone)
+                      Displays: enabled, SSL, domain, type, backend
+
+  regenerate          Regenerate all landing pages
+
+Examples:
+  secubox-landing list
+  secubox-landing show
+  secubox-landing show gk2.secubox.in
+  secubox-landing generate gk2.secubox.in
+  secubox-landing generate gk2.secubox.in --single
+  secubox-landing regenerate
+
+Environment:
+  SITES_DIR           Output directory (default: /srv/metablogizer/sites)
+
+EOF
+}
+
+# ============================================================================
+# Main
+# ============================================================================
+
+case "${1:-}" in
+	generate|gen)
+		shift
+		cmd_generate "$@"
+		;;
+	list|ls)
+		cmd_list
+		;;
+	show)
+		shift
+		cmd_show "$@"
+		;;
+	regenerate|regen)
+		cmd_regenerate_all
+		;;
+	help|--help|-h|'')
+		show_help
+		;;
+	*)
+		error "Unknown command: $1"
+		show_help >&2
+		exit 1
+		;;
+esac
+
+exit 0

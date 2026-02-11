@@ -1,0 +1,172 @@
+#!/bin/sh
+# SecuBox Dashboard - System Overview Infographic
+# Copyright (C) 2026 CyberMind.fr
+# Outputs formatted dashboard for console or JSON for LuCI
+
+OUTPUT_MODE="${1:-console}"  # console or json
+
+# Colors for console output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+BOLD='\033[1m'
+
+# Helper to create progress bar
+progress_bar() {
+    local value="$1"
+    local max="$2"
+    local width="${3:-20}"
+    local filled=$((value * width / max))
+    [ "$filled" -gt "$width" ] && filled=$width
+    local empty=$((width - filled))
+    printf '%s' "$(printf '#%.0s' $(seq 1 $filled 2>/dev/null) 2>/dev/null || echo "")"
+    printf '%s' "$(printf '.%.0s' $(seq 1 $empty 2>/dev/null) 2>/dev/null || echo "")"
+}
+
+# Collect system metrics
+collect_metrics() {
+    # System
+    UPTIME=$(uptime | sed 's/.*up \([^,]*\),.*/\1/' | sed 's/^ *//')
+    LOAD=$(cat /proc/loadavg | cut -d' ' -f1-3)
+    LOAD1=$(echo "$LOAD" | cut -d' ' -f1)
+
+    # Memory (BusyBox free returns KB)
+    MEM_INFO=$(free 2>/dev/null | awk '/^Mem:/ {print $2" "$3" "$4}')
+    MEM_TOTAL_KB=$(echo "$MEM_INFO" | cut -d' ' -f1)
+    MEM_USED_KB=$(echo "$MEM_INFO" | cut -d' ' -f2)
+    MEM_FREE_KB=$(echo "$MEM_INFO" | cut -d' ' -f3)
+    MEM_TOTAL=$((MEM_TOTAL_KB / 1024))
+    MEM_USED=$((MEM_USED_KB / 1024))
+    MEM_FREE=$((MEM_FREE_KB / 1024))
+    [ "$MEM_TOTAL" -gt 0 ] && MEM_PCT=$((MEM_USED * 100 / MEM_TOTAL)) || MEM_PCT=0
+
+    # CPU idle
+    CPU_IDLE=$(top -b -n1 2>/dev/null | grep "CPU:" | head -1 | awk '{gsub(/%/,""); print $8}')
+    CPU_IDLE=$(echo "$CPU_IDLE" | tr -cd '0-9')
+    [ -z "$CPU_IDLE" ] && CPU_IDLE=0
+    CPU_USED=$((100 - CPU_IDLE))
+
+    # Disk
+    DISK_ROOT=$(df -h / 2>/dev/null | awk 'NR==2 {print $4" "$5}')
+    DISK_SRV=$(df -h /srv 2>/dev/null | awk 'NR==2 {print $4" "$5}')
+
+    # Connections
+    CONN_ESTABLISHED=$(netstat -tn 2>/dev/null | grep -c ESTABLISHED)
+    CONN_TOR=$(netstat -tn 2>/dev/null | grep ":9040.*ESTABLISHED" | wc -l)
+    CONN_HTTPS=$(netstat -tn 2>/dev/null | grep ":443.*ESTABLISHED" | wc -l)
+
+    # Services count
+    HAPROXY_BACKENDS=$(haproxyctl backend list 2>/dev/null | grep -c enabled || echo 0)
+    HAPROXY_VHOSTS=$(haproxyctl vhost list 2>/dev/null | grep -c enabled || echo 0)
+    METABLOG_SITES=$(ls -1 /srv/metablogizer/sites/ 2>/dev/null | wc -l)
+    STREAMLIT_APPS=$(ls -1 /srv/streamlit/apps/ 2>/dev/null | wc -l)
+    TOR_ONIONS=$(cat /var/lib/tor/*/hostname 2>/dev/null | wc -l)
+
+    # CrowdSec
+    CROWDSEC_BANS=$(cscli decisions list -o json 2>/dev/null | jsonfilter -e '@[*].id' 2>/dev/null | wc -l)
+    CROWDSEC_ALERTS=$(cscli alerts list -l 100 -o json 2>/dev/null)
+
+    # Attack types
+    ATTACKS_SSRF=$(echo "$CROWDSEC_ALERTS" | jsonfilter -e '@[*].scenario' 2>/dev/null | grep -c ssrf || echo 0)
+    ATTACKS_BOTSCAN=$(echo "$CROWDSEC_ALERTS" | jsonfilter -e '@[*].scenario' 2>/dev/null | grep -c botscan || echo 0)
+    ATTACKS_BRUTE=$(echo "$CROWDSEC_ALERTS" | jsonfilter -e '@[*].scenario' 2>/dev/null | grep -c bruteforce || echo 0)
+
+    # Countries
+    COUNTRIES=$(echo "$CROWDSEC_ALERTS" | jsonfilter -e '@[*].source.cn' 2>/dev/null | sort | uniq -c | sort -rn | head -5)
+}
+
+output_console() {
+    echo "==============================================================================="
+    echo "                         SECUBOX SYSTEM DASHBOARD                              "
+    echo "==============================================================================="
+    echo ""
+    echo "  SYSTEM HEALTH                        RESOURCES"
+    echo "  -------------                        ---------"
+    printf "  Load: %-30s Memory: %sMB free / %sMB\n" "$LOAD" "$MEM_FREE" "$MEM_TOTAL"
+    printf "  CPU: %s%% used %-24s Disk /: %s\n" "$CPU_USED" "" "$DISK_ROOT"
+    printf "  Uptime: %-28s Disk /srv: %s\n" "$UPTIME" "$DISK_SRV"
+    echo ""
+    echo "-------------------------------------------------------------------------------"
+    echo ""
+    echo "  SERVICES                             NETWORK"
+    echo "  --------                             -------"
+    printf "  HAProxy Backends: %-18s Connections: %s\n" "$HAPROXY_BACKENDS" "$CONN_ESTABLISHED"
+    printf "  Virtual Hosts: %-21s Tor (9040): %s\n" "$HAPROXY_VHOSTS" "$CONN_TOR"
+    printf "  MetaBlogizer Sites: %-16s HTTPS (443): %s\n" "$METABLOG_SITES" "$CONN_HTTPS"
+    printf "  Streamlit Apps: %s\n" "$STREAMLIT_APPS"
+    printf "  Tor Onion Services: %s\n" "$TOR_ONIONS"
+    echo ""
+    echo "-------------------------------------------------------------------------------"
+    echo ""
+    echo "  SECURITY - CROWDSEC"
+    echo "  -------------------"
+    printf "  Active Bans: %s\n" "$CROWDSEC_BANS"
+    echo ""
+    echo "  ATTACK TYPES (24h)                   TOP COUNTRIES"
+    printf "  SSRF: %-31s %s\n" "$ATTACKS_SSRF" "$(echo "$COUNTRIES" | head -1 | awk '{print $2": "$1}')"
+    printf "  Bot Scan: %-27s %s\n" "$ATTACKS_BOTSCAN" "$(echo "$COUNTRIES" | sed -n '2p' | awk '{print $2": "$1}')"
+    printf "  Brute Force: %-24s %s\n" "$ATTACKS_BRUTE" "$(echo "$COUNTRIES" | sed -n '3p' | awk '{print $2": "$1}')"
+    echo ""
+    echo "==============================================================================="
+}
+
+output_json() {
+    . /usr/share/libubox/jshn.sh
+
+    json_init
+
+    # System
+    json_add_object "system"
+    json_add_string "uptime" "$UPTIME"
+    json_add_string "load" "$LOAD"
+    json_add_int "cpu_used" "$CPU_USED"
+    json_add_int "mem_total" "$MEM_TOTAL"
+    json_add_int "mem_used" "$MEM_USED"
+    json_add_int "mem_free" "$MEM_FREE"
+    json_add_int "mem_pct" "$MEM_PCT"
+    json_add_string "disk_root" "$DISK_ROOT"
+    json_add_string "disk_srv" "$DISK_SRV"
+    json_close_object
+
+    # Network
+    json_add_object "network"
+    json_add_int "connections" "$CONN_ESTABLISHED"
+    json_add_int "tor" "$CONN_TOR"
+    json_add_int "https" "$CONN_HTTPS"
+    json_close_object
+
+    # Services
+    json_add_object "services"
+    json_add_int "haproxy_backends" "$HAPROXY_BACKENDS"
+    json_add_int "haproxy_vhosts" "$HAPROXY_VHOSTS"
+    json_add_int "metablog_sites" "$METABLOG_SITES"
+    json_add_int "streamlit_apps" "$STREAMLIT_APPS"
+    json_add_int "tor_onions" "$TOR_ONIONS"
+    json_close_object
+
+    # Security
+    json_add_object "security"
+    json_add_int "active_bans" "$CROWDSEC_BANS"
+    json_add_int "attacks_ssrf" "$ATTACKS_SSRF"
+    json_add_int "attacks_botscan" "$ATTACKS_BOTSCAN"
+    json_add_int "attacks_brute" "$ATTACKS_BRUTE"
+    json_add_string "top_countries" "$(echo "$COUNTRIES" | head -5 | awk '{printf "%s:%s ", $2, $1}')"
+    json_close_object
+
+    json_dump
+}
+
+# Main
+collect_metrics
+
+case "$OUTPUT_MODE" in
+    json)
+        output_json
+        ;;
+    *)
+        output_console
+        ;;
+esac

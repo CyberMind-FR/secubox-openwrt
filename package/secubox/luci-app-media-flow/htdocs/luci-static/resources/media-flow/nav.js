@@ -1,5 +1,11 @@
 'use strict';
 'require baseclass';
+'require secubox/nav as SecuNav';
+
+/**
+ * Media Flow Navigation
+ * Uses SecuNav.renderCompactTabs() for consistent styling
+ */
 
 var tabs = [
 	{ id: 'dashboard', icon: '📊', label: _('Dashboard'), path: ['admin', 'secubox', 'monitoring', 'mediaflow', 'dashboard'] },
@@ -14,36 +20,18 @@ return baseclass.extend({
 		return tabs.slice();
 	},
 
-	ensureLuCITabsHidden: function() {
-		if (typeof document === 'undefined')
-			return;
-		if (document.getElementById('media-flow-tabstyle'))
-			return;
-		var style = document.createElement('style');
-		style.id = 'media-flow-tabstyle';
-		style.textContent = `
-	body[data-page^="admin-secubox-monitoring-mediaflow"] .tabs,
-	body[data-page^="admin-secubox-monitoring-mediaflow"] #tabmenu,
-	body[data-page^="admin-secubox-monitoring-mediaflow"] .cbi-tabmenu,
-	body[data-page^="admin-secubox-monitoring-mediaflow"] .nav-tabs {
-	display: none !important;
-}
-		`;
-		document.head && document.head.appendChild(style);
+	/**
+	 * Render Media Flow navigation tabs
+	 * Delegates to SecuNav.renderCompactTabs() for consistent styling
+	 */
+	renderTabs: function(active) {
+		return SecuNav.renderCompactTabs(active, this.getTabs(), { className: 'media-flow-nav-tabs' });
 	},
 
-	renderTabs: function(active) {
-		this.ensureLuCITabsHidden();
-		return E('div', { 'class': 'sh-nav-tabs media-flow-nav-tabs' },
-			this.getTabs().map(function(tab) {
-				return E('a', {
-					'class': 'sh-nav-tab' + (tab.id === active ? ' active' : ''),
-					'href': L.url.apply(L, tab.path)
-				}, [
-					E('span', { 'class': 'sh-tab-icon' }, tab.icon),
-					E('span', { 'class': 'sh-tab-label' }, tab.label)
-				]);
-			})
-		);
+	/**
+	 * Render breadcrumb back to SecuBox
+	 */
+	renderBreadcrumb: function() {
+		return SecuNav.renderBreadcrumb(_('Media Flow'), '🎬');
 	}
 });

@@ -70,6 +70,8 @@ define Package/secubox-p2p/install
 	$(INSTALL_BIN) ./root/www/api/factory/mesh-services $(1)/www/api/factory/
 	$(INSTALL_BIN) ./root/www/api/factory/catalog $(1)/www/api/factory/
 	$(INSTALL_BIN) ./root/www/api/factory/catalog-sync $(1)/www/api/factory/
+	$(INSTALL_BIN) ./root/www/api/factory/packages $(1)/www/api/factory/
+	$(INSTALL_BIN) ./root/www/api/factory/packages-sync $(1)/www/api/factory/
 
 	# Factory Web UI
 	$(INSTALL_DIR) $(1)/www/factory
@@ -78,6 +80,7 @@ define Package/secubox-p2p/install
 	# Factory library
 	$(INSTALL_DIR) $(1)/usr/lib/secubox
 	$(INSTALL_BIN) ./root/usr/lib/secubox/factory.sh $(1)/usr/lib/secubox/
+	$(INSTALL_BIN) ./root/usr/lib/secubox/p2p-feed.sh $(1)/usr/lib/secubox/
 endef
 
 define Package/secubox-p2p/postinst

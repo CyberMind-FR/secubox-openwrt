@@ -583,7 +583,7 @@ configure_haproxy() {
 	uci -q add haproxy backend
 	uci -q set haproxy.@backend[-1].name='simplex_smp'
 	uci -q set haproxy.@backend[-1].mode='tcp'
-	uci -q add_list haproxy.@backend[-1].server="simplex-smp 127.0.0.1:$SMP_PORT check"
+	uci -q add_list haproxy.@backend[-1].server="simplex-smp 192.168.255.1:$SMP_PORT check"
 
 	uci commit haproxy
 	/etc/init.d/haproxy reload 2>/dev/null

@@ -1,0 +1,14 @@
+{
+	"admin/services/vortex-dns": {
+		"title": "Vortex DNS",
+		"order": 85,
+		"action": {
+			"type": "view",
+			"path": "vortex-dns/dashboard"
+		},
+		"depends": {
+			"acl": ["luci-app-vortex-dns"],
+			"uci": {"vortex-dns": true}
+		}
+	}
+}

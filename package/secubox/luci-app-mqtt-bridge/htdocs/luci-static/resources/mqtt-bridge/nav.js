@@ -1,6 +1,11 @@
 'use strict';
 'require baseclass';
-'require secubox-theme/cascade as Cascade';
+'require secubox/nav as SecuNav';
+
+/**
+ * MQTT Bridge Navigation
+ * Uses SecuNav.renderCompactTabs() for consistent styling
+ */
 
 var tabs = [
 	{ id: 'overview', icon: '📡', label: _('Overview'), path: ['admin', 'secubox', 'network', 'mqtt-bridge', 'overview'] },
@@ -9,31 +14,22 @@ var tabs = [
 ];
 
 return baseclass.extend({
+	getTabs: function() {
+		return tabs.slice();
+	},
+
+	/**
+	 * Render MQTT Bridge navigation tabs
+	 * Delegates to SecuNav.renderCompactTabs() for consistent styling
+	 */
 	renderTabs: function(active) {
-		return Cascade.createLayer({
-			id: 'mqtt-nav',
-			type: 'tabs',
-			role: 'menu',
-			depth: 1,
-			className: 'sh-nav-tabs mqtt-nav-tabs',
-			items: tabs.map(function(tab) {
-				return {
-					id: tab.id,
-					label: tab.label,
-					icon: tab.icon,
-					href: L.url.apply(L, tab.path),
-					state: tab.id === active ? 'active' : null
-				};
-			}),
-			active: active,
-			onSelect: function(item, ev) {
-				if (item.href && ev && (ev.metaKey || ev.ctrlKey))
-					return true;
-				if (item.href) {
-					location.href = item.href;
-					return false;
-				}
-			}
-		});
+		return SecuNav.renderCompactTabs(active, this.getTabs(), { className: 'mqtt-nav-tabs' });
+	},
+
+	/**
+	 * Render breadcrumb back to SecuBox
+	 */
+	renderBreadcrumb: function() {
+		return SecuNav.renderBreadcrumb(_('MQTT Bridge'), '📡');
 	}
 });

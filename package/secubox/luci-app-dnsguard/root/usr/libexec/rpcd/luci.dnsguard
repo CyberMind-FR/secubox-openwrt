@@ -224,6 +224,340 @@ method_apply() {
 	json_dump
 }
 
+# =============================================================================
+# AI DNS Guard Methods (requires secubox-dns-guard package)
+# =============================================================================
+
+STATE_DIR="/var/lib/dns-guard"
+BLOCKLIST_FILE="/etc/dnsmasq.d/dns-guard-blocklist.conf"
+
+method_guard_status() {
+	json_init
+
+	# Check if dns-guard daemon is running
+	local running=0
+	pgrep -f "dns-guard daemon" >/dev/null 2>&1 && running=1
+
+	json_add_boolean "daemon_running" "$running"
+
+	# Check if dns-guard CLI is available
+	if command -v dns-guard >/dev/null 2>&1; then
+		json_add_boolean "installed" 1
+
+		# Get config values
+		local enabled=$(uci -q get dns-guard.main.enabled)
+		local interval=$(uci -q get dns-guard.main.interval)
+		local auto_apply=$(uci -q get dns-guard.main.auto_apply_blocks)
+		local min_confidence=$(uci -q get dns-guard.main.min_confidence)
+		local localai_url=$(uci -q get dns-guard.main.localai_url)
+
+		json_add_boolean "enabled" "${enabled:-0}"
+		json_add_int "interval" "${interval:-60}"
+		json_add_boolean "auto_apply" "${auto_apply:-0}"
+		json_add_int "min_confidence" "${min_confidence:-80}"
+		json_add_string "localai_url" "${localai_url:-http://127.0.0.1:8081}"
+
+		# Check LocalAI availability
+		if wget -q -O /dev/null --timeout=2 "${localai_url:-http://127.0.0.1:8081}/v1/models" 2>/dev/null; then
+			json_add_boolean "localai_online" 1
+		else
+			json_add_boolean "localai_online" 0
+		fi
+
+		# Count alerts
+		local alert_count=0
+		if [ -f "$STATE_DIR/alerts.json" ]; then
+			alert_count=$(jsonfilter -i "$STATE_DIR/alerts.json" -e '@[*]' 2>/dev/null | wc -l)
+		fi
+		json_add_int "alert_count" "$alert_count"
+
+		# Count pending blocks
+		local pending_count=0
+		if [ -f "$STATE_DIR/pending_blocks.json" ]; then
+			pending_count=$(jsonfilter -i "$STATE_DIR/pending_blocks.json" -e '@[*]' 2>/dev/null | wc -l)
+		fi
+		json_add_int "pending_count" "$pending_count"
+
+		# Count active blocks
+		local active_blocks=0
+		if [ -f "$BLOCKLIST_FILE" ]; then
+			active_blocks=$(grep -c "^address=" "$BLOCKLIST_FILE" 2>/dev/null || echo "0")
+		fi
+		json_add_int "active_blocks" "$active_blocks"
+
+		# Last run time
+		if [ -f "$STATE_DIR/last_run" ]; then
+			json_add_string "last_run" "$(cat "$STATE_DIR/last_run")"
+		else
+			json_add_string "last_run" ""
+		fi
+
+		# Detector status
+		json_add_object "detectors"
+		for det in dga tunneling rate_anomaly known_bad tld_anomaly; do
+			local det_enabled=$(uci -q get "dns-guard.detector_${det}.enabled")
+			json_add_boolean "$det" "${det_enabled:-0}"
+		done
+		json_close_object
+	else
+		json_add_boolean "installed" 0
+	fi
+
+	json_dump
+}
+
+method_get_alerts() {
+	local limit="${1:-50}"
+
+	json_init
+	json_add_array "alerts"
+
+	if [ -f "$STATE_DIR/alerts.json" ]; then
+		jsonfilter -i "$STATE_DIR/alerts.json" -e '@[*]' 2>/dev/null | tail -n "$limit" | while read -r alert; do
+			local timestamp=$(echo "$alert" | jsonfilter -e '@.timestamp' 2>/dev/null)
+			local domain=$(echo "$alert" | jsonfilter -e '@.domain' 2>/dev/null)
+			local client=$(echo "$alert" | jsonfilter -e '@.client' 2>/dev/null)
+			local type=$(echo "$alert" | jsonfilter -e '@.type' 2>/dev/null)
+			local confidence=$(echo "$alert" | jsonfilter -e '@.confidence' 2>/dev/null)
+			local reason=$(echo "$alert" | jsonfilter -e '@.reason' 2>/dev/null)
+
+			json_add_object
+			json_add_string "timestamp" "$timestamp"
+			json_add_string "domain" "$domain"
+			json_add_string "client" "$client"
+			json_add_string "type" "$type"
+			json_add_int "confidence" "${confidence:-0}"
+			json_add_string "reason" "$reason"
+			json_close_object
+		done
+	fi
+
+	json_close_array
+	json_dump
+}
+
+method_get_pending() {
+	json_init
+	json_add_array "pending"
+
+	if [ -f "$STATE_DIR/pending_blocks.json" ]; then
+		jsonfilter -i "$STATE_DIR/pending_blocks.json" -e '@[*]' 2>/dev/null | while read -r block; do
+			local id=$(echo "$block" | jsonfilter -e '@.id' 2>/dev/null)
+			local domain=$(echo "$block" | jsonfilter -e '@.domain' 2>/dev/null)
+			local type=$(echo "$block" | jsonfilter -e '@.type' 2>/dev/null)
+			local confidence=$(echo "$block" | jsonfilter -e '@.confidence' 2>/dev/null)
+			local reason=$(echo "$block" | jsonfilter -e '@.reason' 2>/dev/null)
+			local created=$(echo "$block" | jsonfilter -e '@.created' 2>/dev/null)
+
+			json_add_object
+			json_add_string "id" "$id"
+			json_add_string "domain" "$domain"
+			json_add_string "type" "$type"
+			json_add_int "confidence" "${confidence:-0}"
+			json_add_string "reason" "$reason"
+			json_add_string "created" "$created"
+			json_close_object
+		done
+	fi
+
+	json_close_array
+	json_dump
+}
+
+method_approve_block() {
+	local block_id="$1"
+
+	json_init
+
+	if [ -z "$block_id" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing block_id"
+		json_dump
+		return
+	fi
+
+	if command -v dns-guard >/dev/null 2>&1; then
+		if dns-guard approve "$block_id" >/dev/null 2>&1; then
+			json_add_boolean "success" 1
+			json_add_string "message" "Block approved"
+		else
+			json_add_boolean "success" 0
+			json_add_string "error" "Failed to approve block"
+		fi
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "dns-guard not installed"
+	fi
+
+	json_dump
+}
+
+method_reject_block() {
+	local block_id="$1"
+
+	json_init
+
+	if [ -z "$block_id" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing block_id"
+		json_dump
+		return
+	fi
+
+	if command -v dns-guard >/dev/null 2>&1; then
+		if dns-guard reject "$block_id" >/dev/null 2>&1; then
+			json_add_boolean "success" 1
+			json_add_string "message" "Block rejected"
+		else
+			json_add_boolean "success" 0
+			json_add_string "error" "Failed to reject block"
+		fi
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "dns-guard not installed"
+	fi
+
+	json_dump
+}
+
+method_approve_all() {
+	json_init
+
+	if command -v dns-guard >/dev/null 2>&1; then
+		if dns-guard approve-all >/dev/null 2>&1; then
+			json_add_boolean "success" 1
+			json_add_string "message" "All blocks approved"
+		else
+			json_add_boolean "success" 0
+			json_add_string "error" "Failed to approve blocks"
+		fi
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "dns-guard not installed"
+	fi
+
+	json_dump
+}
+
+method_ai_check() {
+	local domain="$1"
+
+	json_init
+
+	if [ -z "$domain" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing domain"
+		json_dump
+		return
+	fi
+
+	if command -v dns-guard >/dev/null 2>&1; then
+		local result=$(dns-guard check "$domain" 2>&1)
+		json_add_boolean "success" 1
+		json_add_string "domain" "$domain"
+		json_add_string "analysis" "$result"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "dns-guard not installed"
+	fi
+
+	json_dump
+}
+
+method_get_blocklist() {
+	json_init
+	json_add_array "blocked"
+
+	if [ -f "$BLOCKLIST_FILE" ]; then
+		grep "^address=" "$BLOCKLIST_FILE" 2>/dev/null | while read -r line; do
+			local domain=$(echo "$line" | sed 's/address=\/\([^/]*\)\/.*/\1/')
+			json_add_object
+			json_add_string "domain" "$domain"
+			json_close_object
+		done
+	fi
+
+	json_close_array
+	json_dump
+}
+
+method_unblock() {
+	local domain="$1"
+
+	json_init
+
+	if [ -z "$domain" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing domain"
+		json_dump
+		return
+	fi
+
+	if [ -f "$BLOCKLIST_FILE" ]; then
+		sed -i "/address=\/$domain\//d" "$BLOCKLIST_FILE"
+		sed -i "/# Added:.*$domain/d" "$BLOCKLIST_FILE"
+		/etc/init.d/dnsmasq restart >/dev/null 2>&1
+
+		json_add_boolean "success" 1
+		json_add_string "message" "Domain unblocked: $domain"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Blocklist not found"
+	fi
+
+	json_dump
+}
+
+method_get_stats() {
+	json_init
+
+	local log_file="/var/log/dnsmasq.log"
+
+	if [ -f "$log_file" ]; then
+		local total=$(grep -c "query\[" "$log_file" 2>/dev/null || echo "0")
+		local unique=$(grep "query\[" "$log_file" 2>/dev/null | sed 's/.*query\[[^]]*\] \([^ ]*\) from.*/\1/' | sort -u | wc -l)
+		local a_queries=$(grep -c "query\[A\]" "$log_file" 2>/dev/null || echo "0")
+		local aaaa_queries=$(grep -c "query\[AAAA\]" "$log_file" 2>/dev/null || echo "0")
+		local txt_queries=$(grep -c "query\[TXT\]" "$log_file" 2>/dev/null || echo "0")
+
+		json_add_int "total_queries" "$total"
+		json_add_int "unique_domains" "$unique"
+		json_add_int "a_queries" "$a_queries"
+		json_add_int "aaaa_queries" "$aaaa_queries"
+		json_add_int "txt_queries" "$txt_queries"
+	else
+		json_add_int "total_queries" 0
+		json_add_int "unique_domains" 0
+		json_add_int "a_queries" 0
+		json_add_int "aaaa_queries" 0
+		json_add_int "txt_queries" 0
+	fi
+
+	json_dump
+}
+
+method_toggle_guard() {
+	local enable="$1"
+
+	json_init
+
+	if [ "$enable" = "1" ]; then
+		uci set dns-guard.main.enabled='1'
+		uci commit dns-guard
+		/etc/init.d/dns-guard start >/dev/null 2>&1
+		json_add_boolean "success" 1
+		json_add_string "message" "DNS Guard enabled"
+	else
+		uci set dns-guard.main.enabled='0'
+		uci commit dns-guard
+		/etc/init.d/dns-guard stop >/dev/null 2>&1
+		json_add_boolean "success" 1
+		json_add_string "message" "DNS Guard disabled"
+	fi
+
+	json_dump
+}
+
 # RPC interface
 case "$1" in
 	list)
@@ -235,7 +569,18 @@ case "$1" in
 	"set_provider": { "provider": "string" },
 	"smart_config": {},
 	"test_dns": { "server": "string", "domain": "string" },
-	"apply": {}
+	"apply": {},
+	"guard_status": {},
+	"get_alerts": { "limit": 50 },
+	"get_pending": {},
+	"approve_block": { "block_id": "string" },
+	"reject_block": { "block_id": "string" },
+	"approve_all": {},
+	"ai_check": { "domain": "string" },
+	"get_blocklist": {},
+	"unblock": { "domain": "string" },
+	"get_stats": {},
+	"toggle_guard": { "enable": 1 }
 }
 EOF
 		;;
@@ -257,6 +602,41 @@ EOF
 				method_test_dns "$server" "$domain"
 				;;
 			apply) method_apply ;;
+			guard_status) method_guard_status ;;
+			get_alerts)
+				read -r input
+				limit=$(echo "$input" | jsonfilter -e '@.limit' 2>/dev/null)
+				method_get_alerts "${limit:-50}"
+				;;
+			get_pending) method_get_pending ;;
+			approve_block)
+				read -r input
+				block_id=$(echo "$input" | jsonfilter -e '@.block_id')
+				method_approve_block "$block_id"
+				;;
+			reject_block)
+				read -r input
+				block_id=$(echo "$input" | jsonfilter -e '@.block_id')
+				method_reject_block "$block_id"
+				;;
+			approve_all) method_approve_all ;;
+			ai_check)
+				read -r input
+				domain=$(echo "$input" | jsonfilter -e '@.domain')
+				method_ai_check "$domain"
+				;;
+			get_blocklist) method_get_blocklist ;;
+			unblock)
+				read -r input
+				domain=$(echo "$input" | jsonfilter -e '@.domain')
+				method_unblock "$domain"
+				;;
+			get_stats) method_get_stats ;;
+			toggle_guard)
+				read -r input
+				enable=$(echo "$input" | jsonfilter -e '@.enable')
+				method_toggle_guard "$enable"
+				;;
 		esac
 		;;
 esac
