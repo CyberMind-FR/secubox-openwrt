@@ -34,7 +34,7 @@ FEED_URLHAUS="https://urlhaus.abuse.ch/downloads/hostfile/"
 FEED_FEODO="https://feodotracker.abuse.ch/downloads/ipblocklist.txt"
 FEED_PHISHTANK="http://data.phishtank.com/data/online-valid.csv"
 FEED_OPENPHISH="https://openphish.com/feed.txt"
-FEED_MALWAREDOMAINS="https://mirror1.malwaredomains.com/files/justdomains"
+FEED_THREATFOX="https://threatfox.abuse.ch/downloads/hostfile/"
 
 # Colors
 RED='\033[0;31m'
@@ -140,20 +140,21 @@ feed_update_openphish() {
     fi
 }
 
-feed_update_malwaredomains() {
-    local feed_file="$FEEDS_DIR/malwaredomains.txt"
-    log "Updating Malware Domains feed..."
+feed_update_threatfox() {
+    local feed_file="$FEEDS_DIR/threatfox.txt"
+    log "Updating ThreatFox feed..."
 
-    if curl -sL --connect-timeout 10 --max-time 60 "$FEED_MALWAREDOMAINS" -o "$feed_file.tmp" 2>/dev/null; then
-        grep -v '^#' "$feed_file.tmp" 2>/dev/null | grep -v '^$' | sort -u > "$feed_file"
+    if curl -sL --connect-timeout 10 --max-time 60 "$FEED_THREATFOX" -o "$feed_file.tmp" 2>/dev/null; then
+        # Extract domains from hosts file format (127.0.0.1 domain)
+        grep -v '^#' "$feed_file.tmp" 2>/dev/null | awk '{print $2}' | grep -v '^$' | sort -u > "$feed_file"
         local count=$(wc -l < "$feed_file")
         rm -f "$feed_file.tmp"
 
-        sqlite3 "$BLOCKLIST_DB" "INSERT OR REPLACE INTO feeds VALUES ('malwaredomains', '$FEED_MALWAREDOMAINS', datetime('now'), $count, 1);"
-        log "Malware Domains: $count domains"
+        sqlite3 "$BLOCKLIST_DB" "INSERT OR REPLACE INTO feeds VALUES ('threatfox', '$FEED_THREATFOX', datetime('now'), $count, 1);"
+        log "ThreatFox: $count domains"
         return 0
     else
-        warn "Failed to update Malware Domains feed"
+        warn "Failed to update ThreatFox feed"
         return 1
     fi
 }
@@ -187,7 +188,7 @@ intel_update() {
     # Update each feed
     feed_update_urlhaus && total=$((total + 1))
     feed_update_openphish && total=$((total + 1))
-    feed_update_malwaredomains && total=$((total + 1))
+    feed_update_threatfox && total=$((total + 1))
     feed_import_dnsguard && total=$((total + 1))
 
     echo ""
@@ -200,10 +201,32 @@ intel_update() {
     generate_blocklist
 }
 
+is_valid_domain() {
+    local d="$1"
+    # Must contain at least one dot
+    echo "$d" | grep -q '\.' || return 1
+    # Must have valid TLD (at least 2 chars after last dot)
+    local tld=$(echo "$d" | sed 's/.*\.//')
+    [ ${#tld} -ge 2 ] || return 1
+    # Must be reasonable length (3-253 chars)
+    [ ${#d} -ge 3 ] && [ ${#d} -le 253 ] || return 1
+    # Must not start/end with dot or hyphen
+    case "$d" in
+        .*|*.|*-|-*) return 1 ;;
+    esac
+    return 0
+}
+
 intel_merge() {
     log "Merging feeds into blocklist..."
 
     local now=$(date -Iseconds)
+    local sql_file="/tmp/vortex-import.sql"
+    local imported=0
+    local skipped=0
+
+    # Start transaction
+    echo "BEGIN TRANSACTION;" > "$sql_file"
 
     # Import from each feed file
     for feed_file in "$FEEDS_DIR"/*.txt; do
@@ -213,26 +236,46 @@ intel_merge() {
 
         case "$feed_name" in
             openphish|phishtank) threat_type="phishing" ;;
-            urlhaus) threat_type="malware" ;;
+            urlhaus|threatfox) threat_type="malware" ;;
             dnsguard) threat_type="ai_detected" ;;
             feodo) threat_type="c2" ;;
         esac
+
+        log "Processing $feed_name..."
 
         while read -r domain; do
             [ -z "$domain" ] && continue
             [ "${domain:0:1}" = "#" ] && continue
 
-            # Clean domain
-            domain=$(echo "$domain" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9.-]//g')
+            # Clean domain (inline for speed)
+            domain=$(echo "$domain" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9.-')
             [ -z "$domain" ] && continue
 
-            sqlite3 "$BLOCKLIST_DB" "INSERT OR IGNORE INTO domains (domain, threat_type, source, first_seen, last_seen)
-                VALUES ('$domain', '$threat_type', '$feed_name', '$now', '$now');"
-            sqlite3 "$BLOCKLIST_DB" "UPDATE domains SET last_seen='$now', source='$feed_name' WHERE domain='$domain';"
+            # Quick validation: must have dot and be reasonable length
+            case "$domain" in
+                *.*) ;;
+                *) skipped=$((skipped + 1)); continue ;;
+            esac
+            [ ${#domain} -lt 4 ] && { skipped=$((skipped + 1)); continue; }
+            [ ${#domain} -gt 253 ] && { skipped=$((skipped + 1)); continue; }
+
+            # Escape single quotes for SQL
+            domain=$(echo "$domain" | sed "s/'/''/g")
+
+            echo "INSERT OR REPLACE INTO domains (domain, threat_type, source, first_seen, last_seen, blocked) VALUES ('$domain', '$threat_type', '$feed_name', '$now', '$now', 1);" >> "$sql_file"
+            imported=$((imported + 1))
         done < "$feed_file"
     done
 
+    echo "COMMIT;" >> "$sql_file"
+
+    # Execute batch import
+    log "Executing batch import ($imported entries)..."
+    sqlite3 "$BLOCKLIST_DB" < "$sql_file"
+    rm -f "$sql_file"
+
     local total=$(sqlite3 "$BLOCKLIST_DB" "SELECT COUNT(*) FROM domains WHERE blocked=1;")
+    log "Imported: $imported domains, Skipped: $skipped invalid entries"
     log "Total blocked domains: $total"
 }
 
