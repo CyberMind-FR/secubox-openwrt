@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-09 (early morning)_
+_Last updated: 2026-02-11_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -42,6 +42,17 @@ _Last updated: 2026-02-09 (early morning)_
   - `domoticzctl configure-mqtt` command
 
 ### In Progress
+
+- **Vortex DNS Firewall Phase 1** — DONE (2026-02-11)
+  - Created `secubox-vortex-firewall` package for DNS-level threat blocking
+  - Threat intel aggregator (URLhaus, OpenPhish, Malware Domains feeds)
+  - SQLite blocklist database with domain deduplication
+  - dnsmasq integration via sinkhole hosts file
+  - ×47 vitality multiplier concept
+  - CLI tool: `vortex-firewall intel/stats/start/stop`
+  - RPCD handler with 8 methods for LuCI integration
+  - Tested: 765 domains blocked from 3 feeds
+  - **Next phases**: Sinkhole server (Phase 2), DNS Guard integration (Phase 3), Mesh threat sharing (Phase 4), LuCI dashboard (Phase 5)
 
 - **Vortex DNS** - Meshed multi-dynamic subdomain delegation (DONE 2026-02-05)
   - Created `secubox-vortex-dns` package with `vortexctl` CLI
@@ -128,6 +139,22 @@ _Last updated: 2026-02-09 (early morning)_
   - Token management with delete functionality
   - U-Boot flash commands display when TFTP active
   - RPCD handler: 10 methods (status, list_images, list_tokens, list_clones, etc.)
+
+- **System Hub KISS Rewrite** — DONE (2026-02-11)
+  - Rewrote `luci-app-system-hub/overview.js` to KISS style
+  - Self-contained inline CSS, no external dependencies
+  - 6 status cards: Hostname/Model, Uptime, Services, CPU Load, Temperature, Health Score
+  - 3 resource bars: Memory, Storage, CPU Usage
+  - Quick Actions + Services table with running/stopped badges
+  - 5-second live polling with data-stat DOM updates
+  - Full dark mode support
+
+- **SecuBox Dashboard KISS Rewrite** — DONE (2026-02-11)
+  - Rewrote `luci-app-secubox/dashboard.js` to KISS style
+  - Removed all external deps (secubox/api, secubox-theme, secubox/nav, secubox-portal/header)
+  - Header chips, stats cards, health panel, public IPs, modules table, quick actions, alerts
+  - 15-second live polling
+  - Full dark mode support
 
 - **HAProxy "End of Internet" Default Page** — DONE (2026-02-07)
   - Cyberpunk fallback page for unknown/unmatched domains

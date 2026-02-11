@@ -836,7 +836,21 @@ _Last updated: 2026-02-10_
       - Live at: https://console.gk2.secubox.in/
     - **Commits**: 301dccec, a47ae965, 22caf0c9, aab58a2b, 7b77f839
 
-56. **Streamlit LuCI Dashboard Edit & Emancipate (2026-02-06)**
+56. **Vortex DNS Firewall Phase 1 (2026-02-11)**
+    - Created `secubox-vortex-firewall` package — DNS-level threat blocking with ×47 multiplier.
+    - Threat intel aggregator downloading from 3 feeds:
+      - URLhaus (abuse.ch) — ~500 malware domains
+      - OpenPhish — ~266 phishing domains
+      - Malware Domains — additional malware list
+    - SQLite-based blocklist database with domain deduplication.
+    - dnsmasq integration via sinkhole hosts file (`/etc/dnsmasq.d/vortex-firewall.conf`).
+    - ×47 vitality multiplier concept: each DNS block prevents ~47 malicious connections (C2 beacon rate × infection window).
+    - CLI tool (`vortex-firewall`): intel update/status/search/add/remove, stats, start/stop/status.
+    - RPCD handler with 8 methods: status, get_stats, get_feeds, get_blocked, search, update_feeds, block_domain, unblock_domain.
+    - Fixed subshell issue with `pipe | while` by using temp files for jshn output.
+    - Tested with 765 blocked domains across 3 threat feeds.
+
+57. **Streamlit LuCI Dashboard Edit & Emancipate (2026-02-06)**
     - Added **Edit button** to Streamlit Apps table for editing app source code:
       - RPCD methods: `get_source`, `save_source` with base64 encoding
       - Modal code editor with syntax highlighting (monospace textarea)
@@ -1050,3 +1064,28 @@ _Last updated: 2026-02-10_
     - U-Boot flash commands display when TFTP is running.
     - RPCD handler with 10 methods for status, images, tokens, clones.
     - Tag: v0.19.20
+
+35. **System Hub KISS Rewrite (2026-02-11)**
+    - Rewrote `luci-app-system-hub/overview.js` to KISS style.
+    - Self-contained inline CSS, no external dependencies.
+    - 6 status cards: Hostname/Model, Uptime, Services, CPU Load, Temperature, Health Score.
+    - 3 resource bars: Memory, Storage, CPU Usage with color-coded progress.
+    - Quick Actions panel: System Settings, Reboot, Backup/Flash.
+    - Services table showing top 10 with running/stopped badges.
+    - 5-second live polling with efficient data-stat DOM updates.
+    - Full dark mode support via prefers-color-scheme media query.
+    - Uses `luci.system-hub` RPC: status, get_health, list_services.
+
+36. **SecuBox Dashboard KISS Rewrite (2026-02-11)**
+    - Rewrote `luci-app-secubox/dashboard.js` to KISS style.
+    - Removed all external dependencies (secubox/api, secubox-theme, secubox/nav, secubox-portal/header).
+    - Self-contained with inline CSS and direct RPC calls.
+    - Header with status chips: Version, Modules, Running, Alerts, Health Score.
+    - Stats cards: Total Modules, Installed, Active, Health Score, Alerts.
+    - System Health panel with 4 metric bars: CPU, Memory, Storage, Network.
+    - Public IPs panel with IPv4/IPv6 display.
+    - Modules table with top 8 modules, status badges, version info.
+    - Quick Actions: Restart Services, Update Packages, View Logs, Export Config.
+    - Alert Timeline with severity-colored items.
+    - 15-second live polling for health, alerts, IPs.
+    - Full dark mode support.

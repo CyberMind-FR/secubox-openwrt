@@ -1,320 +1,356 @@
 'use strict';
 'require view';
+'require rpc';
 'require ui';
-'require dom';
 'require poll';
-'require system-hub/api as API';
-'require secubox-theme/theme as Theme';
-'require system-hub/theme-assets as ThemeAssets';
-'require system-hub/nav as HubNav';
-'require secubox-portal/header as SbHeader';
 
-var shLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
-	(document.documentElement && document.documentElement.getAttribute('lang')) ||
-	(navigator.language ? navigator.language.split('-')[0] : 'en');
-Theme.init({ language: shLang });
+var callStatus = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'status',
+	expect: {}
+});
+
+var callHealth = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'get_health',
+	expect: {}
+});
+
+var callServices = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'list_services',
+	expect: {}
+});
+
+function formatBytes(bytes) {
+	if (bytes === 0) return '0 B';
+	var k = 1024;
+	var sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+	var i = Math.floor(Math.log(bytes) / Math.log(k));
+	return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function formatUptime(seconds) {
+	var d = Math.floor(seconds / 86400);
+	var h = Math.floor((seconds % 86400) / 3600);
+	var m = Math.floor((seconds % 3600) / 60);
+	return d + 'd ' + h + 'h ' + m + 'm';
+}
+
+function getHealthColor(percent) {
+	if (percent >= 80) return '#e74c3c';
+	if (percent >= 60) return '#f39c12';
+	return '#27ae60';
+}
+
+function getScoreColor(score) {
+	if (score >= 80) return '#27ae60';
+	if (score >= 60) return '#3498db';
+	if (score >= 40) return '#f39c12';
+	return '#e74c3c';
+}
+
+// Helper to extract health metrics from either get_health or status format
+function extractHealth(health, status) {
+	var h = health || {};
+	var s = status || {};
+	var sh = s.health || {};
+
+	return {
+		cpuLoad: (h.cpu && h.cpu.load_1m) || sh.cpu_load || '0.00',
+		cpuUsage: (h.cpu && h.cpu.usage) || 0,
+		memPercent: (h.memory && h.memory.usage) || sh.mem_percent || 0,
+		memUsedKb: (h.memory && h.memory.used_kb) || sh.mem_used_kb || 0,
+		memTotalKb: (h.memory && h.memory.total_kb) || sh.mem_total_kb || 0,
+		diskPercent: (h.disk && h.disk.usage) || s.disk_percent || 0,
+		temperature: (h.temperature && h.temperature.value) || 0,
+		score: h.score || 0
+	};
+}
 
 return view.extend({
-	sysInfo: null,
-	healthData: null,
-
 	load: function() {
 		return Promise.all([
-			API.getSystemInfo(),
-			API.getHealth()
+			callStatus(),
+			callHealth().catch(function() { return {}; }),
+			callServices().catch(function() { return { services: [] }; })
+		]);
+	},
+
+	renderStatusCards: function(status, health) {
+		var uptime = formatUptime(status.uptime || 0);
+		var hostname = status.hostname || 'SecuBox';
+		var model = status.model || 'Unknown';
+		var metrics = extractHealth(health, status);
+		var serviceCount = status.service_count || 0;
+
+		return E('div', { 'class': 'sh-cards' }, [
+			E('div', { 'class': 'sh-card' }, [
+				E('div', { 'class': 'sh-card-icon', 'style': 'background:#3498db' }, '\uD83D\uDDA5'),
+				E('div', { 'class': 'sh-card-content' }, [
+					E('div', { 'class': 'sh-card-value', 'data-stat': 'hostname' }, hostname),
+					E('div', { 'class': 'sh-card-label' }, model)
+				])
+			]),
+			E('div', { 'class': 'sh-card' }, [
+				E('div', { 'class': 'sh-card-icon', 'style': 'background:#27ae60' }, '\u23F1'),
+				E('div', { 'class': 'sh-card-content' }, [
+					E('div', { 'class': 'sh-card-value', 'data-stat': 'uptime' }, uptime),
+					E('div', { 'class': 'sh-card-label' }, 'Uptime')
+				])
+			]),
+			E('div', { 'class': 'sh-card' }, [
+				E('div', { 'class': 'sh-card-icon', 'style': 'background:#9b59b6' }, '\uD83D\uDD27'),
+				E('div', { 'class': 'sh-card-content' }, [
+					E('div', { 'class': 'sh-card-value', 'data-stat': 'services' }, String(serviceCount)),
+					E('div', { 'class': 'sh-card-label' }, 'Services')
+				])
+			]),
+			E('div', { 'class': 'sh-card' }, [
+				E('div', { 'class': 'sh-card-icon', 'style': 'background:#e74c3c' }, '\uD83D\uDD25'),
+				E('div', { 'class': 'sh-card-content' }, [
+					E('div', { 'class': 'sh-card-value', 'data-stat': 'cpu' }, metrics.cpuLoad),
+					E('div', { 'class': 'sh-card-label' }, 'CPU Load')
+				])
+			]),
+			E('div', { 'class': 'sh-card' }, [
+				E('div', { 'class': 'sh-card-icon', 'style': 'background:#f39c12' }, '\uD83C\uDF21'),
+				E('div', { 'class': 'sh-card-content' }, [
+					E('div', { 'class': 'sh-card-value', 'data-stat': 'temp' }, metrics.temperature + '\u00B0C'),
+					E('div', { 'class': 'sh-card-label' }, 'Temperature')
+				])
+			]),
+			E('div', { 'class': 'sh-card' }, [
+				E('div', { 'class': 'sh-card-icon', 'data-stat': 'score-icon', 'style': 'background:' + getScoreColor(metrics.score) }, '\u2764'),
+				E('div', { 'class': 'sh-card-content' }, [
+					E('div', { 'class': 'sh-card-value', 'data-stat': 'score' }, metrics.score),
+					E('div', { 'class': 'sh-card-label' }, 'Health Score')
+				])
+			])
+		]);
+	},
+
+	renderResourceBars: function(health, status) {
+		var metrics = extractHealth(health, status);
+		var memUsed = metrics.memUsedKb * 1024;
+		var memTotal = metrics.memTotalKb * 1024;
+
+		var resources = [
+			{
+				id: 'memory',
+				label: 'Memory',
+				percent: metrics.memPercent,
+				detail: formatBytes(memUsed) + ' / ' + formatBytes(memTotal),
+				icon: '\uD83D\uDCBE'
+			},
+			{
+				id: 'disk',
+				label: 'Storage',
+				percent: metrics.diskPercent,
+				detail: metrics.diskPercent + '% used',
+				icon: '\uD83D\uDCBF'
+			},
+			{
+				id: 'cpu',
+				label: 'CPU Usage',
+				percent: metrics.cpuUsage,
+				detail: metrics.cpuUsage + '% active',
+				icon: '\u2699'
+			}
+		];
+
+		return E('div', { 'class': 'sh-section' }, [
+			E('h3', {}, 'Resource Usage'),
+			E('div', { 'class': 'sh-resources' },
+				resources.map(function(r) {
+					return E('div', { 'class': 'sh-resource' }, [
+						E('div', { 'class': 'sh-resource-header' }, [
+							E('span', {}, r.icon + ' ' + r.label),
+							E('span', { 'data-stat': r.id + '-detail' }, r.detail)
+						]),
+						E('div', { 'class': 'sh-resource-bar' }, [
+							E('div', {
+								'class': 'sh-resource-fill',
+								'data-stat': r.id + '-bar',
+								'style': 'width:' + r.percent + '%;background:' + getHealthColor(r.percent)
+							})
+						]),
+						E('div', { 'class': 'sh-resource-percent', 'data-stat': r.id + '-percent' }, r.percent + '%')
+					]);
+				})
+			)
+		]);
+	},
+
+	renderQuickActions: function() {
+		return E('div', { 'class': 'sh-section' }, [
+			E('h3', {}, 'Quick Actions'),
+			E('div', { 'class': 'sh-actions' }, [
+				E('button', {
+					'class': 'cbi-button cbi-button-action',
+					'click': function() { window.location.href = L.url('admin/system/system'); }
+				}, '\u2699 System Settings'),
+				E('button', {
+					'class': 'cbi-button',
+					'click': function() { window.location.href = L.url('admin/system/reboot'); }
+				}, '\uD83D\uDD04 Reboot'),
+				E('button', {
+					'class': 'cbi-button',
+					'click': function() { window.location.href = L.url('admin/system/flash'); }
+				}, '\uD83D\uDCE6 Backup/Flash')
+			])
+		]);
+	},
+
+	renderServicesTable: function(services) {
+		var serviceList = (services && services.services) || [];
+		var running = serviceList.filter(function(s) { return s.running; }).length;
+		var total = serviceList.length;
+
+		var topServices = serviceList.slice(0, 10);
+
+		var rows = topServices.map(function(svc) {
+			return E('tr', {}, [
+				E('td', {}, svc.name || '-'),
+				E('td', {}, E('span', {
+					'class': 'sh-status-badge',
+					'style': 'background:' + (svc.running ? '#27ae60' : '#e74c3c')
+				}, svc.running ? 'Running' : 'Stopped')),
+				E('td', {}, svc.enabled ? '\u2713' : '\u2717')
+			]);
+		});
+
+		if (rows.length === 0) {
+			rows.push(E('tr', {}, [
+				E('td', { 'colspan': '3', 'style': 'text-align:center;color:#999' }, 'No services found')
+			]));
+		}
+
+		return E('div', { 'class': 'sh-section' }, [
+			E('h3', {}, 'Services (' + running + '/' + total + ' running)'),
+			E('table', { 'class': 'table' }, [
+				E('thead', {}, E('tr', {}, [
+					E('th', {}, 'Service'),
+					E('th', {}, 'Status'),
+					E('th', {}, 'Enabled')
+				])),
+				E('tbody', {}, rows)
+			])
 		]);
 	},
 
 	render: function(data) {
-		this.sysInfo = data[0] || {};
-		this.healthData = data[1] || {};
-
-		var container = E('div', { 'class': 'sh-overview' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-			ThemeAssets.stylesheet('common.css'),
-			ThemeAssets.stylesheet('dashboard.css'),
-			ThemeAssets.stylesheet('overview.css'),
-			HubNav.renderTabs('overview'),
-			this.renderPageHeader(),
-			this.renderInfoGrid(),
-			this.renderResourceMonitors(),
-			this.renderQuickStatus()
-		]);
+		var status = data[0] || {};
+		var health = data[1] || {};
+		var services = data[2] || {};
 
 		var self = this;
+
+		// Start polling for live updates
 		poll.add(function() {
-			return Promise.all([
-				API.getSystemInfo(),
-				API.getHealth()
-			]).then(function(refresh) {
-				self.sysInfo = refresh[0] || {};
-				self.healthData = refresh[1] || {};
-				self.updateDynamicSections();
+			return Promise.all([callStatus(), callHealth().catch(function() { return {}; })]).then(function(results) {
+				var s = results[0] || {};
+				var h = results[1] || {};
+				var m = extractHealth(h, s);
+
+				// Update cards
+				var uptimeEl = document.querySelector('[data-stat="uptime"]');
+				var cpuEl = document.querySelector('[data-stat="cpu"]');
+				var servicesEl = document.querySelector('[data-stat="services"]');
+				var tempEl = document.querySelector('[data-stat="temp"]');
+				var scoreEl = document.querySelector('[data-stat="score"]');
+				var scoreIcon = document.querySelector('[data-stat="score-icon"]');
+
+				if (uptimeEl) uptimeEl.textContent = formatUptime(s.uptime || 0);
+				if (cpuEl) cpuEl.textContent = m.cpuLoad;
+				if (servicesEl) servicesEl.textContent = String(s.service_count || 0);
+				if (tempEl) tempEl.textContent = m.temperature + '\u00B0C';
+				if (scoreEl) scoreEl.textContent = m.score;
+				if (scoreIcon) scoreIcon.style.background = getScoreColor(m.score);
+
+				// Update resource bars
+				var memUsed = m.memUsedKb * 1024;
+				var memTotal = m.memTotalKb * 1024;
+
+				var memBar = document.querySelector('[data-stat="memory-bar"]');
+				var memPercentEl = document.querySelector('[data-stat="memory-percent"]');
+				var memDetail = document.querySelector('[data-stat="memory-detail"]');
+				var diskBar = document.querySelector('[data-stat="disk-bar"]');
+				var diskPercentEl = document.querySelector('[data-stat="disk-percent"]');
+				var diskDetail = document.querySelector('[data-stat="disk-detail"]');
+				var cpuBar = document.querySelector('[data-stat="cpu-bar"]');
+				var cpuPercentEl = document.querySelector('[data-stat="cpu-percent"]');
+				var cpuDetail = document.querySelector('[data-stat="cpu-detail"]');
+
+				if (memBar) {
+					memBar.style.width = m.memPercent + '%';
+					memBar.style.background = getHealthColor(m.memPercent);
+				}
+				if (memPercentEl) memPercentEl.textContent = m.memPercent + '%';
+				if (memDetail) memDetail.textContent = formatBytes(memUsed) + ' / ' + formatBytes(memTotal);
+				if (diskBar) {
+					diskBar.style.width = m.diskPercent + '%';
+					diskBar.style.background = getHealthColor(m.diskPercent);
+				}
+				if (diskPercentEl) diskPercentEl.textContent = m.diskPercent + '%';
+				if (diskDetail) diskDetail.textContent = m.diskPercent + '% used';
+				if (cpuBar) {
+					cpuBar.style.width = m.cpuUsage + '%';
+					cpuBar.style.background = getHealthColor(m.cpuUsage);
+				}
+				if (cpuPercentEl) cpuPercentEl.textContent = m.cpuUsage + '%';
+				if (cpuDetail) cpuDetail.textContent = m.cpuUsage + '% active';
 			});
-		}, 30);
+		}, 5);
 
-		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
-		wrapper.appendChild(SbHeader.render());
-		wrapper.appendChild(container);
-		return wrapper;
-	},
-
-	renderPageHeader: function() {
-		var uptime = this.sysInfo.uptime_formatted || '0d 0h 0m';
-		var hostname = this.sysInfo.hostname || 'OpenWrt';
-		var kernel = this.sysInfo.kernel || '-';
-		var score = (this.healthData.score || 0);
-        var version = this.sysInfo.version || _('Unknown');
-
-		var stats = [
-			{ label: _('Version'), value: version, icon: '🏷️' },
-			{ label: _('Uptime'), value: uptime, icon: '⏱' },
-			{ label: _('Hostname'), value: hostname, icon: '🖥' },
-			{ label: _('Kernel'), value: kernel, copy: kernel, icon: '🧬' },
-			{ label: _('Health'), value: score + '/100', icon: '❤️' }
-		];
-
-		return E('div', { 'class': 'sh-page-header sh-page-header-lite' }, [
-			E('div', {}, [
-				E('h2', { 'class': 'sh-page-title' }, [
-					E('span', { 'class': 'sh-page-title-icon' }, '⚙️'),
-					_('System Control Center')
-				]),
-				E('p', { 'class': 'sh-page-subtitle' }, _('Unified telemetry & orchestration'))
+		return E('div', { 'class': 'sh-dashboard' }, [
+			E('style', {}, [
+				'.sh-dashboard { max-width: 1200px; }',
+				'.sh-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }',
+				'.sh-card { background: #fff; border-radius: 8px; padding: 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }',
+				'.sh-card-icon { width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; color: #fff; flex-shrink: 0; }',
+				'.sh-card-value { font-size: 18px; font-weight: 700; }',
+				'.sh-card-label { font-size: 12px; color: #666; }',
+				'.sh-section { background: #fff; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }',
+				'.sh-section h3 { margin: 0 0 16px 0; font-size: 16px; font-weight: 600; color: #333; }',
+				'.sh-actions { display: flex; gap: 10px; flex-wrap: wrap; }',
+				'.sh-resources { display: flex; flex-direction: column; gap: 16px; }',
+				'.sh-resource { }',
+				'.sh-resource-header { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 13px; }',
+				'.sh-resource-bar { height: 12px; background: #eee; border-radius: 6px; overflow: hidden; }',
+				'.sh-resource-fill { height: 100%; transition: width 0.3s, background 0.3s; border-radius: 6px; }',
+				'.sh-resource-percent { font-size: 12px; color: #666; margin-top: 4px; text-align: right; }',
+				'.sh-status-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; color: #fff; font-size: 11px; font-weight: 600; }',
+				'.table { width: 100%; border-collapse: collapse; }',
+				'.table th, .table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #eee; }',
+				'.table th { background: #f8f9fa; font-weight: 600; font-size: 12px; text-transform: uppercase; color: #666; }',
+				'.table tbody tr:hover { background: #f8f9fa; }',
+				'@media (prefers-color-scheme: dark) {',
+				'  .sh-card { background: #2d2d2d; }',
+				'  .sh-card-label { color: #aaa; }',
+				'  .sh-card-value { color: #fff; }',
+				'  .sh-section { background: #2d2d2d; }',
+				'  .sh-section h3 { color: #eee; }',
+				'  .sh-resource-header { color: #ccc; }',
+				'  .sh-resource-bar { background: #444; }',
+				'  .table th { background: #333; color: #aaa; }',
+				'  .table td { border-color: #444; color: #ccc; }',
+				'  .table tbody tr:hover { background: #333; }',
+				'}'
+			].join('\n')),
+			E('h2', { 'style': 'margin-bottom: 20px' }, '\u2699\uFE0F System Control Center'),
+			E('p', { 'style': 'color: #666; margin-bottom: 24px' },
+				'Unified system monitoring and management dashboard.'),
+			this.renderStatusCards(status, health),
+			E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 20px;' }, [
+				this.renderResourceBars(health, status),
+				this.renderQuickActions()
 			]),
-			E('div', { 'class': 'sh-header-meta' }, stats.map(this.renderHeaderChip, this))
+			this.renderServicesTable(services)
 		]);
 	},
 
-	renderHeaderChip: function(stat) {
-		var chip = E('div', { 'class': 'sh-header-chip' }, [
-			E('span', { 'class': 'sh-chip-icon' }, stat.icon || '•'),
-			E('div', { 'class': 'sh-chip-text' }, [
-				E('span', { 'class': 'sh-chip-label' }, stat.label),
-				E('strong', {}, stat.value || '-')
-			])
-		]);
-
-		if (stat.copy && navigator.clipboard) {
-			chip.style.cursor = 'pointer';
-			chip.addEventListener('click', function() {
-				navigator.clipboard.writeText(stat.copy).then(function() {
-					ui.addNotification(null, E('p', {}, _('Copied to clipboard')), 'info');
-				});
-			});
-		}
-
-		return chip;
-	},
-
-	renderInfoGrid: function() {
-		var cards = [
-			{ id: 'hostname', label: _('Hostname'), value: this.sysInfo.hostname || 'OpenWrt', action: _('Edit'), handler: this.openSystemSettings },
-			{ id: 'uptime', label: _('Uptime'), value: this.sysInfo.uptime_formatted || '0d 0h 0m' },
-			{ id: 'load', label: _('Load Avg (1/5/15)'), value: (this.sysInfo.load || []).join(' · ') || '0.00 · 0.00 · 0.00', monospace: true },
-			{ id: 'kernel', label: _('Kernel Version'), value: this.sysInfo.kernel || '-', action: _('Copy'), handler: this.copyKernel.bind(this) }
-		];
-
-		return E('section', { 'class': 'sh-info-grid', 'id': 'sh-info-grid' },
-			cards.map(function(card) {
-				return E('div', { 'class': 'sh-info-card' }, [
-					E('div', { 'class': 'sh-info-label' }, card.label),
-					E('div', {
-						'class': 'sh-info-value' + (card.monospace ? ' mono' : ''),
-						'id': 'sh-info-' + card.id
-					}, card.value),
-					card.action ? E('button', {
-						'class': 'sh-info-action',
-						'type': 'button',
-						'click': card.handler
-					}, card.action) : ''
-				]);
-			}, this)
-		);
-	},
-
-	renderResourceMonitors: function() {
-		var monitors = [
-			this.createMonitor('cpu', _('CPU Usage'), this.healthData.cpu || {}, '🔥'),
-			this.createMonitor('memory', _('Memory'), this.healthData.memory || {}, '💾'),
-			this.createMonitor('storage', _('Storage'), this.healthData.disk || {}, '💿'),
-			this.createMonitor('network', _('Network'), this.healthData.network || {}, '🌐')
-		];
-
-		return E('section', { 'class': 'sh-monitor-panel' }, [
-			E('div', { 'class': 'sh-section-header' }, [
-				E('h2', {}, _('Resource Monitors')),
-				E('p', {}, _('Live usage for CPU, RAM, Storage, Network'))
-			]),
-			E('div', { 'class': 'sh-monitor-grid', 'id': 'sh-monitor-grid' }, monitors)
-		]);
-	},
-
-	createMonitor: function(id, label, data, icon) {
-		var percent = Math.round(data.percent || data.usage || 0);
-		var detail = '';
-		if (id === 'memory' || id === 'storage') {
-			var used = API.formatBytes((data.used_kb || 0) * 1024);
-			var total = API.formatBytes((data.total_kb || 0) * 1024);
-			detail = used + ' / ' + total;
-		} else if (id === 'network') {
-			detail = data.wan_up ? _('Online') : _('Offline');
-			percent = data.wan_up ? 100 : 0;
-		} else {
-			detail = _('Load: ') + (data.load_1m || data.load || '0.00');
-		}
-
-		return E('div', { 'class': 'sh-monitor-card' }, [
-			E('div', { 'class': 'sh-monitor-icon' }, icon),
-			E('div', { 'class': 'sh-monitor-info' }, [
-				E('div', { 'class': 'sh-monitor-label' }, label),
-				E('div', { 'class': 'sh-monitor-detail', 'id': 'sh-monitor-detail-' + id }, detail)
-			]),
-			E('div', { 'class': 'sh-monitor-progress' }, [
-				E('div', {
-					'class': 'sh-monitor-bar',
-					'id': 'sh-monitor-bar-' + id,
-					'style': 'width:' + percent + '%'
-				})
-			]),
-			E('div', { 'class': 'sh-monitor-percent', 'id': 'sh-monitor-percent-' + id }, percent + '%')
-		]);
-	},
-
-	renderQuickStatus: function() {
-		var status = this.sysInfo.status || {};
-
-		var indicators = [
-			{ id: 'internet', label: _('Internet Connectivity'), state: status.internet, icon: '🌍' },
-			{ id: 'dns', label: _('DNS Resolution'), state: status.dns, icon: '🧭' },
-			{ id: 'ntp', label: _('NTP Sync'), state: status.ntp, icon: '⏱' },
-			{ id: 'firewall', label: _('Firewall Rules'), state: status.firewall, icon: '🛡', extra: status.firewall_rules ? status.firewall_rules + _(' rules') : '' }
-		];
-
-		return E('section', { 'class': 'sh-status-panel' }, [
-			E('div', { 'class': 'sh-section-header' }, [
-				E('h2', {}, _('Quick Status Indicators')),
-				E('p', {}, _('Checks for connectivity, DNS, NTP, firewall'))
-			]),
-			E('div', { 'class': 'sh-status-grid', 'id': 'sh-status-grid' },
-				indicators.map(function(item) {
-					return E('div', {
-						'class': 'sh-status-card ' + this.getStatusClass(item.state),
-						'id': 'sh-status-' + item.id
-					}, [
-						E('div', { 'class': 'sh-status-icon' }, item.icon),
-						E('div', { 'class': 'sh-status-body' }, [
-							E('strong', {}, item.label),
-							E('span', { 'class': 'sh-status-value', 'id': 'sh-status-label-' + item.id },
-								this.getStatusLabel(item.state)),
-							item.extra ? E('span', { 'class': 'sh-status-extra', 'id': 'sh-status-extra-' + item.id }, item.extra) : ''
-						])
-					]);
-				}, this))
-		]);
-	},
-
-	updateDynamicSections: function() {
-		this.updateInfoGrid();
-		this.updateMonitors();
-		this.updateStatuses();
-	},
-
-	updateInfoGrid: function() {
-		var mappings = {
-			hostname: this.sysInfo.hostname || 'OpenWrt',
-			uptime: this.sysInfo.uptime_formatted || '0d 0h 0m',
-			load: (this.sysInfo.load || []).join(' · ') || '0.00 · 0.00 · 0.00',
-			kernel: this.sysInfo.kernel || '-'
-		};
-
-		Object.keys(mappings).forEach(function(key) {
-			var node = document.getElementById('sh-info-' + key);
-			if (node) node.textContent = mappings[key];
-		});
-
-		var score = this.healthData.score || 0;
-		var scoreNode = document.getElementById('sh-score-value');
-		var labelNode = document.getElementById('sh-score-label');
-		if (scoreNode) scoreNode.textContent = score;
-		if (labelNode) labelNode.textContent = this.getScoreLabel(score);
-	},
-
-	updateMonitors: function() {
-		var health = this.healthData || {};
-		var map = {
-			cpu: { percent: Math.round((health.cpu && (health.cpu.percent || health.cpu.usage)) || 0), detail: _('Load: ') + ((health.cpu && (health.cpu.load_1m || health.cpu.load)) || '0.00') },
-			memory: {
-				percent: Math.round((health.memory && (health.memory.percent || health.memory.usage)) || 0),
-				detail: API.formatBytes(((health.memory && health.memory.used_kb) || 0) * 1024) + ' / ' +
-					API.formatBytes(((health.memory && health.memory.total_kb) || 0) * 1024)
-			},
-			storage: {
-				percent: Math.round((health.disk && (health.disk.percent || health.disk.usage)) || 0),
-				detail: API.formatBytes(((health.disk && health.disk.used_kb) || 0) * 1024) + ' / ' +
-					API.formatBytes(((health.disk && health.disk.total_kb) || 0) * 1024)
-			},
-			network: {
-				percent: (health.network && health.network.wan_up) ? 100 : 0,
-				detail: (health.network && health.network.wan_up) ? _('Online') : _('Offline')
-			}
-		};
-
-		Object.keys(map).forEach(function(key) {
-			var percent = Math.min(100, Math.max(0, map[key].percent));
-			var bar = document.getElementById('sh-monitor-bar-' + key);
-			var val = document.getElementById('sh-monitor-percent-' + key);
-			var detail = document.getElementById('sh-monitor-detail-' + key);
-			if (bar) bar.style.width = percent + '%';
-			if (val) val.textContent = percent + '%';
-			if (detail) detail.textContent = map[key].detail;
-		});
-	},
-
-	updateStatuses: function() {
-		var status = this.sysInfo.status || {};
-		var ids = ['internet', 'dns', 'ntp', 'firewall'];
-		ids.forEach(function(id) {
-			var node = document.getElementById('sh-status-' + id);
-			var label = document.getElementById('sh-status-label-' + id);
-			var extra = document.getElementById('sh-status-extra-' + id);
-			var state = status[id];
-			if (node) {
-				node.className = 'sh-status-card ' + this.getStatusClass(state);
-			}
-			if (label) label.textContent = this.getStatusLabel(state);
-			if (extra && id === 'firewall') {
-				var rules = status.firewall_rules ? status.firewall_rules + _(' rules') : '';
-				extra.textContent = rules;
-			}
-		}, this);
-	},
-
-	getStatusClass: function(state) {
-		if (state === undefined || state === null) return 'unknown';
-		return state ? 'ok' : 'warn';
-	},
-
-	getStatusLabel: function(state) {
-		if (state === undefined || state === null) return '❓';
-		return state ? '✅' : '⚠️';
-	},
-
-	getScoreLabel: function(score) {
-		if (score >= 80) return _('Excellent');
-		if (score >= 60) return _('Good');
-		if (score >= 40) return _('Warning');
-		return _('Critical');
-	},
-
-	openSystemSettings: function() {
-		window.location.href = L.url('admin/secubox/system/system-hub/settings');
-	},
-
-	copyKernel: function() {
-		if (navigator.clipboard && this.sysInfo.kernel) {
-			navigator.clipboard.writeText(this.sysInfo.kernel);
-			ui.addNotification(null, E('p', {}, _('Kernel version copied')), 'info');
-		}
-	}
+	handleSave: null,
+	handleSaveApply: null,
+	handleReset: null
 });
