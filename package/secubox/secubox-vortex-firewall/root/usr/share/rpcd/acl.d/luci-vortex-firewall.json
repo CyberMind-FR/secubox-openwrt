@@ -1,0 +1,15 @@
+{
+	"luci-vortex-firewall": {
+		"description": "Grant access to Vortex DNS Firewall",
+		"read": {
+			"ubus": {
+				"luci.vortex-firewall": ["status", "get_stats", "get_feeds", "get_blocked", "search"]
+			}
+		},
+		"write": {
+			"ubus": {
+				"luci.vortex-firewall": ["update_feeds", "block_domain", "unblock_domain"]
+			}
+		}
+	}
+}

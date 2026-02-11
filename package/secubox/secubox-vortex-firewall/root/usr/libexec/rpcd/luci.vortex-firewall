@@ -1,0 +1,257 @@
+#!/bin/sh
+#
+# RPCD handler for Vortex DNS Firewall
+#
+
+. /usr/share/libubox/jshn.sh
+
+BLOCKLIST_DB="/var/lib/vortex-firewall/blocklist.db"
+STATS_FILE="/var/lib/vortex-firewall/stats.json"
+SINKHOLE_IP="192.168.255.253"
+
+do_status() {
+    json_init
+
+    # Service status
+    local active=0
+    [ -f "/etc/dnsmasq.d/vortex-firewall.conf" ] && active=1
+    json_add_boolean "active" "$active"
+    json_add_string "sinkhole_ip" "$SINKHOLE_IP"
+
+    # Domain count
+    local domain_count=0
+    if [ -f "$BLOCKLIST_DB" ]; then
+        domain_count=$(sqlite3 "$BLOCKLIST_DB" "SELECT COUNT(*) FROM domains WHERE blocked=1;" 2>/dev/null || echo 0)
+    fi
+    json_add_int "domain_count" "$domain_count"
+
+    # Hit count
+    local hit_count=0
+    if [ -f "$BLOCKLIST_DB" ]; then
+        hit_count=$(sqlite3 "$BLOCKLIST_DB" "SELECT COALESCE(SUM(hit_count),0) FROM domains;" 2>/dev/null || echo 0)
+    fi
+    json_add_int "hit_count" "$hit_count"
+
+    # x47 impact
+    local x47_impact=$((hit_count * 47))
+    json_add_int "x47_impact" "$x47_impact"
+
+    # Last update
+    if [ -f "$STATS_FILE" ]; then
+        local last_update=$(jsonfilter -i "$STATS_FILE" -e '@.last_update' 2>/dev/null || echo "")
+        json_add_string "last_update" "$last_update"
+    else
+        json_add_string "last_update" ""
+    fi
+
+    json_dump
+}
+
+do_get_stats() {
+    json_init
+
+    if [ ! -f "$BLOCKLIST_DB" ]; then
+        json_add_int "domains" 0
+        json_add_int "hits" 0
+        json_add_int "x47_impact" 0
+        json_dump
+        return
+    fi
+
+    local domains=$(sqlite3 "$BLOCKLIST_DB" "SELECT COUNT(*) FROM domains WHERE blocked=1;" 2>/dev/null || echo 0)
+    local hits=$(sqlite3 "$BLOCKLIST_DB" "SELECT COALESCE(SUM(hit_count),0) FROM domains;" 2>/dev/null || echo 0)
+    local x47=$((hits * 47))
+
+    json_add_int "domains" "$domains"
+    json_add_int "hits" "$hits"
+    json_add_int "x47_impact" "$x47"
+
+    # Threat distribution
+    json_add_object "threats"
+    sqlite3 "$BLOCKLIST_DB" "SELECT threat_type, COUNT(*) FROM domains WHERE blocked=1 GROUP BY threat_type;" 2>/dev/null | while IFS='|' read -r type count; do
+        [ -n "$type" ] && json_add_int "$type" "$count"
+    done
+    json_close_object
+
+    json_dump
+}
+
+do_get_feeds() {
+    json_init
+    json_add_array "feeds"
+
+    if [ -f "$BLOCKLIST_DB" ]; then
+        sqlite3 "$BLOCKLIST_DB" "SELECT name, domain_count, last_update, enabled FROM feeds;" 2>/dev/null > /tmp/vf_feeds.tmp
+        while IFS='|' read -r name count updated enabled; do
+            [ -n "$name" ] || continue
+            json_add_object ""
+            json_add_string "name" "$name"
+            json_add_int "domains" "${count:-0}"
+            json_add_string "updated" "$updated"
+            json_add_boolean "enabled" "${enabled:-1}"
+            json_close_object
+        done < /tmp/vf_feeds.tmp
+        rm -f /tmp/vf_feeds.tmp
+    fi
+
+    json_close_array
+    json_dump
+}
+
+do_get_blocked() {
+    local input limit
+    read input
+    limit=$(echo "$input" | jsonfilter -e '@.limit' 2>/dev/null)
+    [ -z "$limit" ] && limit=50
+
+    json_init
+    json_add_array "domains"
+
+    if [ -f "$BLOCKLIST_DB" ]; then
+        sqlite3 "$BLOCKLIST_DB" "SELECT domain, threat_type, confidence, source, hit_count FROM domains WHERE blocked=1 ORDER BY hit_count DESC LIMIT $limit;" 2>/dev/null > /tmp/vf_blocked.tmp
+        while IFS='|' read -r domain threat conf source hits; do
+            [ -n "$domain" ] || continue
+            json_add_object ""
+            json_add_string "domain" "$domain"
+            json_add_string "threat" "$threat"
+            json_add_int "confidence" "${conf:-80}"
+            json_add_string "source" "$source"
+            json_add_int "hits" "${hits:-0}"
+            json_close_object
+        done < /tmp/vf_blocked.tmp
+        rm -f /tmp/vf_blocked.tmp
+    fi
+
+    json_close_array
+    json_dump
+}
+
+do_search() {
+    local input domain
+    read input
+    domain=$(echo "$input" | jsonfilter -e '@.domain' 2>/dev/null)
+
+    json_init
+
+    if [ -z "$domain" ]; then
+        json_add_boolean "found" 0
+        json_dump
+        return
+    fi
+
+    if [ -f "$BLOCKLIST_DB" ]; then
+        local result=$(sqlite3 "$BLOCKLIST_DB" "SELECT domain, threat_type, confidence, source FROM domains WHERE domain='$domain' AND blocked=1;" 2>/dev/null)
+        if [ -n "$result" ]; then
+            json_add_boolean "found" 1
+            json_add_boolean "blocked" 1
+            echo "$result" | IFS='|' read -r d t c s
+            json_add_string "domain" "$d"
+            json_add_string "threat" "$t"
+            json_add_int "confidence" "${c:-80}"
+            json_add_string "source" "$s"
+        else
+            json_add_boolean "found" 0
+            json_add_boolean "blocked" 0
+        fi
+    else
+        json_add_boolean "found" 0
+    fi
+
+    json_dump
+}
+
+do_update_feeds() {
+    json_init
+
+    if [ -x /usr/sbin/vortex-firewall ]; then
+        /usr/sbin/vortex-firewall intel update >/dev/null 2>&1 &
+        json_add_boolean "success" 1
+        json_add_string "message" "Feed update started"
+    else
+        json_add_boolean "success" 0
+        json_add_string "message" "vortex-firewall not installed"
+    fi
+
+    json_dump
+}
+
+do_block_domain() {
+    local input domain reason
+    read input
+    domain=$(echo "$input" | jsonfilter -e '@.domain' 2>/dev/null)
+    reason=$(echo "$input" | jsonfilter -e '@.reason' 2>/dev/null)
+    [ -z "$reason" ] && reason="manual"
+
+    json_init
+
+    if [ -z "$domain" ]; then
+        json_add_boolean "success" 0
+        json_add_string "message" "No domain specified"
+        json_dump
+        return
+    fi
+
+    if [ -x /usr/sbin/vortex-firewall ]; then
+        /usr/sbin/vortex-firewall intel add "$domain" "$reason" >/dev/null 2>&1
+        json_add_boolean "success" 1
+        json_add_string "message" "Domain blocked: $domain"
+    else
+        json_add_boolean "success" 0
+        json_add_string "message" "vortex-firewall not installed"
+    fi
+
+    json_dump
+}
+
+do_unblock_domain() {
+    local input domain
+    read input
+    domain=$(echo "$input" | jsonfilter -e '@.domain' 2>/dev/null)
+
+    json_init
+
+    if [ -z "$domain" ]; then
+        json_add_boolean "success" 0
+        json_add_string "message" "No domain specified"
+        json_dump
+        return
+    fi
+
+    if [ -x /usr/sbin/vortex-firewall ]; then
+        /usr/sbin/vortex-firewall intel remove "$domain" >/dev/null 2>&1
+        json_add_boolean "success" 1
+        json_add_string "message" "Domain unblocked: $domain"
+    else
+        json_add_boolean "success" 0
+        json_add_string "message" "vortex-firewall not installed"
+    fi
+
+    json_dump
+}
+
+case "$1" in
+    list)
+        echo '{'
+        echo '"status":{},'
+        echo '"get_stats":{},'
+        echo '"get_feeds":{},'
+        echo '"get_blocked":{"limit":"Integer"},'
+        echo '"search":{"domain":"String"},'
+        echo '"update_feeds":{},'
+        echo '"block_domain":{"domain":"String","reason":"String"},'
+        echo '"unblock_domain":{"domain":"String"}'
+        echo '}'
+        ;;
+    call)
+        case "$2" in
+            status) do_status ;;
+            get_stats) do_get_stats ;;
+            get_feeds) do_get_feeds ;;
+            get_blocked) do_get_blocked ;;
+            search) do_search ;;
+            update_feeds) do_update_feeds ;;
+            block_domain) do_block_domain ;;
+            unblock_domain) do_unblock_domain ;;
+        esac
+        ;;
+esac

@@ -1,0 +1,23 @@
+config vortex-firewall 'main'
+	option enabled '1'
+	option sinkhole_ip '192.168.255.253'
+	option update_interval '300'
+	option auto_block_threshold '80'
+	option mesh_sharing '1'
+
+config intel 'feeds'
+	option urlhaus '1'
+	option openphish '1'
+	option malwaredomains '1'
+	option dnsguard '1'
+	option mesh_peers '1'
+
+config sinkhole 'server'
+	option enabled '0'
+	option http_port '80'
+	option https_port '443'
+	option capture_payloads '1'
+
+config alerts 'notifications'
+	option infected_client_alert '1'
+	option new_threat_alert '1'
