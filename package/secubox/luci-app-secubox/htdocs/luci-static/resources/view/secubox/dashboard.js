@@ -243,30 +243,52 @@ return view.extend({
 
 	renderPublicIPsPanel: function() {
 		var ips = this.data.publicIPs || {};
-		var ipv4 = ips.ipv4 || 'N/A';
-		var ipv6 = ips.ipv6 || 'N/A';
-		var ipv6Display = ipv6.length > 24 ? ipv6.substring(0, 21) + '...' : ipv6;
+		var lanIpv4 = ips.lan_ipv4 || 'N/A';
+		var wanIpv4 = ips.wan_ipv4 || 'N/A';
+		var publicIpv4 = ips.public_ipv4 || 'N/A';
+		var publicIpv6 = ips.public_ipv6 || 'N/A';
+		var ipv6Display = publicIpv6.length > 20 ? publicIpv6.substring(0, 17) + '...' : publicIpv6;
 
 		return E('div', { 'class': 'sb-panel' }, [
-			E('h3', {}, '\uD83C\uDF10 Public IP Addresses'),
-			E('div', { 'class': 'sb-ip-grid' }, [
+			E('h3', {}, '\uD83C\uDF10 Network Addresses'),
+			E('div', { 'class': 'sb-ip-grid sb-ip-grid-4' }, [
 				E('div', { 'class': 'sb-ip-box' }, [
-					E('div', { 'class': 'sb-ip-icon' }, '\uD83C\uDF10'),
-					E('div', { 'class': 'sb-ip-label' }, 'IPv4'),
+					E('div', { 'class': 'sb-ip-icon' }, '\uD83C\uDFE0'),
+					E('div', { 'class': 'sb-ip-label' }, 'LAN'),
 					E('div', {
 						'class': 'sb-ip-value',
-						'data-stat': 'ipv4',
-						'title': ipv4,
+						'data-stat': 'lan-ipv4',
+						'title': lanIpv4,
+						'style': 'color:' + (ips.lan_available ? '#22c55e' : '#888')
+					}, lanIpv4)
+				]),
+				E('div', { 'class': 'sb-ip-box' }, [
+					E('div', { 'class': 'sb-ip-icon' }, '\uD83D\uDD17'),
+					E('div', { 'class': 'sb-ip-label' }, 'BR-WAN'),
+					E('div', {
+						'class': 'sb-ip-value',
+						'data-stat': 'wan-ipv4',
+						'title': wanIpv4,
+						'style': 'color:' + (ips.wan_available ? '#3b82f6' : '#888')
+					}, wanIpv4)
+				]),
+				E('div', { 'class': 'sb-ip-box' }, [
+					E('div', { 'class': 'sb-ip-icon' }, '\uD83C\uDF10'),
+					E('div', { 'class': 'sb-ip-label' }, 'Public IPv4'),
+					E('div', {
+						'class': 'sb-ip-value',
+						'data-stat': 'public-ipv4',
+						'title': publicIpv4,
 						'style': 'color:' + (ips.ipv4_available ? '#22c55e' : '#888')
-					}, ipv4)
+					}, publicIpv4)
 				]),
 				E('div', { 'class': 'sb-ip-box' }, [
 					E('div', { 'class': 'sb-ip-icon' }, '\uD83D\uDD37'),
-					E('div', { 'class': 'sb-ip-label' }, 'IPv6'),
+					E('div', { 'class': 'sb-ip-label' }, 'Public IPv6'),
 					E('div', {
 						'class': 'sb-ip-value',
-						'data-stat': 'ipv6',
-						'title': ipv6,
+						'data-stat': 'public-ipv6',
+						'title': publicIpv6,
 						'style': 'color:' + (ips.ipv6_available ? '#22c55e' : '#888')
 					}, ipv6Display)
 				])
@@ -463,18 +485,28 @@ return view.extend({
 			if (detail) detail.textContent = m.detail;
 		});
 
-		// Update public IPs
+		// Update network IPs
 		var ips = this.data.publicIPs || {};
-		var ipv4El = document.querySelector('[data-stat="ipv4"]');
-		var ipv6El = document.querySelector('[data-stat="ipv6"]');
-		if (ipv4El) {
-			ipv4El.textContent = ips.ipv4 || 'N/A';
-			ipv4El.style.color = ips.ipv4_available ? '#22c55e' : '#888';
+		var lanEl = document.querySelector('[data-stat="lan-ipv4"]');
+		var wanEl = document.querySelector('[data-stat="wan-ipv4"]');
+		var pubIpv4El = document.querySelector('[data-stat="public-ipv4"]');
+		var pubIpv6El = document.querySelector('[data-stat="public-ipv6"]');
+		if (lanEl) {
+			lanEl.textContent = ips.lan_ipv4 || 'N/A';
+			lanEl.style.color = ips.lan_available ? '#22c55e' : '#888';
 		}
-		if (ipv6El) {
-			var ipv6 = ips.ipv6 || 'N/A';
-			ipv6El.textContent = ipv6.length > 24 ? ipv6.substring(0, 21) + '...' : ipv6;
-			ipv6El.style.color = ips.ipv6_available ? '#22c55e' : '#888';
+		if (wanEl) {
+			wanEl.textContent = ips.wan_ipv4 || 'N/A';
+			wanEl.style.color = ips.wan_available ? '#3b82f6' : '#888';
+		}
+		if (pubIpv4El) {
+			pubIpv4El.textContent = ips.public_ipv4 || 'N/A';
+			pubIpv4El.style.color = ips.ipv4_available ? '#22c55e' : '#888';
+		}
+		if (pubIpv6El) {
+			var ipv6 = ips.public_ipv6 || 'N/A';
+			pubIpv6El.textContent = ipv6.length > 20 ? ipv6.substring(0, 17) + '...' : ipv6;
+			pubIpv6El.style.color = ips.ipv6_available ? '#22c55e' : '#888';
 		}
 
 		// Update alerts count
@@ -517,11 +549,13 @@ return view.extend({
 			'.sb-bar { height: 10px; background: #e5e7eb; border-radius: 5px; overflow: hidden; }',
 			'.sb-bar-fill { height: 100%; border-radius: 5px; transition: width 0.3s, background 0.3s; }',
 			'.sb-metric-pct { font-size: 12px; color: #666; display: block; text-align: right; margin-top: 4px; }',
-			'.sb-ip-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }',
-			'.sb-ip-box { background: #f8f9fa; padding: 16px; border-radius: 8px; text-align: center; }',
-			'.sb-ip-icon { font-size: 24px; margin-bottom: 8px; }',
-			'.sb-ip-label { font-size: 12px; color: #888; margin-bottom: 4px; }',
-			'.sb-ip-value { font-family: monospace; font-size: 13px; word-break: break-all; }',
+			'.sb-ip-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }',
+			'.sb-ip-grid-4 { grid-template-columns: 1fr 1fr; }',
+			'@media (min-width: 600px) { .sb-ip-grid-4 { grid-template-columns: repeat(4, 1fr); } }',
+			'.sb-ip-box { background: #f8f9fa; padding: 12px; border-radius: 8px; text-align: center; }',
+			'.sb-ip-icon { font-size: 20px; margin-bottom: 6px; }',
+			'.sb-ip-label { font-size: 11px; color: #888; margin-bottom: 2px; text-transform: uppercase; font-weight: 600; }',
+			'.sb-ip-value { font-family: monospace; font-size: 12px; word-break: break-all; }',
 			'.sb-table { width: 100%; border-collapse: collapse; }',
 			'.sb-table th, .sb-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #e5e7eb; font-size: 13px; }',
 			'.sb-table th { background: #f8f9fa; font-weight: 600; font-size: 11px; text-transform: uppercase; color: #666; }',
