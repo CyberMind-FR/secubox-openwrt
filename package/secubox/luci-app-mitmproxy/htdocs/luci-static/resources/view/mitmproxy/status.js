@@ -131,34 +131,32 @@ return view.extend({
 									'target': '_blank'
 								}, 'http://' + window.location.hostname + ':' + (status.web_port || 8081) + (status.token ? '/?token=***' : '')) :
 								_('Not available'))
-						]),
-						status.token ? E('tr', { 'class': 'tr' }, [
-							E('td', { 'class': 'td' }, E('strong', {}, _('Auth Token'))),
-							E('td', { 'class': 'td' }, [
-								E('code', { 'style': 'font-size: 11px; background: #f0f0f0; padding: 2px 6px; border-radius: 3px;' },
-									status.token.substring(0, 12) + '...'),
-								' ',
-								E('button', {
-									'class': 'btn cbi-button cbi-button-action',
-									'style': 'font-size: 11px; padding: 2px 8px;',
-									'click': function() {
-										navigator.clipboard.writeText(status.token);
-										this.textContent = _('Copied!');
-										setTimeout(function() { this.textContent = _('Copy'); }.bind(this), 1500);
-									}
-								}, _('Copy'))
-							])
-						]) : null,
-						status.haproxy_router_enabled ? E('tr', { 'class': 'tr' }, [
-							E('td', { 'class': 'td' }, E('strong', {}, _('HAProxy Router'))),
-							E('td', { 'class': 'td' }, [
-								E('span', {
-									'style': 'display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; background: #27ae60;'
-								}),
-								_('Enabled (port ') + (status.haproxy_listen_port || 8889) + ')'
-							])
-						]) : null
-					])
+						])
+					].concat(status.token ? [E('tr', { 'class': 'tr' }, [
+						E('td', { 'class': 'td' }, E('strong', {}, _('Auth Token'))),
+						E('td', { 'class': 'td' }, [
+							E('code', { 'style': 'font-size: 11px; background: #f0f0f0; padding: 2px 6px; border-radius: 3px;' },
+								status.token.substring(0, 12) + '...'),
+							' ',
+							E('button', {
+								'class': 'btn cbi-button cbi-button-action',
+								'style': 'font-size: 11px; padding: 2px 8px;',
+								'click': function() {
+									navigator.clipboard.writeText(status.token);
+									this.textContent = _('Copied!');
+									setTimeout(function() { this.textContent = _('Copy'); }.bind(this), 1500);
+								}
+							}, _('Copy'))
+						])
+					])] : []).concat(status.haproxy_router_enabled ? [E('tr', { 'class': 'tr' }, [
+						E('td', { 'class': 'td' }, E('strong', {}, _('HAProxy Router'))),
+						E('td', { 'class': 'td' }, [
+							E('span', {
+								'style': 'display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; background: #27ae60;'
+							}),
+							_('Enabled (port ') + (status.haproxy_listen_port || 8889) + ')'
+						])
+					])] : []))
 				]),
 				E('div', { 'style': 'margin-top: 16px;' }, [
 					E('button', {

@@ -9,6 +9,7 @@
 return view.extend({
 	alerts: [],
 	bannedIPs: new Set(),
+	ipOrgCache: {},
 
 	load: function() {
 		var self = this;
@@ -35,7 +36,46 @@ return view.extend({
 					}
 				});
 			}
-			return results[0];
+			var alerts = results[0];
+			// Extract unique IPs for org lookup
+			var ips = [];
+			(Array.isArray(alerts) ? alerts : []).forEach(function(a) {
+				var ip = a.source && a.source.ip;
+				if (ip && !self.ipOrgCache[ip] && ips.indexOf(ip) === -1 && !ip.startsWith('192.168.') && !ip.startsWith('10.') && !ip.startsWith('127.')) {
+					ips.push(ip);
+				}
+			});
+			// Batch lookup orgs (max 100 per request)
+			if (ips.length > 0) {
+				return self.lookupOrgs(ips.slice(0, 100)).then(function() { return alerts; });
+			}
+			return alerts;
+		});
+	},
+
+	lookupOrgs: function(ips) {
+		var self = this;
+		// Use ip-api.com batch endpoint
+		return new Promise(function(resolve) {
+			var xhr = new XMLHttpRequest();
+			xhr.open('POST', 'http://ip-api.com/batch?fields=query,org,isp,as', true);
+			xhr.setRequestHeader('Content-Type', 'application/json');
+			xhr.timeout = 5000;
+			xhr.onload = function() {
+				if (xhr.status === 200) {
+					try {
+						var results = JSON.parse(xhr.responseText);
+						results.forEach(function(r) {
+							if (r.query) {
+								self.ipOrgCache[r.query] = r.org || r.isp || r.as || '';
+							}
+						});
+					} catch (e) {}
+				}
+				resolve();
+			};
+			xhr.onerror = xhr.ontimeout = function() { resolve(); };
+			xhr.send(JSON.stringify(ips));
 		});
 	},
 
@@ -127,6 +167,7 @@ return view.extend({
 			E('thead', {}, E('tr', {}, [
 				E('th', {}, 'Time'),
 				E('th', {}, 'Source'),
+				E('th', {}, 'Organization'),
 				E('th', {}, 'Country'),
 				E('th', {}, 'Scenario'),
 				E('th', {}, 'Events'),
@@ -136,11 +177,14 @@ return view.extend({
 				var src = a.source || {};
 				var ip = src.ip || '';
 				var country = src.cn || src.country || '';
+				var org = self.ipOrgCache[ip] || '';
+				var orgDisplay = org.length > 25 ? org.substring(0, 22) + '...' : org;
 				var isBanned = self.bannedIPs.has(ip);
 
 				return E('tr', {}, [
 					E('td', { 'style': 'font-family: monospace; font-size: 12px; color: var(--kiss-muted);' }, api.formatRelativeTime(a.created_at)),
 					E('td', {}, E('span', { 'style': 'font-family: monospace; color: var(--kiss-cyan);' }, ip || '-')),
+					E('td', { 'title': org }, E('span', { 'style': 'font-size: 11px; color: var(--kiss-muted);' }, orgDisplay || '-')),
 					E('td', {}, [
 						E('span', { 'style': 'font-size: 16px; margin-right: 4px;' }, api.getCountryFlag(country)),
 						E('span', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, country)
@@ -219,11 +263,13 @@ return view.extend({
 	},
 
 	filterAlerts: function() {
+		var self = this;
 		var query = (document.getElementById('alert-search').value || '').toLowerCase();
 		var filtered = this.alerts.filter(function(a) {
 			if (!query) return true;
 			var src = a.source || {};
-			var fields = [src.ip, a.scenario, src.country, src.cn].join(' ').toLowerCase();
+			var org = self.ipOrgCache[src.ip] || '';
+			var fields = [src.ip, a.scenario, src.country, src.cn, org].join(' ').toLowerCase();
 			return fields.includes(query);
 		});
 		var el = document.getElementById('alerts-list');
