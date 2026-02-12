@@ -376,6 +376,9 @@ cmd_publish() {
 		/usr/sbin/secubox-content-pkg site "$name" "$domain" 2>/dev/null && \
 			log_info "Site packaged for mesh distribution"
 	fi
+
+	# Regenerate GK2 Hub landing page if generator exists
+	[ -x /usr/bin/gk2hub-generate ] && /usr/bin/gk2hub-generate >/dev/null 2>&1 &
 }
 
 cmd_delete() {
@@ -412,6 +415,9 @@ cmd_delete() {
 	fi
 
 	log_info "Site deleted"
+
+	# Regenerate GK2 Hub landing page if generator exists
+	[ -x /usr/bin/gk2hub-generate ] && /usr/bin/gk2hub-generate >/dev/null 2>&1 &
 }
 
 cmd_sync() {
@@ -870,6 +876,9 @@ _emancipate_reload() {
 	else
 		log_warn "[RELOAD] HAProxy may not have started properly"
 	fi
+
+	# Regenerate GK2 Hub landing page if generator exists
+	[ -x /usr/bin/gk2hub-generate ] && /usr/bin/gk2hub-generate >/dev/null 2>&1 &
 }
 
 cmd_emancipate() {

@@ -671,6 +671,9 @@ cmd_app_delete() {
 	uci commit "$CONFIG"
 
 	log_info "App '$name' deleted"
+
+	# Regenerate GK2 Hub landing page if generator exists
+	[ -x /usr/bin/gk2hub-generate ] && /usr/bin/gk2hub-generate >/dev/null 2>&1 &
 }
 
 cmd_app_deploy() {
@@ -811,6 +814,9 @@ cmd_instance_add() {
 
 	log_info "Instance added: $app on port $port"
 	log_info "Restart service to apply: /etc/init.d/streamlit restart"
+
+	# Regenerate GK2 Hub landing page if generator exists
+	[ -x /usr/bin/gk2hub-generate ] && /usr/bin/gk2hub-generate >/dev/null 2>&1 &
 }
 
 cmd_instance_remove() {
@@ -832,6 +838,9 @@ cmd_instance_remove() {
 	generate_instances_conf
 
 	log_info "Instance '$name' removed"
+
+	# Regenerate GK2 Hub landing page if generator exists
+	[ -x /usr/bin/gk2hub-generate ] && /usr/bin/gk2hub-generate >/dev/null 2>&1 &
 }
 
 cmd_instance_start() {
@@ -1348,6 +1357,9 @@ _emancipate_reload() {
 	else
 		log_warn "[RELOAD] HAProxy may not have started properly"
 	fi
+
+	# Regenerate GK2 Hub landing page if generator exists
+	[ -x /usr/bin/gk2hub-generate ] && /usr/bin/gk2hub-generate >/dev/null 2>&1 &
 }
 
 cmd_emancipate() {

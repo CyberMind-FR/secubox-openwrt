@@ -330,7 +330,12 @@
       "Bash(git describe:*)",
       "Bash(SSH_AUTH_SOCK=\"$SSH_AUTH_SOCK\" ssh:*)",
       "Bash(node --check:*)",
-      "Bash(do ssh root@192.168.255.1 'ubus call luci.cloner build_progress \"\"{}\"\"')"
+      "Bash(do ssh root@192.168.255.1 'ubus call luci.cloner build_progress \"\"{}\"\"')",
+      "Bash(while read file)",
+      "Bash(if ! grep -q \"kiss-theme\" \"$file\")",
+      "Bash(pip3 show:*)",
+      "Bash(playwright install:*)",
+      "Bash(timeout 8 streamlit run:*)"
     ]
   }
 }

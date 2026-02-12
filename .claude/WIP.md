@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-11_
+_Last updated: 2026-02-12_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -334,6 +334,29 @@ _Last updated: 2026-02-11_
   - Join flow: request → approval → peer added at depth+1
   - Blockchain: `peer_approved` blocks recorded correctly
   - Threat Intel: 288 local IOCs, 67 threat_ioc blocks in chain
+
+### Just Completed (2026-02-12)
+
+- **HAProxy stats.js KISS Migration** — DONE (2026-02-12)
+  - Rewrote Statistics dashboard to use KissTheme
+  - Stats iframe, logs viewer with refresh
+  - Removed CSS import via style element
+
+- **HAProxy backends.js KISS Migration** — DONE (2026-02-12)
+  - Rewrote Backends dashboard to use KissTheme
+  - Backend cards with server lists, health check info
+  - Add/edit server modals with quick service selector
+  - Removed external dashboard.css dependency
+
+- **HAProxy vhosts.js KISS Migration** — DONE (2026-02-12)
+  - Rewrote Virtual Hosts dashboard to use KissTheme
+  - Self-contained inline CSS, removed external dashboard.css
+  - Add vhost form, vhosts table, edit modal, delete confirmation
+
+- **InterceptoR LXC Detection Fix** — DONE (2026-02-12)
+  - Changed from `lxc-ls --running` to `lxc-info -n mitmproxy -s`
+  - More reliable container state detection
+  - Fixed container name from `secbx-mitmproxy` to `mitmproxy`
 
 ### Just Completed (2026-02-11)
 
