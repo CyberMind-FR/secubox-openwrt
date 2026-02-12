@@ -6,6 +6,7 @@
 'require rpc';
 'require fs';
 'require ui';
+'require secubox/kiss-theme';
 
 /**
  * SecuBox C3BOX Portal - Generative KISS Theme System
@@ -688,7 +689,7 @@ return view.extend({
 		// Start morph animation
 		this.startMorphAnimation();
 
-		return root;
+		return KissTheme.wrap([root], 'admin/secubox/portal/index');
 	},
 
 	// ========== ASYNC PROGRESSIVE FETCH ==========

@@ -1,6 +1,7 @@
 'use strict';
 'require view';
 'require dom';
+'require secubox/kiss-theme';
 
 return view.extend({
 	handleSaveApply: null,
@@ -275,7 +276,7 @@ return view.extend({
 			}
 		`);
 
-		return E('div', { 'class': 'ds-container' }, [
+		return KissTheme.wrap([E('div', { 'class': 'ds-container' }, [
 			style,
 
 			// Header
@@ -360,6 +361,6 @@ return view.extend({
 					E('span', {}, 'Editeur')
 				])
 			])
-		]);
+		])], 'admin/secubox/portal/devstatus');
 	}
 });

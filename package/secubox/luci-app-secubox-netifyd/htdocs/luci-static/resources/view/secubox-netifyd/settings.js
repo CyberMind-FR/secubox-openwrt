@@ -7,6 +7,7 @@
 'require secubox-netifyd/api as netifydAPI';
 'require secubox-theme/theme as Theme';
 'require secubox-portal/header as SbHeader';
+'require secubox/kiss-theme';
 
 var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||
@@ -781,7 +782,7 @@ return view.extend({
 			wrapper.appendChild(SbHeader.render());
 			wrapper.appendChild(renderNetifydNav('settings'));
 			wrapper.appendChild(formEl);
-			return wrapper;
+			return KissTheme.wrap([wrapper], 'admin/status/netifyd/settings');
 		});
 	}
 });

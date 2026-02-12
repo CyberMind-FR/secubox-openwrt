@@ -3,6 +3,7 @@
 'require rpc';
 'require ui';
 'require poll';
+'require secubox/kiss-theme';
 
 var callStatus = rpc.declare({
 	object: 'luci.backup',
@@ -117,7 +118,7 @@ return view.extend({
 			])
 		]);
 
-		return view;
+		return KissTheme.wrap([view], 'admin/system/backup');
 	},
 
 	renderContainerTable: function(containers) {

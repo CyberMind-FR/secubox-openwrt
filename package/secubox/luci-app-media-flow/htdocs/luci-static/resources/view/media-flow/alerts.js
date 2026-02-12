@@ -5,6 +5,7 @@
 'require media-flow/api as API';
 'require media-flow/nav as NavHelper';
 'require secubox-portal/header as SbHeader';
+'require secubox/kiss-theme';
 
 return L.view.extend({
 	// Initialize SecuBox dark theme
@@ -91,7 +92,7 @@ return L.view.extend({
 			var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
 			wrapper.appendChild(SbHeader.render());
 			wrapper.appendChild(container);
-			return wrapper;
+			return KissTheme.wrap([wrapper], 'admin/services/media-flow/alerts');
 		});
 	}
 });

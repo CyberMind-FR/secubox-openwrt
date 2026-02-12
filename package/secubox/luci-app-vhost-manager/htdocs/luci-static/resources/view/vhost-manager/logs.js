@@ -4,6 +4,7 @@
 'require vhost-manager/api as API';
 'require secubox-theme/theme as Theme';
 'require vhost-manager/ui as VHostUI';
+'require secubox/kiss-theme';
 
 var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||
@@ -23,14 +24,16 @@ return L.view.extend({
 		this.lineSelect = this.createLineSelect();
 		this.logOutput = E('pre', { 'class': 'vhost-log-terminal' }, _('Select a domain to view logs'));
 
-		return E('div', { 'class': 'vhost-page' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('vhost-manager/common.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('vhost-manager/dashboard.css') }),
-			VHostUI.renderTabs('logs'),
-			this.renderHeader(),
-			this.renderControls()
-		]);
+		return KissTheme.wrap([
+			E('div', { 'class': 'vhost-page' }, [
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('vhost-manager/common.css') }),
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('vhost-manager/dashboard.css') }),
+				VHostUI.renderTabs('logs'),
+				this.renderHeader(),
+				this.renderControls()
+			])
+		], 'admin/services/vhost/logs');
 	},
 
 	renderHeader: function() {

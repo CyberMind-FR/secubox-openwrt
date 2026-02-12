@@ -6,6 +6,7 @@
 'require ui';
 'require wireguard-dashboard/api as API';
 'require wireguard-dashboard/qrcode as qrcode';
+'require secubox/kiss-theme';
 
 return view.extend({
 	title: _('WireGuard Peers'),
@@ -207,7 +208,7 @@ return view.extend({
 			}, this));
 		}, this), 5);
 
-		return view;
+		return KissTheme.wrap([view], 'admin/network/wireguard-dashboard/peers');
 	},
 
 	handleAddPeer: function(interfaces, ev) {

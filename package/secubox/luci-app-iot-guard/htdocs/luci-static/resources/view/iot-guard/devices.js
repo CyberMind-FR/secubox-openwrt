@@ -2,6 +2,7 @@
 'require view';
 'require rpc';
 'require ui';
+'require secubox/kiss-theme';
 
 var callGetDevices = rpc.declare({
 	object: 'luci.iot-guard',
@@ -229,7 +230,7 @@ return view.extend({
 			]);
 		});
 
-		return E('div', { 'class': 'cbi-map', 'style': 'padding: 20px;' }, [
+		var content = E('div', { 'class': 'cbi-map', 'style': 'padding: 20px;' }, [
 			E('h2', {}, 'IoT Devices'),
 			E('div', { 'style': 'margin-bottom: 20px;' }, [
 				E('button', {
@@ -258,5 +259,11 @@ return view.extend({
 					E('tbody', {}, rows)
 				])
 		]);
-	}
+
+		return KissTheme.wrap(content, 'admin/secubox/security/iot-guard/devices');
+	},
+
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null
 });

@@ -4,6 +4,7 @@
 'require ui';
 'require uci';
 'require rpc';
+'require secubox/kiss-theme';
 
 var callGetConfig = rpc.declare({
 	object: 'luci.dns-provider',
@@ -149,7 +150,11 @@ return view.extend({
 			]);
 
 			var container = E('div', {}, [rendered, testBtn]);
-			return container;
+			return KissTheme.wrap(container, 'admin/secubox/network/dns-provider/settings');
 		});
-	}
+	},
+
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null
 });

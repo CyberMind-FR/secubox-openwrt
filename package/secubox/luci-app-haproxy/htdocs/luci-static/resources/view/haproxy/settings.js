@@ -3,6 +3,7 @@
 'require dom';
 'require ui';
 'require haproxy.api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	load: function() {
@@ -340,7 +341,7 @@ return view.extend({
 		`);
 		view.insertBefore(style, view.firstChild);
 
-		return view;
+		return KissTheme.wrap([view], 'admin/services/haproxy/settings');
 	},
 
 	handleSave: function() {

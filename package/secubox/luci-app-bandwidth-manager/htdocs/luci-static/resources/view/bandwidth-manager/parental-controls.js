@@ -3,6 +3,7 @@
 'require ui';
 'require rpc';
 'require bandwidth-manager/api as API';
+'require secubox/kiss-theme';
 
 var PRESET_ICONS = {
 	'moon': '🌙',
@@ -187,7 +188,7 @@ return L.view.extend({
 		filterSection.appendChild(categoriesGrid);
 		v.appendChild(filterSection);
 
-		return v;
+		return KissTheme.wrap([v], 'admin/services/bandwidth-manager/parental-controls');
 	},
 
 	togglePreset: function(presetId, enabled) {

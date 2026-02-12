@@ -4,6 +4,7 @@
 'require poll';
 'require rpc';
 'require ui';
+'require secubox/kiss-theme';
 
 var callGetClients = rpc.declare({
 	object: 'luci.client-guardian',
@@ -40,86 +41,91 @@ return view.extend({
 		var approved = clients.filter(function(c) { return c.status === 'approved'; }).length;
 		var banned = clients.filter(function(c) { return c.status === 'banned'; }).length;
 
-		var view = E('div', { 'class': 'cbi-map' }, [
-			E('h2', {}, 'Client Guardian'),
-			E('div', { 'class': 'cbi-map-descr' }, 'Network client management'),
+		var content = [
+			E('h2', { 'style': 'margin-bottom: 8px;' }, 'Client Guardian'),
+			E('div', { 'style': 'color: var(--kiss-muted); margin-bottom: 24px;' }, 'Network client management'),
 
 			// Stats
-			E('div', { 'style': 'display:flex;gap:20px;margin:20px 0;' }, [
-				E('div', { 'style': 'padding:15px;background:#22c55e22;border-radius:8px;' }, [
-					E('strong', { 'style': 'font-size:24px;color:#22c55e;' }, String(online)),
-					E('div', {}, 'Online')
+			E('div', { 'class': 'kiss-grid kiss-grid-3', 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'class': 'kiss-stat' }, [
+					E('div', { 'class': 'kiss-stat-value', 'style': 'color: var(--kiss-green);' }, String(online)),
+					E('div', { 'class': 'kiss-stat-label' }, 'Online')
 				]),
-				E('div', { 'style': 'padding:15px;background:#3b82f622;border-radius:8px;' }, [
-					E('strong', { 'style': 'font-size:24px;color:#3b82f6;' }, String(approved)),
-					E('div', {}, 'Approved')
+				E('div', { 'class': 'kiss-stat' }, [
+					E('div', { 'class': 'kiss-stat-value', 'style': 'color: var(--kiss-blue);' }, String(approved)),
+					E('div', { 'class': 'kiss-stat-label' }, 'Approved')
 				]),
-				E('div', { 'style': 'padding:15px;background:#ef444422;border-radius:8px;' }, [
-					E('strong', { 'style': 'font-size:24px;color:#ef4444;' }, String(banned)),
-					E('div', {}, 'Banned')
+				E('div', { 'class': 'kiss-stat' }, [
+					E('div', { 'class': 'kiss-stat-value', 'style': 'color: var(--kiss-red);' }, String(banned)),
+					E('div', { 'class': 'kiss-stat-label' }, 'Banned')
 				])
 			]),
 
 			// Client Table
-			E('div', { 'class': 'cbi-section' }, [
-				E('table', { 'class': 'table', 'id': 'client-table' }, [
-					E('tr', { 'class': 'tr table-titles' }, [
-						E('th', { 'class': 'th' }, 'Status'),
-						E('th', { 'class': 'th' }, 'Name'),
-						E('th', { 'class': 'th' }, 'MAC'),
-						E('th', { 'class': 'th' }, 'IP'),
-						E('th', { 'class': 'th' }, 'Actions')
+			E('div', { 'class': 'kiss-card' }, [
+				E('div', { 'class': 'kiss-card-title' }, 'Clients'),
+				E('table', { 'class': 'kiss-table', 'id': 'client-table' }, [
+					E('tr', {}, [
+						E('th', {}, 'Status'),
+						E('th', {}, 'Name'),
+						E('th', {}, 'MAC'),
+						E('th', {}, 'IP'),
+						E('th', {}, 'Actions')
 					])
 				].concat(clients.map(L.bind(this.renderClientRow, this))))
 			])
-		]);
+		];
 
 		poll.add(L.bind(this.refresh, this), 10);
-		return view;
+		return KissTheme.wrap(content, 'client-guardian/overview');
 	},
 
 	renderClientRow: function(client) {
-		var statusIcon = client.online ? '🟢' : '⚪';
-		var statusStyle = '';
+		var statusBadge;
+		var rowStyle = '';
 		if (client.status === 'banned') {
-			statusIcon = '🔴';
-			statusStyle = 'background:#fee2e2;';
+			statusBadge = E('span', { 'class': 'kiss-badge kiss-badge-red' }, 'BANNED');
+			rowStyle = 'background: rgba(255,23,68,0.05);';
+		} else if (client.online) {
+			statusBadge = E('span', { 'class': 'kiss-badge kiss-badge-green' }, 'ONLINE');
+		} else {
+			statusBadge = E('span', { 'class': 'kiss-badge kiss-badge-yellow' }, 'OFFLINE');
 		}
 
-		return E('tr', { 'class': 'tr', 'style': statusStyle, 'data-mac': client.mac }, [
-			E('td', { 'class': 'td' }, statusIcon),
-			E('td', { 'class': 'td' }, client.name || client.hostname || '-'),
-			E('td', { 'class': 'td', 'style': 'font-family:monospace;' }, client.mac),
-			E('td', { 'class': 'td' }, client.ip || '-'),
-			E('td', { 'class': 'td' }, this.renderActions(client))
+		return E('tr', { 'style': rowStyle, 'data-mac': client.mac }, [
+			E('td', {}, statusBadge),
+			E('td', {}, client.name || client.hostname || '-'),
+			E('td', { 'style': 'font-family: monospace;' }, client.mac),
+			E('td', {}, client.ip || '-'),
+			E('td', {}, this.renderActions(client))
 		]);
 	},
 
 	renderActions: function(client) {
-		var actions = E('div', { 'style': 'display:flex;gap:8px;' });
+		var actions = E('div', { 'style': 'display: flex; gap: 8px;' });
 
 		if (client.status !== 'approved') {
 			var approveBtn = E('button', {
-				'class': 'cbi-button cbi-button-positive',
-				'style': 'padding:4px 12px;',
+				'class': 'kiss-btn kiss-btn-green',
+				'style': 'padding: 4px 12px; font-size: 12px;',
 				'data-mac': client.mac
-			}, '✓ Approve');
+			}, 'Approve');
 			approveBtn.addEventListener('click', L.bind(this.handleApprove, this));
 			actions.appendChild(approveBtn);
 		}
 
 		if (client.status === 'banned') {
 			var unbanBtn = E('button', {
-				'class': 'cbi-button cbi-button-action',
-				'style': 'padding:4px 12px;',
+				'class': 'kiss-btn kiss-btn-blue',
+				'style': 'padding: 4px 12px; font-size: 12px;',
 				'data-mac': client.mac
 			}, 'Unban');
 			unbanBtn.addEventListener('click', L.bind(this.handleUnban, this));
 			actions.appendChild(unbanBtn);
 		} else {
 			var banBtn = E('button', {
-				'class': 'cbi-button cbi-button-negative',
-				'style': 'padding:4px 12px;',
+				'class': 'kiss-btn kiss-btn-red',
+				'style': 'padding: 4px 12px; font-size: 12px;',
 				'data-mac': client.mac
 			}, 'Ban');
 			banBtn.addEventListener('click', L.bind(this.handleBan, this));

@@ -6,6 +6,7 @@
 'require system-hub/theme-assets as ThemeAssets';
 'require system-hub/nav as HubNav';
 'require secubox-portal/header as SbHeader';
+'require secubox/kiss-theme';
 
 var shLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||
@@ -24,7 +25,7 @@ return view.extend({
 		this.settings = data || {};
 		this.fieldRefs = {};
 
-		var container = E('div', { 'class': 'system-hub-dashboard sh-settings-view' }, [
+		var content = [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			ThemeAssets.stylesheet('common.css'),
 			ThemeAssets.stylesheet('dashboard.css'),
@@ -35,12 +36,9 @@ return view.extend({
 			this.renderThresholdSection(),
 			this.renderSupportSection(),
 			this.renderActions()
-		]);
+		];
 
-		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
-		wrapper.appendChild(SbHeader.render());
-		wrapper.appendChild(container);
-		return wrapper;
+		return KissTheme.wrap(content, 'admin/system/hub/settings');
 	},
 
 	renderHeader: function() {

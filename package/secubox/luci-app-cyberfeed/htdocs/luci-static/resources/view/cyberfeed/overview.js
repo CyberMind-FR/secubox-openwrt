@@ -3,6 +3,7 @@
 'require dom';
 'require poll';
 'require cyberfeed.api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	title: _('CyberFeed Dashboard'),
@@ -182,7 +183,7 @@ return view.extend({
 			}, 60);
 		}
 
-		return view;
+		return KissTheme.wrap([view], 'admin/services/cyberfeed');
 	},
 
 	handleSync: function() {

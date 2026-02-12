@@ -3,6 +3,7 @@
 'require rpc';
 'require secubox-theme/theme as Theme';
 'require cdn-cache/nav as CdnNav';
+'require secubox/kiss-theme';
 
 var callStats = rpc.declare({
 	object: 'luci.cdn-cache',
@@ -72,7 +73,7 @@ return view.extend({
 				return (d.ratio || 0) + '%';
 			})
 		]);
-		return view;
+		return KissTheme.wrap([view], 'admin/services/cdn-cache/statistics');
 	},
 
 	renderHero: function(stats) {

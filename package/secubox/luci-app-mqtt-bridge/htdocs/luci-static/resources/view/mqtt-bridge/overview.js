@@ -4,6 +4,7 @@
 'require mqtt-bridge/api as API';
 'require secubox-theme/theme as Theme';
 'require mqtt-bridge/nav as Nav';
+'require secubox/kiss-theme';
 
 var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||
@@ -65,7 +66,7 @@ return view.extend({
 		);
 
 		var container = E('div', { 'class': 'mqtt-bridge-dashboard' }, content);
-		return container;
+		return KissTheme.wrap([container], 'admin/services/mqtt-bridge');
 	},
 
 	renderHero: function(status) {

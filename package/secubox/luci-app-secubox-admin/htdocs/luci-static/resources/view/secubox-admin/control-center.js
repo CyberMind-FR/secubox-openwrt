@@ -5,6 +5,7 @@
 'require secubox-admin/state-utils as stateUtils';
 'require secubox-admin/components.StateIndicator as StateIndicator';
 'require secubox-admin/components.StateTimeline as StateTimeline';
+'require secubox/kiss-theme as KissTheme';
 
 /**
  * Admin Control Center - Main Dashboard
@@ -74,7 +75,7 @@ return view.extend({
 			});
 		}, 5);  // Poll every 5 seconds
 
-		return container;
+		return KissTheme.wrap([container], 'admin/secubox/admin/control-center');
 	},
 
 	/**

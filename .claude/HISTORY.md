@@ -1190,3 +1190,31 @@ _Last updated: 2026-02-11_
       - Daily: Aggregate hourly to daily, cleanup old data
     - Integrated into `secubox-core` daemon startup (r16).
     - Bumped `secubox-core` version to 0.10.0-r16.
+
+49. **InterceptoR Services Dashboard (2026-02-11)**
+    - Created `luci.services-registry` RPCD handler with 4 methods:
+      - `getServices`: All init.d services with enable/running status
+      - `getPublished`: HAProxy vhosts and Tor onion URLs
+      - `getMetrics`: System metrics (uptime, load, memory, CrowdSec stats)
+      - `getAll`: Combined aggregation of all service data
+    - Created `services.js` KISS-style dashboard with 5 tabs:
+      - **Published**: HAProxy vhosts, Tor onions with live URLs
+      - **Proxies**: mitmproxy instances with web UI links
+      - **Services**: Running daemons with enable/running badges
+      - **Dashboards**: LuCI app links for navigation
+      - **Metrics**: System health, CrowdSec alerts/bans
+    - Service emoji registry for visual identification (30+ mappings)
+    - 10-second live polling via `poll.add()`
+    - Fixed `kiss-theme.js` singleton pattern (`baseclass.singleton(KissThemeClass)`)
+    - Updated ACL with `luci.services-registry` methods
+
+50. **mitmproxy Multi-Instance Support (2026-02-11)**
+    - Updated init.d script with `config_foreach start_instance instance`
+    - Updated `mitmproxyctl` with new commands:
+      - `list-instances`: Show all configured instances with status
+      - `service-run <instance>`: Start specific instance
+      - `service-stop <instance>`: Stop specific instance
+    - UCI configuration for dual instances:
+      - `out`: LAN→Internet transparent proxy (port 8888/8089)
+      - `in`: WAF/services upstream proxy (port 8889/8090)
+    - README updated with multi-instance documentation

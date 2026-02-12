@@ -1,15 +1,17 @@
 {
 	"luci-app-interceptor": {
-		"description": "Grant access to InterceptoR Dashboard",
+		"description": "Grant access to InterceptoR Dashboard and Services Registry",
 		"read": {
 			"ubus": {
-				"luci.interceptor": ["status", "getPillarStatus"]
+				"luci.interceptor": ["status", "getPillarStatus"],
+				"luci.services-registry": ["getServices", "getPublished", "getMetrics", "getAll"]
 			},
-			"uci": ["network_tweaks", "mitmproxy", "cdn-cache", "cookie-tracker"]
+			"uci": ["network_tweaks", "mitmproxy", "cdn-cache", "cookie-tracker", "haproxy"]
 		},
 		"write": {
 			"ubus": {
-				"luci.interceptor": []
+				"luci.interceptor": [],
+				"luci.services-registry": []
 			}
 		}
 	},
@@ -17,7 +19,8 @@
 		"description": "Public access to InterceptoR status",
 		"read": {
 			"ubus": {
-				"luci.interceptor": ["status"]
+				"luci.interceptor": ["status"],
+				"luci.services-registry": ["getMetrics"]
 			}
 		}
 	}

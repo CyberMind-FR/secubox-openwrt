@@ -1,4 +1,5 @@
 'use strict';
+'require baseclass';
 
 /**
  * SecuBox KISS Theme - Shared styling for all LuCI dashboards
@@ -13,7 +14,7 @@
  *   });
  */
 
-window.KissTheme = window.KissTheme || {
+var KissThemeClass = baseclass.extend({
 	// Navigation config - shared across all views
 	nav: [
 		{ cat: 'Main', items: [
@@ -395,6 +396,10 @@ window.KissTheme = window.KissTheme || {
 			this.E('div', { 'class': 'kiss-main' }, Array.isArray(content) ? content : [content])
 		]);
 	}
-};
+});
 
-return window.KissTheme;
+// Create singleton instance and expose globally for convenience
+var KissTheme = new KissThemeClass();
+window.KissTheme = KissTheme;
+
+return KissThemeClass;

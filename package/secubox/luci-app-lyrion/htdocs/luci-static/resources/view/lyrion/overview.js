@@ -3,6 +3,7 @@
 'require ui';
 'require rpc';
 'require poll';
+'require secubox/kiss-theme';
 
 var callStatus = rpc.declare({ object: 'luci.lyrion', method: 'status', expect: {} });
 var callInstall = rpc.declare({ object: 'luci.lyrion', method: 'install', expect: {} });
@@ -110,7 +111,7 @@ return view.extend({
 
 		// Not installed view
 		if (!status.installed) {
-			return E('div', { 'class': 'ly-container' }, [
+			var content = E('div', { 'class': 'ly-container' }, [
 				E('div', { 'class': 'ly-header' }, [
 					E('h2', {}, ['\ud83c\udfb5 ', _('Lyrion Music Server')]),
 					E('div', { 'class': 'ly-status stopped' }, [
@@ -145,12 +146,13 @@ return view.extend({
 					])
 				])
 			]);
+			return KissTheme.wrap(content, 'admin/secubox/services/lyrion');
 		}
 
 		// Installed view
 		this.startPolling();
 
-		return E('div', { 'class': 'ly-container' }, [
+		var content = E('div', { 'class': 'ly-container' }, [
 			E('div', { 'class': 'ly-header' }, [
 				E('h2', {}, ['\ud83c\udfb5 ', _('Lyrion Music Server')]),
 				E('div', { 'class': 'ly-status ' + (status.running ? 'running' : 'stopped') }, [
@@ -226,6 +228,8 @@ return view.extend({
 				])
 			])
 		]);
+
+		return KissTheme.wrap(content, 'admin/secubox/services/lyrion');
 	},
 
 	handleSaveApply: null,

@@ -3,6 +3,7 @@
 'require dom';
 'require poll';
 'require crowdsec-dashboard.api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	load: function() {
@@ -66,45 +67,37 @@ return view.extend({
 		s.countries = this.parseCountries(s);
 		s.alerts = this.parseAlerts(s);
 
-		var view = E('div', { 'class': 'cs-view' }, [
+		var content = [
 			// Header
-			E('div', { 'class': 'cs-header' }, [
-				E('div', { 'class': 'cs-title' }, 'CrowdSec Dashboard'),
-				E('div', { 'class': 'cs-status' }, [
-					E('span', { 'class': 'cs-dot ' + (s.crowdsec === 'running' ? 'online' : 'offline') }),
-					s.crowdsec === 'running' ? 'Running' : 'Stopped'
-				])
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'CrowdSec Dashboard'),
+					KissTheme.badge(s.crowdsec === 'running' ? 'RUNNING' : 'STOPPED',
+						s.crowdsec === 'running' ? 'green' : 'red')
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' }, 'Collaborative security engine')
 			]),
 
 			// Navigation
 			this.renderNav('overview'),
 
 			// Stats
-			E('div', { 'class': 'cs-stats', 'id': 'cs-stats' }, this.renderStats(s)),
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'id': 'cs-stats', 'style': 'margin: 20px 0;' }, this.renderStats(s)),
 
 			// Two column layout
-			E('div', { 'class': 'cs-grid-2' }, [
+			E('div', { 'class': 'kiss-grid kiss-grid-2' }, [
 				// Alerts card
-				E('div', { 'class': 'cs-card' }, [
-					E('div', { 'class': 'cs-card-header' }, 'Recent Alerts'),
-					E('div', { 'class': 'cs-card-body', 'id': 'cs-alerts' }, this.renderAlerts(s.alerts))
-				]),
+				KissTheme.card('Recent Alerts', E('div', { 'id': 'cs-alerts' }, this.renderAlerts(s.alerts))),
 				// Health card
-				E('div', { 'class': 'cs-card' }, [
-					E('div', { 'class': 'cs-card-header' }, 'System Health'),
-					E('div', { 'class': 'cs-card-body' }, this.renderHealth(s))
-				])
+				KissTheme.card('System Health', this.renderHealth(s))
 			]),
 
 			// Geo card
-			E('div', { 'class': 'cs-card' }, [
-				E('div', { 'class': 'cs-card-header' }, 'Threat Origins'),
-				E('div', { 'class': 'cs-card-body', 'id': 'cs-geo' }, this.renderGeo(s.countries))
-			])
-		]);
+			KissTheme.card('Threat Origins', E('div', { 'id': 'cs-geo' }, this.renderGeo(s.countries)))
+		];
 
 		poll.add(L.bind(this.pollData, this), 30);
-		return view;
+		return KissTheme.wrap(content, 'admin/secubox/security/crowdsec/overview');
 	},
 
 	renderNav: function(active) {
@@ -115,35 +108,36 @@ return view.extend({
 			{ id: 'bouncers', label: 'Bouncers' },
 			{ id: 'settings', label: 'Settings' }
 		];
-		return E('div', { 'class': 'cs-nav' }, tabs.map(function(t) {
+		return E('div', { 'style': 'display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid var(--kiss-line); padding-bottom: 12px;' }, tabs.map(function(t) {
+			var isActive = active === t.id;
 			return E('a', {
 				'href': L.url('admin/secubox/security/crowdsec/' + t.id),
-				'class': active === t.id ? 'active' : ''
+				'style': 'padding: 8px 16px; text-decoration: none; border-radius: 6px; font-size: 13px; ' +
+					(isActive ? 'background: rgba(0,200,83,0.1); color: var(--kiss-green); border: 1px solid rgba(0,200,83,0.3);' :
+						'color: var(--kiss-muted); border: 1px solid transparent;')
 			}, t.label);
 		}));
 	},
 
 	renderStats: function(s) {
+		var c = KissTheme.colors;
 		var stats = [
-			{ label: 'Active Bans', value: s.active_bans || 0, type: (s.active_bans || 0) > 0 ? 'success' : '' },
-			{ label: 'Alerts (24h)', value: s.alerts_24h || 0, type: (s.alerts_24h || 0) > 10 ? 'warning' : '' },
-			{ label: 'WAF Threats', value: s.waf_threats_today || 0, type: (s.waf_threats_today || 0) > 0 ? 'warning' : '' },
-			{ label: 'WAF Auto-Bans', value: s.waf_bans_today || 0, type: (s.waf_bans_today || 0) > 0 ? 'danger' : '' }
+			{ label: 'Active Bans', value: s.active_bans || 0, color: (s.active_bans || 0) > 0 ? c.green : c.muted },
+			{ label: 'Alerts (24h)', value: s.alerts_24h || 0, color: (s.alerts_24h || 0) > 10 ? c.orange : c.muted },
+			{ label: 'WAF Threats', value: s.waf_threats_today || 0, color: (s.waf_threats_today || 0) > 0 ? c.orange : c.muted },
+			{ label: 'WAF Auto-Bans', value: s.waf_bans_today || 0, color: (s.waf_bans_today || 0) > 0 ? c.red : c.muted }
 		];
 		return stats.map(function(st) {
-			return E('div', { 'class': 'cs-stat ' + st.type }, [
-				E('div', { 'class': 'cs-stat-value' }, String(st.value)),
-				E('div', { 'class': 'cs-stat-label' }, st.label)
-			]);
+			return KissTheme.stat(st.value, st.label, st.color);
 		});
 	},
 
 	renderAlerts: function(alerts) {
 		alerts = Array.isArray(alerts) ? alerts : [];
 		if (!alerts.length) {
-			return E('div', { 'class': 'cs-empty' }, 'No recent alerts');
+			return E('div', { 'style': 'text-align: center; padding: 24px; color: var(--kiss-muted);' }, 'No recent alerts');
 		}
-		return E('table', { 'class': 'cs-table' }, [
+		return E('table', { 'class': 'kiss-table' }, [
 			E('thead', {}, E('tr', {}, [
 				E('th', {}, 'Time'),
 				E('th', {}, 'Source'),
@@ -152,9 +146,9 @@ return view.extend({
 			E('tbody', {}, alerts.slice(0, 8).map(function(a) {
 				var src = a.source || {};
 				return E('tr', {}, [
-					E('td', { 'class': 'cs-time' }, api.formatRelativeTime(a.created_at)),
-					E('td', {}, E('span', { 'class': 'cs-ip' }, src.ip || a.source_ip || '-')),
-					E('td', {}, E('span', { 'class': 'cs-scenario' }, api.parseScenario(a.scenario)))
+					E('td', { 'style': 'font-family: monospace; font-size: 12px; color: var(--kiss-muted);' }, api.formatRelativeTime(a.created_at)),
+					E('td', {}, E('span', { 'style': 'font-family: monospace; color: var(--kiss-cyan);' }, src.ip || a.source_ip || '-')),
+					E('td', {}, E('span', { 'style': 'font-size: 12px;' }, api.parseScenario(a.scenario)))
 				]);
 			}))
 		]);
@@ -169,13 +163,15 @@ return view.extend({
 			{ label: 'GeoIP', ok: s.geoip_enabled },
 			{ label: 'WAF Auto-Ban', ok: s.waf_autoban_enabled, value: s.waf_sensitivity }
 		];
-		return E('div', { 'class': 'cs-health' }, checks.map(function(c) {
+		return E('div', { 'style': 'display: flex; flex-direction: column; gap: 8px;' }, checks.map(function(c) {
 			var valueText = c.value ? c.value : (c.ok ? 'OK' : 'Disabled');
-			return E('div', { 'class': 'cs-health-item' }, [
-				E('div', { 'class': 'cs-health-icon ' + (c.ok ? 'ok' : 'error') }, c.ok ? '\u2713' : '\u2717'),
-				E('div', {}, [
-					E('div', { 'class': 'cs-health-label' }, c.label),
-					E('div', { 'class': 'cs-health-value' }, valueText)
+			return E('div', { 'style': 'display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.03);' }, [
+				E('div', { 'style': 'width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; ' +
+					(c.ok ? 'background: rgba(0,200,83,0.15); color: var(--kiss-green);' : 'background: rgba(255,23,68,0.15); color: var(--kiss-red);') },
+					c.ok ? '\u2713' : '\u2717'),
+				E('div', { 'style': 'flex: 1;' }, [
+					E('div', { 'style': 'font-size: 13px; color: var(--kiss-text);' }, c.label),
+					E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted);' }, valueText)
 				])
 			]);
 		}));
@@ -184,14 +180,14 @@ return view.extend({
 	renderGeo: function(countries) {
 		var entries = Object.entries(countries || {});
 		if (!entries.length) {
-			return E('div', { 'class': 'cs-empty' }, 'No geographic data');
+			return E('div', { 'style': 'text-align: center; padding: 24px; color: var(--kiss-muted);' }, 'No geographic data');
 		}
 		entries.sort(function(a, b) { return b[1] - a[1]; });
-		return E('div', { 'class': 'cs-geo-grid' }, entries.slice(0, 12).map(function(e) {
-			return E('div', { 'class': 'cs-geo-item' }, [
-				E('span', { 'class': 'cs-flag' }, api.getCountryFlag(e[0])),
-				E('span', { 'class': 'cs-geo-count' }, String(e[1])),
-				E('span', { 'class': 'cs-country' }, e[0])
+		return E('div', { 'style': 'display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 12px;' }, entries.slice(0, 12).map(function(e) {
+			return E('div', { 'style': 'display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(255,255,255,0.02); border-radius: 6px;' }, [
+				E('span', { 'style': 'font-size: 18px;' }, api.getCountryFlag(e[0])),
+				E('span', { 'style': 'font-family: monospace; font-weight: 600; color: var(--kiss-orange);' }, String(e[1])),
+				E('span', { 'style': 'font-size: 11px; color: var(--kiss-muted);' }, e[0])
 			]);
 		}));
 	},

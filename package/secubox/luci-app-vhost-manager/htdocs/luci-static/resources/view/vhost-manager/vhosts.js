@@ -8,6 +8,7 @@
 'require vhost-manager/api as API';
 'require secubox-theme/theme as Theme';
 'require vhost-manager/ui as VHostUI';
+'require secubox/kiss-theme';
 
 var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||
@@ -139,7 +140,9 @@ return L.view.extend({
 		// Start auto-refresh polling
 		poll.add(L.bind(this.pollData, this), 10);
 
-		return m.render();
+		return m.render().then(function(rendered) {
+			return KissTheme.wrap([rendered], 'admin/services/vhost/vhosts');
+		});
 	},
 
 	pollData: function() {

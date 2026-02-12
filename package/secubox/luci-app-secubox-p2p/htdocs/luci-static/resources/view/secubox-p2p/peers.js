@@ -2,6 +2,7 @@
 "require view";
 "require ui";
 "require rpc";
+"require secubox/kiss-theme";
 
 var callGetPeers = rpc.declare({
 	object: "luci.secubox-p2p",
@@ -58,7 +59,7 @@ return view.extend({
 			]));
 		}
 
-		return E("div", { "class": "cbi-map" }, [
+		var content = E("div", { "class": "cbi-map" }, [
 			E("h2", {}, "P2P Peers"),
 			E("div", { "class": "cbi-section" }, [
 				E("div", { "style": "margin-bottom: 1em;" }, [
@@ -75,6 +76,8 @@ return view.extend({
 				E("table", { "class": "table" }, rows)
 			])
 		]);
+
+		return KissTheme.wrap(content, 'admin/secubox/mirrorbox/peers');
 	},
 
 	discoverPeers: function() {

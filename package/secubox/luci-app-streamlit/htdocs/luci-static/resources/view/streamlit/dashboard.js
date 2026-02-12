@@ -3,6 +3,7 @@
 'require ui';
 'require poll';
 'require streamlit.api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	status: {},
@@ -113,7 +114,7 @@ return view.extend({
 			});
 		}, 5);
 
-		return view;
+		return KissTheme.wrap(view, 'admin/secubox/services/streamlit/dashboard');
 	},
 
 	renderControls: function(installed, running) {

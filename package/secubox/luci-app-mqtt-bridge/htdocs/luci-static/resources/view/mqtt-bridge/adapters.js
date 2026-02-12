@@ -6,6 +6,7 @@
 'require rpc';
 'require mqtt-bridge/api as API';
 'require secubox-theme/theme as Theme';
+'require secubox/kiss-theme';
 
 return view.extend({
 	load: function() {
@@ -241,7 +242,7 @@ return view.extend({
 		}
 
 		var container = E('div', { 'class': 'mqtt-adapters-container' }, containerContent);
-		return container;
+		return KissTheme.wrap([container], 'admin/services/mqtt-bridge/adapters');
 	},
 
 	renderConfiguredAdapters: function(adapters) {

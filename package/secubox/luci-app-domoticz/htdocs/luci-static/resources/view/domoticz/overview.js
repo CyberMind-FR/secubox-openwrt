@@ -4,6 +4,7 @@
 'require uci';
 'require rpc';
 'require ui';
+'require secubox/kiss-theme';
 
 var callStatus = rpc.declare({
 	object: 'luci.domoticz',
@@ -448,6 +449,6 @@ return view.extend({
 			});
 		};
 
-		return m.render();
+		return KissTheme.wrap([m.render()], 'admin/services/domoticz');
 	}
 });

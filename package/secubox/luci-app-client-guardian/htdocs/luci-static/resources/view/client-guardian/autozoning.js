@@ -6,6 +6,7 @@
 'require client-guardian/api as API';
 'require client-guardian/nav as CgNav';
 'require secubox-portal/header as SbHeader';
+'require secubox/kiss-theme';
 
 return view.extend({
 	load: function() {
@@ -118,7 +119,7 @@ return view.extend({
 			]);
 
 			wrapper.appendChild(view);
-			return wrapper;
+			return KissTheme.wrap(wrapper, 'admin/secubox/guardian/autozoning');
 		});
 	},
 

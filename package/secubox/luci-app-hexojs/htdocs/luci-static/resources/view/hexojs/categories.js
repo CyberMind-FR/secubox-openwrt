@@ -1,6 +1,7 @@
 'use strict';
 'require view';
 'require hexojs/api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	title: _('Categories'),
@@ -12,7 +13,7 @@ return view.extend({
 	render: function(data) {
 		var categories = data.categories || [];
 
-		return E('div', { 'class': 'hexo-dashboard' }, [
+		var view = E('div', { 'class': 'hexo-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('hexojs/dashboard.css') }),
 
 			// Header
@@ -56,6 +57,8 @@ return view.extend({
 				])
 			])
 		]);
+
+		return KissTheme.wrap([view], 'admin/services/hexojs/categories');
 	},
 
 	handleSaveApply: null,

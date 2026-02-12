@@ -4,6 +4,7 @@
 'require dom';
 'require ui';
 'require wireguard-dashboard/api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	title: _('WireGuard Configuration'),
@@ -122,8 +123,8 @@ return view.extend({
 		// Include CSS
 		var cssLink = E('link', { 'rel': 'stylesheet', 'href': L.resource('wireguard-dashboard/dashboard.css') });
 		document.head.appendChild(cssLink);
-		
-		return view;
+
+		return KissTheme.wrap([view], 'admin/network/wireguard-dashboard/config');
 	},
 	
 	handleSaveApply: null,

@@ -2,6 +2,7 @@
 'require view';
 'require rpc';
 'require ui';
+'require secubox/kiss-theme';
 
 var callResults = rpc.declare({
 	object: 'luci.config-advisor',
@@ -248,7 +249,7 @@ return view.extend({
 			])
 		]));
 
-		return view;
+		return KissTheme.wrap([view], 'admin/secubox/security/config-advisor/remediation');
 	},
 
 	handleSaveApply: null,

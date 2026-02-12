@@ -4,6 +4,7 @@
 'require poll';
 'require rpc';
 'require ui';
+'require secubox/kiss-theme';
 
 var callListGroups = rpc.declare({
 	object: 'luci.bandwidth-manager',
@@ -107,7 +108,7 @@ return view.extend({
 
 		poll.add(L.bind(this.pollData, this), 15);
 
-		return view;
+		return KissTheme.wrap([view], 'admin/services/bandwidth-manager/groups');
 	},
 
 	pollData: function() {

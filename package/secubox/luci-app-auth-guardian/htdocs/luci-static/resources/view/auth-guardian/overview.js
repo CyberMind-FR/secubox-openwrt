@@ -4,6 +4,7 @@
 'require poll';
 'require secubox-theme/theme as Theme';
 'require auth-guardian/api as api';
+'require secubox/kiss-theme';
 
 // Initialize theme
 Theme.init();
@@ -127,12 +128,12 @@ return view.extend({
 			});
 		}, 15);
 
-		return E('div', { 'class': 'cbi-map' }, [
+		return KissTheme.wrap([
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
 			this.renderHeader(),
 			E('div', { 'id': 'ag-content' }, this.renderContent())
-		]);
+		], 'admin/secubox/auth-guardian/overview');
 	},
 
 	renderContent: function() {

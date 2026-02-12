@@ -6,6 +6,7 @@
 'require vhost-manager/api as API';
 'require secubox-theme/theme as Theme';
 'require vhost-manager/ui as VHostUI';
+'require secubox/kiss-theme';
 
 var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||
@@ -95,13 +96,15 @@ return view.extend({
 		this.vhostsData = data[0] || [];
 		this.updateActiveRedirects();
 
-		return E('div', { 'class': 'vhost-page' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('vhost-manager/common.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('vhost-manager/dashboard.css') }),
-			VHostUI.renderTabs('redirects'),
-			this.renderDashboard()
-		]);
+		return KissTheme.wrap([
+			E('div', { 'class': 'vhost-page' }, [
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('vhost-manager/common.css') }),
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('vhost-manager/dashboard.css') }),
+				VHostUI.renderTabs('redirects'),
+				this.renderDashboard()
+			])
+		], 'admin/services/vhost/redirects');
 	},
 
 	renderDashboard: function() {

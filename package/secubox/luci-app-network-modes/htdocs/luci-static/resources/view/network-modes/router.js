@@ -6,6 +6,7 @@
 'require network-modes/helpers as helpers';
 'require secubox-theme/theme as Theme';
 'require secubox-portal/header as SbHeader';
+'require secubox/kiss-theme';
 
 var nmLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||
@@ -267,7 +268,7 @@ return view.extend({
 
 		this.bindRouterActions(container);
 		wrapper.appendChild(container);
-		return wrapper;
+		return KissTheme.wrap([wrapper], 'admin/network/modes/router');
 	},
 
 	bindRouterActions: function(container) {

@@ -3,6 +3,7 @@
 'require ui';
 'require poll';
 'require bandwidth-manager/api as API';
+'require secubox/kiss-theme';
 
 // SecuBox Theme Colors
 var COLORS = {
@@ -147,7 +148,7 @@ return L.view.extend({
 			self.startRealtimePolling();
 		});
 
-		return v;
+		return KissTheme.wrap([v], 'admin/services/bandwidth-manager/traffic-graphs');
 	},
 
 	initRealtimeChart: function() {

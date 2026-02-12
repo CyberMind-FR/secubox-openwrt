@@ -5,6 +5,7 @@
 'require ui';
 'require wireguard-dashboard/api as api';
 'require wireguard-dashboard/qrcode as qrcode';
+'require secubox/kiss-theme';
 
 return view.extend({
 	title: _('QR Code Generator'),
@@ -513,7 +514,7 @@ return view.extend({
 		var cssLink = E('link', { 'rel': 'stylesheet', 'href': L.resource('wireguard-dashboard/dashboard.css') });
 		document.head.appendChild(cssLink);
 
-		return view;
+		return KissTheme.wrap([view], 'admin/network/wireguard-dashboard/qrcodes');
 	},
 
 	handleSaveApply: null,

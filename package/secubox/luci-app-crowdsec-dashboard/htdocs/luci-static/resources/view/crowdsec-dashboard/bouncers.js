@@ -4,6 +4,7 @@
 'require poll';
 'require ui';
 'require crowdsec-dashboard.api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	bouncers: [],
@@ -80,7 +81,7 @@ return view.extend({
 		]);
 
 		poll.add(L.bind(this.pollData, this), 15);
-		return view;
+		return KissTheme.wrap([view], 'admin/secubox/security/crowdsec/bouncers');
 	},
 
 	renderNav: function(active) {

@@ -8,6 +8,7 @@
 'require system-hub/theme-assets as ThemeAssets';
 'require system-hub/nav as HubNav';
 'require secubox-portal/header as SbHeader';
+'require secubox/kiss-theme';
 
 var shLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||
@@ -27,7 +28,7 @@ return view.extend({
 
 		this.componentsData = components;
 
-		var view = E('div', { 'class': 'system-hub-dashboard' }, [
+		var content = [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			ThemeAssets.stylesheet('common.css'),
 			ThemeAssets.stylesheet('dashboard.css'),
@@ -50,7 +51,7 @@ return view.extend({
 			E('div', { 'class': 'sh-components-grid', 'id': 'components-grid' },
 				this.renderComponentsGrid(components, this.currentFilter)
 			)
-		]);
+		];
 
 		// Setup auto-refresh
 		poll.add(L.bind(function() {
@@ -62,10 +63,7 @@ return view.extend({
 			}, this));
 		}, this), 30);
 
-		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
-		wrapper.appendChild(SbHeader.render());
-		wrapper.appendChild(view);
-		return wrapper;
+		return KissTheme.wrap(content, 'admin/system/hub/components');
 	},
 
 	renderFilterTabs: function() {

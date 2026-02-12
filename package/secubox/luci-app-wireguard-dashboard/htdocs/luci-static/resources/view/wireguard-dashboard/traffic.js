@@ -5,6 +5,7 @@
 'require dom';
 'require ui';
 'require wireguard-dashboard/api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	title: _('WireGuard Traffic'),
@@ -205,7 +206,7 @@ return view.extend({
 		// Start auto-refresh
 		this.startPolling();
 
-		return view;
+		return KissTheme.wrap([view], 'admin/network/wireguard-dashboard/traffic');
 	},
 
 	handleSaveApply: null,

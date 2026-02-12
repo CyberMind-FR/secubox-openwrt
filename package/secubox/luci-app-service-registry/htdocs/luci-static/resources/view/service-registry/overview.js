@@ -4,6 +4,7 @@
 'require poll';
 'require ui';
 'require service-registry/api as api';
+'require secubox/kiss-theme';
 
 // Category icons
 var catIcons = {
@@ -55,15 +56,17 @@ return view.extend({
 			E('span', { 'class': 'spinning' }, 'Loading network info...'));
 		this.loadNetworkInfo(networkPanel);
 
-		return E('div', { 'class': 'sr-compact' }, [
-			this.renderHeader(services, providers, data.haproxy, data.tor),
-			this.renderHealthSummary(data.health),
-			networkPanel,
-			this.renderUrlChecker(),
-			this.renderSection('📡 Published Services', published, true),
-			this.renderSection('🔍 Discovered Services', unpublished, false),
-			this.renderLandingLink(data.landing)
-		]);
+		return KissTheme.wrap([
+			E('div', { 'class': 'sr-compact' }, [
+				this.renderHeader(services, providers, data.haproxy, data.tor),
+				this.renderHealthSummary(data.health),
+				networkPanel,
+				this.renderUrlChecker(),
+				this.renderSection('📡 Published Services', published, true),
+				this.renderSection('🔍 Discovered Services', unpublished, false),
+				this.renderLandingLink(data.landing)
+			])
+		], 'admin/secubox/services/service-registry/overview');
 	},
 
 	loadNetworkInfo: function(container) {

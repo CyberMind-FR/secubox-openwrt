@@ -5,6 +5,7 @@
 'require rpc';
 'require poll';
 'require secubox-p2p/api as P2PAPI';
+'require secubox/kiss-theme';
 
 return view.extend({
 	// State
@@ -279,7 +280,7 @@ return view.extend({
 	render: function() {
 		var self = this;
 
-		return E('div', { 'class': 'cbi-map' }, [
+		var content = E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, _('P2P App Store')),
 			E('p', { 'style': 'color:#666; margin-bottom:1em' },
 				_('Discover and install packages from local feed and mesh peers.')),
@@ -301,6 +302,8 @@ return view.extend({
 
 			this.renderSettings()
 		]);
+
+		return KissTheme.wrap(content, 'admin/secubox/p2p/packages');
 	},
 
 	handleSaveApply: null,

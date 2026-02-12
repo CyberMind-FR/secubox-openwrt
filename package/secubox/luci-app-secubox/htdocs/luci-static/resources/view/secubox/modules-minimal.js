@@ -4,6 +4,7 @@
 'require secubox/api as API';
 'require secubox/nav as SecuNav';
 'require secubox-portal/header as SbHeader';
+'require secubox/kiss-theme';
 
 // Load theme resources
 document.head.appendChild(E('link', {
@@ -66,7 +67,7 @@ return view.extend({
 		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
 		wrapper.appendChild(SbHeader.render());
 		wrapper.appendChild(container);
-		return wrapper;
+		return KissTheme.wrap(wrapper, 'admin/secubox/modules-minimal');
 	},
 
 	renderHeaderChip: function(icon, label, value) {

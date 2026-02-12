@@ -5,6 +5,7 @@
 'require ui';
 'require rpc';
 'require secubox-p2p/api as P2PAPI';
+'require secubox/kiss-theme';
 
 // RPC calls for profiles
 var callListProfiles = rpc.declare({
@@ -295,7 +296,7 @@ return view.extend({
 			this.renderCloneActions()
 		]);
 
-		return container;
+		return KissTheme.wrap(container, 'admin/secubox/p2p/profiles');
 	},
 
 	renderHeader: function() {

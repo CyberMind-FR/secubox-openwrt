@@ -4,6 +4,7 @@
 'require poll';
 'require ui';
 'require ksm-manager/api as KSM';
+'require secubox/kiss-theme';
 
 return view.extend({
 	load: function() {
@@ -197,7 +198,7 @@ return view.extend({
 			])
 		]);
 
-		return view;
+		return KissTheme.wrap([view], 'admin/secubox/ksm/overview');
 	},
 
 	renderExpiringCertificates: function(certificates) {

@@ -17,5 +17,13 @@
 			"type": "view",
 			"path": "interceptor/overview"
 		}
+	},
+	"admin/secubox/interceptor/services": {
+		"title": "Services",
+		"order": 2,
+		"action": {
+			"type": "view",
+			"path": "interceptor/services"
+		}
 	}
 }

@@ -1,5 +1,6 @@
 'use strict';
 'require view';
+'require secubox/kiss-theme';
 
 return view.extend({
 	load: function() {

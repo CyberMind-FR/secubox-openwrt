@@ -2,6 +2,7 @@
 'require view';
 'require form';
 'require uci';
+'require secubox/kiss-theme';
 
 return view.extend({
 	load: function() {
@@ -67,6 +68,6 @@ return view.extend({
 				'</div>';
 		};
 
-		return m.render();
+		return KissTheme.wrap([m.render()], 'admin/services/metablogizer/settings');
 	}
 });

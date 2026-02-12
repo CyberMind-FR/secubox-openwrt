@@ -4,6 +4,7 @@
 'require ui';
 'require rpc';
 'require haproxy.api as api';
+'require secubox/kiss-theme';
 
 // Async certificate API
 var callStartCertRequest = rpc.declare({
@@ -172,7 +173,7 @@ return view.extend({
 			])
 		]);
 
-		return view;
+		return KissTheme.wrap([view], 'admin/services/haproxy/certificates');
 	},
 
 	renderActiveTasks: function(tasks) {

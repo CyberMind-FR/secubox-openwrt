@@ -4,6 +4,7 @@
 'require rpc';
 'require poll';
 'require bandwidth-manager/api as API';
+'require secubox/kiss-theme';
 
 var PROFILE_ICONS = {
 	'gamepad': { icon: '🎮', color: '#8b5cf6' },
@@ -162,7 +163,7 @@ return L.view.extend({
 			v.appendChild(assignmentsSection);
 		}
 
-		return v;
+		return KissTheme.wrap([v], 'admin/services/bandwidth-manager/profiles');
 	},
 
 	showCreateProfileModal: function(clients, groups) {

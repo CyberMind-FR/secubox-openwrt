@@ -3,6 +3,7 @@
 'require dom';
 'require ui';
 'require mmpm/api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	title: _('MMPM Dashboard'),
@@ -194,6 +195,6 @@ return view.extend({
 			wrapper.appendChild(linksSection);
 		}
 
-		return wrapper;
+		return KissTheme.wrap([wrapper], 'admin/secubox/services/mmpm/dashboard');
 	}
 });

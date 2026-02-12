@@ -4,6 +4,7 @@
 'require form';
 'require ui';
 'require ksm-manager/api as KSM';
+'require secubox/kiss-theme';
 
 return view.extend({
 	load: function() {
@@ -88,10 +89,10 @@ return view.extend({
 			])
 		]);
 
-		return E([], [
+		return KissTheme.wrap([
 			m.render(),
 			keysTable
-		]);
+		], 'admin/secubox/ksm/keys');
 	},
 
 	renderKeysTable: function(keys) {

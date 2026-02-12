@@ -2,6 +2,7 @@
 'require view';
 'require dom';
 'require cyberfeed.api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	title: _('Feed Preview'),
@@ -110,7 +111,7 @@ return view.extend({
 			E('div', { 'class': 'cf-card-body' }, [itemsContainer])
 		]));
 
-		return E('div', { 'class': 'cyberfeed-dashboard' }, content);
+		return KissTheme.wrap([E('div', { 'class': 'cyberfeed-dashboard' }, content)], 'admin/services/cyberfeed/preview');
 	},
 
 	filterItems: function(category, button) {

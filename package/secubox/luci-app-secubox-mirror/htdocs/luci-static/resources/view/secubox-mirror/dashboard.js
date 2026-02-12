@@ -3,6 +3,7 @@
 'require rpc';
 'require ui';
 'require poll';
+'require secubox/kiss-theme';
 
 var callStatus = rpc.declare({
     object: 'luci.mirrornet',
@@ -410,7 +411,7 @@ return view.extend({
             });
         }, this), 30);
 
-        return view;
+        return KissTheme.wrap([view], 'admin/services/mirrornet');
     },
 
     handleSaveApply: null,

@@ -2,6 +2,7 @@
 'require view';
 'require secubox-theme/theme as Theme';
 'require auth-guardian/api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
     load: function() { return api.getOAuthProviders(); },
@@ -9,8 +10,8 @@ return view.extend({
         var providers = data.providers || [];
         var icons = {google:'🔵',github:'⚫',facebook:'🔷',twitter:'🐦'};
         var colors = {google:'#4285f4',github:'#333',facebook:'#1877f2',twitter:'#1da1f2'};
-        
-        return E('div', {class:'cbi-map'}, [
+
+        var view = E('div', {class:'cbi-map'}, [
             E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
             E('h2', {}, '🔑 OAuth Providers'),
             E('p', {style:'color:#94a3b8;margin-bottom:20px'}, 'Configure third-party authentication providers.'),
@@ -32,6 +33,7 @@ return view.extend({
                 ]);
             }))
         ]);
+        return KissTheme.wrap([view], 'admin/secubox/auth/auth-guardian/oauth');
     },
     handleSaveApply:null,handleSave:null,handleReset:null
 });

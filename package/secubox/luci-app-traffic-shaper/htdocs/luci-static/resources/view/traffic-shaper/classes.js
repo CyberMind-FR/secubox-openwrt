@@ -1,6 +1,7 @@
 'use strict';
 'require view';
 'require secubox-theme/theme as Theme';
+'require secubox/kiss-theme as KissTheme';
 'require network';
 'require form';
 'require ui';
@@ -123,10 +124,12 @@ return view.extend({
 
 			rendered.insertBefore(helpBox, rendered.firstChild);
 
-			return E('div', {}, [
+			var content = E('div', {}, [
 				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 				rendered
 			]);
+
+			return KissTheme.wrap([content], 'admin/network/traffic-shaper/classes');
 		});
 	},
 

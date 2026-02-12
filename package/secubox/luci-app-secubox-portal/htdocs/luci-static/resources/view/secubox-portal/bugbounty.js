@@ -1,6 +1,7 @@
 'use strict';
 'require view';
 'require dom';
+'require secubox/kiss-theme';
 
 /**
  * SecuBox Bug Bounty Program - Public Page
@@ -313,7 +314,7 @@ return view.extend({
 		`;
 		document.head.appendChild(style);
 
-		return E('div', { 'class': 'bb-public-page' }, [
+		return KissTheme.wrap([E('div', { 'class': 'bb-public-page' }, [
 			E('div', { 'class': 'bb-public-container' }, [
 				// Header
 				E('div', { 'class': 'bb-public-header' }, [
@@ -547,7 +548,7 @@ return view.extend({
 					E('p', {}, 'Open Source Apache-2.0 \u2014 \ud83c\uddeb\ud83c\uddf7 Made in France with \u2764\ufe0f')
 				])
 			])
-		]);
+		])], 'admin/secubox/portal/bugbounty');
 	},
 
 	handleSaveApply: null,

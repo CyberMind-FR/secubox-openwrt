@@ -1,25 +1,25 @@
 'use strict';
 'require view';
 'require rpc';
-'require secubox-theme/theme as Theme';
-'require cdn-cache/nav as CdnNav';
+'require poll';
+'require secubox/kiss-theme';
 
 var callStatus = rpc.declare({
 	object: 'luci.cdn-cache',
 	method: 'status',
-	expect: { }
+	expect: {}
 });
 
 var callStats = rpc.declare({
 	object: 'luci.cdn-cache',
 	method: 'stats',
-	expect: { }
+	expect: {}
 });
 
 var callCacheSize = rpc.declare({
 	object: 'luci.cdn-cache',
 	method: 'cache_size',
-	expect: { }
+	expect: {}
 });
 
 var callTopDomains = rpc.declare({
@@ -29,24 +29,20 @@ var callTopDomains = rpc.declare({
 });
 
 function formatBytes(bytes) {
-	if (!bytes)
-		return '0 B';
+	if (!bytes) return '0 B';
 	var units = ['B', 'KB', 'MB', 'GB', 'TB'];
 	var i = Math.floor(Math.log(bytes) / Math.log(1024));
-	return (bytes / Math.pow(1024, i)).toFixed(2) + ' ' + units[i];
+	return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + units[i];
 }
 
 function formatUptime(seconds) {
-	if (!seconds)
-		return '0s';
+	if (!seconds) return '0s';
 	var days = Math.floor(seconds / 86400);
 	var hours = Math.floor((seconds % 86400) / 3600);
 	var minutes = Math.floor((seconds % 3600) / 60);
-	if (days)
-		return days + 'd ' + hours + 'h';
-	if (hours)
-		return hours + 'h ' + minutes + 'm';
-	return minutes + 'm ' + (seconds % 60) + 's';
+	if (days) return days + 'd ' + hours + 'h';
+	if (hours) return hours + 'h ' + minutes + 'm';
+	return minutes + 'm';
 }
 
 return view.extend({
@@ -60,151 +56,140 @@ return view.extend({
 	},
 
 	render: function(data) {
-		// Initialize theme
-		var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
-			(document.documentElement && document.documentElement.getAttribute('lang')) ||
-			(navigator.language ? navigator.language.split('-')[0] : 'en');
-		Theme.init({ language: lang });
-
 		var status = data[0] || {};
 		var stats = data[1] || {};
 		var cacheSize = data[2] || {};
 		var topDomains = (data[3] && data[3].domains) || [];
 
-		return E('div', { 'class': 'cdn-dashboard' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('cdn-cache/common.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('cdn-cache/dashboard.css') }),
-			CdnNav.renderTabs('overview'),
-			this.renderHeader(status),
-			this.renderMetricGrid(stats, cacheSize),
-			this.renderSections(stats, cacheSize, topDomains)
-		]);
-	},
+		var self = this;
 
-	renderHeader: function(status) {
-		var stats = [
-			{ icon: '🏷️', label: _('Version'), value: status.version || _('Unknown') },
-			{ icon: '🟢', label: _('Service'), value: status.running ? _('Running') : _('Stopped'), tone: status.running ? 'success' : 'danger' },
-			{ icon: '⏱', label: _('Uptime'), value: formatUptime(status.uptime || 0) },
-			{ icon: '📁', label: _('Cache files'), value: (status.cache_files || 0).toLocaleString() }
-		];
+		// Setup polling
+		poll.add(function() {
+			return Promise.all([
+				L.resolveDefault(callStatus(), {}),
+				L.resolveDefault(callStats(), {}),
+				L.resolveDefault(callCacheSize(), {}),
+				L.resolveDefault(callTopDomains(), { domains: [] })
+			]).then(function(d) {
+				self.updateStats(d[0], d[1], d[2], d[3].domains || []);
+			});
+		}, 10);
 
-		return E('div', { 'class': 'sh-page-header sh-page-header-lite' }, [
-			E('div', {}, [
-				E('h2', { 'class': 'sh-page-title' }, [
-					E('span', { 'class': 'sh-page-title-icon' }, '📦'),
-					_('CDN Cache Control')
+		return KissTheme.wrap([
+			// Header
+			KissTheme.E('div', { 'style': 'display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;' }, [
+				KissTheme.E('div', {}, [
+					KissTheme.E('h1', { 'style': 'font-size:28px;font-weight:700;margin:0;' }, '💾 CDN Cache'),
+					KissTheme.E('p', { 'style': 'color:var(--kiss-muted);margin:4px 0 0;' }, 'Edge caching for media, firmware, and downloads')
 				]),
-				E('p', { 'class': 'sh-page-subtitle' },
-					_('Edge caching for media, firmware, and downloads'))
+				KissTheme.badge(status.running ? 'RUNNING' : 'STOPPED', status.running ? 'green' : 'red')
 			]),
-			E('div', { 'class': 'sh-header-meta' }, stats.map(this.renderHeaderChip, this))
-		]);
-	},
 
-	renderHeaderChip: function(stat) {
-		return E('div', { 'class': 'sh-header-chip' + (stat.tone ? ' ' + stat.tone : '') }, [
-			E('span', { 'class': 'sh-chip-icon' }, stat.icon || '•'),
-			E('div', { 'class': 'sh-chip-text' }, [
-				E('span', { 'class': 'sh-chip-label' }, stat.label),
-				E('strong', {}, stat.value)
-			])
-		]);
-	},
+			// Stats Grid
+			KissTheme.E('div', { 'class': 'kiss-grid kiss-grid-4', 'style': 'margin-bottom:20px;' }, [
+				KissTheme.stat(stats.hit_ratio || 0, 'Hit Ratio %', 'var(--kiss-green)'),
+				KissTheme.stat(formatBytes((cacheSize.used_kb || 0) * 1024), 'Cache Used'),
+				KissTheme.stat((stats.requests || 0).toLocaleString(), 'Requests'),
+				KissTheme.stat(formatBytes(stats.bandwidth_saved_bytes || 0), 'BW Saved', 'var(--kiss-cyan)')
+			]),
 
-	renderMetricGrid: function(stats, cacheSize) {
-		return E('section', { 'class': 'cdn-metric-grid' }, [
-			this.renderMetricCard('🎯', _('Hit Ratio'), (stats.hit_ratio || 0) + '%', (stats.hits || 0).toLocaleString() + ' hits / ' + (stats.misses || 0).toLocaleString() + ' misses'),
-			this.renderMetricCard('💾', _('Cache Used'), formatBytes((cacheSize.used_kb || 0) * 1024), (cacheSize.usage_percent || 0) + '% of ' + formatBytes((cacheSize.max_kb || 0) * 1024)),
-			this.renderMetricCard('📊', _('Requests'), (stats.requests || 0).toLocaleString(), _('Objects cached: ') + (stats.unique_objects || 0)),
-			this.renderMetricCard('⚡', _('Bandwidth Saved'), formatBytes(stats.bandwidth_saved_bytes || 0), _('Local delivery savings'))
-		]);
-	},
-
-	renderMetricCard: function(icon, label, value, sub) {
-		return E('div', { 'class': 'cdn-metric-card' }, [
-			E('div', { 'class': 'cdn-card-icon' }, icon),
-			E('div', { 'class': 'cdn-metric-label' }, label),
-			E('div', { 'class': 'cdn-metric-value' }, value),
-			E('div', { 'class': 'cdn-metric-sub' }, sub)
-		]);
-	},
-
-	renderSections: function(stats, cacheSize, topDomains) {
-		return E('div', { 'class': 'cdn-sections-grid' }, [
-			E('div', { 'class': 'cdn-section' }, [
-				E('div', { 'class': 'cdn-section-header' }, [
-					E('div', { 'class': 'cdn-section-title' }, ['🎯', _('Hit Ratio')]),
-					E('span', { 'class': 'sb-badge sb-badge-ghost' }, _('Real-time'))
+			// Details Grid
+			KissTheme.E('div', { 'class': 'kiss-grid kiss-grid-3' }, [
+				// Service Info
+				KissTheme.E('div', { 'class': 'kiss-card kiss-panel-green' }, [
+					KissTheme.E('div', { 'class': 'kiss-card-title' }, '⚙️ Service'),
+					KissTheme.E('table', { 'class': 'kiss-table', 'style': 'margin-top:12px;' }, [
+						KissTheme.E('tbody', {}, [
+							this.tableRow('Version', status.version || 'Unknown'),
+							this.tableRow('Uptime', formatUptime(status.uptime || 0)),
+							this.tableRow('Cache Files', (status.cache_files || 0).toLocaleString()),
+							this.tableRow('Objects', (stats.unique_objects || 0).toLocaleString())
+						])
+					])
 				]),
-				this.renderRatioGauge(stats.hit_ratio || 0),
-				E('div', { 'class': 'cdn-domain-stats' }, [
-					_('Hits: ') + (stats.hits || 0).toLocaleString(),
-					_('Misses: ') + (stats.misses || 0).toLocaleString(),
-					_('Requests: ') + (stats.requests || 0).toLocaleString()
+
+				// Hit/Miss Stats
+				KissTheme.E('div', { 'class': 'kiss-card kiss-panel-blue' }, [
+					KissTheme.E('div', { 'class': 'kiss-card-title' }, '🎯 Cache Performance'),
+					this.renderGauge(stats.hit_ratio || 0),
+					KissTheme.E('div', { 'style': 'display:flex;justify-content:space-between;margin-top:12px;font-size:13px;' }, [
+						KissTheme.E('span', {}, ['Hits: ', KissTheme.E('strong', { 'style': 'color:var(--kiss-green);' }, (stats.hits || 0).toLocaleString())]),
+						KissTheme.E('span', {}, ['Misses: ', KissTheme.E('strong', { 'style': 'color:var(--kiss-red);' }, (stats.misses || 0).toLocaleString())])
+					])
+				]),
+
+				// Storage
+				KissTheme.E('div', { 'class': 'kiss-card kiss-panel-purple' }, [
+					KissTheme.E('div', { 'class': 'kiss-card-title' }, '💿 Storage'),
+					KissTheme.E('div', { 'style': 'margin:16px 0;' }, [
+						KissTheme.E('div', { 'style': 'display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px;' }, [
+							KissTheme.E('span', {}, (cacheSize.usage_percent || 0) + '% used'),
+							KissTheme.E('span', { 'style': 'color:var(--kiss-muted);' }, formatBytes((cacheSize.used_kb || 0) * 1024) + ' / ' + formatBytes((cacheSize.max_kb || 0) * 1024))
+						]),
+						KissTheme.E('div', { 'class': 'kiss-progress' }, [
+							KissTheme.E('div', { 'class': 'kiss-progress-fill', 'style': 'width:' + (cacheSize.usage_percent || 0) + '%;' })
+						])
+					]),
+					KissTheme.E('div', { 'style': 'text-align:center;padding:16px;background:rgba(0,200,83,0.05);border-radius:8px;margin-top:12px;' }, [
+						KissTheme.E('div', { 'style': 'font-family:Orbitron,monospace;font-size:24px;color:var(--kiss-green);' }, formatBytes(stats.bandwidth_saved_bytes || 0)),
+						KissTheme.E('div', { 'style': 'font-size:11px;color:var(--kiss-muted);text-transform:uppercase;letter-spacing:1px;' }, 'Bandwidth Saved')
+					])
 				])
 			]),
-			E('div', { 'class': 'cdn-section' }, [
-				E('div', { 'class': 'cdn-section-header' }, [
-					E('div', { 'class': 'cdn-section-title' }, ['🌐', _('Top Domains Served')]),
-					E('span', { 'class': 'sb-badge sb-badge-ghost' }, _('Last hour'))
-				]),
-				E('ul', { 'class': 'cdn-domain-list' },
-					topDomains.slice(0, 6).map(function(domain) {
-						return E('li', { 'class': 'cdn-domain-item' }, [
-							E('div', { 'class': 'cdn-domain-name' }, domain.name || _('Unknown')),
-							E('div', { 'class': 'cdn-domain-stats' }, [
-								_('Hits: ') + (domain.hits || 0).toLocaleString(),
-								_('Traffic: ') + formatBytes(domain.bytes || 0)
-							])
-						]);
-					}))
-			]),
-			E('div', { 'class': 'cdn-section' }, [
-				E('div', { 'class': 'cdn-section-header' }, [
-					E('div', { 'class': 'cdn-section-title' }, ['💾', _('Cache Utilisation')])
-				]),
-				this.renderProgress(_('Usage'), cacheSize.usage_percent || 0, formatBytes((cacheSize.used_kb || 0) * 1024) + ' / ' + formatBytes((cacheSize.max_kb || 0) * 1024)),
-				E('div', { 'class': 'cdn-savings-card' }, [
-					E('div', { 'class': 'cdn-savings-value' }, formatBytes(stats.bandwidth_saved_bytes || 0)),
-					E('div', { 'class': 'cdn-savings-label' }, _('Bandwidth saved this week'))
+
+			// Top Domains
+			KissTheme.E('div', { 'class': 'kiss-card', 'style': 'margin-top:16px;' }, [
+				KissTheme.E('div', { 'class': 'kiss-card-title' }, '🌐 Top Cached Domains'),
+				KissTheme.E('table', { 'class': 'kiss-table' }, [
+					KissTheme.E('thead', {}, [
+						KissTheme.E('tr', {}, [
+							KissTheme.E('th', {}, 'Domain'),
+							KissTheme.E('th', { 'style': 'text-align:right;' }, 'Hits'),
+							KissTheme.E('th', { 'style': 'text-align:right;' }, 'Traffic')
+						])
+					]),
+					KissTheme.E('tbody', { 'id': 'top-domains-body' },
+						topDomains.slice(0, 8).map(function(d) {
+							return KissTheme.E('tr', {}, [
+								KissTheme.E('td', { 'style': 'font-family:monospace;' }, d.name || 'unknown'),
+								KissTheme.E('td', { 'style': 'text-align:right;color:var(--kiss-green);' }, (d.hits || 0).toLocaleString()),
+								KissTheme.E('td', { 'style': 'text-align:right;color:var(--kiss-muted);' }, formatBytes(d.bytes || 0))
+							]);
+						})
+					)
 				])
 			])
+		], 'admin/services/cdn-cache');
+	},
+
+	tableRow: function(label, value) {
+		return KissTheme.E('tr', {}, [
+			KissTheme.E('td', { 'style': 'color:var(--kiss-muted);' }, label),
+			KissTheme.E('td', { 'style': 'font-family:monospace;' }, value)
 		]);
 	},
 
-	renderRatioGauge: function(ratio) {
-		var radius = 60;
-		var circumference = 2 * Math.PI * radius;
-		var normalized = Math.min(100, Math.max(0, ratio));
-		var offset = circumference - normalized / 100 * circumference;
-		return E('div', { 'class': 'cdn-ratio-circle' }, [
-			E('svg', { 'width': '140', 'height': '140', 'class': 'cdn-ratio-spark' }, [
-				E('circle', { 'class': 'bg', 'cx': '70', 'cy': '70', 'r': String(radius) }),
-				E('circle', {
-					'class': 'fg',
-					'cx': '70',
-					'cy': '70',
-					'r': String(radius),
-					'style': 'stroke-dasharray:' + circumference + ';stroke-dashoffset:' + offset + ';'
-				})
+	renderGauge: function(ratio) {
+		var r = 50, c = 2 * Math.PI * r;
+		var offset = c - (ratio / 100) * c;
+		return KissTheme.E('div', { 'style': 'text-align:center;margin:16px 0;' }, [
+			KissTheme.E('svg', { 'width': '120', 'height': '120', 'style': 'transform:rotate(-90deg);' }, [
+				KissTheme.E('circle', { 'cx': '60', 'cy': '60', 'r': String(r), 'fill': 'none', 'stroke': 'rgba(255,255,255,0.1)', 'stroke-width': '8' }),
+				KissTheme.E('circle', { 'cx': '60', 'cy': '60', 'r': String(r), 'fill': 'none', 'stroke': 'var(--kiss-green)', 'stroke-width': '8', 'stroke-linecap': 'round', 'stroke-dasharray': c, 'stroke-dashoffset': offset })
 			]),
-			E('div', { 'class': 'cdn-ratio-value' }, normalized + '%')
+			KissTheme.E('div', { 'style': 'margin-top:-80px;font-family:Orbitron,monospace;font-size:24px;font-weight:700;color:var(--kiss-green);' }, ratio + '%')
 		]);
 	},
 
-	renderProgress: function(label, percent, meta) {
-		return E('div', { 'class': 'cdn-progress-stack' }, [
-			E('div', { 'class': 'secubox-stat-details' }, [
-				E('div', { 'class': 'secubox-stat-label' }, label),
-				E('div', { 'class': 'secubox-stat-value' }, percent + '%')
-			]),
-			E('div', { 'class': 'cdn-progress-bar' }, [
-				E('div', { 'class': 'cdn-progress-fill', 'style': 'width:' + Math.min(100, Math.max(0, percent)) + '%;' })
-			]),
-			E('div', { 'class': 'secubox-stat-label' }, meta)
-		]);
+	updateStats: function(status, stats, cacheSize, topDomains) {
+		// Update stats via DOM - poll refresh
+		var statValues = document.querySelectorAll('.kiss-stat-value');
+		if (statValues.length >= 4) {
+			statValues[0].textContent = (stats.hit_ratio || 0);
+			statValues[1].textContent = formatBytes((cacheSize.used_kb || 0) * 1024);
+			statValues[2].textContent = (stats.requests || 0).toLocaleString();
+			statValues[3].textContent = formatBytes(stats.bandwidth_saved_bytes || 0);
+		}
 	},
 
 	handleSaveApply: null,

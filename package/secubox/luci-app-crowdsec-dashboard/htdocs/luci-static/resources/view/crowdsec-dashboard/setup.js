@@ -3,6 +3,7 @@
 'require dom';
 'require ui';
 'require crowdsec-dashboard.api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	status: {},
@@ -29,7 +30,7 @@ return view.extend({
 		var colData = data[3] || {};
 		var collections = colData.collections || [];
 
-		return E('div', { 'class': 'cs-view' }, [
+		var view = E('div', { 'class': 'cs-view' }, [
 			// Header
 			E('div', { 'class': 'cs-header' }, [
 				E('div', { 'class': 'cs-title' }, 'CrowdSec Setup'),
@@ -82,6 +83,8 @@ return view.extend({
 				])
 			])
 		]);
+
+		return KissTheme.wrap([view], 'admin/secubox/security/crowdsec/setup');
 	},
 
 	renderNav: function(active) {

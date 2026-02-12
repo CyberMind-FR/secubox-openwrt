@@ -1,6 +1,7 @@
 'use strict';
 'require view';
 'require dom';
+'require secubox/kiss-theme';
 
 return view.extend({
 	handleSaveApply: null,
@@ -221,6 +222,6 @@ return view.extend({
 			grid.appendChild(section);
 		});
 
-		return E('div', { 'class': 'luci-tree-page' }, [style, header, stats, search, grid]);
+		return KissTheme.wrap([E('div', { 'class': 'luci-tree-page' }, [style, header, stats, search, grid])], 'admin/secubox/portal/luci-tree');
 	}
 });

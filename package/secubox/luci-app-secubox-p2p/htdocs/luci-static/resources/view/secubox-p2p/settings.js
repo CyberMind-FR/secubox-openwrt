@@ -2,6 +2,7 @@
 'require view';
 'require ui';
 'require secubox-p2p/api as P2PAPI';
+'require secubox/kiss-theme';
 
 return view.extend({
 	settings: {},
@@ -22,7 +23,7 @@ return view.extend({
 	render: function() {
 		var self = this;
 
-		return E('div', { 'class': 'cbi-map' }, [
+		var content = E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, 'P2P Hub Settings'),
 
 			// General Settings
@@ -94,6 +95,8 @@ return view.extend({
 				E('button', { 'class': 'cbi-button cbi-button-save', 'click': function() { self.saveSettings(); } }, 'Save & Apply')
 			])
 		]);
+
+		return KissTheme.wrap(content, 'admin/secubox/p2p/settings');
 	},
 
 	saveSettings: function() {

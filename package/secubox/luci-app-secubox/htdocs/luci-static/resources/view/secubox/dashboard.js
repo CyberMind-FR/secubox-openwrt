@@ -4,6 +4,7 @@
 'require poll';
 'require ui';
 'require fs';
+'require secubox/kiss-theme';
 
 /**
  * SecuBox Dashboard - KISS Edition
@@ -408,7 +409,7 @@ return view.extend({
 			});
 		}, 15);
 
-		return E('div', { 'class': 'sb-dashboard' }, [
+		var content = E('div', { 'class': 'sb-dashboard' }, [
 			E('style', {}, this.getStyles()),
 			this.renderHeader(),
 			this.renderStatsCards(),
@@ -424,6 +425,8 @@ return view.extend({
 				])
 			])
 		]);
+
+		return KissTheme.wrap(content, 'admin/secubox/dashboard');
 	},
 
 	updateLiveData: function() {

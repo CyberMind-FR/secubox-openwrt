@@ -2,6 +2,7 @@
 'require view';
 'require form';
 'require uci';
+'require secubox/kiss-theme';
 
 return view.extend({
 	load: function() {
@@ -66,6 +67,12 @@ return view.extend({
 		o.default = 'ghcr.io/lms-community/lyrionmusicserver:stable';
 		o.depends('runtime', 'docker');
 
-		return m.render();
-	}
+		return m.render().then(function(node) {
+			return KissTheme.wrap(node, 'admin/secubox/services/lyrion/settings');
+		});
+	},
+
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null
 });

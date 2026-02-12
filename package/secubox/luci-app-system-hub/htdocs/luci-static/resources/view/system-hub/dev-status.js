@@ -5,6 +5,7 @@
 'require system-hub/dev-status-widget as DevStatusWidget';
 'require system-hub/nav as HubNav';
 'require secubox-portal/header as SbHeader';
+'require secubox/kiss-theme';
 
 return view.extend({
 	widget: null,
@@ -24,7 +25,8 @@ return view.extend({
 
 	render: function() {
 		var widget = this.getWidget();
-		var container = E('div', { 'class': 'system-hub-dev-status' }, [
+
+		var content = [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			ThemeAssets.stylesheet('common.css'),
 			ThemeAssets.stylesheet('dashboard.css'),
@@ -34,30 +36,26 @@ return view.extend({
 			E('div', { 'class': 'sh-dev-status-widget-shell' }, [
 				E('div', { 'id': 'dev-status-widget' })
 			]),
-			this.renderFooterNote()
-		]);
-
-		container.appendChild(E('style', {
-			'type': 'text/css'
-		}, `
-			.sh-dev-status-widget-shell .dsw-milestones,
-			.sh-dev-status-widget-shell .dsw-timeline,
-			.sh-dev-status-widget-shell .dsw-stats {
-				display: none !important;
-			}
-			.sh-dev-status-widget-shell .dsw-modules {
-				margin-top: -10px;
-			}
-		`));
+			this.renderFooterNote(),
+			E('style', {
+				'type': 'text/css'
+			}, `
+				.sh-dev-status-widget-shell .dsw-milestones,
+				.sh-dev-status-widget-shell .dsw-timeline,
+				.sh-dev-status-widget-shell .dsw-stats {
+					display: none !important;
+				}
+				.sh-dev-status-widget-shell .dsw-modules {
+					margin-top: -10px;
+				}
+			`)
+		];
 
 		window.requestAnimationFrame(function() {
 			widget.render('dev-status-widget');
 		});
 
-		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
-		wrapper.appendChild(SbHeader.render());
-		wrapper.appendChild(container);
-		return wrapper;
+		return KissTheme.wrap(content, 'admin/system/hub/dev-status');
 	},
 
 	renderHeader: function() {

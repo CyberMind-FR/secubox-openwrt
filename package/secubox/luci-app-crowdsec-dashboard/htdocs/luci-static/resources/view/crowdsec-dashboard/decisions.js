@@ -2,6 +2,7 @@
 'require view';
 'require dom';
 'require crowdsec-dashboard.api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	decisions: [],
@@ -18,51 +19,65 @@ return view.extend({
 		var self = this;
 		this.decisions = this.parseDecisions(data);
 
-		return E('div', { 'class': 'cs-view' }, [
-			E('div', { 'class': 'cs-header' }, [
-				E('div', { 'class': 'cs-title' }, 'CrowdSec Decisions'),
-				E('div', { 'class': 'cs-status' }, [
-					E('span', { 'class': 'cs-badge ' + (this.decisions.length > 0 ? 'danger' : 'success') },
-						this.decisions.length + ' active')
-				])
-			]),
-			this.renderNav('decisions'),
-			E('div', { 'class': 'cs-card' }, [
-				E('div', { 'class': 'cs-card-header' }, [
-					'Active Decisions',
-					E('div', { 'style': 'display: flex; gap: 8px;' }, [
-						E('input', {
-							'type': 'text', 'class': 'cs-input', 'id': 'search-input',
-							'placeholder': 'Search IP...', 'style': 'width: 120px;',
-							'keyup': function() { self.filterDecisions(); }
-						}),
-						E('button', { 'class': 'cs-btn primary', 'click': function() { self.showBanForm(); } }, '+ Ban')
-					])
+		var inputStyle = 'padding: 8px 12px; background: var(--kiss-bg2); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text); font-size: 13px;';
+
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'CrowdSec Decisions'),
+					KissTheme.badge(this.decisions.length + ' ACTIVE',
+						this.decisions.length > 0 ? 'red' : 'green')
 				]),
-				E('div', { 'class': 'cs-card-body', 'id': 'decisions-list' }, this.renderDecisions(this.decisions))
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' }, 'Active bans and blocks')
 			]),
-			E('div', { 'class': 'cs-card', 'id': 'ban-form', 'style': 'display: none;' }, [
-				E('div', { 'class': 'cs-card-header' }, 'Ban IP Address'),
-				E('div', { 'class': 'cs-card-body' }, [
-					E('div', { 'class': 'cs-field' }, [
-						E('label', { 'class': 'cs-label' }, 'IP Address'),
-						E('input', { 'type': 'text', 'id': 'ban-ip', 'class': 'cs-input', 'placeholder': '192.168.1.100' })
+
+			// Navigation
+			this.renderNav('decisions'),
+
+			// Decisions card
+			KissTheme.card([
+				E('span', {}, 'Active Decisions'),
+				E('div', { 'style': 'margin-left: auto; display: flex; gap: 8px;' }, [
+					E('input', {
+						'type': 'text', 'id': 'search-input',
+						'placeholder': 'Search IP...',
+						'style': inputStyle + ' width: 120px;',
+						'keyup': function() { self.filterDecisions(); }
+					}),
+					E('button', {
+						'class': 'kiss-btn kiss-btn-green',
+						'style': 'padding: 8px 14px;',
+						'click': function() { self.showBanForm(); }
+					}, '+ Ban')
+				])
+			], E('div', { 'id': 'decisions-list' }, this.renderDecisions(this.decisions))),
+
+			// Ban form card (hidden by default)
+			E('div', { 'class': 'kiss-card', 'id': 'ban-form', 'style': 'display: none;' }, [
+				E('div', { 'class': 'kiss-card-title' }, 'Ban IP Address'),
+				E('div', { 'style': 'display: grid; gap: 16px;' }, [
+					E('div', {}, [
+						E('label', { 'style': 'display: block; font-size: 12px; color: var(--kiss-muted); margin-bottom: 6px;' }, 'IP Address'),
+						E('input', { 'type': 'text', 'id': 'ban-ip', 'style': inputStyle + ' width: 100%;', 'placeholder': '192.168.1.100' })
 					]),
-					E('div', { 'class': 'cs-field' }, [
-						E('label', { 'class': 'cs-label' }, 'Duration'),
-						E('input', { 'type': 'text', 'id': 'ban-duration', 'class': 'cs-input', 'value': '4h', 'placeholder': '4h' })
+					E('div', {}, [
+						E('label', { 'style': 'display: block; font-size: 12px; color: var(--kiss-muted); margin-bottom: 6px;' }, 'Duration'),
+						E('input', { 'type': 'text', 'id': 'ban-duration', 'style': inputStyle + ' width: 100%;', 'value': '4h', 'placeholder': '4h' })
 					]),
-					E('div', { 'class': 'cs-field' }, [
-						E('label', { 'class': 'cs-label' }, 'Reason'),
-						E('input', { 'type': 'text', 'id': 'ban-reason', 'class': 'cs-input', 'placeholder': 'Manual ban' })
+					E('div', {}, [
+						E('label', { 'style': 'display: block; font-size: 12px; color: var(--kiss-muted); margin-bottom: 6px;' }, 'Reason'),
+						E('input', { 'type': 'text', 'id': 'ban-reason', 'style': inputStyle + ' width: 100%;', 'placeholder': 'Manual ban' })
 					]),
 					E('div', { 'style': 'display: flex; gap: 8px;' }, [
-						E('button', { 'class': 'cs-btn primary', 'click': function() { self.submitBan(); } }, 'Ban'),
-						E('button', { 'class': 'cs-btn', 'click': function() { self.hideBanForm(); } }, 'Cancel')
+						E('button', { 'class': 'kiss-btn kiss-btn-red', 'click': function() { self.submitBan(); } }, 'Ban'),
+						E('button', { 'class': 'kiss-btn', 'click': function() { self.hideBanForm(); } }, 'Cancel')
 					])
 				])
 			])
-		]);
+		];
+
+		return KissTheme.wrap(content, 'admin/secubox/security/crowdsec/decisions');
 	},
 
 	renderNav: function(active) {
@@ -73,10 +88,13 @@ return view.extend({
 			{ id: 'bouncers', label: 'Bouncers' },
 			{ id: 'settings', label: 'Settings' }
 		];
-		return E('div', { 'class': 'cs-nav' }, tabs.map(function(t) {
+		return E('div', { 'style': 'display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid var(--kiss-line); padding-bottom: 12px;' }, tabs.map(function(t) {
+			var isActive = active === t.id;
 			return E('a', {
 				'href': L.url('admin/secubox/security/crowdsec/' + t.id),
-				'class': active === t.id ? 'active' : ''
+				'style': 'padding: 8px 16px; text-decoration: none; border-radius: 6px; font-size: 13px; ' +
+					(isActive ? 'background: rgba(0,200,83,0.1); color: var(--kiss-green); border: 1px solid rgba(0,200,83,0.3);' :
+						'color: var(--kiss-muted); border: 1px solid transparent;')
 			}, t.label);
 		}));
 	},
@@ -98,10 +116,13 @@ return view.extend({
 
 	renderDecisions: function(decisions) {
 		if (!decisions.length) {
-			return E('div', { 'class': 'cs-empty' }, 'No active decisions');
+			return E('div', { 'style': 'text-align: center; padding: 40px; color: var(--kiss-green);' }, [
+				E('div', { 'style': 'font-size: 32px; margin-bottom: 12px;' }, '\u2713'),
+				E('div', {}, 'No active decisions - all IPs allowed')
+			]);
 		}
 		var self = this;
-		return E('table', { 'class': 'cs-table' }, [
+		return E('table', { 'class': 'kiss-table' }, [
 			E('thead', {}, E('tr', {}, [
 				E('th', {}, 'IP Address'),
 				E('th', {}, 'Country'),
@@ -113,16 +134,17 @@ return view.extend({
 			E('tbody', {}, decisions.map(function(d) {
 				var country = (d.source && (d.source.cn || d.source.country)) || '';
 				return E('tr', {}, [
-					E('td', {}, E('span', { 'class': 'cs-ip' }, d.value || '-')),
+					E('td', {}, E('span', { 'style': 'font-family: monospace; color: var(--kiss-cyan);' }, d.value || '-')),
 					E('td', {}, [
-						E('span', { 'class': 'cs-flag' }, api.getCountryFlag(country)),
-						' ', country
+						E('span', { 'style': 'font-size: 16px; margin-right: 4px;' }, api.getCountryFlag(country)),
+						E('span', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, country)
 					]),
-					E('td', {}, E('span', { 'class': 'cs-scenario' }, api.parseScenario(d.scenario))),
-					E('td', {}, E('span', { 'class': 'cs-badge danger' }, d.type || 'ban')),
-					E('td', { 'class': 'cs-time' }, api.formatDuration(d.duration)),
+					E('td', {}, E('span', { 'style': 'font-size: 12px;' }, api.parseScenario(d.scenario))),
+					E('td', {}, KissTheme.badge((d.type || 'ban').toUpperCase(), 'red')),
+					E('td', { 'style': 'font-family: monospace; font-size: 12px; color: var(--kiss-muted);' }, api.formatDuration(d.duration)),
 					E('td', {}, E('button', {
-						'class': 'cs-btn cs-btn-sm danger',
+						'class': 'kiss-btn kiss-btn-green',
+						'style': 'padding: 4px 10px; font-size: 11px;',
 						'click': function() { self.handleUnban(d.value); }
 					}, 'Unban'))
 				]);
@@ -188,9 +210,15 @@ return view.extend({
 	},
 
 	toast: function(msg, type) {
-		var t = document.querySelector('.cs-toast');
+		var t = document.querySelector('.kiss-toast');
 		if (t) t.remove();
-		t = E('div', { 'class': 'cs-toast ' + type }, msg);
+		var bgColor = type === 'success' ? 'var(--kiss-green)' : type === 'error' ? 'var(--kiss-red)' : 'var(--kiss-blue)';
+		t = E('div', {
+			'class': 'kiss-toast',
+			'style': 'position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; border-radius: 8px; ' +
+				'background: ' + bgColor + '; color: white; font-size: 13px; z-index: 10000; ' +
+				'box-shadow: 0 4px 12px rgba(0,0,0,0.3);'
+		}, msg);
 		document.body.appendChild(t);
 		setTimeout(function() { t.remove(); }, 4000);
 	},

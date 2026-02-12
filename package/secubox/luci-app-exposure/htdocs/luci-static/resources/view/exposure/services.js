@@ -3,6 +3,7 @@
 'require dom';
 'require ui';
 'require exposure/api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	load: function() {
@@ -161,42 +162,44 @@ return view.extend({
 			]);
 		});
 
-		return E('div', { 'class': 'exposure-dashboard' }, [
-			E('div', { 'class': 'exp-page-header' }, [
-				E('h2', { 'style': 'margin: 0; color: var(--exp-text-primary);' }, 'Service Exposure'),
-				E('div', { 'style': 'display: flex; gap: 12px; align-items: center;' }, [
-					E('span', { 'class': 'exp-badge exp-badge-tor' }, torCount + ' Tor'),
-					E('span', { 'class': 'exp-badge exp-badge-ssl' }, domainCount + ' Domains'),
-					E('span', { 'class': 'exp-badge exp-badge-mesh' }, meshCount + ' Mesh'),
-					E('button', {
-						'class': 'exp-btn exp-btn-action',
-						'click': ui.createHandlerFn(self, 'showEmancipateModal', null)
-					}, [E('span', {}, '\u{1F680}'), ' Emancipate']),
-					E('button', {
-						'class': 'exp-btn exp-btn-secondary',
-						'click': function() { window.location.reload(); }
-					}, 'Refresh')
-				])
-			]),
+		return KissTheme.wrap([
+			E('div', { 'class': 'exposure-dashboard' }, [
+				E('div', { 'class': 'exp-page-header' }, [
+					E('h2', { 'style': 'margin: 0; color: var(--exp-text-primary);' }, 'Service Exposure'),
+					E('div', { 'style': 'display: flex; gap: 12px; align-items: center;' }, [
+						E('span', { 'class': 'exp-badge exp-badge-tor' }, torCount + ' Tor'),
+						E('span', { 'class': 'exp-badge exp-badge-ssl' }, domainCount + ' Domains'),
+						E('span', { 'class': 'exp-badge exp-badge-mesh' }, meshCount + ' Mesh'),
+						E('button', {
+							'class': 'exp-btn exp-btn-action',
+							'click': ui.createHandlerFn(self, 'showEmancipateModal', null)
+						}, [E('span', {}, '\u{1F680}'), ' Emancipate']),
+						E('button', {
+							'class': 'exp-btn exp-btn-secondary',
+							'click': function() { window.location.reload(); }
+						}, 'Refresh')
+					])
+				]),
 
-			services.length > 0 ?
-				E('table', { 'class': 'exp-table' }, [
-					E('thead', {}, [
-						E('tr', {}, [
-							E('th', { 'style': 'width: 70px;' }, 'Port'),
-							E('th', {}, 'Service'),
-							E('th', { 'style': 'width: 100px;' }, 'Bind'),
-							E('th', { 'style': 'width: 70px; text-align: center;' }, 'Tor'),
-							E('th', { 'style': 'width: 70px; text-align: center;' }, 'SSL'),
-							E('th', { 'style': 'width: 70px; text-align: center;' }, 'Mesh'),
-							E('th', {}, 'Exposure')
-						])
-					]),
-					E('tbody', {}, rows)
-				]) :
-				E('p', { 'class': 'exp-text-muted', 'style': 'text-align: center; padding: 2rem;' },
-					'No listening services detected.')
-		]);
+				services.length > 0 ?
+					E('table', { 'class': 'exp-table' }, [
+						E('thead', {}, [
+							E('tr', {}, [
+								E('th', { 'style': 'width: 70px;' }, 'Port'),
+								E('th', {}, 'Service'),
+								E('th', { 'style': 'width: 100px;' }, 'Bind'),
+								E('th', { 'style': 'width: 70px; text-align: center;' }, 'Tor'),
+								E('th', { 'style': 'width: 70px; text-align: center;' }, 'SSL'),
+								E('th', { 'style': 'width: 70px; text-align: center;' }, 'Mesh'),
+								E('th', {}, 'Exposure')
+							])
+						]),
+						E('tbody', {}, rows)
+					]) :
+					E('p', { 'class': 'exp-text-muted', 'style': 'text-align: center; padding: 2rem;' },
+						'No listening services detected.')
+			])
+		], 'admin/secubox/services/exposure/services');
 	},
 
 	makeToggle: function(checked, sliderClass, handler) {

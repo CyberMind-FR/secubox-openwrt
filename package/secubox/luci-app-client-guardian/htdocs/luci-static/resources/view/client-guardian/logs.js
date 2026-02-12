@@ -6,6 +6,7 @@
 'require client-guardian/api as API';
 'require client-guardian/nav as CgNav';
 'require secubox-portal/header as SbHeader';
+'require secubox/kiss-theme';
 
 return view.extend({
 	refreshInterval: 5000,
@@ -125,7 +126,7 @@ return view.extend({
 		poll.add(L.bind(this.pollLogs, this), this.refreshInterval);
 
 		wrapper.appendChild(view);
-		return wrapper;
+		return KissTheme.wrap(wrapper, 'admin/secubox/guardian/logs');
 	},
 
 	renderLogs: function(logs) {

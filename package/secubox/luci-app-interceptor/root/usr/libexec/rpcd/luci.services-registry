@@ -1,0 +1,334 @@
+#!/bin/sh
+# RPCD backend for SecuBox Dynamic Services Registry
+# Aggregates all SecuBox services with their published URLs, emojis, and metrics
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+# Service emoji registry
+get_service_emoji() {
+	case "$1" in
+		mitmproxy*) echo "🔍" ;;
+		crowdsec*) echo "🛡️" ;;
+		haproxy*) echo "⚡" ;;
+		squid*|cdn*) echo "💾" ;;
+		wireguard*|wg*) echo "🔐" ;;
+		tor*) echo "🧅" ;;
+		dnsmasq*) echo "🌐" ;;
+		netdata*) echo "📊" ;;
+		glances*) echo "📈" ;;
+		sshd*|ssh*) echo "🔑" ;;
+		uhttpd*) echo "🖥️" ;;
+		iot*) echo "📡" ;;
+		vortex*) echo "🌀" ;;
+		interceptor*) echo "🧙" ;;
+		cookie*) echo "🍪" ;;
+		system*) echo "⚙️" ;;
+		*) echo "📦" ;;
+	esac
+}
+
+# Get service category
+get_service_category() {
+	case "$1" in
+		mitmproxy*|crowdsec*|firewall*|nftables*) echo "security" ;;
+		haproxy*|nginx*) echo "routing" ;;
+		squid*|cdn*) echo "caching" ;;
+		wireguard*|wg*|vpn*) echo "vpn" ;;
+		tor*) echo "anonymity" ;;
+		dnsmasq*|dns*|vortex*) echo "dns" ;;
+		netdata*|glances*|monitoring*) echo "monitoring" ;;
+		uhttpd*|luci*) echo "web" ;;
+		iot*) echo "iot" ;;
+		*) echo "other" ;;
+	esac
+}
+
+# Get HAProxy vhosts as published services
+get_haproxy_vhosts() {
+	local count=0
+
+	# Get all vhosts
+	for vhost in $(uci show haproxy 2>/dev/null | grep "=vhost" | cut -d'=' -f1 | cut -d'.' -f2); do
+		local domain=$(uci -q get haproxy.$vhost.domain)
+		local backend=$(uci -q get haproxy.$vhost.backend)
+		local ssl=$(uci -q get haproxy.$vhost.ssl_enabled || echo "0")
+
+		[ -z "$domain" ] && continue
+
+		local proto="http"
+		[ "$ssl" = "1" ] && proto="https"
+
+		json_add_object
+			json_add_string "id" "haproxy-$vhost"
+			json_add_string "name" "$domain"
+			json_add_string "type" "vhost"
+			json_add_string "url" "${proto}://${domain}"
+			json_add_string "backend" "$backend"
+			json_add_string "emoji" "🌐"
+			json_add_string "category" "published"
+			json_add_boolean "ssl" "$ssl"
+		json_close_object
+		count=$((count + 1))
+	done
+
+	echo "$count"
+}
+
+# Get Tor hidden services
+get_tor_services() {
+	local count=0
+	local onion_dir="/var/lib/tor/hidden_services"
+
+	if [ -d "$onion_dir" ]; then
+		for svc in "$onion_dir"/*/hostname; do
+			[ -f "$svc" ] || continue
+			local name=$(dirname "$svc" | xargs basename)
+			local onion=$(cat "$svc" 2>/dev/null)
+			[ -z "$onion" ] && continue
+
+			json_add_object
+				json_add_string "id" "tor-$name"
+				json_add_string "name" "$name"
+				json_add_string "type" "onion"
+				json_add_string "url" "http://${onion}"
+				json_add_string "onion" "$onion"
+				json_add_string "emoji" "🧅"
+				json_add_string "category" "anonymity"
+			json_close_object
+			count=$((count + 1))
+		done
+	fi
+
+	echo "$count"
+}
+
+# Get mitmproxy instances
+get_mitmproxy_instances() {
+	local count=0
+
+	for inst in $(uci show mitmproxy 2>/dev/null | grep "=instance" | cut -d'.' -f2 | cut -d'=' -f1); do
+		local enabled=$(uci -q get mitmproxy.$inst.enabled || echo 0)
+		local desc=$(uci -q get mitmproxy.$inst.description || echo "")
+		local web_port=$(uci -q get mitmproxy.$inst.web_port || echo "8081")
+		local proxy_port=$(uci -q get mitmproxy.$inst.proxy_port || echo "8888")
+		local container=$(uci -q get mitmproxy.$inst.container_name || echo "mitmproxy-$inst")
+		local mode=$(uci -q get mitmproxy.$inst.mode || echo "regular")
+
+		# Check if running
+		local running=0
+		lxc-info -n "$container" -s 2>/dev/null | grep -q "RUNNING" && running=1
+
+		json_add_object
+			json_add_string "id" "mitmproxy-$inst"
+			json_add_string "name" "mitmproxy-$inst"
+			json_add_string "type" "proxy"
+			json_add_string "url" "http://c3box.sblocal:$web_port"
+			json_add_string "description" "$desc"
+			json_add_string "emoji" "🔍"
+			json_add_string "category" "security"
+			json_add_string "mode" "$mode"
+			json_add_int "proxy_port" "$proxy_port"
+			json_add_int "web_port" "$web_port"
+			json_add_boolean "enabled" "$enabled"
+			json_add_boolean "running" "$running"
+		json_close_object
+		count=$((count + 1))
+	done
+
+	echo "$count"
+}
+
+# Get init.d services with status
+get_init_services() {
+	local count=0
+
+	for svc in /etc/init.d/*; do
+		[ -x "$svc" ] || continue
+		local name=$(basename "$svc")
+
+		# Skip non-secubox services for this list
+		case "$name" in
+			boot|done|gpio_switch|led|log|network|sysctl|system|urandom_seed|watchdog)
+				continue ;;
+		esac
+
+		local enabled=0
+		local running=0
+
+		"$svc" enabled 2>/dev/null && enabled=1
+
+		# Check if running
+		local pid_name=$(echo "$name" | sed 's/-/_/g')
+		pgrep "$pid_name" >/dev/null 2>&1 && running=1
+
+		local emoji=$(get_service_emoji "$name")
+		local category=$(get_service_category "$name")
+
+		json_add_object
+			json_add_string "id" "initd-$name"
+			json_add_string "name" "$name"
+			json_add_string "type" "service"
+			json_add_string "emoji" "$emoji"
+			json_add_string "category" "$category"
+			json_add_boolean "enabled" "$enabled"
+			json_add_boolean "running" "$running"
+		json_close_object
+		count=$((count + 1))
+	done
+
+	echo "$count"
+}
+
+# Get LuCI apps as dashboard links
+get_luci_apps() {
+	local count=0
+
+	# Parse menu.d files for SecuBox apps
+	for menu in /usr/share/luci/menu.d/luci-app-*.json; do
+		[ -f "$menu" ] || continue
+
+		local app_name=$(basename "$menu" .json | sed 's/luci-app-//')
+		local title=$(jsonfilter -i "$menu" -e '@.admin.*.title' 2>/dev/null | head -1)
+		local path=$(jsonfilter -i "$menu" -e '@.admin.*.action.path' 2>/dev/null | head -1)
+
+		[ -z "$title" ] && title="$app_name"
+		[ -z "$path" ] && path="admin/$app_name"
+
+		local emoji=$(get_service_emoji "$app_name")
+
+		json_add_object
+			json_add_string "id" "luci-$app_name"
+			json_add_string "name" "$title"
+			json_add_string "type" "dashboard"
+			json_add_string "url" "/cgi-bin/luci/$path"
+			json_add_string "emoji" "$emoji"
+			json_add_string "category" "web"
+		json_close_object
+		count=$((count + 1))
+	done
+
+	echo "$count"
+}
+
+# Get metrics summary
+get_metrics_summary() {
+	json_add_object "metrics"
+
+	# System metrics
+	local uptime=$(cat /proc/uptime | cut -d' ' -f1 | cut -d'.' -f1)
+	local load=$(cat /proc/loadavg | cut -d' ' -f1)
+	local mem_total=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+	local mem_free=$(grep MemFree /proc/meminfo | awk '{print $2}')
+	local mem_used=$((mem_total - mem_free))
+	local mem_pct=$((mem_used * 100 / mem_total))
+
+	json_add_int "uptime" "$uptime"
+	json_add_string "load" "$load"
+	json_add_int "mem_pct" "$mem_pct"
+
+	# Service counts
+	local running=0
+	local total=0
+	for svc in /etc/init.d/*; do
+		[ -x "$svc" ] || continue
+		total=$((total + 1))
+		"$svc" running >/dev/null 2>&1 && running=$((running + 1))
+	done
+
+	json_add_int "services_running" "$running"
+	json_add_int "services_total" "$total"
+
+	# Security metrics (if available)
+	if command -v cscli >/dev/null 2>&1; then
+		local alerts=$(cscli alerts list -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+		local bans=$(cscli decisions list -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+		json_add_int "crowdsec_alerts" "${alerts:-0}"
+		json_add_int "crowdsec_bans" "${bans:-0}"
+	fi
+
+	json_close_object
+}
+
+case "$1" in
+	list)
+		json_init
+		json_add_object "getServices"
+		json_close_object
+		json_add_object "getPublished"
+		json_close_object
+		json_add_object "getMetrics"
+		json_close_object
+		json_add_object "getAll"
+		json_close_object
+		json_dump
+		;;
+
+	call)
+		case "$2" in
+			getServices)
+				json_init
+				json_add_boolean "success" 1
+				json_add_array "services"
+				get_init_services >/dev/null
+				json_close_array
+				json_dump
+				;;
+
+			getPublished)
+				json_init
+				json_add_boolean "success" 1
+				json_add_array "published"
+				get_haproxy_vhosts >/dev/null
+				get_tor_services >/dev/null
+				json_close_array
+				json_dump
+				;;
+
+			getMetrics)
+				json_init
+				json_add_boolean "success" 1
+				get_metrics_summary
+				json_dump
+				;;
+
+			getAll)
+				json_init
+				json_add_boolean "success" 1
+
+				# All services
+				json_add_array "services"
+				get_init_services >/dev/null
+				json_close_array
+
+				# Published URLs (vhosts, onions)
+				json_add_array "published"
+				get_haproxy_vhosts >/dev/null
+				get_tor_services >/dev/null
+				json_close_array
+
+				# Proxy instances
+				json_add_array "proxies"
+				get_mitmproxy_instances >/dev/null
+				json_close_array
+
+				# LuCI dashboards
+				json_add_array "dashboards"
+				get_luci_apps >/dev/null
+				json_close_array
+
+				# Metrics
+				get_metrics_summary
+
+				json_dump
+				;;
+
+			*)
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "Unknown method"
+				json_dump
+				;;
+		esac
+		;;
+esac

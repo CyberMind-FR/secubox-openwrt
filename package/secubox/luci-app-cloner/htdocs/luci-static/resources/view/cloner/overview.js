@@ -4,6 +4,7 @@
 'require poll';
 'require rpc';
 'require ui';
+'require secubox/kiss-theme';
 
 var callGetStatus = rpc.declare({
 	object: 'luci.cloner',
@@ -194,7 +195,7 @@ return view.extend({
 		view.insertBefore(style, view.firstChild);
 
 		poll.add(L.bind(this.refresh, this), 10);
-		return view;
+		return KissTheme.wrap([view], 'admin/secubox/system/cloner');
 	},
 
 	createActionButton: function(label, cls, handler) {

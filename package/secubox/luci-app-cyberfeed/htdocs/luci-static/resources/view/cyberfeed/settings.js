@@ -2,6 +2,7 @@
 'require view';
 'require dom';
 'require cyberfeed.api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	title: _('CyberFeed Settings'),
@@ -156,7 +157,7 @@ return view.extend({
 			}, ['\u21BA', ' Reset'])
 		]));
 
-		return E('div', { 'class': 'cyberfeed-dashboard' }, content);
+		return KissTheme.wrap([E('div', { 'class': 'cyberfeed-dashboard' }, content)], 'admin/services/cyberfeed/settings');
 	},
 
 	handleSaveConfig: function() {

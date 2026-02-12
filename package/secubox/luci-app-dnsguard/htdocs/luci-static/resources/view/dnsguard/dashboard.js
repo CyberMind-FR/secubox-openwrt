@@ -3,6 +3,7 @@
 'require dom';
 'require poll';
 'require rpc';
+'require secubox/kiss-theme';
 
 var api = {
 	status: rpc.declare({ object: 'luci.dnsguard', method: 'status' }),
@@ -243,7 +244,7 @@ return view.extend({
 			]) : null
 		]);
 
-		return view;
+		return KissTheme.wrap([view], 'admin/secubox/security/dnsguard');
 	},
 
 	switchTab: function(tabId) {

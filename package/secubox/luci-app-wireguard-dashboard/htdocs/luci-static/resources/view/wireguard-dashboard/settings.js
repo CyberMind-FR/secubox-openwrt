@@ -3,6 +3,7 @@
 'require secubox-theme/theme as Theme';
 'require ui';
 'require wireguard-dashboard/api as API';
+'require secubox/kiss-theme';
 
 return view.extend({
 	load: function() {
@@ -297,7 +298,7 @@ return view.extend({
 			])
 		]);
 
-		return view;
+		return KissTheme.wrap([view], 'admin/network/wireguard-dashboard/settings');
 	},
 
 	handleSaveApply: null,

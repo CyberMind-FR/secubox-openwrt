@@ -2,6 +2,7 @@
 'require view';
 'require ui';
 'require secubox-p2p/api as P2PAPI';
+'require secubox/kiss-theme';
 
 return view.extend({
 	services: [],
@@ -22,7 +23,7 @@ return view.extend({
 
 	render: function() {
 		var self = this;
-		return E('div', { 'class': 'cbi-map' }, [
+		var content = E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, 'P2P Services'),
 
 			E('div', { 'class': 'cbi-section' }, [
@@ -63,6 +64,8 @@ return view.extend({
 					E('p', {}, 'No shared services from peers.')
 			])
 		]);
+
+		return KissTheme.wrap(content, 'admin/secubox/p2p/services');
 	},
 
 	handleSaveApply: null,

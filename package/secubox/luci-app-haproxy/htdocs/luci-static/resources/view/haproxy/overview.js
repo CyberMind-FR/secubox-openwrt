@@ -4,6 +4,7 @@
 'require ui';
 'require poll';
 'require haproxy.api as api';
+'require secubox/kiss-theme';
 
 /**
  * HAProxy Dashboard - Overview
@@ -73,7 +74,7 @@ return view.extend({
 			}, 30);
 		}
 
-		return view;
+		return KissTheme.wrap(view, 'admin/services/haproxy');
 	},
 
 	renderPageHeader: function(status) {

@@ -4,6 +4,7 @@
 'require uci';
 'require rpc';
 'require ui';
+'require secubox/kiss-theme';
 
 var callStatus = rpc.declare({
 	object: 'luci.mac-guardian',
@@ -382,7 +383,7 @@ return view.extend({
 				}
 			});
 
-			return node;
+			return KissTheme.wrap([node], 'admin/secubox/mac-guardian/dashboard');
 		});
 	}
 });

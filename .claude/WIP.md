@@ -337,6 +337,36 @@ _Last updated: 2026-02-11_
 
 ### Just Completed (2026-02-11)
 
+- **InterceptoR Services Dashboard** — DONE (2026-02-11)
+  - Created `luci.services-registry` RPCD handler with 4 methods
+  - Aggregates: HAProxy vhosts, Tor onions, mitmproxy instances, init.d services, LuCI apps, system metrics
+  - Dynamic KISS dashboard with 5 tabs: Published, Proxies, Services, Dashboards, Metrics
+  - Service emoji registry for visual identification
+  - CrowdSec stats integration (alerts, bans)
+  - 10-second live polling
+  - Fixed `kiss-theme.js` singleton pattern for LuCI module loading
+
+- **mitmproxy Multi-Instance Support** — DONE (2026-02-11)
+  - Updated init.d script with `config_foreach start_instance instance`
+  - Updated mitmproxyctl with `list-instances`, instance-aware `service-run/stop`
+  - UCI config for dual instances: out (LAN→Internet), in (WAF/services)
+  - Cloned containers: mitmproxy-out, mitmproxy-in
+  - Documented in README.md
+
+- **Cookie Tracker LuCI Dashboard** — DONE (2026-02-11)
+  - Created `luci-app-cookie-tracker` with KISS theme
+  - RPCD handler with 6 methods: status, list, report, block, unblock, classify
+  - Category breakdown visualization (essential, functional, analytics, advertising, tracking)
+  - Top trackers list with one-click blocking
+  - Blocked domains display
+  - 69 known tracker domains pre-loaded
+  - mitmproxy addon linked for cookie capture
+
+- **CDN Cache KISS Theme** — DONE (2026-02-11)
+  - Rewrote overview.js with full KISS styling
+  - Circular gauge for hit ratio
+  - Stats grid, top domains table, 10s polling
+
 - **IoT Guard Implementation** — DONE (2026-02-11)
   - Created `secubox-iot-guard` package for IoT device isolation and security
   - OUI-based classification with 100+ IoT manufacturer prefixes

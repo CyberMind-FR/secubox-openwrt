@@ -4,6 +4,7 @@
 'require ui';
 'require rpc';
 'require client-guardian/nav as CgNav';
+'require secubox/kiss-theme';
 
 var callListProfiles = rpc.declare({
 	object: 'luci.client-guardian',
@@ -28,7 +29,7 @@ return view.extend({
 		console.log('Profiles array:', profiles);
 		var self = this;
 
-		return E('div', { 'class': 'client-guardian-dashboard' }, [
+		var content = E('div', { 'class': 'client-guardian-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('client-guardian/dashboard.css') }),
 			CgNav.renderTabs('wizard'),
@@ -53,6 +54,8 @@ return view.extend({
 				])
 			])
 		]);
+
+		return KissTheme.wrap(content, 'admin/secubox/guardian/wizard');
 	},
 
 	renderProfileCard: function(profile) {

@@ -3,6 +3,7 @@
 'require rpc';
 'require poll';
 'require ui';
+'require secubox/kiss-theme';
 
 var callStatus = rpc.declare({
 	object: 'luci.config-advisor',
@@ -222,7 +223,7 @@ return view.extend({
 			view.appendChild(historyTable);
 		}
 
-		return view;
+		return KissTheme.wrap([view], 'admin/secubox/security/config-advisor');
 	},
 
 	handleSaveApply: null,

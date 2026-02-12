@@ -4,6 +4,7 @@
 'require dom';
 'require poll';
 'require request';
+'require secubox/kiss-theme';
 
 var API_BASE = window.location.protocol + '//' + window.location.hostname + ':7331/api/threat-intel';
 
@@ -87,7 +88,7 @@ return view.extend({
 
 		var self = this;
 
-		var view = E('div', { 'class': 'cbi-map', 'style': 'padding:20px;' }, [
+		var content = E('div', { 'class': 'cbi-map', 'style': 'padding:20px;' }, [
 			this.renderHeader(),
 			this.renderSummaryCards(),
 			this.renderActions(),
@@ -110,7 +111,7 @@ return view.extend({
 			});
 		}, 30);
 
-		return view;
+		return KissTheme.wrap(content, 'admin/secubox/p2p/threat-hub');
 	},
 
 	renderHeader: function() {

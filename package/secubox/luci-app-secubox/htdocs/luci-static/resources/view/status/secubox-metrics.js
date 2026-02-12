@@ -2,6 +2,7 @@
 'require view';
 'require rpc';
 'require poll';
+'require secubox/kiss-theme';
 
 var callGetSystemOverview = rpc.declare({
 	object: 'luci.secubox',
@@ -384,7 +385,7 @@ return view.extend({
 			}, this));
 		}, this), 3);
 
-		return E('div', {}, [style, container]);
+		return KissTheme.wrap(E('div', {}, [style, container]), 'admin/status/secubox-metrics');
 	},
 
 	updateValue: function(container, key, value) {

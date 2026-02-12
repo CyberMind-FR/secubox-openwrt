@@ -4,6 +4,7 @@
 'require ui';
 'require dom';
 'require secubox-security-threats/api as API';
+'require secubox/kiss-theme';
 
 return L.view.extend({
 	load: function() {
@@ -34,7 +35,8 @@ return L.view.extend({
 			this.renderBlocked(blocked)
 		].filter(function(el) { return el != null; });
 
-		return E('div', { 'class': 'si-dash' }, sections);
+		var content = E('div', { 'class': 'si-dash' }, sections);
+		return KissTheme.wrap(content, 'secubox-security-threats/dashboard');
 	},
 
 	renderStatusBar: function(status) {

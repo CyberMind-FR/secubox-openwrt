@@ -4,6 +4,7 @@
 'require poll';
 'require ui';
 'require network-anomaly.api as api';
+'require secubox/kiss-theme';
 
 /**
  * Network Anomaly Detection Dashboard - v1.0.0
@@ -71,7 +72,7 @@ return view.extend({
 		]);
 
 		poll.add(L.bind(this.pollData, this), 10);
-		return view;
+		return KissTheme.wrap([view], 'admin/secubox/security/network-anomaly');
 	},
 
 	renderStats: function(s, stats) {

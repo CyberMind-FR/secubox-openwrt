@@ -327,7 +327,9 @@
       "Bash(lsof:*)",
       "Bash(arp:*)",
       "Bash(ip link:*)",
-      "Bash(git describe:*)"
+      "Bash(git describe:*)",
+      "Bash(SSH_AUTH_SOCK=\"$SSH_AUTH_SOCK\" ssh:*)",
+      "Bash(node --check:*)"
     ]
   }
 }

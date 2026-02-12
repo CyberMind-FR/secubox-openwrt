@@ -21,7 +21,8 @@ opkg install luci-app-interceptor
 
 ## Menu Location
 
-SecuBox > InterceptoR > Overview
+- SecuBox > InterceptoR > Overview - Health score and pillar status
+- SecuBox > InterceptoR > Services - Dynamic services dashboard
 
 ## Architecture
 
@@ -49,12 +50,35 @@ InterceptoR aggregates status from 5 interception pillars:
 | Cookie Tracker | secubox-cookie-tracker | Cookie classification, tracking |
 | API Failover | luci-app-cdn-cache | Stale-if-error, offline mode |
 
+## Services Dashboard
+
+The Services tab provides a dynamic view of all SecuBox services with:
+
+- **Published** - HAProxy vhosts and Tor onion services with live URLs
+- **Proxies** - mitmproxy instances with status and web UI links
+- **Services** - Running daemons with enable/running status
+- **Dashboards** - LuCI app links for quick navigation
+- **Metrics** - System health, memory, CrowdSec stats
+
+Each service displays with its category emoji for quick visual identification.
+
 ## RPCD Methods
+
+### luci.interceptor
 
 | Method | Description |
 |--------|-------------|
 | `status` | Aggregated status from all pillars |
 | `getPillarStatus` | Status for specific pillar |
+
+### luci.services-registry
+
+| Method | Description |
+|--------|-------------|
+| `getServices` | All init.d services with status |
+| `getPublished` | HAProxy vhosts + Tor onion URLs |
+| `getMetrics` | System metrics and CrowdSec stats |
+| `getAll` | Combined: services, published, proxies, dashboards, metrics |
 
 ## Health Score Calculation
 

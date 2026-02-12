@@ -4,6 +4,7 @@
 'require mqtt-bridge/api as API';
 'require secubox-theme/theme as Theme';
 'require mqtt-bridge/nav as Nav';
+'require secubox/kiss-theme';
 
 var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||
@@ -21,7 +22,7 @@ return view.extend({
 	render: function(payload) {
 		var devices = (payload[0] && payload[0].devices) || [];
 		var status = payload[1] || {};
-		return E('div', { 'class': 'mqtt-bridge-dashboard' }, [
+		var content = E('div', { 'class': 'mqtt-bridge-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('mqtt-bridge/common.css') }),
 			Nav.renderTabs('devices'),
@@ -39,6 +40,7 @@ return view.extend({
 					E('p', { 'style': 'color:var(--mb-muted);' }, _('No devices detected yet. Plug a USB bridge or trigger pairing.'))
 			])
 		]);
+		return KissTheme.wrap([content], 'admin/services/mqtt-bridge/devices');
 	},
 
 	renderProfiles: function(adapters, liveProfiles) {

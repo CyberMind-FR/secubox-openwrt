@@ -6,6 +6,7 @@
 'require netdata-dashboard/api as API';
 'require secubox-theme/theme as Theme';
 'require secubox-portal/header as SbHeader';
+'require secubox/kiss-theme';
 
 var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||
@@ -61,7 +62,7 @@ return view.extend({
 		}, this), 5);
 
 		wrapper.appendChild(view);
-		return wrapper;
+		return KissTheme.wrap([wrapper], 'admin/status/netdata/dashboard');
 	},
 
 	countAlarms: function(alarms) {

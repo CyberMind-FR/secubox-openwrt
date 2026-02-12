@@ -5,6 +5,7 @@
 'require ui';
 'require poll';
 'require dom';
+'require secubox/kiss-theme';
 
 var callNetworkTweaksStatus = rpc.declare({
 	object: 'luci.network-tweaks',
@@ -165,7 +166,9 @@ return view.extend({
 		// Start polling for auto-refresh
 		poll.add(L.bind(this.pollData, this), 10);
 
-		return m.render();
+		return m.render().then(function(node) {
+			return KissTheme.wrap([node], 'admin/network/network-tweaks');
+		});
 	},
 
 	renderDashboard: function() {

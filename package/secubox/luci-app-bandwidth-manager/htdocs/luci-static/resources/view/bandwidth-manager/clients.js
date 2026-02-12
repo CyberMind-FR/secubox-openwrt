@@ -2,14 +2,15 @@
 'require view';
 'require secubox-theme/theme as Theme';
 'require bandwidth-manager/api as API';
+'require secubox/kiss-theme';
 
 return view.extend({
     load: function() { return API.getUsageRealtime(); },
     render: function(data) {
         var clients = data.clients || [];
-        return E('div', {class:'cbi-map'}, [
+        var view = E('div', {class:'cbi-map'}, [
             E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-            E('h2', {}, '👥 Connected Clients'),
+            E('h2', {}, 'Connected Clients'),
             E('div', {style:'background:#1e293b;padding:20px;border-radius:12px;margin-top:20px'}, [
                 clients.length ? E('table', {style:'width:100%;color:#f1f5f9'}, [
                     E('tr', {style:'border-bottom:1px solid #334155'}, [
@@ -30,6 +31,7 @@ return view.extend({
                 }, this)))) : E('p', {style:'color:#64748b;text-align:center'}, 'No clients connected')
             ])
         ]);
+        return KissTheme.wrap([view], 'admin/services/bandwidth-manager/clients');
     },
 
     formatBytes: function(bytes) {

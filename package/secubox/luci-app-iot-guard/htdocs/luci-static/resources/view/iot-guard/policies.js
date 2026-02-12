@@ -2,6 +2,7 @@
 'require view';
 'require rpc';
 'require ui';
+'require secubox/kiss-theme';
 
 var callGetVendorRules = rpc.declare({
 	object: 'luci.iot-guard',
@@ -135,7 +136,7 @@ return view.extend({
 			]);
 		});
 
-		return E('div', { 'class': 'cbi-map', 'style': 'padding: 20px;' }, [
+		var content = E('div', { 'class': 'cbi-map', 'style': 'padding: 20px;' }, [
 			E('h2', {}, 'IoT Guard Policies'),
 			E('p', { 'style': 'color: #888; margin-bottom: 20px;' },
 				'Vendor classification rules determine how devices are identified and their default risk level.'),
@@ -186,6 +187,8 @@ return view.extend({
 				])
 			])
 		]);
+
+		return KissTheme.wrap(content, 'admin/secubox/security/iot-guard/policies');
 	},
 
 	renderClassRow: function(name, desc, risk) {
@@ -195,5 +198,9 @@ return view.extend({
 			E('td', { 'style': 'padding: 8px; border-bottom: 1px solid #333; color: #888;' }, desc),
 			E('td', { 'style': 'padding: 8px; border-bottom: 1px solid #333; color: ' + color + ';' }, risk)
 		]);
-	}
+	},
+
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null
 });

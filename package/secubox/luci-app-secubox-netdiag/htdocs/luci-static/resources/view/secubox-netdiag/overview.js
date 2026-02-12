@@ -4,6 +4,7 @@
 'require ui';
 'require rpc';
 'require poll';
+'require secubox/kiss-theme';
 
 var callNetdiagStatus = rpc.declare({
 	object: 'luci.secubox-netdiag',
@@ -94,7 +95,7 @@ return view.extend({
 		// Start polling
 		this.startPolling();
 
-		return container;
+		return KissTheme.wrap([container], 'admin/services/network-diagnostics');
 	},
 
 	renderHeader: function() {

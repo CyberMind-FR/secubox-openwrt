@@ -2,6 +2,7 @@
 'require view';
 'require form';
 'require uci';
+'require secubox/kiss-theme';
 
 return view.extend({
 	title: _('Ollama Settings'),
@@ -51,6 +52,8 @@ return view.extend({
 		o.rmempty = false;
 		o.description = _('Ollama Docker image to use');
 
-		return m.render();
+		return m.render().then(function(view) {
+			return KissTheme.wrap([view], 'admin/services/ollama/settings');
+		});
 	}
 });

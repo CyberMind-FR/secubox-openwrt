@@ -3,6 +3,7 @@
 'require dom';
 'require poll';
 'require rpc';
+'require secubox/kiss-theme';
 
 var api = {
 	status: rpc.declare({ object: 'luci.ollama', method: 'status' }),
@@ -185,7 +186,7 @@ return view.extend({
 		]);
 
 		poll.add(L.bind(this.refresh, this), 15);
-		return view;
+		return KissTheme.wrap([view], 'admin/services/ollama');
 	},
 
 	renderStats: function(status, models) {

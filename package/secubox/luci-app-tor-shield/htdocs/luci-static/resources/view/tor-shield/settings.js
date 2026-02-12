@@ -2,6 +2,7 @@
 'require view';
 'require ui';
 'require tor-shield/api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	title: _('Tor Shield Settings'),
@@ -276,9 +277,10 @@ return view.extend({
 			])
 		]);
 
-		return view;
+		return KissTheme.wrap(view, 'admin/secubox/security/tor-shield/settings');
 	},
 
 	handleSaveApply: null,
+	handleSave: null,
 	handleReset: null
 });

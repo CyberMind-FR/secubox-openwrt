@@ -4,6 +4,7 @@
 'require ui';
 'require form';
 'require bandwidth-manager/api as API';
+'require secubox/kiss-theme';
 
 return L.view.extend({
 	load: function() {
@@ -72,10 +73,10 @@ return L.view.extend({
 		o.default = o.enabled;
 
 		return m.render().then(function(rendered) {
-			return E('div', {}, [
+			return KissTheme.wrap([
 				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 				rendered
-			]);
+			], 'admin/services/bandwidth-manager/rules');
 		});
 	},
 

@@ -4,6 +4,7 @@
 'require fs';
 'require metablogizer.api as api';
 'require metablogizer.qrcode as qrcode';
+'require secubox/kiss-theme';
 
 return view.extend({
 	status: {},
@@ -43,107 +44,109 @@ return view.extend({
 			}
 		}).catch(function() {});
 
-		return E('div', { 'class': 'cbi-map' }, [
-			E('h2', {}, _('MetaBlogizer')),
-			E('div', { 'class': 'cbi-map-descr' }, _('Static site publisher with HAProxy vhosts and SSL')),
+		return KissTheme.wrap([
+			E('div', { 'class': 'cbi-map' }, [
+				E('h2', {}, _('MetaBlogizer')),
+				E('div', { 'class': 'cbi-map-descr' }, _('Static site publisher with HAProxy vhosts and SSL')),
 
-			// Status Section
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Status')),
-				E('table', { 'class': 'table' }, [
-					E('tr', { 'class': 'tr' }, [
-						E('td', { 'class': 'td', 'style': 'width:200px' }, _('Runtime')),
-						E('td', { 'class': 'td' }, status.detected_runtime || 'uhttpd')
+				// Status Section
+				E('div', { 'class': 'cbi-section' }, [
+					E('h3', {}, _('Status')),
+					E('table', { 'class': 'table' }, [
+						E('tr', { 'class': 'tr' }, [
+							E('td', { 'class': 'td', 'style': 'width:200px' }, _('Runtime')),
+							E('td', { 'class': 'td' }, status.detected_runtime || 'uhttpd')
+						]),
+						E('tr', { 'class': 'tr' }, [
+							E('td', { 'class': 'td' }, _('HAProxy')),
+							E('td', { 'class': 'td', 'id': 'haproxy-status' }, E('em', {}, _('Loading...')))
+						]),
+						E('tr', { 'class': 'tr' }, [
+							E('td', { 'class': 'td' }, _('Public IP')),
+							E('td', { 'class': 'td', 'id': 'public-ip' }, _('Loading...'))
+						]),
+						E('tr', { 'class': 'tr' }, [
+							E('td', { 'class': 'td' }, _('Sites')),
+							E('td', { 'class': 'td' }, String(sites.length))
+						]),
+						E('tr', { 'class': 'tr' }, [
+							E('td', { 'class': 'td' }, _('Backends Running')),
+							E('td', { 'class': 'td' }, String(sites.filter(function(s) { return s.backend_running; }).length) + ' / ' + sites.length)
+						])
 					]),
-					E('tr', { 'class': 'tr' }, [
-						E('td', { 'class': 'td' }, _('HAProxy')),
-						E('td', { 'class': 'td', 'id': 'haproxy-status' }, E('em', {}, _('Loading...')))
-					]),
-					E('tr', { 'class': 'tr' }, [
-						E('td', { 'class': 'td' }, _('Public IP')),
-						E('td', { 'class': 'td', 'id': 'public-ip' }, _('Loading...'))
-					]),
-					E('tr', { 'class': 'tr' }, [
-						E('td', { 'class': 'td' }, _('Sites')),
-						E('td', { 'class': 'td' }, String(sites.length))
-					]),
-					E('tr', { 'class': 'tr' }, [
-						E('td', { 'class': 'td' }, _('Backends Running')),
-						E('td', { 'class': 'td' }, String(sites.filter(function(s) { return s.backend_running; }).length) + ' / ' + sites.length)
-					])
-				]),
-				E('div', { 'style': 'margin-top:1em' }, [
-					E('button', {
-						'class': 'cbi-button cbi-button-action',
-						'click': ui.createHandlerFn(this, 'handleSyncConfig')
-					}, _('Sync Config')),
-					' ',
-					E('span', { 'class': 'cbi-value-description' }, _('Update port/runtime info for all sites'))
-				])
-			]),
-
-			// Sites Section
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Sites')),
-				sites.length > 0 ? this.renderSitesTable(sites) : E('div', { 'class': 'cbi-section-descr' }, _('No sites configured'))
-			]),
-
-			// Create Site Section
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Create Site')),
-				E('div', { 'class': 'cbi-section-descr' }, _('Add a new static site with auto-configured HAProxy vhost and SSL')),
-
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Site Name')),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', { 'type': 'text', 'id': 'new-site-name', 'class': 'cbi-input-text',
-							'placeholder': 'myblog' }),
-						E('div', { 'class': 'cbi-value-description' }, _('Lowercase letters, numbers, and hyphens only'))
+					E('div', { 'style': 'margin-top:1em' }, [
+						E('button', {
+							'class': 'cbi-button cbi-button-action',
+							'click': ui.createHandlerFn(this, 'handleSyncConfig')
+						}, _('Sync Config')),
+						' ',
+						E('span', { 'class': 'cbi-value-description' }, _('Update port/runtime info for all sites'))
 					])
 				]),
 
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Domain')),
-					E('div', { 'class': 'cbi-value-field' },
-						E('input', { 'type': 'text', 'id': 'new-site-domain', 'class': 'cbi-input-text',
-							'placeholder': 'blog.example.com' }))
+				// Sites Section
+				E('div', { 'class': 'cbi-section' }, [
+					E('h3', {}, _('Sites')),
+					sites.length > 0 ? this.renderSitesTable(sites) : E('div', { 'class': 'cbi-section-descr' }, _('No sites configured'))
 				]),
 
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Gitea Repository')),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', { 'type': 'text', 'id': 'new-site-gitea', 'class': 'cbi-input-text',
-							'placeholder': 'user/repo' }),
-						E('div', { 'class': 'cbi-value-description' }, _('Optional: Sync content from Gitea'))
-					])
+				// Create Site Section
+				E('div', { 'class': 'cbi-section' }, [
+					E('h3', {}, _('Create Site')),
+					E('div', { 'class': 'cbi-section-descr' }, _('Add a new static site with auto-configured HAProxy vhost and SSL')),
+
+					E('div', { 'class': 'cbi-value' }, [
+						E('label', { 'class': 'cbi-value-title' }, _('Site Name')),
+						E('div', { 'class': 'cbi-value-field' }, [
+							E('input', { 'type': 'text', 'id': 'new-site-name', 'class': 'cbi-input-text',
+								'placeholder': 'myblog' }),
+							E('div', { 'class': 'cbi-value-description' }, _('Lowercase letters, numbers, and hyphens only'))
+						])
+					]),
+
+					E('div', { 'class': 'cbi-value' }, [
+						E('label', { 'class': 'cbi-value-title' }, _('Domain')),
+						E('div', { 'class': 'cbi-value-field' },
+							E('input', { 'type': 'text', 'id': 'new-site-domain', 'class': 'cbi-input-text',
+								'placeholder': 'blog.example.com' }))
+					]),
+
+					E('div', { 'class': 'cbi-value' }, [
+						E('label', { 'class': 'cbi-value-title' }, _('Gitea Repository')),
+						E('div', { 'class': 'cbi-value-field' }, [
+							E('input', { 'type': 'text', 'id': 'new-site-gitea', 'class': 'cbi-input-text',
+								'placeholder': 'user/repo' }),
+							E('div', { 'class': 'cbi-value-description' }, _('Optional: Sync content from Gitea'))
+						])
+					]),
+
+					E('div', { 'class': 'cbi-value' }, [
+						E('label', { 'class': 'cbi-value-title' }, _('Description')),
+						E('div', { 'class': 'cbi-value-field' },
+							E('input', { 'type': 'text', 'id': 'new-site-desc', 'class': 'cbi-input-text',
+								'placeholder': 'Short description (optional)' }))
+					]),
+
+					E('div', { 'class': 'cbi-value' }, [
+						E('label', { 'class': 'cbi-value-title' }, _('HTTPS')),
+						E('div', { 'class': 'cbi-value-field' },
+							E('select', { 'id': 'new-site-ssl', 'class': 'cbi-input-select' }, [
+								E('option', { 'value': '1', 'selected': true }, _('Enabled (ACME)')),
+								E('option', { 'value': '0' }, _('Disabled'))
+							]))
+					]),
+
+					E('div', { 'class': 'cbi-page-actions' },
+						E('button', {
+							'class': 'cbi-button cbi-button-positive',
+							'click': ui.createHandlerFn(this, 'handleCreateSite')
+						}, _('Create Site')))
 				]),
 
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Description')),
-					E('div', { 'class': 'cbi-value-field' },
-						E('input', { 'type': 'text', 'id': 'new-site-desc', 'class': 'cbi-input-text',
-							'placeholder': 'Short description (optional)' }))
-				]),
-
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('HTTPS')),
-					E('div', { 'class': 'cbi-value-field' },
-						E('select', { 'id': 'new-site-ssl', 'class': 'cbi-input-select' }, [
-							E('option', { 'value': '1', 'selected': true }, _('Enabled (ACME)')),
-							E('option', { 'value': '0' }, _('Disabled'))
-						]))
-				]),
-
-				E('div', { 'class': 'cbi-page-actions' },
-					E('button', {
-						'class': 'cbi-button cbi-button-positive',
-						'click': ui.createHandlerFn(this, 'handleCreateSite')
-					}, _('Create Site')))
-			]),
-
-			// Hosting Status Section
-			this.renderHostingSection(hosting)
-		]);
+				// Hosting Status Section
+				this.renderHostingSection(hosting)
+			])
+		], 'admin/services/metablogizer');
 	},
 
 	renderSitesTable: function(sites) {
