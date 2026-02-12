@@ -329,7 +329,8 @@
       "Bash(ip link:*)",
       "Bash(git describe:*)",
       "Bash(SSH_AUTH_SOCK=\"$SSH_AUTH_SOCK\" ssh:*)",
-      "Bash(node --check:*)"
+      "Bash(node --check:*)",
+      "Bash(do ssh root@192.168.255.1 'ubus call luci.cloner build_progress \"\"{}\"\"')"
     ]
   }
 }

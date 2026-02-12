@@ -232,10 +232,13 @@ build_via_asu() {
 	local packages=$(opkg list-installed 2>/dev/null | awk '{print $1}' | grep -v "^kernel" | tr '\n' ' ')
 
 	# Minimal clone packages (core system + SecuBox essentials)
-	local clone_packages="luci luci-ssl dnsmasq-full curl wget-ssl ca-certificates"
+	# Use -dnsmasq to remove default and replace with dnsmasq-full
+	local clone_packages="-dnsmasq dnsmasq-full luci luci-ssl curl wget-ssl ca-certificates"
 	clone_packages="$clone_packages wireguard-tools luci-proto-wireguard"
-	clone_packages="$clone_packages haproxy docker lxc lxc-attach"
-	clone_packages="$clone_packages block-mount e2fsprogs parted"
+	clone_packages="$clone_packages block-mount e2fsprogs"
+
+	# Convert packages string to JSON array
+	local packages_json=$(echo "$clone_packages" | tr ' ' '\n' | grep -v '^$' | sed 's/.*/"&"/' | tr '\n' ',' | sed 's/,$//')
 
 	# Build request JSON
 	local request_json="/tmp/asu-request.json"
@@ -243,9 +246,9 @@ build_via_asu() {
 {
   "profile": "$profile",
   "target": "$target",
-  "version": "24.10.5",
-  "packages": "$clone_packages",
-  "rootfs_size_mb": 1024,
+  "version": "24.10.0",
+  "packages": [$packages_json],
+  "rootfs_size_mb": 512,
   "client": "secubox-cloner/1.0"
 }
 EOF
