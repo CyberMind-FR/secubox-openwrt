@@ -46,9 +46,9 @@ get_mitm_status() {
 	# Check UCI config
 	enabled=$(uci -q get mitmproxy.main.enabled || echo "0")
 
-	# Check if LXC container is running
-	if command -v lxc-ls >/dev/null 2>&1; then
-		lxc-ls --running 2>/dev/null | grep -q "secbx-mitmproxy" && running=1
+	# Check if LXC container is running (use lxc-info which is more reliable)
+	if command -v lxc-info >/dev/null 2>&1; then
+		lxc-info -n mitmproxy -s 2>/dev/null | grep -q "RUNNING" && running=1
 	fi
 
 	# Count today's threats from log
@@ -156,10 +156,10 @@ get_failover_status() {
 get_insider_waf_status() {
 	local enabled=0 running=0 insider_threats=0 blocked_clients=0 exfil_attempts=0
 
-	# Insider WAF is enabled when mitmproxy "out" instance is running
+	# Insider WAF is enabled when mitmproxy container is running
 	# This inspects LAN→WAN traffic for insider threats
-	if command -v lxc-ls >/dev/null 2>&1; then
-		lxc-ls --running 2>/dev/null | grep -qE "mitmproxy-out|secbx-mitmproxy" && running=1
+	if command -v lxc-info >/dev/null 2>&1; then
+		lxc-info -n mitmproxy -s 2>/dev/null | grep -q "RUNNING" && running=1
 	fi
 
 	# Check mitmproxy config for outbound inspection
@@ -241,7 +241,7 @@ case "$1" in
 				fi
 
 				# mitmproxy running (external WAF)
-				if pgrep mitmproxy >/dev/null 2>&1 || lxc-ls --running 2>/dev/null | grep -q "secbx-mitmproxy"; then
+				if pgrep mitmproxy >/dev/null 2>&1 || lxc-info -n mitmproxy -s 2>/dev/null | grep -q "RUNNING"; then
 					score=$((score + 17))
 					pillars_active=$((pillars_active + 1))
 				fi
@@ -265,7 +265,7 @@ case "$1" in
 				fi
 
 				# Insider WAF (mitmproxy outbound instance)
-				if lxc-ls --running 2>/dev/null | grep -qE "mitmproxy-out|secbx-mitmproxy"; then
+				if lxc-info -n mitmproxy -s 2>/dev/null | grep -q "RUNNING"; then
 					score=$((score + 16))
 					pillars_active=$((pillars_active + 1))
 				fi
