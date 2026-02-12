@@ -562,6 +562,8 @@ upload_app() {
 		uci set "${CONFIG}.${name}.path=${name}.py"
 		uci set "${CONFIG}.${name}.enabled=1"
 		uci commit "$CONFIG"
+		# Auto-create Gitea repo and push (background)
+		streamlitctl gitea push "$name" >/dev/null 2>&1 &
 		json_success "App uploaded: $name"
 	else
 		rm -f "$app_file"
@@ -993,6 +995,9 @@ upload_zip() {
 		uci set "${CONFIG}.${name}.enabled=1"
 		uci commit "$CONFIG"
 
+		# Auto-create Gitea repo and push (background)
+		streamlitctl gitea push "$name" >/dev/null 2>&1 &
+
 		json_init_obj
 		json_add_boolean "success" 1
 		json_add_string "message" "App deployed: $name"
@@ -1222,6 +1227,8 @@ save_source() {
 	rm -f "$b64file"
 
 	if [ $rc -eq 0 ] && [ -s "$app_file" ]; then
+		# Auto-push to Gitea (background)
+		streamlitctl gitea push "$name" >/dev/null 2>&1 &
 		json_success "Source saved: $name"
 	else
 		# Restore backup on failure
