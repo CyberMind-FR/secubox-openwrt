@@ -106,10 +106,11 @@ return view.extend({
 	render: function(data) {
 		var self = this;
 		this.status = data[0] || {};
-		this.images = data[1].images || [];
-		this.tokens = data[2].tokens || [];
-		this.clones = data[3].clones || [];
-		this.devices = data[4].devices || [];
+		// RPC expect unwraps the arrays, so data[n] IS the array
+		this.images = data[1] || [];
+		this.tokens = data[2] || [];
+		this.clones = data[3] || [];
+		this.devices = data[4] || [];
 		this.buildProgress = data[5] || {};
 
 		var content = [
