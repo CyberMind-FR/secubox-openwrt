@@ -45,6 +45,13 @@ var KissThemeClass = baseclass.extend({
 			{ icon: '🏠', name: 'Vhost Manager', path: 'admin/services/vhost-manager' },
 			{ icon: '📦', name: 'App Store', path: 'admin/secubox/apps' }
 		]},
+		{ cat: 'Streamlit', icon: '🎯', collapsed: true, items: [
+			{ icon: '📺', name: 'France TV', url: 'http://192.168.255.1:8522/' },
+			{ icon: '🔮', name: 'Yijing Oracle', url: 'http://192.168.255.1:8501/' },
+			{ icon: '🏭', name: 'Fabricator', url: 'http://192.168.255.1:8520/' },
+			{ icon: '☯️', name: 'Bazi Complete', url: 'http://192.168.255.1:8509/' },
+			{ icon: '🎛️', name: 'SecuBox Control', url: 'http://192.168.255.1:8511/' }
+		]},
 		{ cat: 'P2P & Mesh', icon: '🔗', collapsed: true, items: [
 			{ icon: '🔗', name: 'P2P Network', path: 'admin/services/secubox-p2p' },
 			{ icon: '🌳', name: 'Netifyd', path: 'admin/services/secubox-netifyd' },
@@ -539,14 +546,18 @@ var KissThemeClass = baseclass.extend({
 			// Items container
 			var itemsContainer = self.E('div', { 'class': 'kiss-nav-items' },
 				cat.items.map(function(item) {
-					var isActive = currentPath.indexOf(item.path) !== -1;
+					var isExternal = !!item.url;
+					var href = isExternal ? item.url : '/cgi-bin/luci/' + item.path;
+					var isActive = !isExternal && currentPath.indexOf(item.path) !== -1;
 					return self.E('a', {
-						'href': '/cgi-bin/luci/' + item.path,
-						'class': 'kiss-nav-item' + (isActive ? ' active' : ''),
+						'href': href,
+						'class': 'kiss-nav-item' + (isActive ? ' active' : '') + (isExternal ? ' external' : ''),
+						'target': isExternal ? '_blank' : '',
 						'onClick': function() { self.closeSidebar(); }
 					}, [
 						self.E('span', { 'class': 'kiss-nav-icon' }, item.icon),
-						self.E('span', {}, item.name)
+						self.E('span', {}, item.name),
+						isExternal ? self.E('span', { 'style': 'margin-left:auto;font-size:10px;opacity:0.5;' }, '↗') : null
 					]);
 				})
 			);
