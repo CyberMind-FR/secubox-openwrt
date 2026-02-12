@@ -8,6 +8,7 @@
 
 var KissThemeClass = baseclass.extend({
 	// Navigation config - organized by category with collapsible sections
+	// Items with `tabs` array show sub-navigation when active
 	nav: [
 		{ cat: 'Dashboard', icon: '📊', collapsed: false, items: [
 			{ icon: '🏠', name: 'Home', path: 'admin/secubox-home' },
@@ -15,27 +16,75 @@ var KissThemeClass = baseclass.extend({
 			{ icon: '🖥️', name: 'System Hub', path: 'admin/secubox/system/system-hub' }
 		]},
 		{ cat: 'Security', icon: '🛡️', collapsed: false, items: [
-			{ icon: '🧙', name: 'InterceptoR', path: 'admin/secubox/interceptor' },
-			{ icon: '🛡️', name: 'CrowdSec', path: 'admin/secubox/security/crowdsec' },
-			{ icon: '🔍', name: 'mitmproxy', path: 'admin/secubox/security/mitmproxy' },
+			{ icon: '🧙', name: 'InterceptoR', path: 'admin/secubox/interceptor', tabs: [
+				{ name: 'Overview', path: 'admin/secubox/interceptor/overview' },
+				{ name: 'Services', path: 'admin/secubox/interceptor/services' }
+			]},
+			{ icon: '🛡️', name: 'CrowdSec', path: 'admin/secubox/security/crowdsec', tabs: [
+				{ name: 'Overview', path: 'admin/secubox/security/crowdsec/overview' },
+				{ name: 'Decisions', path: 'admin/secubox/security/crowdsec/decisions' },
+				{ name: 'Alerts', path: 'admin/secubox/security/crowdsec/alerts' },
+				{ name: 'Bouncers', path: 'admin/secubox/security/crowdsec/bouncers' },
+				{ name: 'Setup', path: 'admin/secubox/security/crowdsec/setup' }
+			]},
+			{ icon: '🔍', name: 'mitmproxy', path: 'admin/secubox/security/mitmproxy', tabs: [
+				{ name: 'Status', path: 'admin/secubox/security/mitmproxy/status' },
+				{ name: 'Settings', path: 'admin/secubox/security/mitmproxy/settings' }
+			]},
 			{ icon: '🚫', name: 'Vortex FW', path: 'admin/secubox/security/vortex-firewall' },
-			{ icon: '👁️', name: 'Client Guard', path: 'admin/secubox/security/guardian' },
+			{ icon: '👁️', name: 'Client Guard', path: 'admin/secubox/security/guardian', tabs: [
+				{ name: 'Clients', path: 'admin/secubox/security/guardian/clients' },
+				{ name: 'Settings', path: 'admin/secubox/security/guardian/settings' }
+			]},
 			{ icon: '🍪', name: 'Cookie Track', path: 'admin/secubox/interceptor/cookies' }
 		]},
 		{ cat: 'Network', icon: '🌐', collapsed: true, items: [
-			{ icon: '⚖️', name: 'HAProxy', path: 'admin/services/haproxy' },
-			{ icon: '🔒', name: 'WireGuard', path: 'admin/services/wireguard' },
-			{ icon: '🌍', name: 'Tor Shield', path: 'admin/services/tor-shield' },
-			{ icon: '💾', name: 'CDN Cache', path: 'admin/services/cdn-cache' },
+			{ icon: '⚖️', name: 'HAProxy', path: 'admin/services/haproxy', tabs: [
+				{ name: 'Overview', path: 'admin/services/haproxy/overview' },
+				{ name: 'Vhosts', path: 'admin/services/haproxy/vhosts' },
+				{ name: 'Backends', path: 'admin/services/haproxy/backends' },
+				{ name: 'Certs', path: 'admin/services/haproxy/certificates' },
+				{ name: 'ACLs', path: 'admin/services/haproxy/acls' },
+				{ name: 'Stats', path: 'admin/services/haproxy/stats' },
+				{ name: 'Settings', path: 'admin/services/haproxy/settings' }
+			]},
+			{ icon: '🔒', name: 'WireGuard', path: 'admin/services/wireguard', tabs: [
+				{ name: 'Wizard', path: 'admin/services/wireguard/wizard' },
+				{ name: 'Overview', path: 'admin/services/wireguard/overview' },
+				{ name: 'Peers', path: 'admin/services/wireguard/peers' },
+				{ name: 'QR Codes', path: 'admin/services/wireguard/qrcodes' },
+				{ name: 'Traffic', path: 'admin/services/wireguard/traffic' },
+				{ name: 'Config', path: 'admin/services/wireguard/config' },
+				{ name: 'Settings', path: 'admin/services/wireguard/settings' }
+			]},
+			{ icon: '🌍', name: 'Tor Shield', path: 'admin/services/tor-shield', tabs: [
+				{ name: 'Overview', path: 'admin/services/tor-shield/overview' },
+				{ name: 'Circuits', path: 'admin/services/tor-shield/circuits' },
+				{ name: 'Hidden Svc', path: 'admin/services/tor-shield/hidden-services' },
+				{ name: 'Bridges', path: 'admin/services/tor-shield/bridges' },
+				{ name: 'Settings', path: 'admin/services/tor-shield/settings' }
+			]},
+			{ icon: '💾', name: 'CDN Cache', path: 'admin/services/cdn-cache', tabs: [
+				{ name: 'Overview', path: 'admin/services/cdn-cache/overview' },
+				{ name: 'Cache', path: 'admin/services/cdn-cache/cache' },
+				{ name: 'Policies', path: 'admin/services/cdn-cache/policies' },
+				{ name: 'Stats', path: 'admin/services/cdn-cache/statistics' },
+				{ name: 'Maint.', path: 'admin/services/cdn-cache/maintenance' },
+				{ name: 'Settings', path: 'admin/services/cdn-cache/settings' }
+			]},
 			{ icon: '📡', name: 'Bandwidth', path: 'admin/services/bandwidth-manager' },
 			{ icon: '📶', name: 'Traffic Shaper', path: 'admin/services/traffic-shaper' },
 			{ icon: '🌐', name: 'Network Modes', path: 'admin/services/network-modes' },
 			{ icon: '🔌', name: 'Interfaces', path: 'admin/network/network' }
 		]},
 		{ cat: 'AI & LLM', icon: '🤖', collapsed: true, items: [
-			{ icon: '🦙', name: 'Ollama', path: 'admin/services/ollama' },
-			{ icon: '🤖', name: 'LocalAI', path: 'admin/services/localai' },
-			{ icon: '💬', name: 'Chat', path: 'admin/services/ollama/chat' }
+			{ icon: '🦙', name: 'Ollama', path: 'admin/services/ollama', tabs: [
+				{ name: 'Dashboard', path: 'admin/services/ollama/dashboard' },
+				{ name: 'Models', path: 'admin/services/ollama/models' },
+				{ name: 'Chat', path: 'admin/services/ollama/chat' },
+				{ name: 'Settings', path: 'admin/services/ollama/settings' }
+			]},
+			{ icon: '🤖', name: 'LocalAI', path: 'admin/services/localai' }
 		]},
 		{ cat: 'Apps', icon: '📦', collapsed: true, items: [
 			{ icon: '🎬', name: 'Media Flow', path: 'admin/services/media-flow' },
@@ -173,7 +222,35 @@ var KissThemeClass = baseclass.extend({
 	color: ${c.green}; background: rgba(0,200,83,0.08);
 	border-left-color: ${c.green};
 }
+.kiss-nav-item.has-tabs { padding-right: 8px; }
+.kiss-nav-item .tab-arrow { margin-left: auto; font-size: 9px; opacity: 0.5; transition: transform 0.2s; }
+.kiss-nav-item.expanded .tab-arrow { transform: rotate(90deg); }
 .kiss-nav-icon { font-size: 14px; width: 20px; text-align: center; flex-shrink: 0; }
+
+/* === Sub-tabs (nested under active items) === */
+.kiss-nav-tabs {
+	overflow: hidden; max-height: 0; transition: max-height 0.3s ease;
+	background: rgba(0,0,0,0.15);
+}
+.kiss-nav-tabs.expanded { max-height: 500px; }
+.kiss-nav-tab {
+	display: flex; align-items: center; gap: 6px; padding: 6px 16px 6px 48px;
+	text-decoration: none; font-size: 11px; color: ${c.muted};
+	transition: all 0.15s; border-left: 2px solid transparent;
+	position: relative;
+}
+.kiss-nav-tab::before {
+	content: ''; position: absolute; left: 36px; top: 50%;
+	width: 4px; height: 4px; border-radius: 50%;
+	background: ${c.line}; transform: translateY(-50%);
+}
+.kiss-nav-tab:hover { background: rgba(255,255,255,0.03); color: ${c.text}; }
+.kiss-nav-tab:hover::before { background: ${c.muted}; }
+.kiss-nav-tab.active {
+	color: ${c.cyan}; background: rgba(34,211,238,0.05);
+	border-left-color: ${c.cyan};
+}
+.kiss-nav-tab.active::before { background: ${c.cyan}; }
 
 /* === Main Content === */
 .kiss-main {
@@ -549,7 +626,13 @@ body.kiss-mode .cbi-section { max-width: 100% !important; width: 100% !important
 			if (self.collapsedState[cat.cat] === undefined) {
 				// Auto-expand if current path is in this category
 				var hasActive = cat.items.some(function(item) {
-					return currentPath.indexOf(item.path) !== -1;
+					if (item.path && currentPath.indexOf(item.path) !== -1) return true;
+					if (item.tabs) {
+						return item.tabs.some(function(tab) {
+							return currentPath === tab.path || currentPath.indexOf(tab.path) !== -1;
+						});
+					}
+					return false;
 				});
 				self.collapsedState[cat.cat] = hasActive ? false : (cat.collapsed || false);
 			}
@@ -572,24 +655,50 @@ body.kiss-mode .cbi-section { max-width: 100% !important; width: 100% !important
 				self.E('span', { 'class': 'kiss-nav-section-arrow' }, '▼')
 			]));
 
-			// Items container
-			var itemsContainer = self.E('div', { 'class': 'kiss-nav-items' },
-				cat.items.map(function(item) {
-					var isExternal = !!item.url;
-					var href = isExternal ? item.url : '/cgi-bin/luci/' + item.path;
-					var isActive = !isExternal && currentPath.indexOf(item.path) !== -1;
-					return self.E('a', {
-						'href': href,
-						'class': 'kiss-nav-item' + (isActive ? ' active' : '') + (isExternal ? ' external' : ''),
-						'target': isExternal ? '_blank' : '',
-						'onClick': function() { self.closeSidebar(); }
-					}, [
-						self.E('span', { 'class': 'kiss-nav-icon' }, item.icon),
-						self.E('span', {}, item.name),
-						isExternal ? self.E('span', { 'style': 'margin-left:auto;font-size:10px;opacity:0.5;' }, '↗') : null
-					]);
-				})
-			);
+			// Items container with sub-tabs
+			var itemElements = [];
+			cat.items.forEach(function(item) {
+				var isExternal = !!item.url;
+				var href = isExternal ? item.url : '/cgi-bin/luci/' + item.path;
+				var hasTabs = item.tabs && item.tabs.length > 0;
+
+				// Check if this item or any of its tabs is active
+				var isItemActive = !isExternal && item.path && currentPath.indexOf(item.path) !== -1;
+				var isTabActive = hasTabs && item.tabs.some(function(tab) {
+					return currentPath === tab.path || currentPath.indexOf(tab.path) !== -1;
+				});
+				var isActive = isItemActive || isTabActive;
+
+				// Main nav item
+				itemElements.push(self.E('a', {
+					'href': href,
+					'class': 'kiss-nav-item' + (isActive ? ' active' : '') + (isExternal ? ' external' : '') + (hasTabs ? ' has-tabs' : '') + (isActive && hasTabs ? ' expanded' : ''),
+					'target': isExternal ? '_blank' : '',
+					'onClick': function() { self.closeSidebar(); }
+				}, [
+					self.E('span', { 'class': 'kiss-nav-icon' }, item.icon),
+					self.E('span', {}, item.name),
+					isExternal ? self.E('span', { 'style': 'margin-left:auto;font-size:10px;opacity:0.5;' }, '↗') : null,
+					hasTabs ? self.E('span', { 'class': 'tab-arrow' }, '▶') : null
+				]));
+
+				// Sub-tabs (only rendered if item has tabs)
+				if (hasTabs) {
+					var tabsContainer = self.E('div', {
+						'class': 'kiss-nav-tabs' + (isActive ? ' expanded' : '')
+					}, item.tabs.map(function(tab) {
+						var tabActive = currentPath === tab.path || currentPath.indexOf(tab.path) !== -1;
+						return self.E('a', {
+							'href': '/cgi-bin/luci/' + tab.path,
+							'class': 'kiss-nav-tab' + (tabActive ? ' active' : ''),
+							'onClick': function() { self.closeSidebar(); }
+						}, tab.name);
+					}));
+					itemElements.push(tabsContainer);
+				}
+			});
+
+			var itemsContainer = self.E('div', { 'class': 'kiss-nav-items' }, itemElements);
 			navItems.push(itemsContainer);
 		});
 

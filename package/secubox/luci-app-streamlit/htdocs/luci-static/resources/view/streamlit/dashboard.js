@@ -773,11 +773,18 @@ return view.extend({
 
 				uploadPromise.then(function(r) {
 					poll.start();
-					ui.hideModal();
 					if (r && r.success) {
-						ui.addNotification(null, E('p', {}, _('App reuploaded: ') + id), 'success');
-						self.refresh().then(function() { self.updateStatus(); });
+						// Restart service to reload the updated file
+						ui.showModal(_('Restarting...'), [
+							E('p', { 'class': 'spinning' }, _('Restarting Streamlit to apply changes...'))
+						]);
+						return api.restart().then(function() {
+							ui.hideModal();
+							ui.addNotification(null, E('p', {}, _('App reuploaded and service restarted: ') + id), 'success');
+							self.refresh().then(function() { self.updateStatus(); });
+						});
 					} else {
+						ui.hideModal();
 						ui.addNotification(null, E('p', {}, (r && r.message) || _('Reupload failed')), 'error');
 					}
 				}).catch(function(err) {
