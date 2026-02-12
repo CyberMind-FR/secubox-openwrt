@@ -61,7 +61,7 @@ var KissThemeClass = baseclass.extend({
 			{ icon: '⚙️', name: 'Settings', path: 'admin/system' },
 			{ icon: '📊', name: 'Status', path: 'admin/status/overview' },
 			{ icon: '🛠️', name: 'KSM Manager', path: 'admin/services/ksm-manager' },
-			{ icon: '🔄', name: 'Cloner', path: 'admin/services/cloner' },
+			{ icon: '🔄', name: 'Cloner', path: 'admin/secubox/system/cloner' },
 			{ icon: '🌳', name: 'LuCI Menu', path: 'admin/secubox/luci-tree' },
 			{ icon: '🔧', name: 'Software', path: 'admin/system/opkg' }
 		]}
