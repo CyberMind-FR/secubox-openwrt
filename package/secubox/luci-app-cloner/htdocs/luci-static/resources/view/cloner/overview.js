@@ -416,9 +416,10 @@ return view.extend({
 			callGetBuildProgress().catch(function() { return {}; })
 		]).then(function(data) {
 			self.status = data[0] || {};
-			self.images = data[1].images || [];
-			self.tokens = data[2].tokens || [];
-			self.clones = data[3].clones || [];
+			// RPC expect unwraps the arrays, so data[n] IS the array
+			self.images = data[1] || [];
+			self.tokens = data[2] || [];
+			self.clones = data[3] || [];
 			self.buildProgress = data[4] || {};
 
 			// Update stats
