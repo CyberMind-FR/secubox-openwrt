@@ -1269,3 +1269,35 @@ _Last updated: 2026-02-11_
       - Quick hardening checklist
       - Monitoring commands during attacks
       - Limitations and upstream protection options (Cloudflare, etc.)
+
+54. **HAProxy vhosts.js KISS Migration (2026-02-12)**
+    - Rewrote HAProxy Virtual Hosts dashboard to use KissTheme.
+    - Self-contained inline CSS using KISS variables.
+    - Removed external `dashboard.css` dependency.
+    - Add vhost form with domain/backend/SSL inputs.
+    - Vhosts table with status badges and actions (edit/toggle/delete).
+    - Edit modal and delete confirmation dialogs.
+    - Toast notifications for user feedback.
+
+55. **InterceptoR LXC Detection Fix (2026-02-12)**
+    - Changed LXC container status detection from `lxc-ls` to `lxc-info`.
+    - `lxc-info -n mitmproxy -s` provides direct state query (more reliable).
+    - Fixed container name from `secbx-mitmproxy` to `mitmproxy`.
+    - Applied to all pillar status checks in `luci.interceptor` RPCD handler.
+
+56. **HAProxy backends.js KISS Migration (2026-02-12)**
+    - Rewrote HAProxy Backends dashboard to use KissTheme.
+    - Removed external `dashboard.css` dependency.
+    - Replaced all `hp-` classes with `kiss-` classes and inline styles.
+    - Backend cards with server lists, health check info.
+    - Add backend form with mode, balance algorithm, health check options.
+    - Add/edit server modals with quick service selector for auto-fill.
+    - Delete confirmations and toast notifications.
+    - Consistent styling with vhosts.js KISS migration.
+
+57. **HAProxy stats.js KISS Migration (2026-02-12)**
+    - Rewrote HAProxy Statistics dashboard to use KissTheme.
+    - Removed CSS import via style element.
+    - Stats iframe with KISS-styled border.
+    - Logs viewer with line count selector and refresh button.
+    - Empty state for disabled stats or stopped service.

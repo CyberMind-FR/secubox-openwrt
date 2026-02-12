@@ -3,483 +3,424 @@
 'require poll';
 'require dom';
 'require ui';
-'require ndpid/api as api';
-'require secubox-theme/theme as Theme';
-'require secubox-portal/header as SbHeader';
+'require rpc';
 'require secubox/kiss-theme';
 
-var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
-	(document.documentElement && document.documentElement.getAttribute('lang')) ||
-	(navigator.language ? navigator.language.split('-')[0] : 'en');
-Theme.init({ language: lang });
+var callGetStatus = rpc.declare({
+	object: 'luci.ndpid',
+	method: 'status',
+	expect: {}
+});
 
-var NDPID_NAV = [
-	{ id: 'dashboard', icon: '📊', label: 'Dashboard' },
-	{ id: 'flows', icon: '🔍', label: 'Flows' },
-	{ id: 'settings', icon: '⚙️', label: 'Settings' }
-];
+var callGetFlows = rpc.declare({
+	object: 'luci.ndpid',
+	method: 'flows',
+	expect: {}
+});
 
-function renderNdpidNav(activeId) {
-	return E('div', {
-		'class': 'sb-app-nav',
-		'style': 'display:flex;gap:8px;margin-bottom:20px;padding:12px 16px;background:#141419;border:1px solid rgba(255,255,255,0.08);border-radius:12px;'
-	}, NDPID_NAV.map(function(item) {
-		var isActive = activeId === item.id;
-		return E('a', {
-			'href': L.url('admin', 'secubox', 'ndpid', item.id),
-			'style': 'display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:500;transition:all 0.2s;' +
-				(isActive ? 'background:linear-gradient(135deg,#667eea,#764ba2);color:white;' : 'color:#a0a0b0;background:transparent;')
-		}, [
-			E('span', {}, item.icon),
-			E('span', {}, _(item.label))
-		]);
-	}));
+var callGetApplications = rpc.declare({
+	object: 'luci.ndpid',
+	method: 'applications',
+	expect: {}
+});
+
+var callGetCategories = rpc.declare({
+	object: 'luci.ndpid',
+	method: 'categories',
+	expect: {}
+});
+
+var callServiceControl = rpc.declare({
+	object: 'luci.ndpid',
+	method: 'service',
+	params: ['action']
+});
+
+function formatNumber(n) {
+	if (!n && n !== 0) return '0';
+	if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+	if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+	return String(n);
+}
+
+function formatBytes(bytes) {
+	if (!bytes || bytes === 0) return '0 B';
+	var units = ['B', 'KB', 'MB', 'GB', 'TB'];
+	var i = Math.floor(Math.log(bytes) / Math.log(1024));
+	i = Math.min(i, units.length - 1);
+	return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + units[i];
+}
+
+function getAppIcon(app, category) {
+	var icons = {
+		'HTTP': '🌐', 'HTTPS': '🔒', 'TLS': '🔒', 'SSL': '🔒',
+		'DNS': '📡', 'NTP': '🕐', 'DHCP': '📋',
+		'SSH': '🖥️', 'Telnet': '💻',
+		'YouTube': '▶️', 'Netflix': '🎬', 'Twitch': '🎮',
+		'Facebook': '👤', 'Twitter': '🐦', 'Instagram': '📷', 'TikTok': '🎵',
+		'WhatsApp': '💬', 'Telegram': '✈️', 'Discord': '🎧',
+		'BitTorrent': '📥', 'eDonkey': '📥',
+		'Spotify': '🎵', 'AppleMusic': '🎵',
+		'Dropbox': '📦', 'GoogleDrive': '📦', 'OneDrive': '📦',
+		'Zoom': '📹', 'Teams': '👥', 'Skype': '📞',
+		'VPN': '🛡️', 'OpenVPN': '🛡️', 'WireGuard': '🛡️',
+		'QUIC': '⚡', 'Unknown': '❓'
+	};
+	return icons[app] || icons[category] || '📦';
+}
+
+function getCategoryColor(category) {
+	var colors = {
+		'Web': 'var(--kiss-blue)',
+		'Video': 'var(--kiss-red)',
+		'Streaming': 'var(--kiss-yellow)',
+		'SocialNetwork': '#ec4899',
+		'Chat': '#8b5cf6',
+		'VoIP': 'var(--kiss-green)',
+		'Game': '#06b6d4',
+		'Download': '#f97316',
+		'Cloud': '#6366f1',
+		'VPN': '#14b8a6',
+		'Mail': '#84cc16',
+		'Network': 'var(--kiss-muted)',
+		'Unknown': 'var(--kiss-muted)'
+	};
+	return colors[category] || 'var(--kiss-muted)';
 }
 
 return view.extend({
-	title: _('nDPId Dashboard'),
 	pollInterval: 5,
 	pollActive: true,
 
 	load: function() {
 		return Promise.all([
-			api.getAllData(),
-			api.getCategories().catch(function() { return { categories: [] }; })
-		]).then(function(results) {
-			var data = results[0];
-			data.categories = results[1];
-			return data;
-		});
-	},
-
-	getAppIcon: function(app, category) {
-		var icons = {
-			'HTTP': '🌐', 'HTTPS': '🔒', 'TLS': '🔒', 'SSL': '🔒',
-			'DNS': '📡', 'NTP': '🕐', 'DHCP': '📋',
-			'SSH': '🖥️', 'Telnet': '💻',
-			'YouTube': '▶️', 'Netflix': '🎬', 'Twitch': '🎮',
-			'Facebook': '👤', 'Twitter': '🐦', 'Instagram': '📷', 'TikTok': '🎵',
-			'WhatsApp': '💬', 'Telegram': '✈️', 'Discord': '🎧',
-			'BitTorrent': '📥', 'eDonkey': '📥',
-			'Spotify': '🎵', 'AppleMusic': '🎵',
-			'Dropbox': '📦', 'GoogleDrive': '📦', 'OneDrive': '📦',
-			'Zoom': '📹', 'Teams': '👥', 'Skype': '📞',
-			'VPN': '🛡️', 'OpenVPN': '🛡️', 'WireGuard': '🛡️',
-			'QUIC': '⚡', 'HTTP2': '⚡',
-			'SMTP': '📧', 'IMAP': '📧', 'POP3': '📧',
-			'FTP': '📁', 'SFTP': '📁', 'SMB': '📁',
-			'ICMP': '📶', 'IGMP': '📡',
-			'Unknown': '❓'
-		};
-		return icons[app] || icons[category] || '📦';
-	},
-
-	getCategoryColor: function(category) {
-		var colors = {
-			'Web': '#3b82f6',
-			'Video': '#ef4444',
-			'Streaming': '#f59e0b',
-			'SocialNetwork': '#ec4899',
-			'Chat': '#8b5cf6',
-			'VoIP': '#10b981',
-			'Game': '#06b6d4',
-			'Download': '#f97316',
-			'Cloud': '#6366f1',
-			'VPN': '#14b8a6',
-			'Mail': '#84cc16',
-			'FileTransfer': '#a855f7',
-			'Network': '#64748b',
-			'Unknown': '#94a3b8'
-		};
-		return colors[category] || '#64748b';
-	},
-
-	updateDashboard: function(data) {
-		var dashboard = data.dashboard || {};
-		var service = dashboard.service || {};
-		var flows = dashboard.flows || {};
-		var system = dashboard.system || {};
-
-		// Update service status
-		var statusBadge = document.querySelector('.ndpi-status-badge');
-		if (statusBadge) {
-			statusBadge.classList.toggle('running', service.running);
-			statusBadge.classList.toggle('stopped', !service.running);
-			statusBadge.innerHTML = '<span class="ndpi-status-dot"></span>' +
-				(service.running ? 'Running' : 'Stopped');
-		}
-
-		// Update flow counts
-		var updates = [
-			{ sel: '.ndpi-stat-flows-total', val: api.formatNumber(flows.total) },
-			{ sel: '.ndpi-stat-flows-active', val: api.formatNumber(flows.active) },
-			{ sel: '.ndpi-stat-memory', val: api.formatBytes(system.memory_kb * 1024) }
-		];
-
-		updates.forEach(function(u) {
-			var el = document.querySelector(u.sel);
-			if (el && el.textContent !== u.val) {
-				el.textContent = u.val;
-				el.classList.add('ndpi-value-updated');
-				setTimeout(function() { el.classList.remove('ndpi-value-updated'); }, 500);
-			}
-		});
-
-		// Update interface stats
-		var interfaces = Array.isArray(data.interfaces) ? data.interfaces : (data.interfaces || {}).interfaces || [];
-		interfaces.forEach(function(iface) {
-			var card = document.querySelector('.ndpi-iface-card[data-iface="' + iface.name + '"]');
-			if (!card) return;
-
-			var tcpEl = card.querySelector('.ndpi-iface-tcp');
-			var udpEl = card.querySelector('.ndpi-iface-udp');
-			var bytesEl = card.querySelector('.ndpi-iface-bytes');
-
-			if (tcpEl) tcpEl.textContent = api.formatNumber(iface.tcp);
-			if (udpEl) udpEl.textContent = api.formatNumber(iface.udp);
-			if (bytesEl) bytesEl.textContent = api.formatBytes(iface.ip_bytes);
-		});
-	},
-
-	startPolling: function() {
-		var self = this;
-		this.pollActive = true;
-
-		poll.add(L.bind(function() {
-			if (!this.pollActive) return Promise.resolve();
-
-			return api.getAllData().then(L.bind(function(data) {
-				this.updateDashboard(data);
-			}, this));
-		}, this), this.pollInterval);
-	},
-
-	stopPolling: function() {
-		this.pollActive = false;
-		poll.stop();
-	},
-
-	handleServiceControl: function(action) {
-		var self = this;
-
-		ui.showModal(_('Please wait...'), [
-			E('p', { 'class': 'spinning' }, _('Processing request...'))
-		]);
-
-		var promise;
-		switch (action) {
-			case 'start':
-				promise = api.serviceStart();
-				break;
-			case 'stop':
-				promise = api.serviceStop();
-				break;
-			case 'restart':
-				promise = api.serviceRestart();
-				break;
-			default:
-				ui.hideModal();
-				return;
-		}
-
-		promise.then(function(result) {
-			ui.hideModal();
-			if (result.success) {
-				ui.addNotification(null, E('p', {}, result.message || _('Operation completed')), 'info');
-			} else {
-				ui.addNotification(null, E('p', {}, result.message || _('Operation failed')), 'error');
-			}
-		}).catch(function(err) {
-			ui.hideModal();
-			ui.addNotification(null, E('p', {}, _('Error: ') + err.message), 'error');
+			callGetStatus(),
+			callGetFlows(),
+			callGetApplications(),
+			callGetCategories()
+		]).catch(function() {
+			return [{}, {}, {}, {}];
 		});
 	},
 
 	render: function(data) {
+		var status = data[0] || {};
+		var flows = data[1] || {};
+		var applications = data[2].applications || data[2] || [];
+		var categories = data[3].categories || data[3] || [];
+
+		if (Array.isArray(applications) === false) applications = [];
+		if (Array.isArray(categories) === false) categories = [];
+
 		var self = this;
-		var dashboard = data.dashboard || {};
-		var service = dashboard.service || {};
-		var flows = dashboard.flows || {};
-		var system = dashboard.system || {};
-		// Handle both array and object formats from API
-		var interfaces = Array.isArray(data.interfaces) ? data.interfaces : (data.interfaces || {}).interfaces || [];
-		var applications = Array.isArray(data.applications) ? data.applications : (data.applications || {}).applications || [];
-		var protocols = Array.isArray(data.protocols) ? data.protocols : (data.protocols || {}).protocols || [];
-		var categories = Array.isArray(data.categories) ? data.categories : (data.categories || {}).categories || [];
+		var running = status.running || false;
+		var totalFlows = flows.total || 0;
+		var activeFlows = flows.active || 0;
+		var memoryKb = status.memory_kb || 0;
+		var interfaces = status.interfaces || [];
 
-		var view = E('div', { 'class': 'ndpid-dashboard' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('ndpid/dashboard.css') }),
-
+		var content = [
 			// Header
-			E('div', { 'class': 'ndpi-header' }, [
-				E('div', { 'class': 'ndpi-logo' }, [
-					E('div', { 'class': 'ndpi-logo-icon' }, '🔍'),
-					E('div', { 'class': 'ndpi-logo-text' }, ['nDPI', E('span', {}, 'd')])
-				]),
-				E('div', { 'class': 'ndpi-header-info' }, [
-					E('div', {
-						'class': 'ndpi-status-badge ' + (service.running ? 'running' : 'stopped')
-					}, [
-						E('span', { 'class': 'ndpi-status-dot' }),
-						service.running ? 'Running' : 'Stopped'
+			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;' }, [
+				E('div', {}, [
+					E('h2', { 'style': 'margin: 0 0 4px 0;' }, [
+						'🔍 ',
+						E('span', { 'style': 'background: linear-gradient(90deg, var(--kiss-blue), var(--kiss-green)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;' }, 'nDPId'),
+						' Dashboard'
 					]),
-					E('span', { 'class': 'ndpi-version' }, 'v' + (service.version || '1.7'))
+					E('div', { 'style': 'color: var(--kiss-muted);' }, 'Deep Packet Inspection')
+				]),
+				E('div', { 'style': 'display: flex; gap: 8px; align-items: center;' }, [
+					E('span', {
+						'class': running ? 'kiss-badge kiss-badge-green' : 'kiss-badge kiss-badge-red',
+						'data-stat': 'status'
+					}, running ? 'Running' : 'Stopped'),
+					E('span', { 'style': 'color: var(--kiss-muted); font-size: 12px;' }, 'v' + (status.version || '1.7'))
 				])
 			]),
 
-			// Service controls
-			E('div', { 'class': 'ndpi-controls' }, [
-				E('button', {
-					'class': 'ndpi-btn ndpi-btn-success',
-					'click': function() { self.handleServiceControl('start'); },
-					'disabled': service.running
-				}, '▶ Start'),
-				E('button', {
-					'class': 'ndpi-btn ndpi-btn-danger',
-					'click': function() { self.handleServiceControl('stop'); },
-					'disabled': !service.running
-				}, '⏹ Stop'),
-				E('button', {
-					'class': 'ndpi-btn ndpi-btn-primary',
-					'click': function() { self.handleServiceControl('restart'); }
-				}, '🔄 Restart'),
-				E('div', { 'style': 'flex: 1' }),
-				E('span', { 'class': 'ndpi-refresh-status' }, [
-					E('span', { 'class': 'ndpi-refresh-dot active' }),
-					' Auto-refresh: ',
-					E('span', { 'class': 'ndpi-refresh-state' }, 'Active')
-				]),
-				E('button', {
-					'class': 'ndpi-btn ndpi-btn-sm',
-					'id': 'ndpi-poll-toggle',
-					'click': L.bind(function(ev) {
-						var btn = ev.target;
-						var indicator = document.querySelector('.ndpi-refresh-dot');
-						var state = document.querySelector('.ndpi-refresh-state');
-						if (this.pollActive) {
-							this.stopPolling();
-							btn.textContent = '▶ Resume';
-							indicator.classList.remove('active');
-							state.textContent = 'Paused';
-						} else {
-							this.startPolling();
-							btn.textContent = '⏸ Pause';
-							indicator.classList.add('active');
-							state.textContent = 'Active';
-						}
-					}, this)
-				}, '⏸ Pause')
+			// Navigation
+			E('div', { 'class': 'kiss-grid kiss-grid-auto', 'style': 'margin-bottom: 24px;' }, [
+				E('a', { 'href': L.url('admin', 'secubox', 'ndpid', 'dashboard'), 'class': 'kiss-btn kiss-btn-green', 'style': 'text-decoration: none;' }, '📊 Dashboard'),
+				E('a', { 'href': L.url('admin', 'secubox', 'ndpid', 'flows'), 'class': 'kiss-btn', 'style': 'text-decoration: none;' }, '🔍 Flows'),
+				E('a', { 'href': L.url('admin', 'secubox', 'ndpid', 'settings'), 'class': 'kiss-btn', 'style': 'text-decoration: none;' }, '⚙️ Settings')
 			]),
 
-			// Quick Stats
-			E('div', { 'class': 'ndpi-quick-stats' }, [
-				E('div', { 'class': 'ndpi-quick-stat' }, [
-					E('div', { 'class': 'ndpi-quick-stat-header' }, [
-						E('span', { 'class': 'ndpi-quick-stat-icon' }, '📊'),
-						E('span', { 'class': 'ndpi-quick-stat-label' }, 'Total Flows')
+			// Service Controls
+			E('div', { 'class': 'kiss-card', 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'class': 'kiss-card-title' }, 'Service Control'),
+				E('div', { 'style': 'display: flex; gap: 12px; flex-wrap: wrap; align-items: center;' }, [
+					E('button', {
+						'class': 'kiss-btn kiss-btn-green',
+						'disabled': running,
+						'click': L.bind(this.handleService, this, 'start')
+					}, '▶ Start'),
+					E('button', {
+						'class': 'kiss-btn kiss-btn-red',
+						'disabled': !running,
+						'click': L.bind(this.handleService, this, 'stop')
+					}, '⏹ Stop'),
+					E('button', {
+						'class': 'kiss-btn kiss-btn-blue',
+						'click': L.bind(this.handleService, this, 'restart')
+					}, '🔄 Restart'),
+					E('div', { 'style': 'flex: 1;' }),
+					E('span', { 'style': 'color: var(--kiss-muted); font-size: 12px;' }, [
+						'Auto-refresh: ',
+						E('span', { 'id': 'poll-state', 'style': 'color: var(--kiss-green);' }, 'Active')
 					]),
-					E('div', { 'class': 'ndpi-quick-stat-value ndpi-stat-flows-total' },
-						api.formatNumber(flows.total || 0)),
-					E('div', { 'class': 'ndpi-quick-stat-sub' }, 'Detected since start')
+					E('button', {
+						'class': 'kiss-btn',
+						'id': 'poll-toggle',
+						'click': L.bind(this.togglePoll, this)
+					}, '⏸ Pause')
+				])
+			]),
+
+			// Stats Grid
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'class': 'kiss-stat' }, [
+					E('div', { 'class': 'kiss-stat-value', 'data-stat': 'total-flows' }, formatNumber(totalFlows)),
+					E('div', { 'class': 'kiss-stat-label' }, 'Total Flows')
 				]),
-				E('div', { 'class': 'ndpi-quick-stat', 'style': '--stat-gradient: linear-gradient(135deg, #10b981, #34d399)' }, [
-					E('div', { 'class': 'ndpi-quick-stat-header' }, [
-						E('span', { 'class': 'ndpi-quick-stat-icon' }, '✅'),
-						E('span', { 'class': 'ndpi-quick-stat-label' }, 'Active Flows')
-					]),
-					E('div', { 'class': 'ndpi-quick-stat-value ndpi-stat-flows-active' },
-						api.formatNumber(flows.active || 0)),
-					E('div', { 'class': 'ndpi-quick-stat-sub' }, 'Currently tracked')
+				E('div', { 'class': 'kiss-stat' }, [
+					E('div', { 'class': 'kiss-stat-value', 'style': 'color: var(--kiss-green);', 'data-stat': 'active-flows' }, formatNumber(activeFlows)),
+					E('div', { 'class': 'kiss-stat-label' }, 'Active Flows')
 				]),
-				E('div', { 'class': 'ndpi-quick-stat' }, [
-					E('div', { 'class': 'ndpi-quick-stat-header' }, [
-						E('span', { 'class': 'ndpi-quick-stat-icon' }, '🖥'),
-						E('span', { 'class': 'ndpi-quick-stat-label' }, 'Memory')
-					]),
-					E('div', { 'class': 'ndpi-quick-stat-value ndpi-stat-memory' },
-						api.formatBytes((system.memory_kb || 0) * 1024)),
-					E('div', { 'class': 'ndpi-quick-stat-sub' }, 'Process memory')
+				E('div', { 'class': 'kiss-stat' }, [
+					E('div', { 'class': 'kiss-stat-value', 'data-stat': 'memory' }, formatBytes(memoryKb * 1024)),
+					E('div', { 'class': 'kiss-stat-label' }, 'Memory')
 				]),
-				E('div', { 'class': 'ndpi-quick-stat' }, [
-					E('div', { 'class': 'ndpi-quick-stat-header' }, [
-						E('span', { 'class': 'ndpi-quick-stat-icon' }, '🌐'),
-						E('span', { 'class': 'ndpi-quick-stat-label' }, 'Interfaces')
+				E('div', { 'class': 'kiss-stat' }, [
+					E('div', { 'class': 'kiss-stat-value', 'style': 'color: var(--kiss-blue);' }, interfaces.length),
+					E('div', { 'class': 'kiss-stat-label' }, 'Interfaces')
+				])
+			]),
+
+			// Two-column layout
+			E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 24px;' }, [
+				// Top Applications
+				E('div', { 'class': 'kiss-card' }, [
+					E('div', { 'class': 'kiss-card-title' }, [
+						'📱 Top Applications ',
+						E('span', { 'class': 'kiss-badge kiss-badge-blue' }, applications.length + ' detected')
 					]),
-					E('div', { 'class': 'ndpi-quick-stat-value' },
-						(dashboard.interfaces || []).length),
-					E('div', { 'class': 'ndpi-quick-stat-sub' }, 'Monitored')
+					applications.length > 0 ?
+						E('div', { 'id': 'apps-list' }, this.renderAppsList(applications)) :
+						E('div', { 'style': 'text-align: center; padding: 40px; color: var(--kiss-muted);' }, [
+							E('div', { 'style': 'font-size: 32px; margin-bottom: 12px;' }, '📱'),
+							E('div', {}, 'No applications detected yet')
+						])
+				]),
+
+				// Traffic Categories
+				E('div', { 'class': 'kiss-card' }, [
+					E('div', { 'class': 'kiss-card-title' }, [
+						'🏷️ Traffic Categories ',
+						E('span', { 'class': 'kiss-badge kiss-badge-blue' }, categories.length + ' types')
+					]),
+					categories.length > 0 ?
+						E('div', { 'id': 'categories-list' }, this.renderCategoriesList(categories)) :
+						E('div', { 'style': 'text-align: center; padding: 40px; color: var(--kiss-muted);' }, [
+							E('div', { 'style': 'font-size: 32px; margin-bottom: 12px;' }, '🏷️'),
+							E('div', {}, 'No categories detected yet')
+						])
 				])
 			]),
 
 			// Interface Statistics
-			E('div', { 'class': 'ndpi-card' }, [
-				E('div', { 'class': 'ndpi-card-header' }, [
-					E('div', { 'class': 'ndpi-card-title' }, [
-						E('span', { 'class': 'ndpi-card-title-icon' }, '🔗'),
-						'Interface Statistics'
-					]),
-					E('div', { 'class': 'ndpi-card-badge' },
-						interfaces.length + ' interface' + (interfaces.length !== 1 ? 's' : ''))
-				]),
-				E('div', { 'class': 'ndpi-card-body' },
-					interfaces.length > 0 ?
-					E('div', { 'class': 'ndpi-iface-grid' },
-						interfaces.map(function(iface) {
-							return E('div', { 'class': 'ndpi-iface-card', 'data-iface': iface.name }, [
-								E('div', { 'class': 'ndpi-iface-header' }, [
-									E('div', { 'class': 'ndpi-iface-icon' }, '🌐'),
-									E('div', { 'class': 'ndpi-iface-name' }, iface.name)
+			interfaces.length > 0 ? E('div', { 'class': 'kiss-card', 'style': 'margin-top: 24px;' }, [
+				E('div', { 'class': 'kiss-card-title' }, '🔗 Interface Statistics'),
+				E('div', { 'class': 'kiss-grid kiss-grid-auto', 'id': 'interfaces-grid' },
+					interfaces.map(function(iface) {
+						return E('div', {
+							'class': 'kiss-stat',
+							'style': 'text-align: left; padding: 16px;',
+							'data-iface': iface.name
+						}, [
+							E('div', { 'style': 'font-weight: 600; margin-bottom: 8px;' }, [
+								'🌐 ',
+								iface.name
+							]),
+							E('div', { 'style': 'display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; font-size: 12px;' }, [
+								E('div', {}, [
+									E('div', { 'style': 'color: var(--kiss-muted);' }, 'TCP'),
+									E('div', { 'data-stat': 'tcp-' + iface.name }, formatNumber(iface.tcp || 0))
 								]),
-								E('div', { 'class': 'ndpi-iface-stats' }, [
-									E('div', { 'class': 'ndpi-iface-stat' }, [
-										E('span', { 'class': 'ndpi-iface-stat-label' }, 'TCP'),
-										E('span', { 'class': 'ndpi-iface-stat-value ndpi-iface-tcp' },
-											api.formatNumber(iface.tcp))
-									]),
-									E('div', { 'class': 'ndpi-iface-stat' }, [
-										E('span', { 'class': 'ndpi-iface-stat-label' }, 'UDP'),
-										E('span', { 'class': 'ndpi-iface-stat-value ndpi-iface-udp' },
-											api.formatNumber(iface.udp))
-									]),
-									E('div', { 'class': 'ndpi-iface-stat' }, [
-										E('span', { 'class': 'ndpi-iface-stat-label' }, 'Bytes'),
-										E('span', { 'class': 'ndpi-iface-stat-value ndpi-iface-bytes' },
-											api.formatBytes(iface.ip_bytes))
-									])
+								E('div', {}, [
+									E('div', { 'style': 'color: var(--kiss-muted);' }, 'UDP'),
+									E('div', { 'data-stat': 'udp-' + iface.name }, formatNumber(iface.udp || 0))
+								]),
+								E('div', {}, [
+									E('div', { 'style': 'color: var(--kiss-muted);' }, 'Bytes'),
+									E('div', { 'data-stat': 'bytes-' + iface.name }, formatBytes(iface.ip_bytes || 0))
 								])
-							]);
-						})
-					) :
-					E('div', { 'class': 'ndpi-empty' }, [
-						E('div', { 'class': 'ndpi-empty-icon' }, '📡'),
-						E('div', { 'class': 'ndpi-empty-text' }, 'No interface statistics available'),
-						E('p', {}, 'Start the nDPId service to begin monitoring')
-					])
+							])
+						]);
+					})
 				)
-			]),
+			]) : E('span')
+		];
 
-			// Grid layout for Applications and Categories
-			E('div', { 'class': 'ndpi-grid-2' }, [
-				// Top Applications
-				E('div', { 'class': 'ndpi-card' }, [
-					E('div', { 'class': 'ndpi-card-header' }, [
-						E('div', { 'class': 'ndpi-card-title' }, [
-							E('span', { 'class': 'ndpi-card-title-icon' }, '📱'),
-							'Top Applications'
-						]),
-						E('div', { 'class': 'ndpi-card-badge' }, applications.length + ' detected')
+		this.startPolling();
+		return KissTheme.wrap(content, 'ndpid/dashboard');
+	},
+
+	renderAppsList: function(applications) {
+		var maxBytes = Math.max.apply(null, applications.map(function(a) { return a.bytes || 0; })) || 1;
+		return applications.slice(0, 8).map(function(app) {
+			var pct = Math.round(((app.bytes || 0) / maxBytes) * 100);
+			var color = getCategoryColor(app.category);
+			return E('div', { 'style': 'margin-bottom: 12px;' }, [
+				E('div', { 'style': 'display: flex; justify-content: space-between; margin-bottom: 4px;' }, [
+					E('span', {}, [
+						getAppIcon(app.name, app.category),
+						' ',
+						app.name || 'Unknown'
 					]),
-					E('div', { 'class': 'ndpi-card-body' },
-						applications.length > 0 ?
-						E('div', { 'class': 'ndpi-apps-list' },
-							(function() {
-								var maxBytes = Math.max.apply(null, applications.map(function(a) { return a.bytes || 0; })) || 1;
-								return applications.slice(0, 8).map(function(app) {
-									var pct = Math.round(((app.bytes || 0) / maxBytes) * 100);
-									return E('div', { 'class': 'ndpi-app-item' }, [
-										E('div', { 'class': 'ndpi-app-header' }, [
-											E('span', { 'class': 'ndpi-app-icon' }, self.getAppIcon(app.name, app.category)),
-											E('span', { 'class': 'ndpi-app-name' }, app.name || 'Unknown'),
-											E('span', { 'class': 'ndpi-app-bytes' }, api.formatBytes(app.bytes || 0))
-										]),
-										E('div', { 'class': 'ndpi-app-bar' }, [
-											E('div', { 'class': 'ndpi-app-bar-fill', 'style': 'width:' + pct + '%;background:' + self.getCategoryColor(app.category) })
-										]),
-										E('div', { 'class': 'ndpi-app-meta' }, (app.flows || 0) + ' flows · ' + (app.category || 'Unknown'))
-									]);
-								});
-							})()
-						) :
-						E('div', { 'class': 'ndpi-empty' }, [
-							E('div', { 'class': 'ndpi-empty-icon' }, '📱'),
-							E('div', { 'class': 'ndpi-empty-text' }, 'No applications detected yet'),
-							E('p', {}, 'Generate network traffic to see app detection')
-						])
-					)
+					E('span', { 'style': 'color: var(--kiss-muted); font-size: 12px;' }, formatBytes(app.bytes || 0))
 				]),
-
-				// Traffic Categories
-				E('div', { 'class': 'ndpi-card' }, [
-					E('div', { 'class': 'ndpi-card-header' }, [
-						E('div', { 'class': 'ndpi-card-title' }, [
-							E('span', { 'class': 'ndpi-card-title-icon' }, '🏷️'),
-							'Traffic Categories'
-						]),
-						E('div', { 'class': 'ndpi-card-badge' }, categories.length + ' types')
-					]),
-					E('div', { 'class': 'ndpi-card-body' },
-						categories.length > 0 ?
-						E('div', { 'class': 'ndpi-categories-list' },
-							(function() {
-								var maxBytes = Math.max.apply(null, categories.map(function(c) { return c.bytes || 0; })) || 1;
-								return categories.slice(0, 8).map(function(cat) {
-									var pct = Math.round(((cat.bytes || 0) / maxBytes) * 100);
-									return E('div', { 'class': 'ndpi-category-item' }, [
-										E('div', { 'class': 'ndpi-category-header' }, [
-											E('span', { 'class': 'ndpi-category-name', 'style': 'color:' + self.getCategoryColor(cat.name) }, cat.name),
-											E('span', { 'class': 'ndpi-category-bytes' }, api.formatBytes(cat.bytes || 0))
-										]),
-										E('div', { 'class': 'ndpi-category-bar' }, [
-											E('div', { 'class': 'ndpi-category-bar-fill', 'style': 'width:' + pct + '%;background:' + self.getCategoryColor(cat.name) })
-										]),
-										E('div', { 'class': 'ndpi-category-meta' }, (cat.apps || 0) + ' apps · ' + (cat.flows || 0) + ' flows')
-									]);
-								});
-							})()
-						) :
-						E('div', { 'class': 'ndpi-empty' }, [
-							E('div', { 'class': 'ndpi-empty-icon' }, '🏷️'),
-							E('div', { 'class': 'ndpi-empty-text' }, 'No categories detected yet')
-						])
-					)
-				])
-			]),
-
-			// Top Protocols
-			E('div', { 'class': 'ndpi-card' }, [
-				E('div', { 'class': 'ndpi-card-header' }, [
-					E('div', { 'class': 'ndpi-card-title' }, [
-						E('span', { 'class': 'ndpi-card-title-icon' }, '📡'),
-						'Protocol Distribution'
-					])
+				E('div', { 'style': 'height: 6px; background: var(--kiss-line); border-radius: 3px; overflow: hidden;' }, [
+					E('div', { 'style': 'height: 100%; width: ' + pct + '%; background: ' + color + '; border-radius: 3px; transition: width 0.3s;' })
 				]),
-				E('div', { 'class': 'ndpi-card-body' },
-					protocols.length > 0 ?
-					E('div', { 'class': 'ndpi-protocol-grid' },
-						protocols.map(function(proto) {
-							var total = protocols.reduce(function(sum, p) { return sum + (p.count || 0); }, 0);
-							var pct = total > 0 ? Math.round((proto.count / total) * 100) : 0;
-							return E('div', { 'class': 'ndpi-protocol-item' }, [
-								E('div', { 'class': 'ndpi-protocol-header' }, [
-									E('span', { 'class': 'ndpi-protocol-name' }, proto.name),
-									E('span', { 'class': 'ndpi-protocol-count' }, api.formatNumber(proto.count))
-								]),
-								E('div', { 'class': 'ndpi-protocol-bar' }, [
-									E('div', {
-										'class': 'ndpi-protocol-bar-fill',
-										'style': 'width: ' + pct + '%'
-									})
-								]),
-								E('div', { 'class': 'ndpi-protocol-pct' }, pct + '%')
-							]);
-						})
-					) :
-					E('div', { 'class': 'ndpi-empty' }, [
-						E('div', { 'class': 'ndpi-empty-icon' }, '📡'),
-						E('div', { 'class': 'ndpi-empty-text' }, 'No protocol data available')
-					])
-				)
-			])
+				E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted); margin-top: 2px;' },
+					(app.flows || 0) + ' flows · ' + (app.category || 'Unknown'))
+			]);
+		});
+	},
+
+	renderCategoriesList: function(categories) {
+		var maxBytes = Math.max.apply(null, categories.map(function(c) { return c.bytes || 0; })) || 1;
+		return categories.slice(0, 8).map(function(cat) {
+			var pct = Math.round(((cat.bytes || 0) / maxBytes) * 100);
+			var color = getCategoryColor(cat.name);
+			return E('div', { 'style': 'margin-bottom: 12px;' }, [
+				E('div', { 'style': 'display: flex; justify-content: space-between; margin-bottom: 4px;' }, [
+					E('span', { 'style': 'color: ' + color + ';' }, cat.name),
+					E('span', { 'style': 'color: var(--kiss-muted); font-size: 12px;' }, formatBytes(cat.bytes || 0))
+				]),
+				E('div', { 'style': 'height: 6px; background: var(--kiss-line); border-radius: 3px; overflow: hidden;' }, [
+					E('div', { 'style': 'height: 100%; width: ' + pct + '%; background: ' + color + '; border-radius: 3px; transition: width 0.3s;' })
+				]),
+				E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted); margin-top: 2px;' },
+					(cat.apps || 0) + ' apps · ' + (cat.flows || 0) + ' flows')
+			]);
+		});
+	},
+
+	handleService: function(action) {
+		var self = this;
+		ui.showModal(_('Please wait...'), [
+			E('p', { 'class': 'spinning' }, _('Processing...'))
 		]);
 
-		// Start polling
-		this.startPolling();
+		callServiceControl(action).then(function(result) {
+			ui.hideModal();
+			if (result && result.success !== false) {
+				ui.addNotification(null, E('p', 'Service ' + action + ' completed'), 'info');
+				self.refresh();
+			} else {
+				ui.addNotification(null, E('p', 'Operation failed: ' + (result.message || 'Unknown error')), 'error');
+			}
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', 'Error: ' + err.message), 'error');
+		});
+	},
 
-		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
-		wrapper.appendChild(SbHeader.render());
-		wrapper.appendChild(renderNdpidNav('dashboard'));
-		wrapper.appendChild(view);
-		return KissTheme.wrap(wrapper, 'admin/secubox/ndpid/dashboard');
+	togglePoll: function(ev) {
+		var btn = ev.currentTarget;
+		var state = document.getElementById('poll-state');
+		if (this.pollActive) {
+			this.pollActive = false;
+			poll.stop();
+			btn.textContent = '▶ Resume';
+			if (state) {
+				state.textContent = 'Paused';
+				state.style.color = 'var(--kiss-yellow)';
+			}
+		} else {
+			this.pollActive = true;
+			this.startPolling();
+			btn.textContent = '⏸ Pause';
+			if (state) {
+				state.textContent = 'Active';
+				state.style.color = 'var(--kiss-green)';
+			}
+		}
+	},
+
+	startPolling: function() {
+		var self = this;
+		poll.add(L.bind(function() {
+			if (!this.pollActive) return Promise.resolve();
+			return this.refresh();
+		}, this), this.pollInterval);
+	},
+
+	refresh: function() {
+		var self = this;
+		return Promise.all([
+			callGetStatus(),
+			callGetFlows(),
+			callGetApplications(),
+			callGetCategories()
+		]).then(function(data) {
+			var status = data[0] || {};
+			var flows = data[1] || {};
+			var applications = data[2].applications || data[2] || [];
+			var categories = data[3].categories || data[3] || [];
+
+			// Update stats
+			var updates = {
+				'total-flows': formatNumber(flows.total || 0),
+				'active-flows': formatNumber(flows.active || 0),
+				'memory': formatBytes((status.memory_kb || 0) * 1024)
+			};
+
+			Object.keys(updates).forEach(function(key) {
+				var el = document.querySelector('[data-stat="' + key + '"]');
+				if (el && el.textContent !== updates[key]) {
+					el.textContent = updates[key];
+				}
+			});
+
+			// Update status badge
+			var statusBadge = document.querySelector('[data-stat="status"]');
+			if (statusBadge) {
+				var running = status.running || false;
+				statusBadge.className = running ? 'kiss-badge kiss-badge-green' : 'kiss-badge kiss-badge-red';
+				statusBadge.textContent = running ? 'Running' : 'Stopped';
+			}
+
+			// Update interfaces
+			(status.interfaces || []).forEach(function(iface) {
+				var tcpEl = document.querySelector('[data-stat="tcp-' + iface.name + '"]');
+				var udpEl = document.querySelector('[data-stat="udp-' + iface.name + '"]');
+				var bytesEl = document.querySelector('[data-stat="bytes-' + iface.name + '"]');
+				if (tcpEl) tcpEl.textContent = formatNumber(iface.tcp || 0);
+				if (udpEl) udpEl.textContent = formatNumber(iface.udp || 0);
+				if (bytesEl) bytesEl.textContent = formatBytes(iface.ip_bytes || 0);
+			});
+
+			// Update apps list
+			if (Array.isArray(applications) && applications.length > 0) {
+				var appsList = document.getElementById('apps-list');
+				if (appsList) {
+					dom.content(appsList, self.renderAppsList(applications));
+				}
+			}
+
+			// Update categories list
+			if (Array.isArray(categories) && categories.length > 0) {
+				var catsList = document.getElementById('categories-list');
+				if (catsList) {
+					dom.content(catsList, self.renderCategoriesList(categories));
+				}
+			}
+		}).catch(function(err) {
+			console.error('Refresh failed:', err);
+		});
 	},
 
 	handleSaveApply: null,
