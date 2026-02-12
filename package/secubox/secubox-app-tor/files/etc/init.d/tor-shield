@@ -202,6 +202,9 @@ setup_iptables() {
 	# Exclude local networks
 	config_list_foreach trans excluded_ips add_excluded_ip
 
+	# Exclude domains (resolve to IP and bypass Tor)
+	config_list_foreach trans excluded_domains add_excluded_domain
+
 	# Redirect DNS if enabled
 	if [ "$dns_over_tor" = "1" ]; then
 		iptables -t nat -A TOR_SHIELD -p udp --dport 53 -j REDIRECT --to-ports $dns_port
@@ -219,6 +222,7 @@ setup_iptables() {
 		iptables -t filter -A TOR_SHIELD -m owner --uid-owner $tor_uid -j ACCEPT
 		iptables -t filter -A TOR_SHIELD -d 127.0.0.0/8 -j ACCEPT
 		config_list_foreach trans excluded_ips add_excluded_filter_ip
+		config_list_foreach trans excluded_domains add_excluded_domain_filter
 		# Allow response packets for inbound connections (HAProxy, etc)
 		iptables -t filter -A TOR_SHIELD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 		iptables -t filter -A TOR_SHIELD -j REJECT
@@ -289,6 +293,35 @@ add_excluded_filter_ip() {
 
 add_excluded_lan_ip() {
 	iptables -t nat -A TOR_SHIELD_LAN -d "$1" -j RETURN
+}
+
+# Resolve domain to IP and exclude from Tor routing
+add_excluded_domain() {
+	local domain="$1"
+	[ -z "$domain" ] && return
+
+	# Resolve IPv4 addresses using nslookup (available on OpenWrt)
+	local ips=$(nslookup "$domain" 2>/dev/null | tail -n+3 | grep "Address" | awk '{print $2}' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$')
+
+	if [ -n "$ips" ]; then
+		for ip in $ips; do
+			iptables -t nat -A TOR_SHIELD -d "$ip" -j RETURN
+			logger -t tor-shield "Excluded domain $domain -> $ip"
+		done
+	else
+		logger -t tor-shield "Warning: Could not resolve domain $domain"
+	fi
+}
+
+add_excluded_domain_filter() {
+	local domain="$1"
+	[ -z "$domain" ] && return
+
+	local ips=$(nslookup "$domain" 2>/dev/null | tail -n+3 | grep "Address" | awk '{print $2}' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$')
+
+	for ip in $ips; do
+		iptables -t filter -A TOR_SHIELD -d "$ip" -j ACCEPT
+	done
 }
 
 setup_lan_proxy() {

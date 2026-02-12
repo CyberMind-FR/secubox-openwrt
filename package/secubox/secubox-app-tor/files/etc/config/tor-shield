@@ -50,6 +50,10 @@ config transparent 'trans'
 	list excluded_ips '10.0.0.0/8'
 	list excluded_ips '172.16.0.0/12'
 	list excluded_ips '127.0.0.0/8'
+	# Domains excluded from Tor routing (for opkg, NTP, etc)
+	list excluded_domains 'downloads.openwrt.org'
+	list excluded_domains 'openwrt.org'
+	list excluded_domains 'services.nvd.nist.gov'
 
 config bridges 'bridges'
 	option enabled '0'
