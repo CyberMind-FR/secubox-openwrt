@@ -6,7 +6,7 @@
 'require secubox/kiss-theme';
 
 /**
- * HAProxy Virtual Hosts Management
+ * HAProxy Virtual Hosts Management - KISS Style
  * Copyright (C) 2025 CyberMind.fr
  */
 
@@ -14,12 +14,6 @@ return view.extend({
 	title: _('Virtual Hosts'),
 
 	load: function() {
-		// Load CSS
-		var cssLink = document.createElement('link');
-		cssLink.rel = 'stylesheet';
-		cssLink.href = L.resource('haproxy/dashboard.css');
-		document.head.appendChild(cssLink);
-
 		return Promise.all([
 			api.listVhosts(),
 			api.listBackends()
@@ -30,150 +24,133 @@ return view.extend({
 		var self = this;
 		var vhosts = (data[0] && data[0].vhosts) || data[0] || [];
 		var backends = (data[1] && data[1].backends) || data[1] || [];
+		var K = KissTheme;
 
-		var content = E('div', { 'class': 'haproxy-dashboard' }, [
+		var content = K.E('div', {}, [
 			// Page Header
-			E('div', { 'class': 'hp-page-header' }, [
-				E('div', {}, [
-					E('h1', { 'class': 'hp-page-title' }, [
-						E('span', { 'class': 'hp-page-title-icon' }, '\u{1F310}'),
+			K.E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;' }, [
+				K.E('div', {}, [
+					K.E('h2', { 'style': 'margin: 0; font-size: 24px; display: flex; align-items: center; gap: 10px;' }, [
+						K.E('span', {}, '🌐'),
 						'Virtual Hosts'
 					]),
-					E('p', { 'class': 'hp-page-subtitle' }, 'Configure domain-based routing to backend servers')
-				]),
-				E('a', {
-					'href': L.url('admin/services/haproxy/overview'),
-					'class': 'hp-btn hp-btn-secondary'
-				}, ['\u2190', ' Back to Overview'])
-			]),
-
-			// Add Virtual Host Card
-			E('div', { 'class': 'hp-card' }, [
-				E('div', { 'class': 'hp-card-header' }, [
-					E('div', { 'class': 'hp-card-title' }, [
-						E('span', { 'class': 'hp-card-title-icon' }, '\u2795'),
-						'Add Virtual Host'
-					])
-				]),
-				E('div', { 'class': 'hp-card-body' }, [
-					E('div', { 'class': 'hp-grid hp-grid-2', 'style': 'gap: 16px;' }, [
-						E('div', { 'class': 'hp-form-group' }, [
-							E('label', { 'class': 'hp-form-label' }, 'Domain'),
-							E('input', {
-								'type': 'text',
-								'id': 'new-domain',
-								'class': 'hp-form-input',
-								'placeholder': 'example.com or *.example.com'
-							})
-						]),
-						E('div', { 'class': 'hp-form-group' }, [
-							E('label', { 'class': 'hp-form-label' }, 'Backend'),
-							E('select', { 'id': 'new-backend', 'class': 'hp-form-input' },
-								[E('option', { 'value': '' }, '-- Select Backend --')].concat(
-									backends.map(function(b) {
-										return E('option', { 'value': b.id || b.name }, b.name);
-									})
-								)
-							)
-						])
-					]),
-					E('div', { 'style': 'display: flex; gap: 24px; flex-wrap: wrap; margin: 16px 0;' }, [
-						E('label', { 'class': 'hp-form-checkbox' }, [
-							E('input', { 'type': 'checkbox', 'id': 'new-ssl', 'checked': true }),
-							E('span', {}, 'Enable SSL/TLS')
-						]),
-						E('label', { 'class': 'hp-form-checkbox' }, [
-							E('input', { 'type': 'checkbox', 'id': 'new-ssl-redirect', 'checked': true }),
-							E('span', {}, 'Force HTTPS redirect')
-						]),
-						E('label', { 'class': 'hp-form-checkbox' }, [
-							E('input', { 'type': 'checkbox', 'id': 'new-acme', 'checked': true }),
-							E('span', {}, 'Auto-renew with ACME (Let\'s Encrypt)')
-						])
-					]),
-					E('button', {
-						'class': 'hp-btn hp-btn-primary',
-						'click': function() { self.handleAddVhost(backends); }
-					}, ['\u2795', ' Add Virtual Host'])
+					K.E('p', { 'style': 'margin: 4px 0 0; color: var(--kiss-muted, #94a3b8); font-size: 14px;' },
+						'Configure domain-based routing to backend servers')
 				])
 			]),
 
-			// Virtual Hosts List
-			E('div', { 'class': 'hp-card' }, [
-				E('div', { 'class': 'hp-card-header' }, [
-					E('div', { 'class': 'hp-card-title' }, [
-						E('span', { 'class': 'hp-card-title-icon' }, '\u{1F4CB}'),
-						'Configured Virtual Hosts (' + vhosts.length + ')'
+			// Add Virtual Host Card
+			K.E('div', { 'class': 'kiss-card' }, [
+				K.E('div', { 'class': 'kiss-card-title' }, ['➕ ', 'Add Virtual Host']),
+				K.E('div', { 'class': 'kiss-grid kiss-grid-2', 'style': 'gap: 16px; margin-bottom: 16px;' }, [
+					K.E('div', {}, [
+						K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Domain'),
+						K.E('input', {
+							'type': 'text',
+							'id': 'new-domain',
+							'placeholder': 'example.com or *.example.com',
+							'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
+						})
+					]),
+					K.E('div', {}, [
+						K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Backend'),
+						K.E('select', {
+							'id': 'new-backend',
+							'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
+						}, [K.E('option', { 'value': '' }, '-- Select Backend --')].concat(
+							backends.map(function(b) {
+								return K.E('option', { 'value': b.id || b.name }, b.name);
+							})
+						))
 					])
 				]),
-				E('div', { 'class': 'hp-card-body no-padding' },
-					vhosts.length === 0 ? [
-						E('div', { 'class': 'hp-empty' }, [
-							E('div', { 'class': 'hp-empty-icon' }, '\u{1F310}'),
-							E('div', { 'class': 'hp-empty-text' }, 'No virtual hosts configured'),
-							E('div', { 'class': 'hp-empty-hint' }, 'Add a virtual host above to start routing traffic')
-						])
-					] : [
-						this.renderVhostsTable(vhosts, backends)
-					]
-				)
+				K.E('div', { 'style': 'display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 16px;' }, [
+					K.E('label', { 'style': 'display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;' }, [
+						K.E('input', { 'type': 'checkbox', 'id': 'new-ssl', 'checked': true }),
+						'🔐 Enable SSL/TLS'
+					]),
+					K.E('label', { 'style': 'display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;' }, [
+						K.E('input', { 'type': 'checkbox', 'id': 'new-ssl-redirect', 'checked': true }),
+						'↗️ Force HTTPS'
+					]),
+					K.E('label', { 'style': 'display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;' }, [
+						K.E('input', { 'type': 'checkbox', 'id': 'new-acme', 'checked': true }),
+						'🔄 Auto-renew (ACME)'
+					])
+				]),
+				K.E('button', {
+					'class': 'kiss-btn kiss-btn-green',
+					'onClick': function() { self.handleAddVhost(backends); }
+				}, '➕ Add Virtual Host')
+			]),
+
+			// Virtual Hosts List
+			K.E('div', { 'class': 'kiss-card' }, [
+				K.E('div', { 'class': 'kiss-card-title' }, ['📋 ', 'Configured Virtual Hosts (', String(vhosts.length), ')']),
+				vhosts.length === 0 ?
+					K.E('div', { 'style': 'text-align: center; padding: 40px 20px; color: var(--kiss-muted);' }, [
+						K.E('div', { 'style': 'font-size: 48px; margin-bottom: 12px;' }, '🌐'),
+						K.E('div', { 'style': 'font-size: 16px;' }, 'No virtual hosts configured'),
+						K.E('div', { 'style': 'font-size: 13px; margin-top: 6px;' }, 'Add a virtual host above to start routing traffic')
+					]) :
+					this.renderVhostsTable(vhosts, backends)
 			])
 		]);
 
-		return KissTheme.wrap(content, 'admin/services/haproxy');
+		return KissTheme.wrap(content, 'admin/services/haproxy/vhosts');
 	},
 
 	renderVhostsTable: function(vhosts, backends) {
 		var self = this;
+		var K = KissTheme;
 
 		var backendMap = {};
 		backends.forEach(function(b) {
 			backendMap[b.id || b.name] = b.name;
 		});
 
-		return E('table', { 'class': 'hp-table' }, [
-			E('thead', {}, [
-				E('tr', {}, [
-					E('th', {}, 'Domain'),
-					E('th', {}, 'Backend'),
-					E('th', {}, 'SSL Configuration'),
-					E('th', {}, 'Status'),
-					E('th', { 'style': 'width: 220px; text-align: right;' }, 'Actions')
+		return K.E('table', { 'class': 'kiss-table' }, [
+			K.E('thead', {}, [
+				K.E('tr', {}, [
+					K.E('th', {}, 'Domain'),
+					K.E('th', {}, 'Backend'),
+					K.E('th', {}, 'SSL'),
+					K.E('th', {}, 'Status'),
+					K.E('th', { 'style': 'text-align: right;' }, 'Actions')
 				])
 			]),
-			E('tbody', {}, vhosts.map(function(vh) {
-				return E('tr', { 'data-id': vh.id }, [
-					E('td', {}, [
-						E('div', { 'style': 'font-weight: 600;' }, vh.domain),
-						vh.ssl_redirect ? E('small', { 'style': 'color: var(--hp-text-muted); font-size: 12px;' },
-							'\u{1F512} Redirects HTTP \u2192 HTTPS') : null
+			K.E('tbody', {}, vhosts.map(function(vh) {
+				return K.E('tr', { 'data-id': vh.id }, [
+					K.E('td', {}, [
+						K.E('div', { 'style': 'font-weight: 600; font-family: monospace;' }, vh.domain),
+						vh.ssl_redirect ? K.E('small', { 'style': 'color: var(--kiss-muted); font-size: 11px;' },
+							'🔒 HTTP → HTTPS') : null
 					]),
-					E('td', {}, [
-						E('span', { 'class': 'hp-mono' }, backendMap[vh.backend] || vh.backend || '-')
+					K.E('td', {}, [
+						K.E('span', { 'style': 'font-family: monospace; font-size: 13px;' }, backendMap[vh.backend] || vh.backend || '-')
 					]),
-					E('td', {}, [
-						vh.ssl ? E('span', { 'class': 'hp-badge hp-badge-info', 'style': 'margin-right: 6px;' }, '\u{1F512} SSL') : null,
-						vh.acme ? E('span', { 'class': 'hp-badge hp-badge-success' }, '\u{1F504} ACME') : null,
-						!vh.ssl && !vh.acme ? E('span', { 'class': 'hp-badge hp-badge-warning' }, 'No SSL') : null
-					].filter(function(e) { return e !== null; })),
-					E('td', {}, E('span', {
-						'class': 'hp-badge ' + (vh.enabled ? 'hp-badge-success' : 'hp-badge-danger')
-					}, vh.enabled ? '\u2705 Active' : '\u26D4 Disabled')),
-					E('td', { 'style': 'text-align: right;' }, [
-						E('button', {
-							'class': 'hp-btn hp-btn-sm hp-btn-primary',
-							'style': 'margin-right: 8px;',
-							'click': function() { self.showEditVhostModal(vh, backends); }
-						}, '\u270F Edit'),
-						E('button', {
-							'class': 'hp-btn hp-btn-sm ' + (vh.enabled ? 'hp-btn-secondary' : 'hp-btn-success'),
-							'style': 'margin-right: 8px;',
-							'click': function() { self.handleToggleVhost(vh); }
-						}, vh.enabled ? 'Disable' : 'Enable'),
-						E('button', {
-							'class': 'hp-btn hp-btn-sm hp-btn-danger',
-							'click': function() { self.handleDeleteVhost(vh); }
-						}, 'Delete')
+					K.E('td', {}, [
+						vh.ssl ? K.badge('🔐 SSL', 'blue') : null,
+						vh.ssl && vh.acme ? K.E('span', { 'style': 'margin-left: 6px;' }, K.badge('🔄 ACME', 'green')) : null,
+						!vh.ssl ? K.badge('No SSL', 'yellow') : null
+					]),
+					K.E('td', {}, K.badge(vh.enabled ? '✅ Active' : '⛔ Disabled', vh.enabled ? 'green' : 'red')),
+					K.E('td', { 'style': 'text-align: right;' }, [
+						K.E('button', {
+							'class': 'kiss-btn',
+							'style': 'padding: 6px 12px; font-size: 12px; margin-right: 6px;',
+							'onClick': function() { self.showEditVhostModal(vh, backends); }
+						}, '✏️ Edit'),
+						K.E('button', {
+							'class': 'kiss-btn ' + (vh.enabled ? '' : 'kiss-btn-green'),
+							'style': 'padding: 6px 12px; font-size: 12px; margin-right: 6px;',
+							'onClick': function() { self.handleToggleVhost(vh); }
+						}, vh.enabled ? '⏸️' : '▶️'),
+						K.E('button', {
+							'class': 'kiss-btn kiss-btn-red',
+							'style': 'padding: 6px 12px; font-size: 12px;',
+							'onClick': function() { self.handleDeleteVhost(vh); }
+						}, '🗑️')
 					])
 				]);
 			}))
@@ -182,71 +159,61 @@ return view.extend({
 
 	showEditVhostModal: function(vh, backends) {
 		var self = this;
+		var K = KissTheme;
 
-		ui.showModal('Edit Virtual Host: ' + vh.domain, [
-			E('div', { 'style': 'max-width: 500px;' }, [
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Domain'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
-							'type': 'text',
-							'id': 'edit-domain',
-							'class': 'cbi-input-text',
-							'value': vh.domain,
-							'style': 'width: 100%;'
-						})
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Backend'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('select', { 'id': 'edit-backend', 'class': 'cbi-input-select', 'style': 'width: 100%;' },
-							[E('option', { 'value': '' }, '-- Select Backend --')].concat(
-								backends.map(function(b) {
-									var selected = (vh.backend === (b.id || b.name)) ? { 'selected': true } : {};
-									return E('option', Object.assign({ 'value': b.id || b.name }, selected), b.name);
-								})
-							)
-						)
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'SSL Options'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('div', { 'style': 'display: flex; flex-direction: column; gap: 8px;' }, [
-							E('label', {}, [
-								E('input', { 'type': 'checkbox', 'id': 'edit-ssl', 'checked': vh.ssl }),
-								' Enable SSL/TLS'
-							]),
-							E('label', {}, [
-								E('input', { 'type': 'checkbox', 'id': 'edit-ssl-redirect', 'checked': vh.ssl_redirect }),
-								' Force HTTPS redirect'
-							]),
-							E('label', {}, [
-								E('input', { 'type': 'checkbox', 'id': 'edit-acme', 'checked': vh.acme }),
-								' Auto-renew with ACME (Let\'s Encrypt)'
-							])
-						])
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Status'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('label', {}, [
-							E('input', { 'type': 'checkbox', 'id': 'edit-enabled', 'checked': vh.enabled }),
-							' Enabled'
-						])
+		var modalContent = K.E('div', { 'style': 'max-width: 480px;' }, [
+			K.E('div', { 'style': 'margin-bottom: 16px;' }, [
+				K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Domain'),
+				K.E('input', {
+					'type': 'text',
+					'id': 'edit-domain',
+					'value': vh.domain,
+					'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
+				})
+			]),
+			K.E('div', { 'style': 'margin-bottom: 16px;' }, [
+				K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Backend'),
+				K.E('select', {
+					'id': 'edit-backend',
+					'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
+				}, [K.E('option', { 'value': '' }, '-- Select Backend --')].concat(
+					backends.map(function(b) {
+						var selected = (vh.backend === (b.id || b.name)) ? { 'selected': true } : {};
+						return K.E('option', Object.assign({ 'value': b.id || b.name }, selected), b.name);
+					})
+				))
+			]),
+			K.E('div', { 'style': 'margin-bottom: 16px;' }, [
+				K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 10px;' }, 'SSL Options'),
+				K.E('div', { 'style': 'display: flex; flex-direction: column; gap: 10px;' }, [
+					K.E('label', { 'style': 'display: flex; align-items: center; gap: 8px; cursor: pointer;' }, [
+						K.E('input', { 'type': 'checkbox', 'id': 'edit-ssl', 'checked': vh.ssl }),
+						'🔐 Enable SSL/TLS'
+					]),
+					K.E('label', { 'style': 'display: flex; align-items: center; gap: 8px; cursor: pointer;' }, [
+						K.E('input', { 'type': 'checkbox', 'id': 'edit-ssl-redirect', 'checked': vh.ssl_redirect }),
+						'↗️ Force HTTPS redirect'
+					]),
+					K.E('label', { 'style': 'display: flex; align-items: center; gap: 8px; cursor: pointer;' }, [
+						K.E('input', { 'type': 'checkbox', 'id': 'edit-acme', 'checked': vh.acme }),
+						'🔄 Auto-renew with ACME'
 					])
 				])
 			]),
-			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px;' }, [
-				E('button', {
-					'class': 'hp-btn hp-btn-secondary',
-					'click': ui.hideModal
+			K.E('div', { 'style': 'margin-bottom: 20px;' }, [
+				K.E('label', { 'style': 'display: flex; align-items: center; gap: 8px; cursor: pointer;' }, [
+					K.E('input', { 'type': 'checkbox', 'id': 'edit-enabled', 'checked': vh.enabled }),
+					'✅ Enabled'
+				])
+			]),
+			K.E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px;' }, [
+				K.E('button', {
+					'class': 'kiss-btn',
+					'onClick': ui.hideModal
 				}, 'Cancel'),
-				E('button', {
-					'class': 'hp-btn hp-btn-primary',
-					'click': function() {
+				K.E('button', {
+					'class': 'kiss-btn kiss-btn-green',
+					'onClick': function() {
 						var domain = document.getElementById('edit-domain').value.trim();
 						var backend = document.getElementById('edit-backend').value;
 						var ssl = document.getElementById('edit-ssl').checked ? 1 : 0;
@@ -269,9 +236,11 @@ return view.extend({
 							}
 						});
 					}
-				}, 'Save Changes')
+				}, '💾 Save Changes')
 			])
 		]);
+
+		ui.showModal('Edit: ' + vh.domain, [modalContent]);
 	},
 
 	handleAddVhost: function(backends) {
@@ -287,7 +256,6 @@ return view.extend({
 			return;
 		}
 
-		// Validate domain format
 		if (!/^(\*\.)?[a-zA-Z0-9][-a-zA-Z0-9]*(\.[a-zA-Z0-9][-a-zA-Z0-9]*)+$/.test(domain)) {
 			self.showToast('Invalid domain format', 'error');
 			return;
@@ -320,22 +288,21 @@ return view.extend({
 
 	handleDeleteVhost: function(vh) {
 		var self = this;
+		var K = KissTheme;
 
-		ui.showModal('Delete Virtual Host', [
-			E('div', { 'style': 'margin-bottom: 16px;' }, [
-				E('p', { 'style': 'margin: 0;' }, 'Are you sure you want to delete this virtual host?'),
-				E('div', {
-					'style': 'margin-top: 12px; padding: 12px; background: var(--hp-bg-tertiary, #f5f5f5); border-radius: 8px; font-family: monospace;'
-				}, vh.domain)
-			]),
-			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px;' }, [
-				E('button', {
-					'class': 'hp-btn hp-btn-secondary',
-					'click': ui.hideModal
+		var modalContent = K.E('div', {}, [
+			K.E('p', { 'style': 'margin: 0 0 12px;' }, 'Are you sure you want to delete this virtual host?'),
+			K.E('div', {
+				'style': 'padding: 12px 16px; background: var(--kiss-bg2, #111827); border-radius: 8px; font-family: monospace; margin-bottom: 20px;'
+			}, vh.domain),
+			K.E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px;' }, [
+				K.E('button', {
+					'class': 'kiss-btn',
+					'onClick': ui.hideModal
 				}, 'Cancel'),
-				E('button', {
-					'class': 'hp-btn hp-btn-danger',
-					'click': function() {
+				K.E('button', {
+					'class': 'kiss-btn kiss-btn-red',
+					'onClick': function() {
 						ui.hideModal();
 						api.deleteVhost(vh.id).then(function(res) {
 							if (res.success) {
@@ -346,30 +313,31 @@ return view.extend({
 							}
 						});
 					}
-				}, 'Delete')
+				}, '🗑️ Delete')
 			])
 		]);
+
+		ui.showModal('Delete Virtual Host', [modalContent]);
 	},
 
 	showToast: function(message, type) {
-		var existing = document.querySelector('.hp-toast');
+		var existing = document.querySelector('.kiss-toast');
 		if (existing) existing.remove();
 
-		var iconMap = {
-			'success': '\u2705',
-			'error': '\u274C',
-			'warning': '\u26A0\uFE0F'
+		var icons = { success: '✅', error: '❌', warning: '⚠️' };
+		var colors = {
+			success: 'var(--kiss-green, #00C853)',
+			error: 'var(--kiss-red, #FF1744)',
+			warning: 'var(--kiss-yellow, #fbbf24)'
 		};
 
-		var toast = E('div', { 'class': 'hp-toast ' + (type || '') }, [
-			E('span', {}, iconMap[type] || '\u2139\uFE0F'),
-			message
-		]);
-		document.body.appendChild(toast);
+		var toast = document.createElement('div');
+		toast.className = 'kiss-toast';
+		toast.style.cssText = 'position: fixed; bottom: 80px; right: 20px; padding: 12px 20px; border-radius: 8px; background: var(--kiss-card, #161e2e); border: 1px solid ' + (colors[type] || 'var(--kiss-line)') + '; color: var(--kiss-text, #e2e8f0); font-size: 14px; display: flex; align-items: center; gap: 10px; z-index: 9999; box-shadow: 0 4px 20px rgba(0,0,0,0.3);';
+		toast.innerHTML = (icons[type] || 'ℹ️') + ' ' + message;
 
-		setTimeout(function() {
-			toast.remove();
-		}, 4000);
+		document.body.appendChild(toast);
+		setTimeout(function() { toast.remove(); }, 4000);
 	},
 
 	handleSaveApply: null,
