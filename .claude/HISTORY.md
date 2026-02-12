@@ -1218,3 +1218,54 @@ _Last updated: 2026-02-11_
       - `out`: LAN→Internet transparent proxy (port 8888/8089)
       - `in`: WAF/services upstream proxy (port 8889/8090)
     - README updated with multi-instance documentation
+
+51. **InterceptoR Plan Verification Complete (2026-02-12)**
+    - Verified all 5 phases of InterceptoR "Gandalf Proxy" plan are fully implemented:
+      - Phase 1: WPAD Safety Net — `setup_wpad_enforce()` in `network-tweaks-sync`
+      - Phase 2: Cookie Tracker — `secubox-cookie-tracker` + `luci-app-cookie-tracker`
+      - Phase 3: API Failover — `cdn-cache` UCI config + `99-cdn-offline` hotplug
+      - Phase 4: CrowdSec Scenarios — 8 scenarios in `secubox-mitmproxy-threats.yaml`
+      - Phase 5: Unified Dashboard — `luci-app-interceptor` with 5-pillar status
+    - CrowdSec scenarios include: SQLi, XSS, command injection, SSRF, CVE exploitation, bot scanners, shell hunters
+    - Plan file updated to reflect completion status
+
+52. **InterceptoR Insider WAF - 6th Pillar (2026-02-12)**
+    - Added Insider WAF as 6th pillar to InterceptoR for LAN client threat detection.
+    - **RPCD handler updates** (`luci.interceptor`):
+      - New `get_insider_waf_status()` function tracking insider threats, blocked clients, exfil attempts, DNS anomalies
+      - Health score recalculated for 6 pillars (17 points each)
+      - Detects threats from internal IPs (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+    - **LuCI dashboard updates** (`overview.js`):
+      - New "Insider WAF" pillar card with 🔒 icon
+      - Stats: insider threats, blocked clients, exfil attempts, DNS anomalies
+      - Description: "LAN threat detection"
+    - **CrowdSec insider threat scenarios** (`secubox-insider-threats.yaml`):
+      - `secubox/insider-c2-beacon` — C2 beacon detection from LAN hosts
+      - `secubox/insider-exfiltration` — Data exfiltration attempts (large uploads, base64, DNS)
+      - `secubox/insider-dns-tunnel` — DNS tunneling/DGA from internal hosts
+      - `secubox/insider-lateral-movement` — Lateral movement within LAN
+      - `secubox/insider-cryptominer` — Cryptominer activity detection
+      - `secubox/insider-iot-botnet` — IoT botnet C2 (Mirai, Gafgyt, Mozi)
+      - `secubox/insider-bad-tld` — Suspicious outbound to high-risk TLDs
+      - `secubox/insider-high-volume` — Unusual high-volume outbound traffic
+    - Updated `secubox-app-crowdsec-custom` Makefile to install new scenarios
+
+53. **DDoS Protection Hardening Profile (2026-02-12)**
+    - **Config Advisor DDoS checks** (`checks.sh`):
+      - DDOS-001: SYN cookies enabled
+      - DDOS-002: Connection tracking limit (65536+)
+      - DDOS-003: CrowdSec http-dos collection installed
+      - DDOS-004: ICMP rate limiting
+      - DDOS-005: Reverse path filtering (anti-spoofing)
+      - DDOS-006: HAProxy connection limits (maxconn)
+      - DDOS-007: mitmproxy WAF active (L7 flood detection)
+      - DDOS-008: Vortex DNS firewall (botnet C2 blocking)
+    - **ANSSI rules JSON** (`anssi-rules.json`):
+      - New "ddos" category with 8 rules and remediation steps
+    - **Documentation** (`DOCS/DDOS-PROTECTION.md`):
+      - Complete DDoS protection guide
+      - Layer-by-layer explanation (L3/L4/L7/DNS)
+      - Configuration examples for all components
+      - Quick hardening checklist
+      - Monitoring commands during attacks
+      - Limitations and upstream protection options (Cloudflare, etc.)

@@ -252,6 +252,75 @@
           "remediation": "Consider sysupgrade to latest stable release"
         }
       ]
+    },
+    "ddos": {
+      "name": "DDoS Protection",
+      "rules": [
+        {
+          "id": "DDOS-001",
+          "name": "SYN cookies enabled",
+          "severity": "high",
+          "check": "ddos_syn_cookies",
+          "description": "SYN cookies protect against SYN flood attacks",
+          "remediation": "echo 1 > /proc/sys/net/ipv4/tcp_syncookies"
+        },
+        {
+          "id": "DDOS-002",
+          "name": "Connection tracking limit",
+          "severity": "medium",
+          "check": "ddos_conntrack_limit",
+          "description": "Connection tracking table should handle traffic spikes",
+          "remediation": "Increase nf_conntrack_max to at least 65536"
+        },
+        {
+          "id": "DDOS-003",
+          "name": "CrowdSec http-dos collection",
+          "severity": "high",
+          "check": "ddos_crowdsec_dos",
+          "description": "CrowdSec http-dos collection detects HTTP flood attacks",
+          "remediation": "cscli collections install crowdsecurity/http-dos"
+        },
+        {
+          "id": "DDOS-004",
+          "name": "ICMP rate limiting",
+          "severity": "medium",
+          "check": "ddos_icmp_rate",
+          "description": "ICMP rate limiting prevents ping flood attacks",
+          "remediation": "echo 1000 > /proc/sys/net/ipv4/icmp_ratelimit"
+        },
+        {
+          "id": "DDOS-005",
+          "name": "Reverse path filtering",
+          "severity": "high",
+          "check": "ddos_rp_filter",
+          "description": "RP filter prevents IP spoofing attacks",
+          "remediation": "echo 1 > /proc/sys/net/ipv4/conf/all/rp_filter"
+        },
+        {
+          "id": "DDOS-006",
+          "name": "HAProxy connection limits",
+          "severity": "medium",
+          "check": "ddos_haproxy_limits",
+          "description": "HAProxy maxconn limits prevent connection exhaustion",
+          "remediation": "Set maxconn in haproxy.cfg global/defaults section"
+        },
+        {
+          "id": "DDOS-007",
+          "name": "mitmproxy WAF active",
+          "severity": "medium",
+          "check": "ddos_mitmproxy_waf",
+          "description": "mitmproxy provides L7 flood detection and blocking",
+          "remediation": "Enable mitmproxy LXC container"
+        },
+        {
+          "id": "DDOS-008",
+          "name": "Vortex DNS firewall",
+          "severity": "medium",
+          "check": "ddos_vortex_firewall",
+          "description": "Vortex blocks botnet C2 domains at DNS level",
+          "remediation": "Run vortex-firewall intel update && vortex-firewall start"
+        }
+      ]
     }
   }
 }

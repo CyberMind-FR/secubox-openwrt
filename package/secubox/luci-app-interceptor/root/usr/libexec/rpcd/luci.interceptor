@@ -152,6 +152,58 @@ get_failover_status() {
 	json_close_object
 }
 
+# Get Insider WAF pillar status (LAN client threat detection)
+get_insider_waf_status() {
+	local enabled=0 running=0 insider_threats=0 blocked_clients=0 exfil_attempts=0
+
+	# Insider WAF is enabled when mitmproxy "out" instance is running
+	# This inspects LAN→WAN traffic for insider threats
+	if command -v lxc-ls >/dev/null 2>&1; then
+		lxc-ls --running 2>/dev/null | grep -qE "mitmproxy-out|secbx-mitmproxy" && running=1
+	fi
+
+	# Check mitmproxy config for outbound inspection
+	enabled=$(uci -q get mitmproxy.out.enabled 2>/dev/null || echo "$running")
+	[ "$enabled" = "1" ] || [ "$running" = "1" ] && enabled=1
+
+	# Count insider threats from mitmproxy (LAN source IPs only)
+	local today=$(date +%Y-%m-%d)
+	if [ -f /srv/mitmproxy/threats.log ]; then
+		# Count threats from internal IPs (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+		insider_threats=$(grep "$today" /srv/mitmproxy/threats.log 2>/dev/null | \
+			grep -cE '"source_ip":"(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)' || echo "0")
+	fi
+
+	# Count blocked insider clients from CrowdSec decisions (internal IPs)
+	if command -v cscli >/dev/null 2>&1; then
+		blocked_clients=$(cscli decisions list -o json 2>/dev/null | \
+			jsonfilter -e '@[*].value' 2>/dev/null | \
+			grep -cE '^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)' || echo "0")
+	fi
+
+	# Count data exfiltration attempts (large outbound, suspicious destinations)
+	if [ -f /srv/mitmproxy/threats.log ]; then
+		exfil_attempts=$(grep "$today" /srv/mitmproxy/threats.log 2>/dev/null | \
+			grep -cE '"pattern":"(dns_exfil|data_exfil|suspicious_upload|large_post)"' || echo "0")
+	fi
+
+	# Check DNS Guard for internal DNS anomalies (tunneling, DGA from LAN)
+	local dns_anomalies=0
+	if [ -f /var/lib/dns-guard/alerts.json ]; then
+		dns_anomalies=$(jsonfilter -i /var/lib/dns-guard/alerts.json -e '@[*]' 2>/dev/null | \
+			grep -cE '"type":"(dga|tunneling)"' || echo "0")
+	fi
+
+	json_add_object "insider_waf"
+		json_add_boolean "enabled" "$enabled"
+		json_add_boolean "running" "$running"
+		json_add_int "insider_threats" "${insider_threats:-0}"
+		json_add_int "blocked_clients" "${blocked_clients:-0}"
+		json_add_int "exfil_attempts" "${exfil_attempts:-0}"
+		json_add_int "dns_anomalies" "${dns_anomalies:-0}"
+	json_close_object
+}
+
 case "$1" in
 	list)
 		json_init
@@ -176,45 +228,52 @@ case "$1" in
 				get_cdn_status
 				get_cookie_status
 				get_failover_status
+				get_insider_waf_status
 
-				# Overall health score (0-100)
+				# Overall health score (0-100) - 6 pillars × ~17 points each
 				score=0
 				pillars_active=0
 
 				# WPAD
 				if [ "$(uci -q get network_tweaks.global.wpad_enforce)" = "1" ] || [ -f /www/wpad.dat ]; then
-					score=$((score + 20))
+					score=$((score + 17))
 					pillars_active=$((pillars_active + 1))
 				fi
 
-				# mitmproxy running
+				# mitmproxy running (external WAF)
 				if pgrep mitmproxy >/dev/null 2>&1 || lxc-ls --running 2>/dev/null | grep -q "secbx-mitmproxy"; then
-					score=$((score + 20))
+					score=$((score + 17))
 					pillars_active=$((pillars_active + 1))
 				fi
 
 				# CDN Cache running
 				if pgrep squid >/dev/null 2>&1; then
-					score=$((score + 20))
+					score=$((score + 17))
 					pillars_active=$((pillars_active + 1))
 				fi
 
 				# Cookie Tracker enabled
 				if [ "$(uci -q get cookie-tracker.main.enabled)" = "1" ]; then
-					score=$((score + 20))
+					score=$((score + 17))
 					pillars_active=$((pillars_active + 1))
 				fi
 
 				# API Failover enabled
 				if [ "$(uci -q get cdn-cache.api_failover.enabled)" = "1" ]; then
-					score=$((score + 20))
+					score=$((score + 16))
+					pillars_active=$((pillars_active + 1))
+				fi
+
+				# Insider WAF (mitmproxy outbound instance)
+				if lxc-ls --running 2>/dev/null | grep -qE "mitmproxy-out|secbx-mitmproxy"; then
+					score=$((score + 16))
 					pillars_active=$((pillars_active + 1))
 				fi
 
 				json_add_object "summary"
 					json_add_int "health_score" "$score"
 					json_add_int "pillars_active" "$pillars_active"
-					json_add_int "pillars_total" "5"
+					json_add_int "pillars_total" "6"
 				json_close_object
 
 				json_dump
@@ -234,6 +293,7 @@ case "$1" in
 					cdn) get_cdn_status ;;
 					cookie) get_cookie_status ;;
 					failover) get_failover_status ;;
+					insider|insider_waf) get_insider_waf_status ;;
 					*)
 						json_add_boolean "success" 0
 						json_add_string "error" "Unknown pillar: $pillar"

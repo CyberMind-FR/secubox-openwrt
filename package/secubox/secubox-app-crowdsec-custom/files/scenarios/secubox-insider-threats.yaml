@@ -1,0 +1,159 @@
+# CrowdSec scenarios for SecuBox Insider WAF
+# Detects malicious activity from LAN clients (compromised devices, malware, insider threats)
+
+# Detect C2 beacon attempts from internal hosts
+type: leaky
+name: secubox/insider-c2-beacon
+description: "Detect C2 beacon-like activity from internal hosts"
+filter: |
+  evt.Meta.log_type == 'mitmproxy_threat' &&
+  evt.Meta.source_ip startsWith '192.168.' ||
+  evt.Meta.source_ip startsWith '10.' ||
+  evt.Meta.source_ip matches '^172\.(1[6-9]|2[0-9]|3[01])\.' &&
+  evt.Parsed.pattern in ['c2_beacon', 'suspicious_periodic', 'encoded_payload', 'reverse_shell']
+groupby: evt.Meta.source_ip
+capacity: 3
+leakspeed: 300s
+blackhole: 60m
+labels:
+  service: insider_waf
+  type: c2_beacon
+  remediation: true
+  scope: lan
+---
+# Detect data exfiltration attempts from LAN
+type: leaky
+name: secubox/insider-exfiltration
+description: "Detect data exfiltration attempts from internal hosts"
+filter: |
+  evt.Meta.log_type == 'mitmproxy_threat' &&
+  evt.Meta.source_ip startsWith '192.168.' ||
+  evt.Meta.source_ip startsWith '10.' &&
+  (evt.Parsed.pattern == 'large_upload' ||
+   evt.Parsed.pattern == 'base64_exfil' ||
+   evt.Parsed.pattern == 'dns_exfil' ||
+   evt.Parsed.content_length > 10485760)
+groupby: evt.Meta.source_ip
+capacity: 2
+leakspeed: 600s
+blackhole: 120m
+labels:
+  service: insider_waf
+  type: data_exfiltration
+  remediation: true
+  scope: lan
+---
+# Detect DNS tunneling from internal hosts
+type: leaky
+name: secubox/insider-dns-tunnel
+description: "Detect DNS tunneling/exfiltration from internal hosts"
+filter: |
+  evt.Meta.log_type == 'dns_guard' &&
+  evt.Parsed.type in ['tunneling', 'dga', 'suspicious_subdomain'] &&
+  evt.Meta.source_ip startsWith '192.168.' ||
+  evt.Meta.source_ip startsWith '10.'
+groupby: evt.Meta.source_ip
+capacity: 5
+leakspeed: 120s
+blackhole: 30m
+labels:
+  service: insider_waf
+  type: dns_tunneling
+  remediation: true
+  scope: lan
+---
+# Detect lateral movement attempts
+type: leaky
+name: secubox/insider-lateral-movement
+description: "Detect lateral movement attempts within LAN"
+filter: |
+  evt.Meta.log_type == 'mitmproxy_threat' &&
+  evt.Meta.source_ip startsWith '192.168.' &&
+  evt.Parsed.dest_ip startsWith '192.168.' &&
+  evt.Parsed.pattern in ['port_scan', 'smb_enum', 'ssh_scan', 'admin_scan', 'network_recon']
+groupby: evt.Meta.source_ip
+capacity: 10
+leakspeed: 60s
+blackhole: 30m
+labels:
+  service: insider_waf
+  type: lateral_movement
+  remediation: true
+  scope: lan
+---
+# Detect cryptominer activity from LAN
+type: leaky
+name: secubox/insider-cryptominer
+description: "Detect cryptominer activity from internal hosts"
+filter: |
+  evt.Meta.log_type == 'mitmproxy_threat' &&
+  evt.Meta.source_ip startsWith '192.168.' ||
+  evt.Meta.source_ip startsWith '10.' &&
+  (evt.Parsed.pattern == 'mining_pool' ||
+   evt.Parsed.dest_port in ['3333', '4444', '5555', '14433', '14444'] ||
+   evt.Parsed.host matches '.*(pool|mine|xmr|eth|btc).*')
+groupby: evt.Meta.source_ip
+capacity: 2
+leakspeed: 300s
+blackhole: 1440m
+labels:
+  service: insider_waf
+  type: cryptominer
+  remediation: true
+  scope: lan
+---
+# Detect IoT botnet activity
+type: leaky
+name: secubox/insider-iot-botnet
+description: "Detect IoT botnet C2 activity from internal devices"
+filter: |
+  evt.Meta.log_type == 'mitmproxy_threat' &&
+  evt.Meta.source_ip startsWith '192.168.' &&
+  (evt.Parsed.user_agent matches '.*Mirai.*|.*Gafgyt.*|.*BotenaGo.*|.*Mozi.*' ||
+   evt.Parsed.pattern in ['iot_exploit', 'telnet_scan', 'mirai_pattern'])
+groupby: evt.Meta.source_ip
+capacity: 1
+leakspeed: 60s
+blackhole: 1440m
+labels:
+  service: insider_waf
+  type: iot_botnet
+  remediation: true
+  scope: lan
+---
+# Detect suspicious outbound to known bad TLDs
+type: leaky
+name: secubox/insider-bad-tld
+description: "Detect suspicious outbound to high-risk TLDs from internal hosts"
+filter: |
+  evt.Meta.log_type == 'mitmproxy_threat' &&
+  evt.Meta.source_ip startsWith '192.168.' ||
+  evt.Meta.source_ip startsWith '10.' &&
+  evt.Parsed.host matches '.*\.(xyz|top|club|work|date|bid|download|racing|science|party|gq|cf|tk|ml|ga)$'
+groupby: evt.Meta.source_ip
+capacity: 20
+leakspeed: 300s
+blackhole: 15m
+labels:
+  service: insider_waf
+  type: suspicious_tld
+  remediation: true
+  scope: lan
+---
+# Detect unusual high-volume outbound from single LAN host
+type: leaky
+name: secubox/insider-high-volume
+description: "Detect unusual high-volume outbound traffic from single LAN host"
+filter: |
+  evt.Meta.log_type == 'mitmproxy_threat' &&
+  evt.Meta.source_ip startsWith '192.168.' &&
+  evt.Parsed.bytes_out > 104857600
+groupby: evt.Meta.source_ip
+capacity: 5
+leakspeed: 3600s
+blackhole: 30m
+labels:
+  service: insider_waf
+  type: high_volume_outbound
+  remediation: true
+  scope: lan

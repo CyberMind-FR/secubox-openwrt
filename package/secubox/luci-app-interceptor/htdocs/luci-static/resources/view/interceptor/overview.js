@@ -12,7 +12,8 @@ var callGetStatus = rpc.declare({
 
 var PILLARS = [
 	{ id: 'wpad', name: 'WPAD', icon: '🌐', desc: 'Auto-proxy discovery' },
-	{ id: 'mitm', name: 'MITM Proxy', icon: '🛡️', desc: 'Traffic inspection' },
+	{ id: 'mitm', name: 'MITM Proxy', icon: '🛡️', desc: 'External WAF' },
+	{ id: 'insider_waf', name: 'Insider WAF', icon: '🔒', desc: 'LAN threat detection' },
 	{ id: 'cdn_cache', name: 'CDN Cache', icon: '💾', desc: 'Content caching' },
 	{ id: 'cookie_tracker', name: 'Cookies', icon: '🍪', desc: 'Tracker detection' },
 	{ id: 'api_failover', name: 'API Failover', icon: '⚡', desc: 'Graceful degradation' }
@@ -99,6 +100,12 @@ return view.extend({
 			case 'mitm':
 				stats.push('Threats: ' + (data.threats_today || 0));
 				stats.push('Connections: ' + (data.active_connections || 0));
+				break;
+			case 'insider_waf':
+				stats.push('Insider threats: ' + (data.insider_threats || 0));
+				stats.push('Blocked: ' + (data.blocked_clients || 0));
+				if (data.exfil_attempts > 0) stats.push('⚠️ Exfil: ' + data.exfil_attempts);
+				if (data.dns_anomalies > 0) stats.push('DNS: ' + data.dns_anomalies);
 				break;
 			case 'cdn_cache':
 				stats.push('Hit Ratio: ' + (data.hit_ratio || 0) + '%');

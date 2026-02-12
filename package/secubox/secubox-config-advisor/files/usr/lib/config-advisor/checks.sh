@@ -271,6 +271,146 @@ check_system_uptodate() {
     fi
 }
 
+# ============================================
+# DDoS Protection Checks
+# ============================================
+
+check_ddos_syn_cookies() {
+    local syn_cookies
+    syn_cookies=$(cat /proc/sys/net/ipv4/tcp_syncookies 2>/dev/null)
+
+    if [ "$syn_cookies" = "1" ]; then
+        _record_result "DDOS-001" "pass" "SYN cookies enabled" ""
+        return 0
+    else
+        _record_result "DDOS-001" "fail" "SYN cookies not enabled" "Vulnerable to SYN flood"
+        return 1
+    fi
+}
+
+check_ddos_conntrack_limit() {
+    local conntrack_max
+    conntrack_max=$(cat /proc/sys/net/netfilter/nf_conntrack_max 2>/dev/null || echo "0")
+
+    if [ "$conntrack_max" -ge 65536 ]; then
+        _record_result "DDOS-002" "pass" "Connection tracking limit adequate" "max=$conntrack_max"
+        return 0
+    else
+        _record_result "DDOS-002" "warn" "Connection tracking limit low" "max=$conntrack_max (recommend 65536+)"
+        return 1
+    fi
+}
+
+check_ddos_crowdsec_dos() {
+    # Check if CrowdSec http-dos collection is installed
+    if command -v cscli >/dev/null 2>&1; then
+        local dos_installed
+        dos_installed=$(cscli collections list -o json 2>/dev/null | grep -c "http-dos" || echo "0")
+
+        if [ "$dos_installed" -gt 0 ]; then
+            _record_result "DDOS-003" "pass" "CrowdSec http-dos collection installed" ""
+            return 0
+        else
+            _record_result "DDOS-003" "warn" "CrowdSec http-dos collection not installed" "Run: cscli collections install crowdsecurity/http-dos"
+            return 1
+        fi
+    else
+        _record_result "DDOS-003" "fail" "CrowdSec not available" "Install crowdsec package"
+        return 1
+    fi
+}
+
+check_ddos_icmp_rate() {
+    local icmp_rate
+    icmp_rate=$(cat /proc/sys/net/ipv4/icmp_ratelimit 2>/dev/null || echo "0")
+
+    if [ "$icmp_rate" -gt 0 ]; then
+        _record_result "DDOS-004" "pass" "ICMP rate limiting enabled" "rate=$icmp_rate"
+        return 0
+    else
+        _record_result "DDOS-004" "warn" "ICMP rate limiting not configured" ""
+        return 1
+    fi
+}
+
+check_ddos_rp_filter() {
+    local rp_filter
+    rp_filter=$(cat /proc/sys/net/ipv4/conf/all/rp_filter 2>/dev/null || echo "0")
+
+    if [ "$rp_filter" = "1" ]; then
+        _record_result "DDOS-005" "pass" "Reverse path filtering enabled" "Anti-spoofing active"
+        return 0
+    else
+        _record_result "DDOS-005" "warn" "Reverse path filtering disabled" "Vulnerable to IP spoofing"
+        return 1
+    fi
+}
+
+check_ddos_haproxy_limits() {
+    # Check HAProxy connection limits
+    if [ -f /etc/haproxy/haproxy.cfg ]; then
+        local maxconn
+        maxconn=$(grep -E "^\s*maxconn" /etc/haproxy/haproxy.cfg 2>/dev/null | head -1 | awk '{print $2}')
+
+        if [ -n "$maxconn" ] && [ "$maxconn" -gt 0 ]; then
+            _record_result "DDOS-006" "pass" "HAProxy connection limit set" "maxconn=$maxconn"
+            return 0
+        else
+            _record_result "DDOS-006" "warn" "HAProxy maxconn not configured" "Recommend setting maxconn limit"
+            return 1
+        fi
+    else
+        _record_result "DDOS-006" "info" "HAProxy not installed" ""
+        return 0
+    fi
+}
+
+check_ddos_mitmproxy_waf() {
+    # Check if mitmproxy WAF is running for DDoS detection
+    if lxc-ls --running 2>/dev/null | grep -qE "mitmproxy|secbx-mitmproxy"; then
+        _record_result "DDOS-007" "pass" "mitmproxy WAF running" "L7 flood detection active"
+        return 0
+    else
+        _record_result "DDOS-007" "info" "mitmproxy WAF not running" "L7 protection inactive"
+        return 1
+    fi
+}
+
+check_ddos_vortex_firewall() {
+    # Check Vortex DNS firewall for botnet C2 blocking
+    if [ -f /var/lib/vortex-firewall/blocklist.db ]; then
+        local blocked_count
+        blocked_count=$(sqlite3 /var/lib/vortex-firewall/blocklist.db "SELECT COUNT(*) FROM domains;" 2>/dev/null || echo "0")
+
+        if [ "$blocked_count" -gt 100 ]; then
+            _record_result "DDOS-008" "pass" "Vortex DNS firewall active" "blocked=$blocked_count domains"
+            return 0
+        else
+            _record_result "DDOS-008" "warn" "Vortex DNS firewall has few rules" "blocked=$blocked_count"
+            return 1
+        fi
+    else
+        _record_result "DDOS-008" "info" "Vortex DNS firewall not configured" ""
+        return 1
+    fi
+}
+
+# Run DDoS-specific checks
+run_ddos_checks() {
+    checks_init
+
+    check_ddos_syn_cookies
+    check_ddos_conntrack_limit
+    check_ddos_crowdsec_dos
+    check_ddos_icmp_rate
+    check_ddos_rp_filter
+    check_ddos_haproxy_limits
+    check_ddos_mitmproxy_waf
+    check_ddos_vortex_firewall
+
+    cat "$RESULTS_FILE"
+}
+
 # Run all checks
 run_all_checks() {
     checks_init
@@ -302,6 +442,16 @@ run_all_checks() {
     # Logging
     check_syslog_enabled
     check_log_rotation
+
+    # DDoS Protection
+    check_ddos_syn_cookies
+    check_ddos_conntrack_limit
+    check_ddos_crowdsec_dos
+    check_ddos_icmp_rate
+    check_ddos_rp_filter
+    check_ddos_haproxy_limits
+    check_ddos_mitmproxy_waf
+    check_ddos_vortex_firewall
 
     # Updates (can be slow)
     # check_system_uptodate
