@@ -12,12 +12,21 @@
  */
 
 return view.extend({
+	cveCache: [],
+
 	load: function() {
+		var self = this;
 		var link = document.createElement('link');
 		link.rel = 'stylesheet';
 		link.href = L.resource('ai-insights/dashboard.css');
 		document.head.appendChild(link);
-		return api.getOverview().catch(function() { return {}; });
+		return Promise.all([
+			api.getOverview().catch(function() { return {}; }),
+			api.getCVEFeed(10).catch(function() { return { cves: [] }; })
+		]).then(function(results) {
+			self.cveCache = (results[1] || {}).cves || [];
+			return results[0];
+		});
 	},
 
 	render: function(data) {
@@ -68,6 +77,15 @@ return view.extend({
 					E('span', { 'class': 'ai-badge' }, String(alerts.length))
 				]),
 				E('div', { 'class': 'ai-card-body', 'id': 'ai-alerts' }, this.renderAlerts(alerts))
+			]),
+
+			// CVE Feed card
+			E('div', { 'class': 'ai-card' }, [
+				E('div', { 'class': 'ai-card-header' }, [
+					'⚠️ CVE Feed (Recent)',
+					E('span', { 'class': 'ai-badge warning' }, String(this.cveCache.length))
+				]),
+				E('div', { 'class': 'ai-card-body', 'id': 'ai-cves' }, this.renderCVEs(this.cveCache))
 			])
 		]);
 
@@ -155,6 +173,32 @@ return view.extend({
 					E('div', { 'class': 'ai-alert-message' }, data.message || data.type || type)
 				]),
 				E('div', { 'class': 'ai-alert-time' }, api.formatRelativeTime(data.timestamp))
+			]);
+		}));
+	},
+
+	renderCVEs: function(cves) {
+		if (!cves || !cves.length) {
+			return E('div', { 'class': 'ai-empty' }, 'Loading CVE feed...');
+		}
+
+		return E('div', { 'class': 'ai-cve-list' }, cves.slice(0, 10).map(function(cve) {
+			var score = cve.score || 0;
+			var severity = score >= 9.0 ? 'critical' : score >= 7.0 ? 'high' : score >= 4.0 ? 'medium' : 'low';
+			var severityClass = score >= 9.0 ? 'danger' : score >= 7.0 ? 'warning' : score >= 4.0 ? 'caution' : 'success';
+
+			return E('div', { 'class': 'ai-cve-item' }, [
+				E('div', { 'class': 'ai-cve-score ' + severityClass }, [
+					E('span', { 'class': 'score-value' }, score.toFixed(1)),
+					E('span', { 'class': 'score-label' }, severity.toUpperCase())
+				]),
+				E('div', { 'class': 'ai-cve-content' }, [
+					E('div', { 'class': 'ai-cve-id' }, [
+						E('a', { 'href': 'https://nvd.nist.gov/vuln/detail/' + cve.id, 'target': '_blank' }, cve.id)
+					]),
+					E('div', { 'class': 'ai-cve-desc' }, (cve.description || '').substring(0, 120) + '...')
+				]),
+				E('div', { 'class': 'ai-cve-date' }, cve.published || '')
 			]);
 		}));
 	},

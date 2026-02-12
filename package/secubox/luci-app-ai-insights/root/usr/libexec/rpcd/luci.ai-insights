@@ -104,6 +104,7 @@ case "$1" in
 	"get_alerts": {"limit": 50},
 	"get_posture": {},
 	"get_timeline": {"hours": 24},
+	"get_cve_feed": {"limit": 10},
 	"run_all": {},
 	"analyze": {}
 }
@@ -266,6 +267,60 @@ EOF
 				results=$(echo "$results" | sed 's/,$//')
 				results="${results}}"
 				echo "$results"
+				;;
+
+			get_cve_feed)
+				read -r input
+				limit=$(echo "$input" | jsonfilter -e '@.limit' 2>/dev/null)
+				[ -z "$limit" ] && limit=10
+
+				# Cache file for CVE feed (refresh every 30 min)
+				cache_file="/tmp/cve_feed_cache.json"
+				cache_age=1800
+
+				# Check cache
+				if [ -f "$cache_file" ]; then
+					age=$(($(date +%s) - $(stat -c %Y "$cache_file" 2>/dev/null || echo 0)))
+					if [ "$age" -lt "$cache_age" ]; then
+						cat "$cache_file"
+						exit 0
+					fi
+				fi
+
+				# Fetch from NVD API (last 3 days)
+				start_date=$(date -d "3 days ago" +%Y-%m-%dT00:00:00.000 2>/dev/null || date -u +%Y-%m-%dT00:00:00.000)
+				end_date=$(date +%Y-%m-%dT23:59:59.999 2>/dev/null || date -u +%Y-%m-%dT23:59:59.999)
+
+				response=$(curl -s --max-time 15 \
+					"https://services.nvd.nist.gov/rest/json/cves/2.0?pubStartDate=${start_date}&pubEndDate=${end_date}&resultsPerPage=${limit}" 2>/dev/null)
+
+				if [ -n "$response" ]; then
+					# Parse and format CVEs
+					json_init
+					json_add_array "cves"
+
+					echo "$response" | jsonfilter -e '@.vulnerabilities[*]' 2>/dev/null | while read -r vuln; do
+						cve_id=$(echo "$vuln" | jsonfilter -e '@.cve.id' 2>/dev/null)
+						desc=$(echo "$vuln" | jsonfilter -e '@.cve.descriptions[0].value' 2>/dev/null | head -c 200 | sed 's/"/\\"/g')
+						score=$(echo "$vuln" | jsonfilter -e '@.cve.metrics.cvssMetricV31[0].cvssData.baseScore' 2>/dev/null)
+						[ -z "$score" ] && score=$(echo "$vuln" | jsonfilter -e '@.cve.metrics.cvssMetricV2[0].cvssData.baseScore' 2>/dev/null)
+						[ -z "$score" ] && score="0"
+						published=$(echo "$vuln" | jsonfilter -e '@.cve.published' 2>/dev/null | cut -c1-10)
+
+						json_add_object ""
+						json_add_string "id" "$cve_id"
+						json_add_string "description" "$desc"
+						json_add_double "score" "$score"
+						json_add_string "published" "$published"
+						json_close_object
+					done
+
+					json_close_array
+					json_dump > "$cache_file"
+					cat "$cache_file"
+				else
+					echo '{"cves":[],"error":"Failed to fetch CVE feed"}'
+				fi
 				;;
 
 			analyze)

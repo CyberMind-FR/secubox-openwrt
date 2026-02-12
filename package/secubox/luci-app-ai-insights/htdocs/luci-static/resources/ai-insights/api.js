@@ -47,6 +47,13 @@ var callAnalyze = rpc.declare({
 	expect: { }
 });
 
+var callGetCVEFeed = rpc.declare({
+	object: 'luci.ai-insights',
+	method: 'get_cve_feed',
+	params: ['limit'],
+	expect: { }
+});
+
 function getPostureColor(score) {
 	if (score >= 80) return 'success';
 	if (score >= 60) return 'warning';
@@ -104,6 +111,7 @@ return baseclass.extend({
 	getTimeline: callGetTimeline,
 	runAll: callRunAll,
 	analyze: callAnalyze,
+	getCVEFeed: callGetCVEFeed,
 
 	getPostureColor: getPostureColor,
 	getPostureLabel: getPostureLabel,
