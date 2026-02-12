@@ -3,7 +3,7 @@
 		"description": "Grant access to SecuBox Cloning Station",
 		"read": {
 			"ubus": {
-				"luci.cloner": ["status", "list_images", "list_tokens", "list_clones", "list_devices"]
+				"luci.cloner": ["status", "list_images", "list_tokens", "list_clones", "list_devices", "build_progress"]
 			}
 		},
 		"write": {
