@@ -324,7 +324,8 @@ return view.extend({
 	handleBuild: function() {
 		var self = this;
 		callListDevices().then(function(data) {
-			var devices = data.devices || [];
+			// RPC expect unwraps the array, so data IS the devices array
+			var devices = data || [];
 			var select = E('select', { 'id': 'device-select', 'style': 'width:100%;padding:10px;background:var(--kiss-bg2);border:1px solid var(--kiss-line);border-radius:6px;color:var(--kiss-text);font-size:14px;' });
 
 			devices.forEach(function(dev) {

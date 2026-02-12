@@ -348,6 +348,51 @@ do_delete_image() {
 	json_dump
 }
 
+do_build_progress() {
+	local building=0 progress=0 stage="" log_tail=""
+
+	json_init
+
+	# Check if build is running
+	if pgrep -f "secubox-cloner build" >/dev/null 2>&1; then
+		building=1
+		# Parse log for progress
+		if [ -f /tmp/cloner-build.log ]; then
+			log_tail=$(tail -5 /tmp/cloner-build.log 2>/dev/null | tr '\n' ' ' | cut -c1-200)
+			# Estimate progress from log content
+			if grep -q "Downloading" /tmp/cloner-build.log 2>/dev/null; then
+				stage="downloading"
+				progress=20
+			elif grep -q "Compiling\|Building" /tmp/cloner-build.log 2>/dev/null; then
+				stage="building"
+				progress=50
+			elif grep -q "Packaging\|Creating" /tmp/cloner-build.log 2>/dev/null; then
+				stage="packaging"
+				progress=80
+			else
+				stage="initializing"
+				progress=10
+			fi
+		fi
+	elif [ -f /tmp/cloner-build.log ]; then
+		# Build finished - check result
+		if grep -q "Build complete\|Successfully" /tmp/cloner-build.log 2>/dev/null; then
+			stage="complete"
+			progress=100
+		elif grep -q "Error\|Failed\|error:" /tmp/cloner-build.log 2>/dev/null; then
+			stage="failed"
+			progress=0
+		fi
+		log_tail=$(tail -5 /tmp/cloner-build.log 2>/dev/null | tr '\n' ' ' | cut -c1-200)
+	fi
+
+	json_add_boolean "building" "$building"
+	json_add_int "progress" "$progress"
+	json_add_string "stage" "$stage"
+	json_add_string "log" "$log_tail"
+	json_dump
+}
+
 case "$1" in
 	list)
 		echo '{'
@@ -356,6 +401,7 @@ case "$1" in
 		echo '"list_tokens":{},'
 		echo '"list_clones":{},'
 		echo '"list_devices":{},'
+		echo '"build_progress":{},'
 		echo '"generate_token":{"auto_approve":"Boolean"},'
 		echo '"build_image":{"device_type":"String"},'
 		echo '"tftp_start":{},'
@@ -371,6 +417,7 @@ case "$1" in
 			list_tokens) do_list_tokens ;;
 			list_clones) do_list_clones ;;
 			list_devices) do_list_devices ;;
+			build_progress) do_build_progress ;;
 			generate_token) do_generate_token ;;
 			build_image) do_build_image ;;
 			tftp_start) do_tftp_start ;;
