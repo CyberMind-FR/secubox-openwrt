@@ -580,8 +580,9 @@ EOF
 	config_foreach _collect_path_acl acl
 	_emit_sorted_path_acls
 
-	# Add vhost ACLs for HTTP
-	config_foreach _add_vhost_acl vhost "http"
+	# Add vhost ACLs for HTTP (specific domains first, then wildcards)
+	config_foreach _add_vhost_acl vhost "http" "exact"
+	config_foreach _add_vhost_acl vhost "http" "suffix"
 
 	echo "    default_backend $default_backend"
 	echo ""
@@ -617,8 +618,9 @@ EOF
 		config_foreach _collect_path_acl acl
 		_emit_sorted_path_acls
 
-		# Add vhost ACLs for HTTPS
-		config_foreach _add_vhost_acl vhost "https"
+		# Add vhost ACLs for HTTPS (specific domains first, then wildcards)
+		config_foreach _add_vhost_acl vhost "https" "exact"
+		config_foreach _add_vhost_acl vhost "https" "suffix"
 
 		echo "    default_backend $default_backend"
 		echo ""
@@ -731,6 +733,7 @@ _emit_sorted_path_acls() {
 _add_vhost_acl() {
 	local section="$1"
 	local proto="$2"
+	local filter="${3:-all}"  # Filter: exact, suffix, regex, or all
 	local enabled domain backend ssl match_type
 
 	config_get enabled "$section" enabled "0"
@@ -739,6 +742,17 @@ _add_vhost_acl() {
 	config_get domain "$section" domain
 	config_get backend "$section" backend
 	config_get match_type "$section" match_type "exact"
+
+	# Filter by match_type if specified (to process specific vhosts before wildcards)
+	if [ "$filter" != "all" ]; then
+		# For "exact" filter, also include regex (both are specific, not wildcard)
+		if [ "$filter" = "exact" ]; then
+			[ "$match_type" = "suffix" ] && return
+		elif [ "$filter" = "suffix" ]; then
+			[ "$match_type" != "suffix" ] && return
+		fi
+	fi
+
 	# Validate backend is not IP:port (common misconfiguration)
 	case "$backend" in
 		*:*) log_warn "Vhost $section has IP:port backend , should be backend name"; return ;;
@@ -752,7 +766,7 @@ _add_vhost_acl() {
 	[ "$proto" = "http" ] && [ "$ssl" = "1" ] && return
 
 	local acl_name=$(echo "$domain" | tr "." "_" | tr "-" "_" | tr "*" "wildcard")
-	
+
 	# Handle different match types
 	case "$match_type" in
 		suffix)

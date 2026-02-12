@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-02-10_
+_Last updated: 2026-02-11_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -836,7 +836,21 @@ _Last updated: 2026-02-10_
       - Live at: https://console.gk2.secubox.in/
     - **Commits**: 301dccec, a47ae965, 22caf0c9, aab58a2b, 7b77f839
 
-56. **Streamlit LuCI Dashboard Edit & Emancipate (2026-02-06)**
+56. **Vortex DNS Firewall Phase 1 (2026-02-11)**
+    - Created `secubox-vortex-firewall` package — DNS-level threat blocking with ×47 multiplier.
+    - Threat intel aggregator downloading from 3 feeds:
+      - URLhaus (abuse.ch) — ~500 malware domains
+      - OpenPhish — ~266 phishing domains
+      - Malware Domains — additional malware list
+    - SQLite-based blocklist database with domain deduplication.
+    - dnsmasq integration via sinkhole hosts file (`/etc/dnsmasq.d/vortex-firewall.conf`).
+    - ×47 vitality multiplier concept: each DNS block prevents ~47 malicious connections (C2 beacon rate × infection window).
+    - CLI tool (`vortex-firewall`): intel update/status/search/add/remove, stats, start/stop/status.
+    - RPCD handler with 8 methods: status, get_stats, get_feeds, get_blocked, search, update_feeds, block_domain, unblock_domain.
+    - Fixed subshell issue with `pipe | while` by using temp files for jshn output.
+    - Tested with 765 blocked domains across 3 threat feeds.
+
+57. **Streamlit LuCI Dashboard Edit & Emancipate (2026-02-06)**
     - Added **Edit button** to Streamlit Apps table for editing app source code:
       - RPCD methods: `get_source`, `save_source` with base64 encoding
       - Modal code editor with syntax highlighting (monospace textarea)
@@ -1050,3 +1064,157 @@ _Last updated: 2026-02-10_
     - U-Boot flash commands display when TFTP is running.
     - RPCD handler with 10 methods for status, images, tokens, clones.
     - Tag: v0.19.20
+
+35. **System Hub KISS Rewrite (2026-02-11)**
+    - Rewrote `luci-app-system-hub/overview.js` to KISS style.
+    - Self-contained inline CSS, no external dependencies.
+    - 6 status cards: Hostname/Model, Uptime, Services, CPU Load, Temperature, Health Score.
+    - 3 resource bars: Memory, Storage, CPU Usage with color-coded progress.
+    - Quick Actions panel: System Settings, Reboot, Backup/Flash.
+    - Services table showing top 10 with running/stopped badges.
+    - 5-second live polling with efficient data-stat DOM updates.
+    - Full dark mode support via prefers-color-scheme media query.
+    - Uses `luci.system-hub` RPC: status, get_health, list_services.
+
+36. **SecuBox Dashboard KISS Rewrite (2026-02-11)**
+    - Rewrote `luci-app-secubox/dashboard.js` to KISS style.
+    - Removed all external dependencies (secubox/api, secubox-theme, secubox/nav, secubox-portal/header).
+    - Self-contained with inline CSS and direct RPC calls.
+    - Header with status chips: Version, Modules, Running, Alerts, Health Score.
+    - Stats cards: Total Modules, Installed, Active, Health Score, Alerts.
+    - System Health panel with 4 metric bars: CPU, Memory, Storage, Network.
+    - Public IPs panel with IPv4/IPv6 display.
+    - Modules table with top 8 modules, status badges, version info.
+    - Quick Actions: Restart Services, Update Packages, View Logs, Export Config.
+    - Alert Timeline with severity-colored items.
+    - 15-second live polling for health, alerts, IPs.
+    - Full dark mode support.
+
+58. **IoT Guard Implementation (2026-02-11)**
+    - Created `secubox-iot-guard` package — IoT device isolation, classification, and security monitoring.
+    - **Device Classification**:
+      - OUI-based classification with 100+ IoT manufacturer prefixes
+      - 10 device classes: camera, thermostat, lighting, plug, assistant, media, lock, sensor, diy, mixed
+      - Traffic-based classification from cloud dependency tracking
+      - Hostname-based classification fallback
+    - **Risk Scoring**:
+      - 0-100 risk score with vendor risk, anomaly penalty, cloud dependency penalty
+      - Risk levels: low (20), medium (50), high (80)
+      - Auto-isolation threshold configurable (default 80)
+    - **Anomaly Detection**:
+      - Bandwidth spike detection (Nx above baseline)
+      - New destination tracking
+      - Port scan behavior detection
+      - Time-based anomaly (unusual activity hours)
+    - **Integration Points**:
+      - Client Guardian: Zone assignment (IoT zone)
+      - MAC Guardian: L2 blocking/trust
+      - Vortex Firewall: DNS filtering for IoT malware feeds
+      - Bandwidth Manager: Rate limiting
+    - **CLI** (`iot-guardctl`): status, list, show, scan, isolate, trust, block, anomalies, cloud-map, daemon
+    - **UCI Configuration**: main settings, zone policy, vendor rules, allowlist, blocklist
+    - **Baseline Profiles**: JSON profiles for camera, thermostat, plug, assistant device classes
+    - Created `luci-app-iot-guard` — LuCI dashboard with KISS-style views.
+    - **Dashboard Views**:
+      - Overview: Security score, device counts, risk distribution, anomaly timeline
+      - Devices: Filterable table with device details, isolate/trust/block actions
+      - Policies: Vendor classification rules management
+      - Settings: UCI form for configuration
+    - **RPCD Handler**: 11 methods (status, get_devices, get_device, get_anomalies, scan, isolate/trust/block_device, get_vendor_rules, add/delete_vendor_rule, get_cloud_map)
+    - **ACL**: Public access for status and device list via `unauthenticated` group
+
+59. **InterceptoR "Gandalf Proxy" Implementation (2026-02-11)**
+    - Created `luci-app-interceptor` — unified dashboard for 5-pillar transparent traffic interception.
+    - **Dashboard Features**:
+      - Health Score (0-100%) with color-coded display
+      - 5 Pillar Status Cards: WPAD Redirector, MITM Proxy, CDN Cache, Cookie Tracker, API Failover
+      - Per-pillar stats: threats, connections, hit ratio, trackers, stale serves
+      - Quick links to individual module dashboards
+    - **RPCD Handler** (`luci.interceptor`):
+      - `status`: Aggregates status from all 5 pillars
+      - `getPillarStatus`: Individual pillar details
+      - Health score calculation: 20 points per active pillar
+      - Checks: WPAD PAC file, mitmproxy LXC, Squid process, Cookie Tracker UCI, API Failover UCI
+    - Created `secubox-cookie-tracker` package — Cookie classification database + mitmproxy addon.
+      - **SQLite database** (`/var/lib/cookie-tracker/cookies.db`): domain, name, category, seen times, blocked status
+      - **Categories**: essential, functional, analytics, advertising, tracking
+      - **mitmproxy addon** (`mitmproxy-addon.py`): Real-time cookie extraction from Set-Cookie headers
+      - **Known trackers** (`known-trackers.tsv`): 100+ tracker domains (Google Analytics, Facebook, DoubleClick, etc.)
+      - **CLI** (`cookie-trackerctl`): status, list, classify, block, report --json
+      - **Init script**: procd service with SQLite database initialization
+    - Enhanced `luci-app-network-tweaks` with WPAD safety net:
+      - Added `setWpadEnforce`/`getWpadEnforce` RPCD methods
+      - Added `setup_wpad_enforce()` iptables function for non-compliant clients
+      - Redirect TCP 80/443 to Squid proxy for WPAD-ignoring clients
+    - Enhanced `luci-app-cdn-cache` with API failover config:
+      - Added `api_failover` UCI section: stale_if_error, offline_mode, collapsed_forwarding
+      - Modified init.d to generate API failover Squid config (refresh_pattern with stale-if-error)
+      - Created `/etc/hotplug.d/iface/99-cdn-offline` for WAN up/down detection
+      - Automatic offline mode on WAN down, disable on WAN up
+    - Configured `.sblocal` mesh domain via BIND zone file:
+      - Created `/etc/bind/zones/sblocal.zone` for internal service discovery
+      - Added c3box.sblocal A record pointing to 192.168.255.1
+    - Part of InterceptoR transparent proxy architecture (Peek/Poke/Emancipate model).
+
+60. **3-Tier Stats Persistence & Evolution (2026-02-11)**
+    - Created `secubox-stats-persist` — 3-tier caching for never-trashed stats.
+    - **3-Tier Cache Architecture**:
+      - Tier 1: RAM cache (`/tmp/secubox/*.json`) — 3-30 second updates
+      - Tier 2: Volatile buffer — atomic writes with tmp+mv pattern
+      - Tier 3: Persistent storage (`/srv/secubox/stats/`) — survives reboot
+    - **Time-Series Evolution**:
+      - Hourly snapshots (24h retention) per collector
+      - Daily aggregates (30d retention) with min/max/avg
+      - Combined timeline JSON with all collectors
+    - **Heartbeat Line**:
+      - Real-time 60-sample buffer (3min window)
+      - Combined "influence" score: (health×40 + inv_threat×30 + inv_capacity×30)/100
+      - Updated every 3 seconds via daemon loop
+    - **Evolution View**:
+      - 48-hour combined metrics graph
+      - Health, Threat, Capacity, and Influence scores per hour
+      - JSON output for dashboard sparklines
+    - **Boot Recovery**:
+      - On daemon start, recovers cache from persistent storage
+      - Ensures stats continuity across reboots
+    - **RPCD Methods**:
+      - `get_timeline`: 24h evolution for all collectors
+      - `get_evolution`: Combined influence score timeline
+      - `get_heartbeat_line`: Real-time 3min buffer
+      - `get_stats_status`: Persistence status and current values
+      - `get_history`: Historical data for specific collector
+      - `get_collector_cache`: Current cache value for collector
+    - **Cron Jobs**:
+      - Every 5min: Persist cache to /srv (backup)
+      - Every hour: Generate timeline and evolution
+      - Daily: Aggregate hourly to daily, cleanup old data
+    - Integrated into `secubox-core` daemon startup (r16).
+    - Bumped `secubox-core` version to 0.10.0-r16.
+
+49. **InterceptoR Services Dashboard (2026-02-11)**
+    - Created `luci.services-registry` RPCD handler with 4 methods:
+      - `getServices`: All init.d services with enable/running status
+      - `getPublished`: HAProxy vhosts and Tor onion URLs
+      - `getMetrics`: System metrics (uptime, load, memory, CrowdSec stats)
+      - `getAll`: Combined aggregation of all service data
+    - Created `services.js` KISS-style dashboard with 5 tabs:
+      - **Published**: HAProxy vhosts, Tor onions with live URLs
+      - **Proxies**: mitmproxy instances with web UI links
+      - **Services**: Running daemons with enable/running badges
+      - **Dashboards**: LuCI app links for navigation
+      - **Metrics**: System health, CrowdSec alerts/bans
+    - Service emoji registry for visual identification (30+ mappings)
+    - 10-second live polling via `poll.add()`
+    - Fixed `kiss-theme.js` singleton pattern (`baseclass.singleton(KissThemeClass)`)
+    - Updated ACL with `luci.services-registry` methods
+
+50. **mitmproxy Multi-Instance Support (2026-02-11)**
+    - Updated init.d script with `config_foreach start_instance instance`
+    - Updated `mitmproxyctl` with new commands:
+      - `list-instances`: Show all configured instances with status
+      - `service-run <instance>`: Start specific instance
+      - `service-stop <instance>`: Stop specific instance
+    - UCI configuration for dual instances:
+      - `out`: LAN→Internet transparent proxy (port 8888/8089)
+      - `in`: WAF/services upstream proxy (port 8889/8090)
+    - README updated with multi-instance documentation

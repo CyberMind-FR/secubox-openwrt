@@ -8,6 +8,7 @@
 'require secubox-theme/theme as Theme';
 'require system-hub/theme-assets as ThemeAssets';
 'require secubox-portal/header as SbHeader';
+'require secubox/kiss-theme';
 
 var shLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||
@@ -42,7 +43,7 @@ return view.extend({
 		var systemLogs = (data[2] && data[2].stdout) ? data[2].stdout.split('\n').filter(Boolean) : [];
 		var kernelLogs = (data[3] && data[3].stdout) ? data[3].stdout.split('\n').filter(Boolean) : [];
 
-		var container = E('div', { 'class': 'system-hub-dashboard sh-debug-view' }, [
+		var content = [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			ThemeAssets.stylesheet('common.css'),
 			ThemeAssets.stylesheet('dashboard.css'),
@@ -131,12 +132,9 @@ return view.extend({
 					)
 				])
 			])
-		]);
+		];
 
-		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
-		wrapper.appendChild(SbHeader.render());
-		wrapper.appendChild(container);
-		return wrapper;
+		return KissTheme.wrap(content, 'admin/system/hub/debug');
 	},
 
 	renderSystemInfo: function(board, sysinfo) {

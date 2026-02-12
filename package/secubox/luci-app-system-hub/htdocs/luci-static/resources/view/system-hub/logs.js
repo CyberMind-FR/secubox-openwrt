@@ -8,6 +8,7 @@
 'require system-hub/theme-assets as ThemeAssets';
 'require system-hub/nav as HubNav';
 'require secubox-portal/header as SbHeader';
+'require secubox/kiss-theme';
 
 var shLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||
@@ -32,7 +33,7 @@ return view.extend({
 		this.logs = Array.isArray(data) ? data : (data && data.logs) || [];
 		this.lastLogCount = this.logs.length;
 
-		var container = E('div', { 'class': 'sh-logs-view' }, [
+		var content = [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			ThemeAssets.stylesheet('common.css'),
 			ThemeAssets.stylesheet('dashboard.css'),
@@ -41,7 +42,7 @@ return view.extend({
 			this.renderHero(),
 			this.renderControls(),
 			this.renderBody()
-		]);
+		];
 
 		this.updateLogStream();
 		this.updateStats();
@@ -61,10 +62,7 @@ return view.extend({
 			});
 		}, this.pollInterval);
 
-		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
-		wrapper.appendChild(SbHeader.render());
-		wrapper.appendChild(container);
-		return wrapper;
+		return KissTheme.wrap(content, 'admin/system/hub/logs');
 	},
 
 	renderHero: function() {

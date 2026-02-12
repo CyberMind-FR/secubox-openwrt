@@ -3,6 +3,7 @@
 'require ui';
 'require rpc';
 'require poll';
+'require secubox/kiss-theme';
 
 var callStatus = rpc.declare({ object: 'luci.nextcloud', method: 'status', expect: {} });
 var callInstall = rpc.declare({ object: 'luci.nextcloud', method: 'install', expect: {} });
@@ -98,7 +99,7 @@ return view.extend({
 
 		// Not installed view
 		if (!status.installed || !status.docker_available) {
-			return E('div', { 'class': 'nc-container' }, [
+			var content = E('div', { 'class': 'nc-container' }, [
 				E('div', { 'class': 'nc-header' }, [
 					E('h2', {}, ['\u2601\ufe0f ', _('Nextcloud')]),
 					E('div', { 'class': 'nc-status stopped' }, [
@@ -128,12 +129,13 @@ return view.extend({
 					])
 				])
 			]);
+			return KissTheme.wrap(content, 'admin/secubox/services/nextcloud');
 		}
 
 		// Installed view
 		this.startPolling();
 
-		return E('div', { 'class': 'nc-container' }, [
+		var content = E('div', { 'class': 'nc-container' }, [
 			E('div', { 'class': 'nc-header' }, [
 				E('h2', {}, ['\u2601\ufe0f ', _('Nextcloud')]),
 				E('div', { 'class': 'nc-status ' + (status.running ? 'running' : 'stopped') }, [
@@ -205,6 +207,8 @@ return view.extend({
 				])
 			])
 		]);
+
+		return KissTheme.wrap(content, 'admin/secubox/services/nextcloud');
 	},
 
 	handleSaveApply: null,

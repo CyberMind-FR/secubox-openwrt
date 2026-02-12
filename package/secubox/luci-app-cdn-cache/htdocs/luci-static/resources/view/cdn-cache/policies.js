@@ -4,6 +4,7 @@
 'require ui';
 'require form';
 'require cdn-cache/nav as CdnNav';
+'require secubox/kiss-theme';
 
 var callPolicies = rpc.declare({
 	object: 'luci.cdn-cache',
@@ -41,7 +42,8 @@ return view.extend({
 		var policies = data[0].policies || [];
 		var exclusions = data[1].exclusions || [];
 
-		return E('div', { 'class': 'cbi-map cdn-policies' }, [
+		return KissTheme.wrap([
+			E('div', { 'class': 'cbi-map cdn-policies' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('cdn-cache/common.css') }),
 			E('style', {}, `
@@ -164,7 +166,8 @@ return view.extend({
 					]);
 				}) : E('div', { 'class': 'cdn-empty' }, 'Aucune exclusion configurée')
 			])
-		]);
+		])
+		], 'admin/services/cdn-cache/policies');
 	},
 
 	handleSaveApply: null,

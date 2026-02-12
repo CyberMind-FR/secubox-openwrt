@@ -4,6 +4,7 @@
 'require uci';
 'require rpc';
 'require poll';
+'require secubox/kiss-theme';
 
 var callJitsiStatus = rpc.declare({
 	object: 'luci.jitsi',
@@ -293,6 +294,6 @@ return view.extend({
 				'</div>';
 		};
 
-		return m.render();
+		return KissTheme.wrap([m.render()], 'admin/services/jitsi');
 	}
 });

@@ -1,0 +1,96 @@
+# IoT Guard - Device Isolation & Security Configuration
+
+config iot-guard 'main'
+	option enabled '1'
+	option scan_interval '300'
+	option auto_isolate '1'
+	option auto_isolate_threshold '80'
+	option anomaly_detection '1'
+	option anomaly_sensitivity 'medium'
+	option log_level 'info'
+
+# Zone isolation policy
+config zone_policy 'isolation'
+	option target_zone 'iot'
+	option block_lan '1'
+	option allow_internet '1'
+	option bandwidth_limit '10'
+
+# Vendor classification rules
+config vendor_rule 'ring'
+	option vendor_pattern 'Ring|Amazon Ring'
+	option oui_prefix '40:B4:CD'
+	option device_class 'camera'
+	option risk_level 'medium'
+	option auto_isolate '1'
+
+config vendor_rule 'nest'
+	option vendor_pattern 'Nest|Google Nest'
+	option oui_prefix '18:B4:30'
+	option device_class 'thermostat'
+	option risk_level 'low'
+	option auto_isolate '1'
+
+config vendor_rule 'philips_hue'
+	option vendor_pattern 'Philips Hue|Signify'
+	option oui_prefix '00:17:88'
+	option device_class 'bridge'
+	option risk_level 'low'
+	option auto_isolate '0'
+
+config vendor_rule 'xiaomi'
+	option vendor_pattern 'Xiaomi|Mijia'
+	option oui_prefix '28:6C:07'
+	option device_class 'mixed'
+	option risk_level 'high'
+	option auto_isolate '1'
+
+config vendor_rule 'tuya'
+	option vendor_pattern 'Tuya|Smart Life'
+	option oui_prefix 'DC:4F:22'
+	option device_class 'mixed'
+	option risk_level 'high'
+	option auto_isolate '1'
+
+config vendor_rule 'tplink_kasa'
+	option vendor_pattern 'TP-Link Kasa|Kasa Smart'
+	option oui_prefix '50:C7:BF'
+	option device_class 'plug'
+	option risk_level 'medium'
+	option auto_isolate '1'
+
+config vendor_rule 'wyze'
+	option vendor_pattern 'Wyze'
+	option oui_prefix '2C:AA:8E'
+	option device_class 'camera'
+	option risk_level 'medium'
+	option auto_isolate '1'
+
+config vendor_rule 'espressif'
+	option vendor_pattern 'Espressif|ESP32|ESP8266'
+	option oui_prefix '60:01:94'
+	option device_class 'diy'
+	option risk_level 'high'
+	option auto_isolate '1'
+
+config vendor_rule 'amazon_echo'
+	option vendor_pattern 'Amazon Echo|Alexa'
+	option oui_prefix 'F0:27:2D'
+	option device_class 'assistant'
+	option risk_level 'medium'
+	option auto_isolate '1'
+
+config vendor_rule 'google_home'
+	option vendor_pattern 'Google Home'
+	option oui_prefix '30:FD:38'
+	option device_class 'assistant'
+	option risk_level 'medium'
+	option auto_isolate '1'
+
+# Allowlist - trusted IoT devices
+config allowlist 'trusted'
+	# list mac 'AA:BB:CC:DD:EE:FF'
+
+# Blocklist - banned IoT devices
+config blocklist 'banned'
+	# list mac 'AA:BB:CC:DD:EE:FF'

@@ -3,6 +3,7 @@
 'require dom';
 'require ui';
 'require cyberfeed.api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	title: _('Feed Sources'),
@@ -249,7 +250,7 @@ return view.extend({
 			E('div', { 'class': 'cf-card-body no-padding' }, [feedsContent])
 		]));
 
-		return E('div', { 'class': 'cyberfeed-dashboard' }, content);
+		return KissTheme.wrap([E('div', { 'class': 'cyberfeed-dashboard' }, content)], 'admin/services/cyberfeed/feeds');
 	},
 
 	handleAddFeed: function() {

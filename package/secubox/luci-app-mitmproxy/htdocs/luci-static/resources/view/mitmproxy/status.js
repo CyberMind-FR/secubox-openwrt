@@ -3,6 +3,7 @@
 'require poll';
 'require rpc';
 'require ui';
+'require secubox/kiss-theme';
 
 var callStatus = rpc.declare({
 	object: 'luci.mitmproxy',
@@ -93,8 +94,12 @@ return view.extend({
 		var bans = bansData.bans || [];
 		var self = this;
 
-		var view = E('div', { 'class': 'cbi-map' }, [
-			E('h2', {}, _('mitmproxy - HTTPS Intercepting Proxy')),
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0 0 8px 0;' }, '🔍 mitmproxy'),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 0;' }, 'HTTPS Intercepting Proxy & WAF')
+			]),
 
 			// Service Status Card
 			E('div', { 'class': 'cbi-section' }, [
@@ -126,34 +131,32 @@ return view.extend({
 									'target': '_blank'
 								}, 'http://' + window.location.hostname + ':' + (status.web_port || 8081) + (status.token ? '/?token=***' : '')) :
 								_('Not available'))
-						]),
-						status.token ? E('tr', { 'class': 'tr' }, [
-							E('td', { 'class': 'td' }, E('strong', {}, _('Auth Token'))),
-							E('td', { 'class': 'td' }, [
-								E('code', { 'style': 'font-size: 11px; background: #f0f0f0; padding: 2px 6px; border-radius: 3px;' },
-									status.token.substring(0, 12) + '...'),
-								' ',
-								E('button', {
-									'class': 'btn cbi-button cbi-button-action',
-									'style': 'font-size: 11px; padding: 2px 8px;',
-									'click': function() {
-										navigator.clipboard.writeText(status.token);
-										this.textContent = _('Copied!');
-										setTimeout(function() { this.textContent = _('Copy'); }.bind(this), 1500);
-									}
-								}, _('Copy'))
-							])
-						]) : null,
-						status.haproxy_router_enabled ? E('tr', { 'class': 'tr' }, [
-							E('td', { 'class': 'td' }, E('strong', {}, _('HAProxy Router'))),
-							E('td', { 'class': 'td' }, [
-								E('span', {
-									'style': 'display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; background: #27ae60;'
-								}),
-								_('Enabled (port ') + (status.haproxy_listen_port || 8889) + ')'
-							])
-						]) : null
-					])
+						])
+					].concat(status.token ? [E('tr', { 'class': 'tr' }, [
+						E('td', { 'class': 'td' }, E('strong', {}, _('Auth Token'))),
+						E('td', { 'class': 'td' }, [
+							E('code', { 'style': 'font-size: 11px; background: #f0f0f0; padding: 2px 6px; border-radius: 3px;' },
+								status.token.substring(0, 12) + '...'),
+							' ',
+							E('button', {
+								'class': 'btn cbi-button cbi-button-action',
+								'style': 'font-size: 11px; padding: 2px 8px;',
+								'click': function() {
+									navigator.clipboard.writeText(status.token);
+									this.textContent = _('Copied!');
+									setTimeout(function() { this.textContent = _('Copy'); }.bind(this), 1500);
+								}
+							}, _('Copy'))
+						])
+					])] : []).concat(status.haproxy_router_enabled ? [E('tr', { 'class': 'tr' }, [
+						E('td', { 'class': 'td' }, E('strong', {}, _('HAProxy Router'))),
+						E('td', { 'class': 'td' }, [
+							E('span', {
+								'style': 'display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; background: #27ae60;'
+							}),
+							_('Enabled (port ') + (status.haproxy_listen_port || 8889) + ')'
+						])
+					])] : []))
 				]),
 				E('div', { 'style': 'margin-top: 16px;' }, [
 					E('button', {
@@ -500,27 +503,27 @@ return view.extend({
 			]),
 
 			// Info Card
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Information')),
-				E('div', { 'class': 'cbi-section-node' }, [
-					E('p', {}, _('mitmproxy is an interactive HTTPS proxy for traffic inspection and modification.')),
-					E('ul', {}, [
+			E('div', { 'class': 'kiss-card' }, [
+				E('div', { 'class': 'kiss-card-title' }, '📖 ' + _('Information')),
+				E('div', {}, [
+					E('p', { 'style': 'color: var(--kiss-muted); margin-bottom: 12px;' }, _('mitmproxy is an interactive HTTPS proxy for traffic inspection and modification.')),
+					E('ul', { 'style': 'color: var(--kiss-muted); margin: 0; padding-left: 20px;' }, [
 						E('li', {}, _('Intercept and inspect HTTP/HTTPS traffic')),
 						E('li', {}, _('Detect SQL injection, XSS, and other attacks')),
 						E('li', {}, _('Log threats to CrowdSec for automatic blocking')),
 						E('li', {}, _('Access the Web UI for detailed traffic analysis'))
 					]),
-					E('p', { 'style': 'margin-top: 12px;' }, [
-						E('strong', {}, _('CA Certificate: ')),
+					E('p', { 'style': 'margin-top: 12px; color: var(--kiss-muted);' }, [
+						E('strong', { 'style': 'color: var(--kiss-text);' }, _('CA Certificate: ')),
 						_('To inspect HTTPS traffic, install the CA certificate from '),
-						E('a', { 'href': 'http://mitm.it', 'target': '_blank' }, 'http://mitm.it'),
+						E('a', { 'href': 'http://mitm.it', 'target': '_blank', 'style': 'color: var(--kiss-cyan);' }, 'http://mitm.it'),
 						_(' on client devices.')
 					])
 				])
 			])
-		]);
+		];
 
-		return view;
+		return KissTheme.wrap(content, 'admin/secubox/security/mitmproxy/status');
 	},
 
 	handleSaveApply: null,

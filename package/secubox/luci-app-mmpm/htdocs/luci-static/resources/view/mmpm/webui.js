@@ -3,6 +3,7 @@
 'require dom';
 'require ui';
 'require mmpm/api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	title: _('MMPM Web GUI'),
@@ -89,6 +90,6 @@ return view.extend({
 			}));
 		}
 
-		return wrapper;
+		return KissTheme.wrap([wrapper], 'admin/secubox/services/mmpm/webui');
 	}
 });

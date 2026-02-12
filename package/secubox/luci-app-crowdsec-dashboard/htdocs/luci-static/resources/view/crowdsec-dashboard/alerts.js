@@ -4,10 +4,12 @@
 'require poll';
 'require ui';
 'require crowdsec-dashboard.api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	alerts: [],
 	bannedIPs: new Set(),
+	ipOrgCache: {},
 
 	load: function() {
 		var self = this;
@@ -34,7 +36,46 @@ return view.extend({
 					}
 				});
 			}
-			return results[0];
+			var alerts = results[0];
+			// Extract unique IPs for org lookup
+			var ips = [];
+			(Array.isArray(alerts) ? alerts : []).forEach(function(a) {
+				var ip = a.source && a.source.ip;
+				if (ip && !self.ipOrgCache[ip] && ips.indexOf(ip) === -1 && !ip.startsWith('192.168.') && !ip.startsWith('10.') && !ip.startsWith('127.')) {
+					ips.push(ip);
+				}
+			});
+			// Batch lookup orgs (max 100 per request)
+			if (ips.length > 0) {
+				return self.lookupOrgs(ips.slice(0, 100)).then(function() { return alerts; });
+			}
+			return alerts;
+		});
+	},
+
+	lookupOrgs: function(ips) {
+		var self = this;
+		// Use ip-api.com batch endpoint
+		return new Promise(function(resolve) {
+			var xhr = new XMLHttpRequest();
+			xhr.open('POST', 'http://ip-api.com/batch?fields=query,org,isp,as', true);
+			xhr.setRequestHeader('Content-Type', 'application/json');
+			xhr.timeout = 5000;
+			xhr.onload = function() {
+				if (xhr.status === 200) {
+					try {
+						var results = JSON.parse(xhr.responseText);
+						results.forEach(function(r) {
+							if (r.query) {
+								self.ipOrgCache[r.query] = r.org || r.isp || r.as || '';
+							}
+						});
+					} catch (e) {}
+				}
+				resolve();
+			};
+			xhr.onerror = xhr.ontimeout = function() { resolve(); };
+			xhr.send(JSON.stringify(ips));
 		});
 	},
 
@@ -42,31 +83,37 @@ return view.extend({
 		var self = this;
 		this.alerts = Array.isArray(data) ? data : (data.alerts || []);
 
-		var view = E('div', { 'class': 'cs-view' }, [
-			E('div', { 'class': 'cs-header' }, [
-				E('div', { 'class': 'cs-title' }, 'CrowdSec Alerts'),
-				E('div', { 'class': 'cs-status' }, [
-					E('span', { 'class': 'cs-badge ' + (this.alerts.length > 0 ? 'warning' : 'success') },
-						this.alerts.length + ' alerts')
-				])
-			]),
-			this.renderNav('alerts'),
-			E('div', { 'class': 'cs-stats' }, this.renderStats()),
-			E('div', { 'class': 'cs-card' }, [
-				E('div', { 'class': 'cs-card-header' }, [
-					'Security Alerts',
-					E('input', {
-						'type': 'text', 'class': 'cs-input', 'id': 'alert-search',
-						'placeholder': 'Search...', 'style': 'width: 150px;',
-						'keyup': function() { self.filterAlerts(); }
-					})
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'CrowdSec Alerts'),
+					KissTheme.badge(this.alerts.length + ' ALERTS',
+						this.alerts.length > 0 ? 'yellow' : 'green')
 				]),
-				E('div', { 'class': 'cs-card-body', 'id': 'alerts-list' }, this.renderAlerts(this.alerts))
-			])
-		]);
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' }, 'Security event monitoring')
+			]),
+
+			// Navigation
+			this.renderNav('alerts'),
+
+			// Stats
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'style': 'margin: 20px 0;' }, this.renderStats()),
+
+			// Alerts card with search
+			KissTheme.card([
+				E('span', {}, 'Security Alerts'),
+				E('input', {
+					'type': 'text', 'id': 'alert-search',
+					'placeholder': 'Search...',
+					'style': 'margin-left: auto; padding: 6px 12px; background: var(--kiss-bg2); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text); font-size: 13px; width: 150px;',
+					'keyup': function() { self.filterAlerts(); }
+				})
+			], E('div', { 'id': 'alerts-list' }, this.renderAlerts(this.alerts)))
+		];
 
 		poll.add(L.bind(this.pollData, this), 30);
-		return view;
+		return KissTheme.wrap(content, 'admin/secubox/security/crowdsec/alerts');
 	},
 
 	renderNav: function(active) {
@@ -77,54 +124,50 @@ return view.extend({
 			{ id: 'bouncers', label: 'Bouncers' },
 			{ id: 'settings', label: 'Settings' }
 		];
-		return E('div', { 'class': 'cs-nav' }, tabs.map(function(t) {
+		return E('div', { 'style': 'display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid var(--kiss-line); padding-bottom: 12px;' }, tabs.map(function(t) {
+			var isActive = active === t.id;
 			return E('a', {
 				'href': L.url('admin/secubox/security/crowdsec/' + t.id),
-				'class': active === t.id ? 'active' : ''
+				'style': 'padding: 8px 16px; text-decoration: none; border-radius: 6px; font-size: 13px; ' +
+					(isActive ? 'background: rgba(0,200,83,0.1); color: var(--kiss-green); border: 1px solid rgba(0,200,83,0.3);' :
+						'color: var(--kiss-muted); border: 1px solid transparent;')
 			}, t.label);
 		}));
 	},
 
 	renderStats: function() {
+		var c = KissTheme.colors;
 		var scenarios = {}, countries = {};
 		this.alerts.forEach(function(a) {
 			var s = a.scenario || 'unknown';
 			scenarios[s] = (scenarios[s] || 0) + 1;
-			var c = (a.source && (a.source.cn || a.source.country)) || 'Unknown';
-			countries[c] = (countries[c] || 0) + 1;
+			var cn = (a.source && (a.source.cn || a.source.country)) || 'Unknown';
+			countries[cn] = (countries[cn] || 0) + 1;
 		});
 
 		var topScenario = Object.entries(scenarios).sort(function(a, b) { return b[1] - a[1]; })[0];
 
 		return [
-			E('div', { 'class': 'cs-stat warning' }, [
-				E('div', { 'class': 'cs-stat-value' }, String(this.alerts.length)),
-				E('div', { 'class': 'cs-stat-label' }, 'Total Alerts')
-			]),
-			E('div', { 'class': 'cs-stat' }, [
-				E('div', { 'class': 'cs-stat-value' }, String(Object.keys(scenarios).length)),
-				E('div', { 'class': 'cs-stat-label' }, 'Scenarios')
-			]),
-			E('div', { 'class': 'cs-stat' }, [
-				E('div', { 'class': 'cs-stat-value' }, String(Object.keys(countries).length)),
-				E('div', { 'class': 'cs-stat-label' }, 'Countries')
-			]),
-			E('div', { 'class': 'cs-stat danger' }, [
-				E('div', { 'class': 'cs-stat-value' }, topScenario ? api.parseScenario(topScenario[0]).split(' ')[0] : '-'),
-				E('div', { 'class': 'cs-stat-label' }, 'Top Threat')
-			])
+			KissTheme.stat(this.alerts.length, 'Total Alerts', this.alerts.length > 0 ? c.orange : c.muted),
+			KissTheme.stat(Object.keys(scenarios).length, 'Scenarios', c.blue),
+			KissTheme.stat(Object.keys(countries).length, 'Countries', c.purple),
+			KissTheme.stat(topScenario ? api.parseScenario(topScenario[0]).split(' ')[0] : '-', 'Top Threat', c.red)
 		];
 	},
 
 	renderAlerts: function(alerts) {
 		var self = this;
 		if (!alerts.length) {
-			return E('div', { 'class': 'cs-empty' }, 'No alerts');
+			return E('div', { 'style': 'text-align: center; padding: 40px; color: var(--kiss-green);' }, [
+				E('div', { 'style': 'font-size: 32px; margin-bottom: 12px;' }, '\u2713'),
+				E('div', {}, 'No alerts - all clear!')
+			]);
 		}
-		return E('table', { 'class': 'cs-table' }, [
+		return E('table', { 'class': 'kiss-table' }, [
 			E('thead', {}, E('tr', {}, [
 				E('th', {}, 'Time'),
 				E('th', {}, 'Source'),
+				E('th', {}, 'Organization'),
 				E('th', {}, 'Country'),
 				E('th', {}, 'Scenario'),
 				E('th', {}, 'Events'),
@@ -134,17 +177,20 @@ return view.extend({
 				var src = a.source || {};
 				var ip = src.ip || '';
 				var country = src.cn || src.country || '';
+				var org = self.ipOrgCache[ip] || '';
+				var orgDisplay = org.length > 25 ? org.substring(0, 22) + '...' : org;
 				var isBanned = self.bannedIPs.has(ip);
 
 				return E('tr', {}, [
-					E('td', { 'class': 'cs-time' }, api.formatRelativeTime(a.created_at)),
-					E('td', {}, E('span', { 'class': 'cs-ip' }, ip || '-')),
+					E('td', { 'style': 'font-family: monospace; font-size: 12px; color: var(--kiss-muted);' }, api.formatRelativeTime(a.created_at)),
+					E('td', {}, E('span', { 'style': 'font-family: monospace; color: var(--kiss-cyan);' }, ip || '-')),
+					E('td', { 'title': org }, E('span', { 'style': 'font-size: 11px; color: var(--kiss-muted);' }, orgDisplay || '-')),
 					E('td', {}, [
-						E('span', { 'class': 'cs-flag' }, api.getCountryFlag(country)),
-						' ', country
+						E('span', { 'style': 'font-size: 16px; margin-right: 4px;' }, api.getCountryFlag(country)),
+						E('span', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, country)
 					]),
-					E('td', {}, E('span', { 'class': 'cs-scenario' }, api.parseScenario(a.scenario))),
-					E('td', {}, String(a.events_count || 0)),
+					E('td', {}, E('span', { 'style': 'font-size: 12px;' }, api.parseScenario(a.scenario))),
+					E('td', { 'style': 'font-family: monospace;' }, String(a.events_count || 0)),
 					E('td', {}, ip ? self.renderBanButton(ip, a.scenario, isBanned) : '-')
 				]);
 			}))
@@ -156,16 +202,16 @@ return view.extend({
 
 		if (isBanned) {
 			return E('button', {
-				'class': 'cbi-button cbi-button-neutral',
-				'style': 'padding: 2px 8px; font-size: 11px;',
+				'class': 'kiss-btn',
+				'style': 'padding: 4px 10px; font-size: 11px; opacity: 0.5; cursor: not-allowed;',
 				'disabled': 'disabled',
 				'title': 'Already banned'
 			}, 'Banned');
 		}
 
 		return E('button', {
-			'class': 'cbi-button cbi-button-negative',
-			'style': 'padding: 2px 8px; font-size: 11px;',
+			'class': 'kiss-btn kiss-btn-red',
+			'style': 'padding: 4px 10px; font-size: 11px;',
 			'click': function(ev) {
 				ev.preventDefault();
 				self.banIP(ip, scenario);
@@ -217,11 +263,13 @@ return view.extend({
 	},
 
 	filterAlerts: function() {
+		var self = this;
 		var query = (document.getElementById('alert-search').value || '').toLowerCase();
 		var filtered = this.alerts.filter(function(a) {
 			if (!query) return true;
 			var src = a.source || {};
-			var fields = [src.ip, a.scenario, src.country, src.cn].join(' ').toLowerCase();
+			var org = self.ipOrgCache[src.ip] || '';
+			var fields = [src.ip, a.scenario, src.country, src.cn, org].join(' ').toLowerCase();
 			return fields.includes(query);
 		});
 		var el = document.getElementById('alerts-list');

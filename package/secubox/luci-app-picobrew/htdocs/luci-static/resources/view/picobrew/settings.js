@@ -3,6 +3,7 @@
 'require form';
 'require rpc';
 'require ui';
+'require secubox/kiss-theme';
 
 var callRestart = rpc.declare({
 	object: 'luci.picobrew',
@@ -127,7 +128,11 @@ return view.extend({
 			}, _('Restart Service'));
 
 			var wrapper = E('div', {}, [mapEl, restartBtn]);
-			return wrapper;
+			return KissTheme.wrap(wrapper, 'admin/secubox/services/picobrew/settings');
 		});
-	}
+	},
+
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null
 });

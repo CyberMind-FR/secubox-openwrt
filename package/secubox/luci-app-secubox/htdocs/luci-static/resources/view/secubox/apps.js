@@ -8,6 +8,7 @@
 'require secubox-theme/cascade as Cascade';
 'require secubox-portal/header as SbHeader';
 'require poll';
+'require secubox/kiss-theme';
 
 // Load global theme CSS
 document.head.appendChild(E('link', {
@@ -206,7 +207,7 @@ return view.extend({
 		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
 		wrapper.appendChild(SbHeader.render());
 		wrapper.appendChild(container);
-		return wrapper;
+		return KissTheme.wrap(wrapper, 'admin/secubox/apps');
 	},
 
 	renderHeader: function(apps) {

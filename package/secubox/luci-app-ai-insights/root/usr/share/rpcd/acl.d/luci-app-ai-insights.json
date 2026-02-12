@@ -3,7 +3,7 @@
 		"description": "Grant access to AI Insights Dashboard",
 		"read": {
 			"ubus": {
-				"luci.ai-insights": ["status", "get_alerts", "get_posture", "get_timeline"]
+				"luci.ai-insights": ["status", "get_alerts", "get_posture", "get_timeline", "get_cve_feed"]
 			}
 		},
 		"write": {

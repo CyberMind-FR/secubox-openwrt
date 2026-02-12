@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-09 (early morning)_
+_Last updated: 2026-02-11_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -42,6 +42,17 @@ _Last updated: 2026-02-09 (early morning)_
   - `domoticzctl configure-mqtt` command
 
 ### In Progress
+
+- **Vortex DNS Firewall Phase 1** — DONE (2026-02-11)
+  - Created `secubox-vortex-firewall` package for DNS-level threat blocking
+  - Threat intel aggregator (URLhaus, OpenPhish, Malware Domains feeds)
+  - SQLite blocklist database with domain deduplication
+  - dnsmasq integration via sinkhole hosts file
+  - ×47 vitality multiplier concept
+  - CLI tool: `vortex-firewall intel/stats/start/stop`
+  - RPCD handler with 8 methods for LuCI integration
+  - Tested: 765 domains blocked from 3 feeds
+  - **Next phases**: Sinkhole server (Phase 2), DNS Guard integration (Phase 3), Mesh threat sharing (Phase 4), LuCI dashboard (Phase 5)
 
 - **Vortex DNS** - Meshed multi-dynamic subdomain delegation (DONE 2026-02-05)
   - Created `secubox-vortex-dns` package with `vortexctl` CLI
@@ -128,6 +139,22 @@ _Last updated: 2026-02-09 (early morning)_
   - Token management with delete functionality
   - U-Boot flash commands display when TFTP active
   - RPCD handler: 10 methods (status, list_images, list_tokens, list_clones, etc.)
+
+- **System Hub KISS Rewrite** — DONE (2026-02-11)
+  - Rewrote `luci-app-system-hub/overview.js` to KISS style
+  - Self-contained inline CSS, no external dependencies
+  - 6 status cards: Hostname/Model, Uptime, Services, CPU Load, Temperature, Health Score
+  - 3 resource bars: Memory, Storage, CPU Usage
+  - Quick Actions + Services table with running/stopped badges
+  - 5-second live polling with data-stat DOM updates
+  - Full dark mode support
+
+- **SecuBox Dashboard KISS Rewrite** — DONE (2026-02-11)
+  - Rewrote `luci-app-secubox/dashboard.js` to KISS style
+  - Removed all external deps (secubox/api, secubox-theme, secubox/nav, secubox-portal/header)
+  - Header chips, stats cards, health panel, public IPs, modules table, quick actions, alerts
+  - 15-second live polling
+  - Full dark mode support
 
 - **HAProxy "End of Internet" Default Page** — DONE (2026-02-07)
   - Cyberpunk fallback page for unknown/unmatched domains
@@ -307,6 +334,49 @@ _Last updated: 2026-02-09 (early morning)_
   - Join flow: request → approval → peer added at depth+1
   - Blockchain: `peer_approved` blocks recorded correctly
   - Threat Intel: 288 local IOCs, 67 threat_ioc blocks in chain
+
+### Just Completed (2026-02-11)
+
+- **InterceptoR Services Dashboard** — DONE (2026-02-11)
+  - Created `luci.services-registry` RPCD handler with 4 methods
+  - Aggregates: HAProxy vhosts, Tor onions, mitmproxy instances, init.d services, LuCI apps, system metrics
+  - Dynamic KISS dashboard with 5 tabs: Published, Proxies, Services, Dashboards, Metrics
+  - Service emoji registry for visual identification
+  - CrowdSec stats integration (alerts, bans)
+  - 10-second live polling
+  - Fixed `kiss-theme.js` singleton pattern for LuCI module loading
+
+- **mitmproxy Multi-Instance Support** — DONE (2026-02-11)
+  - Updated init.d script with `config_foreach start_instance instance`
+  - Updated mitmproxyctl with `list-instances`, instance-aware `service-run/stop`
+  - UCI config for dual instances: out (LAN→Internet), in (WAF/services)
+  - Cloned containers: mitmproxy-out, mitmproxy-in
+  - Documented in README.md
+
+- **Cookie Tracker LuCI Dashboard** — DONE (2026-02-11)
+  - Created `luci-app-cookie-tracker` with KISS theme
+  - RPCD handler with 6 methods: status, list, report, block, unblock, classify
+  - Category breakdown visualization (essential, functional, analytics, advertising, tracking)
+  - Top trackers list with one-click blocking
+  - Blocked domains display
+  - 69 known tracker domains pre-loaded
+  - mitmproxy addon linked for cookie capture
+
+- **CDN Cache KISS Theme** — DONE (2026-02-11)
+  - Rewrote overview.js with full KISS styling
+  - Circular gauge for hit ratio
+  - Stats grid, top domains table, 10s polling
+
+- **IoT Guard Implementation** — DONE (2026-02-11)
+  - Created `secubox-iot-guard` package for IoT device isolation and security
+  - OUI-based classification with 100+ IoT manufacturer prefixes
+  - 10 device classes with risk scoring (0-100)
+  - Anomaly detection: bandwidth spikes, new destinations, port scans, time anomalies
+  - Integration: Client Guardian (zones), MAC Guardian (L2), Vortex Firewall (DNS), Bandwidth Manager (QoS)
+  - CLI: `iot-guardctl` with status/list/show/scan/isolate/trust/block/anomalies/cloud-map
+  - Created `luci-app-iot-guard` with KISS-style dashboard
+  - 4 views: Overview, Devices, Policies, Settings
+  - RPCD handler with 11 methods + public ACL for unauthenticated access
 
 ### Next Up — Couche 1
 

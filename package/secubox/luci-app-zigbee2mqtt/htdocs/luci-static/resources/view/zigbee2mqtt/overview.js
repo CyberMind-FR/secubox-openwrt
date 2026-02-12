@@ -4,6 +4,7 @@
 'require ui';
 'require poll';
 'require zigbee2mqtt/api as API';
+'require secubox/kiss-theme';
 
 return view.extend({
 	load: function() {
@@ -36,7 +37,7 @@ return view.extend({
 			}, this));
 		}, this), 10);
 
-		return container;
+		return KissTheme.wrap([container], 'admin/secubox/zigbee2mqtt');
 	},
 
 	renderHeader: function(cfg) {

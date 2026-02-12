@@ -6,6 +6,7 @@
 'require network-modes/api as api';
 'require network-modes/helpers as helpers';
 'require secubox-portal/header as SbHeader';
+'require secubox/kiss-theme';
 
 return view.extend({
 	load: function() {
@@ -267,7 +268,7 @@ return view.extend({
 			var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
 			wrapper.appendChild(SbHeader.render());
 			wrapper.appendChild(container);
-			return wrapper;
+			return KissTheme.wrap([wrapper], 'admin/network/modes/settings');
 		});
 	}
 });

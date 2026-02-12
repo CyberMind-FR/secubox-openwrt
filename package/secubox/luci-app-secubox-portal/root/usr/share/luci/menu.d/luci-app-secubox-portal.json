@@ -68,7 +68,16 @@
 		"title": "SecuBox",
 		"order": 99,
 		"action": {
-			"type": "firstchild"
+			"type": "alias",
+			"path": "secubox-public/portal"
+		}
+	},
+	"secubox-public/portal": {
+		"title": "C3BOX Portal",
+		"order": 1,
+		"action": {
+			"type": "view",
+			"path": "secubox-portal/index"
 		}
 	},
 	"secubox-public/bugbounty": {
@@ -93,6 +102,25 @@
 		"action": {
 			"type": "view",
 			"path": "secubox-portal/devstatus"
+		}
+	},
+	"secubox-public/luci-tree": {
+		"title": "LuCI Tree",
+		"order": 40,
+		"action": {
+			"type": "view",
+			"path": "secubox-portal/luci-tree"
+		}
+	},
+	"admin/secubox/luci-tree": {
+		"title": "LuCI Tree",
+		"order": 95,
+		"action": {
+			"type": "view",
+			"path": "secubox-portal/luci-tree"
+		},
+		"depends": {
+			"acl": ["luci-app-secubox-portal"]
 		}
 	},
 	"secubox-public/login": {

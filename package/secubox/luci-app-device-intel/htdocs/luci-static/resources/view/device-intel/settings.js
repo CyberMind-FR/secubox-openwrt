@@ -3,6 +3,7 @@
 'require form';
 'require ui';
 'require uci';
+'require secubox/kiss-theme';
 
 return view.extend({
 	load: function() {
@@ -146,6 +147,12 @@ return view.extend({
 		o.default = 'zigbee2mqtt/bridge/devices';
 		o.depends({ 'enabled': '1', 'adapter': 'zigbee2mqtt' });
 
-		return m.render();
-	}
+		return m.render().then(function(node) {
+			return KissTheme.wrap(node, 'admin/secubox/services/device-intel/settings');
+		});
+	},
+
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null
 });

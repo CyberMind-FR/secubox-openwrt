@@ -1,0 +1,46 @@
+{
+	"admin/secubox/services/iot-guard": {
+		"title": "IoT Guard",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "iot-guard/overview"
+		},
+		"depends": {
+			"acl": ["luci-app-iot-guard"]
+		}
+	},
+	"admin/secubox/services/iot-guard/devices": {
+		"title": "Devices",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "iot-guard/devices"
+		},
+		"depends": {
+			"acl": ["luci-app-iot-guard"]
+		}
+	},
+	"admin/secubox/services/iot-guard/policies": {
+		"title": "Policies",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "iot-guard/policies"
+		},
+		"depends": {
+			"acl": ["luci-app-iot-guard"]
+		}
+	},
+	"admin/secubox/services/iot-guard/settings": {
+		"title": "Settings",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "iot-guard/settings"
+		},
+		"depends": {
+			"acl": ["luci-app-iot-guard"]
+		}
+	}
+}

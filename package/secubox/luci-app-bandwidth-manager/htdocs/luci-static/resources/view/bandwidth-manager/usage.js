@@ -3,6 +3,7 @@
 'require secubox-theme/theme as Theme';
 'require poll';
 'require bandwidth-manager/api as API';
+'require secubox/kiss-theme';
 
 return L.view.extend({
 	historyData: {},
@@ -46,7 +47,7 @@ return L.view.extend({
 			}, this));
 		}, this), 5);
 
-		return v;
+		return KissTheme.wrap([v], 'admin/services/bandwidth-manager/usage');
 	},
 
 	updateGraph: function(clients) {

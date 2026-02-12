@@ -8,6 +8,7 @@
 'require ui';
 'require secubox-theme/theme as Theme';
 'require secubox-portal/header as SbHeader';
+'require secubox/kiss-theme as KissTheme';
 
 var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||
@@ -120,7 +121,7 @@ return view.extend({
 		wrapper.appendChild(SbHeader.render());
 		wrapper.appendChild(renderAdminNav('dashboard'));
 		wrapper.appendChild(container);
-		return wrapper;
+		return KissTheme.wrap([wrapper], 'admin/secubox/admin/dashboard');
 	},
 
 	renderSystemOverview: function(overview) {

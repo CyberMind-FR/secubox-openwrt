@@ -5,6 +5,7 @@
 'require rpc';
 'require secubox-p2p/api as P2PAPI';
 'require poll';
+'require secubox/kiss-theme';
 
 // Gitea RPC for token generation
 var callGiteaGenerateToken = rpc.declare({
@@ -256,7 +257,7 @@ return view.extend({
 			self.refreshData();
 		}, 30);
 
-		return container;
+		return KissTheme.wrap(container, 'admin/secubox/p2p/hub');
 	},
 
 	refreshData: function() {

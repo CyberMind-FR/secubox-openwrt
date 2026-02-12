@@ -3,6 +3,7 @@
 'require dom';
 'require ui';
 'require device-intel/api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	css: null,
@@ -128,7 +129,7 @@ return view.extend({
 					_('No recent devices')))])
 		]);
 
-		return E('div', {}, [
+		var content = [
 			cssLink,
 			E('h2', {}, _('Device Intelligence')),
 
@@ -168,7 +169,9 @@ return view.extend({
 				E('h3', {}, _('Recent Devices')),
 				recentTable
 			])
-		]);
+		];
+
+		return KissTheme.wrap(content, 'admin/secubox/services/device-intel');
 	},
 
 	statCard: function(value, label, color) {

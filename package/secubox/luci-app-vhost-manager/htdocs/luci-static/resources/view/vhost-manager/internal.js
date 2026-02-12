@@ -7,6 +7,7 @@
 'require secubox-theme/theme as Theme';
 'require vhost-manager/ui as VHostUI';
 'require request';
+'require secubox/kiss-theme';
 
 var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||
@@ -65,13 +66,15 @@ return view.extend({
 		this.templatesData = data[1] || SERVICES;
 		this.updateActiveServices();
 
-		return E('div', { 'class': 'vhost-page' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('vhost-manager/common.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('vhost-manager/dashboard.css') }),
-			VHostUI.renderTabs('internal'),
-			this.renderDashboard()
-		]);
+		return KissTheme.wrap([
+			E('div', { 'class': 'vhost-page' }, [
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('vhost-manager/common.css') }),
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('vhost-manager/dashboard.css') }),
+				VHostUI.renderTabs('internal'),
+				this.renderDashboard()
+			])
+		], 'admin/services/vhost/internal');
 	},
 
 	renderDashboard: function() {

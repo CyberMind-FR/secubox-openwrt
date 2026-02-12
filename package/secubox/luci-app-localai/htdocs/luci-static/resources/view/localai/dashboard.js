@@ -2,6 +2,7 @@
 'require view';
 'require ui';
 'require rpc';
+'require secubox/kiss-theme';
 
 var callStatus = rpc.declare({
 	object: 'luci.localai',
@@ -257,7 +258,7 @@ return view.extend({
 		var style = E('style', {}, this.getCSS());
 		container.insertBefore(style, container.firstChild);
 
-		return container;
+		return KissTheme.wrap(container, 'admin/services/localai/dashboard');
 	},
 
 	renderModelsList: function(models) {

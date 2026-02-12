@@ -3,6 +3,7 @@
 'require form';
 'require uci';
 'require network';
+'require secubox/kiss-theme';
 
 return view.extend({
 	load: function() {
@@ -184,6 +185,8 @@ return view.extend({
 		o.description = _('Enable threat detection on HAProxy traffic');
 		o.depends('enabled', '1');
 
-		return m.render();
+		return m.render().then(function(formEl) {
+			return KissTheme.wrap([formEl], 'admin/secubox/security/mitmproxy/settings');
+		});
 	}
 });

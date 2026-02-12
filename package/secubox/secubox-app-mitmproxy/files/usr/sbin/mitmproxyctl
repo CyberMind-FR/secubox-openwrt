@@ -1,42 +1,49 @@
 #!/bin/sh
 # SecuBox mitmproxy manager - LXC container support with transparent mode
 # Copyright (C) 2024-2025 CyberMind.fr
+# Supports multiple instances: out (LAN->Internet), in (WAF/reverse)
 
 CONFIG="mitmproxy"
-LXC_NAME="mitmproxy"
 OPKG_UPDATED=0
 NFT_TABLE="mitmproxy"
 NFT_TABLE_WAN="mitmproxy_wan"
 
-# Paths
+# Current instance (set by load_instance_config)
+INSTANCE=""
+LXC_NAME="mitmproxy"
 LXC_PATH="/srv/lxc"
-LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
-LXC_CONFIG="$LXC_PATH/$LXC_NAME/config"
+LXC_ROOTFS=""
+LXC_CONFIG=""
 ADDON_PATH="/etc/mitmproxy/addons"
 
 usage() {
 	cat <<'EOF'
-Usage: mitmproxyctl <command>
+Usage: mitmproxyctl <command> [instance]
 
 Commands:
-  install         Install prerequisites and create LXC container
-  check           Run prerequisite checks
-  update          Update mitmproxy in container
-  status          Show container status
-  logs            Show mitmproxy logs (use -f to follow)
-  shell           Open shell in container
-  cert            Show CA certificate info / export path
-  firewall-setup  Setup nftables rules for transparent mode
-  firewall-clear  Remove nftables transparent mode rules
-  wan-setup       Setup WAN protection mode (incoming traffic)
-  wan-clear       Remove WAN protection mode rules
-  sync-routes     Sync HAProxy backends to mitmproxy routes
-  haproxy-enable  Enable HAProxy backend inspection mode
-  haproxy-disable Disable HAProxy backend inspection mode
-  process-autoban Process auto-ban requests from WAF (run via cron)
-  reload-autoban  Reload auto-ban config after UCI changes
-  service-run     Internal: run container under procd
-  service-stop    Stop container
+  install [inst]   Install prerequisites and create LXC container
+  check            Run prerequisite checks
+  update [inst]    Update mitmproxy in container
+  status [inst]    Show container status
+  logs [inst] [-f] Show mitmproxy logs (use -f to follow)
+  shell [inst]     Open shell in container
+  cert [inst]      Show CA certificate info / export path
+  firewall-setup   Setup nftables rules for transparent mode
+  firewall-clear   Remove nftables transparent mode rules
+  wan-setup        Setup WAN protection mode (incoming traffic)
+  wan-clear        Remove WAN protection mode rules
+  sync-routes      Sync HAProxy backends to mitmproxy routes
+  haproxy-enable   Enable HAProxy backend inspection mode
+  haproxy-disable  Disable HAProxy backend inspection mode
+  process-autoban  Process auto-ban requests from WAF (run via cron)
+  reload-autoban   Reload auto-ban config after UCI changes
+  service-run [i]  Internal: run container under procd
+  service-stop [i] Stop container
+  list-instances   List configured instances
+
+Instances (configure in /etc/config/mitmproxy):
+  out   - LAN->Internet transparent proxy (outbound traffic)
+  in    - WAF/Reverse proxy (inbound traffic to services)
 
 Auto-ban Sensitivity Levels:
   aggressive    - Ban immediately on first critical threat
@@ -45,24 +52,20 @@ Auto-ban Sensitivity Levels:
 
   Configure with: uci set mitmproxy.autoban.sensitivity='moderate'
 
-Modes (configure in /etc/config/mitmproxy):
+Modes (configure per-instance):
   regular      - Standard HTTP/HTTPS proxy (default)
   transparent  - Transparent proxy (auto-configures nftables)
   upstream     - Forward to upstream proxy
   reverse      - Reverse proxy mode
 
-WAN Protection Mode:
-  Intercept incoming WAN traffic for threat detection (WAF mode).
-  Detects bot scanners, attacks, and feeds to CrowdSec.
-  Use 'mitmproxyctl wan-setup' to enable.
+Instance Ports (default):
+  out: proxy=8888, web=8089 (LAN->Internet)
+  in:  proxy=8889, web=8090 (WAF/HAProxy backend)
 
-HAProxy Integration:
-  When enabled, HAProxy backends route through mitmproxy for
-  threat detection. Use 'mitmproxyctl haproxy-enable' to setup.
-
-Web Interface: http://<router-ip>:8082
-Proxy Port: 8888
-HAProxy Port: 8889
+Examples:
+  mitmproxyctl status out       # Status of 'out' instance
+  mitmproxyctl shell in         # Shell into 'in' instance
+  mitmproxyctl service-run out  # Start 'out' instance (used by init.d)
 EOF
 }
 
@@ -135,21 +138,68 @@ EOF
 	chmod 644 "$data_path/autoban.json"
 }
 
-# Load configuration with defaults
+# Load instance-specific configuration
+# Usage: load_instance_config [instance_name]
+# If no instance provided, falls back to legacy 'main' config
+load_instance_config() {
+	local inst="${1:-}"
+
+	if [ -n "$inst" ]; then
+		# Check if instance exists
+		local inst_enabled="$(uci_get ${inst}.enabled 2>/dev/null)"
+		if [ -z "$inst_enabled" ]; then
+			log_error "Instance '$inst' not found in config"
+			return 1
+		fi
+		INSTANCE="$inst"
+		LXC_NAME="$(uci_get ${inst}.container_name || echo mitmproxy-${inst})"
+		proxy_port="$(uci_get ${inst}.proxy_port || echo 8888)"
+		web_port="$(uci_get ${inst}.web_port || echo 8081)"
+		web_host="$(uci_get ${inst}.web_host || echo 0.0.0.0)"
+		data_path="$(uci_get ${inst}.data_path || echo /srv/mitmproxy-${inst})"
+		memory_limit="$(uci_get ${inst}.memory_limit || echo 256M)"
+		mode="$(uci_get ${inst}.mode || echo regular)"
+		upstream_proxy="$(uci_get ${inst}.upstream_proxy || echo '')"
+		reverse_target="$(uci_get ${inst}.reverse_target || echo '')"
+		ssl_insecure="$(uci_get ${inst}.ssl_insecure || echo 0)"
+		anticache="$(uci_get ${inst}.anticache || echo 0)"
+		anticomp="$(uci_get ${inst}.anticomp || echo 0)"
+		flow_detail="$(uci_get ${inst}.flow_detail || echo 1)"
+		haproxy_backend="$(uci_get ${inst}.haproxy_backend || echo 0)"
+	else
+		# Legacy single-instance mode
+		INSTANCE=""
+		LXC_NAME="mitmproxy"
+		proxy_port="$(uci_get main.proxy_port || echo 8888)"
+		web_port="$(uci_get main.web_port || echo 8081)"
+		web_host="$(uci_get main.web_host || echo 0.0.0.0)"
+		data_path="$(uci_get main.data_path || echo /srv/mitmproxy)"
+		memory_limit="$(uci_get main.memory_limit || echo 256M)"
+		mode="$(uci_get main.mode || echo regular)"
+		upstream_proxy="$(uci_get main.upstream_proxy || echo '')"
+		reverse_target="$(uci_get main.reverse_target || echo '')"
+		ssl_insecure="$(uci_get main.ssl_insecure || echo 0)"
+		anticache="$(uci_get main.anticache || echo 0)"
+		anticomp="$(uci_get main.anticomp || echo 0)"
+		flow_detail="$(uci_get main.flow_detail || echo 1)"
+		haproxy_backend="0"
+	fi
+
+	# Set derived paths
+	LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
+	LXC_CONFIG="$LXC_PATH/$LXC_NAME/config"
+
+	# Convert memory limit to bytes for cgroup2
+	case "$memory_limit" in
+		*M) memory_limit_bytes="${memory_limit%M}000000" ;;
+		*G) memory_limit_bytes="${memory_limit%G}000000000" ;;
+		*) memory_limit_bytes="$memory_limit" ;;
+	esac
+}
+
+# Load configuration with defaults (legacy, calls load_instance_config)
 load_config() {
-	# Main settings
-	proxy_port="$(uci_get main.proxy_port || echo 8888)"
-	web_port="$(uci_get main.web_port || echo 8081)"
-	web_host="$(uci_get main.web_host || echo 0.0.0.0)"
-	data_path="$(uci_get main.data_path || echo /srv/mitmproxy)"
-	memory_limit="$(uci_get main.memory_limit || echo 256M)"
-	mode="$(uci_get main.mode || echo regular)"
-	upstream_proxy="$(uci_get main.upstream_proxy || echo '')"
-	reverse_target="$(uci_get main.reverse_target || echo '')"
-	ssl_insecure="$(uci_get main.ssl_insecure || echo 0)"
-	anticache="$(uci_get main.anticache || echo 0)"
-	anticomp="$(uci_get main.anticomp || echo 0)"
-	flow_detail="$(uci_get main.flow_detail || echo 1)"
+	load_instance_config "$INSTANCE"
 
 	# WAN protection mode settings
 	wan_protection_enabled="$(uci_get wan_protection.enabled || echo 0)"
@@ -959,8 +1009,15 @@ lxc_run() {
 }
 
 lxc_status() {
-	load_config
-	echo "=== mitmproxy Status ==="
+	local instance="${1:-}"
+
+	if [ -n "$instance" ]; then
+		load_instance_config "$instance" || return 1
+		echo "=== mitmproxy Instance: $instance ==="
+	else
+		load_config
+		echo "=== mitmproxy Status ==="
+	fi
 	echo ""
 
 	if lxc-info -n "$LXC_NAME" >/dev/null 2>&1; then
@@ -971,26 +1028,48 @@ lxc_status() {
 
 	echo ""
 	echo "=== Configuration ==="
+	echo "Container: $LXC_NAME"
 	echo "Mode: $mode"
 	echo "Proxy port: $proxy_port"
 	echo "Web port: $web_port"
 	echo "Data path: $data_path"
 	echo "Filtering: $([ "$filtering_enabled" = "1" ] && echo "enabled" || echo "disabled")"
+	[ "$haproxy_backend" = "1" ] && echo "HAProxy Backend: yes"
 
-	echo ""
-	echo "=== WAN Protection ==="
-	echo "Enabled: $([ "$wan_protection_enabled" = "1" ] && echo "yes" || echo "no")"
-	if [ "$wan_protection_enabled" = "1" ]; then
-		echo "WAN Interface: $wan_interface"
-		echo "HTTP Port: $wan_http_port"
-		echo "HTTPS Port: $wan_https_port"
-		echo "CrowdSec Feed: $([ "$crowdsec_feed" = "1" ] && echo "yes" || echo "no")"
-		echo "Block Bots: $([ "$block_bots" = "1" ] && echo "yes" || echo "no")"
-	fi
-
-	if [ "$mode" = "transparent" ] || [ "$wan_protection_enabled" = "1" ]; then
+	# Only show WAN protection for non-instance mode
+	if [ -z "$instance" ]; then
 		echo ""
-		nft_status
+		echo "=== WAN Protection ==="
+		echo "Enabled: $([ "$wan_protection_enabled" = "1" ] && echo "yes" || echo "no")"
+		if [ "$wan_protection_enabled" = "1" ]; then
+			echo "WAN Interface: $wan_interface"
+			echo "HTTP Port: $wan_http_port"
+			echo "HTTPS Port: $wan_https_port"
+			echo "CrowdSec Feed: $([ "$crowdsec_feed" = "1" ] && echo "yes" || echo "no")"
+			echo "Block Bots: $([ "$block_bots" = "1" ] && echo "yes" || echo "no")"
+		fi
+
+		if [ "$mode" = "transparent" ] || [ "$wan_protection_enabled" = "1" ]; then
+			echo ""
+			nft_status
+		fi
+	fi
+}
+
+cmd_status() {
+	local instance="${1:-}"
+
+	if [ -n "$instance" ]; then
+		lxc_status "$instance"
+	else
+		# Show all instances
+		echo "=== mitmproxy Instances ==="
+		cmd_list_instances
+		echo ""
+
+		# Show legacy status
+		load_config
+		lxc_status
 	fi
 }
 
@@ -1135,21 +1214,37 @@ cmd_firewall_clear() {
 }
 
 cmd_service_run() {
+	local instance="${1:-}"
 	require_root
-	load_config
+
+	if [ -n "$instance" ]; then
+		load_instance_config "$instance" || exit 1
+	else
+		load_config
+	fi
 
 	if ! has_lxc; then
 		log_error "LXC not available"
 		exit 1
 	fi
 
+	log_info "Starting mitmproxy instance: ${INSTANCE:-default} (container: $LXC_NAME)"
+
 	lxc_check_prereqs || exit 1
 	lxc_run
 }
 
 cmd_service_stop() {
+	local instance="${1:-}"
 	require_root
-	load_config
+
+	if [ -n "$instance" ]; then
+		load_instance_config "$instance" || exit 1
+	else
+		load_config
+	fi
+
+	log_info "Stopping mitmproxy instance: ${INSTANCE:-default} (container: $LXC_NAME)"
 
 	# Remove firewall rules
 	if [ "$mode" = "transparent" ]; then
@@ -1466,6 +1561,30 @@ cmd_haproxy_disable() {
 	log_info "Vhosts now route directly to their original backends"
 }
 
+cmd_list_instances() {
+	echo "Configured mitmproxy instances:"
+	echo ""
+	for inst in $(uci show mitmproxy 2>/dev/null | grep "=instance" | cut -d'.' -f2 | cut -d'=' -f1); do
+		local enabled=$(uci -q get mitmproxy.$inst.enabled || echo 0)
+		local container=$(uci -q get mitmproxy.$inst.container_name || echo "mitmproxy-$inst")
+		local desc=$(uci -q get mitmproxy.$inst.description || echo "")
+		local port=$(uci -q get mitmproxy.$inst.proxy_port || echo "?")
+		local web=$(uci -q get mitmproxy.$inst.web_port || echo "?")
+		local mode=$(uci -q get mitmproxy.$inst.mode || echo "regular")
+		local status_icon="[OFF]"
+		[ "$enabled" = "1" ] && status_icon="[ON]"
+
+		# Check if running
+		if lxc-info -n "$container" -s 2>/dev/null | grep -q "RUNNING"; then
+			status_icon="[RUN]"
+		fi
+
+		printf "  %-8s %s %-20s proxy=%-5s web=%-5s mode=%s\n" \
+			"$inst" "$status_icon" "$container" "$port" "$web" "$mode"
+		[ -n "$desc" ] && echo "           $desc"
+	done
+}
+
 # Main Entry Point
 case "${1:-}" in
 	install) shift; cmd_install "$@" ;;
@@ -1486,6 +1605,7 @@ case "${1:-}" in
 	reload-autoban) shift; cmd_reload_autoban_config "$@" ;;
 	service-run) shift; cmd_service_run "$@" ;;
 	service-stop) shift; cmd_service_stop "$@" ;;
+	list-instances|list) cmd_list_instances ;;
 	help|--help|-h|'') usage ;;
 	*) echo "Unknown command: $1" >&2; usage >&2; exit 1 ;;
 esac

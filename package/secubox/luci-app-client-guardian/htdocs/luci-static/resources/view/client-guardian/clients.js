@@ -4,6 +4,7 @@
 'require poll';
 'require ui';
 'require rpc';
+'require secubox/kiss-theme';
 'require client-guardian/nav as CgNav';
 'require secubox-portal/header as SbHeader';
 
@@ -77,67 +78,56 @@ return view.extend({
 		var zones = Array.isArray(data[1]) ? data[1] : (data[1].zones || []);
 		var self = this;
 
-		// Main wrapper with SecuBox header
-		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
-		wrapper.appendChild(SbHeader.render());
-
-		var view = E('div', { 'class': 'client-guardian-dashboard' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+		var content = [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('client-guardian/dashboard.css') }),
-			CgNav.renderTabs('clients'),
 
-			E('div', { 'class': 'cg-header' }, [
-				E('div', { 'class': 'cg-logo' }, [
-					E('div', { 'class': 'cg-logo-icon' }, '📱'),
-					E('div', { 'class': 'cg-logo-text' }, 'Gestion des Clients')
+			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;' }, [
+				E('div', {}, [
+					E('h2', { 'style': 'margin: 0 0 4px 0;' }, 'Gestion des Clients'),
+					E('div', { 'style': 'color: var(--kiss-muted);' }, 'Client Guardian')
 				]),
 				E('button', {
-					'class': 'cg-btn cg-btn-primary',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': L.bind(this.handleRefresh, this)
-				}, [
-					E('span', {}, '🔄'),
-					' Actualiser'
-				])
+				}, 'Actualiser')
 			]),
 
+			CgNav.renderTabs('clients'),
+
 			// Filter tabs
-			E('div', { 'class': 'cg-stats-grid', 'style': 'margin-bottom: 20px' }, [
+			E('div', { 'class': 'kiss-grid kiss-grid-auto', 'style': 'margin-bottom: 20px' }, [
 				this.renderFilterTab('all', 'Tous', clients.length, true),
 				this.renderFilterTab('online', 'En Ligne', clients.filter(function(c) { return c.online; }).length),
-				this.renderFilterTab('approved', 'Approuvés', clients.filter(function(c) { return c.status === 'approved'; }).length),
+				this.renderFilterTab('approved', 'Approuves', clients.filter(function(c) { return c.status === 'approved'; }).length),
 				this.renderFilterTab('quarantine', 'Quarantaine', clients.filter(function(c) { return c.status === 'unknown'; }).length),
 				this.renderFilterTab('banned', 'Bannis', clients.filter(function(c) { return c.status === 'banned'; }).length)
 			]),
 
 			// Clients list
-			E('div', { 'class': 'cg-card' }, [
-				E('div', { 'class': 'cg-card-header' }, [
-					E('div', { 'class': 'cg-card-title' }, [
-						E('span', { 'class': 'cg-card-title-icon' }, '📋'),
-						'Liste des Clients'
-					]),
-					E('span', { 'class': 'cg-card-badge' }, clients.length + ' total')
+			E('div', { 'class': 'kiss-card' }, [
+				E('div', { 'class': 'kiss-card-title' }, [
+					'Liste des Clients',
+					E('span', { 'class': 'kiss-badge kiss-badge-blue', 'style': 'margin-left: 12px;' }, clients.length + ' total')
 				]),
-				E('div', { 'class': 'cg-card-body', 'id': 'clients-list' }, [
+				E('div', { 'id': 'clients-list' }, [
 					E('div', { 'class': 'cg-client-list' },
 						clients.map(L.bind(this.renderClientRow, this, zones))
 					)
 				])
 			])
-		]);
+		];
 
-		wrapper.appendChild(view);
-		return wrapper;
+		return KissTheme.wrap(content, 'client-guardian/clients');
 	},
 
 	renderFilterTab: function(filter, label, count, active) {
 		var tab = E('div', {
-			'class': 'cg-stat-card' + (active ? ' active' : ''),
+			'class': 'kiss-stat' + (active ? ' kiss-panel-green' : ''),
 			'data-filter': filter,
-			'style': 'cursor: pointer'
+			'style': 'cursor: pointer; transition: all 0.2s;'
 		}, [
-			E('div', { 'class': 'cg-stat-value', 'style': 'font-size: 24px' }, String(count)),
-			E('div', { 'class': 'cg-stat-label' }, label)
+			E('div', { 'class': 'kiss-stat-value' }, String(count)),
+			E('div', { 'class': 'kiss-stat-label' }, label)
 		]);
 
 		tab.addEventListener('click', L.bind(this.handleFilter, this));
@@ -208,10 +198,10 @@ return view.extend({
 	handleFilter: function(ev) {
 		var filter = ev.currentTarget.dataset.filter;
 		var items = document.querySelectorAll('.cg-client-item');
-		var tabs = document.querySelectorAll('.cg-stat-card');
+		var tabs = document.querySelectorAll('.kiss-stat');
 
-		tabs.forEach(function(t) { t.classList.remove('active'); });
-		ev.currentTarget.classList.add('active');
+		tabs.forEach(function(t) { t.classList.remove('kiss-panel-green'); });
+		ev.currentTarget.classList.add('kiss-panel-green');
 
 		items.forEach(function(item) {
 			var status = item.dataset.status;
@@ -349,7 +339,7 @@ return view.extend({
 			callGetClients(),
 			callGetZones()
 		]).then(L.bind(function(data) {
-			var container = document.querySelector('.client-guardian-dashboard');
+			var container = document.querySelector('.kiss-main');
 			if (container) {
 				var newView = this.render(data);
 				dom.content(container.parentNode, newView);

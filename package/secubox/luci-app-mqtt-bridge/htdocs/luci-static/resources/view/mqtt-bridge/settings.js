@@ -6,6 +6,7 @@
 'require ui';
 'require form';
 'require dom';
+'require secubox/kiss-theme';
 
 var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||
@@ -32,7 +33,7 @@ return view.extend({
 			this.renderAdapterCard(this.currentAdapters),
 			this.renderPresetCard(this.liveProfiles)
 		]);
-		return container;
+		return KissTheme.wrap([container], 'admin/services/mqtt-bridge/settings');
 	},
 
 	renderSettingsCard: function(settings) {

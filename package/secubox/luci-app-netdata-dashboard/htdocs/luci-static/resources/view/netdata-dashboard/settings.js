@@ -4,6 +4,7 @@
 'require ui';
 'require netdata-dashboard/api as API';
 'require secubox-portal/header as SbHeader';
+'require secubox/kiss-theme';
 
 return view.extend({
 	load: function() {
@@ -233,7 +234,7 @@ return view.extend({
 		]);
 
 		wrapper.appendChild(view);
-		return wrapper;
+		return KissTheme.wrap([wrapper], 'admin/status/netdata/settings');
 	},
 
 	handleSaveApply: null,

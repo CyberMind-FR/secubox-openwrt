@@ -1,0 +1,14 @@
+{
+	"admin/secubox/interceptor/cookies": {
+		"title": "Cookies",
+		"order": 3,
+		"action": {
+			"type": "view",
+			"path": "cookie-tracker/overview"
+		},
+		"depends": {
+			"acl": ["luci-app-cookie-tracker"],
+			"uci": {}
+		}
+	}
+}

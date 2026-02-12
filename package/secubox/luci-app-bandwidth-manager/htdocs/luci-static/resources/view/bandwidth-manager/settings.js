@@ -3,6 +3,7 @@
 'require secubox-theme/theme as Theme';
 'require form';
 'require network';
+'require secubox/kiss-theme';
 
 return L.view.extend({
 	load: function() {
@@ -106,10 +107,10 @@ return L.view.extend({
 		o.depends('enabled', '1');
 
 		return m.render().then(function(rendered) {
-			return E('div', {}, [
+			return KissTheme.wrap([
 				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 				rendered
-			]);
+			], 'admin/services/bandwidth-manager/settings');
 		});
 	}
 });

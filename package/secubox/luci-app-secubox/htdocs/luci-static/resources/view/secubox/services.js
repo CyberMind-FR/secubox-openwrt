@@ -3,6 +3,7 @@
 'require rpc';
 'require ui';
 'require poll';
+'require secubox/kiss-theme';
 
 // Use Service Registry API - no expect to get raw response
 var callListServices = rpc.declare({
@@ -247,7 +248,7 @@ return view.extend({
 			])
 		]);
 
-		return container;
+		return KissTheme.wrap(container, 'admin/secubox/services');
 	},
 
 	renderProviderCard: function(name, data, icon, desc) {

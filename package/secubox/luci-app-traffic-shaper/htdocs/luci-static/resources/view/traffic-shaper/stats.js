@@ -1,6 +1,7 @@
 'use strict';
 'require view';
 'require secubox-theme/theme as Theme';
+'require secubox/kiss-theme as KissTheme';
 'require dom';
 'require poll';
 'require traffic-shaper/api as API';
@@ -76,7 +77,7 @@ return view.extend({
 			}, this));
 		}, this), 5);
 
-		return container;
+		return KissTheme.wrap([container], 'admin/network/traffic-shaper/stats');
 	},
 
 	renderStatsRows: function(classes, stats) {

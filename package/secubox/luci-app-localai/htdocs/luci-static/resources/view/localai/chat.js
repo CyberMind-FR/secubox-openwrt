@@ -2,6 +2,7 @@
 'require view';
 'require ui';
 'require rpc';
+'require secubox/kiss-theme';
 
 var callModels = rpc.declare({
 	object: 'luci.localai',
@@ -143,7 +144,7 @@ return view.extend({
 			this.selectedModel = loadedModel ? (loadedModel.id || loadedModel.name) : (models[0].id || models[0].name);
 		}
 
-		return container;
+		return KissTheme.wrap(container, 'admin/services/localai/chat');
 	},
 
 	sendMessage: function() {

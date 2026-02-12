@@ -2,6 +2,7 @@
 'require view';
 'require ui';
 'require streamlit.api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	config: {},
@@ -169,6 +170,8 @@ return view.extend({
 				}, _('Save & Apply'))
 			])
 		]);
+
+		return KissTheme.wrap([view], 'admin/services/streamlit/settings');
 	},
 
 	save: function() {

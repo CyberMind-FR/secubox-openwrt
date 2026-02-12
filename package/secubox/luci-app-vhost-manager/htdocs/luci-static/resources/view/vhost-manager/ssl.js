@@ -4,6 +4,7 @@
 'require vhost-manager/api as API';
 'require secubox-theme/theme as Theme';
 'require vhost-manager/ui as VHostUI';
+'require secubox/kiss-theme';
 
 var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||
@@ -20,16 +21,18 @@ return view.extend({
 	render: function(data) {
 		var status = data[0] || {};
 
-		return E('div', { 'class': 'vhost-page' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('vhost-manager/common.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('vhost-manager/dashboard.css') }),
-			VHostUI.renderTabs('ssl'),
-			this.renderHeader(status),
-			this.renderBaseline(),
-			this.renderHeaders(),
-			this.renderActions(status)
-		]);
+		return KissTheme.wrap([
+			E('div', { 'class': 'vhost-page' }, [
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('vhost-manager/common.css') }),
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('vhost-manager/dashboard.css') }),
+				VHostUI.renderTabs('ssl'),
+				this.renderHeader(status),
+				this.renderBaseline(),
+				this.renderHeaders(),
+				this.renderActions(status)
+			])
+		], 'admin/services/vhost/ssl');
 	},
 
 	renderHeader: function(status) {

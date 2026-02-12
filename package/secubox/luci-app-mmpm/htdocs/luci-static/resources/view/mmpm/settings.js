@@ -4,6 +4,7 @@
 'require ui';
 'require uci';
 'require form';
+'require secubox/kiss-theme';
 
 return view.extend({
 	title: _('MMPM Settings'),
@@ -34,6 +35,8 @@ return view.extend({
 		o.default = '0.0.0.0';
 		o.rmempty = false;
 
-		return m.render();
+		return m.render().then(function(view) {
+			return KissTheme.wrap([view], 'admin/secubox/services/mmpm/settings');
+		});
 	}
 });

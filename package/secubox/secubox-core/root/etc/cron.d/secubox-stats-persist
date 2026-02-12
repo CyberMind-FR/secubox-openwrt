@@ -1,0 +1,13 @@
+# SecuBox Stats Persistence
+# Periodic cache persistence and evolution generation
+# Daemon runs its own loops but this ensures recovery on daemon restart
+
+# Every 5 minutes: persist cache to /srv (backup in case daemon dies)
+*/5 * * * * root /usr/sbin/secubox-stats-persist persist >/dev/null 2>&1
+
+# Every hour: generate timeline and evolution
+0 * * * * root /usr/sbin/secubox-stats-persist timeline >/dev/null 2>&1
+5 * * * * root /usr/sbin/secubox-stats-persist evolution >/dev/null 2>&1
+
+# Daily: aggregate and cleanup old history
+0 1 * * * root /usr/sbin/secubox-stats-persist aggregate >/dev/null 2>&1

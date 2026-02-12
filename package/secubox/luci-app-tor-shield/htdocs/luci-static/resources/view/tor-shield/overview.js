@@ -4,6 +4,7 @@
 'require dom';
 'require ui';
 'require tor-shield/api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	title: _('Tor Shield'),
@@ -730,7 +731,7 @@ return view.extend({
 		// Start auto-refresh
 		this.startPolling();
 
-		return view;
+		return KissTheme.wrap([view], 'admin/services/tor-shield/overview');
 	},
 
 	handleSaveApply: null,

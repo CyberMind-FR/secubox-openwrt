@@ -5,6 +5,7 @@
 'require ui';
 'require rpc';
 'require secubox-p2p/api as P2PAPI';
+'require secubox/kiss-theme';
 
 return view.extend({
 	// System state
@@ -155,7 +156,7 @@ return view.extend({
 			this.renderRoadmap()
 		]);
 
-		return container;
+		return KissTheme.wrap(container, 'admin/secubox/mirrorbox/overview');
 	},
 
 	renderQuickActions: function() {

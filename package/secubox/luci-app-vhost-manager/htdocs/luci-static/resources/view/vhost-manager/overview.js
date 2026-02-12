@@ -3,6 +3,7 @@
 'require vhost-manager/api as API';
 'require secubox-theme/theme as Theme';
 'require vhost-manager/ui as VHostUI';
+'require secubox/kiss-theme';
 
 var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||
@@ -50,16 +51,18 @@ return view.extend({
 		var vhosts = data[1] || [];
 		var certs = normalizeCerts(data[2]);
 
-		return E('div', { 'class': 'vhost-page' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('vhost-manager/common.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('vhost-manager/dashboard.css') }),
-			VHostUI.renderTabs('overview'),
-			this.renderHeader(status, vhosts, certs),
-			this.renderHealth(status),
-			this.renderVhostTable(vhosts, certs),
-			this.renderCertWatch(certs)
-		]);
+		return KissTheme.wrap([
+			E('div', { 'class': 'vhost-page' }, [
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('vhost-manager/common.css') }),
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('vhost-manager/dashboard.css') }),
+				VHostUI.renderTabs('overview'),
+				this.renderHeader(status, vhosts, certs),
+				this.renderHealth(status),
+				this.renderVhostTable(vhosts, certs),
+				this.renderCertWatch(certs)
+			])
+		], 'admin/secubox/services/vhosts/overview');
 	},
 
 	renderHeader: function(status, vhosts, certs) {

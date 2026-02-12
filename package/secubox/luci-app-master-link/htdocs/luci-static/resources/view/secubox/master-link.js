@@ -5,6 +5,7 @@
 'require ui';
 'require rpc';
 'require uci';
+'require secubox/kiss-theme';
 
 var callStatus = rpc.declare({
 	object: 'luci.master_link',
@@ -515,7 +516,7 @@ return view.extend({
 			}, 10);
 		}
 
-		return view;
+		return KissTheme.wrap([view], 'admin/services/secubox-mesh');
 	},
 
 	handleSaveApply: null,

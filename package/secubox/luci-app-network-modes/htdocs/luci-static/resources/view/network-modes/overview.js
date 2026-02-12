@@ -4,6 +4,7 @@
 'require ui';
 'require rpc';
 'require network-modes/api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	title: _('Network Modes'),
@@ -614,7 +615,7 @@ return view.extend({
 			])
 		]);
 
-		return page;
+		return KissTheme.wrap([page], 'admin/network/modes/overview');
 	},
 
 	showSwitchModal: function(modeId, modeInfo) {

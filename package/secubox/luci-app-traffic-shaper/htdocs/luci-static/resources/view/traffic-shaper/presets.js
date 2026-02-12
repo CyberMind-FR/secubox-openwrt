@@ -1,6 +1,7 @@
 'use strict';
 'require view';
 'require secubox-theme/theme as Theme';
+'require secubox/kiss-theme as KissTheme';
 'require ui';
 'require dom';
 'require traffic-shaper/api as API';
@@ -33,7 +34,7 @@ return view.extend({
 			)
 		]);
 
-		return container;
+		return KissTheme.wrap([container], 'admin/network/traffic-shaper/presets');
 	},
 
 	renderPresetCard: function(preset) {

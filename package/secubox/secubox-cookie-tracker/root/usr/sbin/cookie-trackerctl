@@ -1,0 +1,587 @@
+#!/bin/sh
+#
+# cookie-trackerctl - CLI controller for SecuBox Cookie Tracker
+#
+# Usage: cookie-trackerctl <command> [options]
+#
+
+. /lib/functions.sh
+
+DB_PATH="/var/lib/cookie-tracker/cookies.db"
+TRACKER_TSV="/usr/lib/secubox/cookie-tracker/known-trackers.tsv"
+VORTEX_DB="/var/lib/vortex-firewall/blocklist.db"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+usage() {
+	cat <<EOF
+SecuBox Cookie Tracker - HTTP cookie classification and tracking
+
+Usage: cookie-trackerctl <command> [options]
+
+Commands:
+  status              Show statistics summary
+  init                Initialize/reset database
+  reload              Reload tracker rules from UCI
+  list [options]      List cookies
+    --domain <d>      Filter by domain
+    --category <c>    Filter by category
+    --limit <n>       Limit results (default: 100)
+  show <domain>       Show cookies for domain
+  classify <domain> <name> <category>
+                      Manually classify a cookie
+  block <domain>      Block all cookies from domain
+  unblock <domain>    Unblock domain
+  report [--json]     Generate cookie report
+  export [file]       Export database to CSV
+  import <file>       Import tracker rules from TSV
+  feed-vortex         Feed blocked domains to Vortex Firewall
+  stats               Detailed statistics
+
+Categories:
+  essential           Required for site functionality
+  functional          User preferences/settings
+  analytics           Usage tracking
+  advertising         Ad targeting
+  tracking            Cross-site tracking
+
+Examples:
+  cookie-trackerctl list --category tracking
+  cookie-trackerctl classify google.com _ga analytics
+  cookie-trackerctl block doubleclick.net
+  cookie-trackerctl report --json
+
+EOF
+	exit 1
+}
+
+log_info() {
+	logger -t cookie-tracker -p info "$1"
+}
+
+log_warn() {
+	logger -t cookie-tracker -p warn "$1"
+}
+
+log_error() {
+	logger -t cookie-tracker -p err "$1"
+}
+
+# Initialize database
+init_db() {
+	local force="$1"
+
+	mkdir -p "$(dirname "$DB_PATH")"
+
+	if [ -f "$DB_PATH" ] && [ "$force" != "force" ]; then
+		echo "Database exists at $DB_PATH"
+		echo "Use 'init force' to reset"
+		return 0
+	fi
+
+	rm -f "$DB_PATH"
+
+	sqlite3 "$DB_PATH" <<-EOF
+		CREATE TABLE IF NOT EXISTS cookies (
+		    id INTEGER PRIMARY KEY AUTOINCREMENT,
+		    domain TEXT NOT NULL,
+		    name TEXT NOT NULL,
+		    category TEXT DEFAULT 'unknown',
+		    first_seen INTEGER DEFAULT (strftime('%s', 'now')),
+		    last_seen INTEGER DEFAULT (strftime('%s', 'now')),
+		    count INTEGER DEFAULT 1,
+		    client_mac TEXT,
+		    blocked INTEGER DEFAULT 0,
+		    UNIQUE(domain, name)
+		);
+
+		CREATE TABLE IF NOT EXISTS tracker_domains (
+		    domain TEXT PRIMARY KEY,
+		    category TEXT NOT NULL,
+		    source TEXT DEFAULT 'manual',
+		    added INTEGER DEFAULT (strftime('%s', 'now'))
+		);
+
+		CREATE TABLE IF NOT EXISTS blocked_domains (
+		    domain TEXT PRIMARY KEY,
+		    reason TEXT,
+		    blocked_at INTEGER DEFAULT (strftime('%s', 'now'))
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_cookies_domain ON cookies(domain);
+		CREATE INDEX IF NOT EXISTS idx_cookies_category ON cookies(category);
+		CREATE INDEX IF NOT EXISTS idx_cookies_last_seen ON cookies(last_seen);
+	EOF
+
+	echo "Database initialized at $DB_PATH"
+
+	# Import known trackers
+	if [ -f "$TRACKER_TSV" ]; then
+		import_trackers "$TRACKER_TSV"
+	fi
+
+	log_info "Database initialized"
+}
+
+# Import tracker rules from TSV
+import_trackers() {
+	local file="${1:-$TRACKER_TSV}"
+
+	if [ ! -f "$file" ]; then
+		echo "File not found: $file"
+		return 1
+	fi
+
+	local count=0
+	while IFS=$'\t' read -r domain category source; do
+		# Skip comments and empty lines
+		case "$domain" in
+			"#"*|"") continue ;;
+		esac
+
+		sqlite3 "$DB_PATH" "INSERT OR REPLACE INTO tracker_domains (domain, category, source) VALUES ('$domain', '$category', '$source');"
+		count=$((count + 1))
+	done < "$file"
+
+	echo "Imported $count tracker domains"
+	log_info "Imported $count tracker domains from $file"
+}
+
+# Reload UCI rules into database
+reload_rules() {
+	config_load cookie-tracker
+
+	local count=0
+
+	reload_tracker_rule() {
+		local section="$1"
+		local pattern domain_pattern category source
+
+		config_get pattern "$section" pattern
+		config_get domain_pattern "$section" domain_pattern
+		config_get category "$section" category "tracking"
+		config_get source "$section" source "uci"
+
+		# For domain patterns, extract and add domains
+		if [ -n "$domain_pattern" ]; then
+			# Convert regex pattern to domain list (simplified)
+			local domains=$(echo "$domain_pattern" | sed 's/\\\././' | tr '|' '\n')
+			for d in $domains; do
+				sqlite3 "$DB_PATH" "INSERT OR REPLACE INTO tracker_domains (domain, category, source) VALUES ('$d', '$category', '$source');"
+				count=$((count + 1))
+			done
+		fi
+	}
+
+	config_foreach reload_tracker_rule tracker_rule
+
+	echo "Reloaded $count tracker rules from UCI"
+	log_info "Reloaded $count tracker rules"
+}
+
+# Show status/statistics
+show_status() {
+	local json="$1"
+
+	if [ ! -f "$DB_PATH" ]; then
+		echo "Database not initialized. Run: cookie-trackerctl init"
+		return 1
+	fi
+
+	local total=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM cookies;")
+	local domains=$(sqlite3 "$DB_PATH" "SELECT COUNT(DISTINCT domain) FROM cookies;")
+	local blocked=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM cookies WHERE blocked=1;")
+	local trackers=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM tracker_domains;")
+	local blocked_domains=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM blocked_domains;")
+
+	# Category breakdown
+	local essential=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM cookies WHERE category='essential';")
+	local functional=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM cookies WHERE category='functional';")
+	local analytics=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM cookies WHERE category='analytics';")
+	local advertising=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM cookies WHERE category='advertising';")
+	local tracking=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM cookies WHERE category='tracking';")
+	local unknown=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM cookies WHERE category='unknown';")
+
+	# Last 24h activity
+	local today=$(date +%s)
+	local yesterday=$((today - 86400))
+	local new_today=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM cookies WHERE first_seen > $yesterday;")
+	local seen_today=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM cookies WHERE last_seen > $yesterday;")
+
+	if [ "$json" = "--json" ]; then
+		cat <<EOF
+{
+  "total_cookies": $total,
+  "unique_domains": $domains,
+  "blocked_cookies": $blocked,
+  "known_trackers": $trackers,
+  "blocked_domains": $blocked_domains,
+  "categories": {
+    "essential": $essential,
+    "functional": $functional,
+    "analytics": $analytics,
+    "advertising": $advertising,
+    "tracking": $tracking,
+    "unknown": $unknown
+  },
+  "last_24h": {
+    "new_cookies": $new_today,
+    "seen_cookies": $seen_today
+  }
+}
+EOF
+	else
+		echo "============================================"
+		echo "       SecuBox Cookie Tracker Status"
+		echo "============================================"
+		echo ""
+		printf "Total Cookies:      %s\n" "$total"
+		printf "Unique Domains:     %s\n" "$domains"
+		printf "Blocked Cookies:    %s\n" "$blocked"
+		printf "Known Trackers:     %s\n" "$trackers"
+		printf "Blocked Domains:    %s\n" "$blocked_domains"
+		echo ""
+		echo "--- Category Breakdown ---"
+		printf "  Essential:        ${GREEN}%s${NC}\n" "$essential"
+		printf "  Functional:       ${BLUE}%s${NC}\n" "$functional"
+		printf "  Analytics:        ${YELLOW}%s${NC}\n" "$analytics"
+		printf "  Advertising:      ${RED}%s${NC}\n" "$advertising"
+		printf "  Tracking:         ${RED}%s${NC}\n" "$tracking"
+		printf "  Unknown:          %s\n" "$unknown"
+		echo ""
+		echo "--- Last 24 Hours ---"
+		printf "  New Cookies:      %s\n" "$new_today"
+		printf "  Seen Cookies:     %s\n" "$seen_today"
+		echo ""
+	fi
+}
+
+# List cookies
+list_cookies() {
+	local domain="" category="" limit=100 json=""
+
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--domain) domain="$2"; shift 2 ;;
+			--category) category="$2"; shift 2 ;;
+			--limit) limit="$2"; shift 2 ;;
+			--json) json="1"; shift ;;
+			*) shift ;;
+		esac
+	done
+
+	local where=""
+	[ -n "$domain" ] && where="WHERE domain LIKE '%$domain%'"
+	[ -n "$category" ] && {
+		[ -n "$where" ] && where="$where AND" || where="WHERE"
+		where="$where category='$category'"
+	}
+
+	if [ "$json" = "1" ]; then
+		echo "["
+		sqlite3 -json "$DB_PATH" "SELECT domain, name, category, count, blocked, datetime(last_seen, 'unixepoch') as last_seen FROM cookies $where ORDER BY last_seen DESC LIMIT $limit;" 2>/dev/null || \
+		sqlite3 "$DB_PATH" "SELECT domain, name, category, count, blocked, datetime(last_seen, 'unixepoch') as last_seen FROM cookies $where ORDER BY last_seen DESC LIMIT $limit;" | \
+		awk -F'|' 'BEGIN{first=1} {
+			if(!first) print ","
+			first=0
+			printf "{\"domain\":\"%s\",\"name\":\"%s\",\"category\":\"%s\",\"count\":%s,\"blocked\":%s,\"last_seen\":\"%s\"}", $1, $2, $3, $4, $5, $6
+		}'
+		echo "]"
+	else
+		printf "%-30s %-25s %-12s %6s %s\n" "DOMAIN" "COOKIE" "CATEGORY" "COUNT" "BLOCKED"
+		echo "--------------------------------------------------------------------------------"
+		sqlite3 "$DB_PATH" "SELECT domain, name, category, count, CASE WHEN blocked=1 THEN 'YES' ELSE '' END FROM cookies $where ORDER BY last_seen DESC LIMIT $limit;" | \
+		while IFS='|' read -r d n c cnt b; do
+			printf "%-30s %-25s %-12s %6s %s\n" "${d:0:30}" "${n:0:25}" "$c" "$cnt" "$b"
+		done
+	fi
+}
+
+# Show cookies for specific domain
+show_domain() {
+	local domain="$1"
+
+	if [ -z "$domain" ]; then
+		echo "Usage: cookie-trackerctl show <domain>"
+		return 1
+	fi
+
+	echo "Cookies for domain: $domain"
+	echo "========================================"
+
+	sqlite3 "$DB_PATH" "SELECT name, category, count, blocked, datetime(first_seen, 'unixepoch'), datetime(last_seen, 'unixepoch') FROM cookies WHERE domain LIKE '%$domain%' ORDER BY count DESC;" | \
+	while IFS='|' read -r name cat cnt blocked first last; do
+		printf "\n  Name:       %s\n" "$name"
+		printf "  Category:   %s\n" "$cat"
+		printf "  Count:      %s\n" "$cnt"
+		printf "  Blocked:    %s\n" "$([ "$blocked" = "1" ] && echo "Yes" || echo "No")"
+		printf "  First seen: %s\n" "$first"
+		printf "  Last seen:  %s\n" "$last"
+	done
+}
+
+# Manually classify a cookie
+classify_cookie() {
+	local domain="$1"
+	local name="$2"
+	local category="$3"
+
+	if [ -z "$domain" ] || [ -z "$name" ] || [ -z "$category" ]; then
+		echo "Usage: cookie-trackerctl classify <domain> <name> <category>"
+		return 1
+	fi
+
+	# Validate category
+	case "$category" in
+		essential|functional|analytics|advertising|tracking|unknown) ;;
+		*) echo "Invalid category: $category"; return 1 ;;
+	esac
+
+	sqlite3 "$DB_PATH" "UPDATE cookies SET category='$category' WHERE domain='$domain' AND name='$name';"
+
+	if [ $? -eq 0 ]; then
+		echo "Cookie classified: $domain/$name -> $category"
+		log_info "Cookie classified: $domain/$name -> $category"
+	else
+		echo "Failed to classify cookie"
+		return 1
+	fi
+}
+
+# Block domain
+block_domain() {
+	local domain="$1"
+	local reason="${2:-manual}"
+
+	if [ -z "$domain" ]; then
+		echo "Usage: cookie-trackerctl block <domain>"
+		return 1
+	fi
+
+	sqlite3 "$DB_PATH" "INSERT OR REPLACE INTO blocked_domains (domain, reason) VALUES ('$domain', '$reason');"
+	sqlite3 "$DB_PATH" "UPDATE cookies SET blocked=1 WHERE domain LIKE '%$domain%';"
+
+	echo "Domain blocked: $domain"
+	log_info "Domain blocked: $domain"
+}
+
+# Unblock domain
+unblock_domain() {
+	local domain="$1"
+
+	if [ -z "$domain" ]; then
+		echo "Usage: cookie-trackerctl unblock <domain>"
+		return 1
+	fi
+
+	sqlite3 "$DB_PATH" "DELETE FROM blocked_domains WHERE domain='$domain';"
+	sqlite3 "$DB_PATH" "UPDATE cookies SET blocked=0 WHERE domain LIKE '%$domain%';"
+
+	echo "Domain unblocked: $domain"
+	log_info "Domain unblocked: $domain"
+}
+
+# Generate report
+generate_report() {
+	local json="$1"
+
+	# Top 10 domains by cookie count
+	local top_domains=$(sqlite3 "$DB_PATH" "SELECT domain, COUNT(*) as cnt FROM cookies GROUP BY domain ORDER BY cnt DESC LIMIT 10;")
+
+	# Top tracking domains
+	local top_trackers=$(sqlite3 "$DB_PATH" "SELECT domain, COUNT(*) as cnt FROM cookies WHERE category IN ('tracking', 'advertising') GROUP BY domain ORDER BY cnt DESC LIMIT 10;")
+
+	# Recent cookies
+	local recent=$(sqlite3 "$DB_PATH" "SELECT domain, name, category FROM cookies ORDER BY last_seen DESC LIMIT 10;")
+
+	if [ "$json" = "--json" ]; then
+		# Build JSON report
+		echo "{"
+		echo "  \"generated\": \"$(date -Iseconds)\","
+
+		# Top domains
+		echo "  \"top_domains\": ["
+		echo "$top_domains" | awk -F'|' 'BEGIN{first=1} {
+			if(!first) print ","
+			first=0
+			printf "    {\"domain\":\"%s\",\"count\":%s}", $1, $2
+		}'
+		echo ""
+		echo "  ],"
+
+		# Top trackers
+		echo "  \"top_trackers\": ["
+		echo "$top_trackers" | awk -F'|' 'BEGIN{first=1} {
+			if(!first) print ","
+			first=0
+			printf "    {\"domain\":\"%s\",\"count\":%s}", $1, $2
+		}'
+		echo ""
+		echo "  ],"
+
+		# Recent
+		echo "  \"recent\": ["
+		echo "$recent" | awk -F'|' 'BEGIN{first=1} {
+			if(!first) print ","
+			first=0
+			printf "    {\"domain\":\"%s\",\"name\":\"%s\",\"category\":\"%s\"}", $1, $2, $3
+		}'
+		echo ""
+		echo "  ]"
+		echo "}"
+	else
+		echo "============================================"
+		echo "        Cookie Tracker Report"
+		echo "        Generated: $(date)"
+		echo "============================================"
+		echo ""
+		echo "--- Top 10 Domains by Cookie Count ---"
+		echo "$top_domains" | while IFS='|' read -r d c; do
+			printf "  %-40s %s cookies\n" "$d" "$c"
+		done
+		echo ""
+		echo "--- Top Tracking/Advertising Domains ---"
+		echo "$top_trackers" | while IFS='|' read -r d c; do
+			printf "  ${RED}%-40s${NC} %s cookies\n" "$d" "$c"
+		done
+		echo ""
+		echo "--- Recently Seen Cookies ---"
+		echo "$recent" | while IFS='|' read -r d n c; do
+			printf "  %-30s %-20s [%s]\n" "$d" "$n" "$c"
+		done
+		echo ""
+	fi
+}
+
+# Export to CSV
+export_csv() {
+	local file="${1:-/tmp/cookies-export.csv}"
+
+	echo "domain,name,category,count,blocked,first_seen,last_seen" > "$file"
+	sqlite3 -csv "$DB_PATH" "SELECT domain, name, category, count, blocked, datetime(first_seen, 'unixepoch'), datetime(last_seen, 'unixepoch') FROM cookies ORDER BY domain, name;" >> "$file"
+
+	echo "Exported to $file"
+}
+
+# Feed blocked domains to Vortex Firewall
+feed_vortex() {
+	if [ ! -f "$VORTEX_DB" ]; then
+		echo "Vortex Firewall database not found: $VORTEX_DB"
+		echo "Make sure secubox-vortex-firewall is installed"
+		return 1
+	fi
+
+	local count=0
+
+	# Get blocked domains
+	sqlite3 "$DB_PATH" "SELECT domain FROM blocked_domains;" | while read -r domain; do
+		sqlite3 "$VORTEX_DB" "INSERT OR IGNORE INTO domains (domain, category, source) VALUES ('$domain', 'cookie_tracker', 'cookie-tracker');"
+		count=$((count + 1))
+	done
+
+	# Get tracking/advertising domains
+	sqlite3 "$DB_PATH" "SELECT DISTINCT domain FROM cookies WHERE category IN ('tracking', 'advertising') AND blocked=1;" | while read -r domain; do
+		sqlite3 "$VORTEX_DB" "INSERT OR IGNORE INTO domains (domain, category, source) VALUES ('$domain', 'cookie_tracker', 'cookie-tracker');"
+		count=$((count + 1))
+	done
+
+	echo "Fed $count domains to Vortex Firewall"
+	log_info "Fed blocked domains to Vortex Firewall"
+
+	# Reload Vortex if available
+	[ -x /etc/init.d/vortex-firewall ] && /etc/init.d/vortex-firewall reload
+}
+
+# Detailed statistics
+detailed_stats() {
+	echo "============================================"
+	echo "     Cookie Tracker Detailed Statistics"
+	echo "============================================"
+	echo ""
+
+	echo "--- Cookies by Category ---"
+	sqlite3 "$DB_PATH" "SELECT category, COUNT(*) as cnt, SUM(count) as total FROM cookies GROUP BY category ORDER BY cnt DESC;" | \
+	while IFS='|' read -r cat cnt total; do
+		printf "  %-15s %5s cookies, %6s total hits\n" "$cat" "$cnt" "$total"
+	done
+
+	echo ""
+	echo "--- Top 20 Most Frequent Cookies ---"
+	sqlite3 "$DB_PATH" "SELECT domain, name, count, category FROM cookies ORDER BY count DESC LIMIT 20;" | \
+	while IFS='|' read -r d n c cat; do
+		printf "  %-30s %-20s %6s [%s]\n" "${d:0:30}" "${n:0:20}" "$c" "$cat"
+	done
+
+	echo ""
+	echo "--- Cookie Age Distribution ---"
+	local now=$(date +%s)
+	local hour=$((now - 3600))
+	local day=$((now - 86400))
+	local week=$((now - 604800))
+
+	local last_hour=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM cookies WHERE last_seen > $hour;")
+	local last_day=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM cookies WHERE last_seen > $day;")
+	local last_week=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM cookies WHERE last_seen > $week;")
+	local older=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM cookies WHERE last_seen <= $week;")
+
+	printf "  Last hour:  %5s\n" "$last_hour"
+	printf "  Last day:   %5s\n" "$last_day"
+	printf "  Last week:  %5s\n" "$last_week"
+	printf "  Older:      %5s\n" "$older"
+}
+
+# Main command dispatcher
+case "${1:-status}" in
+	status)
+		show_status "$2"
+		;;
+	init)
+		init_db "$2"
+		;;
+	reload)
+		reload_rules
+		;;
+	list)
+		shift
+		list_cookies "$@"
+		;;
+	show)
+		show_domain "$2"
+		;;
+	classify)
+		classify_cookie "$2" "$3" "$4"
+		;;
+	block)
+		block_domain "$2" "$3"
+		;;
+	unblock)
+		unblock_domain "$2"
+		;;
+	report)
+		generate_report "$2"
+		;;
+	export)
+		export_csv "$2"
+		;;
+	import)
+		import_trackers "$2"
+		;;
+	feed-vortex)
+		feed_vortex
+		;;
+	stats)
+		detailed_stats
+		;;
+	-h|--help|help)
+		usage
+		;;
+	*)
+		echo "Unknown command: $1"
+		usage
+		;;
+esac

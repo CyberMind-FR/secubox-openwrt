@@ -8,6 +8,7 @@
 'require system-hub/theme-assets as ThemeAssets';
 'require system-hub/nav as HubNav';
 'require secubox-portal/header as SbHeader';
+'require secubox/kiss-theme';
 
 var shLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||
@@ -28,7 +29,7 @@ return view.extend({
 		this.selectedProfile = null;
 		var archives = this.currentArchives;
 
-		var view = E('div', { 'class': 'system-hub-dashboard' }, [
+		var content = [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			ThemeAssets.stylesheet('common.css'),
 			ThemeAssets.stylesheet('dashboard.css'),
@@ -65,20 +66,20 @@ return view.extend({
 					this.renderToggle('⚙️', 'Inclure la Configuration', 'network, wireless, firewall, dhcp', true, 'diag_config'),
 					this.renderToggle('🌐', 'Inclure Infos Réseau', 'Interfaces, routes, connexions, ARP', true, 'diag_network'),
 					this.renderToggle('🔐', 'Anonymiser les données', 'Masquer mots de passe et clés', true, 'diag_anonymize'),
-					
+
 					E('div', { 'class': 'sh-btn-group' }, [
-						E('button', { 
+						E('button', {
 							'class': 'sh-btn sh-btn-primary',
 							'click': L.bind(this.collectDiagnostics, this)
 						}, [ '📦 Générer Archive' ]),
-						E('button', { 
+						E('button', {
 							'class': 'sh-btn sh-btn-success',
 							'click': L.bind(this.uploadDiagnostics, this)
 						}, [ '☁️ Envoyer au Support' ])
 					])
 				])
 			]),
-			
+
 			// Quick Tests
 			E('div', { 'class': 'sh-card' }, [
 				E('div', { 'class': 'sh-card-header' }, [
@@ -92,7 +93,7 @@ return view.extend({
 					}, this.renderTestButtons(null))
 				])
 			]),
-			
+
 			// Recent Archives
 			E('div', { 'class': 'sh-card' }, [
 				E('div', { 'class': 'sh-card-header' }, [
@@ -100,7 +101,7 @@ return view.extend({
 				]),
 				E('div', { 'class': 'sh-card-body', 'id': 'archives-list' }, this.renderArchiveList(archives))
 			]),
-			
+
 			// Test Results
 			E('div', { 'class': 'sh-card' }, [
 				E('div', { 'class': 'sh-card-header' }, [
@@ -113,12 +114,9 @@ return view.extend({
 					])
 				])
 			])
-		]);
+		];
 
-		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
-		wrapper.appendChild(SbHeader.render());
-		wrapper.appendChild(view);
-		return wrapper;
+		return KissTheme.wrap(content, 'admin/system/hub/diagnostics');
 	},
 
 	renderToggle: function(icon, label, desc, enabled, id) {

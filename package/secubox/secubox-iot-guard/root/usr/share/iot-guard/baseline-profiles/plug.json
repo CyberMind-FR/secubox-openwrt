@@ -1,0 +1,26 @@
+{
+  "class": "plug",
+  "description": "Smart plugs, outlets, switches",
+  "expected_behavior": {
+    "bandwidth": {
+      "avg_kbps_in": 0.5,
+      "avg_kbps_out": 1,
+      "peak_kbps_out": 10,
+      "continuous_stream": false
+    },
+    "activity_hours": "on_demand",
+    "common_ports": [443, 6668, 6669],
+    "cloud_services": ["tplinkcloud.com", "tuya.com", "wemo.com"],
+    "protocols": ["https", "mqtt"]
+  },
+  "risk_indicators": {
+    "high": [
+      "scanning_network",
+      "connection_to_unknown_ip",
+      "high_bandwidth"
+    ],
+    "medium": [
+      "activity_at_unusual_hours"
+    ]
+  }
+}

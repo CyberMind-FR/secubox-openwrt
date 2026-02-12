@@ -104,6 +104,7 @@ case "$1" in
 	"get_alerts": {"limit": 50},
 	"get_posture": {},
 	"get_timeline": {"hours": 24},
+	"get_cve_feed": {"limit": 10},
 	"run_all": {},
 	"analyze": {}
 }
@@ -266,6 +267,88 @@ EOF
 				results=$(echo "$results" | sed 's/,$//')
 				results="${results}}"
 				echo "$results"
+				;;
+
+			get_cve_feed)
+				read -r input
+				limit=$(echo "$input" | jsonfilter -e '@.limit' 2>/dev/null)
+				[ -z "$limit" ] && limit=10
+
+				# Cache file for CVE feed (refresh every 30 min)
+				cache_file="/tmp/cve_feed_cache.json"
+				cache_age=1800
+
+				# Check cache (use ls -l for file age on OpenWrt)
+				if [ -f "$cache_file" ]; then
+					file_time=$(date -r "$cache_file" +%s 2>/dev/null || echo 0)
+					now=$(date +%s)
+					age=$((now - file_time))
+					if [ "$age" -lt "$cache_age" ] && [ -s "$cache_file" ]; then
+						cat "$cache_file"
+						exit 0
+					fi
+				fi
+
+				# Calculate dates (OpenWrt compatible)
+				# 3 days = 259200 seconds
+				now=$(date +%s)
+				start_ts=$((now - 259200))
+				# Format: YYYY-MM-DDTHH:MM:SS.000
+				# BusyBox date can format from timestamp with -D
+				start_date=$(date -u -d "@$start_ts" +%Y-%m-%dT00:00:00.000 2>/dev/null)
+				if [ -z "$start_date" ]; then
+					# Fallback: just use current date (NVD will return recent CVEs)
+					start_date=$(date -u +%Y-%m-%dT00:00:00.000)
+				fi
+				end_date=$(date -u +%Y-%m-%dT23:59:59.999)
+
+				# Fetch from NVD API - use wget if curl not available
+				nvd_url="https://services.nvd.nist.gov/rest/json/cves/2.0?pubStartDate=${start_date}&pubEndDate=${end_date}&resultsPerPage=${limit}"
+
+				if command -v curl >/dev/null 2>&1; then
+					response=$(curl -s --max-time 20 "$nvd_url" 2>/dev/null)
+				elif command -v wget >/dev/null 2>&1; then
+					response=$(wget -q -O - --timeout=20 "$nvd_url" 2>/dev/null)
+				else
+					echo '{"cves":[],"error":"No HTTP client available"}'
+					exit 0
+				fi
+
+				if [ -n "$response" ] && echo "$response" | grep -q "vulnerabilities"; then
+					# Build JSON manually (jshn in while loop doesn't work due to subshell)
+					tmpfile="/tmp/cve_build_$$.json"
+					echo '{"cves":[' > "$tmpfile"
+					first=1
+
+					# Parse each vulnerability
+					total=$(echo "$response" | jsonfilter -e '@.totalResults' 2>/dev/null)
+					[ -z "$total" ] && total=0
+
+					i=0
+					while [ "$i" -lt "$limit" ] && [ "$i" -lt "$total" ]; do
+						cve_id=$(echo "$response" | jsonfilter -e "@.vulnerabilities[$i].cve.id" 2>/dev/null)
+						[ -z "$cve_id" ] && { i=$((i + 1)); continue; }
+
+						desc=$(echo "$response" | jsonfilter -e "@.vulnerabilities[$i].cve.descriptions[0].value" 2>/dev/null | head -c 200 | sed 's/"/\\"/g; s/\\/\\\\/g' | tr '\n' ' ')
+						score=$(echo "$response" | jsonfilter -e "@.vulnerabilities[$i].cve.metrics.cvssMetricV31[0].cvssData.baseScore" 2>/dev/null)
+						[ -z "$score" ] && score=$(echo "$response" | jsonfilter -e "@.vulnerabilities[$i].cve.metrics.cvssMetricV2[0].cvssData.baseScore" 2>/dev/null)
+						[ -z "$score" ] && score="0"
+						published=$(echo "$response" | jsonfilter -e "@.vulnerabilities[$i].cve.published" 2>/dev/null | cut -c1-10)
+
+						[ "$first" -eq 0 ] && echo ',' >> "$tmpfile"
+						first=0
+						printf '{"id":"%s","description":"%s","score":%s,"published":"%s"}' \
+							"$cve_id" "$desc" "$score" "$published" >> "$tmpfile"
+
+						i=$((i + 1))
+					done
+
+					echo ']}' >> "$tmpfile"
+					mv "$tmpfile" "$cache_file"
+					cat "$cache_file"
+				else
+					echo '{"cves":[],"error":"Failed to fetch CVE feed"}'
+				fi
 				;;
 
 			analyze)

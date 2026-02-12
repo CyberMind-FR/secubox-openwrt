@@ -1,6 +1,7 @@
 'use strict';
 'require view';
 'require dom';
+'require secubox/kiss-theme';
 
 return view.extend({
 	render: function() {
@@ -9,7 +10,7 @@ return view.extend({
 		var host = window.location.hostname;
 		var factoryUrl = '/factory/';
 
-		return E('div', { 'class': 'cbi-map' }, [
+		var content = E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, _('SecuBox Factory')),
 			E('div', { 'class': 'cbi-map-descr' },
 				_('Unified dashboard for mesh-distributed, cryptographically-validated tool management.')
@@ -31,6 +32,8 @@ return view.extend({
 				'allowfullscreen': true
 			})
 		]);
+
+		return KissTheme.wrap(content, 'admin/secubox/p2p/factory');
 	},
 
 	handleSaveApply: null,

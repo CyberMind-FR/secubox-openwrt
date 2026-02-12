@@ -1,0 +1,20 @@
+config iot-guard main
+	option enabled 1
+	option scan_interval 300
+	option auto_isolate 1
+	option auto_isolate_threshold 80
+	option anomaly_detection 1
+	option anomaly_sensitivity medium
+	option log_level info
+
+config zone_policy
+	option target_zone iot
+	option block_lan 1
+	option allow_internet 1
+	option bandwidth_limit 10
+
+config allowlist
+	# list mac AA:BB:CC:DD:EE:FF
+
+config blocklist
+	# list mac AA:BB:CC:DD:EE:FF

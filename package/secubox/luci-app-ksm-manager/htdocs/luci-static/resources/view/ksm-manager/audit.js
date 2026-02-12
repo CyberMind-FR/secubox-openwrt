@@ -4,6 +4,7 @@
 'require poll';
 'require ui';
 'require ksm-manager/api as KSM';
+'require secubox/kiss-theme';
 
 return view.extend({
 	load: function() {
@@ -25,7 +26,7 @@ return view.extend({
 
 		poll.add(L.bind(this.pollLogs, this), 15);
 
-		return E([], [
+		return KissTheme.wrap([
 			E('h2', {}, _('Audit Logs')),
 			E('p', {}, _('Review all key management activities and access events.')),
 
@@ -49,7 +50,7 @@ return view.extend({
 					this.renderLogsTable(logs)
 				])
 			])
-		]);
+		], 'admin/secubox/ksm/audit');
 	},
 
 	renderLogsTable: function(logs) {

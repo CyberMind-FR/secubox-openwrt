@@ -3,6 +3,7 @@
 'require dom';
 'require ui';
 'require device-intel/api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	load: function() {
@@ -81,7 +82,7 @@ return view.extend({
 				_('No remote devices available. Peer device inventory sharing is not yet active.'));
 		}
 
-		return E('div', {}, [
+		var content = E('div', {}, [
 			cssLink,
 			E('h2', {}, _('Mesh Network')),
 
@@ -101,6 +102,8 @@ return view.extend({
 				remoteTable
 			])
 		]);
+
+		return KissTheme.wrap(content, 'admin/secubox/services/device-intel/mesh');
 	},
 
 	handleSaveApply: null,

@@ -1,0 +1,230 @@
+#!/bin/sh
+# RPCD backend for SecuBox Cookie Tracker
+
+. /usr/share/libubox/jshn.sh
+
+DB_PATH="/var/lib/cookie-tracker/cookies.db"
+
+check_db() {
+	[ -f "$DB_PATH" ] || {
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Database not initialized"
+		json_dump
+		exit 0
+	}
+}
+
+case "$1" in
+	list)
+		json_init
+		json_add_object "status"
+		json_close_object
+		json_add_object "list"
+			json_add_string "category" "string"
+			json_add_int "limit" 100
+		json_close_object
+		json_add_object "report"
+		json_close_object
+		json_add_object "block"
+			json_add_string "domain" "string"
+		json_close_object
+		json_add_object "unblock"
+			json_add_string "domain" "string"
+		json_close_object
+		json_add_object "classify"
+			json_add_string "domain" "string"
+			json_add_string "name" "string"
+			json_add_string "category" "string"
+		json_close_object
+		json_dump
+		;;
+
+	call)
+		case "$2" in
+			status)
+				check_db
+
+				total=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM cookies;" 2>/dev/null || echo "0")
+				domains=$(sqlite3 "$DB_PATH" "SELECT COUNT(DISTINCT domain) FROM cookies;" 2>/dev/null || echo "0")
+				blocked=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM cookies WHERE blocked=1;" 2>/dev/null || echo "0")
+				trackers=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM tracker_domains;" 2>/dev/null || echo "0")
+				blocked_domains=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM blocked_domains;" 2>/dev/null || echo "0")
+
+				essential=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM cookies WHERE category='essential';" 2>/dev/null || echo "0")
+				functional=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM cookies WHERE category='functional';" 2>/dev/null || echo "0")
+				analytics=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM cookies WHERE category='analytics';" 2>/dev/null || echo "0")
+				advertising=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM cookies WHERE category='advertising';" 2>/dev/null || echo "0")
+				tracking=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM cookies WHERE category='tracking';" 2>/dev/null || echo "0")
+				unknown=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM cookies WHERE category='unknown';" 2>/dev/null || echo "0")
+
+				today=$(date +%s)
+				yesterday=$((today - 86400))
+				new_today=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM cookies WHERE first_seen > $yesterday;" 2>/dev/null || echo "0")
+				seen_today=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM cookies WHERE last_seen > $yesterday;" 2>/dev/null || echo "0")
+
+				json_init
+				json_add_boolean "success" 1
+				json_add_int "total_cookies" "$total"
+				json_add_int "unique_domains" "$domains"
+				json_add_int "blocked_cookies" "$blocked"
+				json_add_int "known_trackers" "$trackers"
+				json_add_int "blocked_domains" "$blocked_domains"
+				json_add_object "categories"
+					json_add_int "essential" "$essential"
+					json_add_int "functional" "$functional"
+					json_add_int "analytics" "$analytics"
+					json_add_int "advertising" "$advertising"
+					json_add_int "tracking" "$tracking"
+					json_add_int "unknown" "$unknown"
+				json_close_object
+				json_add_object "last_24h"
+					json_add_int "new" "$new_today"
+					json_add_int "seen" "$seen_today"
+				json_close_object
+				json_dump
+				;;
+
+			list)
+				check_db
+				read -r input
+				category=$(echo "$input" | jsonfilter -e '@.category' 2>/dev/null)
+				limit=$(echo "$input" | jsonfilter -e '@.limit' 2>/dev/null)
+				[ -z "$limit" ] && limit=100
+
+				where=""
+				[ -n "$category" ] && where="WHERE category='$category'"
+
+				json_init
+				json_add_boolean "success" 1
+				json_add_array "cookies"
+
+				sqlite3 "$DB_PATH" "SELECT domain, name, category, count, blocked, datetime(last_seen, 'unixepoch') FROM cookies $where ORDER BY last_seen DESC LIMIT $limit;" 2>/dev/null | \
+				while IFS='|' read -r d n c cnt b ls; do
+					json_add_object
+						json_add_string "domain" "$d"
+						json_add_string "name" "$n"
+						json_add_string "category" "$c"
+						json_add_int "count" "$cnt"
+						json_add_boolean "blocked" "$b"
+						json_add_string "last_seen" "$ls"
+					json_close_object
+				done
+
+				json_close_array
+				json_dump
+				;;
+
+			report)
+				check_db
+
+				json_init
+				json_add_boolean "success" 1
+
+				# Top domains
+				json_add_array "top_domains"
+				sqlite3 "$DB_PATH" "SELECT domain, COUNT(*) as cnt FROM cookies GROUP BY domain ORDER BY cnt DESC LIMIT 10;" 2>/dev/null | \
+				while IFS='|' read -r d c; do
+					json_add_object
+						json_add_string "domain" "$d"
+						json_add_int "count" "$c"
+					json_close_object
+				done
+				json_close_array
+
+				# Top trackers
+				json_add_array "top_trackers"
+				sqlite3 "$DB_PATH" "SELECT domain, COUNT(*) as cnt FROM cookies WHERE category IN ('tracking', 'advertising') GROUP BY domain ORDER BY cnt DESC LIMIT 10;" 2>/dev/null | \
+				while IFS='|' read -r d c; do
+					json_add_object
+						json_add_string "domain" "$d"
+						json_add_int "count" "$c"
+					json_close_object
+				done
+				json_close_array
+
+				# Blocked domains
+				json_add_array "blocked"
+				sqlite3 "$DB_PATH" "SELECT domain, reason, datetime(blocked_at, 'unixepoch') FROM blocked_domains ORDER BY blocked_at DESC LIMIT 20;" 2>/dev/null | \
+				while IFS='|' read -r d r t; do
+					json_add_object
+						json_add_string "domain" "$d"
+						json_add_string "reason" "$r"
+						json_add_string "blocked_at" "$t"
+					json_close_object
+				done
+				json_close_array
+
+				json_dump
+				;;
+
+			block)
+				read -r input
+				domain=$(echo "$input" | jsonfilter -e '@.domain' 2>/dev/null)
+
+				if [ -z "$domain" ]; then
+					json_init
+					json_add_boolean "success" 0
+					json_add_string "error" "Domain required"
+					json_dump
+					exit 0
+				fi
+
+				/usr/sbin/cookie-trackerctl block "$domain" >/dev/null 2>&1
+
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "domain" "$domain"
+				json_dump
+				;;
+
+			unblock)
+				read -r input
+				domain=$(echo "$input" | jsonfilter -e '@.domain' 2>/dev/null)
+
+				if [ -z "$domain" ]; then
+					json_init
+					json_add_boolean "success" 0
+					json_add_string "error" "Domain required"
+					json_dump
+					exit 0
+				fi
+
+				/usr/sbin/cookie-trackerctl unblock "$domain" >/dev/null 2>&1
+
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "domain" "$domain"
+				json_dump
+				;;
+
+			classify)
+				read -r input
+				domain=$(echo "$input" | jsonfilter -e '@.domain' 2>/dev/null)
+				name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+				category=$(echo "$input" | jsonfilter -e '@.category' 2>/dev/null)
+
+				if [ -z "$domain" ] || [ -z "$name" ] || [ -z "$category" ]; then
+					json_init
+					json_add_boolean "success" 0
+					json_add_string "error" "Domain, name and category required"
+					json_dump
+					exit 0
+				fi
+
+				/usr/sbin/cookie-trackerctl classify "$domain" "$name" "$category" >/dev/null 2>&1
+
+				json_init
+				json_add_boolean "success" 1
+				json_dump
+				;;
+
+			*)
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "Unknown method"
+				json_dump
+				;;
+		esac
+		;;
+esac

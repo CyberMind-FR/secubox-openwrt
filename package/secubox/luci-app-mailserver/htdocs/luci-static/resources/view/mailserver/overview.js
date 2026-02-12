@@ -4,6 +4,7 @@
 'require ui';
 'require form';
 'require uci';
+'require secubox/kiss-theme';
 
 var callStatus = rpc.declare({
 	object: 'luci.mailserver',
@@ -227,7 +228,7 @@ return view.extend({
 			])
 		]);
 
-		return view;
+		return KissTheme.wrap([view], 'admin/services/mailserver');
 	},
 
 	renderPortStatus: function(ports) {

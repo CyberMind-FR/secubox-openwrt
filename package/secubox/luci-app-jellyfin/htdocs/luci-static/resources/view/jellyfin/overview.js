@@ -4,6 +4,7 @@
 'require uci';
 'require rpc';
 'require ui';
+'require secubox/kiss-theme';
 
 var callStatus = rpc.declare({
 	object: 'luci.jellyfin',
@@ -449,7 +450,9 @@ return view.extend({
 			});
 		};
 
-		return m.render();
+		return m.render().then(function(view) {
+			return KissTheme.wrap(view, 'admin/secubox/services/jellyfin/overview');
+		});
 	},
 
 	/* ---- Setup Wizard ---- */

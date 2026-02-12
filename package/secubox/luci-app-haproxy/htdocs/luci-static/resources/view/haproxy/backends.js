@@ -3,6 +3,7 @@
 'require dom';
 'require ui';
 'require haproxy.api as api';
+'require secubox/kiss-theme';
 
 /**
  * HAProxy Backends Management
@@ -46,7 +47,7 @@ return view.extend({
 			serversByBackend[s.backend].push(s);
 		});
 
-		return E('div', { 'class': 'haproxy-dashboard' }, [
+		var content = E('div', { 'class': 'haproxy-dashboard' }, [
 			// Page Header
 			E('div', { 'class': 'hp-page-header' }, [
 				E('div', {}, [
@@ -148,6 +149,8 @@ return view.extend({
 				)
 			])
 		]);
+
+		return KissTheme.wrap([content], 'admin/services/haproxy/backends');
 	},
 
 	renderBackendCard: function(backend, servers) {

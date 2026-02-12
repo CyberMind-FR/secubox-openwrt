@@ -1,14 +1,13 @@
 {
-	"admin/services/vortex-firewall": {
-		"title": "Vortex DNS Firewall",
-		"order": 85,
+	"admin/secubox/security/vortex-firewall": {
+		"title": "Vortex Firewall",
+		"order": 40,
 		"action": {
 			"type": "view",
 			"path": "vortex-firewall/overview"
 		},
 		"depends": {
-			"acl": ["luci-app-vortex-firewall"],
-			"uci": { "vortex-firewall": true }
+			"acl": ["luci-app-vortex-firewall"]
 		}
 	}
 }

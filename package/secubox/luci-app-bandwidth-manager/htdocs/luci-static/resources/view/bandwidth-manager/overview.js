@@ -2,6 +2,7 @@
 'require view';
 'require secubox-theme/theme as Theme';
 'require bandwidth-manager/api as API';
+'require secubox/kiss-theme';
 
 return L.view.extend({
 	load: function() {
@@ -155,7 +156,7 @@ return L.view.extend({
 			v.appendChild(quotasSection);
 		}
 
-		return v;
+		return KissTheme.wrap([v], 'admin/services/bandwidth-manager/overview');
 	},
 
 	formatBytes: function(bytes) {

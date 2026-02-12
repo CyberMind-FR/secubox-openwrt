@@ -4,6 +4,7 @@
 'require poll';
 'require rpc';
 'require ui';
+'require secubox/kiss-theme';
 
 var callGetAnalyticsSummary = rpc.declare({
 	object: 'luci.bandwidth-manager',
@@ -72,7 +73,7 @@ return view.extend({
 
 		poll.add(L.bind(this.pollData, this), 30);
 
-		return view;
+		return KissTheme.wrap([view], 'admin/services/bandwidth-manager/analytics');
 	},
 
 	pollData: function() {

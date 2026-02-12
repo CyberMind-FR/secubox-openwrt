@@ -1,702 +1,592 @@
 'use strict';
 'require view';
-'require ui';
-'require dom';
+'require rpc';
 'require poll';
+'require ui';
 'require fs';
-'require secubox/api as API';
-'require secubox-theme/theme as Theme';
-'require secubox/nav as SecuNav';
-'require secubox-portal/header as SbHeader';
+'require secubox/kiss-theme';
 
-// Load theme resources once
-document.head.appendChild(E('link', {
-	'rel': 'stylesheet',
-	'type': 'text/css',
-	'href': L.resource('secubox-theme/secubox-theme.css')
-}));
+/**
+ * SecuBox Dashboard - KISS Edition
+ * Self-contained with inline CSS, no external dependencies
+ */
 
-document.head.appendChild(E('link', {
-	'rel': 'stylesheet',
-	'type': 'text/css',
-	'href': L.resource('secubox-theme/themes/cyberpunk.css')
-}));
+var callSystemBoard = rpc.declare({ object: 'system', method: 'board', expect: {} });
+var callSystemInfo = rpc.declare({ object: 'system', method: 'info', expect: {} });
 
-var secuLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
-	(document.documentElement && document.documentElement.getAttribute('lang')) ||
-	(navigator.language ? navigator.language.split('-')[0] : 'en');
-Theme.init({ language: secuLang });
+var callDashboardData = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_dashboard_data',
+	expect: {}
+});
+
+var callSystemHealth = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_system_health',
+	expect: {}
+});
+
+var callGetModules = rpc.declare({
+	object: 'luci.secubox',
+	method: 'getModules',
+	expect: {}
+});
+
+var callGetAlerts = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_alerts',
+	expect: {}
+});
+
+var callPublicIPs = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_public_ips',
+	expect: {}
+});
+
+// Utilities
+function formatBytes(bytes) {
+	if (!bytes || bytes === 0) return '0 B';
+	var k = 1024;
+	var sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+	var i = Math.floor(Math.log(bytes) / Math.log(k));
+	return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function formatUptime(seconds) {
+	if (!seconds) return '0m';
+	var d = Math.floor(seconds / 86400);
+	var h = Math.floor((seconds % 86400) / 3600);
+	var m = Math.floor((seconds % 3600) / 60);
+	if (d > 0) return d + 'd ' + h + 'h';
+	if (h > 0) return h + 'h ' + m + 'm';
+	return m + 'm';
+}
+
+function getBarColor(percent) {
+	if (percent >= 90) return '#ef4444';
+	if (percent >= 70) return '#f59e0b';
+	return '#22c55e';
+}
+
+function getScoreColor(score) {
+	if (score >= 80) return '#22c55e';
+	if (score >= 60) return '#3b82f6';
+	if (score >= 40) return '#f59e0b';
+	return '#ef4444';
+}
 
 return view.extend({
-	dashboardData: null,
-	healthData: null,
-	alertsData: null,
-	publicIPs: null,
-	modulesList: [],
-	activeCategory: 'all',
-
-	load: function() {
-		return this.refreshData();
+	data: {
+		dashboard: {},
+		health: {},
+		modules: [],
+		alerts: [],
+		publicIPs: {},
+		board: {},
+		info: {}
 	},
 
-	refreshData: function() {
+	load: function() {
 		var self = this;
 		return Promise.all([
-			API.getDashboardData(),
-			API.getSystemHealth(),
-			API.getAlerts(),
-			API.getModules(),
-			API.getPublicIPs()
-		]).then(function(data) {
-			self.dashboardData = data[0] || {};
-			self.healthData = data[1] || {};
-			self.alertsData = data[2] || {};
-			self.modulesList = (data[3] && data[3].modules) || [];
-			self.publicIPs = data[4] || {};
-			return data;
+			callSystemBoard().catch(function() { return {}; }),
+			callSystemInfo().catch(function() { return {}; }),
+			callDashboardData().catch(function() { return {}; }),
+			callSystemHealth().catch(function() { return {}; }),
+			callGetModules().catch(function() { return { modules: [] }; }),
+			callGetAlerts().catch(function() { return { alerts: [] }; }),
+			callPublicIPs().catch(function() { return {}; })
+		]).then(function(results) {
+			self.data = {
+				board: results[0] || {},
+				info: results[1] || {},
+				dashboard: results[2] || {},
+				health: results[3] || {},
+				modules: (results[4] && results[4].modules) || [],
+				alerts: (results[5] && results[5].alerts) || [],
+				publicIPs: results[6] || {}
+			};
+			return self.data;
 		});
 	},
 
-	render: function() {
-		var container = E('div', { 'class': 'secubox-dashboard' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/core/variables.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/dashboard.css') }),
-			SecuNav.renderTabs('dashboard'),
-			this.renderHeader(),
-			this.renderStatsGrid(),
-			this.renderMainLayout()
-		]);
-
-		var self = this;
-		poll.add(function() {
-			return self.refreshData().then(function() {
-				self.updateDynamicSections();
-			});
-		}, 30);
-
-		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
-		wrapper.appendChild(SbHeader.render());
-		wrapper.appendChild(container);
-		return wrapper;
-	},
-
 	renderHeader: function() {
-		var status = this.dashboardData.status || {};
-		var counts = this.dashboardData.counts || {};
-		var moduleStats = this.getModuleStats();
-		var alertsCount = (this.alertsData.alerts || []).length;
-		var healthScore = (this.healthData.overall && this.healthData.overall.score) || 0;
-		var version = status.version || _('Unknown');
-		var stats = [
-			{ icon: '🏷️', label: _('Version'), value: version },
-			{ icon: '📦', label: _('Modules'), value: counts.total || moduleStats.total || 0 },
-			{ icon: '🟢', label: _('Running'), value: counts.running || moduleStats.running || 0, tone: (counts.running || moduleStats.running) > 0 ? 'success' : '' },
-			{ icon: '⚠️', label: _('Alerts'), value: alertsCount, tone: alertsCount ? 'warn' : '' },
-			{ icon: '❤️', label: _('Health'), value: healthScore + '/100' }
+		var d = this.data.dashboard || {};
+		var status = d.status || {};
+		var counts = d.counts || {};
+		var health = this.data.health || {};
+		var score = (health.overall && health.overall.score) || health.score || 0;
+		var modules = this.data.modules || [];
+		var running = modules.filter(function(m) { return m.status === 'active' || m.running; }).length;
+		var alertCount = (this.data.alerts || []).length;
+
+		var chips = [
+			{ icon: '\uD83C\uDFF7', label: 'Version', value: status.version || '0.0.0' },
+			{ icon: '\uD83D\uDCE6', label: 'Modules', value: modules.length },
+			{ icon: '\uD83D\uDFE2', label: 'Running', value: running, color: running > 0 ? '#22c55e' : '' },
+			{ icon: '\u26A0\uFE0F', label: 'Alerts', value: alertCount, color: alertCount > 0 ? '#f59e0b' : '' },
+			{ icon: '\u2764\uFE0F', label: 'Health', value: score + '/100', color: getScoreColor(score) }
 		];
 
-		return E('div', { 'class': 'sh-page-header sh-page-header-lite' }, [
+		return E('div', { 'class': 'sb-header' }, [
 			E('div', {}, [
-				E('h2', { 'class': 'sh-page-title' }, [
-					E('span', { 'class': 'sh-page-title-icon' }, '🚀'),
-					_('SecuBox Control Center')
-				]),
-				E('p', { 'class': 'sh-page-subtitle' },
-					_('Security · Network · System automation'))
+				E('h2', { 'class': 'sb-title' }, '\uD83D\uDE80 SecuBox Control Center'),
+				E('p', { 'class': 'sb-subtitle' }, 'Security \u00B7 Network \u00B7 System automation')
 			]),
-			E('div', { 'class': 'sh-header-meta' }, stats.map(this.renderHeaderChip, this))
-		]);
-	},
-
-	renderHeaderChip: function(stat) {
-		return E('div', { 'class': 'sh-header-chip' + (stat.tone ? ' ' + stat.tone : '') }, [
-			E('span', { 'class': 'sh-chip-icon' }, stat.icon || '•'),
-			E('div', { 'class': 'sh-chip-text' }, [
-				E('span', { 'class': 'sh-chip-label' }, stat.label),
-				E('strong', {}, stat.value.toString())
-			])
-		]);
-	},
-
-	renderStatsGrid: function() {
-		var moduleStats = this.getModuleStats();
-		var counts = this.dashboardData.counts || {};
-		var alertsCount = (this.alertsData.alerts || []).length;
-		var healthScore = (this.healthData.overall && this.healthData.overall.score) || 0;
-
-		var stats = [
-			{ label: _('Total Modules'), value: counts.total || moduleStats.total, icon: '📦', id: 'sb-stat-total' },
-			{ label: _('Installed'), value: counts.installed || moduleStats.installed, icon: '💾', id: 'sb-stat-installed' },
-			{ label: _('Active Services'), value: counts.running || moduleStats.running, icon: '🟢', id: 'sb-stat-running' },
-			{ label: _('System Health'), value: healthScore + '/100', icon: '❤️', id: 'sb-stat-health' },
-			{ label: _('Alerts'), value: alertsCount, icon: '⚠️', id: 'sb-stat-alerts' }
-		];
-
-		return E('section', { 'class': 'sb-stats-grid' },
-			stats.map(function(stat) {
-				return E('div', { 'class': 'sb-stat-card' }, [
-					E('div', { 'class': 'sb-stat-icon' }, stat.icon),
-					E('div', { 'class': 'sb-stat-content' }, [
-						E('div', { 'class': 'sb-stat-value', 'id': stat.id }, stat.value),
-						E('div', { 'class': 'sb-stat-label' }, stat.label)
+			E('div', { 'class': 'sb-chips' }, chips.map(function(chip) {
+				return E('div', { 'class': 'sb-chip', 'style': chip.color ? 'border-color:' + chip.color : '' }, [
+					E('span', { 'class': 'sb-chip-icon' }, chip.icon),
+					E('div', {}, [
+						E('span', { 'class': 'sb-chip-label' }, chip.label),
+						E('strong', { 'style': chip.color ? 'color:' + chip.color : '' }, String(chip.value))
 					])
 				]);
-			})
-		);
+			}))
+		]);
 	},
 
-	renderMainLayout: function() {
-		return E('div', { 'class': 'sb-main-grid' }, [
-			E('div', { 'class': 'sb-grid-left' }, [
-				this.renderModulesSection(),
-				this.renderSystemHealthPanel()
-			]),
-			E('div', { 'class': 'sb-grid-right' }, [
-				this.renderPublicIPsPanel(),
-				this.renderQuickActions(),
-				this.renderAlertsTimeline()
-			])
+	renderStatsCards: function() {
+		var d = this.data.dashboard || {};
+		var counts = d.counts || {};
+		var modules = this.data.modules || [];
+		var health = this.data.health || {};
+		var score = (health.overall && health.overall.score) || health.score || 0;
+		var alertCount = (this.data.alerts || []).length;
+		var running = modules.filter(function(m) { return m.status === 'active' || m.running; }).length;
+		var installed = modules.filter(function(m) { return m.installed || m.enabled; }).length;
+
+		var stats = [
+			{ id: 'total', icon: '\uD83D\uDCE6', label: 'Total Modules', value: counts.total || modules.length },
+			{ id: 'installed', icon: '\uD83D\uDCBE', label: 'Installed', value: counts.installed || installed },
+			{ id: 'running', icon: '\uD83D\uDFE2', label: 'Active', value: counts.running || running },
+			{ id: 'health', icon: '\u2764\uFE0F', label: 'Health Score', value: score + '/100' },
+			{ id: 'alerts', icon: '\u26A0\uFE0F', label: 'Alerts', value: alertCount }
+		];
+
+		return E('div', { 'class': 'sb-stats' }, stats.map(function(stat) {
+			return E('div', { 'class': 'sb-stat-card' }, [
+				E('div', { 'class': 'sb-stat-icon' }, stat.icon),
+				E('div', {}, [
+					E('div', { 'class': 'sb-stat-value', 'data-stat': stat.id }, String(stat.value)),
+					E('div', { 'class': 'sb-stat-label' }, stat.label)
+				])
+			]);
+		}));
+	},
+
+	renderHealthPanel: function() {
+		var health = this.data.health || {};
+		var cpu = health.cpu || {};
+		var memory = health.memory || {};
+		var disk = health.disk || {};
+		var network = health.network || {};
+
+		// Extract CPU load (handle both "1.83 1.95 1.69" string and load_1m field)
+		var cpuLoad = cpu.load_1min || cpu.load_1m || '0.00';
+		if (cpu.load && typeof cpu.load === 'string') {
+			cpuLoad = cpu.load.split(' ')[0] || '0.00';
+		}
+
+		var metrics = [
+			{
+				id: 'cpu',
+				icon: '\uD83D\uDD25',
+				label: 'CPU',
+				percent: cpu.percent || cpu.usage_percent || cpu.usage || 0,
+				detail: 'Load: ' + cpuLoad
+			},
+			{
+				id: 'memory',
+				icon: '\uD83D\uDCBE',
+				label: 'Memory',
+				percent: memory.percent || memory.usage_percent || memory.usage || 0,
+				detail: formatBytes((memory.used_kb || 0) * 1024) + ' / ' + formatBytes((memory.total_kb || 0) * 1024)
+			},
+			{
+				id: 'disk',
+				icon: '\uD83D\uDCBF',
+				label: 'Storage',
+				percent: disk.percent || disk.usage_percent || disk.usage || 0,
+				detail: formatBytes((disk.used_kb || 0) * 1024) + ' / ' + formatBytes((disk.total_kb || 0) * 1024)
+			},
+			{
+				id: 'network',
+				icon: '\uD83C\uDF10',
+				label: 'Network',
+				percent: network.wan_up ? 100 : 0,
+				detail: network.wan_up ? 'WAN Online' : 'WAN Offline'
+			}
+		];
+
+		return E('div', { 'class': 'sb-panel' }, [
+			E('h3', {}, '\uD83D\uDCCA System Health'),
+			E('div', { 'class': 'sb-health-metrics' }, metrics.map(function(m) {
+				var pct = Math.min(100, Math.max(0, m.percent));
+				return E('div', { 'class': 'sb-metric' }, [
+					E('div', { 'class': 'sb-metric-header' }, [
+						E('span', {}, m.icon + ' ' + m.label),
+						E('span', { 'data-stat': m.id + '-detail' }, m.detail)
+					]),
+					E('div', { 'class': 'sb-bar' }, [
+						E('div', {
+							'class': 'sb-bar-fill',
+							'data-stat': m.id + '-bar',
+							'style': 'width:' + pct + '%;background:' + getBarColor(pct)
+						})
+					]),
+					E('span', { 'class': 'sb-metric-pct', 'data-stat': m.id + '-pct' }, pct + '%')
+				]);
+			}))
 		]);
 	},
 
 	renderPublicIPsPanel: function() {
-		var ips = this.publicIPs || {};
-		var ipv4 = ips.ipv4 || 'N/A';
-		var ipv6 = ips.ipv6 || 'N/A';
-		var ipv4Available = ips.ipv4_available;
-		var ipv6Available = ips.ipv6_available;
+		var ips = this.data.publicIPs || {};
+		var lanIpv4 = ips.lan_ipv4 || 'N/A';
+		var wanIpv4 = ips.wan_ipv4 || 'N/A';
+		var publicIpv4 = ips.public_ipv4 || 'N/A';
+		var publicIpv6 = ips.public_ipv6 || 'N/A';
+		var ipv6Display = publicIpv6.length > 20 ? publicIpv6.substring(0, 17) + '...' : publicIpv6;
 
-		// Truncate IPv6 for display if too long
-		var ipv6Display = ipv6;
-		if (ipv6 && ipv6.length > 25) {
-			ipv6Display = ipv6.substring(0, 22) + '...';
-		}
-
-		return E('section', { 'class': 'sb-card' }, [
-			E('div', { 'class': 'sb-card-header' }, [
-				E('h2', {}, _('Public IP Addresses')),
-				E('p', { 'class': 'sb-card-subtitle' }, _('External network connectivity'))
-			]),
-			E('div', { 'class': 'sb-ip-grid', 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px;' }, [
-				E('div', { 'class': 'sb-ip-item', 'style': 'background: var(--cyber-bg-tertiary, #1a1a2e); padding: 16px; border-radius: 8px; text-align: center;' }, [
-					E('div', { 'style': 'font-size: 24px; margin-bottom: 8px;' }, '🌐'),
-					E('div', { 'style': 'font-size: 0.8em; color: var(--cyber-text-secondary, #888); margin-bottom: 4px;' }, 'IPv4'),
+		return E('div', { 'class': 'sb-panel' }, [
+			E('h3', {}, '\uD83C\uDF10 Network Addresses'),
+			E('div', { 'class': 'sb-ip-grid sb-ip-grid-4' }, [
+				E('div', { 'class': 'sb-ip-box' }, [
+					E('div', { 'class': 'sb-ip-icon' }, '\uD83C\uDFE0'),
+					E('div', { 'class': 'sb-ip-label' }, 'LAN'),
 					E('div', {
-						'id': 'sb-public-ipv4',
-						'style': 'font-family: monospace; font-size: 1.1em; color: ' + (ipv4Available ? 'var(--cyber-success, #22c55e)' : 'var(--cyber-text-secondary, #888)') + ';',
-						'title': ipv4
-					}, ipv4)
+						'class': 'sb-ip-value',
+						'data-stat': 'lan-ipv4',
+						'title': lanIpv4,
+						'style': 'color:' + (ips.lan_available ? '#22c55e' : '#888')
+					}, lanIpv4)
 				]),
-				E('div', { 'class': 'sb-ip-item', 'style': 'background: var(--cyber-bg-tertiary, #1a1a2e); padding: 16px; border-radius: 8px; text-align: center;' }, [
-					E('div', { 'style': 'font-size: 24px; margin-bottom: 8px;' }, '🔷'),
-					E('div', { 'style': 'font-size: 0.8em; color: var(--cyber-text-secondary, #888); margin-bottom: 4px;' }, 'IPv6'),
+				E('div', { 'class': 'sb-ip-box' }, [
+					E('div', { 'class': 'sb-ip-icon' }, '\uD83D\uDD17'),
+					E('div', { 'class': 'sb-ip-label' }, 'BR-WAN'),
 					E('div', {
-						'id': 'sb-public-ipv6',
-						'style': 'font-family: monospace; font-size: 0.9em; color: ' + (ipv6Available ? 'var(--cyber-success, #22c55e)' : 'var(--cyber-text-secondary, #888)') + '; word-break: break-all;',
-						'title': ipv6
+						'class': 'sb-ip-value',
+						'data-stat': 'wan-ipv4',
+						'title': wanIpv4,
+						'style': 'color:' + (ips.wan_available ? '#3b82f6' : '#888')
+					}, wanIpv4)
+				]),
+				E('div', { 'class': 'sb-ip-box' }, [
+					E('div', { 'class': 'sb-ip-icon' }, '\uD83C\uDF10'),
+					E('div', { 'class': 'sb-ip-label' }, 'Public IPv4'),
+					E('div', {
+						'class': 'sb-ip-value',
+						'data-stat': 'public-ipv4',
+						'title': publicIpv4,
+						'style': 'color:' + (ips.ipv4_available ? '#22c55e' : '#888')
+					}, publicIpv4)
+				]),
+				E('div', { 'class': 'sb-ip-box' }, [
+					E('div', { 'class': 'sb-ip-icon' }, '\uD83D\uDD37'),
+					E('div', { 'class': 'sb-ip-label' }, 'Public IPv6'),
+					E('div', {
+						'class': 'sb-ip-value',
+						'data-stat': 'public-ipv6',
+						'title': publicIpv6,
+						'style': 'color:' + (ips.ipv6_available ? '#22c55e' : '#888')
 					}, ipv6Display)
 				])
 			])
 		]);
 	},
 
-	renderModulesSection: function() {
-		var self = this;
-		var filters = [
-			{ id: 'all', label: _('All Modules') },
-			{ id: 'security', label: _('Security') },
-			{ id: 'network', label: _('Network') },
-			{ id: 'services', label: _('Services') },
-			{ id: 'system', label: _('System') }
-		];
+	renderModulesPanel: function() {
+		var modules = this.data.modules || [];
+		var topModules = modules.slice(0, 8);
 
-		return E('section', { 'class': 'sb-card' }, [
-			E('div', { 'class': 'sb-card-header' }, [
-				E('div', {}, [
-					E('h2', {}, _('Module Overview')),
-					E('p', { 'class': 'sb-card-subtitle' }, _('Monitor, configure, and access every SecuBox module'))
+		var rows = topModules.map(function(mod) {
+			var status = mod.status || 'unknown';
+			var isActive = status === 'active' || mod.running;
+			return E('tr', {}, [
+				E('td', {}, [
+					E('span', { 'class': 'sb-mod-icon' }, mod.icon || '\uD83D\uDCE6'),
+					mod.name || mod.id
 				]),
-				E('div', { 'class': 'cyber-tablist cyber-tablist--pills sb-module-tabs' }, filters.map(function(filter) {
-					return E('button', {
-						'class': 'cyber-tab cyber-tab--pill' + (self.activeCategory === filter.id ? ' is-active' : ''),
-						'type': 'button',
-						'data-category': filter.id,
-						'click': function() {
-							self.activeCategory = filter.id;
-							self.updateModuleGrid();
-							self.syncModuleFilterTabs();
-						}
-					}, [
-						E('span', { 'class': 'cyber-tab-label' }, filter.label)
-					]);
-				}))
-			]),
-			E('div', { 'class': 'sb-module-grid', 'id': 'sb-module-grid' },
-				this.getFilteredModules().map(this.renderModuleCard, this))
-		]);
-	},
+				E('td', {}, mod.category || '-'),
+				E('td', {}, E('span', {
+					'class': 'sb-badge',
+					'style': 'background:' + (isActive ? '#22c55e' : '#6b7280')
+				}, isActive ? 'Active' : 'Inactive')),
+				E('td', {}, mod.version || '-')
+			]);
+		});
 
-	getFilteredModules: function() {
-		var modules = (this.modulesList && this.modulesList.length)
-			? this.modulesList
-			: (this.dashboardData.modules || []);
-		if (this.activeCategory === 'all')
-			return modules;
-		return modules.filter(function(module) {
-			return (module.category || '').toLowerCase() === this.activeCategory;
-		}, this);
-	},
-
-	getModuleVersion: function(module) {
-		if (!module)
-			return '—';
-
-		var candidates = [
-			module.version,
-			module.pkg_version,
-			module.package_version,
-			module.packageVersion,
-			module.Version
-		];
-
-		for (var i = 0; i < candidates.length; i++) {
-			var value = candidates[i];
-			if (typeof value === 'number')
-				return String(value);
-			if (typeof value === 'string' && value.trim())
-				return value.trim();
+		if (rows.length === 0) {
+			rows.push(E('tr', {}, [
+				E('td', { 'colspan': '4', 'style': 'text-align:center;color:#888' }, 'No modules found')
+			]));
 		}
 
-		return '—';
-	},
-
-	renderModuleCard: function(module) {
-		var status = module.status || 'unknown';
-		var statusLabel = status === 'active' ? _('Running') :
-			status === 'error' ? _('Error') :
-			status === 'disabled' ? _('Disabled') : _('Unknown');
-
-		return E('div', { 'class': 'sb-module-card sb-status-' + status }, [
-			E('div', { 'class': 'sb-module-header' }, [
-				E('div', { 'class': 'sb-module-icon' }, module.icon || '📦'),
-				E('div', {}, [
-					E('h3', {}, module.name || module.id),
-					E('p', {}, module.description || '')
-				]),
-				E('span', { 'class': 'sb-status-pill' }, statusLabel)
-			]),
-				E('div', { 'class': 'sb-module-meta' }, [
-					E('span', {}, _('Version: ') + this.getModuleVersion(module)),
-				E('span', {}, _('Category: ') + (module.category || 'other'))
-			]),
-			E('div', { 'class': 'sb-module-actions' }, [
+		return E('div', { 'class': 'sb-panel sb-panel-wide' }, [
+			E('div', { 'class': 'sb-panel-header' }, [
+				E('h3', {}, '\uD83D\uDCE6 Modules Overview'),
 				E('button', {
-					'class': 'sb-btn sb-btn-ghost',
-					'type': 'button',
-					'click': function() {
-						window.location.href = L.url('admin/secubox/modules');
-					}
-				}, _('View Details')),
-				E('button', {
-					'class': 'sb-btn sb-btn-primary',
-					'type': 'button',
-					'click': function() {
-						if (module.route) {
-							window.location.href = L.url(module.route);
-						}
-					}
-				}, _('Configure'))
+					'class': 'sb-link-btn',
+					'click': function() { window.location.href = L.url('admin/secubox/modules'); }
+				}, 'View All \u2192')
+			]),
+			E('table', { 'class': 'sb-table' }, [
+				E('thead', {}, E('tr', {}, [
+					E('th', {}, 'Module'),
+					E('th', {}, 'Category'),
+					E('th', {}, 'Status'),
+					E('th', {}, 'Version')
+				])),
+				E('tbody', {}, rows)
 			])
-		]);
-	},
-
-	renderSystemHealthPanel: function() {
-		var self = this;
-		var health = this.healthData || {};
-		var cpu = health.cpu || {};
-		var memory = health.memory || {};
-		var disk = health.disk || {};
-		var network = health.network || {};
-
-		var metrics = [
-			{
-				id: 'cpu',
-				label: _('CPU Usage'),
-				value: cpu.percent || 0,
-				detail: _('Load: ') + (cpu.load_1min || '0.00'),
-				icon: '🔥'
-			},
-			{
-				id: 'memory',
-				label: _('Memory'),
-				value: memory.percent || 0,
-				detail: API.formatBytes((memory.used_kb || 0) * 1024) + ' / ' +
-					API.formatBytes((memory.total_kb || 0) * 1024),
-				icon: '💾'
-			},
-			{
-				id: 'disk',
-				label: _('Storage'),
-				value: disk.percent || 0,
-				detail: API.formatBytes((disk.used_kb || 0) * 1024) + ' / ' +
-					API.formatBytes((disk.total_kb || 0) * 1024),
-				icon: '💿'
-			},
-			{
-				id: 'network',
-				label: _('Network'),
-				value: network.wan_up ? 100 : 0,
-				detail: network.wan_up ? _('WAN online') : _('WAN offline'),
-				icon: '🌐'
-			}
-		];
-
-		return E('section', { 'class': 'sb-card' }, [
-			E('div', { 'class': 'sb-card-header' }, [
-				E('h2', {}, _('System Health Dashboard')),
-				E('p', { 'class': 'sb-card-subtitle' }, _('Real-time telemetry for CPU, RAM, Disk, Network'))
-			]),
-			E('div', { 'class': 'sb-health-grid' },
-				metrics.map(function(metric) {
-					return self.renderHealthMetric(metric);
-				}))
-		]);
-	},
-
-	renderHealthMetric: function(metric) {
-		var percent = Math.min(100, Math.max(0, Math.round(metric.value)));
-		var severity = percent < 70 ? 'ok' : percent < 90 ? 'warn' : 'danger';
-
-		return E('div', { 'class': 'sb-health-metric' }, [
-			E('div', { 'class': 'sb-health-icon' }, metric.icon),
-			E('div', { 'class': 'sb-health-info' }, [
-				E('div', { 'class': 'sb-health-label' }, metric.label),
-				E('div', { 'class': 'sb-health-detail', 'id': 'sb-health-detail-' + metric.id }, metric.detail)
-			]),
-			E('div', { 'class': 'sb-health-bar' }, [
-				E('div', {
-					'class': 'sb-health-progress sb-' + severity,
-					'id': 'sb-health-bar-' + metric.id,
-					'style': 'width:' + percent + '%'
-				})
-			]),
-			E('span', { 'class': 'sb-health-percent', 'id': 'sb-health-percent-' + metric.id }, percent + '%')
 		]);
 	},
 
 	renderQuickActions: function() {
 		var self = this;
 		var actions = [
-			{ id: 'restart_services', label: _('Restart All Services'), icon: '🔄', variant: 'orange' },
-			{ id: 'update_packages', label: _('Update Packages'), icon: '⬆️', variant: 'blue' },
-			{ id: 'view_logs', label: _('View System Logs'), icon: '📜', variant: 'indigo' },
-			{ id: 'export_config', label: _('Export Configuration'), icon: '📦', variant: 'green' }
+			{ id: 'restart_services', icon: '\uD83D\uDD04', label: 'Restart Services', color: '#f59e0b' },
+			{ id: 'update_packages', icon: '\u2B06\uFE0F', label: 'Update Packages', color: '#3b82f6' },
+			{ id: 'view_logs', icon: '\uD83D\uDCDC', label: 'View Logs', color: '#8b5cf6' },
+			{ id: 'export_config', icon: '\uD83D\uDCE6', label: 'Export Config', color: '#22c55e' }
 		];
 
-		// Critical services quick restart
-		var criticalServices = [
-			{ id: 'haproxy', label: 'HAProxy', icon: '⚖️' },
-			{ id: 'crowdsec', label: 'CrowdSec', icon: '🛡️' },
-			{ id: 'tor', label: 'Tor Shield', icon: '🧅' },
-			{ id: 'gitea', label: 'Gitea', icon: '🦊' }
-		];
-
-		return E('section', { 'class': 'sb-card' }, [
-			E('div', { 'class': 'sb-card-header' }, [
-				E('h2', {}, _('Quick Actions')),
-				E('p', { 'class': 'sb-card-subtitle' }, _('Frequently performed maintenance tasks'))
-			]),
-			E('div', { 'class': 'sb-actions-grid' },
-				actions.map(function(action) {
-					return E('button', {
-						'class': 'sb-action-btn sb-' + action.variant,
-						'type': 'button',
-						'click': function() {
-							self.runQuickAction(action.id);
-						}
-					}, [
-						E('span', { 'class': 'sb-action-icon' }, action.icon),
-						E('span', { 'class': 'sb-action-label' }, action.label)
-					]);
-				})),
-
-			// Critical Services Quick Restart Section
-			E('div', { 'class': 'sb-card-header', 'style': 'margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.1);' }, [
-				E('h3', { 'style': 'font-size: 14px; margin: 0;' }, _('Critical Services Quick Restart')),
-				E('p', { 'class': 'sb-card-subtitle', 'style': 'font-size: 12px;' }, _('One-click restart for essential services'))
-			]),
-			E('div', { 'style': 'display: flex; gap: 8px; flex-wrap: wrap; padding: 0 16px 16px;' },
-				criticalServices.map(function(svc) {
-					return E('button', {
-						'class': 'sb-service-restart-btn',
-						'type': 'button',
-						'style': 'display: flex; align-items: center; gap: 8px; padding: 10px 16px; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 8px; color: #3b82f6; cursor: pointer; font-size: 13px; transition: all 0.2s;',
-						'click': function(ev) {
-							self.restartService(svc.id, ev.target);
-						},
-						'onmouseover': function(ev) {
-							ev.target.style.background = 'rgba(59, 130, 246, 0.25)';
-							ev.target.style.borderColor = '#3b82f6';
-						},
-						'onmouseout': function(ev) {
-							ev.target.style.background = 'rgba(59, 130, 246, 0.15)';
-							ev.target.style.borderColor = 'rgba(59, 130, 246, 0.3)';
-						}
-					}, [
-						E('span', {}, svc.icon),
-						E('span', {}, svc.label),
-						E('span', { 'style': 'opacity: 0.7;' }, '🔄')
-					]);
-				}))
+		return E('div', { 'class': 'sb-panel' }, [
+			E('h3', {}, '\u26A1 Quick Actions'),
+			E('div', { 'class': 'sb-actions' }, actions.map(function(action) {
+				return E('button', {
+					'class': 'sb-action-btn',
+					'style': 'border-color:' + action.color + ';color:' + action.color,
+					'click': function() { self.runAction(action.id); }
+				}, [
+					E('span', {}, action.icon),
+					E('span', {}, action.label)
+				]);
+			}))
 		]);
 	},
 
-	restartService: function(serviceId, btnElement) {
+	renderAlertsPanel: function() {
+		var alerts = (this.data.alerts || []).slice(0, 5);
+
+		var items = alerts.map(function(alert) {
+			var sev = (alert.severity || 'info').toLowerCase();
+			var color = sev === 'critical' ? '#ef4444' : sev === 'warning' ? '#f59e0b' : '#3b82f6';
+			return E('div', { 'class': 'sb-alert-item', 'style': 'border-left-color:' + color }, [
+				E('div', { 'class': 'sb-alert-time' }, alert.timestamp || alert.time || ''),
+				E('div', {}, [
+					E('strong', {}, alert.title || alert.message || 'Alert'),
+					alert.source ? E('span', { 'class': 'sb-alert-source' }, ' \u2022 ' + alert.source) : ''
+				])
+			]);
+		});
+
+		if (items.length === 0) {
+			items.push(E('div', { 'class': 'sb-empty' }, [
+				E('span', {}, '\uD83C\uDF89'),
+				E('p', {}, 'No alerts in the last 24 hours')
+			]));
+		}
+
+		return E('div', { 'class': 'sb-panel' }, [
+			E('h3', {}, '\u26A0\uFE0F Alert Timeline'),
+			E('div', { 'class': 'sb-alerts-list' }, items)
+		]);
+	},
+
+	runAction: function(actionId) {
+		ui.showModal('Executing...', [
+			E('p', { 'class': 'spinning' }, 'Running ' + actionId + '...')
+		]);
+
+		return rpc.declare({
+			object: 'luci.secubox',
+			method: 'quick_action',
+			params: ['action'],
+			expect: {}
+		})(actionId).then(function(result) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', {}, 'Action completed'), 'info');
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', {}, 'Action failed: ' + (err.message || err)), 'error');
+		});
+	},
+
+	render: function() {
 		var self = this;
 
-		// Visual feedback
-		if (btnElement) {
-			btnElement.style.opacity = '0.6';
-			btnElement.disabled = true;
-		}
-
-		ui.showModal(_('Restarting Service'), [
-			E('p', { 'class': 'spinning' }, _('Restarting ') + serviceId + '...')
-		]);
-
-		// Map service to init.d script
-		var serviceMap = {
-			'haproxy': 'haproxy',
-			'crowdsec': 'crowdsec',
-			'tor': 'tor',
-			'gitea': 'gitea'
-		};
-
-		var initScript = serviceMap[serviceId] || serviceId;
-
-		return L.resolveDefault(
-			L.Request.post(L.env.cgi_base + '/cgi-exec', 'command=/etc/init.d/' + initScript + ' restart'),
-			{}
-		).then(function() {
-			// Also try the standard approach via fs
-			return fs.exec('/etc/init.d/' + initScript, ['restart']);
-		}).then(function() {
-			ui.hideModal();
-			ui.addNotification(null, E('p', {}, serviceId + ' ' + _('restarted successfully')), 'info');
-		}).catch(function(err) {
-			ui.hideModal();
-			// Fallback: try via API if available
-			return API.quickAction('restart_' + serviceId).then(function() {
-				ui.addNotification(null, E('p', {}, serviceId + ' ' + _('restarted successfully')), 'info');
-			}).catch(function() {
-				ui.addNotification(null, E('p', {}, _('Failed to restart ') + serviceId + ': ' + (err.message || err)), 'error');
+		// Start polling
+		poll.add(function() {
+			return Promise.all([
+				callSystemHealth().catch(function() { return {}; }),
+				callGetAlerts().catch(function() { return { alerts: [] }; }),
+				callPublicIPs().catch(function() { return {}; })
+			]).then(function(results) {
+				self.data.health = results[0] || {};
+				self.data.alerts = (results[1] && results[1].alerts) || [];
+				self.data.publicIPs = results[2] || {};
+				self.updateLiveData();
 			});
-		}).finally(function() {
-			if (btnElement) {
-				btnElement.style.opacity = '1';
-				btnElement.disabled = false;
-			}
-		});
-	},
+		}, 15);
 
-	runQuickAction: function(actionId) {
-		ui.showModal(_('Executing action...'), [
-			E('p', { 'class': 'spinning' }, _('Running ') + actionId + ' ...')
-		]);
-
-		return API.quickAction(actionId).then(function(result) {
-			ui.hideModal();
-			if (result && result.success === false) {
-				ui.addNotification(null, E('p', {}, result.message || _('Action failed')), 'error');
-			} else {
-				ui.addNotification(null, E('p', {}, _('Action completed successfully')), 'info');
-			}
-		}).catch(function(err) {
-			ui.hideModal();
-			ui.addNotification(null, E('p', {}, err.message || err), 'error');
-		});
-	},
-
-	renderAlertsTimeline: function() {
-		var alerts = (this.alertsData.alerts || []).slice(0, 10);
-
-		return E('section', { 'class': 'sb-card' }, [
-			E('div', { 'class': 'sb-card-header' }, [
-				E('h2', {}, _('Alert Timeline')),
-				E('p', { 'class': 'sb-card-subtitle' }, _('Latest security and system events'))
-			]),
-			alerts.length === 0 ?
-				E('div', { 'class': 'sb-empty-state' }, [
-					E('div', { 'class': 'sb-empty-icon' }, '🎉'),
-					E('p', {}, _('No alerts in the last 24 hours'))
-				]) :
-				E('div', { 'class': 'sb-alert-list', 'id': 'sb-alert-list' },
-					alerts.map(this.renderAlertItem, this))
-		]);
-	},
-
-	renderAlertItem: function(alert) {
-		var severity = (alert.severity || 'info').toLowerCase();
-		var timestamp = alert.timestamp || alert.time || '';
-
-		return E('div', { 'class': 'sb-alert-item sb-' + severity }, [
-			E('div', { 'class': 'sb-alert-time' }, timestamp),
-			E('div', { 'class': 'sb-alert-details' }, [
-				E('strong', {}, alert.title || alert.message || _('Alert')),
-				alert.description ? E('p', {}, alert.description) : '',
-				alert.source ? E('span', { 'class': 'sb-alert-meta' }, alert.source) : ''
+		var content = E('div', { 'class': 'sb-dashboard' }, [
+			E('style', {}, this.getStyles()),
+			this.renderHeader(),
+			this.renderStatsCards(),
+			E('div', { 'class': 'sb-grid' }, [
+				E('div', { 'class': 'sb-col' }, [
+					this.renderModulesPanel(),
+					this.renderHealthPanel()
+				]),
+				E('div', { 'class': 'sb-col' }, [
+					this.renderPublicIPsPanel(),
+					this.renderQuickActions(),
+					this.renderAlertsPanel()
+				])
 			])
 		]);
+
+		return KissTheme.wrap(content, 'admin/secubox/dashboard');
 	},
 
-	getSystemVersion: function() {
-		if (this.dashboardData && this.dashboardData.status && this.dashboardData.status.version)
-			return this.dashboardData.status.version;
-		if (this.dashboardData && this.dashboardData.release)
-			return this.dashboardData.release;
-		return '0.0.0';
-	},
-
-	getSystemUptime: function() {
-		if (this.dashboardData && this.dashboardData.status && this.dashboardData.status.uptime)
-			return this.dashboardData.status.uptime;
-		if (this.healthData && typeof this.healthData.uptime === 'number')
-			return this.healthData.uptime;
-		return 0;
-	},
-
-	getModuleStats: function() {
-		var modules = (this.modulesList && this.modulesList.length)
-			? this.modulesList
-			: (this.dashboardData.modules || []);
-
-		var installed = modules.filter(function(mod) {
-			return mod.installed || mod.in_uci === 1 || mod.enabled === 1 || mod.status === 'active';
-		}).length;
-
-		var running = modules.filter(function(mod) {
-			return mod.running || mod.status === 'active';
-		}).length;
-
-		return {
-			list: modules,
-			total: modules.length,
-			installed: installed,
-			running: running
-		};
-	},
-
-	updateDynamicSections: function() {
-		this.updateStats();
-		this.updateModuleGrid();
-		this.updateHealthMetrics();
-		this.updatePublicIPs();
-		this.updateAlerts();
-	},
-
-	updatePublicIPs: function() {
-		var ips = this.publicIPs || {};
-		var ipv4 = ips.ipv4 || 'N/A';
-		var ipv6 = ips.ipv6 || 'N/A';
-
-		var ipv4Elem = document.getElementById('sb-public-ipv4');
-		var ipv6Elem = document.getElementById('sb-public-ipv6');
-
-		if (ipv4Elem) {
-			ipv4Elem.textContent = ipv4;
-			ipv4Elem.title = ipv4;
-			ipv4Elem.style.color = ips.ipv4_available ? 'var(--cyber-success, #22c55e)' : 'var(--cyber-text-secondary, #888)';
-		}
-		if (ipv6Elem) {
-			var ipv6Display = ipv6;
-			if (ipv6 && ipv6.length > 25) {
-				ipv6Display = ipv6.substring(0, 22) + '...';
-			}
-			ipv6Elem.textContent = ipv6Display;
-			ipv6Elem.title = ipv6;
-			ipv6Elem.style.color = ips.ipv6_available ? 'var(--cyber-success, #22c55e)' : 'var(--cyber-text-secondary, #888)';
-		}
-	},
-
-	updateStats: function() {
-		var moduleStats = this.getModuleStats();
-		var counts = this.dashboardData.counts || {};
-		var alertsCount = (this.alertsData.alerts || []).length;
-		var healthScore = (this.healthData.overall && this.healthData.overall.score) || 0;
-
-		var stats = {
-			'sb-stat-total': counts.total || moduleStats.total,
-			'sb-stat-installed': counts.installed || moduleStats.installed,
-			'sb-stat-running': counts.running || moduleStats.running,
-			'sb-stat-health': healthScore + '/100',
-			'sb-stat-alerts': alertsCount
-		};
-
-		Object.keys(stats).forEach(function(id) {
-			var node = document.getElementById(id);
-			if (node) node.textContent = stats[id];
-		});
-	},
-
-	updateModuleGrid: function() {
-		var grid = document.getElementById('sb-module-grid');
-		if (!grid) return;
-		dom.content(grid, this.getFilteredModules().map(this.renderModuleCard, this));
-		this.syncModuleFilterTabs();
-	},
-
-	syncModuleFilterTabs: function() {
-		var tabs = document.querySelectorAll('.sb-module-tabs .cyber-tab');
-		tabs.forEach(function(tab) {
-			var match = tab.getAttribute('data-category') === this.activeCategory;
-			tab.classList.toggle('is-active', match);
-		}, this);
-	},
-
-	updateHealthMetrics: function() {
-		var health = this.healthData || {};
+	updateLiveData: function() {
+		var health = this.data.health || {};
 		var cpu = health.cpu || {};
 		var memory = health.memory || {};
 		var disk = health.disk || {};
 		var network = health.network || {};
 
-		var map = {
-			cpu: { value: cpu.percent || 0, detail: _('Load: ') + (cpu.load_1min || '0.00') },
-			memory: {
-				value: memory.percent || 0,
-				detail: API.formatBytes((memory.used_kb || 0) * 1024) + ' / ' +
-					API.formatBytes((memory.total_kb || 0) * 1024)
-			},
-			disk: {
-				value: disk.percent || 0,
-				detail: API.formatBytes((disk.used_kb || 0) * 1024) + ' / ' +
-					API.formatBytes((disk.total_kb || 0) * 1024)
-			},
-			network: { value: network.wan_up ? 100 : 0, detail: network.wan_up ? _('WAN online') : _('WAN offline') }
+		// Extract CPU load (handle both "1.83 1.95 1.69" string and load_1m field)
+		var cpuLoad = cpu.load_1min || cpu.load_1m || '0.00';
+		if (cpu.load && typeof cpu.load === 'string') {
+			cpuLoad = cpu.load.split(' ')[0] || '0.00';
+		}
+
+		// Update health metrics
+		var metrics = {
+			cpu: { pct: cpu.percent || cpu.usage_percent || cpu.usage || 0, detail: 'Load: ' + cpuLoad },
+			memory: { pct: memory.percent || memory.usage_percent || memory.usage || 0, detail: formatBytes((memory.used_kb || 0) * 1024) + ' / ' + formatBytes((memory.total_kb || 0) * 1024) },
+			disk: { pct: disk.percent || disk.usage_percent || disk.usage || 0, detail: formatBytes((disk.used_kb || 0) * 1024) + ' / ' + formatBytes((disk.total_kb || 0) * 1024) },
+			network: { pct: network.wan_up ? 100 : 0, detail: network.wan_up ? 'WAN Online' : 'WAN Offline' }
 		};
 
-		Object.keys(map).forEach(function(key) {
-			var percent = Math.min(100, Math.max(0, Math.round(map[key].value)));
-			var severity = percent < 70 ? 'ok' : percent < 90 ? 'warn' : 'danger';
-
-			var bar = document.getElementById('sb-health-bar-' + key);
-			var pct = document.getElementById('sb-health-percent-' + key);
-			var detail = document.getElementById('sb-health-detail-' + key);
-
+		Object.keys(metrics).forEach(function(key) {
+			var m = metrics[key];
+			var bar = document.querySelector('[data-stat="' + key + '-bar"]');
+			var pct = document.querySelector('[data-stat="' + key + '-pct"]');
+			var detail = document.querySelector('[data-stat="' + key + '-detail"]');
 			if (bar) {
-				bar.style.width = percent + '%';
-				bar.className = 'sb-health-progress sb-' + severity;
+				bar.style.width = m.pct + '%';
+				bar.style.background = getBarColor(m.pct);
 			}
-			if (pct) pct.textContent = percent + '%';
-			if (detail) detail.textContent = map[key].detail;
+			if (pct) pct.textContent = m.pct + '%';
+			if (detail) detail.textContent = m.detail;
 		});
+
+		// Update network IPs
+		var ips = this.data.publicIPs || {};
+		var lanEl = document.querySelector('[data-stat="lan-ipv4"]');
+		var wanEl = document.querySelector('[data-stat="wan-ipv4"]');
+		var pubIpv4El = document.querySelector('[data-stat="public-ipv4"]');
+		var pubIpv6El = document.querySelector('[data-stat="public-ipv6"]');
+		if (lanEl) {
+			lanEl.textContent = ips.lan_ipv4 || 'N/A';
+			lanEl.style.color = ips.lan_available ? '#22c55e' : '#888';
+		}
+		if (wanEl) {
+			wanEl.textContent = ips.wan_ipv4 || 'N/A';
+			wanEl.style.color = ips.wan_available ? '#3b82f6' : '#888';
+		}
+		if (pubIpv4El) {
+			pubIpv4El.textContent = ips.public_ipv4 || 'N/A';
+			pubIpv4El.style.color = ips.ipv4_available ? '#22c55e' : '#888';
+		}
+		if (pubIpv6El) {
+			var ipv6 = ips.public_ipv6 || 'N/A';
+			pubIpv6El.textContent = ipv6.length > 20 ? ipv6.substring(0, 17) + '...' : ipv6;
+			pubIpv6El.style.color = ips.ipv6_available ? '#22c55e' : '#888';
+		}
+
+		// Update alerts count
+		var alertsEl = document.querySelector('[data-stat="alerts"]');
+		if (alertsEl) alertsEl.textContent = (this.data.alerts || []).length;
+
+		// Update health score
+		var score = (health.overall && health.overall.score) || health.score || 0;
+		var healthEl = document.querySelector('[data-stat="health"]');
+		if (healthEl) healthEl.textContent = score + '/100';
 	},
 
-	updateAlerts: function() {
-		var list = document.getElementById('sb-alert-list');
-		if (!list) return;
-		var alerts = (this.alertsData.alerts || []).slice(0, 10);
-		dom.content(list, alerts.map(this.renderAlertItem, this));
-	}
+	getStyles: function() {
+		return [
+			'.sb-dashboard { max-width: 1400px; margin: 0 auto; padding: 20px; }',
+			'.sb-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; padding: 20px; background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }',
+			'.sb-title { margin: 0; font-size: 24px; font-weight: 700; }',
+			'.sb-subtitle { margin: 4px 0 0; color: #666; font-size: 14px; }',
+			'.sb-chips { display: flex; gap: 12px; flex-wrap: wrap; }',
+			'.sb-chip { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #f8f9fa; border: 1px solid #e5e7eb; border-radius: 8px; }',
+			'.sb-chip-icon { font-size: 18px; }',
+			'.sb-chip-label { font-size: 11px; color: #666; display: block; }',
+			'.sb-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 24px; }',
+			'.sb-stat-card { display: flex; align-items: center; gap: 12px; padding: 16px; background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }',
+			'.sb-stat-icon { font-size: 28px; }',
+			'.sb-stat-value { font-size: 20px; font-weight: 700; }',
+			'.sb-stat-label { font-size: 12px; color: #666; }',
+			'.sb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }',
+			'@media (max-width: 900px) { .sb-grid { grid-template-columns: 1fr; } }',
+			'.sb-col { display: flex; flex-direction: column; gap: 20px; }',
+			'.sb-panel { background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }',
+			'.sb-panel-wide { grid-column: span 1; }',
+			'.sb-panel h3 { margin: 0 0 16px; font-size: 16px; font-weight: 600; }',
+			'.sb-panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }',
+			'.sb-panel-header h3 { margin: 0; }',
+			'.sb-link-btn { background: none; border: none; color: #3b82f6; cursor: pointer; font-size: 13px; }',
+			'.sb-health-metrics { display: flex; flex-direction: column; gap: 14px; }',
+			'.sb-metric { }',
+			'.sb-metric-header { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; }',
+			'.sb-bar { height: 10px; background: #e5e7eb; border-radius: 5px; overflow: hidden; }',
+			'.sb-bar-fill { height: 100%; border-radius: 5px; transition: width 0.3s, background 0.3s; }',
+			'.sb-metric-pct { font-size: 12px; color: #666; display: block; text-align: right; margin-top: 4px; }',
+			'.sb-ip-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }',
+			'.sb-ip-grid-4 { grid-template-columns: 1fr 1fr; }',
+			'@media (min-width: 600px) { .sb-ip-grid-4 { grid-template-columns: repeat(4, 1fr); } }',
+			'.sb-ip-box { background: #f8f9fa; padding: 12px; border-radius: 8px; text-align: center; }',
+			'.sb-ip-icon { font-size: 20px; margin-bottom: 6px; }',
+			'.sb-ip-label { font-size: 11px; color: #888; margin-bottom: 2px; text-transform: uppercase; font-weight: 600; }',
+			'.sb-ip-value { font-family: monospace; font-size: 12px; word-break: break-all; }',
+			'.sb-table { width: 100%; border-collapse: collapse; }',
+			'.sb-table th, .sb-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #e5e7eb; font-size: 13px; }',
+			'.sb-table th { background: #f8f9fa; font-weight: 600; font-size: 11px; text-transform: uppercase; color: #666; }',
+			'.sb-table tbody tr:hover { background: #f8f9fa; }',
+			'.sb-mod-icon { margin-right: 8px; }',
+			'.sb-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; color: #fff; font-size: 11px; font-weight: 600; }',
+			'.sb-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }',
+			'.sb-action-btn { display: flex; align-items: center; gap: 8px; padding: 12px; background: transparent; border: 1px solid; border-radius: 8px; cursor: pointer; font-size: 13px; transition: background 0.2s; }',
+			'.sb-action-btn:hover { background: rgba(0,0,0,0.03); }',
+			'.sb-alerts-list { display: flex; flex-direction: column; gap: 10px; }',
+			'.sb-alert-item { padding: 12px; background: #f8f9fa; border-radius: 6px; border-left: 3px solid; }',
+			'.sb-alert-time { font-size: 11px; color: #888; margin-bottom: 4px; }',
+			'.sb-alert-source { font-size: 12px; color: #888; }',
+			'.sb-empty { text-align: center; padding: 24px; color: #888; }',
+			'.sb-empty span { font-size: 32px; display: block; margin-bottom: 8px; }',
+			'@media (prefers-color-scheme: dark) {',
+			'  .sb-dashboard { color: #e5e7eb; }',
+			'  .sb-header, .sb-stat-card, .sb-panel { background: #1f2937; }',
+			'  .sb-chip { background: #374151; border-color: #4b5563; }',
+			'  .sb-chip-label, .sb-stat-label, .sb-subtitle { color: #9ca3af; }',
+			'  .sb-table th { background: #374151; color: #9ca3af; }',
+			'  .sb-table td { border-color: #374151; }',
+			'  .sb-table tbody tr:hover { background: #374151; }',
+			'  .sb-ip-box, .sb-alert-item { background: #374151; }',
+			'  .sb-bar { background: #374151; }',
+			'  .sb-action-btn:hover { background: rgba(255,255,255,0.05); }',
+			'}'
+		].join('\n');
+	},
+
+	handleSave: null,
+	handleSaveApply: null,
+	handleReset: null
 });

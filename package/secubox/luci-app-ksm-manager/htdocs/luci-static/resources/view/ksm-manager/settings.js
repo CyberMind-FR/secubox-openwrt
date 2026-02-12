@@ -3,6 +3,7 @@
 'require secubox-theme/theme as Theme';
 'require form';
 'require uci';
+'require secubox/kiss-theme';
 
 return view.extend({
 	load: function() {
@@ -90,10 +91,7 @@ return view.extend({
 		o.onclick = L.bind(this.handleRestoreBackup, this);
 
 		return m.render().then(function(rendered) {
-			return E('div', {}, [
-				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-				rendered
-			]);
+			return KissTheme.wrap([rendered], 'admin/secubox/ksm/settings');
 		});
 	},
 

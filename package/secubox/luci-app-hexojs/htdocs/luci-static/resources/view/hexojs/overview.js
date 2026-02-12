@@ -3,6 +3,7 @@
 'require poll';
 'require ui';
 'require hexojs/api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	title: _('Hexo CMS'),
@@ -260,7 +261,7 @@ return view.extend({
 
 		this.startPolling();
 
-		return view;
+		return KissTheme.wrap([view], 'admin/services/hexojs');
 	},
 
 	handleSaveApply: null,

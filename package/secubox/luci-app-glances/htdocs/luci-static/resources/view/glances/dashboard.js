@@ -5,6 +5,7 @@
 'require glances/api as api';
 'require secubox-theme/theme as Theme';
 'require secubox-portal/header as SbHeader';
+'require secubox/kiss-theme';
 
 var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||
@@ -185,11 +186,12 @@ return view.extend({
 			])
 		]);
 
-		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
-		wrapper.appendChild(SbHeader.render());
-		wrapper.appendChild(renderGlancesNav('dashboard'));
-		wrapper.appendChild(content);
-		return wrapper;
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' }, [
+			SbHeader.render(),
+			renderGlancesNav('dashboard'),
+			content
+		]);
+		return KissTheme.wrap(wrapper, 'admin/secubox/monitoring/glances/dashboard');
 	},
 
 	handleSaveApply: null,

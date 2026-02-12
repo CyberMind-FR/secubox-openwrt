@@ -3,6 +3,7 @@
 'require rpc';
 'require ui';
 'require poll';
+'require secubox/kiss-theme';
 
 var callStatus = rpc.declare({
 	object: 'luci.vortex-firewall',
@@ -384,42 +385,33 @@ return view.extend({
 			});
 		}, 10);
 
-		return E('div', { 'class': 'vf-dashboard' }, [
+		var dashboard = E('div', { 'class': 'vf-dashboard' }, [
 			E('style', {}, [
 				'.vf-dashboard { max-width: 1200px; }',
 				'.vf-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }',
-				'.vf-card { background: #fff; border-radius: 8px; padding: 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }',
+				'.vf-card { background: var(--kiss-card, #fff); border-radius: 8px; padding: 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid var(--kiss-line, #eee); }',
 				'.vf-card-highlight { background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); color: #fff; }',
 				'.vf-card-highlight .vf-card-label { color: rgba(255,255,255,0.8); }',
 				'.vf-card-icon { width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; color: #fff; }',
 				'.vf-card-value { font-size: 24px; font-weight: 700; }',
-				'.vf-card-label { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; }',
-				'.vf-section { background: #fff; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }',
-				'.vf-section h3 { margin: 0 0 16px 0; font-size: 16px; font-weight: 600; color: #333; }',
+				'.vf-card-label { font-size: 12px; color: var(--kiss-muted, #666); text-transform: uppercase; letter-spacing: 0.5px; }',
+				'.vf-section { background: var(--kiss-card, #fff); border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid var(--kiss-line, #eee); }',
+				'.vf-section h3 { margin: 0 0 16px 0; font-size: 16px; font-weight: 600; color: var(--kiss-text, #333); }',
 				'.vf-actions { display: flex; gap: 10px; flex-wrap: wrap; }',
 				'.vf-distribution { display: flex; flex-direction: column; gap: 12px; }',
 				'.vf-dist-item { display: flex; align-items: center; gap: 12px; }',
 				'.vf-dist-label { min-width: 150px; display: flex; align-items: center; }',
-				'.vf-dist-bar { flex: 1; height: 20px; background: #eee; border-radius: 4px; overflow: hidden; }',
+				'.vf-dist-bar { flex: 1; height: 20px; background: var(--kiss-line, #eee); border-radius: 4px; overflow: hidden; }',
 				'.vf-dist-fill { height: 100%; transition: width 0.3s; }',
 				'.table { width: 100%; border-collapse: collapse; }',
-				'.table th, .table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #eee; }',
-				'.table th { background: #f8f9fa; font-weight: 600; font-size: 12px; text-transform: uppercase; color: #666; }',
-				'.table tbody tr:hover { background: #f8f9fa; }',
-				'@media (prefers-color-scheme: dark) {',
-				'  .vf-card { background: #2d2d2d; }',
-				'  .vf-card-label { color: #aaa; }',
-				'  .vf-section { background: #2d2d2d; }',
-				'  .vf-section h3 { color: #eee; }',
-				'  .table th { background: #333; color: #aaa; }',
-				'  .table td { border-color: #444; }',
-				'  .table tbody tr:hover { background: #333; }',
-				'}'
+				'.table th, .table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--kiss-line, #eee); }',
+				'.table th { background: var(--kiss-bg2, #f8f9fa); font-weight: 600; font-size: 12px; text-transform: uppercase; color: var(--kiss-muted, #666); }',
+				'.table tbody tr:hover { background: rgba(255,255,255,0.02); }'
 			].join('\n')),
 			E('h2', { 'style': 'margin-bottom: 20px' }, [
 				'\uD83C\uDF00 Vortex DNS Firewall'
 			]),
-			E('p', { 'style': 'color: #666; margin-bottom: 24px' },
+			E('p', { 'style': 'color: var(--kiss-muted, #666); margin-bottom: 24px' },
 				'DNS-level threat blocking with \u00D747 vitality multiplier. Each blocked DNS query prevents approximately 47 malicious connections.'),
 			this.renderStatusCards(status, stats),
 			E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 20px;' }, [
@@ -429,6 +421,8 @@ return view.extend({
 			this.renderFeedsTable(feeds),
 			this.renderBlockedTable(blocked)
 		]);
+
+		return KissTheme.wrap([dashboard], 'admin/secubox/security/vortex-firewall');
 	},
 
 	handleSave: null,

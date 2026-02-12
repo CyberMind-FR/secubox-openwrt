@@ -3,6 +3,7 @@
 'require rpc';
 'require ui';
 'require cdn-cache/nav as CdnNav';
+'require secubox/kiss-theme';
 
 var callPurgeCache = rpc.declare({
 	object: 'luci.cdn-cache',
@@ -46,7 +47,8 @@ return view.extend({
 		var logs = data.logs || [];
 		var self = this;
 
-		return E('div', { 'class': 'cbi-map cdn-maintenance' }, [
+		return KissTheme.wrap([
+			E('div', { 'class': 'cbi-map cdn-maintenance' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('cdn-cache/common.css') }),
 			E('style', {}, `
@@ -191,7 +193,8 @@ return view.extend({
 					}) : E('div', { 'style': 'color: #64748b; text-align: center;' }, 'Aucun log disponible')
 				)
 			])
-		]);
+		])
+		], 'admin/services/cdn-cache/maintenance');
 	},
 
 	handleSaveApply: null,

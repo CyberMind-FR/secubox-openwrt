@@ -301,6 +301,100 @@ JWT_PATTERNS = [
     r'"alg"\s*:\s*"none"',
 ]
 
+# HTTP Request Smuggling patterns
+HTTP_SMUGGLING_PATTERNS = [
+    r'transfer-encoding:\s*chunked.*content-length:',  # TE.CL conflict
+    r'content-length:.*transfer-encoding:\s*chunked',  # CL.TE conflict
+    r'transfer-encoding:\s*.*,\s*chunked',  # TE obfuscation
+    r'transfer-encoding:\s*chunked\s*,',
+    r'\x00.*content-length:',  # Null byte smuggling
+    r'0\r\n\r\n',  # Chunked terminator in body
+]
+
+# AI/LLM Prompt Injection patterns (emerging threat 2024-2025)
+PROMPT_INJECTION_PATTERNS = [
+    r'ignore\s+(previous|all|above)\s+instructions?',
+    r'disregard\s+(previous|all|above)\s+instructions?',
+    r'forget\s+(previous|all|above)\s+instructions?',
+    r'new\s+instructions?:',
+    r'system\s*prompt:',
+    r'<\|im_start\|>',  # ChatML injection
+    r'\[INST\]',  # Llama instruction markers
+    r'<\|endoftext\|>',  # GPT special tokens
+    r'###\s*(Instruction|System|Human|Assistant):',
+    r'roleplay\s+as\s+(a\s+)?(?:system|admin|root)',
+    r'pretend\s+you\s+are\s+(?:a\s+)?(?:system|admin|root)',
+]
+
+# WAF Bypass patterns (2025 techniques)
+WAF_BYPASS_PATTERNS = [
+    # Unicode normalization attacks
+    r'%uff1c',  # Fullwidth <
+    r'%uff1e',  # Fullwidth >
+    r'%u003c',  # Unicode <
+    r'%u003e',  # Unicode >
+    r'\xef\xbc\x9c',  # UTF-8 fullwidth <
+    r'\xef\xbc\x9e',  # UTF-8 fullwidth >
+    # Encoding chains
+    r'%25(?:2[0-9a-f]|3[0-9a-f]|4[0-9a-f])',  # Double encoding
+    r'%252e%252e',  # Double encoded ..
+    # Null byte injection
+    r'%00', r'\x00',
+    # Case variation bypass
+    r'(?:S|s)(?:E|e)(?:L|l)(?:E|e)(?:C|c)(?:T|t)',  # Mixed case SELECT
+    # Comment injection
+    r'/\*!.*\*/',  # MySQL conditional comments
+    r'/\*\+.*\*/',  # Oracle hints
+    # HTTP Parameter Pollution
+    r'(\?|&)([^=]+)=.*\1\2=',  # Duplicate params
+]
+
+# Supply Chain Attack patterns (OWASP A03:2025)
+SUPPLY_CHAIN_PATTERNS = [
+    # Package manager attacks
+    r'npm\s+install.*\|\s*(sh|bash)',
+    r'pip\s+install.*--pre',
+    r'gem\s+install.*--no-verify',
+    # Dependency confusion
+    r'@[a-z0-9-]+/[a-z0-9-]+@[0-9]+\.[0-9]+\.[0-9]+-',  # Scoped pre-release
+    # CI/CD poisoning
+    r'\.github/workflows/.*\.ya?ml',
+    r'\.gitlab-ci\.yml',
+    r'Jenkinsfile',
+    r'\.circleci/config\.yml',
+]
+
+# Server-Side Template Injection extended patterns
+SSTI_EXTENDED_PATTERNS = [
+    # Jinja2/Flask
+    r'\{\{\s*config\s*\}\}', r'\{\{\s*self\.__',
+    r'\{\{\s*request\s*\}\}', r'__class__.__mro__',
+    # Freemarker
+    r'<#assign', r'\$\{\.data_model',
+    # Velocity
+    r'#set\s*\(\s*\$', r'#foreach',
+    # Thymeleaf
+    r'\[\[\${', r'\$\{T\(java\.lang',
+    # Pebble
+    r'\{\{\s*beans\s*\}\}',
+    # Razor
+    r'@\{', r'@Html\.Raw',
+]
+
+# API Abuse patterns (expanded)
+API_ABUSE_PATTERNS = [
+    # Mass assignment
+    r'(is_admin|role|admin|privilege|permission)\s*[=:]',
+    # BOLA/IDOR
+    r'/api/.*/users?/\d+', r'/api/.*/accounts?/\d+',
+    r'/v\d+/.*/\d{4,}',  # Sequential IDs
+    # Rate limit bypass
+    r'x-forwarded-for:.*,.*,',  # Multiple XFF headers
+    # Debug endpoints
+    r'/debug/', r'/trace/', r'/actuator/', r'/metrics/',
+    r'/__debug__/', r'/_profiler/',
+]
+
 # Known vulnerability paths (CVE-specific)
 # Comprehensive CVE detection patterns for WAF filtering
 CVE_PATTERNS = {
@@ -395,7 +489,7 @@ CVE_PATTERNS = {
     'CVE-2024-55591': [r'/api/v2/authentication', r'LOCAL_ADMIN'],
 
     # ============================================================================
-    # 2025 CVEs
+    # 2025 CVEs (CISA KEV 2025-2026)
     # ============================================================================
     # CVE-2025-15467 (OpenSSL CMS AuthEnvelopedData stack overflow)
     'CVE-2025-15467': [
@@ -407,6 +501,42 @@ CVE_PATTERNS = {
     'CVE-2025-0282': [r'/dana-na/auth/url_default/', r'/dana-ws/saml20\.ws'],
     # CVE-2025-23006 (SonicWall SMA SSRF to RCE)
     'CVE-2025-23006': [r'/cgi-bin/management', r'/cgi-bin/sslvpnclient'],
+    # CVE-2025-55182 (React2Shell - React Server Components RCE, CVSS 10.0)
+    'CVE-2025-55182': [
+        r'__rsc_chunk', r'__rsc', r'_rsc=', r'rsc\?',
+        r'x-rsc', r'__react_refresh', r'react-server-dom',
+        r'__next_rsc__', r'_next/data/.*\.rsc',
+    ],
+    # CVE-2025-8110 (Gogs RCE via symlink bypass)
+    'CVE-2025-8110': [
+        r'/api/v1/repos/.*/git/trees', r'/api/v1/repos/.*/contents',
+        r'\.\.%2f', r'\.\.%5c', r'symlink',
+    ],
+    # CVE-2025-53770 (SharePoint ToolShell RCE)
+    'CVE-2025-53770': [
+        r'/_layouts/.*toolpart', r'/_vti_bin/webpartpages\.asmx',
+        r'/_api/SP\.WebPartBuilder', r'/_api/web/GetFileByServerRelativePath',
+    ],
+    # CVE-2025-52691 (SmarterMail arbitrary file upload RCE)
+    'CVE-2025-52691': [
+        r'/interface/web-mail\.aspx', r'/interface/root/upload',
+        r'/interface/settings/.*upload', r'/webmail/.*\.ashx.*upload',
+    ],
+    # CVE-2025-40551 (SolarWinds Web Help Desk deserialization RCE)
+    'CVE-2025-40551': [
+        r'/helpdesk/', r'/WebHelpDesk/', r'/whd/',
+        r'\.doj$', r'java\.io\.ObjectInputStream', r'java\.lang\.Runtime',
+    ],
+    # CVE-2025-58360 (GeoServer XXE)
+    'CVE-2025-58360': [
+        r'/geoserver/', r'/wfs\?', r'/wms\?', r'/wcs\?',
+        r'GetCapabilities', r'DescribeFeatureType',
+    ],
+    # CVE-2025-68645 (Zimbra PHP RFI)
+    'CVE-2025-68645': [
+        r'/zimbraAdmin/', r'/zimlet/', r'/service/soap',
+        r'\.php\?.*include', r'\.php\?.*require',
+    ],
 
     # ============================================================================
     # CMS-Specific Vulnerabilities
@@ -1032,6 +1162,55 @@ class SecuBoxAnalytics:
                 return {
                     'is_scan': True, 'pattern': 'jwt_attack', 'type': 'auth_bypass',
                     'severity': severity, 'category': 'authentication'
+                }
+
+        # Check HTTP Request Smuggling
+        headers_str = ' '.join(f"{k}: {v}" for k, v in request.headers.items()).lower()
+        for pattern in HTTP_SMUGGLING_PATTERNS:
+            if re.search(pattern, headers_str + ' ' + body, re.IGNORECASE):
+                return {
+                    'is_scan': True, 'pattern': 'http_smuggling', 'type': 'protocol_attack',
+                    'severity': 'critical', 'category': 'request_smuggling'
+                }
+
+        # Check AI/LLM Prompt Injection
+        for pattern in PROMPT_INJECTION_PATTERNS:
+            if re.search(pattern, combined, re.IGNORECASE):
+                return {
+                    'is_scan': True, 'pattern': 'prompt_injection', 'type': 'ai_attack',
+                    'severity': 'high', 'category': 'llm_injection'
+                }
+
+        # Check WAF Bypass attempts
+        for pattern in WAF_BYPASS_PATTERNS:
+            if re.search(pattern, combined, re.IGNORECASE):
+                return {
+                    'is_scan': True, 'pattern': 'waf_bypass', 'type': 'evasion',
+                    'severity': 'high', 'category': 'waf_bypass'
+                }
+
+        # Check Extended SSTI patterns
+        for pattern in SSTI_EXTENDED_PATTERNS:
+            if re.search(pattern, combined, re.IGNORECASE):
+                return {
+                    'is_scan': True, 'pattern': 'ssti_advanced', 'type': 'injection',
+                    'severity': 'critical', 'category': 'template_injection'
+                }
+
+        # Check API Abuse patterns
+        for pattern in API_ABUSE_PATTERNS:
+            if re.search(pattern, combined, re.IGNORECASE):
+                return {
+                    'is_scan': True, 'pattern': 'api_abuse', 'type': 'api_attack',
+                    'severity': 'medium', 'category': 'api_security'
+                }
+
+        # Check Supply Chain attack patterns (in request bodies/headers)
+        for pattern in SUPPLY_CHAIN_PATTERNS:
+            if re.search(pattern, combined, re.IGNORECASE):
+                return {
+                    'is_scan': True, 'pattern': 'supply_chain', 'type': 'supply_chain',
+                    'severity': 'high', 'category': 'supply_chain_attack'
                 }
 
         return {'is_scan': False, 'pattern': None, 'type': None, 'severity': None, 'category': None}

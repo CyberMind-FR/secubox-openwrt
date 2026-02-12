@@ -4,6 +4,7 @@
 'require uci';
 'require rpc';
 'require cdn-cache/nav as CdnNav';
+'require secubox/kiss-theme';
 
 var callSetEnabled = rpc.declare({
 	object: 'luci.cdn-cache',
@@ -139,12 +140,14 @@ return view.extend({
 		o.default = '60';
 
 		return m.render().then(function(formEl) {
-			return E('div', { 'class': 'cdn-settings-page' }, [
-				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-				E('link', { 'rel': 'stylesheet', 'href': L.resource('cdn-cache/common.css') }),
-				CdnNav.renderTabs('settings'),
-				formEl
-			]);
+			return KissTheme.wrap([
+				E('div', { 'class': 'cdn-settings-page' }, [
+					E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+					E('link', { 'rel': 'stylesheet', 'href': L.resource('cdn-cache/common.css') }),
+					CdnNav.renderTabs('settings'),
+					formEl
+				])
+			], 'admin/services/cdn-cache/settings');
 		});
 	}
 });

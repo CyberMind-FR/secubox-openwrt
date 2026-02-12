@@ -3,6 +3,7 @@
 'require ui';
 'require poll';
 'require bandwidth-manager/api as API';
+'require secubox/kiss-theme';
 
 return L.view.extend({
 	load: function() {
@@ -336,7 +337,7 @@ return L.view.extend({
 
 		v.appendChild(historySection);
 
-		return v;
+		return KissTheme.wrap([v], 'admin/services/bandwidth-manager/alerts');
 	},
 
 	saveAlertSettings: function() {

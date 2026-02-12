@@ -4,6 +4,7 @@
 'require poll';
 'require ui';
 'require localrecall.api as api';
+'require secubox/kiss-theme';
 
 /**
  * LocalRecall Memory Dashboard - v1.0.0
@@ -75,7 +76,7 @@ return view.extend({
 		]);
 
 		poll.add(L.bind(this.pollData, this), 30);
-		return view;
+		return KissTheme.wrap([view], 'admin/secubox/ai/localrecall');
 	},
 
 	renderStats: function(s) {

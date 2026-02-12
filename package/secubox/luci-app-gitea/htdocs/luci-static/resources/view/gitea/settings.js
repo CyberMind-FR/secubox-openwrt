@@ -3,6 +3,7 @@
 'require ui';
 'require dom';
 'require gitea.api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	configData: null,
@@ -39,7 +40,7 @@ return view.extend({
 			this.renderContent()
 		]);
 
-		return container;
+		return KissTheme.wrap(container, 'admin/secubox/services/gitea/settings');
 	},
 
 	renderHeader: function() {

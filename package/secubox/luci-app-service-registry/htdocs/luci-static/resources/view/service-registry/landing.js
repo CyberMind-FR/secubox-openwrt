@@ -5,6 +5,7 @@
 'require form';
 'require fs';
 'require service-registry/api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	title: _('Landing Page'),
@@ -240,7 +241,7 @@ return view.extend({
 			])
 		]);
 
-		return container;
+		return KissTheme.wrap(container, 'admin/secubox/services/service-registry/landing');
 	},
 
 	handleRegenerate: function() {

@@ -4,6 +4,7 @@
 'require dom';
 'require poll';
 'require rpc';
+'require secubox/kiss-theme';
 
 // RPC declarations
 var callGetStatus = rpc.declare({
@@ -415,7 +416,7 @@ return view.extend({
 			});
 		}, 10);
 
-		return container;
+		return KissTheme.wrap(container, 'admin/secubox/services/picobrew/dashboard');
 	},
 
 	renderHeader: function() {

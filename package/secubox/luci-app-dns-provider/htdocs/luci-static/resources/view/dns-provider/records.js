@@ -4,6 +4,7 @@
 'require ui';
 'require rpc';
 'require uci';
+'require secubox/kiss-theme';
 
 var callGetConfig = rpc.declare({
 	object: 'luci.dns-provider',
@@ -181,13 +182,15 @@ return view.extend({
 			E('div', { 'id': 'verify-results', 'style': 'margin-top:1em;' })
 		]);
 
-		return E('div', {}, [
+		var content = E('div', {}, [
 			E('h2', {}, _('DNS Records')),
 			statusBar,
 			actions,
 			recordsSection,
 			verifySection
 		]);
+
+		return KissTheme.wrap(content, 'admin/secubox/network/dns-provider/records');
 	},
 
 	handleAddRecord: function(zone) {

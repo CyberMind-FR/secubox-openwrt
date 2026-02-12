@@ -1,0 +1,383 @@
+#!/bin/sh
+#
+# SecuBox Stats Persistence & Evolution Layer
+# 3-tier caching: RAM (/tmp) → Volatile Buffer → Persistent (/srv)
+# Time-series: Hourly snapshots (24h), Daily aggregates (30d)
+# Never-trashed stats with reboot recovery
+#
+
+PERSIST_DIR="/srv/secubox/stats"
+CACHE_DIR="/tmp/secubox"
+HISTORY_DIR="$PERSIST_DIR/history"
+TIMELINE_FILE="$PERSIST_DIR/timeline.json"
+EVOLUTION_FILE="$PERSIST_DIR/evolution.json"
+HEARTBEAT_LINE="$PERSIST_DIR/heartbeat-line.json"
+
+# Collectors to persist (must match cache file basenames)
+COLLECTORS="health threat capacity crowdsec mitmproxy netifyd client-guardian mac-guardian netdiag crowdsec-overview"
+
+# Initialize directories
+init_persist() {
+    mkdir -p "$PERSIST_DIR" "$HISTORY_DIR/hourly" "$HISTORY_DIR/daily"
+    mkdir -p "$CACHE_DIR"
+
+    # Create evolution tracking files if missing
+    for collector in $COLLECTORS; do
+        local hourly_dir="$HISTORY_DIR/hourly/$collector"
+        local daily_dir="$HISTORY_DIR/daily/$collector"
+        mkdir -p "$hourly_dir" "$daily_dir"
+    done
+
+    echo "Stats persistence initialized at $PERSIST_DIR"
+}
+
+# Recover cache from persistent storage on boot
+recover_cache() {
+    for collector in $COLLECTORS; do
+        local persist_file="$PERSIST_DIR/${collector}.json"
+        local cache_file="$CACHE_DIR/${collector}.json"
+
+        # Only recover if cache is missing but persistent exists
+        if [ ! -f "$cache_file" ] && [ -f "$persist_file" ]; then
+            cp "$persist_file" "$cache_file"
+            echo "Recovered $collector from persistent storage"
+        fi
+    done
+}
+
+# Persist current cache to storage (atomic writes)
+persist_cache() {
+    local now=$(date +%s)
+    local hour=$(date +%Y%m%d%H)
+    local day=$(date +%Y%m%d)
+
+    for collector in $COLLECTORS; do
+        local cache_file="$CACHE_DIR/${collector}.json"
+        local persist_file="$PERSIST_DIR/${collector}.json"
+
+        # Skip if cache doesn't exist
+        [ -f "$cache_file" ] || continue
+
+        # Atomic persist: cache → tmp → persistent
+        local tmp_file="$PERSIST_DIR/.${collector}.tmp"
+        cp "$cache_file" "$tmp_file" 2>/dev/null && \
+            mv -f "$tmp_file" "$persist_file" 2>/dev/null
+
+        # Hourly snapshot (only once per hour)
+        local hourly_file="$HISTORY_DIR/hourly/$collector/${hour}.json"
+        if [ ! -f "$hourly_file" ]; then
+            cp "$cache_file" "$hourly_file" 2>/dev/null
+        fi
+    done
+
+    echo "$now" > "$PERSIST_DIR/.last_persist"
+}
+
+# Create hourly aggregate from snapshots
+aggregate_hourly() {
+    local collector="$1"
+    local hour="$2"  # Format: YYYYMMDDHH
+    local hourly_file="$HISTORY_DIR/hourly/$collector/${hour}.json"
+
+    [ -f "$hourly_file" ] || return 1
+
+    # Extract key numeric fields for aggregation
+    local data=$(cat "$hourly_file" 2>/dev/null)
+    echo "$data"
+}
+
+# Create daily aggregate from 24 hourly snapshots
+aggregate_daily() {
+    local day=$(date +%Y%m%d)
+
+    for collector in $COLLECTORS; do
+        local daily_file="$HISTORY_DIR/daily/$collector/${day}.json"
+        local hourly_dir="$HISTORY_DIR/hourly/$collector"
+
+        # Skip if already aggregated today
+        [ -f "$daily_file" ] && continue
+
+        # Count hourly files for this day (should be 24 at end of day)
+        local hourly_count=$(ls "$hourly_dir/${day}"*.json 2>/dev/null | wc -l)
+        [ "$hourly_count" -lt 6 ] && continue  # Need at least 6 hours
+
+        # Create daily aggregate with min/max/avg
+        local min=999999 max=0 sum=0 count=0
+
+        for hfile in "$hourly_dir/${day}"*.json; do
+            [ -f "$hfile" ] || continue
+
+            # Extract primary metric based on collector type
+            local val
+            case "$collector" in
+                health)    val=$(jsonfilter -i "$hfile" -e '@.score' 2>/dev/null) ;;
+                threat)    val=$(jsonfilter -i "$hfile" -e '@.level' 2>/dev/null) ;;
+                capacity)  val=$(jsonfilter -i "$hfile" -e '@.combined' 2>/dev/null) ;;
+                crowdsec*) val=$(jsonfilter -i "$hfile" -e '@.alerts_24h' 2>/dev/null) ;;
+                mitmproxy) val=$(jsonfilter -i "$hfile" -e '@.threats_today' 2>/dev/null) ;;
+                *)         val=$(jsonfilter -i "$hfile" -e '@.total' 2>/dev/null) ;;
+            esac
+
+            [ -z "$val" ] && val=0
+            [ "$val" -lt "$min" ] && min=$val
+            [ "$val" -gt "$max" ] && max=$val
+            sum=$((sum + val))
+            count=$((count + 1))
+        done
+
+        [ "$count" -gt 0 ] || continue
+        local avg=$((sum / count))
+
+        printf '{"date":"%s","min":%d,"max":%d,"avg":%d,"samples":%d}\n' \
+            "$day" "$min" "$max" "$avg" "$count" > "$daily_file"
+    done
+}
+
+# Cleanup old history files (keep 24h hourly, 30d daily)
+cleanup_history() {
+    local now=$(date +%s)
+    local hourly_cutoff=$((now - 86400))   # 24 hours
+    local daily_cutoff=$((now - 2592000))  # 30 days
+
+    for collector in $COLLECTORS; do
+        # Cleanup hourly (older than 24h)
+        for hfile in "$HISTORY_DIR/hourly/$collector"/*.json; do
+            [ -f "$hfile" ] || continue
+            local mtime=$(stat -c %Y "$hfile" 2>/dev/null || echo 0)
+            [ "$mtime" -lt "$hourly_cutoff" ] && rm -f "$hfile"
+        done
+
+        # Cleanup daily (older than 30d)
+        for dfile in "$HISTORY_DIR/daily/$collector"/*.json; do
+            [ -f "$dfile" ] || continue
+            local mtime=$(stat -c %Y "$dfile" 2>/dev/null || echo 0)
+            [ "$mtime" -lt "$daily_cutoff" ] && rm -f "$dfile"
+        done
+    done
+}
+
+# Generate combined timeline (last 24h evolution)
+generate_timeline() {
+    local now=$(date +%s)
+    local tmp_file="$PERSIST_DIR/.timeline.tmp"
+
+    printf '{"generated":%d,"collectors":{' "$now" > "$tmp_file"
+
+    local first=1
+    for collector in $COLLECTORS; do
+        local hourly_dir="$HISTORY_DIR/hourly/$collector"
+
+        [ "$first" = "0" ] && printf ',' >> "$tmp_file"
+        first=0
+
+        printf '"%s":[' "$collector" >> "$tmp_file"
+
+        # Get last 24 hourly snapshots
+        local hfirst=1
+        for hfile in $(ls -t "$hourly_dir"/*.json 2>/dev/null | head -24); do
+            [ -f "$hfile" ] || continue
+
+            [ "$hfirst" = "0" ] && printf ',' >> "$tmp_file"
+            hfirst=0
+
+            # Extract timestamp and primary value
+            local ts=$(jsonfilter -i "$hfile" -e '@.timestamp' 2>/dev/null || echo 0)
+            local val
+            case "$collector" in
+                health)    val=$(jsonfilter -i "$hfile" -e '@.score' 2>/dev/null) ;;
+                threat)    val=$(jsonfilter -i "$hfile" -e '@.level' 2>/dev/null) ;;
+                capacity)  val=$(jsonfilter -i "$hfile" -e '@.combined' 2>/dev/null) ;;
+                *)         val=0 ;;
+            esac
+            [ -z "$val" ] && val=0
+
+            printf '{"t":%d,"v":%d}' "$ts" "$val" >> "$tmp_file"
+        done
+
+        printf ']' >> "$tmp_file"
+    done
+
+    printf '}}\n' >> "$tmp_file"
+    mv -f "$tmp_file" "$TIMELINE_FILE"
+}
+
+# Generate evolution sparkline data (combined metrics beep line)
+generate_evolution() {
+    local now=$(date +%s)
+    local tmp_file="$PERSIST_DIR/.evolution.tmp"
+
+    printf '{"generated":%d,"window":"24h","points":[' "$now" > "$tmp_file"
+
+    # Combine health, threat, capacity into single timeline
+    local health_dir="$HISTORY_DIR/hourly/health"
+    local threat_dir="$HISTORY_DIR/hourly/threat"
+    local capacity_dir="$HISTORY_DIR/hourly/capacity"
+
+    # Get timestamps from health (most reliable)
+    local first=1
+    for hfile in $(ls -t "$health_dir"/*.json 2>/dev/null | head -48 | tac); do
+        [ -f "$hfile" ] || continue
+
+        local hour=$(basename "$hfile" .json)
+        local ts=$(jsonfilter -i "$hfile" -e '@.timestamp' 2>/dev/null || echo 0)
+
+        # Get values from all three
+        local h=$(jsonfilter -i "$hfile" -e '@.score' 2>/dev/null || echo 100)
+
+        local tfile="$threat_dir/${hour}.json"
+        local t=$(jsonfilter -i "$tfile" -e '@.level' 2>/dev/null 2>/dev/null || echo 0)
+
+        local cfile="$capacity_dir/${hour}.json"
+        local c=$(jsonfilter -i "$cfile" -e '@.combined' 2>/dev/null 2>/dev/null || echo 0)
+
+        [ "$first" = "0" ] && printf ',' >> "$tmp_file"
+        first=0
+
+        # Combined "influence" score: weighted combination
+        # Health (40%), inverse Threat (30%), inverse Capacity (30%)
+        local t_inv=$((100 - t))
+        local c_inv=$((100 - c))
+        local influence=$(( (h * 40 + t_inv * 30 + c_inv * 30) / 100 ))
+
+        printf '{"t":%d,"h":%d,"th":%d,"c":%d,"i":%d}' \
+            "$ts" "$h" "$t" "$c" "$influence" >> "$tmp_file"
+    done
+
+    printf ']}\n' >> "$tmp_file"
+    mv -f "$tmp_file" "$EVOLUTION_FILE"
+}
+
+# Generate heartbeat line (last 60 samples, ~3min of data)
+generate_heartbeat_line() {
+    local now=$(date +%s)
+    local tmp_file="$PERSIST_DIR/.heartbeat.tmp"
+
+    # Read current cache values
+    local h=$(jsonfilter -i "$CACHE_DIR/health.json" -e '@.score' 2>/dev/null || echo 100)
+    local t=$(jsonfilter -i "$CACHE_DIR/threat.json" -e '@.level' 2>/dev/null || echo 0)
+    local c=$(jsonfilter -i "$CACHE_DIR/capacity.json" -e '@.combined' 2>/dev/null || echo 0)
+
+    # Calculate influence
+    local t_inv=$((100 - t))
+    local c_inv=$((100 - c))
+    local influence=$(( (h * 40 + t_inv * 30 + c_inv * 30) / 100 ))
+
+    # Append to rolling buffer (keep last 60)
+    local buffer_file="$PERSIST_DIR/.heartbeat_buffer"
+
+    # Read existing buffer
+    local buffer=""
+    [ -f "$buffer_file" ] && buffer=$(cat "$buffer_file")
+
+    # Append new point
+    local new_point=$(printf '{"t":%d,"h":%d,"th":%d,"c":%d,"i":%d}' "$now" "$h" "$t" "$c" "$influence")
+
+    if [ -z "$buffer" ]; then
+        buffer="[$new_point]"
+    else
+        # Parse existing, keep last 59, add new
+        local count=$(echo "$buffer" | tr ',' '\n' | grep -c '"t":')
+        if [ "$count" -ge 60 ]; then
+            # Remove first element
+            buffer=$(echo "$buffer" | sed 's/^\[{[^}]*},/[/')
+        fi
+        buffer=$(echo "$buffer" | sed 's/\]$//')
+        buffer="$buffer,$new_point]"
+    fi
+
+    echo "$buffer" > "$buffer_file"
+
+    # Write heartbeat line file
+    printf '{"generated":%d,"window":"3m","samples":60,"points":%s}\n' \
+        "$now" "$buffer" > "$tmp_file"
+    mv -f "$tmp_file" "$HEARTBEAT_LINE"
+}
+
+# Main persistence loop (runs every 60s)
+daemon_loop() {
+    init_persist
+    recover_cache
+
+    echo "Stats persistence daemon started"
+
+    while true; do
+        # Persist current cache atomically
+        persist_cache
+
+        # Generate aggregates and timelines
+        aggregate_daily
+        generate_timeline
+        generate_evolution
+
+        # Cleanup old data (hourly check)
+        local hour=$(date +%M)
+        [ "$hour" = "00" ] && cleanup_history
+
+        sleep 60
+    done
+}
+
+# Fast heartbeat loop (runs every 3s for heartbeat line)
+heartbeat_loop() {
+    while true; do
+        generate_heartbeat_line
+        sleep 3
+    done
+}
+
+# CLI
+case "$1" in
+    init)
+        init_persist
+        ;;
+    recover)
+        init_persist
+        recover_cache
+        ;;
+    persist)
+        persist_cache
+        ;;
+    aggregate)
+        aggregate_daily
+        ;;
+    timeline)
+        generate_timeline
+        cat "$TIMELINE_FILE"
+        ;;
+    evolution)
+        generate_evolution
+        cat "$EVOLUTION_FILE"
+        ;;
+    heartbeat)
+        generate_heartbeat_line
+        cat "$HEARTBEAT_LINE"
+        ;;
+    daemon)
+        daemon_loop &
+        heartbeat_loop
+        ;;
+    status)
+        echo "=== Stats Persistence Status ==="
+        echo "Persist Dir: $PERSIST_DIR"
+        echo "Cache Dir: $CACHE_DIR"
+        echo ""
+        echo "Persisted Files:"
+        ls -la "$PERSIST_DIR"/*.json 2>/dev/null || echo "  (none)"
+        echo ""
+        echo "Hourly History:"
+        for collector in $COLLECTORS; do
+            local count=$(ls "$HISTORY_DIR/hourly/$collector"/*.json 2>/dev/null | wc -l)
+            echo "  $collector: $count snapshots"
+        done
+        echo ""
+        echo "Daily History:"
+        for collector in $COLLECTORS; do
+            local count=$(ls "$HISTORY_DIR/daily/$collector"/*.json 2>/dev/null | wc -l)
+            echo "  $collector: $count days"
+        done
+        ;;
+    *)
+        echo "Usage: $0 {init|recover|persist|aggregate|timeline|evolution|heartbeat|daemon|status}"
+        exit 1
+        ;;
+esac

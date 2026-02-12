@@ -2,6 +2,7 @@
 'require view';
 'require form';
 'require uci';
+'require secubox/kiss-theme';
 
 return view.extend({
 	load: function() {
@@ -134,6 +135,8 @@ return view.extend({
 		o.placeholder = 'mistral';
 		o.depends('enabled', '1');
 
-		return m.render();
+		return m.render().then(function(view) {
+			return KissTheme.wrap([view], 'admin/secubox/security/config-advisor/settings');
+		});
 	}
 });

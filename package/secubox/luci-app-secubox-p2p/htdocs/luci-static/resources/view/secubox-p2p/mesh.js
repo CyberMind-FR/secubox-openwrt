@@ -3,6 +3,7 @@
 'require ui';
 'require form';
 'require secubox-p2p/api as P2PAPI';
+'require secubox/kiss-theme';
 
 return view.extend({
 	dnsConfig: {},
@@ -26,7 +27,7 @@ return view.extend({
 	render: function() {
 		var self = this;
 
-		return E('div', { 'class': 'cbi-map' }, [
+		var content = E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, 'Mesh Network Configuration'),
 
 			// DNS Federation Section
@@ -138,6 +139,8 @@ return view.extend({
 				])
 			])
 		]);
+
+		return KissTheme.wrap(content, 'admin/secubox/mirrorbox/mesh');
 	},
 
 	saveDNSConfig: function() {

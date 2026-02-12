@@ -3,6 +3,7 @@
 'require ui';
 'require rpc';
 'require hexojs/api as api';
+'require secubox/kiss-theme';
 
 var callGiteaStatus = rpc.declare({
 	object: 'luci.hexojs',
@@ -339,7 +340,7 @@ return view.extend({
 		var commits = gitData.commits || [];
 		var isRepo = status.is_repo;
 
-		return E('div', { 'class': 'hexo-dashboard' }, [
+		var view = E('div', { 'class': 'hexo-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('hexojs/dashboard.css') }),
 
 			// Header
@@ -779,6 +780,8 @@ return view.extend({
 				])
 			])
 		]);
+
+		return KissTheme.wrap([view], 'admin/services/hexojs/sync');
 	},
 
 	handleSaveApply: null,

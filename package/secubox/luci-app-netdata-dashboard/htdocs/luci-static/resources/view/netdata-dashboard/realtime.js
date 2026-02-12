@@ -5,6 +5,7 @@
 'require dom';
 'require ui';
 'require netdata-dashboard/api as API';
+'require secubox/kiss-theme';
 
 return view.extend({
 	title: _('Netdata Dashboard'),
@@ -318,10 +319,10 @@ return view.extend({
 		// Include CSS
 		var cssLink = E('link', { 'rel': 'stylesheet', 'href': L.resource('netdata-dashboard/dashboard.css') });
 		document.head.appendChild(cssLink);
-		
-		return view;
+
+		return KissTheme.wrap([view], 'admin/status/netdata/realtime');
 	},
-	
+
 	handleSaveApply: null,
 	handleSave: null,
 	handleReset: null

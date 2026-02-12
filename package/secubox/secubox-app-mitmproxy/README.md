@@ -2,11 +2,61 @@
 
 LXC container with mitmproxy for HTTPS traffic inspection and threat detection.
 
+## Multi-Instance Support
+
+SecuBox supports multiple mitmproxy instances for different traffic flows:
+
+| Instance | Purpose | Proxy Port | Web Port | Mode |
+|----------|---------|------------|----------|------|
+| **out** | LAN → Internet (outbound proxy) | 8888 | 8089 | transparent |
+| **in** | WAN → Services (WAF/reverse) | 8889 | 8090 | upstream |
+
+### Instance Commands
+
+```bash
+# List all instances
+mitmproxyctl list-instances
+
+# Status of specific instance
+mitmproxyctl status out
+mitmproxyctl status in
+
+# Shell into instance
+mitmproxyctl shell in
+
+# Start/stop instances (via init.d)
+/etc/init.d/mitmproxy start
+/etc/init.d/mitmproxy stop
+```
+
+### UCI Configuration
+
+Instances are configured in `/etc/config/mitmproxy`:
+
+```
+config instance 'out'
+    option enabled '1'
+    option description 'LAN->Internet Proxy'
+    option container_name 'mitmproxy-out'
+    option proxy_port '8888'
+    option web_port '8089'
+    option mode 'transparent'
+
+config instance 'in'
+    option enabled '1'
+    option description 'WAF/Reverse Proxy'
+    option container_name 'mitmproxy-in'
+    option proxy_port '8889'
+    option web_port '8090'
+    option mode 'upstream'
+    option haproxy_backend '1'
+```
+
 ## Components
 
 | Component | Description |
 |-----------|-------------|
-| **LXC Container** | Debian-based container with mitmproxy |
+| **LXC Containers** | Debian-based containers with mitmproxy (one per instance) |
 | **secubox_analytics.py** | Threat detection addon for mitmproxy |
 | **haproxy_router.py** | HAProxy backend routing addon |
 | **CrowdSec Integration** | Threat logging for automatic IP banning |
@@ -161,11 +211,12 @@ mitmproxyctl haproxy-enable
 
 ### Ports
 
-| Port | Service |
-|------|---------|
-| 8888 | mitmproxy (direct proxy mode) |
-| 8889 | mitmproxy (HAProxy backend inspection) |
-| 8081 | mitmweb UI |
+| Port | Instance | Service |
+|------|----------|---------|
+| 8888 | out | Proxy port (LAN outbound) |
+| 8889 | in | Proxy port (HAProxy/WAF) |
+| 8089 | out | mitmweb UI (outbound) |
+| 8090 | in | mitmweb UI (WAF) |
 
 ### haproxy_router.py Addon
 

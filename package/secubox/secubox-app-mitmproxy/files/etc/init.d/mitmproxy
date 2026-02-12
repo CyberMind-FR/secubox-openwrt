@@ -8,26 +8,49 @@ PROG=/usr/sbin/mitmproxyctl
 NAME=mitmproxy
 CONFIG=mitmproxy
 
-start_service() {
-	local enabled
-	config_load "$CONFIG"
-	config_get enabled main enabled '0'
+start_instance() {
+	local instance="$1"
+	local enabled container_name
 
-	[ "$enabled" = "1" ] || {
-		echo "mitmproxy is disabled. Enable with: uci set mitmproxy.main.enabled=1"
-		return 0
-	}
+	config_get enabled "$instance" enabled '0'
+	config_get container_name "$instance" container_name "mitmproxy-$instance"
 
-	procd_open_instance
-	procd_set_param command "$PROG" service-run
+	[ "$enabled" = "1" ] || return 0
+
+	echo "Starting mitmproxy instance: $instance ($container_name)"
+
+	procd_open_instance "$instance"
+	procd_set_param command "$PROG" service-run "$instance"
 	procd_set_param respawn 3600 5 5
 	procd_set_param stdout 1
 	procd_set_param stderr 1
 	procd_close_instance
 }
 
+start_service() {
+	local main_enabled
+	config_load "$CONFIG"
+	config_get main_enabled main enabled '0'
+
+	[ "$main_enabled" = "1" ] || {
+		echo "mitmproxy is disabled. Enable with: uci set mitmproxy.main.enabled=1"
+		return 0
+	}
+
+	# Start all enabled instances
+	config_foreach start_instance instance
+}
+
+stop_instance() {
+	local instance="$1"
+	"$PROG" service-stop "$instance" 2>/dev/null
+}
+
 stop_service() {
-	"$PROG" service-stop
+	config_load "$CONFIG"
+	config_foreach stop_instance instance
+	# Also stop legacy single instance
+	"$PROG" service-stop 2>/dev/null
 }
 
 reload_service() {

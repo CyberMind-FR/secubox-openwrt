@@ -5,6 +5,7 @@
 'require rpc';
 'require poll';
 'require ui';
+'require secubox/kiss-theme';
 
 var callSimplexStatus = rpc.declare({
 	object: 'luci.simplex',
@@ -453,6 +454,6 @@ return view.extend({
 				'</div>';
 		};
 
-		return m.render();
+		return KissTheme.wrap([m.render()], 'admin/services/simplex');
 	}
 });

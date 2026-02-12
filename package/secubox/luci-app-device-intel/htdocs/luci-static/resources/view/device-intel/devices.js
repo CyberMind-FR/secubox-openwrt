@@ -3,6 +3,7 @@
 'require dom';
 'require ui';
 'require device-intel/api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	load: function() {
@@ -88,14 +89,16 @@ return view.extend({
 			tbody
 		]);
 
-		return E('div', {}, [
+		var content = [
 			cssLink,
 			E('h2', {}, _('Devices')),
 			E('div', { 'class': 'cbi-section' }, [
 				filterBar,
 				table
 			])
-		]);
+		];
+
+		return KissTheme.wrap(content, 'admin/secubox/services/device-intel/devices');
 	},
 
 	vendorDisplay: function(d) {

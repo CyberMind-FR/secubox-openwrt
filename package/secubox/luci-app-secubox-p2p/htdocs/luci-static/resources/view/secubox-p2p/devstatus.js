@@ -4,6 +4,7 @@
 'require dom';
 'require poll';
 'require secubox-p2p/api as P2PAPI';
+'require secubox/kiss-theme';
 
 /**
  * SecuBox Development Status Widget
@@ -248,10 +249,11 @@ return view.extend({
 		var self = this;
 
 		if (this.loading) {
-			return E('div', { 'class': 'cbi-map' }, [
+			var loadingContent = E('div', { 'class': 'cbi-map' }, [
 				E('h2', {}, _('Development Status')),
 				E('p', { 'class': 'spinning' }, _('Loading development data...'))
 			]);
+			return KissTheme.wrap(loadingContent, 'admin/secubox/p2p/devstatus');
 		}
 
 		// Start polling
@@ -261,7 +263,7 @@ return view.extend({
 			});
 		}, this.refreshInterval);
 
-		return E('div', { 'class': 'cbi-map' }, [
+		var content = E('div', { 'class': 'cbi-map' }, [
 			E('div', { 'style': 'display:flex; justify-content:space-between; align-items:center; margin-bottom:1em;' }, [
 				E('h2', { 'style': 'margin:0;' }, _('Development Status')),
 				E('span', {
@@ -272,6 +274,8 @@ return view.extend({
 				_('Real-time development progress from Gitea and MirrorBox App Store')),
 			E('div', { 'id': 'devstatus-content' }, this.renderContent())
 		]);
+
+		return KissTheme.wrap(content, 'admin/secubox/p2p/devstatus');
 	},
 
 	renderContent: function() {

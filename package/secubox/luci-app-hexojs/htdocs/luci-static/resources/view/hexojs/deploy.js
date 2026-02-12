@@ -3,6 +3,7 @@
 'require poll';
 'require ui';
 'require hexojs/api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	title: _('Deploy'),
@@ -99,7 +100,7 @@ return view.extend({
 
 		var hasRepo = config.deploy && config.deploy.repo;
 
-		return E('div', { 'class': 'hexo-dashboard' }, [
+		var view = E('div', { 'class': 'hexo-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('hexojs/dashboard.css') }),
 
 			// Header
@@ -176,6 +177,8 @@ return view.extend({
 				}, deploy.log || _('No recent deploy activity.'))
 			])
 		]);
+
+		return KissTheme.wrap([view], 'admin/services/hexojs/deploy');
 	},
 
 	handleSaveApply: null,

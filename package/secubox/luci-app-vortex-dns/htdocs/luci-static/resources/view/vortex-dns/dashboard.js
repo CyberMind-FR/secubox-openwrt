@@ -4,6 +4,7 @@
 'require ui';
 'require form';
 'require uci';
+'require secubox/kiss-theme';
 
 var callStatus = rpc.declare({
 	object: 'luci.vortex-dns',
@@ -118,7 +119,7 @@ return view.extend({
 			this.renderActionsSection(status)
 		]);
 
-		return view;
+		return KissTheme.wrap([view], 'admin/services/vortex-dns');
 	},
 
 	renderModeBadge: function(mode) {

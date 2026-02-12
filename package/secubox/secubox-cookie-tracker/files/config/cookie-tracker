@@ -1,0 +1,84 @@
+config cookie_tracker 'main'
+	option enabled '1'
+	# Database path
+	option db_path '/var/lib/cookie-tracker/cookies.db'
+	# Auto-classify cookies using known tracker database
+	option auto_classify '1'
+	# Block tracking cookies (requires Vortex integration)
+	option block_tracking '0'
+	# Block advertising cookies
+	option block_advertising '0'
+	# Log level: debug, info, warn, error
+	option log_level 'info'
+
+# Cookie categories and their defaults
+config category 'essential'
+	option description 'Required for basic site functionality'
+	option block '0'
+	option alert '0'
+
+config category 'functional'
+	option description 'Enhance user experience (preferences, languages)'
+	option block '0'
+	option alert '0'
+
+config category 'analytics'
+	option description 'Track user behavior for site improvement'
+	option block '0'
+	option alert '1'
+
+config category 'advertising'
+	option description 'Used for targeted advertising'
+	option block '1'
+	option alert '1'
+
+config category 'tracking'
+	option description 'Cross-site tracking and fingerprinting'
+	option block '1'
+	option alert '1'
+
+# Known tracker patterns (extend with custom rules)
+config tracker_rule 'google_analytics'
+	option pattern '_ga|_gid|_gat|__utm'
+	option category 'analytics'
+	option source 'builtin'
+
+config tracker_rule 'facebook'
+	option pattern '_fbp|_fbc|fr|datr'
+	option category 'advertising'
+	option source 'builtin'
+
+config tracker_rule 'doubleclick'
+	option domain_pattern 'doubleclick\.net|googlesyndication\.com'
+	option category 'advertising'
+	option source 'builtin'
+
+config tracker_rule 'segment'
+	option pattern 'ajs_user_id|ajs_anonymous_id'
+	option category 'analytics'
+	option source 'builtin'
+
+config tracker_rule 'mixpanel'
+	option pattern 'mp_.*_mixpanel'
+	option category 'analytics'
+	option source 'builtin'
+
+config tracker_rule 'hubspot'
+	option pattern '__hs.*|hubspotutk'
+	option category 'analytics'
+	option source 'builtin'
+
+# Whitelist - never block these cookies
+config whitelist 'trusted'
+	list domain ''
+	list cookie_name ''
+
+# Integration settings
+config integration 'mitmproxy'
+	option enabled '1'
+	option addon_path '/usr/lib/secubox/cookie-tracker/mitmproxy-addon.py'
+
+config integration 'vortex'
+	option enabled '0'
+	# Feed blocked tracker domains to Vortex Firewall
+	option feed_blocklist '0'

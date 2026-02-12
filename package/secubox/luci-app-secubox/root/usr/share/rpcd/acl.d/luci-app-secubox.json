@@ -45,7 +45,13 @@
                     "p2p_discover",
                     "p2p_get_catalog",
                     "p2p_get_peer_catalog",
-                    "p2p_get_shared_services"
+                    "p2p_get_shared_services",
+                    "get_timeline",
+                    "get_evolution",
+                    "get_heartbeat_line",
+                    "get_stats_status",
+                    "get_history",
+                    "get_collector_cache"
                 ],
                 "luci.service-registry": [
                     "list_services",

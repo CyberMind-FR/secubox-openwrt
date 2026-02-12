@@ -1,167 +1,2642 @@
 #!/bin/sh
+
 #
 # SecuBox Core RPCD Interface
-# Thin dispatcher that loads modular method handlers
-#
-# Modules are in: /usr/lib/secubox/rpcd.d/
+# Provides ubus API for SecuBox operations
 #
 
 . /usr/share/libubox/jshn.sh
 . /lib/functions.sh
 
-RPCD_MODULE_DIR="/usr/lib/secubox/rpcd.d"
-
-# Source common utilities
-[ -f "$RPCD_MODULE_DIR/_common.sh" ] && . "$RPCD_MODULE_DIR/_common.sh"
-
-# Source all modules
-_load_modules() {
-	for mod in "$RPCD_MODULE_DIR"/*.sh; do
-		[ -f "$mod" ] || continue
-		[ "$(basename "$mod")" = "_common.sh" ] && continue
-		. "$mod"
-	done
-}
-
-# List all methods from all modules
-_list_all_methods() {
-	json_init
-
-	# Core module
-	[ "$(type -t list_methods_core)" = "function" ] 2>/dev/null && list_methods_core
-	type list_methods_core >/dev/null 2>&1 && list_methods_core
-
-	# Modules module
-	type list_methods_modules >/dev/null 2>&1 && list_methods_modules
-
-	# Profiles module
-	type list_methods_profiles >/dev/null 2>&1 && list_methods_profiles
-
-	# Snapshots module
-	type list_methods_snapshots >/dev/null 2>&1 && list_methods_snapshots
-
-	# Health module
-	type list_methods_health >/dev/null 2>&1 && list_methods_health
-
-	# Dashboard module
-	type list_methods_dashboard >/dev/null 2>&1 && list_methods_dashboard
-
-	# Appstore module
-	type list_methods_appstore >/dev/null 2>&1 && list_methods_appstore
-
-	# State module
-	type list_methods_state >/dev/null 2>&1 && list_methods_state
-
-	# Network module
-	type list_methods_network >/dev/null 2>&1 && list_methods_network
-
-	# Feeds module
-	type list_methods_feeds >/dev/null 2>&1 && list_methods_feeds
-
-	# Skills module
-	type list_methods_skills >/dev/null 2>&1 && list_methods_skills
-
-	# Feedback module
-	type list_methods_feedback >/dev/null 2>&1 && list_methods_feedback
-
-	# P2P module
-	type list_methods_p2p >/dev/null 2>&1 && list_methods_p2p
-
-	json_dump
-}
-
-# Dispatch method call to appropriate handler
-_call_method() {
-	local method="$1"
-
-	# Try each handler until one succeeds
-	# Order matches typical call frequency for performance
-
-	# Core methods (most common)
-	if type handle_core >/dev/null 2>&1; then
-		handle_core "$method" && return 0
-	fi
-
-	# Dashboard methods
-	if type handle_dashboard >/dev/null 2>&1; then
-		handle_dashboard "$method" && return 0
-	fi
-
-	# Health methods
-	if type handle_health >/dev/null 2>&1; then
-		handle_health "$method" && return 0
-	fi
-
-	# Appstore methods
-	if type handle_appstore >/dev/null 2>&1; then
-		handle_appstore "$method" && return 0
-	fi
-
-	# Modules methods
-	if type handle_modules >/dev/null 2>&1; then
-		handle_modules "$method" && return 0
-	fi
-
-	# Profiles methods
-	if type handle_profiles >/dev/null 2>&1; then
-		handle_profiles "$method" && return 0
-	fi
-
-	# Snapshots methods
-	if type handle_snapshots >/dev/null 2>&1; then
-		handle_snapshots "$method" && return 0
-	fi
-
-	# State methods
-	if type handle_state >/dev/null 2>&1; then
-		handle_state "$method" && return 0
-	fi
-
-	# Network methods
-	if type handle_network >/dev/null 2>&1; then
-		handle_network "$method" && return 0
-	fi
-
-	# Feeds methods
-	if type handle_feeds >/dev/null 2>&1; then
-		handle_feeds "$method" && return 0
-	fi
-
-	# Skills methods
-	if type handle_skills >/dev/null 2>&1; then
-		handle_skills "$method" && return 0
-	fi
-
-	# Feedback methods
-	if type handle_feedback >/dev/null 2>&1; then
-		handle_feedback "$method" && return 0
-	fi
-
-	# P2P methods
-	if type handle_p2p >/dev/null 2>&1; then
-		handle_p2p "$method" && return 0
-	fi
-
-	# Unknown method
-	json_init
-	json_add_boolean "error" true
-	json_add_string "message" "Unknown method: $method"
-	json_dump
-	return 1
-}
-
-# Main dispatcher
 case "$1" in
 	list)
-		_load_modules
-		_list_all_methods
+		json_init
+
+		# Core status and information
+		json_add_object "getStatus"
+		json_close_object
+
+		json_add_object "getVersion"
+		json_close_object
+
+		json_add_object "reload"
+		json_close_object
+
+		# Module management
+		json_add_object "getModules"
+		json_close_object
+
+		json_add_object "getModuleInfo"
+			json_add_string "module" "string"
+		json_close_object
+
+		json_add_object "installModule"
+			json_add_string "module" "string"
+			json_add_boolean "dryrun" "boolean"
+		json_close_object
+
+		json_add_object "removeModule"
+			json_add_string "module" "string"
+		json_close_object
+
+		json_add_object "updateModule"
+			json_add_string "module" "string"
+		json_close_object
+
+		# Profile management
+		json_add_object "listProfiles"
+		json_close_object
+
+		json_add_object "getProfile"
+			json_add_string "profile" "string"
+		json_close_object
+
+		json_add_object "applyProfile"
+			json_add_string "profile" "string"
+			json_add_boolean "dryrun" "boolean"
+		json_close_object
+
+		json_add_object "rollbackProfile"
+		json_close_object
+
+		json_add_object "validateProfile"
+			json_add_string "profile" "string"
+		json_close_object
+
+		# Diagnostics
+		json_add_object "runDiagnostics"
+			json_add_string "target" "string"
+		json_close_object
+
+		json_add_object "getHealth"
+		json_close_object
+
+		json_add_object "get_network_health"
+		json_close_object
+
+		json_add_object "get_vital_services"
+		json_close_object
+
+		json_add_object "get_full_health_report"
+		json_close_object
+
+		json_add_object "getLogs"
+			json_add_string "service" "string"
+			json_add_int "lines" "integer"
+		json_close_object
+
+		# Snapshot/Recovery
+		json_add_object "createSnapshot"
+			json_add_string "name" "string"
+		json_close_object
+
+		json_add_object "listSnapshots"
+		json_close_object
+
+		json_add_object "restoreSnapshot"
+			json_add_string "snapshot" "string"
+		json_close_object
+
+		# AppStore (NEW - uses catalog files)
+		json_add_object "get_appstore_apps"
+		json_close_object
+
+		json_add_object "list_apps"
+		json_close_object
+
+		json_add_object "get_appstore_app"
+			json_add_string "app_id" "string"
+		json_close_object
+
+		json_add_object "install_appstore_app"
+			json_add_string "app_id" "string"
+		json_close_object
+
+		json_add_object "remove_appstore_app"
+			json_add_string "app_id" "string"
+		json_close_object
+
+		# Catalog source management
+		json_add_object "get_catalog_sources"
+		json_close_object
+
+		json_add_object "set_catalog_source"
+			json_add_string "source" "string"
+		json_close_object
+
+		json_add_object "sync_catalog"
+			json_add_string "source" "string"
+		json_close_object
+
+		# Version and update management
+		json_add_object "check_updates"
+		json_close_object
+
+		json_add_object "get_app_versions"
+			json_add_string "app_id" "string"
+		json_close_object
+
+		json_add_object "get_changelog"
+			json_add_string "app_id" "string"
+			json_add_string "from_version" "string"
+			json_add_string "to_version" "string"
+		json_close_object
+
+		# Widget data
+		json_add_object "get_widget_data"
+			json_add_string "app_id" "string"
+		json_close_object
+
+			# Dashboard and monitoring
+		json_add_object "get_dashboard_data"
+		json_close_object
+		json_add_object "get_system_overview"
+		json_close_object
+		json_add_object "get_active_sessions"
+		json_close_object
+
+		json_add_object "get_system_health"
+		json_close_object
+
+		json_add_object "get_public_ips"
+		json_close_object
+
+		json_add_object "refresh_public_ips"
+		json_close_object
+
+		json_add_object "get_alerts"
+		json_close_object
+
+		# Quick actions
+		json_add_object "quick_action"
+			json_add_string "action" "string"
+		json_close_object
+
+		# State management
+		json_add_object "get_component_state"
+			json_add_string "component_id" "string"
+		json_close_object
+
+		json_add_object "set_component_state"
+			json_add_string "component_id" "string"
+			json_add_string "new_state" "string"
+			json_add_string "reason" "string"
+		json_close_object
+
+		json_add_object "get_state_history"
+			json_add_string "component_id" "string"
+			json_add_int "limit" "integer"
+		json_close_object
+
+		json_add_object "list_components"
+			json_add_string "state_filter" "string"
+			json_add_string "type_filter" "string"
+		json_close_object
+
+		json_add_object "freeze_component"
+			json_add_string "component_id" "string"
+			json_add_string "reason" "string"
+		json_close_object
+
+		json_add_object "clear_error_state"
+			json_add_string "component_id" "string"
+		json_close_object
+
+		# Component registry management
+		json_add_object "get_component"
+			json_add_string "component_id" "string"
+		json_close_object
+
+		json_add_object "list_all_components"
+			json_add_string "type" "string"
+			json_add_string "profile" "string"
+		json_close_object
+
+		json_add_object "get_component_tree"
+			json_add_string "component_id" "string"
+		json_close_object
+
+		json_add_object "update_component_settings"
+			json_add_string "component_id" "string"
+			json_add_object "settings"
+			json_close_object
+		json_close_object
+
+		json_add_object "sync_component_registry"
+		json_close_object
+
+		# WAN Access management
+		json_add_object "get_wan_access"
+		json_close_object
+
+		json_add_object "set_wan_access"
+			json_add_boolean "enabled" "boolean"
+			json_add_boolean "https_enabled" "boolean"
+			json_add_int "https_port" "integer"
+			json_add_boolean "http_enabled" "boolean"
+			json_add_int "http_port" "integer"
+			json_add_boolean "ssh_enabled" "boolean"
+			json_add_int "ssh_port" "integer"
+		json_close_object
+
+		json_add_object "apply_wan_access"
+		json_close_object
+
+		# Services discovery
+		json_add_object "get_services"
+		json_close_object
+
+		# Proxy mode management
+		json_add_object "get_proxy_mode"
+		json_close_object
+
+		json_add_object "set_proxy_mode"
+			json_add_string "mode" "string"
+		json_close_object
+
+		# Feed management (new)
+		json_add_object "list_feeds"
+		json_close_object
+
+		json_add_object "add_feed"
+			json_add_string "name" "string"
+			json_add_string "url" "string"
+			json_add_string "feed_type" "string"
+			json_add_string "description" "string"
+		json_close_object
+
+		json_add_object "remove_feed"
+			json_add_string "name" "string"
+		json_close_object
+
+		json_add_object "share_feed"
+			json_add_string "name" "string"
+		json_close_object
+
+		json_add_object "import_feed"
+			json_add_string "url" "string"
+		json_close_object
+
+		# Profile management (extended)
+		json_add_object "export_profile"
+			json_add_string "name" "string"
+			json_add_boolean "include_feeds" "boolean"
+		json_close_object
+
+		json_add_object "import_profile"
+			json_add_string "url" "string"
+			json_add_string "mode" "string"
+		json_close_object
+
+		json_add_object "share_profile"
+			json_add_string "profile" "string"
+		json_close_object
+
+		# Skill management (new)
+		json_add_object "list_skills"
+		json_close_object
+
+		json_add_object "get_skill_providers"
+			json_add_string "skill" "string"
+		json_close_object
+
+		json_add_object "install_skill"
+			json_add_string "skill" "string"
+		json_close_object
+
+		json_add_object "check_skills"
+			json_add_string "profile" "string"
+		json_close_object
+
+		# Feedback management (new)
+		json_add_object "report_issue"
+			json_add_string "app_id" "string"
+			json_add_string "type" "string"
+			json_add_string "summary" "string"
+			json_add_string "details" "string"
+		json_close_object
+
+		json_add_object "resolve_issue"
+			json_add_string "issue_id" "string"
+			json_add_string "description" "string"
+		json_close_object
+
+		json_add_object "search_resolutions"
+			json_add_string "keyword" "string"
+		json_close_object
+
+		json_add_object "list_issues"
+			json_add_string "filter" "string"
+		json_close_object
+
+		# P2P Hub - Collaborative catalog sharing
+		json_add_object "p2p_get_peers"
+		json_close_object
+
+		json_add_object "p2p_discover"
+		json_close_object
+
+		json_add_object "p2p_add_peer"
+			json_add_string "address" "string"
+			json_add_string "name" "string"
+		json_close_object
+
+		json_add_object "p2p_remove_peer"
+			json_add_string "peer_id" "string"
+		json_close_object
+
+		json_add_object "p2p_get_peer_catalog"
+			json_add_string "peer_id" "string"
+		json_close_object
+
+		json_add_object "p2p_share_catalog"
+			json_add_boolean "enabled" "boolean"
+		json_close_object
+
+		json_add_object "p2p_get_settings"
+		json_close_object
+
+		json_add_object "p2p_set_settings"
+			json_add_object "settings"
+		json_close_object
+
+	json_dump
 		;;
+
 	call)
-		_load_modules
-		_call_method "$2"
-		;;
-	*)
-		echo "Usage: $0 {list|call} [method]"
-		exit 1
+		case "$2" in
+			getStatus)
+				/usr/sbin/secubox-core status
+				;;
+
+			getVersion)
+				json_init
+				json_add_string "version" "0.8.0"
+				json_add_string "core" "secubox-core"
+				json_add_string "build_date" "$(date -u +%Y-%m-%d)"
+				json_dump
+				;;
+
+			reload)
+				/usr/sbin/secubox-core reload
+				json_init
+				json_add_boolean "success" 1
+				json_dump
+				;;
+
+			getModules)
+				/usr/sbin/secubox-appstore list --json
+				;;
+
+			getModuleInfo)
+				read -r input
+				module=$(echo "$input" | jsonfilter -e '@.module')
+				/usr/sbin/secubox-appstore info "$module"
+				;;
+
+			installModule)
+				read -r input
+				module=$(echo "$input" | jsonfilter -e '@.module')
+				dryrun=$(echo "$input" | jsonfilter -e '@.dryrun')
+				/usr/sbin/secubox-appstore install "$module" ${dryrun:+--dryrun}
+				;;
+
+			removeModule)
+				read -r input
+				module=$(echo "$input" | jsonfilter -e '@.module')
+				/usr/sbin/secubox-appstore remove "$module"
+				;;
+
+			updateModule)
+				read -r input
+				module=$(echo "$input" | jsonfilter -e '@.module')
+				/usr/sbin/secubox-appstore update "$module"
+				;;
+
+			listProfiles)
+				/usr/sbin/secubox-profile list --json
+				;;
+
+			getProfile)
+				read -r input
+				profile=$(echo "$input" | jsonfilter -e '@.profile')
+				/usr/sbin/secubox-profile show "$profile"
+				;;
+
+			applyProfile)
+				read -r input
+				profile=$(echo "$input" | jsonfilter -e '@.profile')
+				dryrun=$(echo "$input" | jsonfilter -e '@.dryrun')
+				result=$(/usr/sbin/secubox-profile apply "$profile" ${dryrun:+--dryrun} 2>&1)
+				if [ $? -eq 0 ]; then
+					echo '{"success":true,"message":"Profile applied successfully"}'
+				else
+					echo "{\"success\":false,\"message\":\"Failed to apply profile\",\"error\":\"$result\"}"
+				fi
+				;;
+
+			rollbackProfile)
+				# Rollback to last snapshot created before profile application
+				if [ -f /usr/sbin/secubox-recovery ]; then
+					result=$(/usr/sbin/secubox-recovery restore last 2>&1)
+					if [ $? -eq 0 ]; then
+						echo '{"success":true,"message":"Rolled back to last snapshot"}'
+					else
+						echo "{\"success\":false,\"message\":\"Rollback failed\",\"error\":\"$result\"}"
+					fi
+				else
+					echo '{"success":false,"message":"Recovery system not available"}'
+				fi
+				;;
+
+			validateProfile)
+				read -r input
+				profile=$(echo "$input" | jsonfilter -e '@.profile')
+				/usr/sbin/secubox-profile validate "$profile"
+				;;
+
+			runDiagnostics)
+				read -r input
+				target=$(echo "$input" | jsonfilter -e '@.target')
+				/usr/sbin/secubox-diagnostics run "${target:-all}"
+				;;
+
+			getHealth)
+				/usr/sbin/secubox-core health
+				;;
+
+			get_network_health)
+				# Network health monitoring - detects CRC errors, link flapping
+				DMESG_LINES=500
+				FLAP_THRESHOLD=5
+				CRC_THRESHOLD=10
+
+				json_init
+				json_add_string "timestamp" "$(date -Iseconds)"
+				json_add_object "interfaces"
+
+				overall="healthy"
+				critical_count=0
+				warning_count=0
+
+				for iface_path in /sys/class/net/eth* /sys/class/net/wan* /sys/class/net/lan*; do
+					[ -d "$iface_path" ] || continue
+					[ -d "$iface_path/device" ] || continue
+					iface=$(basename "$iface_path")
+
+					current_state=$(cat "$iface_path/operstate" 2>/dev/null || echo "unknown")
+					crc_count=$(dmesg | tail -n $DMESG_LINES | grep -c "$iface.*crc error" 2>/dev/null)
+					crc_count=${crc_count:-0}
+					link_up=$(dmesg | tail -n $DMESG_LINES | grep -c "$iface: Link is Up" 2>/dev/null)
+					link_up=${link_up:-0}
+					link_down=$(dmesg | tail -n $DMESG_LINES | grep -c "$iface: Link is Down" 2>/dev/null)
+					link_down=${link_down:-0}
+					link_changes=$((link_up + link_down))
+
+					status="ok"
+					issues=""
+
+					if [ "$crc_count" -ge "$CRC_THRESHOLD" ]; then
+						status="critical"
+						issues="CRC errors ($crc_count)"
+						critical_count=$((critical_count + 1))
+					fi
+
+					if [ "$link_changes" -ge "$FLAP_THRESHOLD" ]; then
+						[ "$status" = "ok" ] && status="warning"
+						[ -n "$issues" ] && issues="$issues; "
+						issues="${issues}Link flapping ($link_changes changes)"
+						warning_count=$((warning_count + 1))
+					fi
+
+					rx_errors=$(cat "$iface_path/statistics/rx_errors" 2>/dev/null || echo 0)
+					tx_errors=$(cat "$iface_path/statistics/tx_errors" 2>/dev/null || echo 0)
+
+					json_add_object "$iface"
+					json_add_string "status" "$status"
+					json_add_string "state" "$current_state"
+					json_add_int "crc_errors" "$crc_count"
+					json_add_int "link_changes" "$link_changes"
+					json_add_int "rx_errors" "$rx_errors"
+					json_add_int "tx_errors" "$tx_errors"
+					json_add_string "issues" "$issues"
+					json_close_object
+				done
+
+				json_close_object
+
+				if [ "$critical_count" -gt 0 ]; then
+					overall="critical"
+				elif [ "$warning_count" -gt 0 ]; then
+					overall="warning"
+				fi
+
+				json_add_string "overall" "$overall"
+				json_add_int "critical_interfaces" "$critical_count"
+				json_add_int "warning_interfaces" "$warning_count"
+
+				if [ "$overall" != "healthy" ]; then
+					json_add_array "recommendations"
+					[ "$critical_count" -gt 0 ] && json_add_string "" "Check/replace Ethernet cables"
+					[ "$critical_count" -gt 0 ] && json_add_string "" "Try different port on switch/modem"
+					[ "$warning_count" -gt 0 ] && json_add_string "" "Monitor link stability"
+					json_close_array
+				fi
+
+				json_dump
+				;;
+
+			get_vital_services)
+				# Vital services monitoring for web hosting and remote management
+				json_init
+				json_add_string "timestamp" "$(date -Iseconds)"
+
+				# Helper function to check service
+				check_service() {
+					local name="$1"
+					local category="$2"
+					local check_type="$3"
+					local check_value="$4"
+					local description="$5"
+					local critical="$6"
+
+					local status="unknown"
+					local details=""
+
+					case "$check_type" in
+						process)
+							if pgrep -f "$check_value" >/dev/null 2>&1; then
+								status="running"
+							else
+								status="stopped"
+							fi
+							;;
+						port)
+							if netstat -tln 2>/dev/null | grep -q ":${check_value} "; then
+								status="running"
+								details="Port $check_value listening"
+							else
+								status="stopped"
+								details="Port $check_value not listening"
+							fi
+							;;
+						init)
+							if [ -f "/etc/init.d/$check_value" ]; then
+								if /etc/init.d/$check_value enabled 2>/dev/null; then
+									if /etc/init.d/$check_value running 2>/dev/null; then
+										status="running"
+									else
+										status="stopped"
+									fi
+								else
+									status="disabled"
+								fi
+							else
+								status="not_installed"
+							fi
+							;;
+						lxc)
+							if lxc-info -n "$check_value" -s 2>/dev/null | grep -q "RUNNING"; then
+								status="running"
+							elif lxc-info -n "$check_value" 2>/dev/null | grep -q "State"; then
+								status="stopped"
+							else
+								status="not_installed"
+							fi
+							;;
+						file)
+							if [ -f "$check_value" ]; then
+								status="present"
+							else
+								status="missing"
+							fi
+							;;
+					esac
+
+					json_add_object ""
+					json_add_string "name" "$name"
+					json_add_string "category" "$category"
+					json_add_string "status" "$status"
+					json_add_string "description" "$description"
+					json_add_boolean "critical" "${critical:-0}"
+					[ -n "$details" ] && json_add_string "details" "$details"
+					json_close_object
+				}
+
+				# Core Infrastructure Services
+				json_add_array "core"
+				check_service "SSH" "remote" "port" "22" "Remote shell access" 1
+				check_service "HTTPS Admin" "remote" "port" "8444" "LuCI admin interface" 1
+				check_service "DNS" "network" "port" "53" "Domain name resolution" 1
+				check_service "DHCP" "network" "process" "dnsmasq" "IP address assignment" 1
+				check_service "Firewall" "security" "process" "fw4" "Network firewall" 1
+				json_close_array
+
+				# Security Services
+				json_add_array "security"
+				check_service "CrowdSec" "security" "process" "crowdsec" "Intrusion prevention" 1
+				check_service "CrowdSec Bouncer" "security" "process" "crowdsec-firewall-bouncer" "Firewall bouncer" 1
+				check_service "Tor" "privacy" "init" "tor" "Anonymous routing" 0
+				json_close_array
+
+				# Web Publishing Services
+				json_add_array "publishers"
+				check_service "HAProxy" "proxy" "lxc" "haproxy" "Load balancer & reverse proxy" 1
+				check_service "HexoJS" "cms" "lxc" "hexojs" "Static blog generator" 0
+				check_service "Gitea" "devops" "lxc" "gitea" "Git repository hosting" 0
+				check_service "Streamlit" "app" "lxc" "streamlit" "Python web apps" 0
+				json_close_array
+
+				# Media & App Services
+				json_add_array "apps"
+				check_service "Lyrion" "media" "lxc" "lyrion" "Music streaming server" 0
+				check_service "MagicMirror" "display" "lxc" "magicmirror2" "Smart mirror display" 0
+				check_service "PicoBrew" "app" "lxc" "picobrew" "Brewing automation" 0
+				json_close_array
+
+				# Monitoring Services
+				json_add_array "monitoring"
+				check_service "Netifyd" "monitoring" "process" "netifyd" "Network intelligence" 0
+				check_service "Syslog-ng" "logging" "process" "syslog-ng" "System logging" 1
+				json_close_array
+
+				# Calculate summary
+				json_add_object "summary"
+				total=0
+				running=0
+				stopped=0
+				critical_down=0
+
+				for svc in /etc/init.d/*; do
+					[ -x "$svc" ] || continue
+					total=$((total + 1))
+				done
+
+				# Count running LXC containers
+				lxc_running=$(lxc-ls --running 2>/dev/null | wc -w)
+				lxc_total=$(lxc-ls 2>/dev/null | wc -w)
+
+				json_add_int "init_services" "$total"
+				json_add_int "lxc_running" "$lxc_running"
+				json_add_int "lxc_total" "$lxc_total"
+				json_close_object
+
+				json_dump
+				;;
+
+			get_full_health_report)
+				# Combined health report: network + services + system
+				json_init
+				json_add_string "timestamp" "$(date -Iseconds)"
+				json_add_string "hostname" "$(uci get system.@system[0].hostname 2>/dev/null || hostname)"
+
+				# System info
+				json_add_object "system"
+				json_add_int "uptime" "$(cut -d. -f1 /proc/uptime)"
+				json_add_string "load" "$(cut -d' ' -f1-3 /proc/loadavg)"
+
+				mem_total=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+				mem_avail=$(awk '/MemAvailable/ {print $2}' /proc/meminfo)
+				mem_avail=${mem_avail:-0}
+				mem_used=$((mem_total - mem_avail))
+				mem_pct=$((mem_used * 100 / mem_total))
+				json_add_int "memory_percent" "$mem_pct"
+
+				disk_pct=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+				json_add_int "disk_percent" "${disk_pct:-0}"
+				json_close_object
+
+				# Network Health Summary
+				json_add_object "network"
+				net_overall="healthy"
+				net_issues=0
+
+				for iface_path in /sys/class/net/eth* /sys/class/net/wan*; do
+					[ -d "$iface_path" ] || continue
+					[ -d "$iface_path/device" ] || continue
+					iface=$(basename "$iface_path")
+
+					crc=$(dmesg | tail -n 500 | grep -c "$iface.*crc error" 2>/dev/null)
+					crc=${crc:-0}
+					flap=$(dmesg | tail -n 500 | grep -c "$iface: Link is" 2>/dev/null)
+					flap=${flap:-0}
+
+					if [ "$crc" -ge 10 ] || [ "$flap" -ge 10 ]; then
+						net_overall="critical"
+						net_issues=$((net_issues + 1))
+						json_add_object "$iface"
+						json_add_string "status" "critical"
+						json_add_int "crc_errors" "$crc"
+						json_add_int "link_changes" "$flap"
+						json_close_object
+					fi
+				done
+
+				json_add_string "overall" "$net_overall"
+				json_add_int "issues" "$net_issues"
+				json_close_object
+
+				# Critical Services Status
+				json_add_object "services"
+				svc_ok=0
+				svc_down=0
+
+				# Check critical services
+				for svc in sshd dropbear dnsmasq haproxy crowdsec; do
+					if pgrep -x "$svc" >/dev/null 2>&1 || pgrep -f "$svc" >/dev/null 2>&1; then
+						svc_ok=$((svc_ok + 1))
+					else
+						# Check if it's supposed to be running
+						if [ -f "/etc/init.d/$svc" ] && /etc/init.d/$svc enabled 2>/dev/null; then
+							svc_down=$((svc_down + 1))
+						fi
+					fi
+				done
+
+				# Check LXC containers
+				lxc_expected=$(lxc-ls 2>/dev/null | wc -w)
+				lxc_running=$(lxc-ls --running 2>/dev/null | wc -w)
+
+				json_add_int "services_ok" "$svc_ok"
+				json_add_int "services_down" "$svc_down"
+				json_add_int "containers_running" "$lxc_running"
+				json_add_int "containers_total" "$lxc_expected"
+
+				if [ "$svc_down" -gt 0 ]; then
+					json_add_string "overall" "warning"
+				else
+					json_add_string "overall" "healthy"
+				fi
+				json_close_object
+
+				# Overall health score
+				health_score=100
+				[ "$net_overall" = "critical" ] && health_score=$((health_score - 30))
+				[ "$svc_down" -gt 0 ] && health_score=$((health_score - (svc_down * 10)))
+				[ "$mem_pct" -gt 90 ] && health_score=$((health_score - 10))
+				[ "${disk_pct:-0}" -gt 90 ] && health_score=$((health_score - 10))
+
+				json_add_int "health_score" "$health_score"
+
+				if [ "$health_score" -ge 80 ]; then
+					json_add_string "overall_status" "healthy"
+				elif [ "$health_score" -ge 50 ]; then
+					json_add_string "overall_status" "warning"
+				else
+					json_add_string "overall_status" "critical"
+				fi
+
+				# Alerts
+				json_add_array "alerts"
+				[ "$net_overall" = "critical" ] && {
+					json_add_object ""
+					json_add_string "level" "critical"
+					json_add_string "message" "Network interface issues detected - check cables"
+					json_close_object
+				}
+				[ "$svc_down" -gt 0 ] && {
+					json_add_object ""
+					json_add_string "level" "warning"
+					json_add_string "message" "$svc_down critical service(s) not running"
+					json_close_object
+				}
+				[ "$mem_pct" -gt 90 ] && {
+					json_add_object ""
+					json_add_string "level" "warning"
+					json_add_string "message" "High memory usage: ${mem_pct}%"
+					json_close_object
+				}
+				json_close_array
+
+				json_dump
+				;;
+
+			get_dashboard_data)
+				# Return dashboard summary data (OPTIMIZED - no slow appstore call)
+				json_init
+
+				# Fast module counting: count installed secubox packages
+				# This avoids the slow secubox-appstore list --json call
+				total_modules=0
+				running_modules=0
+
+				# Count from catalog (fast - just count JSON entries)
+				CATALOG_FILE="/usr/share/secubox/catalog.json"
+				if [ -f "$CATALOG_FILE" ]; then
+					total_modules=$(jsonfilter -i "$CATALOG_FILE" -e '@.plugins[*].id' 2>/dev/null | wc -l)
+				fi
+				[ -z "$total_modules" ] || [ "$total_modules" -eq 0 ] && total_modules=0
+
+				# Count running LXC containers (fast)
+				lxc_running=$(lxc-ls --running 2>/dev/null | wc -w)
+				lxc_running=${lxc_running:-0}
+
+				# Count running init services that are SecuBox-related (fast)
+				svc_running=0
+				for svc in crowdsec tor haproxy netifyd syslog-ng; do
+					if pgrep -f "$svc" >/dev/null 2>&1; then
+						svc_running=$((svc_running + 1))
+					fi
+				done
+
+				running_modules=$((lxc_running + svc_running))
+
+				# Get system info
+				uptime_seconds=$(cut -d' ' -f1 /proc/uptime | cut -d'.' -f1)
+				load_avg=$(cut -d' ' -f1-3 /proc/loadavg)
+
+				# Build response
+				json_add_object "status"
+					json_add_string "version" "0.8.0"
+					json_add_int "uptime" "$uptime_seconds"
+					json_add_string "load" "$load_avg"
+				json_close_object
+
+				json_add_object "counts"
+					json_add_int "total" "$total_modules"
+					json_add_int "running" "$running_modules"
+					json_add_int "lxc_running" "$lxc_running"
+					json_add_int "services_running" "$svc_running"
+				json_close_object
+
+				json_dump
+				;;
+
+			get_system_overview)
+				# Return system overview infographic data
+				if [ -x "/usr/sbin/secubox-dashboard" ]; then
+					/usr/sbin/secubox-dashboard json
+				else
+					json_init
+					json_add_string "error" "secubox-dashboard not installed"
+					json_dump
+				fi
+				;;
+			get_active_sessions)
+				json_init
+
+				# Count active connections by service
+				tor_circuits=$(netstat -tn 2>/dev/null | grep -c ":9040.*ESTABLISHED")
+				streamlit_sessions=$(netstat -tn 2>/dev/null | grep -c ":8510.*ESTABLISHED")
+				mitmproxy_sessions=$(netstat -tn 2>/dev/null | grep -c ":8081.*ESTABLISHED")
+				https_sessions=$(netstat -tn 2>/dev/null | grep ":443.*ESTABLISHED" | grep -cv "127.0.0.1")
+				ssh_sessions=$(who 2>/dev/null | wc -l)
+
+				json_add_object "counts"
+				json_add_int "tor_circuits" "${tor_circuits:-0}"
+				json_add_int "streamlit" "${streamlit_sessions:-0}"
+				json_add_int "mitmproxy" "${mitmproxy_sessions:-0}"
+				json_add_int "https" "${https_sessions:-0}"
+				json_add_int "ssh" "${ssh_sessions:-0}"
+				json_close_object
+
+				# HTTPS visitors - use temp file to avoid subshell
+				json_add_array "https_visitors"
+				netstat -tn 2>/dev/null | grep ":443.*ESTABLISHED" | grep -v "127.0.0.1" | \
+					awk "{print \$5}" | cut -d: -f1 | sort -u | head -10 > /tmp/https_visitors.tmp
+				while read -r ip; do
+					[ -n "$ip" ] && json_add_string "" "$ip"
+				done < /tmp/https_visitors.tmp
+				rm -f /tmp/https_visitors.tmp
+				json_close_array
+
+				# Top endpoints from mitmproxy log
+				json_add_array "top_endpoints"
+				if [ -f "/srv/mitmproxy/threats.log" ]; then
+					tail -200 /srv/mitmproxy/threats.log 2>/dev/null | \
+						jq -r ".request // empty" 2>/dev/null | cut -d" " -f2 | cut -d"?" -f1 | \
+						sort | uniq -c | sort -rn | head -8 > /tmp/top_endpoints.tmp
+					while read -r count path; do
+						[ -n "$path" ] && {
+							json_add_object ""
+							json_add_string "path" "$path"
+							json_add_int "count" "${count:-0}"
+							json_close_object
+						}
+					done < /tmp/top_endpoints.tmp
+					rm -f /tmp/top_endpoints.tmp
+				fi
+				json_close_array
+
+				# Recent visitors with country
+				json_add_array "recent_visitors"
+				if [ -f "/srv/mitmproxy/threats.log" ]; then
+					tail -100 /srv/mitmproxy/threats.log 2>/dev/null | \
+						jq -r "[.source_ip, .country] | @tsv" 2>/dev/null | \
+						sort -u | head -10 > /tmp/recent_visitors.tmp
+					while read -r ip country; do
+						[ -n "$ip" ] && {
+							json_add_object ""
+							json_add_string "ip" "$ip"
+							json_add_string "country" "${country:-??}"
+							json_close_object
+						}
+					done < /tmp/recent_visitors.tmp
+					rm -f /tmp/recent_visitors.tmp
+				fi
+				json_close_array
+
+				json_dump
+				;;
+			get_system_health)
+				# Return system health metrics
+				json_init
+
+				uptime_seconds=$(cut -d' ' -f1 /proc/uptime | cut -d'.' -f1)
+
+				# CPU usage (simple average from /proc/loadavg)
+				load1=$(awk '{print $1}' /proc/loadavg)
+				cpu_count=$(grep -c ^processor /proc/cpuinfo)
+				if [ "$cpu_count" -le 0 ]; then
+					cpu_count=1
+				fi
+				cpu_percent=$(awk -v load="$load1" -v cores="$cpu_count" 'BEGIN {printf "%.0f", (load / cores) * 100}')
+
+				# Memory
+				mem_total=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+				mem_free=$(grep MemAvailable /proc/meminfo | awk '{print $2}')
+				mem_free=${mem_free:-0}
+				if [ "$mem_total" -le 0 ]; then
+					mem_total=1
+				fi
+				mem_used=$((mem_total - mem_free))
+				mem_percent=$(awk -v used="$mem_used" -v total="$mem_total" 'BEGIN {printf "%.0f", (used / total) * 100}')
+
+				# Disk
+				disk_info=$(df / | tail -1)
+				disk_total=$(echo "$disk_info" | awk '{print $2}')
+				disk_used=$(echo "$disk_info" | awk '{print $3}')
+				disk_used=${disk_used:-0}
+				if [ -z "$disk_total" ] || [ "$disk_total" -le 0 ]; then
+					disk_total=0
+					disk_used=0
+				fi
+				disk_free=$((disk_total - disk_used))
+				disk_percent=$(echo "$disk_info" | awk '{print $5}' | tr -d '%')
+				[ -n "$disk_percent" ] || disk_percent=0
+
+				# Calculate overall score (100 - average of usage percentages)
+				overall_score=$(awk -v c="$cpu_percent" -v m="$mem_percent" -v d="$disk_percent" 'BEGIN {printf "%.0f", 100 - ((c + m + d) / 3)}')
+
+				json_add_int "uptime" "$uptime_seconds"
+
+				if [ "$overall_score" -gt 70 ]; then
+					overall_status="healthy"
+				else
+					overall_status="warning"
+				fi
+
+				json_add_object "overall"
+					json_add_int "score" "$overall_score"
+					json_add_string "status" "$overall_status"
+				json_close_object
+
+				json_add_object "cpu"
+					json_add_int "usage_percent" "$cpu_percent"
+					json_add_string "load" "$(cut -d' ' -f1-3 /proc/loadavg)"
+					json_add_int "count" "$cpu_count"
+				json_close_object
+
+				json_add_object "memory"
+					json_add_int "total_kb" "$mem_total"
+					json_add_int "used_kb" "$mem_used"
+					json_add_int "free_kb" "$mem_free"
+					json_add_int "usage_percent" "$mem_percent"
+				json_close_object
+
+				json_add_object "disk"
+					json_add_int "total_kb" "$disk_total"
+					json_add_int "used_kb" "$disk_used"
+					json_add_int "free_kb" "$disk_free"
+					json_add_int "usage_percent" "$disk_percent"
+				json_close_object
+
+				json_dump
+				;;
+
+		get_public_ips)
+			# Return all network IPs: LAN, WAN interface, public IPv4/IPv6
+			json_init
+
+			cache_v4="/tmp/secubox_public_ipv4"
+			cache_v6="/tmp/secubox_public_ipv6"
+
+			# Get LAN IP (br-lan)
+			lan_ipv4=$(ip -4 addr show br-lan 2>/dev/null | grep -oE 'inet [0-9.]+' | awk '{print $2}' | head -1)
+
+			# Get WAN bridge IP (br-wan)
+			wan_ipv4=$(ip -4 addr show br-wan 2>/dev/null | grep -oE 'inet [0-9.]+' | awk '{print $2}' | head -1)
+
+			# Get public IPv4 (from cache or fallback)
+			public_ipv4=""
+			[ -f "$cache_v4" ] && public_ipv4=$(cat "$cache_v4" 2>/dev/null)
+			if [ -z "$public_ipv4" ]; then
+				public_ipv4=$(ip -4 addr show scope global 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | grep -v "^192\.168\." | grep -v "^10\." | grep -v "^172\." | head -1)
+			fi
+
+			# Get public IPv6 (from br-wan global scope)
+			public_ipv6=""
+			[ -f "$cache_v6" ] && public_ipv6=$(cat "$cache_v6" 2>/dev/null)
+			if [ -z "$public_ipv6" ]; then
+				public_ipv6=$(ip -6 addr show br-wan scope global 2>/dev/null | grep -oE 'inet6 [0-9a-f:]+' | awk '{print $2}' | head -1)
+			fi
+			if [ -z "$public_ipv6" ]; then
+				public_ipv6=$(ip -6 addr show scope global 2>/dev/null | grep -v "^fe80" | grep -oE 'inet6 [0-9a-f:]+' | awk '{print $2}' | grep -v "^fd" | head -1)
+			fi
+
+			json_add_string "lan_ipv4" "${lan_ipv4:-N/A}"
+			json_add_string "wan_ipv4" "${wan_ipv4:-N/A}"
+			json_add_string "public_ipv4" "${public_ipv4:-N/A}"
+			json_add_string "public_ipv6" "${public_ipv6:-N/A}"
+
+			# Legacy fields for compatibility
+			json_add_string "ipv4" "${public_ipv4:-${wan_ipv4:-N/A}}"
+			json_add_string "ipv6" "${public_ipv6:-N/A}"
+
+			json_add_boolean "ipv4_available" "$([ -n "$public_ipv4" ] && [ "$public_ipv4" != "N/A" ] && echo 1 || echo 0)"
+			json_add_boolean "ipv6_available" "$([ -n "$public_ipv6" ] && [ "$public_ipv6" != "N/A" ] && echo 1 || echo 0)"
+			json_add_boolean "lan_available" "$([ -n "$lan_ipv4" ] && [ "$lan_ipv4" != "N/A" ] && echo 1 || echo 0)"
+			json_add_boolean "wan_available" "$([ -n "$wan_ipv4" ] && [ "$wan_ipv4" != "N/A" ] && echo 1 || echo 0)"
+
+			json_dump
+			;;
+
+			refresh_public_ips)
+				# Refresh public IPs in background
+				json_init
+				(
+					for svc in "https://api.ipify.org" "https://ipv4.icanhazip.com"; do
+						ipv4=$(curl -4 -s --connect-timeout 2 --max-time 3 "$svc" 2>/dev/null | tr -d '\n')
+						[ -n "$ipv4" ] && { echo "$ipv4" > /tmp/secubox_public_ipv4; break; }
+					done
+					for svc in "https://api64.ipify.org" "https://ipv6.icanhazip.com"; do
+						ipv6=$(curl -6 -s --connect-timeout 2 --max-time 3 "$svc" 2>/dev/null | tr -d '\n')
+						[ -n "$ipv6" ] && { echo "$ipv6" > /tmp/secubox_public_ipv6; break; }
+					done
+				) &
+				json_add_boolean "success" 1
+				json_dump
+				;;
+
+			get_alerts)
+				# Return system alerts
+				json_init
+				json_add_array "alerts"
+
+				# Check for common issues
+				# 1. High memory usage
+				mem_total=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+				mem_free=$(grep MemAvailable /proc/meminfo | awk '{print $2}')
+				mem_percent=$(awk "BEGIN {printf \"%.0f\", (($mem_total - $mem_free) / $mem_total) * 100}")
+				if [ "$mem_percent" -gt 90 ]; then
+					json_add_object ""
+						json_add_string "id" "high_memory"
+						json_add_string "level" "warning"
+						json_add_string "title" "High Memory Usage"
+						json_add_string "message" "Memory usage is at ${mem_percent}%"
+						json_add_int "timestamp" "$(date +%s)"
+					json_close_object
+				fi
+
+				# 2. High disk usage
+				disk_percent=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+				if [ "$disk_percent" -gt 85 ]; then
+					json_add_object ""
+						json_add_string "id" "high_disk"
+						json_add_string "level" "warning"
+						json_add_string "title" "High Disk Usage"
+						json_add_string "message" "Disk usage is at ${disk_percent}%"
+						json_add_int "timestamp" "$(date +%s)"
+					json_close_object
+				fi
+
+				json_close_array
+				json_dump
+				;;
+
+			quick_action)
+				read -r input
+				action=$(echo "$input" | jsonfilter -e '@.action')
+				json_init
+
+				case "$action" in
+					restart_services)
+						# Restart all SecuBox services
+						for svc in haproxy crowdsec tor netifyd; do
+							if [ -x "/etc/init.d/$svc" ]; then
+								/etc/init.d/$svc restart 2>/dev/null &
+							elif [ -x "/usr/sbin/${svc}ctl" ]; then
+								/usr/sbin/${svc}ctl restart 2>/dev/null &
+							fi
+						done
+						json_add_boolean "success" 1
+						json_add_string "message" "Services restart initiated"
+						;;
+					restart_*)
+						# Restart specific service: restart_haproxy, restart_crowdsec, etc.
+						svc_name="${action#restart_}"
+						if [ -x "/etc/init.d/$svc_name" ]; then
+							/etc/init.d/$svc_name restart 2>/dev/null
+							json_add_boolean "success" 1
+							json_add_string "message" "Service $svc_name restarted"
+						elif [ -x "/usr/sbin/${svc_name}ctl" ]; then
+							/usr/sbin/${svc_name}ctl restart 2>/dev/null
+							json_add_boolean "success" 1
+							json_add_string "message" "Service $svc_name restarted"
+						else
+							json_add_boolean "success" 0
+							json_add_string "message" "Service $svc_name not found"
+						fi
+						;;
+					update_packages)
+						opkg update 2>/dev/null &
+						json_add_boolean "success" 1
+						json_add_string "message" "Package update initiated"
+						;;
+					view_logs)
+						# Return recent system logs
+						json_add_boolean "success" 1
+						json_add_string "redirect" "/cgi-bin/luci/admin/status/syslog"
+						;;
+					export_config)
+						# Export configuration
+						if [ -x "/usr/sbin/secubox-recovery" ]; then
+							snapshot_name="export-$(date +%Y%m%d-%H%M%S)"
+							/usr/sbin/secubox-recovery snapshot "$snapshot_name" 2>/dev/null
+							json_add_boolean "success" 1
+							json_add_string "message" "Configuration exported as $snapshot_name"
+						else
+							json_add_boolean "success" 0
+							json_add_string "message" "Recovery system not available"
+						fi
+						;;
+					*)
+						json_add_boolean "success" 0
+						json_add_string "message" "Unknown action: $action"
+						;;
+				esac
+
+				json_dump
+				;;
+
+			getLogs)
+				read -r input
+				service=$(echo "$input" | jsonfilter -e '@.service')
+				lines=$(echo "$input" | jsonfilter -e '@.lines')
+
+				json_init
+				json_add_array "logs"
+				if [ -n "$service" ]; then
+					logread -e "$service" | tail -n "${lines:-100}" | while read -r line; do
+						json_add_string "" "$line"
+					done
+				else
+					logread | tail -n "${lines:-100}" | while read -r line; do
+						json_add_string "" "$line"
+					done
+				fi
+				json_close_array
+				json_dump
+				;;
+
+			createSnapshot)
+				read -r input
+				name=$(echo "$input" | jsonfilter -e '@.name')
+				/usr/sbin/secubox-recovery snapshot "${name:-auto-$(date +%Y%m%d-%H%M%S)}"
+				;;
+
+			listSnapshots)
+				/usr/sbin/secubox-recovery list --json
+				;;
+
+			restoreSnapshot)
+				read -r input
+				snapshot=$(echo "$input" | jsonfilter -e '@.snapshot')
+				/usr/sbin/secubox-recovery rollback "$snapshot"
+				;;
+
+			get_appstore_apps)
+				# Return apps from catalog with installation status
+				# Use secubox-appstore which properly detects installed packages
+				CATALOG_FILE="/usr/share/secubox/catalog.json"
+
+				if [ -f "$CATALOG_FILE" ]; then
+					# Get modules list with installation status from secubox-appstore
+					MODULES_JSON=$(/usr/sbin/secubox-appstore list --json 2>/dev/null)
+
+					if [ -n "$MODULES_JSON" ]; then
+						# Merge installation status from modules into catalog apps
+						jq --argjson modules "$MODULES_JSON" '
+							{
+								apps: [.plugins[] | . as $app |
+									($modules.modules // [] | map(select(.id == $app.id or .name == $app.id)) | first) as $mod |
+									$app + {
+										installed: (if $mod then ($mod.installed // false) else false end),
+										enabled: (if $mod then ($mod.enabled // false) else false end),
+										status: (if $mod then ($mod.status // "unknown") else "not_installed" end)
+									}
+								],
+								categories: .categories
+							}
+						' "$CATALOG_FILE"
+					else
+						# Fallback: just return catalog without status
+						jq '{apps: .plugins, categories: .categories}' "$CATALOG_FILE"
+					fi
+				else
+					echo '{"apps":[],"categories":{}}'
+				fi
+				;;
+
+			list_apps)
+				# Returns apps from catalog and adds apps from manifests with wizards
+				CATALOG_FILE="/usr/share/secubox/catalog.json"
+				PLUGINS_DIR="/usr/share/secubox/plugins"
+
+				if [ -f "$CATALOG_FILE" ]; then
+					# Get base apps from catalog
+					APPS_JSON=$(jq '.plugins' "$CATALOG_FILE")
+				else
+					APPS_JSON='[]'
+				fi
+
+				# Scan plugin manifests and add apps with wizards
+				for plugin_dir in "$PLUGINS_DIR"/*; do
+					[ -d "$plugin_dir" ] || continue
+					manifest="$plugin_dir/manifest.json"
+					[ -f "$manifest" ] || continue
+
+					# Get app ID from manifest
+					app_id=$(jq -r '.id // empty' "$manifest" 2>/dev/null)
+					[ -n "$app_id" ] || continue
+
+					# Check if manifest has wizard configuration
+					has_wizard=$(jq -e '.wizard.fields | length > 0' "$manifest" >/dev/null 2>&1 && echo "true" || echo "false")
+
+					if [ "$has_wizard" = "true" ]; then
+						# Check if app already exists in catalog
+						app_exists=$(echo "$APPS_JSON" | jq --arg id "$app_id" 'map(select(.id == $id)) | length')
+
+						if [ "$app_exists" -gt 0 ]; then
+							# Update existing catalog app with has_wizard flag
+							APPS_JSON=$(echo "$APPS_JSON" | jq --arg id "$app_id" \
+								'map(if .id == $id then . + {has_wizard: true} else . end)')
+						else
+							# Add new app from manifest
+							app_data=$(jq '{
+								id: .id,
+								name: .name,
+								description: .description,
+								version: .version,
+								icon: "📦",
+								has_wizard: true,
+								state: "available"
+							}' "$manifest")
+							APPS_JSON=$(echo "$APPS_JSON" | jq --argjson app "$app_data" '. + [$app]')
+						fi
+					fi
+				done
+
+				# Return modified apps list
+				if [ -f "$CATALOG_FILE" ]; then
+					jq -n --argjson apps "$APPS_JSON" --argjson cats "$(jq '.categories // {}' "$CATALOG_FILE")" \
+						'{apps: $apps, categories: $cats}'
+				else
+					jq -n --argjson apps "$APPS_JSON" '{apps: $apps, categories: {}}'
+				fi
+				;;
+
+			get_appstore_app)
+				# Get single app details from catalog
+				read -r input
+				app_id=$(echo "$input" | jsonfilter -e '@.app_id')
+
+				CATALOG_DIR="/usr/share/secubox/plugins/catalog"
+				CATALOG_FILE="$CATALOG_DIR/${app_id}.json"
+
+				if [ -f "$CATALOG_FILE" ]; then
+					# Add installed status
+					json_init
+					cat "$CATALOG_FILE" | jsonfilter -e '@'
+
+					# Check if installed
+					pkg=$(jsonfilter -i "$CATALOG_FILE" -e '@.packages.required[0]')
+					if [ -n "$pkg" ] && opkg list-installed | grep -q "^$pkg "; then
+						echo ',"installed":true'
+					else
+						echo ',"installed":false'
+					fi
+				else
+					json_init
+					json_add_boolean "error" true
+					json_add_string "message" "App not found: $app_id"
+					json_dump
+				fi
+				;;
+
+			install_appstore_app)
+				# Install app using secubox-appstore CLI
+				read -r input
+				app_id=$(echo "$input" | jsonfilter -e '@.app_id')
+
+				# Use secubox-appstore for installation
+				if /usr/sbin/secubox-appstore install "$app_id" >/dev/null 2>&1; then
+					json_init
+					json_add_boolean "success" 1
+					json_add_string "message" "App installed successfully"
+					json_dump
+				else
+					json_init
+					json_add_boolean "success" 0
+					json_add_string "error" "Installation failed"
+					json_add_string "details" "Check system logs for more information"
+					json_dump
+				fi
+				;;
+
+			remove_appstore_app)
+				# Remove app using secubox-appstore CLI
+				read -r input
+				app_id=$(echo "$input" | jsonfilter -e '@.app_id')
+
+				# Use secubox-appstore for removal
+				if /usr/sbin/secubox-appstore remove "$app_id" >/dev/null 2>&1; then
+					json_init
+					json_add_boolean "success" 1
+					json_add_string "message" "App removed successfully"
+					json_dump
+				else
+					json_init
+					json_add_boolean "success" 0
+					json_add_string "error" "Removal failed"
+					json_add_string "details" "Check system logs for more information"
+					json_dump
+				fi
+				;;
+
+			get_catalog_sources)
+				# Return configured catalog sources from UCI (OPTIMIZED)
+				CONFIG_NAME="secubox-appstore"
+				METADATA_FILE="/var/lib/secubox/catalog-metadata.json"
+
+					_add_default_source() {
+						local name="$1"
+						local type="$2"
+						local url="$3"
+						local path="$4"
+						local priority="$5"
+
+						json_add_object ""
+							json_add_string "name" "$name"
+							json_add_boolean "enabled" 1
+							json_add_string "type" "$type"
+							[ -n "$url" ] && json_add_string "url" "$url"
+							[ -n "$path" ] && json_add_string "path" "$path"
+							json_add_int "priority" "$priority"
+							[ "$name" = "embedded" ] && json_add_boolean "active" 1 || json_add_boolean "active" 0
+							json_add_string "status" "default"
+							json_add_string "last_success" ""
+						json_close_object
+					}
+
+					# Fast check: if UCI config doesn't exist, return sensible defaults
+					if [ ! -f "/etc/config/$CONFIG_NAME" ]; then
+						json_init
+						json_add_array "sources"
+						_add_default_source "github" "remote" "https://raw.githubusercontent.com/CyberMind-FR/secubox-openwrt/refs/heads/master/package/secubox/secubox-core/root/usr/share/secubox/catalog.json" "" 1
+						_add_default_source "embedded" "embedded" "" "/usr/share/secubox/catalog.json" 999
+						json_close_array
+						json_add_boolean "defaults" true
+						json_add_string "message" "Catalog config missing, using built-in defaults"
+						json_dump
+						exit 0
+					fi
+
+				json_init
+				json_add_array "sources"
+
+				# Parse UCI config sources
+				. /lib/functions.sh
+
+				# OPTIMIZATION: Add timeout guard for config_load, but still load
+				if ! timeout 5 sh -c ". /lib/functions.sh; config_load $CONFIG_NAME >/dev/null 2>&1" 2>/dev/null; then
+					# Config load failed or timed out, return defaults
+					_add_default_source "github" "remote" "https://raw.githubusercontent.com/CyberMind-FR/secubox-openwrt/refs/heads/master/package/secubox/secubox-core/root/usr/share/secubox/catalog.json" "" 1
+					_add_default_source "embedded" "embedded" "" "/usr/share/secubox/catalog.json" 999
+					json_close_array
+					json_add_boolean "defaults" true
+					json_add_string "message" "Catalog config unreadable, using defaults"
+					json_dump
+					exit 0
+				fi
+
+				# Load config in current shell for config_foreach usage
+				config_load "$CONFIG_NAME"
+
+				# Get active source once (optimization)
+				local active_source=""
+				if [ -f "$METADATA_FILE" ]; then
+					active_source=$(timeout 2 jsonfilter -i "$METADATA_FILE" -e '@.active_source' 2>/dev/null || echo "")
+				fi
+
+				# Cache metadata content to avoid multiple reads
+				local metadata_content=""
+				if [ -f "$METADATA_FILE" ]; then
+					metadata_content=$(timeout 2 cat "$METADATA_FILE" 2>/dev/null || echo "{}")
+				fi
+
+				local sources_count=0
+				local defaults_used=0
+				local defaults_message=""
+
+				_add_source_info() {
+					local section="$1"
+					local enabled type url path priority
+
+					config_get_bool enabled "$section" enabled 0
+					config_get type "$section" type
+					config_get url "$section" url
+					config_get path "$section" path
+					config_get priority "$section" priority 999
+
+					json_add_object ""
+						json_add_string "name" "$section"
+						json_add_boolean "enabled" "$enabled"
+						json_add_string "type" "$type"
+						[ -n "$url" ] && json_add_string "url" "$url"
+						[ -n "$path" ] && json_add_string "path" "$path"
+						json_add_int "priority" "$priority"
+						json_add_boolean "active" "$([ "$section" = "$active_source" ] && echo 1 || echo 0)"
+
+						# Get status from cached metadata (optimization with timeout)
+						if [ -n "$metadata_content" ]; then
+							local status=$(echo "$metadata_content" | timeout 1 jsonfilter -e "@.sources['$section'].status" 2>/dev/null || echo "")
+							local last_success=$(echo "$metadata_content" | timeout 1 jsonfilter -e "@.sources['$section'].last_success" 2>/dev/null || echo "")
+							[ -n "$status" ] && json_add_string "status" "$status"
+							[ -n "$last_success" ] && json_add_string "last_success" "$last_success"
+						fi
+					json_close_object
+
+					sources_count=$((sources_count + 1))
+				}
+
+				config_foreach _add_source_info source
+
+				# If config exists but contains no sources, fall back to defaults
+				if [ "$sources_count" -eq 0 ]; then
+					_add_default_source "github" "remote" "https://raw.githubusercontent.com/CyberMind-FR/secubox-openwrt/refs/heads/master/package/secubox/secubox-core/root/usr/share/secubox/catalog.json" "" 1
+					_add_default_source "embedded" "embedded" "" "/usr/share/secubox/catalog.json" 999
+					defaults_used=1
+					defaults_message="Catalog config empty, using built-in defaults"
+				fi
+
+				json_close_array
+				if [ "$defaults_used" -eq 1 ]; then
+					json_add_boolean "defaults" true
+					json_add_string "message" "$defaults_message"
+				fi
+				json_dump
+					;;
+
+			set_catalog_source)
+				# Set force_source in UCI config
+				read -r input
+				source=$(echo "$input" | jsonfilter -e '@.source')
+
+				CONFIG_NAME="secubox-appstore"
+				SECTION_NAME=$(uci -q show "$CONFIG_NAME" | grep "=settings" | head -n1 | cut -d'.' -f2 | cut -d'=' -f1)
+				[ -z "$SECTION_NAME" ] && SECTION_NAME="main"
+
+				if [ -n "$source" ]; then
+					if uci set "${CONFIG_NAME}.${SECTION_NAME}.force_source=$source" >/dev/null 2>&1 && \
+						uci commit "$CONFIG_NAME" >/dev/null 2>&1; then
+						json_init
+						json_add_boolean "success" 1
+						json_add_string "message" "Catalog source set to: $source"
+						json_dump
+					else
+						json_init
+						json_add_boolean "success" 0
+						json_add_string "error" "Failed to update UCI config"
+						json_dump
+					fi
+
+				else
+					json_init
+					json_add_boolean "success" 0
+					json_add_string "error" "No source specified"
+					json_dump
+				fi
+				;;
+
+			sync_catalog)
+				# Trigger catalog sync
+				read -r input
+				source=$(echo "$input" | jsonfilter -e '@.source')
+
+				# Call secubox-catalog-sync (with or without source)
+				if /usr/sbin/secubox-appstore sync ${source:+"$source"} 2>&1; then
+					json_init
+					json_add_boolean "success" 1
+					json_add_string "message" "Catalog synced successfully"
+					[ -n "$source" ] && json_add_string "source" "$source"
+					json_dump
+				else
+					json_init
+					json_add_boolean "success" 0
+					json_add_string "error" "Sync failed"
+					json_dump
+				fi
+				;;
+
+			check_updates)
+				# Check for available updates
+				/usr/sbin/secubox-appstore check-updates --json
+				;;
+
+			get_app_versions)
+				# Get version info for specific app
+				read -r input
+				app_id=$(echo "$input" | jsonfilter -e '@.app_id')
+
+				CATALOG_FILE="/usr/share/secubox/catalog.json"
+				METADATA_FILE="/var/lib/secubox/catalog-metadata.json"
+
+				json_init
+
+				# Get catalog version
+				if [ -f "$CATALOG_FILE" ]; then
+					pkg_version=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[@.id='$app_id'].pkg_version" 2>/dev/null)
+					app_version=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[@.id='$app_id'].app_version" 2>/dev/null)
+					[ -n "$pkg_version" ] && json_add_string "catalog_pkg_version" "$pkg_version"
+					[ -n "$app_version" ] && json_add_string "catalog_app_version" "$app_version"
+				fi
+
+				# Get installed version
+				pkg_name=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[@.id='$app_id'].packages.required[0]" 2>/dev/null)
+				if [ -n "$pkg_name" ]; then
+					installed_version=$(opkg list-installed | grep "^$pkg_name " | awk '{print $3}')
+					[ -n "$installed_version" ] && json_add_string "installed_version" "$installed_version"
+				fi
+
+				# Get metadata version info
+				if [ -f "$METADATA_FILE" ]; then
+					metadata_version=$(jsonfilter -i "$METADATA_FILE" -e "@.installed_apps['$app_id'].installed_version" 2>/dev/null)
+					update_available=$(jsonfilter -i "$METADATA_FILE" -e "@.installed_apps['$app_id'].update_available" 2>/dev/null)
+					[ -n "$update_available" ] && json_add_boolean "update_available" "$update_available"
+				fi
+
+				json_add_string "app_id" "$app_id"
+				json_dump
+				;;
+
+			get_changelog)
+				# Get changelog for app
+				read -r input
+				app_id=$(echo "$input" | jsonfilter -e '@.app_id')
+				from_version=$(echo "$input" | jsonfilter -e '@.from_version')
+				to_version=$(echo "$input" | jsonfilter -e '@.to_version')
+
+				# Use secubox-appstore CLI
+				/usr/sbin/secubox-appstore changelog "$app_id" ${from_version:+"$from_version"} ${to_version:+"$to_version"}
+				;;
+
+			get_widget_data)
+				# Get real-time widget data for app
+				read -r input
+				app_id=$(echo "$input" | jsonfilter -e '@.app_id')
+
+				CATALOG_FILE="/usr/share/secubox/catalog.json"
+
+				json_init
+				json_add_string "app_id" "$app_id"
+				json_add_int "timestamp" "$(date +%s)"
+
+				# Get widget configuration from catalog
+				if [ -f "$CATALOG_FILE" ]; then
+					widget_enabled=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[@.id='$app_id'].widget.enabled" 2>/dev/null)
+
+					if [ "$widget_enabled" = "true" ]; then
+						json_add_boolean "widget_enabled" true
+
+						# Get version information from catalog
+						catalog_version=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[@.id='$app_id'].version" 2>/dev/null)
+						pkg_version=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[@.id='$app_id'].pkg_version" 2>/dev/null)
+
+						[ -n "$catalog_version" ] && json_add_string "catalog_version" "$catalog_version"
+						[ -n "$pkg_version" ] && json_add_string "pkg_version" "$pkg_version"
+
+						# Get installed version from opkg
+						installed_version=""
+						if [ -n "$pkg_version" ]; then
+							package_name=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[@.id='$app_id'].packages.required[0]" 2>/dev/null)
+							if [ -n "$package_name" ]; then
+								installed_version=$(opkg info "$package_name" 2>/dev/null | awk '/^Version:/ {print $2}')
+							fi
+						fi
+						[ -n "$installed_version" ] && json_add_string "installed_version" "$installed_version"
+
+						# Check if installed and running
+						json_add_boolean "installed" false
+						json_add_boolean "running" false
+						json_add_string "status" "unknown"
+
+						# Check installation status via ubus
+						if command -v ubus >/dev/null 2>&1; then
+							modules_json=$(ubus call luci.secubox get_modules 2>/dev/null)
+							if [ -n "$modules_json" ]; then
+								package_name=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[@.id='$app_id'].packages.required[0]" 2>/dev/null)
+								if [ -n "$package_name" ]; then
+									module_enabled=$(echo "$modules_json" | jsonfilter -e "@.modules['$package_name'].enabled" 2>/dev/null)
+									module_running=$(echo "$modules_json" | jsonfilter -e "@.modules['$package_name'].running" 2>/dev/null)
+
+									[ "$module_enabled" = "true" ] && json_add_boolean "installed" true
+									[ "$module_running" = "true" ] && json_add_boolean "running" true
+
+									# Set status based on state
+									if [ "$module_running" = "true" ]; then
+										json_add_string "status" "running"
+									elif [ "$module_enabled" = "true" ]; then
+										json_add_string "status" "stopped"
+									else
+										json_add_string "status" "not_installed"
+									fi
+								fi
+							fi
+						fi
+
+						# Get metrics from catalog definition
+						# This would call app-specific data sources (ubus, files, etc.)
+						# For now, return placeholder structure
+						json_add_array "metrics"
+						json_close_array
+					else
+						json_add_boolean "widget_enabled" false
+					fi
+				else
+					json_add_boolean "widget_enabled" false
+				fi
+
+				json_dump
+				;;
+
+			# State management methods
+			get_component_state)
+				read -r input
+				component_id=$(echo "$input" | jsonfilter -e '@.component_id')
+				/usr/sbin/secubox-state get "$component_id"
+				;;
+
+			set_component_state)
+				read -r input
+				component_id=$(echo "$input" | jsonfilter -e '@.component_id')
+				new_state=$(echo "$input" | jsonfilter -e '@.new_state')
+				reason=$(echo "$input" | jsonfilter -e '@.reason')
+
+				result=$(/usr/sbin/secubox-state set "$component_id" "$new_state" "${reason:-manual}")
+
+				json_init
+				if echo "$result" | grep -q "Success:"; then
+					json_add_boolean "success" 1
+					json_add_string "message" "$result"
+					json_add_string "component_id" "$component_id"
+					json_add_string "new_state" "$new_state"
+				else
+					json_add_boolean "success" 0
+					json_add_string "error" "$result"
+				fi
+				json_dump
+				;;
+
+			get_state_history)
+				read -r input
+				component_id=$(echo "$input" | jsonfilter -e '@.component_id')
+				limit=$(echo "$input" | jsonfilter -e '@.limit')
+				/usr/sbin/secubox-state history "$component_id" "${limit:-20}"
+				;;
+
+			list_components)
+				read -r input
+				state_filter=$(echo "$input" | jsonfilter -e '@.state_filter')
+				type_filter=$(echo "$input" | jsonfilter -e '@.type_filter')
+
+				args=""
+				[ -n "$state_filter" ] && args="$args --state=$state_filter"
+				[ -n "$type_filter" ] && args="$args --type=$type_filter"
+
+				/usr/sbin/secubox-state list $args
+				;;
+
+			freeze_component)
+				read -r input
+				component_id=$(echo "$input" | jsonfilter -e '@.component_id')
+				reason=$(echo "$input" | jsonfilter -e '@.reason')
+
+				result=$(/usr/sbin/secubox-state freeze "$component_id" "${reason:-manual_freeze}")
+
+				json_init
+				if echo "$result" | grep -q "Success:"; then
+					json_add_boolean "success" 1
+					json_add_string "message" "$result"
+				else
+					json_add_boolean "success" 0
+					json_add_string "error" "$result"
+				fi
+				json_dump
+				;;
+
+			clear_error_state)
+				read -r input
+				component_id=$(echo "$input" | jsonfilter -e '@.component_id')
+
+				result=$(/usr/sbin/secubox-state clear-error "$component_id")
+
+				json_init
+				if echo "$result" | grep -q "Success:"; then
+					json_add_boolean "success" 1
+					json_add_string "message" "$result"
+				else
+					json_add_boolean "success" 0
+					json_add_string "error" "$result"
+				fi
+				json_dump
+				;;
+
+			# Component registry methods
+			get_component)
+				read -r input
+				component_id=$(echo "$input" | jsonfilter -e '@.component_id')
+				/usr/sbin/secubox-component get "$component_id"
+				;;
+
+			list_all_components)
+				read -r input
+				type=$(echo "$input" | jsonfilter -e '@.type')
+				profile=$(echo "$input" | jsonfilter -e '@.profile')
+
+				args=""
+				[ -n "$type" ] && args="$args --type=$type"
+				[ -n "$profile" ] && args="$args --profile=$profile"
+
+				/usr/sbin/secubox-component list $args
+				;;
+
+			get_component_tree)
+				read -r input
+				component_id=$(echo "$input" | jsonfilter -e '@.component_id')
+				/usr/sbin/secubox-component tree "$component_id"
+				;;
+
+			update_component_settings)
+				read -r input
+				component_id=$(echo "$input" | jsonfilter -e '@.component_id')
+
+				# Extract settings object from input
+				# This is simplified - full implementation would parse settings JSON
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Settings update functionality available via CLI: secubox-component set-setting"
+				json_dump
+				;;
+
+			sync_component_registry)
+				result=$(/usr/sbin/secubox-sync-registry sync)
+
+				json_init
+				if echo "$result" | grep -q "successfully"; then
+					json_add_boolean "success" 1
+					json_add_string "message" "$result"
+				else
+					json_add_boolean "success" 0
+					json_add_string "error" "$result"
+				fi
+				json_dump
+				;;
+
+			get_wan_access)
+				/usr/sbin/secubox-wan-access json
+				;;
+
+			set_wan_access)
+				read -r input
+				enabled=$(echo "$input" | jsonfilter -e '@.enabled' 2>/dev/null)
+				https_enabled=$(echo "$input" | jsonfilter -e '@.https_enabled' 2>/dev/null)
+				https_port=$(echo "$input" | jsonfilter -e '@.https_port' 2>/dev/null)
+				http_enabled=$(echo "$input" | jsonfilter -e '@.http_enabled' 2>/dev/null)
+				http_port=$(echo "$input" | jsonfilter -e '@.http_port' 2>/dev/null)
+				ssh_enabled=$(echo "$input" | jsonfilter -e '@.ssh_enabled' 2>/dev/null)
+				ssh_port=$(echo "$input" | jsonfilter -e '@.ssh_port' 2>/dev/null)
+
+				# Update UCI settings
+				[ -n "$enabled" ] && uci set secubox.remote.enabled="$enabled"
+				[ -n "$https_enabled" ] && uci set secubox.remote.https_enabled="$https_enabled"
+				[ -n "$https_port" ] && uci set secubox.remote.https_port="$https_port"
+				[ -n "$http_enabled" ] && uci set secubox.remote.http_enabled="$http_enabled"
+				[ -n "$http_port" ] && uci set secubox.remote.http_port="$http_port"
+				[ -n "$ssh_enabled" ] && uci set secubox.remote.ssh_enabled="$ssh_enabled"
+				[ -n "$ssh_port" ] && uci set secubox.remote.ssh_port="$ssh_port"
+				uci commit secubox
+
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "WAN access settings updated"
+				json_dump
+				;;
+
+			apply_wan_access)
+				/usr/sbin/secubox-wan-access apply >/dev/null 2>&1
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "WAN access rules applied"
+				json_dump
+				;;
+
+		get_services)
+			# Discover listening services from netstat
+			# Save to temp file to avoid subshell issues with json
+			TMP_SERVICES="/tmp/services_$$"
+			netstat -tlnp 2>/dev/null | grep LISTEN | awk '{
+				split($4, a, ":")
+				port = a[length(a)]
+				if (!seen[port]++) {
+					split($7, p, "/")
+					proc = p[2]
+					if (proc == "") proc = "unknown"
+					print port, $4, proc
+				}
+			}' | sort -n -u > "$TMP_SERVICES"
+
+			json_init
+			json_add_array "services"
+
+			while read port local proc; do
+				addr=$(echo "$local" | sed 's/:[^:]*$//')
+				name=""; icon=""; category="other"; path=""
+
+				# First: identify by well-known port (most reliable for multi-service ports)
+				case "$port" in
+					22) name="SSH"; icon="lock"; category="system" ;;
+					53) name="DNS"; icon="globe"; category="system" ;;
+					80) name="HTTP"; icon="arrow"; path="/"; category="proxy" ;;
+					443) name="HTTPS"; icon="shield"; path="/"; category="proxy" ;;
+					2222) name="Gitea SSH"; icon="git"; category="app" ;;
+					3000) name="Gitea"; icon="git"; path=":3000"; category="app" ;;
+					3483) name="Squeezebox"; icon="music"; category="media" ;;
+					4000) name="HexoJS"; icon="blog"; path=":4000"; category="app" ;;
+					6060) name="CrowdSec LAPI"; icon="security"; category="security" ;;
+					8081) name="LuCI"; icon="settings"; path=":8081"; category="system" ;;
+					8085) name="MagicMirror2"; icon="app"; path=":8085"; category="app" ;;
+					8086) name="Netifyd"; icon="chart"; path=":8086"; category="monitoring" ;;
+					8404) name="HAProxy Stats"; icon="stats"; path=":8404/stats"; category="monitoring" ;;
+					8444) name="LuCI HTTPS"; icon="admin"; path=":8444"; category="system" ;;
+					8501) name="Streamlit"; icon="app"; path=":8501"; category="app" ;;
+					9000) name="Lyrion"; icon="music"; path=":9000"; category="media" ;;
+					9050) name="Tor SOCKS"; icon="onion"; category="privacy" ;;
+					9090) name="Lyrion CLI"; icon="music"; category="media" ;;
+				esac
+
+				# Fallback: identify by process name if port didn't match
+				if [ -z "$name" ]; then
+					case "$proc" in
+						sshd|dropbear) name="SSH"; icon="lock"; category="system" ;;
+						dnsmasq|named|unbound) name="DNS"; icon="globe"; category="system" ;;
+						haproxy) name="HAProxy"; icon="arrow"; category="proxy" ;;
+						nginx|uhttpd) name="Web Server"; icon="settings"; category="system" ;;
+						gitea) name="Gitea"; icon="git"; path=":$port"; category="app" ;;
+						hexo|node) name="HexoJS"; icon="blog"; path=":$port"; category="app" ;;
+						crowdsec|lapi) name="CrowdSec"; icon="security"; category="security" ;;
+						netifyd) name="Netifyd"; icon="chart"; path=":$port"; category="monitoring" ;;
+						slimserver|squeezeboxserver) name="Lyrion"; icon="music"; path=":$port"; category="media" ;;
+						tor) name="Tor"; icon="onion"; category="privacy" ;;
+						cyberfeed*) name="CyberFeed"; icon="feed"; path=":$port"; category="app" ;;
+						metabolizer*) name="Metabolizer"; icon="blog"; path=":$port"; category="app" ;;
+						magicmirror*|electron) name="MagicMirror"; icon="app"; path=":$port"; category="app" ;;
+						picobrew*) name="PicoBrew"; icon="app"; path=":$port"; category="app" ;;
+						streamlit) name="Streamlit"; icon="app"; path=":$port"; category="app" ;;
+						python*) name="Python App"; icon="app"; path=":$port"; category="app" ;;
+						*) name="$proc"; icon=""; category="other"; path=":$port" ;;
+					esac
+				fi
+
+				external=0
+				case "$addr" in 0.0.0.0|::) external=1 ;; 127.0.0.1|::1) ;; *) external=1 ;; esac
+
+				json_add_object ""
+					json_add_int "port" "$port"
+					json_add_string "address" "$addr"
+					json_add_string "name" "$name"
+					json_add_string "icon" "$icon"
+					json_add_string "process" "$proc"
+					json_add_string "category" "$category"
+					json_add_boolean "external" "$external"
+					[ -n "$path" ] && [ "$external" = "1" ] && json_add_string "url" "$path"
+				json_close_object
+			done < "$TMP_SERVICES"
+
+			rm -f "$TMP_SERVICES"
+			json_close_array
+			json_dump
+			;;
+
+		get_proxy_mode)
+			json_init
+			local mode="direct"
+			local wpad_enabled=0
+
+			# Check if WPAD PAC file exists and determine mode
+			if [ -f "/www/wpad/wpad.dat" ]; then
+				wpad_enabled=1
+				if grep -q "SOCKS5.*9050" /www/wpad/wpad.dat 2>/dev/null; then
+					mode="tor"
+				elif grep -q "PROXY.*3128" /www/wpad/wpad.dat 2>/dev/null; then
+					mode="cdn"
+				elif grep -q "PROXY.*8080" /www/wpad/wpad.dat 2>/dev/null; then
+					mode="mitmproxy"
+				fi
+			fi
+
+			# Check DHCP WPAD option
+			local dhcp_wpad=$(uci -q get dhcp.lan.dhcp_option | grep -c "252")
+
+			json_add_string "mode" "$mode"
+			json_add_boolean "wpad_enabled" "$wpad_enabled"
+			json_add_boolean "dhcp_wpad" "$dhcp_wpad"
+			json_add_string "pac_url" "http://192.168.255.1/wpad/wpad.dat"
+			json_dump
+			;;
+
+		set_proxy_mode)
+			read input
+			json_load "$input"
+			json_get_var mode mode
+
+			json_init
+
+			mkdir -p /www/wpad
+
+			case "$mode" in
+				direct)
+					# Remove PAC file for direct mode
+					rm -f /www/wpad/wpad.dat
+					uci -q delete dhcp.lan.dhcp_option
+					uci commit dhcp
+					json_add_boolean "success" 1
+					json_add_string "message" "Proxy disabled - direct connections"
+					;;
+				cdn)
+					# CDN cache mode - HTTP through nginx cache
+					cat > /www/wpad/wpad.dat << 'PACEOF'
+function FindProxyForURL(url, host) {
+    if (isPlainHostName(host) || shExpMatch(host, "*.local") || shExpMatch(host, "*.lan") ||
+        isInNet(dnsResolve(host), "10.0.0.0", "255.0.0.0") ||
+        isInNet(dnsResolve(host), "172.16.0.0", "255.240.0.0") ||
+        isInNet(dnsResolve(host), "192.168.0.0", "255.255.0.0") ||
+        isInNet(dnsResolve(host), "127.0.0.0", "255.0.0.0")) {
+        return "DIRECT";
+    }
+    if (url.substring(0, 5) == "http:") {
+        return "PROXY 192.168.255.1:3128; DIRECT";
+    }
+    return "DIRECT";
+}
+PACEOF
+					uci set dhcp.lan.dhcp_option="252,http://192.168.255.1/wpad/wpad.dat"
+					uci commit dhcp
+					json_add_boolean "success" 1
+					json_add_string "message" "CDN cache mode enabled - HTTP cached"
+					;;
+				tor)
+					# Tor bypass mode - HTTPS through Tor SOCKS
+					cat > /www/wpad/wpad.dat << 'PACEOF'
+function FindProxyForURL(url, host) {
+    if (isPlainHostName(host) || shExpMatch(host, "*.local") || shExpMatch(host, "*.lan") ||
+        isInNet(dnsResolve(host), "10.0.0.0", "255.0.0.0") ||
+        isInNet(dnsResolve(host), "172.16.0.0", "255.240.0.0") ||
+        isInNet(dnsResolve(host), "192.168.0.0", "255.255.0.0") ||
+        isInNet(dnsResolve(host), "127.0.0.0", "255.0.0.0")) {
+        return "DIRECT";
+    }
+    if (url.substring(0, 5) == "http:") {
+        return "PROXY 192.168.255.1:3128; DIRECT";
+    }
+    if (url.substring(0, 6) == "https:") {
+        return "SOCKS5 192.168.255.1:9050; DIRECT";
+    }
+    return "DIRECT";
+}
+PACEOF
+					uci set dhcp.lan.dhcp_option="252,http://192.168.255.1/wpad/wpad.dat"
+					uci commit dhcp
+					json_add_boolean "success" 1
+					json_add_string "message" "Tor bypass mode enabled - HTTPS through Tor"
+					;;
+				mitmproxy)
+					# mitmproxy mode - all traffic through mitmproxy
+					cat > /www/wpad/wpad.dat << 'PACEOF'
+function FindProxyForURL(url, host) {
+    if (isPlainHostName(host) || shExpMatch(host, "*.local") || shExpMatch(host, "*.lan") ||
+        isInNet(dnsResolve(host), "10.0.0.0", "255.0.0.0") ||
+        isInNet(dnsResolve(host), "172.16.0.0", "255.240.0.0") ||
+        isInNet(dnsResolve(host), "192.168.0.0", "255.255.0.0") ||
+        isInNet(dnsResolve(host), "127.0.0.0", "255.0.0.0")) {
+        return "DIRECT";
+    }
+    return "PROXY 192.168.255.1:8080; DIRECT";
+}
+PACEOF
+					uci set dhcp.lan.dhcp_option="252,http://192.168.255.1/wpad/wpad.dat"
+					uci commit dhcp
+					json_add_boolean "success" 1
+					json_add_string "message" "mitmproxy mode enabled - all traffic inspectable"
+					;;
+				*)
+					json_add_boolean "success" 0
+					json_add_string "error" "Unknown mode: $mode"
+					;;
+			esac
+
+			# Restart dnsmasq to apply DHCP changes
+			/etc/init.d/dnsmasq restart >/dev/null 2>&1 &
+
+			json_dump
+			;;
+
+		# Feed management handlers
+		list_feeds)
+			/usr/sbin/secubox-feed-manager list --json
+			;;
+
+		add_feed)
+			read -r input
+			name=$(echo "$input" | jsonfilter -e '@.name')
+			url=$(echo "$input" | jsonfilter -e '@.url')
+			feed_type=$(echo "$input" | jsonfilter -e '@.feed_type')
+			description=$(echo "$input" | jsonfilter -e '@.description')
+
+			result=$(/usr/sbin/secubox-feed-manager add "$name" "$url" --type "${feed_type:-unpublished}" --description "$description" 2>&1)
+			if [ $? -eq 0 ]; then
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Feed added successfully"
+				json_add_string "name" "$name"
+				json_dump
+			else
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "$result"
+				json_dump
+			fi
+			;;
+
+		remove_feed)
+			read -r input
+			name=$(echo "$input" | jsonfilter -e '@.name')
+
+			result=$(/usr/sbin/secubox-feed-manager remove "$name" 2>&1)
+			if [ $? -eq 0 ]; then
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Feed removed"
+				json_dump
+			else
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "$result"
+				json_dump
+			fi
+			;;
+
+		share_feed)
+			read -r input
+			name=$(echo "$input" | jsonfilter -e '@.name')
+			/usr/sbin/secubox-feed-manager share "$name"
+			;;
+
+		import_feed)
+			read -r input
+			url=$(echo "$input" | jsonfilter -e '@.url')
+
+			result=$(/usr/sbin/secubox-feed-manager import "$url" 2>&1)
+			if [ $? -eq 0 ]; then
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Feed imported"
+				json_dump
+			else
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "$result"
+				json_dump
+			fi
+			;;
+
+		# Profile management handlers (extended)
+		export_profile)
+			read -r input
+			name=$(echo "$input" | jsonfilter -e '@.name')
+			include_feeds=$(echo "$input" | jsonfilter -e '@.include_feeds')
+
+			args=""
+			[ -n "$name" ] && args="$args --name \"$name\""
+			[ "$include_feeds" = "true" ] && args="$args --include-feeds"
+
+			output="/tmp/secubox-profile-export-$$.json"
+			eval /usr/sbin/secubox-profile export $args --output "$output" >/dev/null 2>&1
+
+			if [ -f "$output" ]; then
+				cat "$output"
+				rm -f "$output"
+			else
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "Export failed"
+				json_dump
+			fi
+			;;
+
+		import_profile)
+			read -r input
+			url=$(echo "$input" | jsonfilter -e '@.url')
+			mode=$(echo "$input" | jsonfilter -e '@.mode')
+
+			result=$(/usr/sbin/secubox-profile import "$url" "${mode:---merge}" 2>&1)
+			if [ $? -eq 0 ]; then
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Profile imported"
+				json_dump
+			else
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "$result"
+				json_dump
+			fi
+			;;
+
+		share_profile)
+			read -r input
+			profile=$(echo "$input" | jsonfilter -e '@.profile')
+			/usr/sbin/secubox-profile share "$profile"
+			;;
+
+		# Skill management handlers
+		list_skills)
+			/usr/sbin/secubox-skill list --json
+			;;
+
+		get_skill_providers)
+			read -r input
+			skill=$(echo "$input" | jsonfilter -e '@.skill')
+
+			# Return JSON list of providers for skill
+			json_init
+			json_add_string "skill" "$skill"
+			json_add_array "providers"
+
+			CATALOG_FILE="/usr/share/secubox/catalog.json"
+			if [ -f "$CATALOG_FILE" ]; then
+				idx=0
+				while true; do
+					pid=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].id" 2>/dev/null)
+					[ -z "$pid" ] && break
+
+					caps=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].capabilities[@]" 2>/dev/null)
+					for cap in $caps; do
+						cap_norm=$(echo "$cap" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+						if [ "$cap_norm" = "$skill" ]; then
+							pname=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].name" 2>/dev/null)
+							pstatus=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].status" 2>/dev/null)
+							featured=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].featured" 2>/dev/null)
+
+							json_add_object ""
+							json_add_string "id" "$pid"
+							json_add_string "name" "$pname"
+							json_add_string "status" "$pstatus"
+							json_add_boolean "featured" "$([ "$featured" = "true" ] && echo 1 || echo 0)"
+
+							# Check if installed
+							main_pkg=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].packages.required[0]" 2>/dev/null)
+							installed=0
+							if [ -n "$main_pkg" ] && opkg list-installed 2>/dev/null | grep -q "^$main_pkg "; then
+								installed=1
+							fi
+							json_add_boolean "installed" "$installed"
+							json_close_object
+							break
+						fi
+					done
+
+					idx=$((idx + 1))
+				done
+			fi
+
+			json_close_array
+			json_dump
+			;;
+
+		install_skill)
+			read -r input
+			skill=$(echo "$input" | jsonfilter -e '@.skill')
+
+			result=$(/usr/sbin/secubox-skill install "$skill" 2>&1)
+			if [ $? -eq 0 ]; then
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Skill provider installed"
+				json_add_string "skill" "$skill"
+				json_dump
+			else
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "$result"
+				json_dump
+			fi
+			;;
+
+		check_skills)
+			read -r input
+			profile=$(echo "$input" | jsonfilter -e '@.profile')
+
+			# Check skills for profile or system
+			if [ -n "$profile" ]; then
+				/usr/sbin/secubox-skill check "$profile"
+			else
+				/usr/sbin/secubox-skill check
+			fi
+			;;
+
+		# Feedback management handlers
+		report_issue)
+			read -r input
+			app_id=$(echo "$input" | jsonfilter -e '@.app_id')
+			type=$(echo "$input" | jsonfilter -e '@.type')
+			summary=$(echo "$input" | jsonfilter -e '@.summary')
+			details=$(echo "$input" | jsonfilter -e '@.details')
+
+			result=$(/usr/sbin/secubox-feedback report "$app_id" --type "${type:-bug}" --summary "$summary" --details "$details" 2>&1)
+			if [ $? -eq 0 ]; then
+				# Extract issue number from result
+				issue_num=$(echo "$result" | grep -oE 'Issue #[0-9]+' | grep -oE '[0-9]+')
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Issue reported"
+				[ -n "$issue_num" ] && json_add_int "issue_number" "$issue_num"
+				json_dump
+			else
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "$result"
+				json_dump
+			fi
+			;;
+
+		resolve_issue)
+			read -r input
+			issue_id=$(echo "$input" | jsonfilter -e '@.issue_id')
+			description=$(echo "$input" | jsonfilter -e '@.description')
+
+			result=$(/usr/sbin/secubox-feedback resolve "$issue_id" --description "$description" 2>&1)
+			if [ $? -eq 0 ]; then
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Resolution added"
+				json_dump
+			else
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "$result"
+				json_dump
+			fi
+			;;
+
+		search_resolutions)
+			read -r input
+			keyword=$(echo "$input" | jsonfilter -e '@.keyword')
+
+			# Return JSON search results
+			RESOLUTIONS_FILE="/var/lib/secubox/feedback/resolutions.json"
+			ISSUES_FILE="/var/lib/secubox/feedback/issues.json"
+
+			json_init
+			json_add_string "keyword" "$keyword"
+			json_add_array "results"
+
+			if [ -f "$RESOLUTIONS_FILE" ]; then
+				idx=0
+				while true; do
+					res_id=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].id" 2>/dev/null)
+					[ -z "$res_id" ] && break
+
+					description=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].description" 2>/dev/null)
+					issue_summary=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].issue_summary" 2>/dev/null)
+					app_id=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].app_id" 2>/dev/null)
+
+					if echo "$description $issue_summary $app_id" | grep -qi "$keyword"; then
+						issue_num=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].issue_number" 2>/dev/null)
+						upvotes=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].upvotes" 2>/dev/null)
+						verified=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].verified" 2>/dev/null)
+
+						json_add_object ""
+						json_add_string "id" "$res_id"
+						json_add_int "issue_number" "$issue_num"
+						json_add_string "app_id" "$app_id"
+						json_add_string "issue_summary" "$issue_summary"
+						json_add_string "description" "$description"
+						json_add_int "upvotes" "${upvotes:-0}"
+						json_add_boolean "verified" "$([ "$verified" = "true" ] && echo 1 || echo 0)"
+						json_close_object
+					fi
+
+					idx=$((idx + 1))
+				done
+			fi
+
+			json_close_array
+			json_dump
+			;;
+
+		list_issues)
+			read -r input
+			filter=$(echo "$input" | jsonfilter -e '@.filter')
+
+			ISSUES_FILE="/var/lib/secubox/feedback/issues.json"
+
+			json_init
+			json_add_array "issues"
+
+			if [ -f "$ISSUES_FILE" ]; then
+				idx=0
+				while true; do
+					issue_id=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].id" 2>/dev/null)
+					[ -z "$issue_id" ] && break
+
+					status=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].status" 2>/dev/null)
+
+					# Apply filter
+					if [ -n "$filter" ] && [ "$filter" != "all" ] && [ "$filter" != "$status" ]; then
+						idx=$((idx + 1))
+						continue
+					fi
+
+					issue_num=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].number" 2>/dev/null)
+					app_id=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].app_id" 2>/dev/null)
+					summary=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].summary" 2>/dev/null)
+					issue_type=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].type" 2>/dev/null)
+					created=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].created_at" 2>/dev/null)
+
+					json_add_object ""
+					json_add_string "id" "$issue_id"
+					json_add_int "number" "$issue_num"
+					json_add_string "app_id" "$app_id"
+					json_add_string "summary" "$summary"
+					json_add_string "type" "$issue_type"
+					json_add_string "status" "$status"
+					json_add_string "created_at" "$created"
+					json_close_object
+
+					idx=$((idx + 1))
+				done
+			fi
+
+			json_close_array
+			json_dump
+			;;
+
+		# P2P Hub - Collaborative catalog sharing
+		p2p_get_peers)
+			P2P_PEERS_FILE="/var/lib/secubox/p2p/peers.json"
+			P2P_DIR="/var/lib/secubox/p2p"
+			mkdir -p "$P2P_DIR"
+
+			json_init
+			json_add_array "peers"
+
+			if [ -f "$P2P_PEERS_FILE" ]; then
+				idx=0
+				while true; do
+					peer_id=$(jsonfilter -i "$P2P_PEERS_FILE" -e "@.peers[$idx].id" 2>/dev/null)
+					[ -z "$peer_id" ] && break
+
+					peer_name=$(jsonfilter -i "$P2P_PEERS_FILE" -e "@.peers[$idx].name" 2>/dev/null)
+					peer_addr=$(jsonfilter -i "$P2P_PEERS_FILE" -e "@.peers[$idx].address" 2>/dev/null)
+					peer_status=$(jsonfilter -i "$P2P_PEERS_FILE" -e "@.peers[$idx].status" 2>/dev/null)
+					last_seen=$(jsonfilter -i "$P2P_PEERS_FILE" -e "@.peers[$idx].last_seen" 2>/dev/null)
+
+					json_add_object ""
+					json_add_string "id" "$peer_id"
+					json_add_string "name" "${peer_name:-$peer_id}"
+					json_add_string "address" "$peer_addr"
+					json_add_string "status" "${peer_status:-unknown}"
+					json_add_string "last_seen" "$last_seen"
+					json_close_object
+
+					idx=$((idx + 1))
+				done
+			fi
+
+			json_close_array
+			json_dump
+			;;
+
+		p2p_discover)
+			P2P_DIR="/var/lib/secubox/p2p"
+			mkdir -p "$P2P_DIR"
+
+			# mDNS discovery for SecuBox peers
+			discovered=0
+			json_init
+			json_add_array "peers"
+
+			# Try to discover using avahi-browse if available
+			if command -v avahi-browse >/dev/null 2>&1; then
+				avahi-browse -t -r _secubox._tcp 2>/dev/null | grep -E "^\+" | while read -r line; do
+					addr=$(echo "$line" | awk '{print $7}')
+					name=$(echo "$line" | awk '{print $4}')
+					if [ -n "$addr" ]; then
+						json_add_object ""
+						json_add_string "address" "$addr"
+						json_add_string "name" "$name"
+						json_add_string "discovered" "mdns"
+						json_close_object
+						discovered=$((discovered + 1))
+					fi
+				done
+			fi
+
+			json_close_array
+			json_add_int "discovered" "$discovered"
+			json_dump
+			;;
+
+		p2p_add_peer)
+			read -r input
+			address=$(echo "$input" | jsonfilter -e '@.address')
+			name=$(echo "$input" | jsonfilter -e '@.name')
+
+			P2P_PEERS_FILE="/var/lib/secubox/p2p/peers.json"
+			P2P_DIR="/var/lib/secubox/p2p"
+			mkdir -p "$P2P_DIR"
+
+			# Generate peer ID
+			peer_id="peer_$(echo "$address" | md5sum | cut -c1-8)"
+
+			# Initialize file if not exists
+			[ ! -f "$P2P_PEERS_FILE" ] && echo '{"peers":[]}' > "$P2P_PEERS_FILE"
+
+			# Add peer using jsonfilter/sed
+			timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+			tmp_file="${P2P_PEERS_FILE}.tmp"
+			{
+				echo '{"peers":['
+				# Existing peers
+				if [ -f "$P2P_PEERS_FILE" ]; then
+					jsonfilter -i "$P2P_PEERS_FILE" -e '@.peers[*]' 2>/dev/null | while read -r p; do
+						echo "$p,"
+					done
+				fi
+				# New peer
+				echo "{\"id\":\"$peer_id\",\"name\":\"$name\",\"address\":\"$address\",\"status\":\"added\",\"last_seen\":\"$timestamp\"}"
+				echo ']}'
+			} > "$tmp_file"
+			mv "$tmp_file" "$P2P_PEERS_FILE"
+
+			json_init
+			json_add_boolean "success" 1
+			json_add_string "peer_id" "$peer_id"
+			json_dump
+			;;
+
+		p2p_remove_peer)
+			read -r input
+			peer_id=$(echo "$input" | jsonfilter -e '@.peer_id')
+
+			P2P_PEERS_FILE="/var/lib/secubox/p2p/peers.json"
+
+			if [ -f "$P2P_PEERS_FILE" ] && [ -n "$peer_id" ]; then
+				# Filter out the peer
+				tmp_file="${P2P_PEERS_FILE}.tmp"
+				{
+					echo '{"peers":['
+					first=1
+					idx=0
+					while true; do
+						id=$(jsonfilter -i "$P2P_PEERS_FILE" -e "@.peers[$idx].id" 2>/dev/null)
+						[ -z "$id" ] && break
+						if [ "$id" != "$peer_id" ]; then
+							[ "$first" -eq 0 ] && echo ","
+							jsonfilter -i "$P2P_PEERS_FILE" -e "@.peers[$idx]" 2>/dev/null
+							first=0
+						fi
+						idx=$((idx + 1))
+					done
+					echo ']}'
+				} > "$tmp_file"
+				mv "$tmp_file" "$P2P_PEERS_FILE"
+			fi
+
+			json_init
+			json_add_boolean "success" 1
+			json_dump
+			;;
+
+		p2p_get_peer_catalog)
+			read -r input
+			peer_id=$(echo "$input" | jsonfilter -e '@.peer_id')
+
+			P2P_PEERS_FILE="/var/lib/secubox/p2p/peers.json"
+
+			# Get peer address
+			idx=0
+			peer_addr=""
+			while true; do
+				id=$(jsonfilter -i "$P2P_PEERS_FILE" -e "@.peers[$idx].id" 2>/dev/null)
+				[ -z "$id" ] && break
+				if [ "$id" = "$peer_id" ]; then
+					peer_addr=$(jsonfilter -i "$P2P_PEERS_FILE" -e "@.peers[$idx].address" 2>/dev/null)
+					break
+				fi
+				idx=$((idx + 1))
+			done
+
+			json_init
+
+			if [ -n "$peer_addr" ]; then
+				# Fetch catalog from peer
+				catalog=$(wget -q -O - "http://${peer_addr}:8080/api/catalog" 2>/dev/null)
+				if [ -n "$catalog" ]; then
+					echo "$catalog"
+					exit 0
+				fi
+			fi
+
+			json_add_array "apps"
+			json_close_array
+			json_add_string "error" "Could not fetch catalog from peer"
+			json_dump
+			;;
+
+		p2p_share_catalog)
+			read -r input
+			enabled=$(echo "$input" | jsonfilter -e '@.enabled')
+
+			P2P_CONFIG="/var/lib/secubox/p2p/config.json"
+			P2P_DIR="/var/lib/secubox/p2p"
+			mkdir -p "$P2P_DIR"
+
+			# Update config
+			echo "{\"sharing_enabled\":$enabled}" > "$P2P_CONFIG"
+
+			json_init
+			json_add_boolean "success" 1
+			json_add_boolean "sharing_enabled" "$enabled"
+			json_dump
+			;;
+
+		p2p_get_settings)
+			P2P_CONFIG="/var/lib/secubox/p2p/config.json"
+
+			json_init
+			if [ -f "$P2P_CONFIG" ]; then
+				sharing=$(jsonfilter -i "$P2P_CONFIG" -e '@.sharing_enabled' 2>/dev/null)
+				json_add_boolean "sharing_enabled" "${sharing:-0}"
+			else
+				json_add_boolean "sharing_enabled" 0
+			fi
+			json_add_string "hub_version" "1.0.0"
+			json_add_string "protocol" "http"
+			json_add_int "port" 8080
+			json_dump
+			;;
+
+		p2p_set_settings)
+			read -r input
+
+			P2P_CONFIG="/var/lib/secubox/p2p/config.json"
+			P2P_DIR="/var/lib/secubox/p2p"
+			mkdir -p "$P2P_DIR"
+
+			# Extract settings
+			sharing=$(echo "$input" | jsonfilter -e '@.settings.sharing_enabled' 2>/dev/null)
+
+			# Save config
+			{
+				echo '{'
+				echo "\"sharing_enabled\":${sharing:-false}"
+				echo '}'
+			} > "$P2P_CONFIG"
+
+			json_init
+			json_add_boolean "success" 1
+			json_dump
+			;;
+
+			*)
+				json_init
+				json_add_boolean "error" true
+				json_add_string "message" "Unknown method: $2"
+				json_dump
+				exit 1
+				;;
+		esac
 		;;
 esac

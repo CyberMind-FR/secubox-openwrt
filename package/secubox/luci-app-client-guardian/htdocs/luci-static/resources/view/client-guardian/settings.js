@@ -2,6 +2,7 @@
 'require view';
 'require form';
 'require uci';
+'require secubox/kiss-theme';
 
 return view.extend({
 	load: function() {
@@ -35,6 +36,8 @@ return view.extend({
 		o.value('debug', 'Debug');
 		o.default = 'info';
 
-		return m.render();
+		return m.render().then(function(rendered) {
+			return KissTheme.wrap(rendered, 'admin/secubox/guardian/settings');
+		});
 	}
 });

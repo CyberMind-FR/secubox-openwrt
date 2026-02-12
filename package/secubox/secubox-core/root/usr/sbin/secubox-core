@@ -1216,6 +1216,14 @@ daemon_mode() {
     STATUS_COLLECTOR_PID=$!
     log debug "Status collector started (PID: $STATUS_COLLECTOR_PID)"
 
+    # Start stats persistence layer (3-tier: RAM → /tmp → /srv)
+    if [ -x /usr/sbin/secubox-stats-persist ]; then
+        /usr/sbin/secubox-stats-persist recover 2>/dev/null
+        /usr/sbin/secubox-stats-persist daemon &
+        STATS_PERSIST_PID=$!
+        log debug "Stats persistence daemon started (PID: $STATS_PERSIST_PID)"
+    fi
+
     # Wait for initial cache population
     sleep 1
 

@@ -1,0 +1,435 @@
+#!/bin/sh
+#
+# RPCD handler for IoT Guard
+#
+# Provides ubus methods for LuCI frontend.
+#
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+DB_FILE="/var/lib/iot-guard/iot-guard.db"
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
+init_db() {
+    [ -d "/var/lib/iot-guard" ] || mkdir -p /var/lib/iot-guard
+    [ -f "$DB_FILE" ] || /usr/sbin/iot-guardctl scan >/dev/null 2>&1
+}
+
+# ============================================================================
+# RPC Methods
+# ============================================================================
+
+method_status() {
+    init_db
+
+    local total=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM devices;" 2>/dev/null || echo 0)
+    local isolated=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM devices WHERE isolated=1;" 2>/dev/null || echo 0)
+    local trusted=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM devices WHERE trusted=1;" 2>/dev/null || echo 0)
+    local blocked=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM devices WHERE blocked=1;" 2>/dev/null || echo 0)
+    local high_risk=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM devices WHERE risk_level='high';" 2>/dev/null || echo 0)
+    local medium_risk=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM devices WHERE risk_level='medium';" 2>/dev/null || echo 0)
+    local low_risk=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM devices WHERE risk_level='low';" 2>/dev/null || echo 0)
+    local anomalies=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM anomalies WHERE resolved=0;" 2>/dev/null || echo 0)
+    local avg_risk=$(sqlite3 "$DB_FILE" "SELECT COALESCE(CAST(AVG(risk_score) AS INTEGER), 0) FROM devices;" 2>/dev/null || echo 0)
+    local security_score=$((100 - avg_risk))
+    [ "$security_score" -lt 0 ] && security_score=0
+
+    # Get service status
+    local enabled
+    config_load iot-guard
+    config_get_bool enabled main enabled 0
+
+    json_init
+    json_add_int "total_devices" "$total"
+    json_add_int "isolated" "$isolated"
+    json_add_int "trusted" "$trusted"
+    json_add_int "blocked" "$blocked"
+    json_add_int "high_risk" "$high_risk"
+    json_add_int "medium_risk" "$medium_risk"
+    json_add_int "low_risk" "$low_risk"
+    json_add_int "anomalies" "$anomalies"
+    json_add_int "security_score" "$security_score"
+    json_add_boolean "enabled" "$enabled"
+    json_add_string "version" "1.0.0"
+    json_dump
+}
+
+method_get_devices() {
+    init_db
+
+    local filter="${1:-}"
+
+    local where_clause=""
+    case "$filter" in
+        isolated) where_clause="WHERE isolated=1" ;;
+        trusted) where_clause="WHERE trusted=1" ;;
+        blocked) where_clause="WHERE blocked=1" ;;
+        high) where_clause="WHERE risk_level='high'" ;;
+        medium) where_clause="WHERE risk_level='medium'" ;;
+        low) where_clause="WHERE risk_level='low'" ;;
+    esac
+
+    json_init
+    json_add_array "devices"
+
+    sqlite3 -separator '|' "$DB_FILE" \
+        "SELECT mac, ip, hostname, vendor, device_class, risk_level, risk_score, zone, isolated, trusted, blocked, last_seen
+         FROM devices $where_clause ORDER BY risk_score DESC;" 2>/dev/null | \
+    while IFS='|' read -r mac ip hostname vendor class risk score zone isolated trusted blocked last_seen; do
+        json_add_object ""
+        json_add_string "mac" "$mac"
+        json_add_string "ip" "$ip"
+        json_add_string "hostname" "$hostname"
+        json_add_string "vendor" "$vendor"
+        json_add_string "device_class" "$class"
+        json_add_string "risk_level" "$risk"
+        json_add_int "risk_score" "$score"
+        json_add_string "zone" "$zone"
+        json_add_boolean "isolated" "$isolated"
+        json_add_boolean "trusted" "$trusted"
+        json_add_boolean "blocked" "$blocked"
+        json_add_string "last_seen" "$last_seen"
+        json_close_object
+    done
+
+    json_close_array
+    json_dump
+}
+
+method_get_device() {
+    local mac="$1"
+    [ -z "$mac" ] && { echo '{"error":"MAC address required"}'; return; }
+
+    init_db
+    mac=$(echo "$mac" | tr '[:lower:]' '[:upper:]')
+
+    local device=$(sqlite3 -separator '|' "$DB_FILE" \
+        "SELECT mac, ip, hostname, vendor, device_class, risk_level, risk_score, zone, isolated, trusted, blocked, first_seen, last_seen
+         FROM devices WHERE mac='$mac';" 2>/dev/null)
+
+    if [ -z "$device" ]; then
+        echo '{"error":"Device not found"}'
+        return
+    fi
+
+    IFS='|' read -r d_mac d_ip d_hostname d_vendor d_class d_risk d_score d_zone d_isolated d_trusted d_blocked d_first d_last <<EOF
+$device
+EOF
+
+    json_init
+    json_add_string "mac" "$d_mac"
+    json_add_string "ip" "$d_ip"
+    json_add_string "hostname" "$d_hostname"
+    json_add_string "vendor" "$d_vendor"
+    json_add_string "device_class" "$d_class"
+    json_add_string "risk_level" "$d_risk"
+    json_add_int "risk_score" "$d_score"
+    json_add_string "zone" "$d_zone"
+    json_add_boolean "isolated" "$d_isolated"
+    json_add_boolean "trusted" "$d_trusted"
+    json_add_boolean "blocked" "$d_blocked"
+    json_add_string "first_seen" "$d_first"
+    json_add_string "last_seen" "$d_last"
+
+    # Add cloud dependencies
+    json_add_array "cloud_deps"
+    sqlite3 -separator '|' "$DB_FILE" \
+        "SELECT domain, query_count, last_seen FROM cloud_deps WHERE mac='$mac' ORDER BY query_count DESC LIMIT 20;" 2>/dev/null | \
+    while IFS='|' read -r domain count last; do
+        json_add_object ""
+        json_add_string "domain" "$domain"
+        json_add_int "query_count" "$count"
+        json_add_string "last_seen" "$last"
+        json_close_object
+    done
+    json_close_array
+
+    # Add recent anomalies
+    json_add_array "anomalies"
+    sqlite3 -separator '|' "$DB_FILE" \
+        "SELECT timestamp, anomaly_type, severity, description FROM anomalies WHERE mac='$mac' ORDER BY timestamp DESC LIMIT 10;" 2>/dev/null | \
+    while IFS='|' read -r ts atype sev desc; do
+        json_add_object ""
+        json_add_string "timestamp" "$ts"
+        json_add_string "type" "$atype"
+        json_add_string "severity" "$sev"
+        json_add_string "description" "$desc"
+        json_close_object
+    done
+    json_close_array
+
+    json_dump
+}
+
+method_get_anomalies() {
+    init_db
+
+    local limit="${1:-20}"
+
+    json_init
+    json_add_array "anomalies"
+
+    sqlite3 -separator '|' "$DB_FILE" \
+        "SELECT a.id, a.mac, d.hostname, d.device_class, a.timestamp, a.anomaly_type, a.severity, a.description, a.resolved
+         FROM anomalies a
+         LEFT JOIN devices d ON a.mac = d.mac
+         ORDER BY a.timestamp DESC
+         LIMIT $limit;" 2>/dev/null | \
+    while IFS='|' read -r id mac hostname class ts atype sev desc resolved; do
+        json_add_object ""
+        json_add_int "id" "$id"
+        json_add_string "mac" "$mac"
+        json_add_string "hostname" "$hostname"
+        json_add_string "device_class" "$class"
+        json_add_string "timestamp" "$ts"
+        json_add_string "type" "$atype"
+        json_add_string "severity" "$sev"
+        json_add_string "description" "$desc"
+        json_add_boolean "resolved" "$resolved"
+        json_close_object
+    done
+
+    json_close_array
+    json_dump
+}
+
+method_get_vendor_rules() {
+    json_init
+    json_add_array "rules"
+
+    config_load iot-guard
+    config_foreach _output_vendor_rule vendor_rule
+
+    json_close_array
+    json_dump
+}
+
+_output_vendor_rule() {
+    local section="$1"
+    local pattern oui_prefix device_class risk_level auto_isolate
+
+    config_get pattern "$section" vendor_pattern
+    config_get oui_prefix "$section" oui_prefix
+    config_get device_class "$section" device_class
+    config_get risk_level "$section" risk_level
+    config_get_bool auto_isolate "$section" auto_isolate 0
+
+    json_add_object ""
+    json_add_string "name" "$section"
+    json_add_string "pattern" "$pattern"
+    json_add_string "oui_prefix" "$oui_prefix"
+    json_add_string "device_class" "$device_class"
+    json_add_string "risk_level" "$risk_level"
+    json_add_boolean "auto_isolate" "$auto_isolate"
+    json_close_object
+}
+
+method_get_cloud_map() {
+    local mac="$1"
+    [ -z "$mac" ] && { echo '{"error":"MAC address required"}'; return; }
+
+    init_db
+    mac=$(echo "$mac" | tr '[:lower:]' '[:upper:]')
+
+    json_init
+    json_add_string "mac" "$mac"
+    json_add_array "cloud_services"
+
+    sqlite3 -separator '|' "$DB_FILE" \
+        "SELECT domain, query_count, first_seen, last_seen FROM cloud_deps WHERE mac='$mac' ORDER BY query_count DESC;" 2>/dev/null | \
+    while IFS='|' read -r domain count first last; do
+        json_add_object ""
+        json_add_string "domain" "$domain"
+        json_add_int "query_count" "$count"
+        json_add_string "first_seen" "$first"
+        json_add_string "last_seen" "$last"
+        json_close_object
+    done
+
+    json_close_array
+
+    local total=$(sqlite3 "$DB_FILE" "SELECT COUNT(DISTINCT domain) FROM cloud_deps WHERE mac='$mac';" 2>/dev/null || echo 0)
+    json_add_int "total_services" "$total"
+
+    json_dump
+}
+
+method_scan() {
+    /usr/sbin/iot-guardctl scan >/dev/null 2>&1 &
+
+    json_init
+    json_add_boolean "success" 1
+    json_add_string "message" "Network scan started"
+    json_dump
+}
+
+method_isolate_device() {
+    local mac="$1"
+    [ -z "$mac" ] && { echo '{"error":"MAC address required"}'; return; }
+
+    mac=$(echo "$mac" | tr '[:lower:]' '[:upper:]')
+    /usr/sbin/iot-guardctl isolate "$mac" >/dev/null 2>&1
+
+    json_init
+    json_add_boolean "success" 1
+    json_add_string "message" "Device isolated: $mac"
+    json_dump
+}
+
+method_trust_device() {
+    local mac="$1"
+    [ -z "$mac" ] && { echo '{"error":"MAC address required"}'; return; }
+
+    mac=$(echo "$mac" | tr '[:lower:]' '[:upper:]')
+    /usr/sbin/iot-guardctl trust "$mac" >/dev/null 2>&1
+
+    json_init
+    json_add_boolean "success" 1
+    json_add_string "message" "Device trusted: $mac"
+    json_dump
+}
+
+method_block_device() {
+    local mac="$1"
+    [ -z "$mac" ] && { echo '{"error":"MAC address required"}'; return; }
+
+    mac=$(echo "$mac" | tr '[:lower:]' '[:upper:]')
+    /usr/sbin/iot-guardctl block "$mac" >/dev/null 2>&1
+
+    json_init
+    json_add_boolean "success" 1
+    json_add_string "message" "Device blocked: $mac"
+    json_dump
+}
+
+method_add_vendor_rule() {
+    local name="$1"
+    local pattern="$2"
+    local oui="$3"
+    local class="$4"
+    local risk="$5"
+    local auto_isolate="$6"
+
+    [ -z "$name" ] && { echo '{"error":"Rule name required"}'; return; }
+
+    uci set "iot-guard.$name=vendor_rule"
+    [ -n "$pattern" ] && uci set "iot-guard.$name.vendor_pattern=$pattern"
+    [ -n "$oui" ] && uci set "iot-guard.$name.oui_prefix=$oui"
+    [ -n "$class" ] && uci set "iot-guard.$name.device_class=$class"
+    [ -n "$risk" ] && uci set "iot-guard.$name.risk_level=$risk"
+    [ -n "$auto_isolate" ] && uci set "iot-guard.$name.auto_isolate=$auto_isolate"
+    uci commit iot-guard
+
+    json_init
+    json_add_boolean "success" 1
+    json_add_string "message" "Vendor rule added: $name"
+    json_dump
+}
+
+method_delete_vendor_rule() {
+    local name="$1"
+    [ -z "$name" ] && { echo '{"error":"Rule name required"}'; return; }
+
+    uci delete "iot-guard.$name" 2>/dev/null
+    uci commit iot-guard
+
+    json_init
+    json_add_boolean "success" 1
+    json_add_string "message" "Vendor rule deleted: $name"
+    json_dump
+}
+
+# ============================================================================
+# Main Entry Point
+# ============================================================================
+
+case "$1" in
+    list)
+        cat <<'EOF'
+{
+    "status": {},
+    "get_devices": {"filter": "string"},
+    "get_device": {"mac": "string"},
+    "get_anomalies": {"limit": "int"},
+    "get_vendor_rules": {},
+    "get_cloud_map": {"mac": "string"},
+    "scan": {},
+    "isolate_device": {"mac": "string"},
+    "trust_device": {"mac": "string"},
+    "block_device": {"mac": "string"},
+    "add_vendor_rule": {"name": "string", "pattern": "string", "oui": "string", "class": "string", "risk": "string", "auto_isolate": "bool"},
+    "delete_vendor_rule": {"name": "string"}
+}
+EOF
+        ;;
+    call)
+        case "$2" in
+            status)
+                method_status
+                ;;
+            get_devices)
+                read -r input
+                filter=$(echo "$input" | jsonfilter -e '@.filter' 2>/dev/null)
+                method_get_devices "$filter"
+                ;;
+            get_device)
+                read -r input
+                mac=$(echo "$input" | jsonfilter -e '@.mac' 2>/dev/null)
+                method_get_device "$mac"
+                ;;
+            get_anomalies)
+                read -r input
+                limit=$(echo "$input" | jsonfilter -e '@.limit' 2>/dev/null)
+                method_get_anomalies "${limit:-20}"
+                ;;
+            get_vendor_rules)
+                method_get_vendor_rules
+                ;;
+            get_cloud_map)
+                read -r input
+                mac=$(echo "$input" | jsonfilter -e '@.mac' 2>/dev/null)
+                method_get_cloud_map "$mac"
+                ;;
+            scan)
+                method_scan
+                ;;
+            isolate_device)
+                read -r input
+                mac=$(echo "$input" | jsonfilter -e '@.mac' 2>/dev/null)
+                method_isolate_device "$mac"
+                ;;
+            trust_device)
+                read -r input
+                mac=$(echo "$input" | jsonfilter -e '@.mac' 2>/dev/null)
+                method_trust_device "$mac"
+                ;;
+            block_device)
+                read -r input
+                mac=$(echo "$input" | jsonfilter -e '@.mac' 2>/dev/null)
+                method_block_device "$mac"
+                ;;
+            add_vendor_rule)
+                read -r input
+                name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+                pattern=$(echo "$input" | jsonfilter -e '@.pattern' 2>/dev/null)
+                oui=$(echo "$input" | jsonfilter -e '@.oui' 2>/dev/null)
+                class=$(echo "$input" | jsonfilter -e '@.class' 2>/dev/null)
+                risk=$(echo "$input" | jsonfilter -e '@.risk' 2>/dev/null)
+                auto_isolate=$(echo "$input" | jsonfilter -e '@.auto_isolate' 2>/dev/null)
+                method_add_vendor_rule "$name" "$pattern" "$oui" "$class" "$risk" "$auto_isolate"
+                ;;
+            delete_vendor_rule)
+                read -r input
+                name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+                method_delete_vendor_rule "$name"
+                ;;
+            *)
+                echo '{"error":"Unknown method"}'
+                ;;
+        esac
+        ;;
+esac

@@ -3,6 +3,7 @@
 'require dom';
 'require ui';
 'require device-intel/api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	load: function() {
@@ -70,7 +71,7 @@ return view.extend({
 			this.deviceMiniTable(zigbeeDevices, ['hostname', 'vendor', 'device_type'])
 		]);
 
-		return E('div', {}, [
+		var content = E('div', {}, [
 			cssLink,
 			E('h2', {}, _('Emulator Modules')),
 			E('p', { 'style': 'color:#6c757d; margin-bottom:1em;' },
@@ -84,6 +85,8 @@ return view.extend({
 					'class': 'cbi-button cbi-button-neutral'
 				}, _('Configure Emulators')))
 		]);
+
+		return KissTheme.wrap(content, 'admin/secubox/services/device-intel/emulators');
 	},
 
 	emuCard: function(title, enabled, content) {

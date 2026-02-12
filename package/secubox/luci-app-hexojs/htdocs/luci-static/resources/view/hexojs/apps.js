@@ -2,6 +2,7 @@
 'require view';
 'require ui';
 'require hexojs/api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	title: _('Apps'),
@@ -75,7 +76,7 @@ return view.extend({
 		var self = this;
 		var apps = data.apps || [];
 
-		return E('div', { 'class': 'hexo-dashboard' }, [
+		var view = E('div', { 'class': 'hexo-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('hexojs/dashboard.css') }),
 
 			// Header
@@ -125,6 +126,8 @@ return view.extend({
 				])
 			])
 		]);
+
+		return KissTheme.wrap([view], 'admin/services/hexojs/apps');
 	},
 
 	handleSaveApply: null,

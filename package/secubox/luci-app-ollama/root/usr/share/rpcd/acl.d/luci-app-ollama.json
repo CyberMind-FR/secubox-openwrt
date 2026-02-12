@@ -7,7 +7,10 @@
 					"status",
 					"models",
 					"config",
-					"health"
+					"health",
+					"system_info",
+					"logs",
+					"model_info"
 				],
 				"system": [ "info", "board" ],
 				"file": [ "read", "stat", "exec" ]

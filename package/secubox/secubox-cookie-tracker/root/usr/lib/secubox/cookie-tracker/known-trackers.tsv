@@ -1,0 +1,140 @@
+# SecuBox Cookie Tracker - Known Tracker Domains
+# Format: domain<TAB>category<TAB>source
+# Categories: analytics, advertising, tracking
+#
+# Google Analytics
+google-analytics.com	analytics	builtin
+analytics.google.com	analytics	builtin
+googletagmanager.com	analytics	builtin
+#
+# Google Ads / DoubleClick
+doubleclick.net	advertising	builtin
+googlesyndication.com	advertising	builtin
+googleadservices.com	advertising	builtin
+pagead2.googlesyndication.com	advertising	builtin
+#
+# Facebook
+pixel.facebook.com	tracking	builtin
+connect.facebook.net	tracking	builtin
+facebook.com	advertising	builtin
+#
+# Microsoft / Bing
+bat.bing.com	advertising	builtin
+clarity.ms	analytics	builtin
+#
+# LinkedIn
+ads.linkedin.com	advertising	builtin
+px.ads.linkedin.com	tracking	builtin
+snap.licdn.com	tracking	builtin
+#
+# Twitter / X
+ads.twitter.com	advertising	builtin
+analytics.twitter.com	analytics	builtin
+t.co	tracking	builtin
+#
+# Pinterest
+ct.pinterest.com	tracking	builtin
+ads.pinterest.com	advertising	builtin
+#
+# TikTok
+analytics.tiktok.com	analytics	builtin
+ads.tiktok.com	advertising	builtin
+#
+# Hotjar
+hotjar.com	analytics	builtin
+static.hotjar.com	analytics	builtin
+#
+# Segment
+segment.io	analytics	builtin
+segment.com	analytics	builtin
+cdn.segment.com	analytics	builtin
+#
+# Mixpanel
+mixpanel.com	analytics	builtin
+api.mixpanel.com	analytics	builtin
+#
+# HubSpot
+hubspot.com	analytics	builtin
+hs-analytics.net	analytics	builtin
+hs-scripts.com	analytics	builtin
+#
+# Amplitude
+amplitude.com	analytics	builtin
+api.amplitude.com	analytics	builtin
+#
+# Heap
+heap.io	analytics	builtin
+heapanalytics.com	analytics	builtin
+#
+# FullStory
+fullstory.com	analytics	builtin
+rs.fullstory.com	analytics	builtin
+#
+# Criteo
+criteo.com	advertising	builtin
+criteo.net	advertising	builtin
+#
+# Taboola
+taboola.com	advertising	builtin
+trc.taboola.com	advertising	builtin
+#
+# Outbrain
+outbrain.com	advertising	builtin
+widgets.outbrain.com	advertising	builtin
+#
+# Ad Networks
+adnxs.com	advertising	builtin
+adsrvr.org	advertising	builtin
+rubiconproject.com	advertising	builtin
+pubmatic.com	advertising	builtin
+openx.net	advertising	builtin
+casalemedia.com	advertising	builtin
+quantserve.com	advertising	builtin
+advertising.com	advertising	builtin
+#
+# Matomo / Piwik
+matomo.cloud	analytics	builtin
+#
+# Adobe Analytics
+omtrdc.net	analytics	builtin
+demdex.net	tracking	builtin
+#
+# Optimizely
+optimizely.com	analytics	builtin
+#
+# VWO
+visualwebsiteoptimizer.com	analytics	builtin
+#
+# Inspectlet
+inspectlet.com	analytics	builtin
+#
+# Reddit
+redditstatic.com	tracking	builtin
+#
+# Snap
+sc-static.net	tracking	builtin
+#
+# Yahoo / Verizon Media
+ads.yahoo.com	advertising	builtin
+#
+# Amazon
+amazon-adsystem.com	advertising	builtin
+#
+# Quantcast
+quantcast.com	tracking	builtin
+#
+# Scorecard Research
+scorecardresearch.com	tracking	builtin
+#
+# Comscore
+comscore.com	analytics	builtin
+#
+# New Relic
+newrelic.com	analytics	builtin
+nr-data.net	analytics	builtin
+#
+# Datadog
+datadoghq.com	analytics	builtin
+#
+# Sentry
+sentry.io	analytics	builtin

@@ -4,6 +4,7 @@
 'require ui';
 'require secubox-theme/theme as Theme';
 'require cdn-cache/nav as CdnNav';
+'require secubox/kiss-theme';
 
 var callCacheList = rpc.declare({
 	object: 'luci.cdn-cache',
@@ -57,15 +58,17 @@ return view.extend({
 		var domains = (data[0] && data[0].domains) || [];
 		var items = (data[1] && data[1].items) || [];
 
-		return E('div', { 'class': 'cdn-dashboard' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('cdn-cache/common.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('cdn-cache/dashboard.css') }),
-			CdnNav.renderTabs('cache'),
-			this.renderHero(items, domains),
-			this.renderDomains(domains),
-			this.renderCacheTable(items)
-		]);
+		return KissTheme.wrap([
+			E('div', { 'class': 'cdn-dashboard' }, [
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('cdn-cache/common.css') }),
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('cdn-cache/dashboard.css') }),
+				CdnNav.renderTabs('cache'),
+				this.renderHero(items, domains),
+				this.renderDomains(domains),
+				this.renderCacheTable(items)
+			])
+		], 'admin/services/cdn-cache/cache');
 	},
 
 	renderHero: function(items, domains) {

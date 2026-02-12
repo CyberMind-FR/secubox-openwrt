@@ -4,6 +4,7 @@
 'require poll';
 'require ui';
 'require ksm-manager/api as KSM';
+'require secubox/kiss-theme';
 
 return view.extend({
 	load: function() {
@@ -25,7 +26,7 @@ return view.extend({
 
 		poll.add(L.bind(this.pollDevices, this), 10);
 
-		return E([], [
+		return KissTheme.wrap([
 			E('h2', {}, _('Hardware Security Modules')),
 			E('p', {}, _('Manage Nitrokey and YubiKey devices for hardware-backed cryptographic operations.')),
 
@@ -44,7 +45,7 @@ return view.extend({
 					this.renderDevices(devices)
 				)
 			])
-		]);
+		], 'admin/secubox/ksm/hsm');
 	},
 
 	renderDevices: function(devices) {

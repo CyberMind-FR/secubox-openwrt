@@ -2,6 +2,7 @@
 'require view';
 'require ui';
 'require tor-shield/api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	title: _('Bridge Configuration'),
@@ -201,7 +202,7 @@ return view.extend({
 			])
 		]);
 
-		return view;
+		return KissTheme.wrap(view, 'admin/secubox/security/tor-shield/bridges');
 	},
 
 	handleSaveApply: null,

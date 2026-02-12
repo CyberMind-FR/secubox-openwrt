@@ -3,6 +3,7 @@
 'require ui';
 'require rpc';
 'require poll';
+'require secubox/kiss-theme';
 
 var callStatus = rpc.declare({
 	object: 'luci.metabolizer',
@@ -117,7 +118,7 @@ return view.extend({
 			])
 		]);
 
-		return view;
+		return KissTheme.wrap(view, 'admin/secubox/services/metabolizer');
 	},
 
 	renderStatusCard: function(label, value, color) {

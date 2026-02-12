@@ -1,6 +1,7 @@
 'use strict';
 'require view';
 'require dom';
+'require secubox/kiss-theme';
 
 /**
  * SecuBox Campagne Participative - Public Page
@@ -389,7 +390,7 @@ return view.extend({
 		`;
 		document.head.appendChild(style);
 
-		return E('div', { 'class': 'sb-public-page' }, [
+		return KissTheme.wrap([E('div', { 'class': 'sb-public-page' }, [
 			E('div', { 'class': 'sb-public-container' }, [
 				// Header
 				E('div', { 'class': 'sb-public-header' }, [
@@ -646,7 +647,7 @@ return view.extend({
 					E('p', {}, 'Open Source Apache-2.0 \u2014 \ud83c\uddeb\ud83c\uddf7 Made in France with \u2764\ufe0f')
 				])
 			])
-		]);
+		])], 'admin/secubox/portal/crowdfunding');
 	},
 
 	handleSaveApply: null,

@@ -3,6 +3,7 @@
 'require dom';
 'require ui';
 'require haproxy.api as api';
+'require secubox/kiss-theme';
 
 /**
  * HAProxy Virtual Hosts Management
@@ -30,7 +31,7 @@ return view.extend({
 		var vhosts = (data[0] && data[0].vhosts) || data[0] || [];
 		var backends = (data[1] && data[1].backends) || data[1] || [];
 
-		return E('div', { 'class': 'haproxy-dashboard' }, [
+		var content = E('div', { 'class': 'haproxy-dashboard' }, [
 			// Page Header
 			E('div', { 'class': 'hp-page-header' }, [
 				E('div', {}, [
@@ -118,6 +119,8 @@ return view.extend({
 				)
 			])
 		]);
+
+		return KissTheme.wrap(content, 'admin/services/haproxy');
 	},
 
 	renderVhostsTable: function(vhosts, backends) {

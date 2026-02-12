@@ -2,6 +2,7 @@
 'require view';
 'require ui';
 'require rpc';
+'require secubox/kiss-theme';
 
 var callStatus = rpc.declare({ object: 'luci.magicmirror2', method: 'status', expect: {} });
 var callInstall = rpc.declare({ object: 'luci.magicmirror2', method: 'install', expect: {} });
@@ -40,7 +41,7 @@ return view.extend({
 		}
 
 		if (!status.installed || !status.docker_available) {
-			return E('div', { 'class': 'mm-container' }, [
+			var content = E('div', { 'class': 'mm-container' }, [
 				E('div', { 'class': 'mm-header' }, [
 					E('h2', {}, ['\uD83E\uDE9E ', _('MagicMirror')]),
 					E('div', { 'class': 'mm-status stopped' }, [E('span', { 'class': 'mm-dot' }), _('Not Installed')])
@@ -63,9 +64,10 @@ return view.extend({
 					])
 				])
 			]);
+			return KissTheme.wrap([content], 'admin/services/magicmirror2/overview');
 		}
 
-		return E('div', { 'class': 'mm-container' }, [
+		var content = E('div', { 'class': 'mm-container' }, [
 			E('div', { 'class': 'mm-header' }, [
 				E('h2', {}, ['\uD83E\uDE9E ', _('MagicMirror')]),
 				E('div', { 'class': 'mm-status ' + (status.running ? 'running' : 'stopped') }, [
@@ -89,6 +91,7 @@ return view.extend({
 				])
 			])
 		]);
+		return KissTheme.wrap([content], 'admin/services/magicmirror2/overview');
 	},
 
 	handleSaveApply: null, handleSave: null, handleReset: null

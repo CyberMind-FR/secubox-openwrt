@@ -1,19 +1,49 @@
 config mitmproxy 'main'
 	option enabled '0'
 	option runtime 'lxc'
+	# Legacy single-instance settings (deprecated, use instances below)
 	option proxy_port '8888'
 	option web_port '8081'
 	option web_host '0.0.0.0'
 	option data_path '/srv/mitmproxy'
 	option memory_limit '256M'
 	option mode 'regular'
-	# mode: regular, transparent, upstream, reverse
-	# option upstream_proxy 'http://proxy:8080'
-	# option reverse_target 'http://localhost:80'
 	option ssl_insecure '0'
 	option anticache '0'
 	option anticomp '0'
 	option flow_detail '1'
+
+# OUT Instance - LAN to Internet (transparent/forward proxy)
+config instance 'out'
+	option enabled '1'
+	option description 'LAN->Internet Proxy'
+	option container_name 'mitmproxy-out'
+	option proxy_port '8888'
+	option web_port '8089'
+	option web_host '0.0.0.0'
+	option data_path '/srv/mitmproxy-out'
+	option memory_limit '256M'
+	option mode 'transparent'
+	option ssl_insecure '0'
+	option anticache '0'
+	option anticomp '0'
+
+# IN Instance - WAN to Services (WAF/reverse proxy)
+config instance 'in'
+	option enabled '1'
+	option description 'WAF/Reverse Proxy'
+	option container_name 'mitmproxy-in'
+	option proxy_port '8889'
+	option web_port '8090'
+	option web_host '0.0.0.0'
+	option data_path '/srv/mitmproxy-in'
+	option memory_limit '256M'
+	option mode 'upstream'
+	option ssl_insecure '0'
+	option anticache '0'
+	option anticomp '0'
+	# HAProxy sends traffic here
+	option haproxy_backend '1'
 
 # WAN Protection Mode - protect services exposed to internet
 # Acts as WAF/reverse proxy for incoming WAN traffic

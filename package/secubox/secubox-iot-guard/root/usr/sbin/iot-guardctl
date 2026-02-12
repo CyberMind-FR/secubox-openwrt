@@ -1,0 +1,783 @@
+#!/bin/sh
+#
+# iot-guardctl - IoT Guard Controller
+#
+# IoT device isolation, classification, and security monitoring.
+# Orchestrates existing SecuBox modules for IoT protection.
+#
+# Usage:
+#   iot-guardctl status              Overview status
+#   iot-guardctl list [--json]       List IoT devices
+#   iot-guardctl show <mac>          Device detail
+#   iot-guardctl scan                Network scan
+#   iot-guardctl isolate <mac>       Move to IoT zone
+#   iot-guardctl trust <mac>         Add to allowlist
+#   iot-guardctl block <mac>         Block device
+#   iot-guardctl anomalies           Show anomalies
+#   iot-guardctl cloud-map <mac>     Show cloud dependencies
+#
+
+VERSION="1.0.0"
+NAME="iot-guard"
+
+# Directories
+VAR_DIR="/var/lib/iot-guard"
+CACHE_DIR="/tmp/iot-guard"
+DB_FILE="$VAR_DIR/iot-guard.db"
+OUI_FILE="/usr/lib/secubox/iot-guard/iot-oui.tsv"
+BASELINE_DIR="/usr/share/iot-guard/baseline-profiles"
+
+# Load libraries
+. /usr/lib/secubox/iot-guard/functions.sh
+[ -f /usr/lib/secubox/iot-guard/classify.sh ] && . /usr/lib/secubox/iot-guard/classify.sh
+[ -f /usr/lib/secubox/iot-guard/anomaly.sh ] && . /usr/lib/secubox/iot-guard/anomaly.sh
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+MAGENTA='\033[0;35m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+log() { echo -e "${GREEN}[IOT-GUARD]${NC} $1"; }
+warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+error() { echo -e "${RED}[ERROR]${NC} $1"; }
+info() { echo -e "${CYAN}[INFO]${NC} $1"; }
+
+# ============================================================================
+# Initialization
+# ============================================================================
+
+init_dirs() {
+    mkdir -p "$VAR_DIR" "$CACHE_DIR"
+}
+
+init_db() {
+    if [ ! -f "$DB_FILE" ]; then
+        log "Initializing IoT Guard database..."
+        sqlite3 "$DB_FILE" <<'EOF'
+CREATE TABLE IF NOT EXISTS devices (
+    mac TEXT PRIMARY KEY,
+    ip TEXT,
+    hostname TEXT,
+    vendor TEXT,
+    device_class TEXT DEFAULT 'unknown',
+    risk_level TEXT DEFAULT 'unknown',
+    risk_score INTEGER DEFAULT 0,
+    zone TEXT DEFAULT 'lan',
+    status TEXT DEFAULT 'active',
+    first_seen TEXT,
+    last_seen TEXT,
+    isolated INTEGER DEFAULT 0,
+    trusted INTEGER DEFAULT 0,
+    blocked INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS anomalies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    mac TEXT,
+    timestamp TEXT,
+    anomaly_type TEXT,
+    severity TEXT,
+    description TEXT,
+    resolved INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS cloud_deps (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    mac TEXT,
+    domain TEXT,
+    first_seen TEXT,
+    last_seen TEXT,
+    query_count INTEGER DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS traffic_baseline (
+    mac TEXT PRIMARY KEY,
+    avg_bps_in REAL DEFAULT 0,
+    avg_bps_out REAL DEFAULT 0,
+    peak_bps_in REAL DEFAULT 0,
+    peak_bps_out REAL DEFAULT 0,
+    common_ports TEXT,
+    sample_count INTEGER DEFAULT 0,
+    last_update TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_devices_class ON devices(device_class);
+CREATE INDEX IF NOT EXISTS idx_devices_risk ON devices(risk_level);
+CREATE INDEX IF NOT EXISTS idx_anomalies_mac ON anomalies(mac);
+CREATE INDEX IF NOT EXISTS idx_cloud_mac ON cloud_deps(mac);
+EOF
+        log "Database initialized: $DB_FILE"
+    fi
+}
+
+# ============================================================================
+# Network Scanning
+# ============================================================================
+
+scan_network() {
+    init_dirs
+    init_db
+
+    log "Scanning network for IoT devices..."
+
+    local now=$(date -Iseconds)
+    local found=0
+    local classified=0
+
+    # Get devices from ARP table
+    arp -n 2>/dev/null | grep -v "incomplete" | tail -n +2 | while read -r line; do
+        local ip=$(echo "$line" | awk '{print $1}')
+        local mac=$(echo "$line" | awk '{print $3}' | tr '[:lower:]' '[:upper:]')
+
+        [ -z "$mac" ] && continue
+        [ "$mac" = "<INCOMPLETE>" ] && continue
+
+        # Get hostname from DHCP leases
+        local hostname=""
+        if [ -f /tmp/dhcp.leases ]; then
+            hostname=$(grep -i "$mac" /tmp/dhcp.leases 2>/dev/null | awk '{print $4}' | head -1)
+        fi
+        [ -z "$hostname" ] && hostname="unknown"
+
+        # Classify device
+        local oui=$(echo "$mac" | cut -d':' -f1-3)
+        local vendor=$(lookup_vendor "$oui")
+        local class=$(classify_device "$mac" "$vendor")
+        local risk=$(get_risk_level "$vendor" "$class")
+        local score=$(calculate_risk_score "$mac" "$vendor" "$class")
+
+        # Insert or update device
+        sqlite3 "$DB_FILE" "INSERT OR REPLACE INTO devices
+            (mac, ip, hostname, vendor, device_class, risk_level, risk_score, first_seen, last_seen)
+            VALUES ('$mac', '$ip', '$hostname', '$vendor', '$class', '$risk', $score,
+                    COALESCE((SELECT first_seen FROM devices WHERE mac='$mac'), '$now'), '$now');"
+
+        found=$((found + 1))
+        [ "$class" != "unknown" ] && classified=$((classified + 1))
+
+        # Check for auto-isolation
+        check_auto_isolate "$mac" "$vendor" "$class" "$score"
+    done
+
+    log "Scan complete: $found devices found"
+}
+
+lookup_vendor() {
+    local oui="$1"
+
+    # Try IoT-specific OUI database first
+    if [ -f "$OUI_FILE" ]; then
+        local result=$(grep -i "^$oui" "$OUI_FILE" 2>/dev/null | cut -f2)
+        [ -n "$result" ] && { echo "$result"; return; }
+    fi
+
+    # Fallback to system OUI database
+    if [ -f /usr/share/misc/oui.txt ]; then
+        local result=$(grep -i "^$oui" /usr/share/misc/oui.txt 2>/dev/null | cut -d'	' -f2)
+        [ -n "$result" ] && { echo "$result"; return; }
+    fi
+
+    echo "Unknown"
+}
+
+classify_device() {
+    local mac="$1"
+    local vendor="$2"
+
+    # Check UCI vendor rules
+    local class=""
+    config_load iot-guard
+
+    config_foreach _classify_by_rule vendor_rule "$mac" "$vendor"
+
+    [ -n "$IOT_DEVICE_CLASS" ] && { echo "$IOT_DEVICE_CLASS"; return; }
+
+    # Keyword-based classification
+    case "$vendor" in
+        *Ring*|*Nest*Cam*|*Wyze*|*Eufy*|*Arlo*|*Reolink*)
+            echo "camera" ;;
+        *Nest*|*Ecobee*|*Honeywell*|*Tado*)
+            echo "thermostat" ;;
+        *Hue*|*LIFX*|*Wiz*|*Sengled*)
+            echo "lighting" ;;
+        *Kasa*|*Wemo*|*Gosund*|*Teckin*)
+            echo "plug" ;;
+        *Echo*|*Alexa*|*Google*Home*|*Sonos*)
+            echo "assistant" ;;
+        *Sonos*|*Bose*|*Samsung*TV*|*LG*TV*|*Roku*|*Chromecast*)
+            echo "media" ;;
+        *August*|*Yale*|*Schlage*)
+            echo "lock" ;;
+        *Ring*Doorbell*|*Nest*Doorbell*)
+            echo "doorbell" ;;
+        *Xiaomi*|*Tuya*|*Espressif*|*ESP*)
+            echo "mixed" ;;
+        *)
+            echo "unknown" ;;
+    esac
+}
+
+_classify_by_rule() {
+    local section="$1"
+    local mac="$2"
+    local vendor="$3"
+
+    local pattern oui_prefix device_class
+    config_get pattern "$section" vendor_pattern
+    config_get oui_prefix "$section" oui_prefix
+    config_get device_class "$section" device_class
+
+    # Match by OUI prefix
+    if [ -n "$oui_prefix" ]; then
+        local mac_prefix=$(echo "$mac" | cut -d':' -f1-3 | tr '[:lower:]' '[:upper:]')
+        local check_prefix=$(echo "$oui_prefix" | tr '[:lower:]' '[:upper:]')
+        if [ "$mac_prefix" = "$check_prefix" ]; then
+            IOT_DEVICE_CLASS="$device_class"
+            return 0
+        fi
+    fi
+
+    # Match by vendor pattern
+    if [ -n "$pattern" ]; then
+        if echo "$vendor" | grep -qiE "$pattern"; then
+            IOT_DEVICE_CLASS="$device_class"
+            return 0
+        fi
+    fi
+}
+
+get_risk_level() {
+    local vendor="$1"
+    local class="$2"
+
+    # Check UCI vendor rules for risk level
+    config_load iot-guard
+
+    local risk_level=""
+    config_foreach _get_risk_by_rule vendor_rule "$vendor"
+
+    [ -n "$IOT_RISK_LEVEL" ] && { echo "$IOT_RISK_LEVEL"; return; }
+
+    # Default risk by class
+    case "$class" in
+        camera|doorbell)
+            echo "medium" ;;
+        thermostat|lighting)
+            echo "low" ;;
+        plug|assistant)
+            echo "medium" ;;
+        lock)
+            echo "high" ;;
+        mixed|diy)
+            echo "high" ;;
+        *)
+            echo "unknown" ;;
+    esac
+}
+
+_get_risk_by_rule() {
+    local section="$1"
+    local vendor="$2"
+
+    local pattern risk_level
+    config_get pattern "$section" vendor_pattern
+    config_get risk_level "$section" risk_level
+
+    if [ -n "$pattern" ] && echo "$vendor" | grep -qiE "$pattern"; then
+        IOT_RISK_LEVEL="$risk_level"
+        return 0
+    fi
+}
+
+calculate_risk_score() {
+    local mac="$1"
+    local vendor="$2"
+    local class="$3"
+
+    local score=0
+
+    # Base score by risk level
+    case "$(get_risk_level "$vendor" "$class")" in
+        low) score=20 ;;
+        medium) score=50 ;;
+        high) score=80 ;;
+        *) score=40 ;;
+    esac
+
+    # Add anomaly penalty
+    local anomaly_count=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM anomalies WHERE mac='$mac' AND resolved=0;" 2>/dev/null || echo 0)
+    score=$((score + anomaly_count * 10))
+
+    # Add cloud dependency penalty (many cloud deps = higher risk)
+    local cloud_count=$(sqlite3 "$DB_FILE" "SELECT COUNT(DISTINCT domain) FROM cloud_deps WHERE mac='$mac';" 2>/dev/null || echo 0)
+    [ "$cloud_count" -gt 10 ] && score=$((score + 10))
+    [ "$cloud_count" -gt 20 ] && score=$((score + 10))
+
+    # Cap at 100
+    [ "$score" -gt 100 ] && score=100
+
+    echo "$score"
+}
+
+check_auto_isolate() {
+    local mac="$1"
+    local vendor="$2"
+    local class="$3"
+    local score="$4"
+
+    local auto_isolate threshold
+    config_get_bool auto_isolate main auto_isolate 0
+    config_get threshold main auto_isolate_threshold 80
+
+    [ "$auto_isolate" -eq 0 ] && return
+
+    # Check if already isolated
+    local is_isolated=$(sqlite3 "$DB_FILE" "SELECT isolated FROM devices WHERE mac='$mac';" 2>/dev/null || echo 0)
+    [ "$is_isolated" = "1" ] && return
+
+    # Check if trusted
+    local is_trusted=$(sqlite3 "$DB_FILE" "SELECT trusted FROM devices WHERE mac='$mac';" 2>/dev/null || echo 0)
+    [ "$is_trusted" = "1" ] && return
+
+    # Check score threshold
+    if [ "$score" -ge "$threshold" ]; then
+        log "Auto-isolating high-risk device: $mac (score: $score)"
+        isolate_device "$mac"
+    fi
+}
+
+# ============================================================================
+# Device Management
+# ============================================================================
+
+list_devices() {
+    local json_mode="$1"
+
+    init_db
+
+    if [ "$json_mode" = "--json" ]; then
+        # JSON output
+        echo '{"devices":['
+        local first=1
+        sqlite3 -json "$DB_FILE" "SELECT mac, ip, hostname, vendor, device_class, risk_level, risk_score, zone, isolated, trusted, blocked, last_seen FROM devices ORDER BY risk_score DESC;" 2>/dev/null || echo '[]'
+        echo ']}'
+    else
+        # Human-readable output
+        echo ""
+        echo -e "${BOLD}IoT Guard - Device List${NC}"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        printf "%-18s %-16s %-12s %-12s %-8s %-6s %s\n" "MAC" "IP" "Class" "Risk" "Score" "Zone" "Vendor"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+        sqlite3 -separator '|' "$DB_FILE" "SELECT mac, ip, device_class, risk_level, risk_score, zone, vendor FROM devices ORDER BY risk_score DESC;" 2>/dev/null | while IFS='|' read -r mac ip class risk score zone vendor; do
+            # Color by risk
+            local risk_color="$NC"
+            case "$risk" in
+                high) risk_color="$RED" ;;
+                medium) risk_color="$YELLOW" ;;
+                low) risk_color="$GREEN" ;;
+            esac
+
+            # Truncate vendor
+            [ ${#vendor} -gt 20 ] && vendor="${vendor:0:17}..."
+
+            printf "%-18s %-16s %-12s ${risk_color}%-12s${NC} %-8s %-6s %s\n" "$mac" "$ip" "$class" "$risk" "$score" "$zone" "$vendor"
+        done
+
+        echo ""
+    fi
+}
+
+show_device() {
+    local mac="$1"
+    [ -z "$mac" ] && { error "Usage: iot-guardctl show <mac>"; return 1; }
+
+    mac=$(echo "$mac" | tr '[:lower:]' '[:upper:]')
+    init_db
+
+    local device=$(sqlite3 -line "$DB_FILE" "SELECT * FROM devices WHERE mac='$mac';")
+
+    if [ -z "$device" ]; then
+        error "Device not found: $mac"
+        return 1
+    fi
+
+    echo ""
+    echo -e "${BOLD}IoT Guard - Device Detail${NC}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "$device"
+
+    # Show cloud dependencies
+    echo ""
+    echo -e "${BOLD}Cloud Dependencies:${NC}"
+    sqlite3 -column "$DB_FILE" "SELECT domain, query_count, last_seen FROM cloud_deps WHERE mac='$mac' ORDER BY query_count DESC LIMIT 10;"
+
+    # Show recent anomalies
+    echo ""
+    echo -e "${BOLD}Recent Anomalies:${NC}"
+    sqlite3 -column "$DB_FILE" "SELECT timestamp, anomaly_type, severity, description FROM anomalies WHERE mac='$mac' ORDER BY timestamp DESC LIMIT 5;"
+
+    echo ""
+}
+
+isolate_device() {
+    local mac="$1"
+    [ -z "$mac" ] && { error "Usage: iot-guardctl isolate <mac>"; return 1; }
+
+    mac=$(echo "$mac" | tr '[:lower:]' '[:upper:]')
+    init_db
+
+    log "Isolating device: $mac"
+
+    # Update database
+    local now=$(date -Iseconds)
+    sqlite3 "$DB_FILE" "UPDATE devices SET isolated=1, zone='iot', last_seen='$now' WHERE mac='$mac';"
+
+    # Call Client Guardian to set zone
+    if [ -x /usr/sbin/client-guardian ]; then
+        /usr/sbin/client-guardian set-zone "$mac" iot 2>/dev/null
+    fi
+
+    # Notify other modules
+    if [ -x /usr/sbin/bandwidth-manager ]; then
+        /usr/sbin/bandwidth-manager set-profile "$mac" iot_limited 2>/dev/null
+    fi
+
+    log "Device isolated: $mac -> IoT zone"
+}
+
+trust_device() {
+    local mac="$1"
+    [ -z "$mac" ] && { error "Usage: iot-guardctl trust <mac>"; return 1; }
+
+    mac=$(echo "$mac" | tr '[:lower:]' '[:upper:]')
+    init_db
+
+    log "Trusting device: $mac"
+
+    local now=$(date -Iseconds)
+    sqlite3 "$DB_FILE" "UPDATE devices SET trusted=1, isolated=0, zone='lan', last_seen='$now' WHERE mac='$mac';"
+
+    # Add to UCI allowlist
+    uci add_list iot-guard.trusted.mac="$mac" 2>/dev/null
+    uci commit iot-guard
+
+    # Call MAC Guardian to trust
+    if [ -x /usr/sbin/mac-guardian ]; then
+        /usr/sbin/mac-guardian trust "$mac" 2>/dev/null
+    fi
+
+    log "Device trusted: $mac"
+}
+
+block_device() {
+    local mac="$1"
+    [ -z "$mac" ] && { error "Usage: iot-guardctl block <mac>"; return 1; }
+
+    mac=$(echo "$mac" | tr '[:lower:]' '[:upper:]')
+    init_db
+
+    log "Blocking device: $mac"
+
+    local now=$(date -Iseconds)
+    sqlite3 "$DB_FILE" "UPDATE devices SET blocked=1, status='blocked', last_seen='$now' WHERE mac='$mac';"
+
+    # Add to UCI blocklist
+    uci add_list iot-guard.banned.mac="$mac" 2>/dev/null
+    uci commit iot-guard
+
+    # Call MAC Guardian to block
+    if [ -x /usr/sbin/mac-guardian ]; then
+        /usr/sbin/mac-guardian block "$mac" 2>/dev/null
+    fi
+
+    log "Device blocked: $mac"
+}
+
+# ============================================================================
+# Anomaly Detection
+# ============================================================================
+
+show_anomalies() {
+    init_db
+
+    echo ""
+    echo -e "${BOLD}IoT Guard - Anomaly Events${NC}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    sqlite3 -column -header "$DB_FILE" \
+        "SELECT a.timestamp, a.mac, d.hostname, a.anomaly_type, a.severity, a.description
+         FROM anomalies a
+         LEFT JOIN devices d ON a.mac = d.mac
+         WHERE a.resolved = 0
+         ORDER BY a.timestamp DESC
+         LIMIT 20;"
+
+    echo ""
+
+    local total=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM anomalies WHERE resolved=0;")
+    echo -e "Total unresolved anomalies: ${YELLOW}$total${NC}"
+    echo ""
+}
+
+record_anomaly() {
+    local mac="$1"
+    local atype="$2"
+    local severity="$3"
+    local desc="$4"
+
+    init_db
+
+    local now=$(date -Iseconds)
+    sqlite3 "$DB_FILE" "INSERT INTO anomalies (mac, timestamp, anomaly_type, severity, description)
+                        VALUES ('$mac', '$now', '$atype', '$severity', '$desc');"
+
+    # Update device risk score
+    local new_score=$(calculate_risk_score "$mac" "" "")
+    sqlite3 "$DB_FILE" "UPDATE devices SET risk_score=$new_score WHERE mac='$mac';"
+
+    log "Anomaly recorded: $mac - $atype ($severity)"
+}
+
+# ============================================================================
+# Cloud Dependency Mapping
+# ============================================================================
+
+show_cloud_map() {
+    local mac="$1"
+    [ -z "$mac" ] && { error "Usage: iot-guardctl cloud-map <mac>"; return 1; }
+
+    mac=$(echo "$mac" | tr '[:lower:]' '[:upper:]')
+    init_db
+
+    echo ""
+    echo -e "${BOLD}IoT Guard - Cloud Dependencies for $mac${NC}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    sqlite3 -column -header "$DB_FILE" \
+        "SELECT domain, query_count, first_seen, last_seen
+         FROM cloud_deps
+         WHERE mac='$mac'
+         ORDER BY query_count DESC;"
+
+    echo ""
+
+    local total=$(sqlite3 "$DB_FILE" "SELECT COUNT(DISTINCT domain) FROM cloud_deps WHERE mac='$mac';")
+    echo -e "Total cloud services: ${CYAN}$total${NC}"
+    echo ""
+}
+
+# ============================================================================
+# Status & Dashboard
+# ============================================================================
+
+show_status() {
+    init_dirs
+    init_db
+
+    echo ""
+    echo -e "${BOLD}╔══════════════════════════════════════════════════╗${NC}"
+    echo -e "${BOLD}║           IoT Guard v$VERSION                      ║${NC}"
+    echo -e "${BOLD}╠══════════════════════════════════════════════════╣${NC}"
+
+    # Get counts
+    local total=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM devices;" 2>/dev/null || echo 0)
+    local isolated=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM devices WHERE isolated=1;" 2>/dev/null || echo 0)
+    local trusted=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM devices WHERE trusted=1;" 2>/dev/null || echo 0)
+    local blocked=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM devices WHERE blocked=1;" 2>/dev/null || echo 0)
+    local high_risk=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM devices WHERE risk_level='high';" 2>/dev/null || echo 0)
+    local anomalies=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM anomalies WHERE resolved=0;" 2>/dev/null || echo 0)
+
+    # Calculate security score (inverse of risk)
+    local avg_risk=$(sqlite3 "$DB_FILE" "SELECT COALESCE(AVG(risk_score), 0) FROM devices;" 2>/dev/null || echo 0)
+    local security_score=$((100 - ${avg_risk%.*}))
+    [ "$security_score" -lt 0 ] && security_score=0
+
+    echo -e "${BOLD}║${NC}  IoT Devices:     ${CYAN}$total${NC}"
+    echo -e "${BOLD}║${NC}  Isolated:        ${YELLOW}$isolated${NC}"
+    echo -e "${BOLD}║${NC}  Trusted:         ${GREEN}$trusted${NC}"
+    echo -e "${BOLD}║${NC}  Blocked:         ${RED}$blocked${NC}"
+    echo -e "${BOLD}║${NC}  High Risk:       ${RED}$high_risk${NC}"
+    echo -e "${BOLD}║${NC}  Active Anomalies:${YELLOW}$anomalies${NC}"
+    echo -e "${BOLD}║${NC}"
+    echo -e "${BOLD}║${NC}  Security Score:  ${GREEN}$security_score%${NC}"
+    echo -e "${BOLD}╚══════════════════════════════════════════════════╝${NC}"
+    echo ""
+
+    # Show by class
+    echo -e "${BOLD}Devices by Class:${NC}"
+    sqlite3 "$DB_FILE" "SELECT device_class || ': ' || COUNT(*) FROM devices GROUP BY device_class ORDER BY COUNT(*) DESC;" 2>/dev/null
+    echo ""
+}
+
+show_status_json() {
+    init_db
+
+    local total=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM devices;" 2>/dev/null || echo 0)
+    local isolated=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM devices WHERE isolated=1;" 2>/dev/null || echo 0)
+    local trusted=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM devices WHERE trusted=1;" 2>/dev/null || echo 0)
+    local blocked=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM devices WHERE blocked=1;" 2>/dev/null || echo 0)
+    local high_risk=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM devices WHERE risk_level='high';" 2>/dev/null || echo 0)
+    local anomalies=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM anomalies WHERE resolved=0;" 2>/dev/null || echo 0)
+    local avg_risk=$(sqlite3 "$DB_FILE" "SELECT COALESCE(AVG(risk_score), 0) FROM devices;" 2>/dev/null || echo 0)
+    local security_score=$((100 - ${avg_risk%.*}))
+    [ "$security_score" -lt 0 ] && security_score=0
+
+    cat <<EOF
+{
+  "total_devices": $total,
+  "isolated": $isolated,
+  "trusted": $trusted,
+  "blocked": $blocked,
+  "high_risk": $high_risk,
+  "anomalies": $anomalies,
+  "security_score": $security_score,
+  "version": "$VERSION"
+}
+EOF
+}
+
+# ============================================================================
+# Daemon Mode
+# ============================================================================
+
+daemon_loop() {
+    log "Starting IoT Guard daemon..."
+
+    init_dirs
+    init_db
+
+    local scan_interval
+    config_load iot-guard
+    config_get scan_interval main scan_interval 300
+
+    while true; do
+        scan_network
+
+        # Run anomaly detection if enabled
+        local anomaly_detection
+        config_get_bool anomaly_detection main anomaly_detection 0
+        if [ "$anomaly_detection" -eq 1 ]; then
+            detect_anomalies
+        fi
+
+        sleep "$scan_interval"
+    done
+}
+
+detect_anomalies() {
+    # Placeholder for anomaly detection logic
+    # Would analyze traffic patterns, DNS queries, etc.
+    :
+}
+
+# ============================================================================
+# Usage
+# ============================================================================
+
+usage() {
+    cat <<'EOF'
+IoT Guard - Device Isolation & Security
+
+Usage: iot-guardctl <command> [options]
+
+Status & Info:
+  status              Overview dashboard
+  status --json       JSON output
+  list [--json]       List all IoT devices
+  show <mac>          Device detail with cloud map
+
+Actions:
+  scan                Scan network for IoT devices
+  isolate <mac>       Isolate device to IoT zone
+  trust <mac>         Add device to allowlist
+  block <mac>         Block device completely
+
+Monitoring:
+  anomalies           Show anomaly events
+  cloud-map <mac>     Show cloud dependencies
+
+Service:
+  daemon              Run in daemon mode
+
+Examples:
+  iot-guardctl scan
+  iot-guardctl list
+  iot-guardctl isolate AA:BB:CC:DD:EE:FF
+  iot-guardctl cloud-map AA:BB:CC:DD:EE:FF
+EOF
+}
+
+# ============================================================================
+# Main
+# ============================================================================
+
+case "${1:-}" in
+    status)
+        shift
+        case "${1:-}" in
+            --json) show_status_json ;;
+            *) show_status ;;
+        esac
+        ;;
+
+    list)
+        shift
+        list_devices "$1"
+        ;;
+
+    show)
+        shift
+        show_device "$1"
+        ;;
+
+    scan)
+        scan_network
+        ;;
+
+    isolate)
+        shift
+        isolate_device "$1"
+        ;;
+
+    trust)
+        shift
+        trust_device "$1"
+        ;;
+
+    block)
+        shift
+        block_device "$1"
+        ;;
+
+    anomalies)
+        show_anomalies
+        ;;
+
+    cloud-map)
+        shift
+        show_cloud_map "$1"
+        ;;
+
+    daemon)
+        daemon_loop
+        ;;
+
+    help|--help|-h)
+        usage
+        ;;
+
+    "")
+        show_status
+        ;;
+
+    *)
+        error "Unknown command: $1"
+        usage >&2
+        exit 1
+        ;;
+esac

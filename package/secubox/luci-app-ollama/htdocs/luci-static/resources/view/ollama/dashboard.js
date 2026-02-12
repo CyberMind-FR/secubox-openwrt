@@ -3,11 +3,15 @@
 'require dom';
 'require poll';
 'require rpc';
+'require secubox/kiss-theme';
 
 var api = {
 	status: rpc.declare({ object: 'luci.ollama', method: 'status' }),
 	models: rpc.declare({ object: 'luci.ollama', method: 'models' }),
 	health: rpc.declare({ object: 'luci.ollama', method: 'health' }),
+	systemInfo: rpc.declare({ object: 'luci.ollama', method: 'system_info' }),
+	logs: rpc.declare({ object: 'luci.ollama', method: 'logs', params: ['lines'] }),
+	modelInfo: rpc.declare({ object: 'luci.ollama', method: 'model_info', params: ['name'] }),
 	start: rpc.declare({ object: 'luci.ollama', method: 'start' }),
 	stop: rpc.declare({ object: 'luci.ollama', method: 'stop' }),
 	restart: rpc.declare({ object: 'luci.ollama', method: 'restart' }),
@@ -85,12 +89,30 @@ return view.extend({
 		.ol-toast { position: fixed; bottom: 1rem; right: 1rem; padding: 0.75rem 1rem; border-radius: 0.375rem; font-size: 0.875rem; z-index: 9999; }
 		.ol-toast.success { background: var(--ol-success); color: #fff; }
 		.ol-toast.error { background: var(--ol-danger); color: #fff; }
+		.ol-progress { height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; margin-top: 0.5rem; }
+		.ol-progress-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+		.ol-progress-fill.green { background: linear-gradient(90deg, #22c55e, #4ade80); }
+		.ol-progress-fill.yellow { background: linear-gradient(90deg, #eab308, #facc15); }
+		.ol-progress-fill.red { background: linear-gradient(90deg, #ef4444, #f87171); }
+		.ol-logs { font-family: monospace; font-size: 0.75rem; max-height: 200px; overflow-y: auto; background: #0a0f1a; border: 1px solid var(--ol-border); border-radius: 0.375rem; padding: 0.75rem; }
+		.ol-logs-line { color: var(--ol-muted); margin-bottom: 0.25rem; word-break: break-all; }
+		.ol-logs-line.error { color: var(--ol-danger); }
+		.ol-logs-line.info { color: var(--ol-accent); }
+		.ol-api-url { font-family: monospace; font-size: 0.8rem; padding: 0.5rem; background: var(--ol-bg); border-radius: 0.25rem; display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
+		.ol-api-url code { color: var(--ol-accent); }
+		.ol-api-url button { padding: 0.25rem 0.5rem; font-size: 0.7rem; }
+		.ol-tabs { display: flex; gap: 0.25rem; margin-bottom: 1rem; border-bottom: 1px solid var(--ol-border); padding-bottom: 0.5rem; }
+		.ol-tab { padding: 0.5rem 1rem; background: transparent; border: none; color: var(--ol-muted); cursor: pointer; font-size: 0.85rem; border-radius: 0.25rem 0.25rem 0 0; }
+		.ol-tab:hover { color: var(--ol-text); }
+		.ol-tab.active { color: var(--ol-accent); background: rgba(249,115,22,0.1); border-bottom: 2px solid var(--ol-accent); }
 	`,
 
 	load: function() {
 		return Promise.all([
 			api.status().catch(function() { return {}; }),
-			api.models().catch(function() { return { models: [] }; })
+			api.models().catch(function() { return { models: [] }; }),
+			api.systemInfo().catch(function() { return {}; }),
+			api.logs(30).catch(function() { return { logs: [] }; })
 		]);
 	},
 
@@ -98,7 +120,11 @@ return view.extend({
 		var self = this;
 		var status = data[0] || {};
 		var models = (data[1] && data[1].models) || [];
+		var sysInfo = data[2] || {};
+		var logs = (data[3] && data[3].logs) || [];
 		this.isRunning = status.running;
+		this.sysInfo = sysInfo;
+		this.logs = logs;
 
 		var view = E('div', { 'class': 'ol-wrap' }, [
 			E('style', {}, this.css),
@@ -180,15 +206,62 @@ return view.extend({
 							E('button', { 'class': 'ol-btn ol-btn-primary', 'id': 'chat-send', 'click': function() { self.sendChat(); } }, 'Send')
 						])
 					])
+				]),
+
+				// System Resources
+				E('div', { 'class': 'ol-card' }, [
+					E('div', { 'class': 'ol-card-head' }, 'System Resources'),
+					E('div', { 'class': 'ol-card-body', 'id': 'sys-resources' }, this.renderSystemResources(sysInfo))
+				]),
+
+				// API Endpoints
+				E('div', { 'class': 'ol-card' }, [
+					E('div', { 'class': 'ol-card-head' }, 'API Endpoints'),
+					E('div', { 'class': 'ol-card-body' }, [
+						E('div', { 'class': 'ol-api-url' }, [
+							E('span', {}, ['Base: ', E('code', {}, 'http://localhost:' + (status.api_port || 11434))]),
+							E('button', { 'class': 'ol-btn ol-btn-sm', 'click': function() { self.copyToClipboard('http://localhost:' + (status.api_port || 11434)); } }, 'Copy')
+						]),
+						E('div', { 'class': 'ol-api-url' }, [
+							E('span', {}, ['Chat: ', E('code', {}, '/api/chat')]),
+							E('button', { 'class': 'ol-btn ol-btn-sm', 'click': function() { self.copyToClipboard('/api/chat'); } }, 'Copy')
+						]),
+						E('div', { 'class': 'ol-api-url' }, [
+							E('span', {}, ['Generate: ', E('code', {}, '/api/generate')]),
+							E('button', { 'class': 'ol-btn ol-btn-sm', 'click': function() { self.copyToClipboard('/api/generate'); } }, 'Copy')
+						]),
+						E('div', { 'class': 'ol-api-url' }, [
+							E('span', {}, ['Models: ', E('code', {}, '/api/tags')]),
+							E('button', { 'class': 'ol-btn ol-btn-sm', 'click': function() { self.copyToClipboard('/api/tags'); } }, 'Copy')
+						]),
+						E('div', { 'class': 'ol-api-url' }, [
+							E('span', {}, ['Embeddings: ', E('code', {}, '/api/embeddings')]),
+							E('button', { 'class': 'ol-btn ol-btn-sm', 'click': function() { self.copyToClipboard('/api/embeddings'); } }, 'Copy')
+						])
+					])
+				]),
+
+				// Logs
+				E('div', { 'class': 'ol-card' }, [
+					E('div', { 'class': 'ol-card-head' }, [
+						'Container Logs',
+						E('button', { 'class': 'ol-btn ol-btn-sm', 'click': function() { self.refreshLogs(); } }, 'Refresh')
+					]),
+					E('div', { 'class': 'ol-card-body' }, [
+						E('div', { 'class': 'ol-logs', 'id': 'ol-logs' }, this.renderLogs(logs))
+					])
 				])
 			])
 		]);
 
 		poll.add(L.bind(this.refresh, this), 15);
-		return view;
+		return KissTheme.wrap([view], 'admin/services/ollama');
 	},
 
 	renderStats: function(status, models) {
+		var sysInfo = this.sysInfo || {};
+		var memPct = (sysInfo.memory && sysInfo.memory.percent) || 0;
+		var diskPct = (sysInfo.disk && sysInfo.disk.percent) || 0;
 		return [
 			E('div', { 'class': 'ol-stat' }, [
 				E('div', { 'class': 'ol-stat-val' }, models.length.toString()),
@@ -199,14 +272,88 @@ return view.extend({
 				E('div', { 'class': 'ol-stat-lbl' }, 'Uptime')
 			]),
 			E('div', { 'class': 'ol-stat' }, [
-				E('div', { 'class': 'ol-stat-val' }, (status.api_port || 11434).toString()),
-				E('div', { 'class': 'ol-stat-lbl' }, 'API Port')
+				E('div', { 'class': 'ol-stat-val' }, memPct + '%'),
+				E('div', { 'class': 'ol-stat-lbl' }, 'RAM Used')
 			]),
 			E('div', { 'class': 'ol-stat' }, [
-				E('div', { 'class': 'ol-stat-val' }, status.runtime || '-'),
-				E('div', { 'class': 'ol-stat-lbl' }, 'Runtime')
+				E('div', { 'class': 'ol-stat-val' }, diskPct + '%'),
+				E('div', { 'class': 'ol-stat-lbl' }, 'Disk Used')
 			])
 		];
+	},
+
+	renderSystemResources: function(sysInfo) {
+		var mem = sysInfo.memory || {};
+		var disk = sysInfo.disk || {};
+		var container = sysInfo.container || {};
+
+		var memPct = mem.percent || 0;
+		var memColor = memPct > 80 ? 'red' : memPct > 60 ? 'yellow' : 'green';
+		var diskPct = disk.percent || 0;
+		var diskColor = diskPct > 80 ? 'red' : diskPct > 60 ? 'yellow' : 'green';
+
+		return [
+			E('div', { 'class': 'ol-row' }, [
+				E('span', { 'class': 'ol-row-lbl' }, 'System RAM'),
+				E('span', {}, fmtBytes((mem.used_kb || 0) * 1024) + ' / ' + fmtBytes((mem.total_kb || 0) * 1024))
+			]),
+			E('div', { 'class': 'ol-progress' }, [
+				E('div', { 'class': 'ol-progress-fill ' + memColor, 'style': 'width:' + memPct + '%' })
+			]),
+			E('div', { 'class': 'ol-row', 'style': 'margin-top: 1rem;' }, [
+				E('span', { 'class': 'ol-row-lbl' }, 'Data Disk (' + (disk.path || '/srv/ollama') + ')'),
+				E('span', {}, fmtBytes((disk.used_kb || 0) * 1024) + ' / ' + fmtBytes((disk.total_kb || 0) * 1024))
+			]),
+			E('div', { 'class': 'ol-progress' }, [
+				E('div', { 'class': 'ol-progress-fill ' + diskColor, 'style': 'width:' + diskPct + '%' })
+			]),
+			E('div', { 'class': 'ol-row', 'style': 'margin-top: 1rem;' }, [
+				E('span', { 'class': 'ol-row-lbl' }, 'Container RAM'),
+				E('span', {}, container.memory || '-')
+			]),
+			E('div', { 'class': 'ol-row' }, [
+				E('span', { 'class': 'ol-row-lbl' }, 'Container CPU'),
+				E('span', {}, container.cpu || '-')
+			])
+		];
+	},
+
+	renderLogs: function(logs) {
+		if (!logs || logs.length === 0) {
+			return E('div', { 'style': 'color: var(--ol-muted); text-align: center;' }, 'No logs available');
+		}
+		return logs.map(function(line) {
+			var cls = 'ol-logs-line';
+			if (line.match(/error|fail/i)) cls += ' error';
+			else if (line.match(/info|start|ready/i)) cls += ' info';
+			return E('div', { 'class': cls }, line);
+		});
+	},
+
+	copyToClipboard: function(text) {
+		var self = this;
+		if (navigator.clipboard) {
+			navigator.clipboard.writeText(text).then(function() {
+				self.toast('Copied!', true);
+			});
+		} else {
+			var ta = document.createElement('textarea');
+			ta.value = text;
+			document.body.appendChild(ta);
+			ta.select();
+			document.execCommand('copy');
+			document.body.removeChild(ta);
+			self.toast('Copied!', true);
+		}
+	},
+
+	refreshLogs: function() {
+		var self = this;
+		api.logs(50).then(function(data) {
+			self.logs = (data && data.logs) || [];
+			var el = document.getElementById('ol-logs');
+			if (el) dom.content(el, self.renderLogs(self.logs));
+		});
 	},
 
 	suggestedModels: [
@@ -265,11 +412,14 @@ return view.extend({
 		var self = this;
 		return Promise.all([
 			api.status().catch(function() { return {}; }),
-			api.models().catch(function() { return { models: [] }; })
+			api.models().catch(function() { return { models: [] }; }),
+			api.systemInfo().catch(function() { return {}; })
 		]).then(function(data) {
 			var status = data[0] || {};
 			var models = (data[1] && data[1].models) || [];
+			var sysInfo = data[2] || {};
 			self.isRunning = status.running;
+			self.sysInfo = sysInfo;
 
 			var badge = document.getElementById('ol-status');
 			if (badge) {
@@ -288,6 +438,10 @@ return view.extend({
 
 			var svcEl = document.getElementById('svc-status');
 			if (svcEl) svcEl.textContent = status.running ? 'Running' : 'Stopped';
+
+			// Update system resources
+			var sysEl = document.getElementById('sys-resources');
+			if (sysEl) dom.content(sysEl, self.renderSystemResources(sysInfo));
 
 			// Update chat model select
 			var sel = document.getElementById('chat-model');

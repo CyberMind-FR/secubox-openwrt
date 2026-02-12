@@ -4,6 +4,7 @@
 'require poll';
 'require ui';
 'require threat-analyst.api as api';
+'require secubox/kiss-theme';
 
 /**
  * Threat Analyst Dashboard - v0.1.0
@@ -27,7 +28,7 @@ return view.extend({
 		var threats = data.threats || [];
 		var pending = data.pending || [];
 
-		var view = E('div', { 'class': 'ta-view' }, [
+		var content = E('div', { 'class': 'ta-view' }, [
 			// Header
 			E('div', { 'class': 'ta-header' }, [
 				E('div', { 'class': 'ta-title' }, 'Threat Analyst'),
@@ -74,7 +75,7 @@ return view.extend({
 		]);
 
 		poll.add(L.bind(this.pollData, this), 30);
-		return view;
+		return KissTheme.wrap(content, 'threat-analyst/dashboard');
 	},
 
 	renderStats: function(s, pending) {

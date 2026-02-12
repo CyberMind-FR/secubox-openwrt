@@ -1,0 +1,42 @@
+{
+	"luci-app-iot-guard": {
+		"description": "IoT Guard - Device Isolation & Security",
+		"read": {
+			"ubus": {
+				"luci.iot-guard": [
+					"status",
+					"get_devices",
+					"get_device",
+					"get_anomalies",
+					"get_vendor_rules",
+					"get_cloud_map"
+				]
+			},
+			"uci": ["iot-guard"]
+		},
+		"write": {
+			"ubus": {
+				"luci.iot-guard": [
+					"scan",
+					"isolate_device",
+					"trust_device",
+					"block_device",
+					"add_vendor_rule",
+					"delete_vendor_rule"
+				]
+			},
+			"uci": ["iot-guard"]
+		}
+	},
+	"unauthenticated": {
+		"description": "Public access for IoT Guard dashboard",
+		"read": {
+			"ubus": {
+				"luci.iot-guard": [
+					"status",
+					"get_devices"
+				]
+			}
+		}
+	}
+}

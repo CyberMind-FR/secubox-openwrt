@@ -5,6 +5,7 @@
 'require dom';
 'require media-flow/api as API';
 'require media-flow/nav as NavHelper';
+'require secubox/kiss-theme';
 
 return view.extend({
 	title: _('Media Flow Dashboard'),
@@ -102,28 +103,30 @@ return view.extend({
 			});
 		}, this), this.pollInterval);
 
-		return E('div', { 'class': 'media-flow-dashboard' }, [
-			E('style', {}, this.getStyles()),
-			NavHelper.renderTabs('dashboard'),
+		return KissTheme.wrap([
+			E('div', { 'class': 'media-flow-dashboard' }, [
+				E('style', {}, this.getStyles()),
+				NavHelper.renderTabs('dashboard'),
 
-			// Quick Actions Bar
-			this.renderQuickActions(status, ndpidStatus),
+				// Quick Actions Bar
+				this.renderQuickActions(status, ndpidStatus),
 
-			// Hero Banner
-			this.renderHeroBanner(stats),
+				// Hero Banner
+				this.renderHeroBanner(stats),
 
-			// Stats Grid
-			this.renderStatsGrid(stats),
+				// Stats Grid
+				this.renderStatsGrid(stats),
 
-			// Active Streams Section
-			this.renderStreamsSection(streams),
+				// Active Streams Section
+				this.renderStreamsSection(streams),
 
-			// Devices & QoS Section
-			this.renderDevicesSection(devices),
+				// Devices & QoS Section
+				this.renderDevicesSection(devices),
 
-			// Service Breakdown
-			this.renderServicesSection(statsByService)
-		]);
+				// Service Breakdown
+				this.renderServicesSection(statsByService)
+			])
+		], 'admin/services/media-flow/dashboard');
 	},
 
 	renderQuickActions: function(status, ndpid) {

@@ -6,6 +6,7 @@
 'require network';
 'require wireguard-dashboard/api as api';
 'require wireguard-dashboard/qrcode as qrcode';
+'require secubox/kiss-theme';
 
 // Zone presets for peer creation
 var ZONE_PRESETS = {
@@ -276,7 +277,7 @@ return view.extend({
 			])
 		]);
 
-		return view;
+		return KissTheme.wrap([view], 'admin/network/wireguard-dashboard/wizard');
 	},
 
 	renderProgressStep: function(num, label, active) {

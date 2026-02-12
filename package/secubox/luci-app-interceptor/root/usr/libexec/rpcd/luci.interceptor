@@ -1,0 +1,254 @@
+#!/bin/sh
+# RPCD backend for SecuBox InterceptoR Dashboard
+# Aggregates status from all interception pillars
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+# Helper to safely get JSON from ubus
+get_ubus_json() {
+	local result
+	result=$(ubus call "$1" "$2" 2>/dev/null)
+	[ -z "$result" ] && result='{}'
+	echo "$result"
+}
+
+# Get WPAD pillar status
+get_wpad_status() {
+	local enabled=0 dhcp_configured=0 enforce_enabled=0 pac_url=""
+
+	# Check PAC file
+	[ -f /www/wpad.dat ] && enabled=1
+
+	# Check DHCP option 252 (check both dhcp_option and dhcp_option_force)
+	local dhcp_opt=$(uci -q get dhcp.lan.dhcp_option)
+	[ -z "$dhcp_opt" ] && dhcp_opt=$(uci -q get dhcp.lan.dhcp_option_force)
+	if echo "$dhcp_opt" | grep -q "252"; then
+		dhcp_configured=1
+		pac_url=$(echo "$dhcp_opt" | grep -oE 'http://[^ ]+wpad[^ ]*' | head -1)
+	fi
+
+	# Check WPAD enforcement
+	enforce_enabled=$(uci -q get network_tweaks.global.wpad_enforce || echo "0")
+
+	json_add_object "wpad"
+		json_add_boolean "enabled" "$enabled"
+		json_add_boolean "dhcp_configured" "$dhcp_configured"
+		json_add_boolean "enforce_enabled" "$enforce_enabled"
+		json_add_string "pac_url" "$pac_url"
+	json_close_object
+}
+
+# Get mitmproxy pillar status
+get_mitm_status() {
+	local enabled=0 running=0 threats_today=0 connections=0
+
+	# Check UCI config
+	enabled=$(uci -q get mitmproxy.main.enabled || echo "0")
+
+	# Check if LXC container is running
+	if command -v lxc-ls >/dev/null 2>&1; then
+		lxc-ls --running 2>/dev/null | grep -q "secbx-mitmproxy" && running=1
+	fi
+
+	# Count today's threats from log
+	local today=$(date +%Y-%m-%d)
+	if [ -f /srv/mitmproxy/threats.log ]; then
+		threats_today=$(grep -c "$today" /srv/mitmproxy/threats.log 2>/dev/null || echo "0")
+	fi
+
+	# Get connection count from mitmproxy stats if available
+	if [ "$running" = "1" ]; then
+		# Try to get stats via mitmproxyctl if available
+		if [ -x /usr/sbin/mitmproxyctl ]; then
+			connections=$(/usr/sbin/mitmproxyctl stats 2>/dev/null | jsonfilter -e '@.active_connections' 2>/dev/null || echo "0")
+		fi
+	fi
+
+	json_add_object "mitm"
+		json_add_boolean "enabled" "$enabled"
+		json_add_boolean "running" "$running"
+		json_add_int "threats_today" "${threats_today:-0}"
+		json_add_int "active_connections" "${connections:-0}"
+	json_close_object
+}
+
+# Get CDN Cache pillar status
+get_cdn_status() {
+	local enabled=0 running=0 hit_ratio=0 saved_mb=0 offline_mode=0
+
+	# Check UCI config
+	enabled=$(uci -q get cdn-cache.main.enabled || echo "0")
+	offline_mode=$(uci -q get cdn-cache.api_failover.offline_mode || echo "0")
+
+	# Check if Squid is running
+	if pgrep squid >/dev/null 2>&1; then
+		running=1
+	fi
+
+	# Get cache stats from Squid if running
+	if [ "$running" = "1" ] && command -v squidclient >/dev/null 2>&1; then
+		local stats=$(squidclient -h 127.0.0.1 mgr:info 2>/dev/null)
+		if [ -n "$stats" ]; then
+			# Parse hit ratio
+			hit_ratio=$(echo "$stats" | grep -o 'Request Hit Ratios:.*' | grep -oP '\d+' | head -1)
+			[ -z "$hit_ratio" ] && hit_ratio=0
+
+			# Estimate bandwidth saved (simplified)
+			local cache_hits=$(echo "$stats" | grep -o 'Cache Hits:.*' | grep -oP '\d+' | head -1)
+			[ -n "$cache_hits" ] && saved_mb=$((cache_hits / 1024))
+		fi
+	fi
+
+	json_add_object "cdn_cache"
+		json_add_boolean "enabled" "$enabled"
+		json_add_boolean "running" "$running"
+		json_add_boolean "offline_mode" "$offline_mode"
+		json_add_int "hit_ratio" "${hit_ratio:-0}"
+		json_add_int "saved_mb" "${saved_mb:-0}"
+	json_close_object
+}
+
+# Get Cookie Tracker pillar status
+get_cookie_status() {
+	local enabled=0 total_cookies=0 trackers=0 blocked=0
+
+	# Check UCI config
+	enabled=$(uci -q get cookie-tracker.main.enabled || echo "0")
+
+	# Get stats from database
+	local db="/var/lib/cookie-tracker/cookies.db"
+	if [ -f "$db" ]; then
+		total_cookies=$(sqlite3 "$db" "SELECT COUNT(*) FROM cookies;" 2>/dev/null || echo "0")
+		trackers=$(sqlite3 "$db" "SELECT COUNT(*) FROM cookies WHERE category IN ('tracking', 'advertising');" 2>/dev/null || echo "0")
+		blocked=$(sqlite3 "$db" "SELECT COUNT(*) FROM cookies WHERE blocked=1;" 2>/dev/null || echo "0")
+	fi
+
+	json_add_object "cookie_tracker"
+		json_add_boolean "enabled" "$enabled"
+		json_add_int "total_cookies" "${total_cookies:-0}"
+		json_add_int "trackers_detected" "${trackers:-0}"
+		json_add_int "blocked" "${blocked:-0}"
+	json_close_object
+}
+
+# Get API Failover pillar status
+get_failover_status() {
+	local enabled=0 stale_serves=0 failed_origins=0
+
+	# Check UCI config
+	enabled=$(uci -q get cdn-cache.api_failover.enabled || echo "0")
+
+	# Count stale serves from Squid log (last 24h)
+	local yesterday=$(date -d "yesterday" +%Y/%m/%d 2>/dev/null || date -d "-1 day" +%Y/%m/%d 2>/dev/null)
+	if [ -f /var/log/cdn-cache/access.log ] && [ -n "$yesterday" ]; then
+		stale_serves=$(grep -c "TCP_STALE_HIT" /var/log/cdn-cache/access.log 2>/dev/null || echo "0")
+	fi
+
+	json_add_object "api_failover"
+		json_add_boolean "enabled" "$enabled"
+		json_add_int "stale_serves" "${stale_serves:-0}"
+		json_add_int "failed_origins" "${failed_origins:-0}"
+	json_close_object
+}
+
+case "$1" in
+	list)
+		json_init
+		json_add_object "status"
+		json_close_object
+		json_add_object "getPillarStatus"
+			json_add_string "pillar" "string"
+		json_close_object
+		json_dump
+		;;
+
+	call)
+		case "$2" in
+			status)
+				# Aggregate all pillar statuses
+				json_init
+				json_add_boolean "success" 1
+
+				# Get all pillar statuses
+				get_wpad_status
+				get_mitm_status
+				get_cdn_status
+				get_cookie_status
+				get_failover_status
+
+				# Overall health score (0-100)
+				score=0
+				pillars_active=0
+
+				# WPAD
+				if [ "$(uci -q get network_tweaks.global.wpad_enforce)" = "1" ] || [ -f /www/wpad.dat ]; then
+					score=$((score + 20))
+					pillars_active=$((pillars_active + 1))
+				fi
+
+				# mitmproxy running
+				if pgrep mitmproxy >/dev/null 2>&1 || lxc-ls --running 2>/dev/null | grep -q "secbx-mitmproxy"; then
+					score=$((score + 20))
+					pillars_active=$((pillars_active + 1))
+				fi
+
+				# CDN Cache running
+				if pgrep squid >/dev/null 2>&1; then
+					score=$((score + 20))
+					pillars_active=$((pillars_active + 1))
+				fi
+
+				# Cookie Tracker enabled
+				if [ "$(uci -q get cookie-tracker.main.enabled)" = "1" ]; then
+					score=$((score + 20))
+					pillars_active=$((pillars_active + 1))
+				fi
+
+				# API Failover enabled
+				if [ "$(uci -q get cdn-cache.api_failover.enabled)" = "1" ]; then
+					score=$((score + 20))
+					pillars_active=$((pillars_active + 1))
+				fi
+
+				json_add_object "summary"
+					json_add_int "health_score" "$score"
+					json_add_int "pillars_active" "$pillars_active"
+					json_add_int "pillars_total" "5"
+				json_close_object
+
+				json_dump
+				;;
+
+			getPillarStatus)
+				read input
+				json_load "$input"
+				json_get_var pillar pillar
+
+				json_init
+				json_add_boolean "success" 1
+
+				case "$pillar" in
+					wpad) get_wpad_status ;;
+					mitm) get_mitm_status ;;
+					cdn) get_cdn_status ;;
+					cookie) get_cookie_status ;;
+					failover) get_failover_status ;;
+					*)
+						json_add_boolean "success" 0
+						json_add_string "error" "Unknown pillar: $pillar"
+						;;
+				esac
+
+				json_dump
+				;;
+
+			*)
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "Unknown method"
+				json_dump
+				;;
+		esac
+		;;
+esac

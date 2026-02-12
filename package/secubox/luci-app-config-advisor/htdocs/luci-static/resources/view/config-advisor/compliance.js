@@ -2,6 +2,7 @@
 'require view';
 'require rpc';
 'require ui';
+'require secubox/kiss-theme';
 
 var callCompliance = rpc.declare({
 	object: 'luci.config-advisor',
@@ -174,7 +175,7 @@ return view.extend({
 			}, 'Re-run Compliance Check')
 		]));
 
-		return view;
+		return KissTheme.wrap([view], 'admin/secubox/security/config-advisor/compliance');
 	},
 
 	handleSaveApply: null,

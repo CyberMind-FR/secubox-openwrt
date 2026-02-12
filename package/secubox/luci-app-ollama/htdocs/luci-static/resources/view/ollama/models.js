@@ -2,6 +2,7 @@
 'require view';
 'require ui';
 'require rpc';
+'require secubox/kiss-theme';
 
 var callModels = rpc.declare({
 	object: 'luci.ollama',
@@ -117,7 +118,7 @@ return view.extend({
 			])
 		]);
 
-		return container;
+		return KissTheme.wrap([container], 'admin/services/ollama/models');
 	},
 
 	renderModelCard: function(model, canRemove) {

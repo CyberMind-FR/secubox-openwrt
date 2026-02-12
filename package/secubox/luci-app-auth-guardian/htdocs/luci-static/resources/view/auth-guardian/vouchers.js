@@ -3,14 +3,15 @@
 'require secubox-theme/theme as Theme';
 'require ui';
 'require auth-guardian/api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
     load: function() { return api.getVouchers(); },
     render: function(data) {
         var vouchers = data.vouchers || [];
         var self = this;
-        
-        return E('div', {class:'cbi-map'}, [
+
+        var view = E('div', {class:'cbi-map'}, [
             E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
             E('h2', {}, '🎟️ Access Vouchers'),
             E('div', {style:'margin-bottom:16px'}, [
@@ -29,6 +30,7 @@ return view.extend({
                 ]);
             }))
         ]);
+        return KissTheme.wrap([view], 'admin/secubox/auth/auth-guardian/vouchers');
     },
     handleSaveApply:null,handleSave:null,handleReset:null
 });

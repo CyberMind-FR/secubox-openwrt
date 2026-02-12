@@ -2,6 +2,7 @@
 'require view';
 'require ui';
 'require tor-shield/api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	title: _('Hidden Services'),
@@ -238,7 +239,7 @@ return view.extend({
 			])
 		]);
 
-		return view;
+		return KissTheme.wrap([view], 'admin/services/tor-shield/hidden-services');
 	},
 
 	handleSaveApply: null,

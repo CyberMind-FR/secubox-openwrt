@@ -1,18 +1,35 @@
 # CrowdSec whitelist for SecuBox trusted networks
-# Prevents banning of internal/trusted IPs
+# Prevents banning of internal/trusted IPs and known crawlers
 
-name: crowdsecurity/secubox-whitelist
-description: "Whitelist trusted IPs for SecuBox admin access"
+name: secubox/whitelists
+description: "SecuBox whitelist for trusted IPs and services"
 whitelist:
-  reason: "SecuBox trusted network"
-  ip:
-    # Localhost
-    - "127.0.0.1"
-    - "::1"
-  cidr:
-    # Private networks (RFC1918)
-    - "192.168.0.0/16"
-    - "172.16.0.0/12"
-    - "10.0.0.0/8"
-    # Add custom admin IPs here if needed
-    # - "YOUR_ADMIN_IP/32"
+  reason: "Trusted services and networks"
+  expression:
+    # Local networks (RFC1918)
+    - evt.Meta.source_ip startsWith "192.168."
+    - evt.Meta.source_ip startsWith "10."
+    - evt.Meta.source_ip startsWith "172.16."
+    - evt.Meta.source_ip startsWith "172.17."
+    - evt.Meta.source_ip startsWith "172.18."
+    - evt.Meta.source_ip startsWith "127."
+
+    # Facebook/Meta infrastructure
+    - evt.Meta.source_ip startsWith "69.171."
+    - evt.Meta.source_ip startsWith "173.252."
+    - evt.Meta.source_ip startsWith "31.13."
+    - evt.Meta.source_ip startsWith "157.240."
+    - evt.Meta.source_ip startsWith "179.60."
+    - evt.Meta.source_ip startsWith "185.60."
+    - evt.Meta.source_ip startsWith "204.15.20."
+
+    # Ahrefs SEO crawler
+    - evt.Meta.source_ip startsWith "54.39.210."
+    - evt.Meta.source_ip startsWith "167.114.139."
+    - evt.Meta.source_ip startsWith "54.36."
+    - evt.Meta.source_ip startsWith "195.154."
+
+    # Local IPv6
+    - evt.Meta.source_ip startsWith "fe80:"
+    - evt.Meta.source_ip startsWith "::1"
+    - evt.Meta.source_ip startsWith "2a01:e0a:dec:c4e0"

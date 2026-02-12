@@ -1,0 +1,16 @@
+{
+	"luci-app-cookie-tracker": {
+		"description": "Grant access to Cookie Tracker Dashboard",
+		"read": {
+			"ubus": {
+				"luci.cookie-tracker": ["status", "list", "report"]
+			},
+			"uci": ["cookie-tracker"]
+		},
+		"write": {
+			"ubus": {
+				"luci.cookie-tracker": ["block", "unblock", "classify"]
+			}
+		}
+	}
+}

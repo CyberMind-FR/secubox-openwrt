@@ -4,6 +4,7 @@
 'require ui';
 'require form';
 'require service-registry/api as api';
+'require secubox/kiss-theme';
 
 // Category icons
 var catIcons = {
@@ -139,7 +140,7 @@ return view.extend({
 				]));
 			}
 
-			return mapEl;
+			return KissTheme.wrap(mapEl, 'admin/secubox/services/service-registry/publish');
 		});
 	},
 

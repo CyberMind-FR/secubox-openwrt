@@ -5,6 +5,7 @@
 'require form';
 'require dom';
 'require poll';
+'require secubox/kiss-theme';
 
 var callGetSchedules = rpc.declare({
 	object: 'luci.bandwidth-manager',
@@ -150,7 +151,7 @@ return view.extend({
 			])
 		]);
 
-		return container;
+		return KissTheme.wrap([container], 'admin/services/bandwidth-manager/schedules');
 	},
 
 	renderScheduleCard: function(schedule) {

@@ -1,6 +1,7 @@
 'use strict';
 'require view';
 'require secubox-theme/theme as Theme';
+'require secubox/kiss-theme as KissTheme';
 'require dom';
 'require poll';
 'require traffic-shaper/api as API';
@@ -137,7 +138,7 @@ return view.extend({
 			}, this));
 		}, this), 5);
 
-		return view;
+		return KissTheme.wrap([view], 'admin/network/traffic-shaper/overview');
 	},
 
 	handleSaveApply: null,

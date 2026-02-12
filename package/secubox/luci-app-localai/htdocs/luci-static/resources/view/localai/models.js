@@ -2,6 +2,7 @@
 'require view';
 'require ui';
 'require rpc';
+'require secubox/kiss-theme';
 
 var callModels = rpc.declare({
 	object: 'luci.localai',
@@ -57,7 +58,7 @@ return view.extend({
 			{ name: 'gte-small', desc: 'GTE Small - Fast embeddings', size: '67 MB' }
 		];
 
-		return E('div', { 'class': 'localai-models' }, [
+		var container = E('div', { 'class': 'localai-models' }, [
 			E('style', {}, this.getCSS()),
 
 			E('div', { 'class': 'models-header' }, [
@@ -123,6 +124,8 @@ return view.extend({
 				)
 			])
 		]);
+
+		return KissTheme.wrap(container, 'admin/services/localai/models');
 	},
 
 	installModel: function(name) {

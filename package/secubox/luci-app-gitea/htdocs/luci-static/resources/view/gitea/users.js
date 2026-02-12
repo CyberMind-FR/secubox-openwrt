@@ -4,6 +4,7 @@
 'require dom';
 'require poll';
 'require gitea.api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	usersData: null,
@@ -45,7 +46,7 @@ return view.extend({
 			});
 		}, 30);
 
-		return container;
+		return KissTheme.wrap(container, 'admin/secubox/services/gitea/users');
 	},
 
 	renderHeader: function() {

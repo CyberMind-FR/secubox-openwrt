@@ -3,6 +3,7 @@
 'require dom';
 'require ui';
 'require rpc';
+'require secubox/kiss-theme';
 'require client-guardian/nav as CgNav';
 'require secubox-portal/header as SbHeader';
 
@@ -32,41 +33,32 @@ return view.extend({
 		var zones = Array.isArray(data) ? data : (data.zones || []);
 		var self = this;
 
-		// Main wrapper with SecuBox header
-		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
-		wrapper.appendChild(SbHeader.render());
-
-		var view = E('div', { 'class': 'client-guardian-dashboard' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+		var content = [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('client-guardian/dashboard.css') }),
-			CgNav.renderTabs('zones'),
 
-			E('div', { 'class': 'cg-header' }, [
-				E('div', { 'class': 'cg-logo' }, [
-					E('div', { 'class': 'cg-logo-icon' }, '🌐'),
-					E('div', { 'class': 'cg-logo-text' }, 'Zones Réseau')
+			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;' }, [
+				E('div', {}, [
+					E('h2', { 'style': 'margin: 0 0 4px 0;' }, 'Zones Reseau'),
+					E('div', { 'style': 'color: var(--kiss-muted);' }, 'Client Guardian')
 				]),
 				E('button', {
-					'class': 'cg-btn cg-btn-primary',
-					'click': L.bind(this.handleSyncZones, this),
-					'style': 'display: flex; align-items: center; gap: 8px;'
-				}, [
-					E('span', {}, '🔄'),
-					'Synchroniser Firewall'
-				])
+					'class': 'kiss-btn kiss-btn-green',
+					'click': L.bind(this.handleSyncZones, this)
+				}, 'Synchroniser Firewall')
 			]),
 
-			E('p', { 'style': 'color: var(--cg-text-secondary); margin-bottom: 24px' },
-				'Définissez les zones de sécurité avec leurs règles d\'accès, filtrage et limitations. Cliquez sur "Synchroniser Firewall" pour créer les zones dans la configuration firewall.'
+			CgNav.renderTabs('zones'),
+
+			E('p', { 'style': 'color: var(--kiss-muted); margin-bottom: 24px' },
+				'Definissez les zones de securite avec leurs regles d\'acces, filtrage et limitations. Cliquez sur "Synchroniser Firewall" pour creer les zones dans la configuration firewall.'
 			),
 
-			E('div', { 'class': 'cg-zones-grid' },
+			E('div', { 'class': 'kiss-grid kiss-grid-auto' },
 				zones.map(L.bind(this.renderZoneCard, this))
 			)
-		]);
+		];
 
-		wrapper.appendChild(view);
-		return wrapper;
+		return KissTheme.wrap(content, 'client-guardian/zones');
 	},
 
 	renderZoneCard: function(zone) {
@@ -91,41 +83,38 @@ return view.extend({
 			features.push({ name: zone.bandwidth_limit + ' Mbps', enabled: true });
 
 		return E('div', {
-			'class': 'cg-zone-card',
-			'style': '--zone-color: ' + color
+			'class': 'kiss-card',
+			'style': 'border-left: 3px solid ' + color + ';'
 		}, [
-			E('div', { 'class': 'cg-zone-header' }, [
-				E('div', { 'class': 'cg-zone-icon' }, icon),
+			E('div', { 'style': 'display: flex; align-items: center; gap: 12px; margin-bottom: 16px;' }, [
+				E('div', { 'style': 'font-size: 28px;' }, icon),
 				E('div', {}, [
-					E('div', { 'class': 'cg-zone-title' }, zone.name),
-					E('div', { 'class': 'cg-zone-subtitle' }, zone.description || '')
+					E('div', { 'style': 'font-weight: 700; font-size: 16px;' }, zone.name),
+					E('div', { 'style': 'color: var(--kiss-muted); font-size: 12px;' }, zone.description || '')
 				])
 			]),
-			E('div', { 'class': 'cg-zone-features' },
+			E('div', { 'style': 'display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px;' },
 				features.map(function(f) {
 					return E('span', {
-						'class': 'cg-zone-feature ' + (f.enabled ? 'enabled' : 'disabled')
+						'class': f.enabled ? 'kiss-badge kiss-badge-green' : 'kiss-badge kiss-badge-red'
 					}, f.name);
 				})
 			),
-			E('div', { 'class': 'cg-zone-stats' }, [
-				E('div', { 'class': 'cg-zone-stat' }, [
-					E('div', { 'class': 'cg-zone-stat-value' }, String(zone.client_count || 0)),
-					E('div', { 'class': 'cg-zone-stat-label' }, 'Clients')
+			E('div', { 'style': 'display: flex; gap: 24px; margin-bottom: 16px;' }, [
+				E('div', { 'style': 'text-align: center;' }, [
+					E('div', { 'style': 'font-size: 20px; font-weight: 700; color: var(--kiss-cyan);' }, String(zone.client_count || 0)),
+					E('div', { 'style': 'font-size: 10px; color: var(--kiss-muted); text-transform: uppercase;' }, 'Clients')
 				]),
-				E('div', { 'class': 'cg-zone-stat' }, [
-					E('div', { 'class': 'cg-zone-stat-value' }, zone.internet_access ? '✅' : '❌'),
-					E('div', { 'class': 'cg-zone-stat-label' }, 'Internet')
+				E('div', { 'style': 'text-align: center;' }, [
+					E('div', { 'style': 'font-size: 20px;' }, zone.internet_access ? '✅' : '❌'),
+					E('div', { 'style': 'font-size: 10px; color: var(--kiss-muted); text-transform: uppercase;' }, 'Internet')
 				])
 			]),
 			E('button', {
-				'class': 'cg-btn',
-				'style': 'width: 100%; margin-top: 16px; justify-content: center',
+				'class': 'kiss-btn',
+				'style': 'width: 100%; justify-content: center;',
 				'click': L.bind(this.handleEditZone, this, zone)
-			}, [
-				E('span', {}, '⚙️'),
-				' Configurer'
-			])
+			}, 'Configurer')
 		]);
 	},
 
@@ -230,7 +219,7 @@ return view.extend({
 
 	handleRefresh: function() {
 		return callGetZones().then(L.bind(function(data) {
-			var container = document.querySelector('.client-guardian-dashboard');
+			var container = document.querySelector('.kiss-main');
 			if (container) {
 				var newView = this.render(data);
 				dom.content(container.parentNode, newView);
