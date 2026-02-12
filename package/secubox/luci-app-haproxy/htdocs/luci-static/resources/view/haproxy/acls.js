@@ -5,6 +5,11 @@
 'require haproxy.api as api';
 'require secubox/kiss-theme';
 
+/**
+ * HAProxy ACLs & Routing - KISS Style
+ * Copyright (C) 2025 CyberMind.fr
+ */
+
 return view.extend({
 	load: function() {
 		return Promise.all([
@@ -19,195 +24,182 @@ return view.extend({
 		var acls = data[0] || [];
 		var redirects = data[1] || [];
 		var backends = data[2] || [];
+		var K = KissTheme;
 
-		var view = E('div', { 'class': 'cbi-map' }, [
-			E('h2', {}, 'ACLs & Routing'),
-			E('p', {}, 'Configure URL-based routing rules and redirections.'),
-
-			// ACL Rules section
-			E('div', { 'class': 'haproxy-form-section' }, [
-				E('h3', {}, 'Add ACL Rule'),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Name'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
-							'type': 'text',
-							'id': 'acl-name',
-							'class': 'cbi-input-text',
-							'placeholder': 'is_api'
-						})
-					])
+		var content = K.E('div', {}, [
+			// Page Header
+			K.E('div', { 'style': 'margin-bottom: 20px;' }, [
+				K.E('h2', { 'style': 'margin: 0; font-size: 24px; display: flex; align-items: center; gap: 10px;' }, [
+					K.E('span', {}, '🔀'),
+					'ACLs & Routing'
 				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Match Type'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('select', { 'id': 'acl-type', 'class': 'cbi-input-select' }, [
-							E('option', { 'value': 'path_beg' }, 'Path begins with'),
-							E('option', { 'value': 'path_end' }, 'Path ends with'),
-							E('option', { 'value': 'path_reg' }, 'Path regex'),
-							E('option', { 'value': 'hdr(host)' }, 'Host header'),
-							E('option', { 'value': 'hdr_beg(host)' }, 'Host begins with'),
-							E('option', { 'value': 'src' }, 'Source IP'),
-							E('option', { 'value': 'url_param' }, 'URL parameter')
-						])
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Pattern'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
-							'type': 'text',
-							'id': 'acl-pattern',
-							'class': 'cbi-input-text',
-							'placeholder': '/api/'
-						})
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Route to Backend'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('select', { 'id': 'acl-backend', 'class': 'cbi-input-select' },
-							[E('option', { 'value': '' }, '-- No routing (ACL only) --')].concat(
-								backends.map(function(b) {
-									return E('option', { 'value': b.id }, b.name);
-								})
-							)
-						)
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, ''),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('button', {
-							'class': 'cbi-button cbi-button-add',
-							'click': function() { self.handleAddAcl(); }
-						}, 'Add ACL Rule')
-					])
-				])
+				K.E('p', { 'style': 'margin: 4px 0 0; color: var(--kiss-muted, #94a3b8); font-size: 14px;' },
+					'Configure URL-based routing rules and redirections')
 			]),
 
-			// ACL list
-			E('div', { 'class': 'haproxy-form-section' }, [
-				E('h3', {}, 'ACL Rules (' + acls.length + ')'),
+			// Add ACL Rule Card
+			K.E('div', { 'class': 'kiss-card' }, [
+				K.E('div', { 'class': 'kiss-card-title' }, ['➕ ', 'Add ACL Rule']),
+				K.E('div', { 'class': 'kiss-grid kiss-grid-2', 'style': 'gap: 16px; margin-bottom: 16px;' }, [
+					K.E('div', {}, [
+						K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Name'),
+						K.E('input', {
+							'type': 'text',
+							'id': 'acl-name',
+							'placeholder': 'is_api',
+							'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
+						})
+					]),
+					K.E('div', {}, [
+						K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Match Type'),
+						K.E('select', {
+							'id': 'acl-type',
+							'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
+						}, [
+							K.E('option', { 'value': 'path_beg' }, 'Path begins with'),
+							K.E('option', { 'value': 'path_end' }, 'Path ends with'),
+							K.E('option', { 'value': 'path_reg' }, 'Path regex'),
+							K.E('option', { 'value': 'hdr(host)' }, 'Host header'),
+							K.E('option', { 'value': 'hdr_beg(host)' }, 'Host begins with'),
+							K.E('option', { 'value': 'src' }, 'Source IP'),
+							K.E('option', { 'value': 'url_param' }, 'URL parameter')
+						])
+					]),
+					K.E('div', {}, [
+						K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Pattern'),
+						K.E('input', {
+							'type': 'text',
+							'id': 'acl-pattern',
+							'placeholder': '/api/',
+							'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
+						})
+					]),
+					K.E('div', {}, [
+						K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Route to Backend'),
+						K.E('select', {
+							'id': 'acl-backend',
+							'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
+						}, [K.E('option', { 'value': '' }, '-- No routing (ACL only) --')].concat(
+							backends.map(function(b) {
+								return K.E('option', { 'value': b.id }, b.name);
+							})
+						))
+					])
+				]),
+				K.E('button', {
+					'class': 'kiss-btn kiss-btn-green',
+					'click': function() { self.handleAddAcl(); }
+				}, '➕ Add ACL Rule')
+			]),
+
+			// ACL Rules Table
+			K.E('div', { 'class': 'kiss-card' }, [
+				K.E('div', { 'class': 'kiss-card-title' }, ['📋 ', 'ACL Rules (', String(acls.length), ')']),
 				this.renderAclsTable(acls, backends)
 			]),
 
-			// Redirects section
-			E('div', { 'class': 'haproxy-form-section' }, [
-				E('h3', {}, 'Add Redirect Rule'),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Name'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
+			// Add Redirect Rule Card
+			K.E('div', { 'class': 'kiss-card' }, [
+				K.E('div', { 'class': 'kiss-card-title' }, ['↪️ ', 'Add Redirect Rule']),
+				K.E('div', { 'class': 'kiss-grid kiss-grid-2', 'style': 'gap: 16px; margin-bottom: 16px;' }, [
+					K.E('div', {}, [
+						K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Name'),
+						K.E('input', {
 							'type': 'text',
 							'id': 'redirect-name',
-							'class': 'cbi-input-text',
-							'placeholder': 'www-redirect'
+							'placeholder': 'www-redirect',
+							'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
 						})
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Match Host'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
+					]),
+					K.E('div', {}, [
+						K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Match Host (Regex)'),
+						K.E('input', {
 							'type': 'text',
 							'id': 'redirect-match',
-							'class': 'cbi-input-text',
-							'placeholder': '^www\\.'
-						}),
-						E('p', { 'class': 'cbi-value-description' }, 'Regex pattern to match against host header')
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Target Host'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
+							'placeholder': '^www\\.',
+							'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
+						})
+					]),
+					K.E('div', {}, [
+						K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Target Host'),
+						K.E('input', {
 							'type': 'text',
 							'id': 'redirect-target',
-							'class': 'cbi-input-text',
-							'placeholder': 'Leave empty to strip matched portion'
+							'placeholder': 'Leave empty to strip matched portion',
+							'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
 						})
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Options'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('label', { 'style': 'margin-right: 1rem' }, [
-							E('input', { 'type': 'checkbox', 'id': 'redirect-strip-www' }),
-							' Strip www prefix'
-						]),
-						E('select', { 'id': 'redirect-code', 'class': 'cbi-input-select', 'style': 'width: auto' }, [
-							E('option', { 'value': '301' }, '301 Permanent'),
-							E('option', { 'value': '302' }, '302 Temporary'),
-							E('option', { 'value': '303' }, '303 See Other'),
-							E('option', { 'value': '307' }, '307 Temporary Redirect'),
-							E('option', { 'value': '308' }, '308 Permanent Redirect')
+					]),
+					K.E('div', {}, [
+						K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Redirect Code'),
+						K.E('select', {
+							'id': 'redirect-code',
+							'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
+						}, [
+							K.E('option', { 'value': '301' }, '301 Permanent'),
+							K.E('option', { 'value': '302' }, '302 Temporary'),
+							K.E('option', { 'value': '307' }, '307 Temporary Redirect'),
+							K.E('option', { 'value': '308' }, '308 Permanent Redirect')
+						])
+					]),
+					K.E('div', { 'style': 'grid-column: span 2;' }, [
+						K.E('label', { 'style': 'display: flex; align-items: center; gap: 8px; cursor: pointer;' }, [
+							K.E('input', { 'type': 'checkbox', 'id': 'redirect-strip-www' }),
+							'Strip www prefix automatically'
 						])
 					])
 				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, ''),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('button', {
-							'class': 'cbi-button cbi-button-add',
-							'click': function() { self.handleAddRedirect(); }
-						}, 'Add Redirect')
-					])
-				])
+				K.E('button', {
+					'class': 'kiss-btn kiss-btn-green',
+					'click': function() { self.handleAddRedirect(); }
+				}, '↪️ Add Redirect')
 			]),
 
-			// Redirect list
-			E('div', { 'class': 'haproxy-form-section' }, [
-				E('h3', {}, 'Redirect Rules (' + redirects.length + ')'),
+			// Redirects Table
+			K.E('div', { 'class': 'kiss-card' }, [
+				K.E('div', { 'class': 'kiss-card-title' }, ['↪️ ', 'Redirect Rules (', String(redirects.length), ')']),
 				this.renderRedirectsTable(redirects)
 			])
 		]);
 
-		// Add CSS
-		var style = E('style', {}, `
-			@import url('/luci-static/resources/haproxy/dashboard.css');
-		`);
-		view.insertBefore(style, view.firstChild);
-
-		return KissTheme.wrap([view], 'admin/services/haproxy/acls');
+		return KissTheme.wrap(content, 'admin/services/haproxy/acls');
 	},
 
 	renderAclsTable: function(acls, backends) {
 		var self = this;
+		var K = KissTheme;
 
 		if (acls.length === 0) {
-			return E('p', { 'style': 'color: var(--text-color-medium, #666)' },
-				'No ACL rules configured.');
+			return K.E('div', { 'style': 'text-align: center; padding: 30px; color: var(--kiss-muted);' },
+				'No ACL rules configured');
 		}
 
 		var backendMap = {};
 		backends.forEach(function(b) { backendMap[b.id] = b.name; });
 
-		return E('table', { 'class': 'haproxy-vhosts-table' }, [
-			E('thead', {}, [
-				E('tr', {}, [
-					E('th', {}, 'Name'),
-					E('th', {}, 'Type'),
-					E('th', {}, 'Pattern'),
-					E('th', {}, 'Backend'),
-					E('th', {}, 'Status'),
-					E('th', { 'style': 'width: 100px' }, 'Actions')
+		return K.E('table', { 'style': 'width: 100%; border-collapse: collapse;' }, [
+			K.E('thead', {}, [
+				K.E('tr', { 'style': 'border-bottom: 1px solid var(--kiss-line, #1e293b);' }, [
+					K.E('th', { 'style': 'padding: 10px 12px; text-align: left; font-size: 12px; color: var(--kiss-muted); text-transform: uppercase;' }, 'Name'),
+					K.E('th', { 'style': 'padding: 10px 12px; text-align: left; font-size: 12px; color: var(--kiss-muted); text-transform: uppercase;' }, 'Type'),
+					K.E('th', { 'style': 'padding: 10px 12px; text-align: left; font-size: 12px; color: var(--kiss-muted); text-transform: uppercase;' }, 'Pattern'),
+					K.E('th', { 'style': 'padding: 10px 12px; text-align: left; font-size: 12px; color: var(--kiss-muted); text-transform: uppercase;' }, 'Backend'),
+					K.E('th', { 'style': 'padding: 10px 12px; text-align: left; font-size: 12px; color: var(--kiss-muted); text-transform: uppercase;' }, 'Status'),
+					K.E('th', { 'style': 'padding: 10px 12px; text-align: right; font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; width: 80px;' }, 'Actions')
 				])
 			]),
-			E('tbody', {}, acls.map(function(acl) {
-				return E('tr', { 'data-id': acl.id }, [
-					E('td', {}, E('strong', {}, acl.name)),
-					E('td', {}, E('code', {}, acl.type)),
-					E('td', {}, E('code', {}, acl.pattern)),
-					E('td', {}, backendMap[acl.backend] || acl.backend || '-'),
-					E('td', {}, E('span', {
-						'class': 'haproxy-badge ' + (acl.enabled ? 'enabled' : 'disabled')
-					}, acl.enabled ? 'Enabled' : 'Disabled')),
-					E('td', {}, [
-						E('button', {
-							'class': 'cbi-button cbi-button-remove',
+			K.E('tbody', {}, acls.map(function(acl) {
+				return K.E('tr', { 'data-id': acl.id, 'style': 'border-bottom: 1px solid var(--kiss-line, #1e293b);' }, [
+					K.E('td', { 'style': 'padding: 12px;' }, K.E('strong', {}, acl.name)),
+					K.E('td', { 'style': 'padding: 12px; font-family: monospace; font-size: 12px;' }, acl.type),
+					K.E('td', { 'style': 'padding: 12px; font-family: monospace; font-size: 12px;' }, acl.pattern),
+					K.E('td', { 'style': 'padding: 12px;' }, backendMap[acl.backend] || acl.backend || '-'),
+					K.E('td', { 'style': 'padding: 12px;' }, K.badge(acl.enabled ? 'Enabled' : 'Disabled', acl.enabled ? 'green' : 'red')),
+					K.E('td', { 'style': 'padding: 12px; text-align: right;' }, [
+						K.E('button', {
+							'class': 'kiss-btn kiss-btn-red',
+							'style': 'padding: 4px 10px; font-size: 12px;',
 							'click': function() { self.handleDeleteAcl(acl); }
-						}, 'Delete')
+						}, '🗑️')
 					])
 				]);
 			}))
@@ -216,37 +208,37 @@ return view.extend({
 
 	renderRedirectsTable: function(redirects) {
 		var self = this;
+		var K = KissTheme;
 
 		if (redirects.length === 0) {
-			return E('p', { 'style': 'color: var(--text-color-medium, #666)' },
-				'No redirect rules configured.');
+			return K.E('div', { 'style': 'text-align: center; padding: 30px; color: var(--kiss-muted);' },
+				'No redirect rules configured');
 		}
 
-		return E('table', { 'class': 'haproxy-vhosts-table' }, [
-			E('thead', {}, [
-				E('tr', {}, [
-					E('th', {}, 'Name'),
-					E('th', {}, 'Match Host'),
-					E('th', {}, 'Target'),
-					E('th', {}, 'Code'),
-					E('th', {}, 'Status'),
-					E('th', { 'style': 'width: 100px' }, 'Actions')
+		return K.E('table', { 'style': 'width: 100%; border-collapse: collapse;' }, [
+			K.E('thead', {}, [
+				K.E('tr', { 'style': 'border-bottom: 1px solid var(--kiss-line, #1e293b);' }, [
+					K.E('th', { 'style': 'padding: 10px 12px; text-align: left; font-size: 12px; color: var(--kiss-muted); text-transform: uppercase;' }, 'Name'),
+					K.E('th', { 'style': 'padding: 10px 12px; text-align: left; font-size: 12px; color: var(--kiss-muted); text-transform: uppercase;' }, 'Match Host'),
+					K.E('th', { 'style': 'padding: 10px 12px; text-align: left; font-size: 12px; color: var(--kiss-muted); text-transform: uppercase;' }, 'Target'),
+					K.E('th', { 'style': 'padding: 10px 12px; text-align: left; font-size: 12px; color: var(--kiss-muted); text-transform: uppercase;' }, 'Code'),
+					K.E('th', { 'style': 'padding: 10px 12px; text-align: left; font-size: 12px; color: var(--kiss-muted); text-transform: uppercase;' }, 'Status'),
+					K.E('th', { 'style': 'padding: 10px 12px; text-align: right; font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; width: 80px;' }, 'Actions')
 				])
 			]),
-			E('tbody', {}, redirects.map(function(r) {
-				return E('tr', { 'data-id': r.id }, [
-					E('td', {}, E('strong', {}, r.name)),
-					E('td', {}, E('code', {}, r.match_host)),
-					E('td', {}, r.strip_www ? 'Strip www' : (r.target_host || '-')),
-					E('td', {}, r.code),
-					E('td', {}, E('span', {
-						'class': 'haproxy-badge ' + (r.enabled ? 'enabled' : 'disabled')
-					}, r.enabled ? 'Enabled' : 'Disabled')),
-					E('td', {}, [
-						E('button', {
-							'class': 'cbi-button cbi-button-remove',
+			K.E('tbody', {}, redirects.map(function(r) {
+				return K.E('tr', { 'data-id': r.id, 'style': 'border-bottom: 1px solid var(--kiss-line, #1e293b);' }, [
+					K.E('td', { 'style': 'padding: 12px;' }, K.E('strong', {}, r.name)),
+					K.E('td', { 'style': 'padding: 12px; font-family: monospace; font-size: 12px;' }, r.match_host),
+					K.E('td', { 'style': 'padding: 12px;' }, r.strip_www ? 'Strip www' : (r.target_host || '-')),
+					K.E('td', { 'style': 'padding: 12px;' }, K.badge(r.code, 'blue')),
+					K.E('td', { 'style': 'padding: 12px;' }, K.badge(r.enabled ? 'Enabled' : 'Disabled', r.enabled ? 'green' : 'red')),
+					K.E('td', { 'style': 'padding: 12px; text-align: right;' }, [
+						K.E('button', {
+							'class': 'kiss-btn kiss-btn-red',
+							'style': 'padding: 4px 10px; font-size: 12px;',
 							'click': function() { self.handleDeleteRedirect(r); }
-						}, 'Delete')
+						}, '🗑️')
 					])
 				]);
 			}))
@@ -254,50 +246,60 @@ return view.extend({
 	},
 
 	handleAddAcl: function() {
+		var self = this;
 		var name = document.getElementById('acl-name').value.trim();
 		var type = document.getElementById('acl-type').value;
 		var pattern = document.getElementById('acl-pattern').value.trim();
 		var backend = document.getElementById('acl-backend').value;
 
 		if (!name || !type || !pattern) {
-			ui.addNotification(null, E('p', {}, 'Name, type and pattern are required'), 'error');
+			self.showToast('Name, type and pattern are required', 'error');
 			return;
 		}
 
 		return api.createAcl(name, type, pattern, backend, 1).then(function(res) {
 			if (res.success) {
-				ui.addNotification(null, E('p', {}, 'ACL rule created'));
+				self.showToast('ACL rule created', 'success');
 				window.location.reload();
 			} else {
-				ui.addNotification(null, E('p', {}, 'Failed: ' + (res.error || 'Unknown error')), 'error');
+				self.showToast('Failed: ' + (res.error || 'Unknown error'), 'error');
 			}
 		});
 	},
 
 	handleDeleteAcl: function(acl) {
-		ui.showModal('Delete ACL', [
-			E('p', {}, 'Are you sure you want to delete ACL rule "' + acl.name + '"?'),
-			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
-				E('button', {
-					'class': 'cbi-button cbi-button-negative',
+		var self = this;
+		var K = KissTheme;
+
+		var modalContent = K.E('div', {}, [
+			K.E('p', { 'style': 'margin: 0 0 12px;' }, 'Are you sure you want to delete this ACL rule?'),
+			K.E('div', {
+				'style': 'padding: 12px 16px; background: var(--kiss-bg2, #111827); border-radius: 8px; font-family: monospace; margin-bottom: 20px;'
+			}, acl.name),
+			K.E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px;' }, [
+				K.E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
+				K.E('button', {
+					'class': 'kiss-btn kiss-btn-red',
 					'click': function() {
 						ui.hideModal();
 						api.deleteAcl(acl.id).then(function(res) {
 							if (res.success) {
-								ui.addNotification(null, E('p', {}, 'ACL deleted'));
+								self.showToast('ACL deleted', 'success');
 								window.location.reload();
 							} else {
-								ui.addNotification(null, E('p', {}, 'Failed: ' + (res.error || 'Unknown error')), 'error');
+								self.showToast('Failed: ' + (res.error || 'Unknown error'), 'error');
 							}
 						});
 					}
-				}, 'Delete')
+				}, '🗑️ Delete')
 			])
 		]);
+
+		ui.showModal('Delete ACL', [modalContent]);
 	},
 
 	handleAddRedirect: function() {
+		var self = this;
 		var name = document.getElementById('redirect-name').value.trim();
 		var matchHost = document.getElementById('redirect-match').value.trim();
 		var targetHost = document.getElementById('redirect-target').value.trim();
@@ -305,41 +307,69 @@ return view.extend({
 		var code = parseInt(document.getElementById('redirect-code').value) || 301;
 
 		if (!name || !matchHost) {
-			ui.addNotification(null, E('p', {}, 'Name and match host pattern are required'), 'error');
+			self.showToast('Name and match host pattern are required', 'error');
 			return;
 		}
 
 		return api.createRedirect(name, matchHost, targetHost, stripWww, code, 1).then(function(res) {
 			if (res.success) {
-				ui.addNotification(null, E('p', {}, 'Redirect rule created'));
+				self.showToast('Redirect rule created', 'success');
 				window.location.reload();
 			} else {
-				ui.addNotification(null, E('p', {}, 'Failed: ' + (res.error || 'Unknown error')), 'error');
+				self.showToast('Failed: ' + (res.error || 'Unknown error'), 'error');
 			}
 		});
 	},
 
 	handleDeleteRedirect: function(r) {
-		ui.showModal('Delete Redirect', [
-			E('p', {}, 'Are you sure you want to delete redirect rule "' + r.name + '"?'),
-			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
-				E('button', {
-					'class': 'cbi-button cbi-button-negative',
+		var self = this;
+		var K = KissTheme;
+
+		var modalContent = K.E('div', {}, [
+			K.E('p', { 'style': 'margin: 0 0 12px;' }, 'Are you sure you want to delete this redirect rule?'),
+			K.E('div', {
+				'style': 'padding: 12px 16px; background: var(--kiss-bg2, #111827); border-radius: 8px; font-family: monospace; margin-bottom: 20px;'
+			}, r.name),
+			K.E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px;' }, [
+				K.E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
+				K.E('button', {
+					'class': 'kiss-btn kiss-btn-red',
 					'click': function() {
 						ui.hideModal();
 						api.deleteRedirect(r.id).then(function(res) {
 							if (res.success) {
-								ui.addNotification(null, E('p', {}, 'Redirect deleted'));
+								self.showToast('Redirect deleted', 'success');
 								window.location.reload();
 							} else {
-								ui.addNotification(null, E('p', {}, 'Failed: ' + (res.error || 'Unknown error')), 'error');
+								self.showToast('Failed: ' + (res.error || 'Unknown error'), 'error');
 							}
 						});
 					}
-				}, 'Delete')
+				}, '🗑️ Delete')
 			])
 		]);
+
+		ui.showModal('Delete Redirect', [modalContent]);
+	},
+
+	showToast: function(message, type) {
+		var existing = document.querySelector('.kiss-toast');
+		if (existing) existing.remove();
+
+		var icons = { success: '✅', error: '❌', warning: '⚠️' };
+		var colors = {
+			success: 'var(--kiss-green, #00C853)',
+			error: 'var(--kiss-red, #FF1744)',
+			warning: 'var(--kiss-yellow, #fbbf24)'
+		};
+
+		var toast = document.createElement('div');
+		toast.className = 'kiss-toast';
+		toast.style.cssText = 'position: fixed; bottom: 80px; right: 20px; padding: 12px 20px; border-radius: 8px; background: var(--kiss-card, #161e2e); border: 1px solid ' + (colors[type] || 'var(--kiss-line)') + '; color: var(--kiss-text, #e2e8f0); font-size: 14px; display: flex; align-items: center; gap: 10px; z-index: 9999; box-shadow: 0 4px 20px rgba(0,0,0,0.3);';
+		toast.innerHTML = (icons[type] || 'ℹ️') + ' ' + message;
+
+		document.body.appendChild(toast);
+		setTimeout(function() { toast.remove(); }, 4000);
 	},
 
 	handleSaveApply: null,
