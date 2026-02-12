@@ -231,16 +231,26 @@ var KissThemeClass = baseclass.extend({
 .kiss-panel-red { border-left: 3px solid ${c.red}; }
 .kiss-panel-blue { border-left: 3px solid ${c.blue}; }
 
-/* === Toggle Button === */
-#kiss-toggle {
+/* === Toggle Buttons === */
+.kiss-toggles {
 	position: fixed; bottom: 20px; right: 20px; z-index: 9999;
-	font-size: 24px; cursor: pointer; opacity: 0.7;
-	background: ${c.card}; border: 1px solid ${c.line};
-	border-radius: 50%; width: 48px; height: 48px;
-	display: flex; align-items: center; justify-content: center;
-	box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+	display: flex; flex-direction: column; gap: 8px;
 }
-#kiss-toggle:hover { opacity: 1; transform: scale(1.1); }
+.kiss-toggle-btn {
+	font-size: 20px; cursor: pointer; opacity: 0.7;
+	background: ${c.card}; border: 1px solid ${c.line};
+	border-radius: 50%; width: 44px; height: 44px;
+	display: flex; align-items: center; justify-content: center;
+	box-shadow: 0 4px 12px rgba(0,0,0,0.3); transition: all 0.2s;
+}
+.kiss-toggle-btn:hover { opacity: 1; transform: scale(1.1); border-color: ${c.green}; }
+.kiss-toggle-btn.active { border-color: ${c.green}; background: rgba(0,200,83,0.15); }
+
+/* === Minimized mode === */
+.kiss-chrome-hidden .kiss-topbar,
+.kiss-chrome-hidden .kiss-sidebar,
+.kiss-chrome-hidden .kiss-overlay { display: none !important; }
+.kiss-chrome-hidden .kiss-main { margin-left: 0 !important; margin-top: 0 !important; }
 
 /* === Responsive === */
 @media (max-width: 1024px) {
@@ -279,25 +289,61 @@ var KissThemeClass = baseclass.extend({
 		}
 	},
 
+	chromeVisible: true,
+
 	addToggle: function() {
 		var self = this;
-		if (document.querySelector('#kiss-toggle')) return;
-		var toggle = document.createElement('div');
-		toggle.id = 'kiss-toggle';
-		toggle.innerHTML = '👁️';
-		toggle.title = 'Toggle KISS/LuCI mode';
-		toggle.onclick = function() { self.toggleMode(); };
-		document.body.appendChild(toggle);
+		if (document.querySelector('.kiss-toggles')) return;
+
+		var container = document.createElement('div');
+		container.className = 'kiss-toggles';
+
+		// Toggle KISS chrome (sidebar/topbar)
+		var chromeToggle = document.createElement('div');
+		chromeToggle.className = 'kiss-toggle-btn active';
+		chromeToggle.innerHTML = '📐';
+		chromeToggle.title = 'Toggle sidebar & top bar';
+		chromeToggle.onclick = function() { self.toggleChrome(); };
+
+		// Toggle LuCI mode
+		var modeToggle = document.createElement('div');
+		modeToggle.id = 'kiss-mode-toggle';
+		modeToggle.className = 'kiss-toggle-btn';
+		modeToggle.innerHTML = '👁️';
+		modeToggle.title = 'Switch to LuCI mode';
+		modeToggle.onclick = function() { self.toggleMode(); };
+
+		container.appendChild(chromeToggle);
+		container.appendChild(modeToggle);
+		document.body.appendChild(container);
+	},
+
+	toggleChrome: function() {
+		this.chromeVisible = !this.chromeVisible;
+		var btn = document.querySelector('.kiss-toggles .kiss-toggle-btn');
+		var root = document.querySelector('.kiss-root');
+
+		if (this.chromeVisible) {
+			btn.classList.add('active');
+			btn.innerHTML = '📐';
+			if (root) root.classList.remove('kiss-chrome-hidden');
+		} else {
+			btn.classList.remove('active');
+			btn.innerHTML = '📏';
+			if (root) root.classList.add('kiss-chrome-hidden');
+		}
 	},
 
 	toggleMode: function() {
 		this.isKissMode = !this.isKissMode;
-		var toggle = document.getElementById('kiss-toggle');
+		var toggle = document.getElementById('kiss-mode-toggle');
 		if (this.isKissMode) {
 			toggle.innerHTML = '👁️';
+			toggle.title = 'Switch to LuCI mode';
 			this.hideChrome();
 		} else {
 			toggle.innerHTML = '👁️‍🗨️';
+			toggle.title = 'Switch to KISS mode';
 			this.showChrome();
 		}
 	},
