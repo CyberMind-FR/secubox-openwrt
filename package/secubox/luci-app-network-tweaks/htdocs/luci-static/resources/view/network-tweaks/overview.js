@@ -83,6 +83,11 @@ var callSetAdGuardEnabled = rpc.declare({
 	expect: { }
 });
 
+/**
+ * Network Services Dashboard - KISS Style
+ * Copyright (C) 2025 CyberMind.fr
+ */
+
 return view.extend({
 	proxyStatusData: {},
 	componentsData: [],
@@ -90,14 +95,6 @@ return view.extend({
 	networkModeData: {},
 
 	load: function() {
-		// Load CSS
-		var cssLink = E('link', {
-			'rel': 'stylesheet',
-			'type': 'text/css',
-			'href': L.resource('network-tweaks/dashboard.css')
-		});
-		document.head.appendChild(cssLink);
-
 		return Promise.all([
 			callNetworkTweaksStatus(),
 			callGetNetworkComponents(),
@@ -172,7 +169,8 @@ return view.extend({
 	},
 
 	renderDashboard: function() {
-		return E('div', { 'class': 'network-tweaks-dashboard' }, [
+		var K = KissTheme;
+		return K.E('div', { 'class': 'network-tweaks-dashboard' }, [
 			this.renderCumulativeImpact(),
 			this.renderNetworkModeStatus(),
 			this.renderProxySettings(),
@@ -182,185 +180,169 @@ return view.extend({
 	},
 
 	renderCumulativeImpact: function() {
+		var K = KissTheme;
 		var cumulative = this.cumulativeData;
+		var colors = {
+			primary: 'var(--kiss-blue, #3b82f6)',
+			info: 'var(--kiss-purple, #6366f1)',
+			success: 'var(--kiss-green, #22c55e)',
+			warning: 'var(--kiss-yellow, #fbbf24)'
+		};
 
-		return E('div', { 'class': 'cumulative-impact-section' }, [
-			E('h3', {}, _('Network Impact Summary')),
-			E('div', { 'class': 'impact-grid' }, [
-				this.renderImpactCard(
-					_('Active Components'),
-					cumulative.active_components || 0,
-					'\ud83d\udd27',
-					'primary'
-				),
-				this.renderImpactCard(
-					_('DNS Entries'),
-					cumulative.total_dns_entries || 0,
-					'\ud83c\udf10',
-					'info'
-				),
-				this.renderImpactCard(
-					_('Published VHosts'),
-					cumulative.total_vhosts || 0,
-					'\ud83d\udce1',
-					'success'
-				),
-				this.renderImpactCard(
-					_('Exposed Ports'),
-					cumulative.total_ports_exposed || 0,
-					'\ud83d\udd0c',
-					'warning'
-				)
+		return K.E('div', { 'class': 'kiss-card', 'style': 'margin-bottom: 16px;' }, [
+			K.E('div', { 'class': 'kiss-card-title' }, ['📊 ', 'Network Impact Summary']),
+			K.E('div', { 'class': 'kiss-grid kiss-grid-4', 'style': 'gap: 16px;' }, [
+				this.renderImpactCard(K, 'Active Components', cumulative.active_components || 0, '🔧', colors.primary),
+				this.renderImpactCard(K, 'DNS Entries', cumulative.total_dns_entries || 0, '🌐', colors.info),
+				this.renderImpactCard(K, 'Published VHosts', cumulative.total_vhosts || 0, '📡', colors.success),
+				this.renderImpactCard(K, 'Exposed Ports', cumulative.total_ports_exposed || 0, '🔌', colors.warning)
 			])
 		]);
 	},
 
-	renderImpactCard: function(label, value, icon, color) {
-		return E('div', { 'class': 'impact-card impact-' + color }, [
-			E('div', { 'class': 'impact-icon' }, icon),
-			E('div', { 'class': 'impact-value' }, String(value)),
-			E('div', { 'class': 'impact-label' }, label)
+	renderImpactCard: function(K, label, value, icon, color) {
+		return K.E('div', {
+			'style': 'background: var(--kiss-bg2, #111827); border: 1px solid var(--kiss-line, #1e293b); border-radius: 12px; padding: 20px; text-align: center;'
+		}, [
+			K.E('div', { 'style': 'font-size: 24px; margin-bottom: 8px;' }, icon),
+			K.E('div', { 'style': 'font-size: 32px; font-weight: bold; color: ' + color }, String(value)),
+			K.E('div', { 'style': 'font-size: 12px; color: var(--kiss-muted); margin-top: 4px;' }, label)
 		]);
 	},
 
 	renderNetworkModeStatus: function() {
+		var K = KissTheme;
 		var mode = this.networkModeData;
 		var modeId = mode.current_mode || 'unknown';
 		var modeName = mode.mode_name || modeId;
 		var syncEnabled = mode.sync_enabled || false;
 
-		return E('div', { 'class': 'network-mode-status' }, [
-			E('h3', {}, _('Network Mode Integration')),
-			E('div', { 'class': 'mode-info' }, [
-				E('div', { 'class': 'mode-indicator' }, [
-					E('span', { 'class': 'mode-icon' }, '\ud83c\udfaf'),
-					E('span', { 'class': 'mode-name' }, modeName)
+		return K.E('div', { 'class': 'kiss-card', 'style': 'margin-bottom: 16px;' }, [
+			K.E('div', { 'class': 'kiss-card-title' }, ['🎯 ', 'Network Mode Integration']),
+			K.E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;' }, [
+				K.E('div', { 'style': 'display: flex; align-items: center; gap: 10px;' }, [
+					K.E('span', { 'style': 'font-size: 20px;' }, '🎯'),
+					K.E('span', { 'style': 'font-size: 16px; font-weight: bold;' }, modeName)
 				]),
-				E('div', { 'class': 'sync-status' }, [
-					E('span', { 'class': 'status-label' }, _('DNS Sync: ')),
-					E('span', { 'class': 'status-value' },
-						syncEnabled ? _('Enabled') : _('Disabled'))
+				K.E('div', { 'style': 'display: flex; align-items: center; gap: 8px;' }, [
+					K.E('span', { 'style': 'color: var(--kiss-muted); font-size: 13px;' }, 'DNS Sync:'),
+					syncEnabled
+						? K.E('span', { 'style': 'background: var(--kiss-green); color: #000; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: bold;' }, 'Enabled')
+						: K.E('span', { 'style': 'background: var(--kiss-muted); color: #fff; padding: 4px 10px; border-radius: 6px; font-size: 12px;' }, 'Disabled')
 				])
 			])
 		]);
 	},
 
 	renderProxySettings: function() {
+		var K = KissTheme;
+		var self = this;
 		var proxy = this.proxyStatusData;
 		var cdnCache = proxy.cdn_cache || {};
 		var wpad = proxy.wpad || {};
 		var adguard = proxy.adguard_home || {};
 
-		var cdnStatusClass = cdnCache.running ? 'status-running' : 'status-stopped';
-		var cdnStatusText = cdnCache.running ? _('Running') : _('Stopped');
-		var cdnListeningText = cdnCache.listening ?
-			_('Listening on port ') + (cdnCache.port || 3128) :
-			_('Not listening');
+		var cardStyle = 'background: var(--kiss-bg2, #111827); border: 1px solid var(--kiss-line, #1e293b); border-radius: 12px; padding: 16px;';
+		var headerStyle = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;';
+		var infoStyle = 'font-size: 13px; color: var(--kiss-muted); margin-bottom: 12px;';
+		var actionsStyle = 'display: flex; gap: 8px;';
 
-		var wpadStatusClass = wpad.enabled ? 'status-running' : 'status-stopped';
-		var wpadStatusText = wpad.enabled ? _('Enabled') : _('Disabled');
+		var statusBadge = function(running, text) {
+			return K.E('span', {
+				'style': 'padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: bold; ' +
+					(running ? 'background: var(--kiss-green); color: #000;' : 'background: var(--kiss-red); color: #fff;')
+			}, text);
+		};
 
-		var adguardStatusClass = adguard.running ? 'status-running' : 'status-stopped';
-		var adguardStatusText = adguard.running ? _('Running') : _('Stopped');
-
-		return E('div', { 'class': 'proxy-settings-section' }, [
-			E('h3', {}, _('DNS & Proxy Services')),
-			E('div', { 'class': 'proxy-grid', 'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem;' }, [
+		return K.E('div', { 'class': 'kiss-card', 'style': 'margin-bottom: 16px;' }, [
+			K.E('div', { 'class': 'kiss-card-title' }, ['🛡️ ', 'DNS & Proxy Services']),
+			K.E('div', { 'class': 'kiss-grid kiss-grid-3', 'style': 'gap: 16px;' }, [
 				// AdGuard Home Card
-				E('div', { 'class': 'proxy-card', 'style': 'background: #16213e; border-radius: 8px; padding: 1rem; border: 1px solid #333;' }, [
-					E('div', { 'class': 'proxy-header', 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;' }, [
-						E('div', { 'style': 'display: flex; align-items: center; gap: 0.5rem;' }, [
-							E('span', { 'style': 'font-size: 1.5em;' }, '\ud83d\udee1\ufe0f'),
-							E('span', { 'style': 'font-weight: bold;' }, _('AdGuard Home'))
+				K.E('div', { 'style': cardStyle }, [
+					K.E('div', { 'style': headerStyle }, [
+						K.E('div', { 'style': 'display: flex; align-items: center; gap: 8px;' }, [
+							K.E('span', { 'style': 'font-size: 20px;' }, '🛡️'),
+							K.E('span', { 'style': 'font-weight: bold;' }, 'AdGuard Home')
 						]),
-						E('span', {
-							'class': 'status-badge ' + adguardStatusClass,
-							'style': 'padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8em; ' +
-								(adguard.running ? 'background: #22c55e;' : 'background: #ef4444;')
-						}, adguardStatusText)
+						statusBadge(adguard.running, adguard.running ? 'Running' : 'Stopped')
 					]),
-					E('div', { 'class': 'proxy-info', 'style': 'font-size: 0.9em; color: #888; margin-bottom: 0.75rem;' }, [
-						E('div', {}, adguard.installed ?
-							_('Web UI: port ') + (adguard.port || 3000) :
-							_('Not installed')),
-						E('div', {}, adguard.installed ?
-							_('DNS: port ') + (adguard.dns_port || 53) :
-							_('Install via adguardhomectl'))
+					K.E('div', { 'style': infoStyle }, [
+						K.E('div', {}, adguard.installed ? 'Web UI: port ' + (adguard.port || 3000) : 'Not installed'),
+						K.E('div', {}, adguard.installed ? 'DNS: port ' + (adguard.dns_port || 53) : 'Install via adguardhomectl')
 					]),
-					E('div', { 'class': 'proxy-actions', 'style': 'display: flex; gap: 0.5rem;' }, [
-						adguard.installed ?
-							E('button', {
-								'class': 'btn cbi-button',
-								'click': L.bind(this.handleAdGuardToggle, this)
-							}, adguard.enabled ? _('Disable') : _('Enable')) :
-							E('button', {
-								'class': 'btn cbi-button',
+					K.E('div', { 'style': actionsStyle }, [
+						adguard.installed
+							? K.E('button', {
+								'class': 'kiss-btn ' + (adguard.enabled ? 'kiss-btn-red' : 'kiss-btn-green'),
+								'style': 'padding: 6px 12px; font-size: 12px;',
+								'click': L.bind(self.handleAdGuardToggle, self)
+							}, adguard.enabled ? 'Disable' : 'Enable')
+							: K.E('button', {
+								'class': 'kiss-btn',
+								'style': 'padding: 6px 12px; font-size: 12px; opacity: 0.5;',
 								'disabled': 'disabled'
-							}, _('Not Installed')),
-						adguard.running ? E('a', {
-							'class': 'btn cbi-button',
+							}, 'Not Installed'),
+						adguard.running ? K.E('a', {
+							'class': 'kiss-btn kiss-btn-blue',
+							'style': 'padding: 6px 12px; font-size: 12px; text-decoration: none;',
 							'href': 'http://' + window.location.hostname + ':' + (adguard.port || 3000),
 							'target': '_blank'
-						}, _('Open UI')) : null
+						}, 'Open UI') : null
 					].filter(Boolean))
 				]),
 				// CDN Cache Card
-				E('div', { 'class': 'proxy-card', 'style': 'background: #16213e; border-radius: 8px; padding: 1rem; border: 1px solid #333;' }, [
-					E('div', { 'class': 'proxy-header', 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;' }, [
-						E('div', { 'style': 'display: flex; align-items: center; gap: 0.5rem;' }, [
-							E('span', { 'style': 'font-size: 1.5em;' }, '\ud83d\udce6'),
-							E('span', { 'style': 'font-weight: bold;' }, _('CDN Cache'))
+				K.E('div', { 'style': cardStyle }, [
+					K.E('div', { 'style': headerStyle }, [
+						K.E('div', { 'style': 'display: flex; align-items: center; gap: 8px;' }, [
+							K.E('span', { 'style': 'font-size: 20px;' }, '📦'),
+							K.E('span', { 'style': 'font-weight: bold;' }, 'CDN Cache')
 						]),
-						E('span', {
-							'class': 'status-badge ' + cdnStatusClass,
-							'style': 'padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8em; ' +
-								(cdnCache.running ? 'background: #22c55e;' : 'background: #ef4444;')
-						}, cdnStatusText)
+						statusBadge(cdnCache.running, cdnCache.running ? 'Running' : 'Stopped')
 					]),
-					E('div', { 'class': 'proxy-info', 'style': 'font-size: 0.9em; color: #888; margin-bottom: 0.75rem;' }, [
-						E('div', {}, cdnListeningText),
-						E('div', {}, cdnCache.installed ? _('nginx proxy installed') : _('Not installed'))
+					K.E('div', { 'style': infoStyle }, [
+						K.E('div', {}, cdnCache.listening ? 'Listening on port ' + (cdnCache.port || 3128) : 'Not listening'),
+						K.E('div', {}, cdnCache.installed ? 'nginx proxy installed' : 'Not installed')
 					]),
-					E('div', { 'class': 'proxy-actions', 'style': 'display: flex; gap: 0.5rem;' },
-					cdnCache.installed ? [
-						E('button', {
-							'class': 'btn cbi-button',
-							'click': L.bind(this.handleCdnCacheToggle, this)
-						}, cdnCache.enabled ? _('Disable') : _('Enable')),
-						E('button', {
-							'class': 'btn cbi-button',
-							'click': L.bind(this.handleCdnCacheRestart, this)
-						}, _('Restart'))
-					] : [
-						E('button', {
-							'class': 'btn cbi-button',
-							'disabled': 'disabled'
-						}, _('Not Installed'))
-					]
-				)
+					K.E('div', { 'style': actionsStyle },
+						cdnCache.installed ? [
+							K.E('button', {
+								'class': 'kiss-btn ' + (cdnCache.enabled ? 'kiss-btn-red' : 'kiss-btn-green'),
+								'style': 'padding: 6px 12px; font-size: 12px;',
+								'click': L.bind(self.handleCdnCacheToggle, self)
+							}, cdnCache.enabled ? 'Disable' : 'Enable'),
+							K.E('button', {
+								'class': 'kiss-btn kiss-btn-blue',
+								'style': 'padding: 6px 12px; font-size: 12px;',
+								'click': L.bind(self.handleCdnCacheRestart, self)
+							}, 'Restart')
+						] : [
+							K.E('button', {
+								'class': 'kiss-btn',
+								'style': 'padding: 6px 12px; font-size: 12px; opacity: 0.5;',
+								'disabled': 'disabled'
+							}, 'Not Installed')
+						]
+					)
 				]),
 				// WPAD Card
-				E('div', { 'class': 'proxy-card', 'style': 'background: #16213e; border-radius: 8px; padding: 1rem; border: 1px solid #333;' }, [
-					E('div', { 'class': 'proxy-header', 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;' }, [
-						E('div', { 'style': 'display: flex; align-items: center; gap: 0.5rem;' }, [
-							E('span', { 'style': 'font-size: 1.5em;' }, '\ud83c\udf10'),
-							E('span', { 'style': 'font-weight: bold;' }, _('WPAD Auto-Proxy'))
+				K.E('div', { 'style': cardStyle }, [
+					K.E('div', { 'style': headerStyle }, [
+						K.E('div', { 'style': 'display: flex; align-items: center; gap: 8px;' }, [
+							K.E('span', { 'style': 'font-size: 20px;' }, '🌐'),
+							K.E('span', { 'style': 'font-weight: bold;' }, 'WPAD Auto-Proxy')
 						]),
-						E('span', {
-							'class': 'status-badge ' + wpadStatusClass,
-							'style': 'padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8em; ' +
-								(wpad.enabled ? 'background: #22c55e;' : 'background: #ef4444;')
-						}, wpadStatusText)
+						statusBadge(wpad.enabled, wpad.enabled ? 'Enabled' : 'Disabled')
 					]),
-					E('div', { 'class': 'proxy-info', 'style': 'font-size: 0.9em; color: #888; margin-bottom: 0.75rem;' }, [
-						E('div', {}, wpad.dhcp_configured ? _('DHCP Option 252 configured') : _('DHCP not configured')),
-						E('div', {}, wpad.url ? wpad.url : _('No PAC URL set'))
+					K.E('div', { 'style': infoStyle }, [
+						K.E('div', {}, wpad.dhcp_configured ? 'DHCP Option 252 configured' : 'DHCP not configured'),
+						K.E('div', {}, wpad.url ? wpad.url : 'No PAC URL set')
 					]),
-					E('div', { 'class': 'proxy-actions', 'style': 'display: flex; gap: 0.5rem;' }, [
-						E('button', {
-							'class': 'btn cbi-button',
-							'click': L.bind(this.handleWpadToggle, this)
-						}, wpad.enabled ? _('Disable') : _('Enable'))
+					K.E('div', { 'style': actionsStyle }, [
+						K.E('button', {
+							'class': 'kiss-btn ' + (wpad.enabled ? 'kiss-btn-red' : 'kiss-btn-green'),
+							'style': 'padding: 6px 12px; font-size: 12px;',
+							'click': L.bind(self.handleWpadToggle, self)
+						}, wpad.enabled ? 'Disable' : 'Enable')
 					])
 				])
 			])
@@ -447,89 +429,84 @@ return view.extend({
 	},
 
 	renderComponentsGrid: function() {
+		var K = KissTheme;
 		var components = this.componentsData;
 
 		if (components.length === 0) {
-			return E('div', { 'class': 'empty-state' }, [
-				E('p', {}, _('No network-impacting components detected'))
+			return K.E('div', { 'class': 'kiss-card', 'style': 'text-align: center; padding: 40px;' }, [
+				K.E('div', { 'style': 'font-size: 48px; margin-bottom: 12px;' }, '📭'),
+				K.E('p', { 'style': 'color: var(--kiss-muted);' }, 'No network-impacting components detected')
 			]);
 		}
 
-		return E('div', { 'class': 'components-grid-section' }, [
-			E('h3', {}, _('Network Services')),
-			E('div', {
-				'class': 'components-grid',
+		return K.E('div', { 'class': 'kiss-card', 'style': 'margin-bottom: 16px;' }, [
+			K.E('div', { 'class': 'kiss-card-title' }, ['🔧 ', 'Network Services']),
+			K.E('div', {
+				'class': 'kiss-grid kiss-grid-3',
+				'style': 'gap: 16px;',
 				'id': 'components-grid'
 			}, components.map(L.bind(this.renderComponentCard, this)))
 		]);
 	},
 
 	renderComponentCard: function(component) {
-		var statusClass = 'status-' + component.service_state.replace('/', '\\/');
+		var K = KissTheme;
+		var self = this;
 		var stateLabel = {
-			'running': _('Running'),
-			'stopped': _('Stopped'),
-			'n/a': _('N/A')
+			'running': 'Running',
+			'stopped': 'Stopped',
+			'n/a': 'N/A'
 		}[component.service_state] || component.service_state;
 
+		var stateColor = component.service_state === 'running' ? 'var(--kiss-green)' : 'var(--kiss-muted)';
 		var impact = component.network_impact || {};
 
-		return E('div', {
-			'class': 'component-card ' + statusClass,
+		return K.E('div', {
+			'style': 'background: var(--kiss-bg2, #111827); border: 1px solid var(--kiss-line, #1e293b); border-radius: 12px; padding: 16px;',
 			'data-component-id': component.id
 		}, [
-			E('div', { 'class': 'component-header' }, [
-				E('div', { 'class': 'component-title' }, [
-					E('h4', {}, component.name),
-					E('span', { 'class': 'component-status ' + statusClass }, stateLabel)
+			K.E('div', { 'style': 'display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;' }, [
+				K.E('div', {}, [
+					K.E('h4', { 'style': 'margin: 0 0 4px; font-size: 14px;' }, component.name),
+					K.E('span', { 'style': 'font-size: 12px; color: ' + stateColor + ';' }, '● ' + stateLabel)
 				]),
-				E('span', {
-					'class': 'install-badge install-' + component.install_state.replace('/', '\\/')
+				K.E('span', {
+					'style': 'background: var(--kiss-purple, #6366f1); color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px;'
 				}, component.install_state)
 			]),
-			E('div', { 'class': 'component-impact' }, [
-				E('div', { 'class': 'impact-row' }, [
-					E('span', { 'class': 'impact-icon' }, '\ud83c\udf10'),
-					E('span', { 'class': 'impact-text' },
-						(impact.dns_entries || 0) + ' ' + _('DNS entries'))
-				]),
-				E('div', { 'class': 'impact-row' }, [
-					E('span', { 'class': 'impact-icon' }, '\ud83d\udce1'),
-					E('span', { 'class': 'impact-text' },
-						(impact.vhosts || 0) + ' ' + _('VHosts'))
-				]),
-				E('div', { 'class': 'impact-row' }, [
-					E('span', { 'class': 'impact-icon' }, '\ud83d\udd0c'),
-					E('span', { 'class': 'impact-text' },
-						(impact.ports || 0) + ' ' + _('ports'))
+			K.E('div', { 'style': 'font-size: 12px; color: var(--kiss-muted); margin-bottom: 12px;' }, [
+				K.E('div', { 'style': 'display: flex; gap: 16px; flex-wrap: wrap;' }, [
+					K.E('span', {}, '🌐 ' + (impact.dns_entries || 0) + ' DNS'),
+					K.E('span', {}, '📡 ' + (impact.vhosts || 0) + ' VHosts'),
+					K.E('span', {}, '🔌 ' + (impact.ports || 0) + ' ports')
 				])
 			]),
-			E('div', { 'class': 'component-contribution' }, [
-				E('small', {}, _('Contributes: ')),
-				E('span', {},
-					(component.cumulative_contribution?.dnsmasq_entries || 0) + ' dnsmasq, ' +
-					(component.cumulative_contribution?.hosts_entries || 0) + ' hosts')
+			K.E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted); margin-bottom: 12px;' }, [
+				'Contributes: ',
+				(component.cumulative_contribution?.dnsmasq_entries || 0) + ' dnsmasq, ' +
+				(component.cumulative_contribution?.hosts_entries || 0) + ' hosts'
 			]),
-			E('div', { 'class': 'component-actions' }, [
-				E('button', {
-					'class': 'btn',
-					'click': L.bind(function(componentId, ev) {
-						this.showComponentDetails(componentId);
-					}, this, component.id)
-				}, _('Details'))
+			K.E('div', {}, [
+				K.E('button', {
+					'class': 'kiss-btn',
+					'style': 'padding: 6px 12px; font-size: 12px;',
+					'click': function() { self.showComponentDetails(component.id); }
+				}, 'Details')
 			])
 		]);
 	},
 
 	renderSyncSection: function() {
-		return E('div', { 'class': 'cbi-section', 'style': 'margin-top: 2rem;' }, [
-			E('h3', {}, _('Manual Synchronization')),
-			E('div', { 'class': 'cbi-section-descr' },
-				_('Trigger immediate synchronization of DNS and hosts entries')),
-			E('button', {
-				'class': 'btn cbi-button-apply',
+		var K = KissTheme;
+		return K.E('div', { 'class': 'kiss-card' }, [
+			K.E('div', { 'class': 'kiss-card-title' }, ['🔄 ', 'Manual Synchronization']),
+			K.E('p', { 'style': 'color: var(--kiss-muted); margin-bottom: 16px; font-size: 13px;' },
+				'Trigger immediate synchronization of DNS and hosts entries'),
+			K.E('button', {
+				'class': 'kiss-btn kiss-btn-green',
+				'style': 'padding: 10px 20px;',
 				'click': L.bind(this.handleSyncNow, this)
-			}, _('Sync Now'))
+			}, '🔄 Sync Now')
 		]);
 	},
 
@@ -563,44 +540,50 @@ return view.extend({
 		var capabilities = component.capabilities || [];
 
 		var content = [
-			E('h3', {}, component.name),
-			E('div', { 'style': 'margin: 1rem 0;' }, [
-				E('strong', {}, _('Category: ')),
-				E('span', {}, component.category)
+			E('h3', { 'style': 'margin: 0 0 16px; display: flex; align-items: center; gap: 10px;' }, [
+				E('span', {}, '🔧'),
+				component.name
 			]),
-			E('div', { 'style': 'margin: 1rem 0;' }, [
-				E('strong', {}, _('Install State: ')),
-				E('span', {}, component.install_state)
+			E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px;' }, [
+				E('div', {}, [
+					E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted); text-transform: uppercase;' }, 'Category'),
+					E('div', { 'style': 'font-size: 14px;' }, component.category)
+				]),
+				E('div', {}, [
+					E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted); text-transform: uppercase;' }, 'Install State'),
+					E('div', { 'style': 'font-size: 14px;' }, component.install_state)
+				]),
+				E('div', {}, [
+					E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted); text-transform: uppercase;' }, 'Service State'),
+					E('div', { 'style': 'font-size: 14px;' }, component.service_state)
+				])
 			]),
-			E('div', { 'style': 'margin: 1rem 0;' }, [
-				E('strong', {}, _('Service State: ')),
-				E('span', {}, component.service_state)
+			E('h4', { 'style': 'margin: 0 0 12px; font-size: 14px;' }, '📊 Network Impact'),
+			E('div', { 'style': 'display: flex; gap: 20px; margin-bottom: 20px;' }, [
+				E('span', {}, '🌐 ' + (impact.dns_entries || 0) + ' DNS entries'),
+				E('span', {}, '📡 ' + (impact.vhosts || 0) + ' VHosts'),
+				E('span', {}, '🔌 ' + (impact.ports || 0) + ' ports')
 			]),
-			E('h4', {}, _('Network Impact')),
-			E('ul', {}, [
-				E('li', {}, _('DNS Entries: ') + (impact.dns_entries || 0)),
-				E('li', {}, _('VHosts: ') + (impact.vhosts || 0)),
-				E('li', {}, _('Ports: ') + (impact.ports || 0))
-			]),
-			E('h4', {}, _('Capabilities')),
-			E('div', {},
+			E('h4', { 'style': 'margin: 0 0 12px; font-size: 14px;' }, '⚡ Capabilities'),
+			E('div', { 'style': 'margin-bottom: 20px;' },
 				capabilities.length > 0
 					? capabilities.map(function(cap) {
 						return E('span', {
-							'style': 'display: inline-block; background: #e9ecef; padding: 0.25rem 0.5rem; margin: 0.25rem; border-radius: 4px; font-size: 0.875rem;'
+							'style': 'display: inline-block; background: var(--kiss-purple, #6366f1); color: #fff; padding: 4px 10px; margin: 4px; border-radius: 6px; font-size: 12px;'
 						}, cap);
 					})
-					: E('p', {}, _('None'))
+					: E('p', { 'style': 'color: var(--kiss-muted);' }, 'None')
 			),
-			E('div', { 'class': 'right', 'style': 'margin-top: 2rem;' }, [
+			E('div', { 'style': 'text-align: right;' }, [
 				E('button', {
-					'class': 'btn cbi-button',
+					'class': 'kiss-btn',
+					'style': 'padding: 10px 20px;',
 					'click': ui.hideModal
-				}, _('Close'))
+				}, 'Close')
 			])
 		];
 
-		ui.showModal(_('Component Details'), content, 'cbi-modal');
+		ui.showModal('Component Details', content, 'cbi-modal');
 	},
 
 	pollData: function() {
