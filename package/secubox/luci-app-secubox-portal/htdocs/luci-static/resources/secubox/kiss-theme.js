@@ -72,12 +72,19 @@ var KissThemeClass = baseclass.extend({
 				{ name: 'Maint.', path: 'admin/services/cdn-cache/maintenance' },
 				{ name: 'Settings', path: 'admin/services/cdn-cache/settings' }
 			]},
-			{ icon: '📡', name: 'Bandwidth', path: 'admin/services/bandwidth-manager' },
-			{ icon: '📶', name: 'Traffic Shaper', path: 'admin/services/traffic-shaper' },
-			{ icon: '🌐', name: 'Network Modes', path: 'admin/services/network-modes' },
+			{ icon: '📡', name: 'Bandwidth', path: 'admin/secubox/network/bandwidth-manager' },
+			{ icon: '📶', name: 'Traffic Shaper', path: 'admin/secubox/network/traffic-shaper', tabs: [
+				{ name: 'Overview', path: 'admin/secubox/network/traffic-shaper/overview' },
+				{ name: 'Classes', path: 'admin/secubox/network/traffic-shaper/classes' },
+				{ name: 'Rules', path: 'admin/secubox/network/traffic-shaper/rules' },
+				{ name: 'Stats', path: 'admin/secubox/network/traffic-shaper/stats' },
+				{ name: 'Presets', path: 'admin/secubox/network/traffic-shaper/presets' }
+			]},
+			{ icon: '🌐', name: 'Network Modes', path: 'admin/secubox/network/network-modes' },
 			{ icon: '🔌', name: 'Interfaces', path: 'admin/network/network' }
 		]},
 		{ cat: 'AI & LLM', icon: '🤖', collapsed: true, items: [
+			{ icon: '🧠', name: 'AI Insights', path: 'admin/secubox/ai/insights' },
 			{ icon: '🦙', name: 'Ollama', path: 'admin/services/ollama', tabs: [
 				{ name: 'Dashboard', path: 'admin/services/ollama/dashboard' },
 				{ name: 'Models', path: 'admin/services/ollama/models' },
