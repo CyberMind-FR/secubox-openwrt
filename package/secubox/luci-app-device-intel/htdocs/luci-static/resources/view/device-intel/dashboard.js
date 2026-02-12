@@ -5,60 +5,35 @@
 'require device-intel/api as api';
 'require secubox/kiss-theme';
 
-return view.extend({
-	css: null,
+/**
+ * Device Intelligence Dashboard - KISS Style
+ * Copyright (C) 2025 CyberMind.fr
+ */
 
+return view.extend({
 	load: function() {
 		return Promise.all([
 			api.getSummary(),
 			api.getDevices(),
-			api.getDeviceTypes(),
-			L.require('device-intel/common.css')
-				.catch(function() { return null; })
+			api.getDeviceTypes()
 		]);
 	},
 
 	render: function(data) {
+		var self = this;
+		var K = KissTheme;
 		var summary = data[0] || {};
 		var devResult = data[1] || {};
 		var typesResult = data[2] || {};
 		var devices = devResult.devices || [];
 		var types = typesResult.types || [];
 
-		// Include CSS
-		var cssLink = E('link', {
-			rel: 'stylesheet',
-			href: L.resource('device-intel/common.css')
-		});
+		// Count at-risk devices
+		var atRiskCount = devices.filter(function(d) {
+			return d.risk_score > 0;
+		}).length;
 
-		// ── Summary Stat Cards ──
-		var stats = E('div', { 'class': 'di-stats' }, [
-			this.statCard(summary.total || 0, _('Total Devices'), '#3b82f6'),
-			this.statCard(summary.online || 0, _('Online'), '#22c55e'),
-			this.statCard(summary.mesh_peers || 0, _('Mesh Peers'), '#6366f1'),
-			this.statCard(devices.filter(function(d) {
-				return d.risk_score > 0;
-			}).length, _('At Risk'), '#ef4444')
-		]);
-
-		// ── Data Source Status ──
-		var sources = summary.sources || {};
-		var sourceBar = E('div', { 'class': 'di-source-bar' }, [
-			this.sourceChip('MAC Guardian', sources.mac_guardian),
-			this.sourceChip('Client Guardian', sources.client_guardian),
-			this.sourceChip('DHCP Leases', sources.dhcp),
-			this.sourceChip('P2P Mesh', sources.p2p)
-		]);
-
-		// ── Emulator Status ──
-		var emus = summary.emulators || {};
-		var emuBar = E('div', { 'class': 'di-source-bar' }, [
-			this.sourceChip('USB', emus.usb),
-			this.sourceChip('MQTT', emus.mqtt),
-			this.sourceChip('Zigbee', emus.zigbee)
-		]);
-
-		// ── Device Type Distribution ──
+		// Build type counts
 		var typeCounts = {};
 		devices.forEach(function(d) {
 			var t = d.device_type || 'unknown';
@@ -68,122 +43,149 @@ return view.extend({
 		var typeMap = {};
 		types.forEach(function(t) { typeMap[t.id] = t; });
 
-		var typeCards = Object.keys(typeCounts).sort(function(a, b) {
-			return typeCounts[b] - typeCounts[a];
-		}).map(function(tid) {
-			var info = typeMap[tid] || { name: tid, color: '#6c757d' };
-			return E('div', {
-				'class': 'di-type-card',
-				'style': '--type-color:' + (info.color || '#6c757d')
-			}, [
-				E('span', { 'class': 'count' }, String(typeCounts[tid])),
-				E('span', { 'class': 'name' }, info.name || tid)
-			]);
-		});
-
-		var typeGrid = E('div', { 'class': 'di-type-grid' }, typeCards);
-
-		// ── Zone Distribution ──
+		// Build zone counts
 		var zoneCounts = {};
 		devices.forEach(function(d) {
 			var z = d.cg_zone || 'unzoned';
 			zoneCounts[z] = (zoneCounts[z] || 0) + 1;
 		});
 
-		var zoneItems = Object.keys(zoneCounts).map(function(z) {
-			return E('span', {
-				'class': 'di-source-chip',
-				'style': 'background:#e0e7ff; color:#3730a3;'
-			}, z + ' (' + zoneCounts[z] + ')');
-		});
-
-		// ── Recent Devices (last 5 seen) ──
+		// Recent devices (last 5 seen)
 		var recent = devices
 			.filter(function(d) { return d.last_seen; })
 			.sort(function(a, b) { return (b.last_seen || 0) - (a.last_seen || 0); })
 			.slice(0, 5);
 
-		var recentRows = recent.map(function(d) {
-			return E('tr', {}, [
-				E('td', {}, [
-					E('span', {
-						'class': 'di-online-dot ' + (d.online ? 'online' : 'offline')
-					}),
-					d.label || d.hostname || d.mac
+		var sources = summary.sources || {};
+		var emus = summary.emulators || {};
+
+		var content = K.E('div', {}, [
+			// Page Header
+			K.E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;' }, [
+				K.E('div', {}, [
+					K.E('h2', { 'style': 'margin: 0; font-size: 24px; display: flex; align-items: center; gap: 10px;' }, [
+						K.E('span', {}, '🔍'),
+						'Device Intelligence'
+					]),
+					K.E('p', { 'style': 'margin: 4px 0 0; color: var(--kiss-muted, #94a3b8); font-size: 14px;' },
+						'Network device discovery and monitoring')
 				]),
-				E('td', {}, d.ip || '-'),
-				E('td', {}, d.device_type || '-'),
-				E('td', {}, d.vendor || '-')
-			]);
-		});
+				K.E('button', {
+					'class': 'kiss-btn kiss-btn-blue',
+					'style': 'padding: 10px 16px; font-size: 14px;',
+					'click': function() {
+						api.refresh().then(function() {
+							window.location.href = window.location.pathname + '?' + Date.now();
+						});
+					}
+				}, '🔄 Refresh')
+			]),
 
-		var recentTable = E('table', { 'class': 'di-device-table' }, [
-			E('thead', {}, E('tr', {}, [
-				E('th', {}, _('Device')),
-				E('th', {}, _('IP')),
-				E('th', {}, _('Type')),
-				E('th', {}, _('Vendor'))
-			])),
-			E('tbody', {}, recentRows.length > 0 ? recentRows :
-				[E('tr', {}, E('td', { 'colspan': '4', 'style': 'text-align:center; color:#6c757d;' },
-					_('No recent devices')))])
-		]);
+			// Stats Grid
+			K.E('div', { 'class': 'kiss-grid kiss-grid-4', 'style': 'gap: 16px; margin-bottom: 20px;' }, [
+				self.statCard(K, summary.total || 0, 'Total Devices', 'var(--kiss-blue, #3b82f6)', '📱'),
+				self.statCard(K, summary.online || 0, 'Online', 'var(--kiss-green, #22c55e)', '🟢'),
+				self.statCard(K, summary.mesh_peers || 0, 'Mesh Peers', 'var(--kiss-purple, #6366f1)', '🔗'),
+				self.statCard(K, atRiskCount, 'At Risk', 'var(--kiss-red, #ef4444)', '⚠️')
+			]),
 
-		var content = [
-			cssLink,
-			E('h2', {}, _('Device Intelligence')),
-
-			E('div', { 'class': 'cbi-section' }, [
-				E('div', { 'style': 'display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5em;' }, [
-					E('h3', { 'style': 'margin:0;' }, _('Overview')),
-					E('button', {
-						'class': 'cbi-button',
-						'click': function() {
-							api.refresh().then(function() {
-								window.location.href = window.location.pathname + '?' + Date.now();
-							});
-						}
-					}, _('Refresh'))
+			// Data Sources Card
+			K.E('div', { 'class': 'kiss-card' }, [
+				K.E('div', { 'class': 'kiss-card-title' }, ['📡 ', 'Data Sources']),
+				K.E('div', { 'style': 'display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;' }, [
+					self.sourceChip(K, 'MAC Guardian', sources.mac_guardian),
+					self.sourceChip(K, 'Client Guardian', sources.client_guardian),
+					self.sourceChip(K, 'DHCP Leases', sources.dhcp),
+					self.sourceChip(K, 'P2P Mesh', sources.p2p)
 				]),
-				stats
+				K.E('div', { 'style': 'font-size: 13px; color: var(--kiss-muted); margin-bottom: 8px;' }, 'Emulators'),
+				K.E('div', { 'style': 'display: flex; flex-wrap: wrap; gap: 8px;' }, [
+					self.sourceChip(K, 'USB', emus.usb),
+					self.sourceChip(K, 'MQTT', emus.mqtt),
+					self.sourceChip(K, 'Zigbee', emus.zigbee)
+				])
 			]),
 
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Data Sources')),
-				sourceBar,
-				E('h4', { 'style': 'margin-top:0.75em;' }, _('Emulators')),
-				emuBar
+			// Device Types Card
+			K.E('div', { 'class': 'kiss-card' }, [
+				K.E('div', { 'class': 'kiss-card-title' }, ['🏷️ ', 'Device Types']),
+				K.E('div', { 'style': 'display: flex; flex-wrap: wrap; gap: 12px;' },
+					Object.keys(typeCounts).sort(function(a, b) {
+						return typeCounts[b] - typeCounts[a];
+					}).map(function(tid) {
+						var info = typeMap[tid] || { name: tid, color: '#6c757d' };
+						return K.E('div', {
+							'style': 'background: var(--kiss-bg2, #111827); border: 1px solid ' + (info.color || '#6c757d') + '; border-radius: 8px; padding: 12px 16px; text-align: center; min-width: 80px;'
+						}, [
+							K.E('div', { 'style': 'font-size: 24px; font-weight: bold; color: ' + (info.color || '#6c757d') }, String(typeCounts[tid])),
+							K.E('div', { 'style': 'font-size: 12px; color: var(--kiss-muted); margin-top: 4px;' }, info.name || tid)
+						]);
+					})
+				)
 			]),
 
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Device Types')),
-				typeGrid
+			// Zones Card
+			K.E('div', { 'class': 'kiss-card' }, [
+				K.E('div', { 'class': 'kiss-card-title' }, ['🗺️ ', 'Zones']),
+				K.E('div', { 'style': 'display: flex; flex-wrap: wrap; gap: 8px;' },
+					Object.keys(zoneCounts).map(function(z) {
+						return K.E('span', {
+							'style': 'background: var(--kiss-purple, #6366f1); color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 13px;'
+						}, z + ' (' + zoneCounts[z] + ')');
+					})
+				)
 			]),
 
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Zones')),
-				E('div', { 'class': 'di-source-bar' }, zoneItems)
-			]),
-
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Recent Devices')),
-				recentTable
+			// Recent Devices Card
+			K.E('div', { 'class': 'kiss-card' }, [
+				K.E('div', { 'class': 'kiss-card-title' }, ['🕐 ', 'Recent Devices']),
+				K.E('table', { 'class': 'kiss-table' }, [
+					K.E('thead', {}, K.E('tr', {}, [
+						K.E('th', {}, 'Device'),
+						K.E('th', {}, 'IP'),
+						K.E('th', {}, 'Type'),
+						K.E('th', {}, 'Vendor')
+					])),
+					K.E('tbody', {},
+						recent.length > 0
+							? recent.map(function(d) {
+								return K.E('tr', {}, [
+									K.E('td', {}, [
+										K.E('span', {
+											'style': 'display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; background: ' + (d.online ? 'var(--kiss-green, #22c55e)' : 'var(--kiss-muted, #64748b)') + ';'
+										}),
+										d.label || d.hostname || d.mac
+									]),
+									K.E('td', {}, d.ip || '-'),
+									K.E('td', {}, d.device_type || '-'),
+									K.E('td', {}, d.vendor || '-')
+								]);
+							})
+							: [K.E('tr', {}, K.E('td', { 'colspan': '4', 'style': 'text-align: center; color: var(--kiss-muted); padding: 20px;' }, 'No recent devices'))]
+					)
+				])
 			])
-		];
+		]);
 
 		return KissTheme.wrap(content, 'admin/secubox/services/device-intel');
 	},
 
-	statCard: function(value, label, color) {
-		return E('div', { 'class': 'di-stat-card' }, [
-			E('div', { 'class': 'value', 'style': 'color:' + color }, String(value)),
-			E('div', { 'class': 'label' }, label)
+	statCard: function(K, value, label, color, icon) {
+		return K.E('div', {
+			'style': 'background: var(--kiss-card, #161e2e); border: 1px solid var(--kiss-line, #1e293b); border-radius: 12px; padding: 20px; text-align: center;'
+		}, [
+			K.E('div', { 'style': 'font-size: 20px; margin-bottom: 8px;' }, icon),
+			K.E('div', { 'style': 'font-size: 32px; font-weight: bold; color: ' + color }, String(value)),
+			K.E('div', { 'style': 'font-size: 12px; color: var(--kiss-muted); margin-top: 4px;' }, label)
 		]);
 	},
 
-	sourceChip: function(name, active) {
-		return E('span', {
-			'class': 'di-source-chip ' + (active ? 'active' : 'inactive')
+	sourceChip: function(K, name, active) {
+		return K.E('span', {
+			'style': 'padding: 6px 12px; border-radius: 6px; font-size: 13px; ' +
+				(active
+					? 'background: var(--kiss-green, #22c55e); color: #000;'
+					: 'background: var(--kiss-bg2, #111827); color: var(--kiss-muted); border: 1px solid var(--kiss-line, #1e293b);')
 		}, name);
 	},
 
