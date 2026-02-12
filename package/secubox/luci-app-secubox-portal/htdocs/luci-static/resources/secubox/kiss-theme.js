@@ -7,37 +7,61 @@
  */
 
 var KissThemeClass = baseclass.extend({
-	// Navigation config - organized by category
+	// Navigation config - organized by category with collapsible sections
 	nav: [
-		{ cat: 'Dashboard', items: [
+		{ cat: 'Dashboard', icon: '📊', collapsed: false, items: [
 			{ icon: '🏠', name: 'Home', path: 'admin/secubox-home' },
 			{ icon: '📊', name: 'Dashboard', path: 'admin/secubox/dashboard' },
 			{ icon: '🖥️', name: 'System Hub', path: 'admin/secubox/system/system-hub' }
 		]},
-		{ cat: 'Security', items: [
+		{ cat: 'Security', icon: '🛡️', collapsed: false, items: [
 			{ icon: '🧙', name: 'InterceptoR', path: 'admin/secubox/interceptor' },
 			{ icon: '🛡️', name: 'CrowdSec', path: 'admin/secubox/security/crowdsec' },
 			{ icon: '🔍', name: 'mitmproxy', path: 'admin/secubox/security/mitmproxy' },
 			{ icon: '🚫', name: 'Vortex FW', path: 'admin/secubox/security/vortex-firewall' },
-			{ icon: '👁️', name: 'Client Guard', path: 'admin/services/client-guardian' }
+			{ icon: '👁️', name: 'Client Guard', path: 'admin/secubox/security/guardian' },
+			{ icon: '🍪', name: 'Cookie Track', path: 'admin/secubox/interceptor/cookies' }
 		]},
-		{ cat: 'Services', items: [
+		{ cat: 'Network', icon: '🌐', collapsed: true, items: [
 			{ icon: '⚖️', name: 'HAProxy', path: 'admin/services/haproxy' },
 			{ icon: '🔒', name: 'WireGuard', path: 'admin/services/wireguard' },
+			{ icon: '🌍', name: 'Tor Shield', path: 'admin/services/tor-shield' },
 			{ icon: '💾', name: 'CDN Cache', path: 'admin/services/cdn-cache' },
-			{ icon: '🌐', name: 'Network', path: 'admin/network' },
-			{ icon: '📡', name: 'Bandwidth', path: 'admin/services/bandwidth-manager' }
+			{ icon: '📡', name: 'Bandwidth', path: 'admin/services/bandwidth-manager' },
+			{ icon: '📶', name: 'Traffic Shaper', path: 'admin/services/traffic-shaper' },
+			{ icon: '🌐', name: 'Network Modes', path: 'admin/services/network-modes' },
+			{ icon: '🔌', name: 'Interfaces', path: 'admin/network/network' }
 		]},
-		{ cat: 'Apps', items: [
-			{ icon: '🎬', name: 'Media Flow', path: 'admin/services/media-flow' },
+		{ cat: 'AI & LLM', icon: '🤖', collapsed: true, items: [
+			{ icon: '🦙', name: 'Ollama', path: 'admin/services/ollama' },
 			{ icon: '🤖', name: 'LocalAI', path: 'admin/services/localai' },
+			{ icon: '💬', name: 'Chat', path: 'admin/services/ollama/chat' }
+		]},
+		{ cat: 'Apps', icon: '📦', collapsed: true, items: [
+			{ icon: '🎬', name: 'Media Flow', path: 'admin/services/media-flow' },
+			{ icon: '🪞', name: 'MagicMirror', path: 'admin/services/magicmirror2' },
+			{ icon: '📰', name: 'HexoJS', path: 'admin/services/hexojs' },
+			{ icon: '📺', name: 'Netdata', path: 'admin/services/netdata-dashboard' },
+			{ icon: '🏠', name: 'Vhost Manager', path: 'admin/services/vhost-manager' },
 			{ icon: '📦', name: 'App Store', path: 'admin/secubox/apps' }
 		]},
-		{ cat: 'System', items: [
+		{ cat: 'P2P & Mesh', icon: '🔗', collapsed: true, items: [
+			{ icon: '🔗', name: 'P2P Network', path: 'admin/services/secubox-p2p' },
+			{ icon: '🌳', name: 'Netifyd', path: 'admin/services/secubox-netifyd' },
+			{ icon: '📡', name: 'Exposure', path: 'admin/services/exposure' }
+		]},
+		{ cat: 'System', icon: '⚙️', collapsed: true, items: [
 			{ icon: '⚙️', name: 'Settings', path: 'admin/system' },
-			{ icon: '🌳', name: 'LuCI Menu', path: 'admin/secubox/luci-tree' }
+			{ icon: '📊', name: 'Status', path: 'admin/status/overview' },
+			{ icon: '🛠️', name: 'KSM Manager', path: 'admin/services/ksm-manager' },
+			{ icon: '🔄', name: 'Cloner', path: 'admin/services/cloner' },
+			{ icon: '🌳', name: 'LuCI Menu', path: 'admin/secubox/luci-tree' },
+			{ icon: '🔧', name: 'Software', path: 'admin/system/opkg' }
 		]}
 	],
+
+	// Track collapsed state per category
+	collapsedState: {},
 
 	// Core palette
 	colors: {
@@ -121,20 +145,28 @@ var KissThemeClass = baseclass.extend({
 .kiss-sidebar::-webkit-scrollbar-thumb { background: ${c.line}; border-radius: 2px; }
 .kiss-nav { padding: 8px 0; }
 .kiss-nav-section {
-	padding: 12px 16px 6px; font-size: 10px; letter-spacing: 1.5px;
+	padding: 10px 16px 8px; font-size: 11px; letter-spacing: 0.5px;
 	text-transform: uppercase; color: ${c.muted}; font-weight: 600;
+	cursor: pointer; display: flex; align-items: center; gap: 8px;
+	transition: all 0.2s; border-radius: 6px; margin: 2px 8px;
 }
+.kiss-nav-section:hover { background: rgba(255,255,255,0.05); color: ${c.text}; }
+.kiss-nav-section-icon { font-size: 14px; }
+.kiss-nav-section-arrow { margin-left: auto; font-size: 10px; transition: transform 0.2s; }
+.kiss-nav-section.collapsed .kiss-nav-section-arrow { transform: rotate(-90deg); }
+.kiss-nav-section.collapsed + .kiss-nav-items { display: none; }
+.kiss-nav-items { overflow: hidden; transition: all 0.2s; }
 .kiss-nav-item {
-	display: flex; align-items: center; gap: 10px; padding: 10px 16px;
-	text-decoration: none; font-size: 13px; color: ${c.muted};
-	transition: all 0.2s; border-left: 3px solid transparent; margin: 2px 0;
+	display: flex; align-items: center; gap: 10px; padding: 8px 16px 8px 32px;
+	text-decoration: none; font-size: 12px; color: ${c.muted};
+	transition: all 0.2s; border-left: 3px solid transparent; margin: 1px 0;
 }
 .kiss-nav-item:hover { background: rgba(255,255,255,0.05); color: ${c.text}; }
 .kiss-nav-item.active {
 	color: ${c.green}; background: rgba(0,200,83,0.08);
 	border-left-color: ${c.green};
 }
-.kiss-nav-icon { font-size: 16px; width: 22px; text-align: center; flex-shrink: 0; }
+.kiss-nav-icon { font-size: 14px; width: 20px; text-align: center; flex-shrink: 0; }
 
 /* === Main Content === */
 .kiss-main {
@@ -461,25 +493,64 @@ var KissThemeClass = baseclass.extend({
 		]);
 	},
 
+	// Toggle category collapsed state
+	toggleCategory: function(catName) {
+		this.collapsedState[catName] = !this.collapsedState[catName];
+		var section = document.querySelector('.kiss-nav-section[data-cat="' + catName + '"]');
+		if (section) {
+			section.classList.toggle('collapsed', this.collapsedState[catName]);
+		}
+	},
+
 	// Render sidebar
 	renderSidebar: function(activePath) {
 		var self = this;
 		var currentPath = activePath || window.location.pathname.replace('/cgi-bin/luci/', '');
 		var navItems = [];
 
+		// Initialize collapsed state from nav config
 		this.nav.forEach(function(cat) {
-			navItems.push(self.E('div', { 'class': 'kiss-nav-section' }, cat.cat));
-			cat.items.forEach(function(item) {
-				var isActive = currentPath.indexOf(item.path) !== -1;
-				navItems.push(self.E('a', {
-					'href': '/cgi-bin/luci/' + item.path,
-					'class': 'kiss-nav-item' + (isActive ? ' active' : ''),
-					'onClick': function() { self.closeSidebar(); }
-				}, [
-					self.E('span', { 'class': 'kiss-nav-icon' }, item.icon),
-					self.E('span', {}, item.name)
-				]));
-			});
+			if (self.collapsedState[cat.cat] === undefined) {
+				// Auto-expand if current path is in this category
+				var hasActive = cat.items.some(function(item) {
+					return currentPath.indexOf(item.path) !== -1;
+				});
+				self.collapsedState[cat.cat] = hasActive ? false : (cat.collapsed || false);
+			}
+		});
+
+		this.nav.forEach(function(cat) {
+			var isCollapsed = self.collapsedState[cat.cat];
+
+			// Section header (clickable to expand/collapse)
+			navItems.push(self.E('div', {
+				'class': 'kiss-nav-section' + (isCollapsed ? ' collapsed' : ''),
+				'data-cat': cat.cat,
+				'onClick': function(e) {
+					e.preventDefault();
+					self.toggleCategory(cat.cat);
+				}
+			}, [
+				self.E('span', { 'class': 'kiss-nav-section-icon' }, cat.icon || '📁'),
+				self.E('span', {}, cat.cat),
+				self.E('span', { 'class': 'kiss-nav-section-arrow' }, '▼')
+			]));
+
+			// Items container
+			var itemsContainer = self.E('div', { 'class': 'kiss-nav-items' },
+				cat.items.map(function(item) {
+					var isActive = currentPath.indexOf(item.path) !== -1;
+					return self.E('a', {
+						'href': '/cgi-bin/luci/' + item.path,
+						'class': 'kiss-nav-item' + (isActive ? ' active' : ''),
+						'onClick': function() { self.closeSidebar(); }
+					}, [
+						self.E('span', { 'class': 'kiss-nav-icon' }, item.icon),
+						self.E('span', {}, item.name)
+					]);
+				})
+			);
+			navItems.push(itemsContainer);
 		});
 
 		return this.E('nav', { 'class': 'kiss-sidebar' }, [

@@ -312,6 +312,108 @@ do_generate() {
 	fi
 }
 
+# Get system resources
+get_system_info() {
+	load_config
+	local rt=$(detect_runtime)
+
+	# Memory info
+	local mem_total=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+	local mem_free=$(awk '/MemAvailable/ {print $2}' /proc/meminfo)
+	local mem_used=$((mem_total - mem_free))
+	local mem_pct=$((mem_used * 100 / mem_total))
+
+	# Disk space for data path
+	local disk_info=$(df -k "$DATA_PATH" 2>/dev/null | tail -1)
+	local disk_total=$(echo "$disk_info" | awk '{print $2}')
+	local disk_used=$(echo "$disk_info" | awk '{print $3}')
+	local disk_pct=$(echo "$disk_info" | awk '{print $5}' | tr -d '%')
+	[ -z "$disk_pct" ] && disk_pct=0
+
+	# Container stats if running
+	local container_mem=0
+	local container_cpu=""
+	if is_running && [ -n "$rt" ]; then
+		local stats=$($rt stats --no-stream --format '{{.MemUsage}} {{.CPUPerc}}' ollama 2>/dev/null | head -1)
+		container_mem=$(echo "$stats" | awk '{print $1}' | sed 's/[^0-9.]//g')
+		container_cpu=$(echo "$stats" | awk '{print $NF}')
+	fi
+
+	cat <<EOF
+{
+	"memory": {
+		"total_kb": $mem_total,
+		"used_kb": $mem_used,
+		"percent": $mem_pct
+	},
+	"disk": {
+		"total_kb": ${disk_total:-0},
+		"used_kb": ${disk_used:-0},
+		"percent": ${disk_pct:-0},
+		"path": "$DATA_PATH"
+	},
+	"container": {
+		"memory": "${container_mem:-0}",
+		"cpu": "${container_cpu:-0%}"
+	}
+}
+EOF
+}
+
+# Get recent logs
+get_logs() {
+	local rt=$(detect_runtime)
+	local lines="${1:-50}"
+
+	echo '{"logs":['
+	local first=1
+
+	if [ -n "$rt" ]; then
+		$rt logs --tail "$lines" ollama 2>&1 | while IFS= read -r line; do
+			[ $first -eq 0 ] && printf ','
+			first=0
+			line=$(printf '%s' "$line" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ')
+			printf '"%s"' "$line"
+		done
+	fi
+
+	echo ']}'
+}
+
+# Get model details
+get_model_info() {
+	load_config
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"Model name required"}'; return; }
+
+	if ! is_running; then
+		echo '{"error":"Ollama not running"}'
+		return
+	fi
+
+	local rt=$(detect_runtime)
+	local info=$($rt exec ollama ollama show "$name" 2>&1)
+
+	if [ $? -eq 0 ]; then
+		local params=$(echo "$info" | grep -E "^parameters" | awk '{print $2}')
+		local family=$(echo "$info" | grep -E "^family" | awk '{print $2}')
+		local format=$(echo "$info" | grep -E "^format" | awk '{print $2}')
+		local quant=$(echo "$info" | grep -E "^quantization" | awk '{print $2}')
+
+		cat <<EOF
+{
+	"name": "$name",
+	"parameters": "${params:-unknown}",
+	"family": "${family:-unknown}",
+	"format": "${format:-unknown}",
+	"quantization": "${quant:-unknown}"
+}
+EOF
+	else
+		echo "{\"error\":\"Model not found\"}"
+	fi
+}
+
 # UBUS method list
 case "$1" in
 	list)
@@ -321,6 +423,9 @@ case "$1" in
 	"models": {},
 	"config": {},
 	"health": {},
+	"system_info": {},
+	"logs": {"lines": 50},
+	"model_info": {"name": "string"},
 	"start": {},
 	"stop": {},
 	"restart": {},
@@ -337,6 +442,17 @@ EOF
 			models) get_models ;;
 			config) get_config ;;
 			health) get_health ;;
+			system_info) get_system_info ;;
+			logs)
+				read -r input
+				lines=$(echo "$input" | jsonfilter -e '@.lines' 2>/dev/null)
+				get_logs "${lines:-50}"
+				;;
+			model_info)
+				read -r input
+				name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+				get_model_info "$name"
+				;;
 			start) do_start ;;
 			stop) do_stop ;;
 			restart) do_restart ;;
