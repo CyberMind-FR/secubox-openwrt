@@ -1362,3 +1362,36 @@ _Last updated: 2026-02-11_
       - Uses dropbear's dbclient with `-i` key and `-y` auto-accept
     - Updated ACL with 4 read methods and 4 write methods for remotes
     - Tested with moka1 (192.168.255.125) - MOCHAbin running OpenWrt 24.10.5
+
+60. **GoToSocial Fediverse Server Deployment (2026-02-13)**
+    - Deployed GoToSocial v0.17.0 ActivityPub server on C3BOX.
+    - **Installation**:
+      - Direct execution mode (no LXC - v0.18.0 has cgroup panics)
+      - Binary at `/srv/gotosocial/gotosocial` (ARM64)
+      - Data at `/srv/gotosocial/` (database, storage, web assets)
+      - Downloaded from Codeberg releases (GitHub redirects fail on wget)
+    - **Configuration**:
+      - Domain: `social.gk2.secubox.in`
+      - Port: 8484 (internal)
+      - SQLite database with WAL mode
+      - Web templates and assets from release tarball
+    - **Admin User Created**:
+      - Username: `admin`
+      - Email: `admin@secubox.in`
+      - Promoted to admin + moderator role
+    - **HAProxy Exposure**:
+      - Backend: `gotosocial` → `192.168.255.1:8484`
+      - Vhost: `social_gk2_secubox_in` with SSL redirect
+      - Uses wildcard certificate `*.gk2.secubox.in` (Let's Encrypt)
+      - Added domain to certs.list for SNI matching
+    - **UCI Configuration**:
+      - `haproxy.gotosocial` backend
+      - `haproxy.gotosocial_srv` server entry
+      - `haproxy.social_gk2_secubox_in` vhost
+      - `haproxy.cert_social_gk2_secubox_in` certificate
+      - `gotosocial.main.host`, `gotosocial.proxy.*` settings
+    - **Key Fixes**:
+      - Config.yaml paths: `/data/` → `/srv/gotosocial/`
+      - Backend address: HAProxy in LXC cannot reach 127.0.0.1, must use LAN IP
+      - WASM compilation: ~90 seconds on ARM64 at startup
+    - Live at: https://social.gk2.secubox.in

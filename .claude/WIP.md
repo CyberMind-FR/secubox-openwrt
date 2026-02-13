@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-13_
+_Last updated: 2026-02-13 (GoToSocial deployed)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -63,6 +63,15 @@ _Last updated: 2026-02-13_
   - Created `luci-app-vortex-dns` dashboard
 
 ### Just Completed (2026-02-13)
+
+- **GoToSocial Fediverse Server** — DONE (2026-02-13)
+  - Deployed GoToSocial v0.17.0 ActivityPub server
+  - Direct execution mode (v0.18.0 has cgroup panics)
+  - Domain: `social.gk2.secubox.in` with wildcard SSL
+  - HAProxy exposure with backend to 192.168.255.1:8484
+  - Admin user created and promoted
+  - SQLite database, web assets configured
+  - Live at https://social.gk2.secubox.in
 
 - **Cloning Station Remote Device Management** — DONE (2026-02-13)
   - 6-tab tabbed interface: Overview, Remotes, Build, Console, History, Images
