@@ -54,7 +54,7 @@ request_build() {
             \"profile\": \"$profile\",
             \"target\": \"$target\",
             \"version\": \"$version\",
-            \"packages\": [\"luci\", \"luci-ssl\", \"luci-base\", \"luci-mod-admin-full\", \"luci-mod-network\", \"luci-mod-status\", \"luci-mod-system\", \"luci-proto-ipv6\", \"luci-theme-bootstrap\", \"uhttpd\", \"uhttpd-mod-ubus\", \"rpcd\", \"rpcd-mod-file\", \"rpcd-mod-iwinfo\", \"rpcd-mod-luci\", \"rpcd-mod-ucode\", \"wget-ssl\", \"curl\", \"kmod-usb-storage\", \"block-mount\", \"e2fsprogs\", \"dropbear\"]
+            \"packages\": [\"luci\", \"luci-ssl\", \"luci-base\", \"luci-mod-admin-full\", \"luci-mod-network\", \"luci-mod-status\", \"luci-mod-system\", \"luci-proto-ipv6\", \"luci-theme-bootstrap\", \"uhttpd\", \"uhttpd-mod-ubus\", \"rpcd\", \"rpcd-mod-file\", \"rpcd-mod-iwinfo\", \"rpcd-mod-luci\", \"rpcd-mod-ucode\", \"wget-ssl\", \"curl\", \"kmod-usb-storage\", \"block-mount\", \"e2fsprogs\", \"fdisk\", \"resize2fs\", \"partx-utils\", \"dropbear\"]
         }")
 
     local hash=$(echo "$resp" | jsonfilter -e '@.request_hash' 2>/dev/null)
