@@ -217,7 +217,7 @@ mkdir -p "$PIDS_DIR" "$LOG_DIR"
 if [ ! -f /opt/.installed ]; then
     echo "Installing Python 3.12 and dependencies..."
     apk update
-    apk add --no-cache python3 py3-pip git procps
+    apk add --no-cache python3 py3-pip git procps poppler-utils
 
     echo "Installing Streamlit..."
     pip3 install --break-system-packages streamlit 2>/dev/null || \
