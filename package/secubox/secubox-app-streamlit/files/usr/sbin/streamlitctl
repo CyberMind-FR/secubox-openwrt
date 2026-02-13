@@ -1489,17 +1489,30 @@ cmd_emancipate() {
 	local name="$1"
 	local domain="$2"
 
-	[ -z "$name" ] && { log_error "App name required"; usage; return 1; }
+	[ -z "$name" ] && { log_error "Instance name required"; usage; return 1; }
 
-	# Check if app exists
-	if [ ! -d "$APPS_PATH/$name" ] && [ ! -f "$APPS_PATH/${name}.py" ]; then
-		log_error "App '$name' not found"
-		log_error "Create first: streamlitctl app create $name"
-		return 1
+	# Get instance port and app name from UCI
+	local port=$(uci -q get ${CONFIG}.${name}.port)
+	local app=$(uci -q get ${CONFIG}.${name}.app)
+
+	# If no port, this might be an app name not instance name
+	if [ -z "$port" ]; then
+		# Try to find an instance for this app
+		local found_inst=$(uci show ${CONFIG} 2>/dev/null | grep "\.app='$name'" | head -1 | cut -d'.' -f2)
+		if [ -n "$found_inst" ]; then
+			port=$(uci -q get ${CONFIG}.${found_inst}.port)
+			app="$name"
+			name="$found_inst"
+		fi
 	fi
 
-	# Get instance port from UCI
-	local port=$(uci -q get ${CONFIG}.${name}.port)
+	# Check if app folder exists (use app name, not instance name)
+	local app_to_check="${app:-$name}"
+	if [ ! -d "$APPS_PATH/$app_to_check" ] && [ ! -f "$APPS_PATH/${app_to_check}.py" ]; then
+		log_error "App '$app_to_check' not found in $APPS_PATH"
+		log_error "Create first: streamlitctl app create $app_to_check"
+		return 1
+	fi
 	if [ -z "$port" ]; then
 		log_error "No instance configured for app '$name'"
 		log_error "Add instance first: streamlitctl instance add $name <port>"
