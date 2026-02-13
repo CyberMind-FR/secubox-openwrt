@@ -1301,3 +1301,64 @@ _Last updated: 2026-02-11_
     - Stats iframe with KISS-styled border.
     - Logs viewer with line count selector and refresh button.
     - Empty state for disabled stats or stopped service.
+
+58. **Cloning Station Dashboard Enhancements (2026-02-13)**
+    - Major enhancement to `luci-app-cloner` with 5-tab dashboard and 10 new RPCD methods.
+    - **Build Progress UI**:
+      - Real-time log streaming from `/tmp/cloner-build.log` via base64 encoding
+      - Progress bar with stage indicators (initializing, downloading, building, packaging, complete, failed)
+      - Color-coded stage icons and animated progress fill
+      - RPCD method: `build_log` with lines/offset params
+    - **Serial Console Tab**:
+      - Port detection and selection via `serial_ports` method
+      - Live serial output display with Start/Stop/Clear controls
+      - Command input with Enter-to-send support
+      - Polling-based serial read with 500ms interval
+      - RPCD methods: `serial_ports`, `serial_read`, `serial_write`
+    - **Clone History Tab**:
+      - JSON-based history tracking in `/var/run/secubox/clone-history.json`
+      - Records: timestamp, device, image, status, token
+      - Relative time display (e.g., "2h ago")
+      - Clear history functionality
+      - RPCD methods: `history_list`, `history_add`, `history_clear`
+    - **Image Manager Tab**:
+      - Storage overview with clone/TFTP directory sizes
+      - Usage progress bar with available space display
+      - Image cards with details button (size, checksum, modified, valid)
+      - Delete image functionality
+      - RPCD methods: `storage_info`, `image_details`, `image_rename`
+    - **Overview Tab Improvements**:
+      - 4-column stats grid with live polling
+      - Storage info card with dual-directory display
+      - Token management with copy-to-clipboard
+      - U-Boot flash commands with copy button
+    - Tab navigation with 5-second refresh polling
+    - Updated ACL with 13 read and 9 write methods
+
+59. **Cloning Station Remote Device Management (2026-02-13)**
+    - Added 6th "Remotes" tab for managing remote SecuBox devices.
+    - **SSH Key Authentication**:
+      - Generates dropbear Ed25519 keypair on master
+      - Uses dbclient (dropbear SSH client) instead of OpenSSH for OpenWrt compatibility
+      - Auto-copies public key to remote devices' authorized_keys
+    - **Remote Device Features**:
+      - Add/remove remote devices by IP and name
+      - Network scan discovers SecuBox devices on subnet
+      - Remote status retrieves: hostname, model, version, uptime, LuCI accessibility
+    - **Remote Flash Workflow**:
+      - Select image from local TFTP/clone directory
+      - Optional token injection for mesh join
+      - Image upload via dbclient (pipe-based SCP alternative)
+      - Token, master hostname, and master IP embedded in image
+      - Triggers sysupgrade with keep_settings option
+    - **RPCD Methods** (7 new):
+      - `list_remotes`, `add_remote`, `remove_remote`: Remote device management
+      - `remote_status`: SSH-based device info retrieval
+      - `remote_upload`: Image upload via dbclient
+      - `remote_flash`: Complete flash workflow with token injection
+      - `scan_network`: Discover SecuBox devices on LAN
+    - **BusyBox Compatibility Fixes**:
+      - Replaced `grep -P` (Perl regex) with `grep -oE` for IP extraction
+      - Uses dropbear's dbclient with `-i` key and `-y` auto-accept
+    - Updated ACL with 4 read methods and 4 write methods for remotes
+    - Tested with moka1 (192.168.255.125) - MOCHAbin running OpenWrt 24.10.5

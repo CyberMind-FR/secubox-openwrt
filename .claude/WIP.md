@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-12_
+_Last updated: 2026-02-13_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -61,6 +61,27 @@ _Last updated: 2026-02-12_
   - First Peek auto-registration of services
   - Gossip-based exposure config sync via secubox-p2p
   - Created `luci-app-vortex-dns` dashboard
+
+### Just Completed (2026-02-13)
+
+- **Cloning Station Remote Device Management** — DONE (2026-02-13)
+  - 6-tab tabbed interface: Overview, Remotes, Build, Console, History, Images
+  - Remote device management via UCI and RPCD
+  - SSH key authentication setup using dropbear
+  - Network scan for discovering SecuBox devices
+  - Remote status: hostname, model, version, uptime
+  - Image upload and remote flash with token injection
+  - sysupgrade with keep_settings option
+  - 7 new RPCD methods: list_remotes, add_remote, remove_remote, remote_status, remote_upload, remote_flash, scan_network
+  - Uses dropbear's dbclient for SSH (OpenWrt native)
+
+- **Cloning Station Dashboard Enhancements** — DONE (2026-02-13)
+  - 5-tab tabbed interface: Overview, Build, Console, History, Images
+  - Build Progress UI: real-time log streaming, stage indicators, progress bar
+  - Serial Console: port selection, live output, command input (requires stty)
+  - Clone History: JSON-based tracking with timestamp/device/status
+  - Image Manager: storage info, image details modal, delete/rename
+  - 10 new RPCD methods added with ACL permissions
 
 ### Just Completed (2026-02-08 PM)
 
