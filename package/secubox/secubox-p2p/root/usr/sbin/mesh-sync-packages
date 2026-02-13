@@ -1,0 +1,86 @@
+#!/bin/sh
+# Sync SecuBox packages from master to mesh peers
+
+PEERS_FILE="/tmp/secubox-p2p-peers.json"
+
+sync_to_peer() {
+    local ip="$1"
+    local name="$2"
+    
+    echo "=== Syncing to $name ($ip) ==="
+    
+    # Clean stale host keys
+    for kh in /root/.ssh/known_hosts /.ssh/known_hosts; do
+        [ -f "$kh" ] && sed -i "/^$ip /d" "$kh" 2>/dev/null
+    done
+    
+    # Sync LuCI resources
+    echo "  [1/4] Syncing LuCI resources..."
+    for dir in secubox secubox-p2p secubox-portal; do
+        [ -d "/www/luci-static/resources/$dir" ] && \
+            tar -C /www/luci-static/resources -cf - "$dir" 2>/dev/null | \
+            dbclient -y -i /root/.ssh/id_dropbear "root@$ip" \
+            "mkdir -p /www/luci-static/resources && tar -C /www/luci-static/resources -xf -" 2>/dev/null
+    done
+    
+    # Sync views
+    echo "  [2/4] Syncing LuCI views..."
+    for dir in secubox-p2p exposure service-registry cloner secubox-portal; do
+        [ -d "/www/luci-static/resources/view/$dir" ] && \
+            tar -C /www/luci-static/resources/view -cf - "$dir" 2>/dev/null | \
+            dbclient -y -i /root/.ssh/id_dropbear "root@$ip" \
+            "mkdir -p /www/luci-static/resources/view && tar -C /www/luci-static/resources/view -xf -" 2>/dev/null
+    done
+    
+    # Sync RPCD handlers
+    echo "  [3/4] Syncing RPCD handlers..."
+    for f in luci.secubox-p2p luci.exposure luci.service-registry luci.cloner luci.secubox; do
+        [ -f "/usr/libexec/rpcd/$f" ] && \
+            cat "/usr/libexec/rpcd/$f" | \
+            dbclient -y -i /root/.ssh/id_dropbear "root@$ip" "cat > /usr/libexec/rpcd/$f && chmod +x /usr/libexec/rpcd/$f" 2>/dev/null
+    done
+    
+    # Sync ACLs and menus
+    echo "  [4/4] Syncing ACLs and menus..."
+    tar -C /usr/share/rpcd/acl.d -cf - . 2>/dev/null | \
+        dbclient -y -i /root/.ssh/id_dropbear "root@$ip" \
+        "tar -C /usr/share/rpcd/acl.d -xf -" 2>/dev/null
+    tar -C /usr/share/luci/menu.d -cf - . 2>/dev/null | \
+        dbclient -y -i /root/.ssh/id_dropbear "root@$ip" \
+        "tar -C /usr/share/luci/menu.d -xf -" 2>/dev/null
+    
+    # Restart rpcd and clear cache
+    dbclient -y -i /root/.ssh/id_dropbear "root@$ip" \
+        "/etc/init.d/rpcd restart; rm -f /tmp/luci-indexcache* /tmp/luci-modulecache/*" 2>/dev/null
+    
+    echo "  ✓ Done"
+}
+
+# Get list of peers
+if [ ! -f "$PEERS_FILE" ]; then
+    echo "No peers file found"
+    exit 1
+fi
+
+echo "============================================"
+echo "  SecuBox Mesh Package Sync"
+echo "============================================"
+echo ""
+
+# Parse peers and sync to each
+jsonfilter -i "$PEERS_FILE" -e @.peers[*] 2>/dev/null | while read peer; do
+    is_local=$(echo "$peer" | jsonfilter -e @.is_local 2>/dev/null)
+    [ "$is_local" = "true" ] && continue
+    
+    ip=$(echo "$peer" | jsonfilter -e @.address 2>/dev/null)
+    name=$(echo "$peer" | jsonfilter -e @.name 2>/dev/null)
+    
+    [ -z "$ip" ] && continue
+    
+    sync_to_peer "$ip" "$name"
+done
+
+echo ""
+echo "============================================"
+echo "  Sync Complete"
+echo "============================================"
