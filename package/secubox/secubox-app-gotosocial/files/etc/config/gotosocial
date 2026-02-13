@@ -18,7 +18,7 @@ config lxc 'container'
 	option rootfs_path '/srv/lxc/gotosocial/rootfs'
 	option data_path '/srv/gotosocial'
 	option memory_limit '512M'
-	option version '0.17.3'
+	option version '0.17.0'
 
 config haproxy 'proxy'
 	option enabled '0'

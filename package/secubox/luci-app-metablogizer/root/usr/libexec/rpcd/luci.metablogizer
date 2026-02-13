@@ -386,7 +386,8 @@ EOF
 		uci set "uhttpd.metablog_${section_id}.error_page=/index.html"
 		uci commit uhttpd
 		/etc/init.d/uhttpd reload 2>/dev/null
-		server_address="127.0.0.1"
+		# Use LAN IP for HAProxy backend (HAProxy runs in LXC and can't reach 127.0.0.1)
+		server_address=$(uci -q get network.lan.ipaddr || echo "192.168.255.1")
 		server_port="$port"
 	else
 		# Configure nginx location in container

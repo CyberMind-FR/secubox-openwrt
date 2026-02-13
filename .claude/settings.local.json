@@ -335,7 +335,8 @@
       "Bash(if ! grep -q \"kiss-theme\" \"$file\")",
       "Bash(pip3 show:*)",
       "Bash(playwright install:*)",
-      "Bash(timeout 8 streamlit run:*)"
+      "Bash(timeout 8 streamlit run:*)",
+      "Bash(cgroup at_mnt\" error on certain kernel configurations\\)\n- Disable cgroup memory limit since cgroup is not mounted\n- Fixes Gitea container failing to start with cgroup mount errors\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
     ]
   }
 }

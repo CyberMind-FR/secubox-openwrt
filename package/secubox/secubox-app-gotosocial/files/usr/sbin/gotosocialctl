@@ -5,12 +5,13 @@
 set -e
 
 VERSION="0.1.0"
-GTS_VERSION="0.17.3"
-LXC_NAME="gotosocial"
-LXC_PATH="/srv/lxc/gotosocial"
+GTS_VERSION="0.17.0"
 DATA_PATH="/srv/gotosocial"
+BINARY_PATH="/srv/gotosocial/gotosocial"
 CONFIG_FILE="/etc/config/gotosocial"
-GTS_BINARY_URL="https://github.com/superseriousbusiness/gotosocial/releases/download/v${GTS_VERSION}/gotosocial_${GTS_VERSION}_linux_arm64.tar.gz"
+PID_FILE="/var/run/gotosocial.pid"
+# GoToSocial moved to Codeberg
+GTS_BINARY_URL="https://codeberg.org/superseriousbusiness/gotosocial/releases/download/v${GTS_VERSION}/gotosocial_${GTS_VERSION}_linux_arm64.tar.gz"
 
 # Logging
 log_info() { logger -t gotosocial -p daemon.info "$1"; echo "[INFO] $1"; }
@@ -30,118 +31,59 @@ set_config() {
 	uci commit gotosocial
 }
 
-# Check if container exists
-container_exists() {
-	[ -d "$LXC_PATH/rootfs" ]
+# Check if GoToSocial is installed
+gts_installed() {
+	[ -x "$BINARY_PATH" ]
 }
 
-# Check if container is running
-container_running() {
-	lxc-info -n "$LXC_NAME" 2>/dev/null | grep -q "RUNNING"
+# Check if GoToSocial is running
+gts_running() {
+	[ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null
 }
 
 # Download GoToSocial binary
 download_binary() {
 	local version="${1:-$GTS_VERSION}"
-	local url="https://github.com/superseriousbusiness/gotosocial/releases/download/v${version}/gotosocial_${version}_linux_arm64.tar.gz"
+	local url="https://codeberg.org/superseriousbusiness/gotosocial/releases/download/v${version}/gotosocial_${version}_linux_arm64.tar.gz"
 	local tmp_dir="/tmp/gotosocial_install"
 
-	log_info "Downloading GoToSocial v${version}..."
+	log_info "Downloading GoToSocial v${version} from Codeberg..."
 
 	mkdir -p "$tmp_dir"
 	cd "$tmp_dir"
 
-	wget -q -O gotosocial.tar.gz "$url" || {
+	# Use curl with -L for redirects (wget on OpenWrt may not handle them well)
+	curl -L -o gotosocial.tar.gz "$url" || wget -O gotosocial.tar.gz "$url" || {
 		log_error "Failed to download GoToSocial"
 		return 1
 	}
 
+	# Verify download size (should be >10MB)
+	local size=$(stat -c%s gotosocial.tar.gz 2>/dev/null || stat -f%z gotosocial.tar.gz 2>/dev/null || echo 0)
+	if [ "$size" -lt 10000000 ]; then
+		log_error "Downloaded file too small ($size bytes), likely failed"
+		rm -f gotosocial.tar.gz
+		return 1
+	fi
+
 	tar -xzf gotosocial.tar.gz
 
-	mkdir -p "$LXC_PATH/rootfs/opt/gotosocial"
-	cp gotosocial "$LXC_PATH/rootfs/opt/gotosocial/"
-	chmod +x "$LXC_PATH/rootfs/opt/gotosocial/gotosocial"
+	mkdir -p "$DATA_PATH"
+	cp gotosocial "$BINARY_PATH"
+	chmod +x "$BINARY_PATH"
 
 	# Copy web assets
-	[ -d "web" ] && cp -r web "$LXC_PATH/rootfs/opt/gotosocial/"
+	[ -d "web" ] && cp -r web "$DATA_PATH/"
 
 	rm -rf "$tmp_dir"
-	log_info "GoToSocial binary installed"
+	log_info "GoToSocial binary installed to $DATA_PATH"
 }
 
-# Create minimal rootfs
-create_rootfs() {
-	local rootfs="$LXC_PATH/rootfs"
-
-	log_info "Creating minimal rootfs..."
-
-	mkdir -p "$rootfs"/{opt/gotosocial,data,etc,proc,sys,dev,tmp,run}
-
-	# Create basic filesystem structure
-	mkdir -p "$rootfs/etc/ssl/certs"
-
-	# Copy SSL certificates from host
-	cp /etc/ssl/certs/ca-certificates.crt "$rootfs/etc/ssl/certs/" 2>/dev/null || \
-	cat /etc/ssl/certs/*.pem > "$rootfs/etc/ssl/certs/ca-certificates.crt" 2>/dev/null || true
-
-	# Create passwd/group for GoToSocial
-	echo "root:x:0:0:root:/root:/bin/sh" > "$rootfs/etc/passwd"
-	echo "gotosocial:x:1000:1000:GoToSocial:/data:/bin/false" >> "$rootfs/etc/passwd"
-	echo "root:x:0:" > "$rootfs/etc/group"
-	echo "gotosocial:x:1000:" >> "$rootfs/etc/group"
-
-	# Create resolv.conf
-	cp /etc/resolv.conf "$rootfs/etc/"
-
-	# Create hosts file
-	cat > "$rootfs/etc/hosts" <<EOF
-127.0.0.1 localhost
-::1 localhost
-EOF
-
-	log_info "Rootfs created"
-}
-
-# Generate LXC config
-create_lxc_config() {
-	local host=$(get_config main host "social.local")
-	local port=$(get_config main port "8484")
-	local data_path=$(get_config container data_path "$DATA_PATH")
-
-	log_info "Creating LXC configuration..."
-
-	mkdir -p "$LXC_PATH"
-
-	cat > "$LXC_PATH/config" <<EOF
-# GoToSocial LXC Configuration
-lxc.uts.name = $LXC_NAME
-lxc.rootfs.path = dir:$LXC_PATH/rootfs
-lxc.arch = aarch64
-
-# Network: use host network
-lxc.net.0.type = none
-
-# Mount points
-lxc.mount.auto = proc:mixed sys:ro
-lxc.mount.entry = $data_path data none bind,create=dir 0 0
-
-# Environment
-lxc.environment = GTS_HOST=$host
-lxc.environment = GTS_PORT=$port
-lxc.environment = GTS_DB_TYPE=sqlite
-lxc.environment = GTS_DB_ADDRESS=/data/gotosocial.db
-lxc.environment = GTS_STORAGE_LOCAL_BASE_PATH=/data/storage
-lxc.environment = GTS_LETSENCRYPT_ENABLED=false
-lxc.environment = HOME=/data
-
-# Security
-lxc.cap.drop = sys_admin sys_module mac_admin mac_override sys_time sys_rawio
-
-# Init command
-lxc.init.cmd = /opt/gotosocial/gotosocial server
-EOF
-
-	log_info "LXC config created"
+# Create data directory structure
+create_data_dir() {
+	log_info "Creating data directories..."
+	mkdir -p "$DATA_PATH"/{storage,web}
+	log_info "Data directories created at $DATA_PATH"
 }
 
 # Generate GoToSocial config
@@ -152,13 +94,17 @@ generate_config() {
 	local bind=$(get_config main bind_address "0.0.0.0")
 	local instance_name=$(get_config main instance_name "SecuBox Social")
 	local instance_desc=$(get_config main instance_description "A SecuBox Fediverse instance")
-	local reg_open=$(get_config main accounts_registration_open "false")
-	local approval=$(get_config main accounts_approval_required "true")
-	local data_path=$(get_config container data_path "$DATA_PATH")
+	local reg_open_val=$(get_config main accounts_registration_open "0")
+	local approval_val=$(get_config main accounts_approval_required "1")
+	# Convert 0/1 to false/true for YAML
+	local reg_open="false"
+	local approval="true"
+	[ "$reg_open_val" = "1" ] && reg_open="true"
+	[ "$approval_val" = "0" ] && approval="false"
 
-	mkdir -p "$data_path"
+	mkdir -p "$DATA_PATH/storage"
 
-	cat > "$data_path/config.yaml" <<EOF
+	cat > "$DATA_PATH/config.yaml" <<EOF
 # GoToSocial Configuration
 # Generated by SecuBox gotosocialctl
 
@@ -222,10 +168,7 @@ cache:
     status-sweep-freq: "1m"
 EOF
 
-	# Create storage directories
-	mkdir -p "$data_path/storage"
-
-	log_info "Configuration generated at $data_path/config.yaml"
+	log_info "Configuration generated at $DATA_PATH/config.yaml"
 }
 
 # Install GoToSocial
@@ -234,23 +177,11 @@ cmd_install() {
 
 	log_info "Installing GoToSocial v${version}..."
 
-	# Check dependencies
-	command -v lxc-start >/dev/null || {
-		log_error "LXC not installed. Install lxc package first."
-		return 1
-	}
-
 	# Create directories
-	mkdir -p "$LXC_PATH" "$DATA_PATH"
-
-	# Create rootfs
-	create_rootfs
+	create_data_dir
 
 	# Download binary
 	download_binary "$version"
-
-	# Create LXC config
-	create_lxc_config
 
 	# Generate GoToSocial config
 	generate_config
@@ -266,11 +197,11 @@ cmd_uninstall() {
 
 	log_info "Uninstalling GoToSocial..."
 
-	# Stop container if running
-	container_running && cmd_stop
+	# Stop if running
+	gts_running && cmd_stop
 
-	# Remove container
-	rm -rf "$LXC_PATH"
+	# Remove binary
+	rm -f "$BINARY_PATH"
 
 	# Remove data unless --keep-data
 	if [ "$keep_data" != "--keep-data" ]; then
@@ -283,50 +214,64 @@ cmd_uninstall() {
 	log_info "GoToSocial uninstalled"
 }
 
-# Start container
+# Start GoToSocial
 cmd_start() {
-	if ! container_exists; then
+	if ! gts_installed; then
 		log_error "GoToSocial not installed. Run 'gotosocialctl install' first."
 		return 1
 	fi
 
-	if container_running; then
+	if gts_running; then
 		log_info "GoToSocial is already running"
 		return 0
 	fi
 
 	# Regenerate config in case settings changed
-	create_lxc_config
 	generate_config
 
-	log_info "Starting GoToSocial container..."
+	log_info "Starting GoToSocial..."
 
-	lxc-start -n "$LXC_NAME" -d -P "$(dirname $LXC_PATH)" || {
-		log_error "Failed to start container"
-		return 1
-	}
+	cd "$DATA_PATH"
+	HOME="$DATA_PATH" "$BINARY_PATH" server start --config-path "$DATA_PATH/config.yaml" >> /var/log/gotosocial.log 2>&1 &
+	local pid=$!
+	echo "$pid" > "$PID_FILE"
 
-	sleep 2
+	# Wait for startup (WASM compilation takes time)
+	local port=$(get_config main port "8484")
+	local count=0
+	while [ $count -lt 120 ]; do
+		sleep 2
+		if curl -s --connect-timeout 1 "http://127.0.0.1:$port/api/v1/instance" >/dev/null 2>&1; then
+			log_info "GoToSocial started (PID: $pid)"
+			log_info "Web interface available at http://localhost:$port"
+			return 0
+		fi
+		if ! kill -0 "$pid" 2>/dev/null; then
+			log_error "GoToSocial failed to start. Check /var/log/gotosocial.log"
+			rm -f "$PID_FILE"
+			return 1
+		fi
+		count=$((count + 1))
+	done
 
-	if container_running; then
-		log_info "GoToSocial started"
-		local port=$(get_config main port "8484")
-		log_info "Web interface available at http://localhost:$port"
-	else
-		log_error "Container failed to start"
-		return 1
-	fi
+	log_error "GoToSocial startup timeout. Check /var/log/gotosocial.log"
+	return 1
 }
 
-# Stop container
+# Stop GoToSocial
 cmd_stop() {
-	if ! container_running; then
+	if ! gts_running; then
 		log_info "GoToSocial is not running"
+		rm -f "$PID_FILE"
 		return 0
 	fi
 
 	log_info "Stopping GoToSocial..."
-	lxc-stop -n "$LXC_NAME" -P "$(dirname $LXC_PATH)" || true
+	local pid=$(cat "$PID_FILE")
+	kill "$pid" 2>/dev/null
+	sleep 2
+	kill -9 "$pid" 2>/dev/null || true
+	rm -f "$PID_FILE"
 	log_info "GoToSocial stopped"
 }
 
@@ -347,7 +292,7 @@ cmd_reload() {
 # Status (JSON output for RPCD)
 cmd_status() {
 	local installed="false"
-	local container_state="false"
+	local running="false"
 	local service_state="false"
 	local host=$(get_config main host "social.example.com")
 	local port=$(get_config main port "8484")
@@ -356,18 +301,18 @@ cmd_status() {
 	local dns_enabled=$(get_config proxy enabled "0")
 	local mesh_enabled=$(get_config mesh announce_to_peers "0")
 
-	container_exists && installed="true"
-	container_running && container_state="true"
+	gts_installed && installed="true"
+	gts_running && running="true"
 
 	# Check if API responds
-	if [ "$container_state" = "true" ]; then
+	if [ "$running" = "true" ]; then
 		curl -s --connect-timeout 2 "http://127.0.0.1:$port/api/v1/instance" >/dev/null 2>&1 && service_state="true"
 	fi
 
 	cat <<EOF
 {
 	"installed": $installed,
-	"container_running": $container_state,
+	"container_running": $running,
 	"service_running": $service_state,
 	"host": "$host",
 	"port": "$port",
@@ -381,9 +326,10 @@ EOF
 
 # Status (human readable)
 cmd_status_human() {
-	if container_running; then
+	if gts_running; then
 		echo "GoToSocial: running"
-		lxc-info -n "$LXC_NAME" -P "$(dirname $LXC_PATH)" 2>/dev/null | grep -E "State|PID|CPU|Memory"
+		local pid=$(cat "$PID_FILE" 2>/dev/null)
+		echo "PID: $pid"
 
 		local port=$(get_config main port "8484")
 		local host=$(get_config main host "localhost")
@@ -406,38 +352,43 @@ cmd_status_human() {
 cmd_user_create() {
 	local username="$1"
 	local email="$2"
-	local admin="${3:-false}"
+	local password="$3"
+	local admin="${4:-false}"
 
 	[ -z "$username" ] || [ -z "$email" ] && {
-		echo "Usage: gotosocialctl user create <username> <email> [--admin]"
+		echo "Usage: gotosocialctl user create <username> <email> [password] [--admin]"
 		return 1
 	}
 
-	[ "$3" = "--admin" ] && admin="true"
+	[ "$3" = "--admin" ] && { admin="true"; password=""; }
+	[ "$4" = "--admin" ] && admin="true"
 
-	if ! container_running; then
-		log_error "GoToSocial is not running"
+	if ! gts_installed; then
+		log_error "GoToSocial is not installed"
 		return 1
 	fi
 
 	log_info "Creating user $username..."
 
-	# Generate random password
-	local password=$(openssl rand -base64 12)
+	# Generate random password if not provided
+	[ -z "$password" ] && password=$(openssl rand -base64 12)
 
-	lxc-attach -n "$LXC_NAME" -P "$(dirname $LXC_PATH)" -- \
-		/opt/gotosocial/gotosocial admin account create \
+	HOME="$DATA_PATH" "$BINARY_PATH" admin account create \
 		--username "$username" \
 		--email "$email" \
 		--password "$password" \
-		--config /data/config.yaml
+		--config "$DATA_PATH/config.yaml"
 
 	if [ "$admin" = "true" ]; then
-		lxc-attach -n "$LXC_NAME" -P "$(dirname $LXC_PATH)" -- \
-			/opt/gotosocial/gotosocial admin account promote \
+		HOME="$DATA_PATH" "$BINARY_PATH" admin account promote \
 			--username "$username" \
-			--config /data/config.yaml
+			--config "$DATA_PATH/config.yaml"
 	fi
+
+	# Confirm the user
+	HOME="$DATA_PATH" "$BINARY_PATH" admin account confirm \
+		--username "$username" \
+		--config "$DATA_PATH/config.yaml" 2>/dev/null || true
 
 	echo ""
 	echo "User created successfully!"
@@ -465,15 +416,6 @@ cmd_users() {
 
 # List users (human readable)
 cmd_user_list() {
-	if ! container_running; then
-		log_error "GoToSocial is not running"
-		return 1
-	fi
-
-	local port=$(get_config main port "8484")
-
-	# Use API to list accounts (requires admin token)
-	# For now, check the database directly
 	local db_path="$DATA_PATH/gotosocial.db"
 
 	if [ -f "$db_path" ] && command -v sqlite3 >/dev/null; then
@@ -495,15 +437,14 @@ cmd_user_confirm() {
 		return 1
 	}
 
-	if ! container_running; then
-		log_error "GoToSocial is not running"
+	if ! gts_installed; then
+		log_error "GoToSocial is not installed"
 		return 1
 	fi
 
-	lxc-attach -n "$LXC_NAME" -P "$(dirname $LXC_PATH)" -- \
-		/opt/gotosocial/gotosocial admin account confirm \
+	HOME="$DATA_PATH" "$BINARY_PATH" admin account confirm \
 		--username "$username" \
-		--config /data/config.yaml
+		--config "$DATA_PATH/config.yaml"
 
 	log_info "User $username confirmed"
 }
@@ -568,7 +509,7 @@ cmd_emancipate() {
 	generate_config
 
 	# Restart to apply new config
-	container_running && cmd_restart
+	gts_running && cmd_restart
 
 	log_info "GoToSocial exposed at https://$domain"
 	log_info "SSL certificate will be provisioned automatically"
@@ -580,9 +521,9 @@ cmd_backup() {
 
 	log_info "Creating backup..."
 
-	# Stop container for consistent backup
+	# Stop for consistent backup
 	local was_running=false
-	if container_running; then
+	if gts_running; then
 		was_running=true
 		cmd_stop
 	fi
@@ -610,8 +551,8 @@ cmd_restore() {
 
 	log_info "Restoring from $backup_path..."
 
-	# Stop container
-	container_running && cmd_stop
+	# Stop if running
+	gts_running && cmd_stop
 
 	# Clear existing data
 	rm -rf "$DATA_PATH"/*

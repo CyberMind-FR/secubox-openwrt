@@ -2078,9 +2078,10 @@ create_haproxy_vhost() {
 	ubus call luci.haproxy create_backend \
 		"{\"name\":\"hexo_${instance}\",\"mode\":\"http\"}" 2>/dev/null
 
-	# Create server in backend
+	# Create server in backend (use LAN IP - HAProxy is in LXC container)
+	local lan_ip=$(uci -q get network.lan.ipaddr || echo "192.168.255.1")
 	ubus call luci.haproxy create_server \
-		"{\"backend\":\"hexo_${instance}\",\"name\":\"${instance}\",\"address\":\"127.0.0.1\",\"port\":${port}}" 2>/dev/null
+		"{\"backend\":\"hexo_${instance}\",\"name\":\"${instance}\",\"address\":\"${lan_ip}\",\"port\":${port}}" 2>/dev/null
 
 	# Create vhost
 	local vhost_params="{\"domain\":\"${domain}\",\"backend\":\"hexo_${instance}\",\"ssl\":true,\"ssl_redirect\":true"
