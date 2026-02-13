@@ -386,8 +386,8 @@ lxc.arch = $(uname -m)
 # Network: use host network
 lxc.net.0.type = none
 
-# Mount points
-lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+# Mount points (cgroup removed - causes issues on some kernels)
+lxc.mount.auto = proc:mixed sys:ro
 lxc.mount.entry = $data_path data none bind,create=dir 0 0
 
 # Environment
@@ -402,8 +402,8 @@ lxc.environment = GITEA_REQUIRE_SIGNIN=$require_signin
 # Security
 lxc.cap.drop = sys_admin sys_module mac_admin mac_override sys_time sys_rawio
 
-# Resource limits
-lxc.cgroup.memory.limit_in_bytes = $mem_bytes
+# Resource limits (disabled - cgroup not mounted)
+#lxc.cgroup.memory.limit_in_bytes = $mem_bytes
 
 # Init command
 lxc.init.cmd = /opt/start-gitea.sh
