@@ -1,0 +1,264 @@
+#!/bin/sh
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+GOTOSOCIALCTL="/usr/sbin/gotosocialctl"
+
+case "$1" in
+	list)
+		echo '{"status":{},"install":{},"start":{},"stop":{},"restart":{},"users":{},"create_user":{"username":"str","email":"str","password":"str","admin":"bool"},"delete_user":{"username":"str"},"promote_user":{"username":"str"},"demote_user":{"username":"str"},"get_config":{},"save_config":{"host":"str","port":"int","protocol":"str","instance_name":"str","instance_description":"str","accounts_registration_open":"bool","accounts_approval_required":"bool"},"emancipate":{"domain":"str","tor":"bool","dns":"bool","mesh":"bool"},"revoke":{},"backup":{},"logs":{"lines":"int"}}'
+		;;
+	call)
+		case "$2" in
+			status)
+				$GOTOSOCIALCTL status
+				;;
+			install)
+				result=$($GOTOSOCIALCTL install 2>&1)
+				json_init
+				if echo "$result" | grep -q "successfully\|already installed"; then
+					json_add_boolean "success" 1
+					json_add_string "message" "$result"
+				else
+					json_add_boolean "success" 0
+					json_add_string "error" "$result"
+				fi
+				json_dump
+				;;
+			start)
+				result=$($GOTOSOCIALCTL start 2>&1)
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "$result"
+				json_dump
+				;;
+			stop)
+				result=$($GOTOSOCIALCTL stop 2>&1)
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "$result"
+				json_dump
+				;;
+			restart)
+				$GOTOSOCIALCTL stop 2>/dev/null
+				sleep 2
+				result=$($GOTOSOCIALCTL start 2>&1)
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "$result"
+				json_dump
+				;;
+			users)
+				$GOTOSOCIALCTL users
+				;;
+			create_user)
+				read input
+				json_load "$input"
+				json_get_var username username
+				json_get_var email email
+				json_get_var password password
+				json_get_var admin admin
+
+				if [ -z "$username" ] || [ -z "$email" ] || [ -z "$password" ]; then
+					json_init
+					json_add_boolean "success" 0
+					json_add_string "error" "Missing required fields: username, email, password"
+					json_dump
+					exit 0
+				fi
+
+				admin_flag=""
+				[ "$admin" = "1" ] || [ "$admin" = "true" ] && admin_flag="--admin"
+
+				result=$($GOTOSOCIALCTL user create "$username" "$email" "$password" $admin_flag 2>&1)
+				json_init
+				if echo "$result" | grep -qi "success\|created"; then
+					json_add_boolean "success" 1
+					json_add_string "message" "User $username created successfully"
+				else
+					json_add_boolean "success" 0
+					json_add_string "error" "$result"
+				fi
+				json_dump
+				;;
+			delete_user)
+				read input
+				json_load "$input"
+				json_get_var username username
+
+				if [ -z "$username" ]; then
+					json_init
+					json_add_boolean "success" 0
+					json_add_string "error" "Username required"
+					json_dump
+					exit 0
+				fi
+
+				result=$($GOTOSOCIALCTL user delete "$username" 2>&1)
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "User $username deleted"
+				json_dump
+				;;
+			promote_user)
+				read input
+				json_load "$input"
+				json_get_var username username
+
+				result=$($GOTOSOCIALCTL user promote "$username" 2>&1)
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "User $username promoted to admin"
+				json_dump
+				;;
+			demote_user)
+				read input
+				json_load "$input"
+				json_get_var username username
+
+				result=$($GOTOSOCIALCTL user demote "$username" 2>&1)
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "User $username demoted from admin"
+				json_dump
+				;;
+			get_config)
+				json_init
+
+				config_load gotosocial
+
+				# Main config
+				config_get enabled main enabled '0'
+				config_get host main host 'social.example.com'
+				config_get port main port '8484'
+				config_get protocol main protocol 'https'
+				config_get bind_address main bind_address '0.0.0.0'
+				config_get instance_name main instance_name 'SecuBox Social'
+				config_get instance_description main instance_description ''
+				config_get accounts_registration_open main accounts_registration_open '0'
+				config_get accounts_approval_required main accounts_approval_required '1'
+
+				json_add_string "enabled" "$enabled"
+				json_add_string "host" "$host"
+				json_add_string "port" "$port"
+				json_add_string "protocol" "$protocol"
+				json_add_string "bind_address" "$bind_address"
+				json_add_string "instance_name" "$instance_name"
+				json_add_string "instance_description" "$instance_description"
+				json_add_string "accounts_registration_open" "$accounts_registration_open"
+				json_add_string "accounts_approval_required" "$accounts_approval_required"
+
+				# LXC config
+				config_get rootfs_path container rootfs_path '/srv/lxc/gotosocial/rootfs'
+				config_get data_path container data_path '/srv/gotosocial'
+				config_get memory_limit container memory_limit '512M'
+				config_get version container version '0.17.3'
+
+				json_add_string "rootfs_path" "$rootfs_path"
+				json_add_string "data_path" "$data_path"
+				json_add_string "memory_limit" "$memory_limit"
+				json_add_string "version" "$version"
+
+				# HAProxy config
+				config_get proxy_enabled proxy enabled '0'
+				config_get vhost_domain proxy vhost_domain ''
+				config_get ssl_enabled proxy ssl_enabled '1'
+				config_get acme_enabled proxy acme_enabled '1'
+
+				json_add_string "proxy_enabled" "$proxy_enabled"
+				json_add_string "vhost_domain" "$vhost_domain"
+				json_add_string "ssl_enabled" "$ssl_enabled"
+				json_add_string "acme_enabled" "$acme_enabled"
+
+				# Federation config
+				config_get federation_enabled federation enabled '1'
+				config_get auto_approve federation auto_approve_followers '0'
+
+				json_add_string "federation_enabled" "$federation_enabled"
+				json_add_string "auto_approve_followers" "$auto_approve"
+
+				json_dump
+				;;
+			save_config)
+				read input
+				json_load "$input"
+
+				json_get_var host host
+				json_get_var port port
+				json_get_var protocol protocol
+				json_get_var instance_name instance_name
+				json_get_var instance_description instance_description
+				json_get_var accounts_registration_open accounts_registration_open
+				json_get_var accounts_approval_required accounts_approval_required
+
+				[ -n "$host" ] && uci set gotosocial.main.host="$host"
+				[ -n "$port" ] && uci set gotosocial.main.port="$port"
+				[ -n "$protocol" ] && uci set gotosocial.main.protocol="$protocol"
+				[ -n "$instance_name" ] && uci set gotosocial.main.instance_name="$instance_name"
+				[ -n "$instance_description" ] && uci set gotosocial.main.instance_description="$instance_description"
+				[ -n "$accounts_registration_open" ] && uci set gotosocial.main.accounts_registration_open="$accounts_registration_open"
+				[ -n "$accounts_approval_required" ] && uci set gotosocial.main.accounts_approval_required="$accounts_approval_required"
+
+				uci commit gotosocial
+
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Configuration saved"
+				json_dump
+				;;
+			emancipate)
+				read input
+				json_load "$input"
+				json_get_var domain domain
+				json_get_var tor tor
+				json_get_var dns dns
+				json_get_var mesh mesh
+
+				args=""
+				[ "$tor" = "1" ] || [ "$tor" = "true" ] && args="$args --tor"
+				[ "$dns" = "1" ] || [ "$dns" = "true" ] && args="$args --dns"
+				[ "$mesh" = "1" ] || [ "$mesh" = "true" ] && args="$args --mesh"
+				[ -z "$args" ] && args="--all"
+
+				result=$($GOTOSOCIALCTL emancipate "$domain" $args 2>&1)
+				json_init
+				if echo "$result" | grep -qi "success\|complete\|enabled"; then
+					json_add_boolean "success" 1
+					json_add_string "message" "$result"
+				else
+					json_add_boolean "success" 0
+					json_add_string "error" "$result"
+				fi
+				json_dump
+				;;
+			revoke)
+				result=$($GOTOSOCIALCTL revoke 2>&1)
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Exposure revoked"
+				json_dump
+				;;
+			backup)
+				result=$($GOTOSOCIALCTL backup 2>&1)
+				json_init
+				if echo "$result" | grep -qi "backup\|success"; then
+					json_add_boolean "success" 1
+					json_add_string "message" "$result"
+				else
+					json_add_boolean "success" 0
+					json_add_string "error" "$result"
+				fi
+				json_dump
+				;;
+			logs)
+				read input
+				json_load "$input"
+				json_get_var lines lines
+				[ -z "$lines" ] && lines=50
+
+				$GOTOSOCIALCTL logs "$lines"
+				;;
+		esac
+		;;
+esac
