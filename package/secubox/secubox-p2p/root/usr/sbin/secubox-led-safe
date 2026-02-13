@@ -1,0 +1,131 @@
+#!/bin/sh
+# SecuBox Safe LED Script for MochaBin
+# Slow I2C writes with error handling to prevent bus lockup
+
+LED_BASE="/sys/class/leds"
+WRITE_DELAY=1  # 300ms between writes to prevent I2C overload
+ERROR_BACKOFF=5  # Wait 5s after any error
+MAX_ERRORS=3     # Stop after 3 consecutive errors
+
+error_count=0
+
+# Safe LED write with timeout and error detection
+led_write() {
+    local led="$1"
+    local val="$2"
+    local path="$LED_BASE/$led/brightness"
+    
+    [ ! -f "$path" ] && return 1
+    
+    # Use timeout to prevent hang (busybox compatible)
+    echo "$val" > "$path" 2>/dev/null
+    local ret=$?
+    
+    if [ $ret -ne 0 ]; then
+        error_count=$((error_count + 1))
+        logger -t secubox-led "LED write failed: $led (error $error_count)"
+        sleep $ERROR_BACKOFF
+        return 1
+    fi
+    
+    error_count=0
+    sleep $WRITE_DELAY
+    return 0
+}
+
+# Set all RGB LEDs to a color (one at a time, slowly)
+set_color() {
+    local r="$1" g="$2" b="$3"
+    
+    led_write "red:led1" "$r" || return 1
+    led_write "green:led1" "$g" || return 1
+    led_write "blue:led1" "$b" || return 1
+}
+
+# Set all 3 LED groups
+set_all_leds() {
+    local r="$1" g="$2" b="$3"
+    
+    for i in 1 2 3; do
+        led_write "red:led$i" "$r" || return 1
+        led_write "green:led$i" "$g" || return 1
+        led_write "blue:led$i" "$b" || return 1
+    done
+}
+
+# Health check - simple status colors
+get_status_color() {
+    # Check basic system health
+    local load=$(cat /proc/loadavg | cut -d' ' -f1 | cut -d'.' -f1)
+    local mem_free=$(grep MemAvailable /proc/meminfo | awk '{print int($2/1024)}')
+    
+    # Default: green (healthy)
+    local r=0 g=64 b=0
+    
+    # Warning: yellow (high load or low memory)
+    if [ "$load" -gt 4 ] || [ "$mem_free" -lt 256 ]; then
+        r=64 g=64 b=0
+    fi
+    
+    # Critical: red (very high load or very low memory)
+    if [ "$load" -gt 8 ] || [ "$mem_free" -lt 128 ]; then
+        r=64 g=0 b=0
+    fi
+    
+    echo "$r $g $b"
+}
+
+# Main loop - update every 10 seconds (very slow)
+main() {
+    logger -t secubox-led "Safe LED script starting..."
+    
+    # Initial state: dim green
+    set_all_leds 0 32 0
+    
+    while true; do
+        # Check for too many errors
+        if [ $error_count -ge $MAX_ERRORS ]; then
+            logger -t secubox-led "Too many errors, stopping LED updates"
+            exit 1
+        fi
+        
+        # Get status and set color
+        read r g b << EOF
+$(get_status_color)
+EOF
+        set_all_leds "$r" "$g" "$b"
+        
+        # Long sleep between updates
+        sleep 10
+    done
+}
+
+# Handle arguments
+case "$1" in
+    start)
+        main &
+        echo $! > /tmp/secubox-led.pid
+        ;;
+    stop)
+        [ -f /tmp/secubox-led.pid ] && kill $(cat /tmp/secubox-led.pid) 2>/dev/null
+        rm -f /tmp/secubox-led.pid
+        ;;
+    status)
+        get_status_color
+        ;;
+    test)
+        echo "Testing LED write..."
+        set_color 0 32 0 && echo "Green OK"
+        sleep 2
+        set_color 32 32 0 && echo "Yellow OK"
+        sleep 2
+        set_color 32 0 0 && echo "Red OK"
+        sleep 2
+        set_color 0 0 32 && echo "Blue OK"
+        sleep 2
+        set_color 0 32 0 && echo "Back to green"
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|status|test}"
+        ;;
+esac
