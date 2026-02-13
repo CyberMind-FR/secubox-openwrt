@@ -793,7 +793,24 @@ do_scp() {
 	# dropbear doesn't have scp, use dbclient with cat for file transfer
 	local ip=$(echo "$dest" | cut -d':' -f1 | sed 's/root@//')
 	local remote_path=$(echo "$dest" | cut -d':' -f2)
+
+	# Check source file exists
+	[ ! -f "$src" ] && return 1
+
+	# Clean any stale host keys (prevents mismatch errors after device reflash)
+	for khfile in /root/.ssh/known_hosts /.ssh/known_hosts /overlay/upper/.ssh/known_hosts; do
+		[ -f "$khfile" ] && sed -i "/^$ip /d" "$khfile" 2>/dev/null
+	done
+
+	# Transfer file - dbclient with -y accepts new host keys
 	cat "$src" | dbclient -i "$SSH_KEY" -y "root@$ip" "cat > $remote_path" 2>/dev/null
+	local ret=$?
+
+	# Verify file exists on remote (BusyBox compatible)
+	if [ $ret -eq 0 ]; then
+		dbclient -i "$SSH_KEY" -y "root@$ip" "[ -s $remote_path ]" 2>/dev/null && return 0
+	fi
+	return 1
 }
 
 do_list_remotes() {

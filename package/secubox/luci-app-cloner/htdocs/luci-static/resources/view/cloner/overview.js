@@ -836,7 +836,22 @@ return view.extend({
 	renderBuildTab: function() {
 		var self = this;
 		var p = this.buildProgress || {};
-		var isBuilding = p.building;
+		var isBuilding = !!p.building;
+
+		// Build button attributes - only set disabled when building
+		var selectAttrs = {
+			'id': 'device-type-select',
+			'style': 'padding:10px;background:var(--kiss-bg2);border:1px solid var(--kiss-line);border-radius:6px;color:var(--kiss-text);font-size:14px;min-width:250px;cursor:pointer;'
+		};
+		var buttonAttrs = {
+			'class': 'kiss-btn kiss-btn-blue',
+			'style': 'cursor:pointer;',
+			'click': function() { self.handleBuild(); }
+		};
+		if (isBuilding) {
+			selectAttrs.disabled = true;
+			buttonAttrs.disabled = true;
+		}
 
 		return E('div', {}, [
 			// Build Controls
@@ -844,18 +859,10 @@ return view.extend({
 				E('span', {}, '🔨 Build Clone Image')
 			], E('div', {}, [
 				E('div', { 'style': 'display:flex;gap:12px;align-items:center;flex-wrap:wrap;' }, [
-					E('select', {
-						'id': 'device-type-select',
-						'style': 'padding:10px;background:var(--kiss-bg2);border:1px solid var(--kiss-line);border-radius:6px;color:var(--kiss-text);font-size:14px;min-width:250px;',
-						'disabled': isBuilding
-					}, this.devices.map(function(dev) {
+					E('select', selectAttrs, this.devices.map(function(dev) {
 						return E('option', { 'value': dev.id }, dev.name + ' (' + dev.cpu + ')');
 					})),
-					E('button', {
-						'class': 'kiss-btn kiss-btn-blue',
-						'disabled': isBuilding,
-						'click': function() { self.handleBuild(); }
-					}, isBuilding ? ['⏳ ', 'Building...'] : ['🔨 ', 'Start Build']),
+					E('button', buttonAttrs, isBuilding ? ['⏳ ', 'Building...'] : ['🔨 ', 'Start Build']),
 					isBuilding ? E('span', { 'style': 'color:var(--kiss-yellow);font-size:13px;' }, '⚠️ Build in progress...') : null
 				].filter(Boolean)),
 				E('p', { 'style': 'color:var(--kiss-muted);font-size:12px;margin-top:12px;margin-bottom:0;' },
