@@ -1643,3 +1643,39 @@ Client → HAProxy → mitmproxy (WAF) → Backend (Streamlit/MetaBlog)
 Client → HAProxy → Backend (Infrastructure - bypass WAF)
 Client → HAProxy → Backend (Path ACLs - bypass WAF)
 ```
+
+## 2026-02-14: Streamlit WebSocket WAF Bypass
+
+### Issue
+Streamlit apps stopped displaying correctly after enabling WAF.
+
+### Root Cause
+Streamlit uses WebSockets (`_stcore/stream`) for real-time communication. mitmproxy MITM interception breaks WebSocket connections due to:
+- Certificate validation issues (self-signed MITM cert)
+- Connection upgrade handling incompatibility
+- Stream state corruption
+
+### Fix
+Re-enabled `waf_bypass=1` for all 20 Streamlit apps. Trade-off: Streamlit apps bypass WAF filtering in favor of functionality.
+
+### Affected Apps
+basic, bazi, bweek, bweep, console, control, cpf, evolution, fabric, fabricator, ftvm, hermes, papyrus, pdf, photocloud, pix, play, wuyun, yijing360, yling
+
+## 2026-02-14: MetaBlogizer SDLC Content Restoration
+
+### Issue
+`sdlc.gk2.secubox.in` displayed GK2 Hub landing page template instead of original content.
+
+### Root Cause
+GK2 Hub generator script had overwritten the local `index.html` with auto-generated service catalog page. Original content ("Les Seigneurs de La Chambre - Présentation Cinématique") was preserved in git history.
+
+### Fix
+```bash
+cd /srv/metablogizer/sites/sdlc
+git checkout HEAD -- index.html
+```
+
+### Verification
+- Site now displays medieval/renaissance cinematic presentation
+- Title: "Les Seigneurs de La Chambre - Présentation Cinématique"
+- Description: "seigneurs de la Chambre" (from UCI config)

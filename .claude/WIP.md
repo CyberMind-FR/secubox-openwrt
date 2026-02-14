@@ -64,6 +64,19 @@ _Last updated: 2026-02-14 (WAF architecture configured)_
 
 ### Just Completed (2026-02-14)
 
+- **MetaBlogizer SDLC Content Restoration** — DONE (2026-02-14)
+  - sdlc.gk2.secubox.in was showing GK2 Hub template instead of original content
+  - GK2 Hub generator had overwritten local index.html
+  - Original "Les Seigneurs de La Chambre - Présentation Cinématique" preserved in git
+  - Restored via `git checkout HEAD -- index.html`
+  - Site now correctly displaying cinematic presentation content
+
+- **Streamlit WebSocket WAF Bypass** — DONE (2026-02-14)
+  - Streamlit apps use WebSockets which are incompatible with MITM proxy
+  - Re-added `waf_bypass=1` to all 20 Streamlit apps
+  - Apps now route directly through HAProxy without mitmproxy filtering
+  - Trade-off: Streamlit apps bypass WAF for WebSocket compatibility
+
 - **WAF Architecture Configuration** — DONE (2026-02-14)
   - WAF (mitmproxy) enabled for Streamlit apps and MetaBlogizer sites
   - WAF bypass for infrastructure: Jellyfin, Mail, Glances, GoToSocial, Webmail
