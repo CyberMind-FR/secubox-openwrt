@@ -723,7 +723,8 @@ _emit_sorted_path_acls() {
 
 		# Generate use_backend rule (use WAF backend if enabled)
 		local effective_backend="$backend"
-		[ "$waf_enabled" = "1" ] && effective_backend="$waf_backend"
+		config_get waf_bypass "$section" waf_bypass "0"
+	[ "$waf_enabled" = "1" ] && [ "$waf_bypass" != "1" ] && effective_backend="$waf_backend"
 		if [ -n "$host_acl_name" ]; then
 			echo "    use_backend $effective_backend if host_${host_acl_name} ${acl_name}"
 		else
@@ -788,7 +789,8 @@ _add_vhost_acl() {
 	esac
 	# Use WAF backend if enabled, otherwise use original backend
 	local effective_backend="$backend"
-	[ "$waf_enabled" = "1" ] && effective_backend="$waf_backend"
+	config_get waf_bypass "$section" waf_bypass "0"
+	[ "$waf_enabled" = "1" ] && [ "$waf_bypass" != "1" ] && effective_backend="$waf_backend"
 	echo "    use_backend $effective_backend if host_${acl_name}"
 }
 

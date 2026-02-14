@@ -1420,3 +1420,32 @@ _Last updated: 2026-02-11_
     - **Login Issue Resolution**:
       - Form field is `username` not `email` (GoToSocial quirk)
       - Admin user: `admin@secubox.in` / `TestAdmin123!`
+
+## 2026-02-14: Fixed Streamlit apps + WAF compatibility
+
+### Problem
+- Streamlit apps showing blank page with loading spinner when accessed via public URLs
+- Direct access to backends (192.168.255.1:xxxx) worked fine
+- Issue was mitmproxy WAF not handling WebSocket connections properly
+
+### Root Cause
+- HAProxy `waf_enabled=1` routed ALL vhosts through `mitmproxy_inspector` backend
+- mitmproxy's `haproxy_router` addon wasn't properly handling WebSocket upgrade connections
+- WebSocket connections disconnected immediately, breaking Streamlit's real-time UI
+
+### Solution
+1. Added `waf_bypass` option to `/usr/sbin/haproxyctl`:
+   - Vhosts with `waf_bypass=1` route directly to their backends
+   - Other vhosts still go through mitmproxy WAF
+2. Set `waf_bypass=1` for Streamlit vhosts (yling, bazi, bweep, bweek, wuyun, pix, hermes, evolution, control)
+3. Updated haproxy_router.py addon with WebSocket event handlers (for future improvement)
+
+### Files Modified
+- `/usr/sbin/haproxyctl` - Added waf_bypass option check
+- `/srv/mitmproxy-in/addons/haproxy_router.py` - Added WebSocket handlers
+- `/srv/lxc/mitmproxy-in/config` - Enabled HAPROXY_ROUTER_ENABLED=1
+
+### Result
+- Streamlit apps work with full WebSocket support
+- Other services still protected by mitmproxy WAF
+- Hybrid approach balances security and functionality
