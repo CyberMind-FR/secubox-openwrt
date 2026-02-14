@@ -340,7 +340,11 @@
       "Bash(while [ -f /tmp/claude/-home-reepost-CyberMindStudio-secubox-openwrt/tasks/be0c3bc.running ])",
       "Bash(do sleep 5)",
       "Bash(while ps aux)",
-      "Bash(do sleep 10)"
+      "Bash(do sleep 10)",
+      "Bash(\")",
+      "WebFetch(domain:yling.gk2.secubox.in)",
+      "WebFetch(domain:bazi.gk2.secubox.in)",
+      "WebFetch(domain:webmail.gk2.secubox.in)"
     ]
   }
 }
