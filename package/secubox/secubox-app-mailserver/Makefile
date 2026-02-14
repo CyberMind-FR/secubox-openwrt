@@ -1,39 +1,34 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-app-mailserver
-PKG_VERSION:=1.0.0
-PKG_RELEASE:=2
+PKG_VERSION:=2.0.0
+PKG_RELEASE:=1
 
-PKG_MAINTAINER:=SecuBox Team
-PKG_LICENSE:=MIT
+PKG_MAINTAINER:=SecuBox <info@secubox.in>
+PKG_LICENSE:=AGPL-3.0
 
 include $(INCLUDE_DIR)/package.mk
 
 define Package/$(PKG_NAME)
   SECTION:=secubox
   CATEGORY:=SecuBox
-  TITLE:=SecuBox Mail Server Manager
-  DEPENDS:=+lxc +secubox-app-dns-provider
+  SUBMENU:=Apps
+  TITLE:=SecuBox Mail Server (LXC)
+  DEPENDS:=+lxc +curl +openssl-util
   PKGARCH:=all
 endef
 
 define Package/$(PKG_NAME)/description
-  Custom mail server (Postfix + Dovecot) in LXC with mesh backup support.
-  Integrates with dnsctl for MX/SPF/DKIM/DMARC management.
+  Postfix + Dovecot mail server running in LXC container.
+  Supports IMAP/SMTP with SSL/TLS.
+endef
+
+define Build/Compile
 endef
 
 define Package/$(PKG_NAME)/install
-	$(INSTALL_DIR) $(1)/etc/config
-	$(INSTALL_CONF) ./files/etc/config/mailserver $(1)/etc/config/
-
-	$(INSTALL_DIR) $(1)/etc/init.d
-	$(INSTALL_BIN) ./files/etc/init.d/mailserver $(1)/etc/init.d/
-
 	$(INSTALL_DIR) $(1)/usr/sbin
-	$(INSTALL_BIN) ./files/usr/sbin/mailctl $(1)/usr/sbin/
-
-	$(INSTALL_DIR) $(1)/usr/lib/mailserver
-	$(INSTALL_DATA) ./files/usr/lib/mailserver/*.sh $(1)/usr/lib/mailserver/
+	$(INSTALL_BIN) ./files/usr/sbin/mailserverctl $(1)/usr/sbin/
 endef
 
 $(eval $(call BuildPackage,$(PKG_NAME)))
