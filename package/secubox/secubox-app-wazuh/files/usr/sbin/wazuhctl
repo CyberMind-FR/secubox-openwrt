@@ -104,7 +104,20 @@ cmd_install() {
 	# Extract deb package (OpenWrt doesn't have dpkg)
 	log_info "Extracting package..."
 	ar x "$pkg_name"
-	tar -xzf data.tar.gz -C /
+
+	# Handle different compression formats (xz or gz)
+	if [ -f data.tar.xz ]; then
+		xz -d data.tar.xz
+		tar -xf data.tar -C /
+	elif [ -f data.tar.gz ]; then
+		tar -xzf data.tar.gz -C /
+	elif [ -f data.tar.zst ]; then
+		zstd -d data.tar.zst
+		tar -xf data.tar -C /
+	else
+		log_error "Unknown data archive format"
+		return 1
+	fi
 
 	# Set permissions
 	chmod 750 "$WAZUH_DIR"
