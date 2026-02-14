@@ -1,0 +1,293 @@
+#!/bin/sh
+# SecuBox Pinafore Controller
+# Mastodon web client hub - redirects to public clients with instance pre-configured
+
+VERSION="1.0.0"
+DATA_PATH="/srv/pinafore"
+PORT="${PINAFORE_PORT:-4002}"
+PID_FILE="/var/run/pinafore.pid"
+
+# Default GoToSocial instance
+DEFAULT_INSTANCE="social.gk2.secubox.in"
+
+log_info() { echo "[INFO] $*"; }
+log_error() { echo "[ERROR] $*" >&2; }
+
+usage() {
+	cat <<'EOF'
+Pinafore Controller for SecuBox
+
+Usage: pinaforectl <command>
+
+Commands:
+  install [inst]   Create client hub page (default: social.gk2.secubox.in)
+  start            Start web server
+  stop             Stop web server
+  restart          Restart web server
+  status           Show status
+  emancipate <d>   Expose via HAProxy with domain
+
+Examples:
+  pinaforectl install social.example.com
+  pinaforectl start
+  pinaforectl emancipate client.gk2.secubox.in
+EOF
+}
+
+pinafore_running() {
+	[ -f "$PID_FILE" ] && kill -0 "$(cat $PID_FILE)" 2>/dev/null
+}
+
+cmd_install() {
+	local instance="${1:-$DEFAULT_INSTANCE}"
+
+	log_info "Creating Mastodon client hub for $instance..."
+
+	mkdir -p "$DATA_PATH"
+
+	# Create landing page with links to public clients
+	cat > "$DATA_PATH/index.html" <<HTMLEOF
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mastodon Clients - ${instance}</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+        }
+        .container {
+            max-width: 600px;
+            padding: 2rem;
+            text-align: center;
+        }
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .instance {
+            color: #a0aec0;
+            margin-bottom: 2rem;
+            font-size: 1.1rem;
+        }
+        .clients {
+            display: grid;
+            gap: 1rem;
+        }
+        .client {
+            display: block;
+            padding: 1.5rem;
+            background: rgba(255,255,255,0.1);
+            border-radius: 12px;
+            text-decoration: none;
+            color: #fff;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .client:hover {
+            background: rgba(255,255,255,0.15);
+            transform: translateY(-2px);
+            border-color: #667eea;
+        }
+        .client h2 {
+            font-size: 1.3rem;
+            margin-bottom: 0.5rem;
+        }
+        .client p {
+            color: #a0aec0;
+            font-size: 0.9rem;
+        }
+        .footer {
+            margin-top: 2rem;
+            color: #718096;
+            font-size: 0.85rem;
+        }
+        .footer a { color: #667eea; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🐘 Mastodon Clients</h1>
+        <p class="instance">Connect to <strong>${instance}</strong></p>
+
+        <div class="clients">
+            <a href="https://pinafore.social/?instanceName=${instance}" class="client" target="_blank">
+                <h2>Pinafore</h2>
+                <p>Fast, simple, accessible web client</p>
+            </a>
+
+            <a href="https://elk.zone/m.webtoo.ls/@${instance}" class="client" target="_blank">
+                <h2>Elk</h2>
+                <p>Modern, feature-rich web client</p>
+            </a>
+
+            <a href="https://semaphore.social/?instanceName=${instance}" class="client" target="_blank">
+                <h2>Semaphore</h2>
+                <p>Pinafore fork with extra features</p>
+            </a>
+
+            <a href="https://${instance}" class="client" target="_blank">
+                <h2>GoToSocial Web</h2>
+                <p>Native instance interface</p>
+            </a>
+        </div>
+
+        <p class="footer">
+            Powered by <a href="https://secubox.in">SecuBox</a> |
+            <a href="https://${instance}">Instance Info</a>
+        </p>
+    </div>
+</body>
+</html>
+HTMLEOF
+
+	log_info "Client hub created at $DATA_PATH"
+	log_info "Run 'pinaforectl start' to start the server"
+}
+
+cmd_start() {
+	if pinafore_running; then
+		log_info "Pinafore already running (PID: $(cat $PID_FILE))"
+		return 0
+	fi
+
+	if [ ! -d "$DATA_PATH" ] || [ ! -f "$DATA_PATH/index.html" ]; then
+		log_error "Pinafore not installed. Run 'pinaforectl install' first"
+		return 1
+	fi
+
+	log_info "Starting Pinafore on port $PORT..."
+
+	# Use uhttpd (OpenWrt native) or socat as fallback
+	if command -v uhttpd >/dev/null 2>&1; then
+		uhttpd -p "0.0.0.0:$PORT" -h "$DATA_PATH" -f &
+		echo $! > "$PID_FILE"
+	elif command -v python3 >/dev/null 2>&1; then
+		cd "$DATA_PATH" && python3 -m http.server "$PORT" --bind 0.0.0.0 >/dev/null 2>&1 &
+		echo $! > "$PID_FILE"
+	else
+		log_error "No suitable HTTP server found (uhttpd/python3)"
+		return 1
+	fi
+
+	sleep 1
+	if pinafore_running; then
+		log_info "Pinafore started (PID: $(cat $PID_FILE))"
+		log_info "Access at http://localhost:$PORT"
+	else
+		log_error "Failed to start Pinafore"
+		return 1
+	fi
+}
+
+cmd_stop() {
+	if ! pinafore_running; then
+		log_info "Pinafore is not running"
+		return 0
+	fi
+
+	log_info "Stopping Pinafore..."
+	kill "$(cat $PID_FILE)" 2>/dev/null
+	rm -f "$PID_FILE"
+	log_info "Pinafore stopped"
+}
+
+cmd_restart() {
+	cmd_stop
+	sleep 1
+	cmd_start
+}
+
+cmd_status() {
+	local running="false"
+	local pid=""
+
+	if pinafore_running; then
+		running="true"
+		pid=$(cat "$PID_FILE")
+	fi
+
+	cat <<EOF
+{
+	"installed": $([ -f "$DATA_PATH/index.html" ] && echo "true" || echo "false"),
+	"running": $running,
+	"pid": "$pid",
+	"port": "$PORT",
+	"version": "$VERSION",
+	"path": "$DATA_PATH"
+}
+EOF
+}
+
+cmd_emancipate() {
+	local domain="$1"
+
+	if [ -z "$domain" ]; then
+		log_error "Usage: pinaforectl emancipate <domain>"
+		return 1
+	fi
+
+	log_info "Exposing Pinafore at $domain..."
+
+	# Create HAProxy backend
+	local backend_name="pinafore"
+	local vhost_name=$(echo "$domain" | tr '.' '_')
+
+	# Add backend if not exists
+	if ! uci -q get haproxy.$backend_name >/dev/null 2>&1; then
+		uci set haproxy.$backend_name=backend
+		uci set haproxy.$backend_name.name='pinafore'
+		uci set haproxy.$backend_name.mode='http'
+		uci set haproxy.$backend_name.balance='roundrobin'
+		uci set haproxy.$backend_name.enabled='1'
+
+		uci set haproxy.${backend_name}_srv=server
+		uci set haproxy.${backend_name}_srv.backend='pinafore'
+		uci set haproxy.${backend_name}_srv.name='pinafore'
+		uci set haproxy.${backend_name}_srv.address='192.168.255.1'
+		uci set haproxy.${backend_name}_srv.port="$PORT"
+	fi
+
+	# Add vhost
+	uci set haproxy.$vhost_name=vhost
+	uci set haproxy.$vhost_name.domain="$domain"
+	uci set haproxy.$vhost_name.backend='pinafore'
+	uci set haproxy.$vhost_name.ssl='1'
+	uci set haproxy.$vhost_name.ssl_redirect='1'
+	uci set haproxy.$vhost_name.acme='1'
+	uci set haproxy.$vhost_name.enabled='1'
+	uci set haproxy.$vhost_name.description='Pinafore Mastodon Client'
+
+	uci commit haproxy
+
+	# Reload HAProxy
+	haproxyctl reload 2>/dev/null || /etc/init.d/haproxy reload 2>/dev/null
+
+	# Sync mitmproxy routes
+	mitmproxyctl sync-routes 2>/dev/null
+
+	log_info "Pinafore exposed at https://$domain"
+}
+
+# Main
+case "$1" in
+	install) cmd_install ;;
+	start) cmd_start ;;
+	stop) cmd_stop ;;
+	restart) cmd_restart ;;
+	status) cmd_status ;;
+	emancipate) shift; cmd_emancipate "$@" ;;
+	help|--help|-h|"") usage ;;
+	*) log_error "Unknown command: $1"; usage; exit 1 ;;
+esac
