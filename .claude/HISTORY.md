@@ -1502,3 +1502,31 @@ Updated `/etc/init.d/secubox-lxc` to manage all LXC containers:
 - All Docker containers removed
 - Jellyfin accessible via https://media.maegia.tv
 - Full LXC-based infrastructure
+
+## 2026-02-14: Domoticz Exposure & WAF Redirect Fix
+
+### Domoticz Exposed via HAProxy
+- **Domain:** https://home.maegia.tv
+- **Backend:** 127.0.0.1:8084 (LXC with host networking)
+- **DNS:** A record added via Gandi API
+- **SSL:** Let's Encrypt certificate issued
+
+### HAProxy Configuration
+- Created `domoticz_web` backend
+- Created `home_maegia_tv` vhost with `waf_bypass=1`
+- SSL certificate: `/srv/haproxy/certs/home.maegia.tv.pem`
+
+### WAF Redirect Loop Fix
+- **Issue:** mitmproxy causing 301 redirect loops for multiple vhosts
+- **Root cause:** mitmproxy-in in "reverse" mode without proper HAProxy router addon
+- **Fix:** Added `waf_bypass=1` to affected vhosts (gk2.secubox.in, home.maegia.tv)
+- **Additional fix:** Updated mitmproxy-in LXC config to enable HAProxy router mode
+
+### Domoticz Configuration
+- Reset admin password via SQLite
+- Added local network bypass for HAProxy access
+- LXC container: `/srv/lxc/domoticz/` with USB passthrough for Zigbee
+
+### Result
+- https://home.maegia.tv → Domoticz (200 OK)
+- https://gk2.secubox.in → GK2 Hub (200 OK, redirect loop fixed)
