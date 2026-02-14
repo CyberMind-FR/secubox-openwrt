@@ -174,6 +174,7 @@ return view.extend({
 		o = s.option(form.Flag, 'enabled', _('Enable Auto-ban'));
 		o.description = _('Automatically ban IPs that match threat patterns');
 		o.default = '1';
+		o.rmempty = false;
 
 		o = s.option(form.ListValue, 'sensitivity', _('Sensitivity Level'));
 		o.description = _('Controls how quickly IPs are banned. Strict: immediate ban on first threat. Moderate: ban after 3 threats in 5 minutes. Permissive: ban after 5 threats in 1 hour.');
