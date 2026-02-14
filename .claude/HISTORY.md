@@ -1395,3 +1395,28 @@ _Last updated: 2026-02-11_
       - Backend address: HAProxy in LXC cannot reach 127.0.0.1, must use LAN IP
       - WASM compilation: ~90 seconds on ARM64 at startup
     - Live at: https://social.gk2.secubox.in
+
+23. **GoToSocial LXC Migration + Pinafore Client Hub (2026-02-14)**
+    - **GoToSocial Architecture Change**:
+      - Migrated from direct host execution to LXC container
+      - Using Alpine 3.21 rootfs with gcompat for glibc compatibility
+      - GoToSocial v0.17.0 statically linked binary
+      - Data bind-mounted at `/data` inside container
+      - Container runs with `lxc.net.0.type = none` (host networking)
+    - **LXC Container Benefits**:
+      - Isolated environment with proper cgroup limits
+      - Easier upgrades (replace rootfs or binary only)
+      - Consistent execution environment
+    - **gotosocialctl Updates**:
+      - `install`: Creates Alpine LXC rootfs + installs GoToSocial
+      - `start/stop`: Uses `lxc-start -d` / `lxc-stop`
+      - `user create/password`: Works via chroot or lxc-attach
+      - `shell`: Opens interactive shell in container
+    - **Pinafore Client Hub Added**:
+      - New package: `secubox-app-pinafore`
+      - Landing page with links to Pinafore, Elk, Semaphore
+      - All clients pre-configured with instance domain
+      - `pinaforectl emancipate` for HAProxy exposure
+    - **Login Issue Resolution**:
+      - Form field is `username` not `email` (GoToSocial quirk)
+      - Admin user: `admin@secubox.in` / `TestAdmin123!`
