@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-13 (GoToSocial deployed)_
+_Last updated: 2026-02-14 (Vhost routing fixes & Glances)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -61,6 +61,31 @@ _Last updated: 2026-02-13 (GoToSocial deployed)_
   - First Peek auto-registration of services
   - Gossip-based exposure config sync via secubox-p2p
   - Created `luci-app-vortex-dns` dashboard
+
+### Just Completed (2026-02-14)
+
+- **Mitmproxy Routes Duplicate Fix** — DONE (2026-02-14)
+  - Fixed duplicate entries in `/srv/mitmproxy-in/haproxy-routes.json`
+  - `console.gk2.secubox.in` and `control.gk2.secubox.in` had duplicate routes
+  - Second entry (port 8081) was overriding correct Streamlit ports (8501/8511)
+  - Removed duplicates, verified correct routing
+
+- **Service Backend Fixes** — DONE (2026-02-14)
+  - `play.maegia.tv`: Changed backend from `mitmproxy_inspector` to `streamlit_yijing`
+  - `client.gk2.secubox.in`: Enabled `pinafore_srv` server with health check
+  - Added uhttpd instance on port 4002 for Pinafore static landing page
+
+- **Glances System Monitor** — DONE (2026-02-14)
+  - Installed `python3-pip` via opkg
+  - Installed Glances 4.5.0.4 via pip3 with dependencies
+  - Created dummy `webbrowser.py` module for headless operation
+  - Started Glances web server on port 61208
+  - https://glances.gk2.secubox.in now operational
+
+- **GoToSocial Service Start** — DONE (2026-02-14)
+  - Enabled GoToSocial in UCI config
+  - Started LXC container via `gotosocialctl start`
+  - https://social.gk2.secubox.in operational
 
 ### Just Completed (2026-02-13)
 
