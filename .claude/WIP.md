@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-14 (C3BOX 70 services verified)_
+_Last updated: 2026-02-14 (WAF architecture configured)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -63,6 +63,13 @@ _Last updated: 2026-02-14 (C3BOX 70 services verified)_
   - Created `luci-app-vortex-dns` dashboard
 
 ### Just Completed (2026-02-14)
+
+- **WAF Architecture Configuration** — DONE (2026-02-14)
+  - WAF (mitmproxy) enabled for Streamlit apps and MetaBlogizer sites
+  - WAF bypass for infrastructure: Jellyfin, Mail, Glances, GoToSocial, Webmail
+  - Path ACLs (`/gk2/*`) bypass WAF - mitmproxy routes by host only
+  - 38 path ACLs configured with `waf_bypass=1`
+  - Architecture: HAProxy → mitmproxy (WAF) → Backend (filtered) or HAProxy → Backend (bypass)
 
 - **C3BOX SDLC Full Service Verification** — DONE (2026-02-14)
   - Verified all 70 services across 12 zones on C3BOX dashboard
