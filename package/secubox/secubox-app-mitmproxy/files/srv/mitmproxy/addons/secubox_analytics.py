@@ -1085,9 +1085,14 @@ class SecuBoxAnalytics:
                     'severity': 'high', 'category': 'file_access'
                 }
 
-        # Check SSRF
+        # Check SSRF - only in query parameters and body, not in the target URL itself
+        # This prevents false positives when accessing internal services legitimately
+        ssrf_targets = [body]
+        if query:
+            ssrf_targets.extend([str(v) for v in query.values()])
+        ssrf_combined = ' '.join(ssrf_targets)
         for pattern in SSRF_PATTERNS:
-            if re.search(pattern, combined, re.IGNORECASE):
+            if re.search(pattern, ssrf_combined, re.IGNORECASE):
                 return {
                     'is_scan': True, 'pattern': 'ssrf', 'type': 'ssrf',
                     'severity': 'high', 'category': 'server_side'
