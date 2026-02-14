@@ -1449,3 +1449,56 @@ _Last updated: 2026-02-11_
 - Streamlit apps work with full WebSocket support
 - Other services still protected by mitmproxy WAF
 - Hybrid approach balances security and functionality
+
+## 2026-02-14: Docker to LXC Migration - Mail Services
+
+### Converted Services
+1. **Mailserver** (Docker `secubox-mailserver` → LXC `mailserver`)
+   - Alpine Linux with Postfix + Dovecot
+   - IP: 192.168.255.30
+   - Ports: SMTP (25), SMTPS (465), Submission (587), IMAP (143), IMAPS (993)
+   - User: `admin@secubox.in` / `NDdC73130`
+
+2. **Roundcube Webmail** (Docker `secubox-webmail` → LXC `roundcube`)
+   - Alpine Linux with nginx + PHP-FPM + Roundcube 1.6.12
+   - Host networking, port 8027
+   - Connected to mailserver at ssl://192.168.255.30:993
+
+### LXC Configurations
+- `/srv/lxc/mailserver/config` - Mail server container
+- `/srv/lxc/roundcube/config` - Webmail container
+- `/srv/lxc/mailserver/rootfs/opt/start-mail.sh` - Startup script
+- `/srv/lxc/roundcube/rootfs/opt/start-roundcube.sh` - Startup script
+
+### Result
+- Docker containers removed
+- Services accessible via https://webmail.gk2.secubox.in
+- Auto-start via `/etc/init.d/secubox-lxc`
+
+## 2026-02-14: Docker to LXC Migration - Jellyfin
+
+### Converted Service
+- **Jellyfin** (Docker `secbx-jellyfin` → LXC `jellyfin`)
+  - Debian-based (exported from Docker image)
+  - IP: 192.168.255.31
+  - Port: 8096
+  - Jellyfin 10.11.6
+
+### LXC Configuration
+- `/srv/lxc/jellyfin/config` - Container config with bind mounts
+- `/srv/lxc/jellyfin/rootfs/opt/start-jellyfin.sh` - Startup script
+- Mounts: /srv/SHARE (media, ro), /srv/jellyfin/config, /srv/jellyfin/cache
+
+### HAProxy Updates
+- Updated `haproxy.cfg5726ed_media.address` to 192.168.255.31
+- Added `waf_bypass=1` for media.maegia.tv
+- Disabled Docker jellyfin init script (`/etc/init.d/jellyfin`)
+
+### Auto-start Script
+Updated `/etc/init.d/secubox-lxc` to manage all LXC containers:
+- haproxy, mailserver, roundcube, jellyfin
+
+### Result
+- All Docker containers removed
+- Jellyfin accessible via https://media.maegia.tv
+- Full LXC-based infrastructure
