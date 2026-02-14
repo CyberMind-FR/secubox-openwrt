@@ -843,19 +843,24 @@ _emancipate_haproxy() {
 _emancipate_mitmproxy() {
 	local name="$1"
 	local domain="$2"
-	local port=$(uci_get site_${name}.port)
-	local routes_file="/srv/mitmproxy-in/haproxy-routes.json"
 
-	log_info "[WAF] Adding $domain to mitmproxy routes"
+	log_info "[WAF] Syncing mitmproxy routes from HAProxy config"
 
-	# Check if mitmproxy routes file exists
-	if [ ! -f "$routes_file" ]; then
-		log_warn "[WAF] mitmproxy routes file not found, skipping"
-		return 1
-	fi
+	# Use mitmproxyctl to sync routes from HAProxy UCI config
+	# This ensures all routes are in sync and mitmproxy will auto-reload
+	if command -v mitmproxyctl >/dev/null 2>&1; then
+		mitmproxyctl sync-routes 2>&1 | while read -r line; do
+			log_info "[WAF] $line"
+		done
+		log_info "[WAF] Routes synced - mitmproxy will auto-reload on next request"
+	else
+		log_warn "[WAF] mitmproxyctl not found, manually adding route"
+		# Fallback: directly add route to the routes file
+		local port=$(uci_get site_${name}.port)
+		local routes_file="/srv/mitmproxy-in/haproxy-routes.json"
 
-	# Add domain to mitmproxy routes using Python
-	python3 -c "
+		if [ -f "$routes_file" ]; then
+			python3 -c "
 import json
 try:
     with open('$routes_file') as f:
@@ -867,15 +872,7 @@ try:
 except Exception as e:
     print(f'[WAF] Error: {e}')
 " 2>/dev/null
-
-	# Restart mitmproxy-in container to reload routes
-	if command -v lxc-stop >/dev/null 2>&1; then
-		log_info "[WAF] Restarting mitmproxy-in container..."
-		lxc-stop -n mitmproxy-in 2>/dev/null
-		sleep 1
-		lxc-start -n mitmproxy-in 2>/dev/null
-		sleep 2
-		log_info "[WAF] mitmproxy-in restarted"
+		fi
 	fi
 }
 

@@ -64,6 +64,15 @@ _Last updated: 2026-02-14 (WAF architecture configured)_
 
 ### Just Completed (2026-02-14)
 
+- **mitmproxy WAF Wildcard Route Priority Fix** — DONE (2026-02-14)
+  - Fixed wildcard route matching in `haproxy_router.py`
+  - Issue: `.gk2.secubox.in` wildcard (port 4000) matched before specific routes like `apr.gk2.secubox.in` (port 8928)
+  - Fix: Support both `*.domain` and `.domain` wildcard formats
+  - Fix: Sort wildcards by length (longest/most specific first)
+  - Added auto-reload: Routes file checked every 10 requests, reloads if modified
+  - Updated `metablogizerctl` to use `mitmproxyctl sync-routes` instead of direct file manipulation
+  - MetaBlogizer sites now properly routed through WAF
+
 - **Wazuh SIEM LuCI Dashboard** — DONE (2026-02-14)
   - Created `luci-app-wazuh` package for unified Wazuh security monitoring
   - 4 views: Overview, Alerts, File Integrity, Agents

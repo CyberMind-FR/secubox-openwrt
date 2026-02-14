@@ -19,6 +19,9 @@ DEFAULT_BACKEND = ("127.0.0.1", 8081)  # LuCI fallback
 class HaproxyRouter:
     def __init__(self):
         self.routes = {}
+        self._routes_mtime = 0
+        self._check_interval = 10  # Check file every N requests
+        self._request_count = 0
         self._load_routes()
         ctx.log.info(f"HAProxy Router loaded with {len(self.routes)} routes")
 
@@ -26,6 +29,7 @@ class HaproxyRouter:
         """Load routing table from JSON file"""
         if os.path.exists(ROUTES_FILE):
             try:
+                self._routes_mtime = os.path.getmtime(ROUTES_FILE)
                 with open(ROUTES_FILE, 'r') as f:
                     self.routes = json.load(f)
                 ctx.log.info(f"Loaded routes: {list(self.routes.keys())}")
@@ -35,6 +39,17 @@ class HaproxyRouter:
         else:
             ctx.log.warn(f"Routes file not found: {ROUTES_FILE}")
             self._generate_default_routes()
+
+    def _check_reload_routes(self):
+        """Check if routes file has changed and reload if needed"""
+        try:
+            if os.path.exists(ROUTES_FILE):
+                mtime = os.path.getmtime(ROUTES_FILE)
+                if mtime > self._routes_mtime:
+                    ctx.log.info("Routes file changed, reloading...")
+                    self._load_routes()
+        except Exception as e:
+            ctx.log.error(f"Error checking routes file: {e}")
 
     def _generate_default_routes(self):
         """Generate default routes from UCI if available"""
@@ -62,22 +77,42 @@ class HaproxyRouter:
         # Remove port from host if present
         hostname = host.split(':')[0].lower()
 
+        # 1. Try exact match first
         if hostname in self.routes:
             backend = self.routes[hostname]
             return (backend[0], backend[1])
 
-        # Try wildcard matching
+        # 2. Try wildcard matching - collect all wildcard patterns
+        # Support both "*.domain" and ".domain" formats
+        wildcards = []
         for pattern, backend in self.routes.items():
             if pattern.startswith('*.'):
-                suffix = pattern[2:]
-                if hostname.endswith(suffix):
-                    return (backend[0], backend[1])
+                # Standard wildcard: *.gk2.secubox.in
+                suffix = pattern[1:]  # Keep the dot: .gk2.secubox.in
+                wildcards.append((suffix, backend))
+            elif pattern.startswith('.'):
+                # HAProxy-style wildcard: .gk2.secubox.in
+                suffix = pattern  # Already has dot: .gk2.secubox.in
+                wildcards.append((suffix, backend))
+
+        # Sort by suffix length descending - longest (most specific) first
+        wildcards.sort(key=lambda x: len(x[0]), reverse=True)
+
+        for suffix, backend in wildcards:
+            if hostname.endswith(suffix):
+                return (backend[0], backend[1])
 
         ctx.log.warn(f"No route for {hostname}, using default")
         return DEFAULT_BACKEND
 
     def request(self, flow: http.HTTPFlow):
         """Route request to appropriate backend"""
+        # Periodically check if routes file has changed
+        self._request_count += 1
+        if self._request_count >= self._check_interval:
+            self._request_count = 0
+            self._check_reload_routes()
+
         host = flow.request.host_header or flow.request.host
         backend = self._get_backend(host)
 

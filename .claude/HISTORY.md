@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-02-11_
+_Last updated: 2026-02-14_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -1697,3 +1697,18 @@ git checkout HEAD -- index.html
 - **API wrapper (wazuh/api.js)** with helper functions for alert levels and timestamps
 - **Fixed jshn segfault issue** - simplified to printf-based JSON output
 - Tested all RPCD methods via ubus calls
+
+### 2026-02-14: mitmproxy WAF Wildcard Route Priority Fix
+- **Fixed wildcard route matching in haproxy_router.py**
+  - Issue: `.gk2.secubox.in` wildcard (port 4000) matched before specific routes like `apr.gk2.secubox.in` (port 8928)
+  - Root cause: Python code expected `*.domain` format but HAProxy generates `.domain` format
+  - Fix: Support both `*.domain` and `.domain` wildcard formats
+  - Fix: Sort wildcards by length (longest/most specific first) to ensure proper priority
+- **Added auto-reload capability**
+  - Routes file mtime checked every 10 requests
+  - Automatically reloads routes.json if file modified
+  - No container restart needed for route updates
+- **Updated metablogizerctl integration**
+  - `_emancipate_mitmproxy()` now uses `mitmproxyctl sync-routes` instead of direct file manipulation
+  - Ensures HAProxy and mitmproxy routes stay in sync
+  - MetaBlogizer sites now properly routed through WAF

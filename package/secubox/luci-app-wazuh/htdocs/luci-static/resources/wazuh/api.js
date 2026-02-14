@@ -1,4 +1,5 @@
 'use strict';
+'require baseclass';
 'require rpc';
 
 var callWazuh = rpc.declare({
@@ -75,7 +76,7 @@ var callRestartAgent = rpc.declare({
     expect: {}
 });
 
-return L.Class.extend({
+return baseclass.extend({
     getOverview: function() {
         return callWazuh().then(function(res) {
             return res.result || res;
