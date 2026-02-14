@@ -1364,11 +1364,17 @@ cmd_sync_routes() {
 
 	log_info "Generated $routes_file with $count routes"
 
-	# Copy to container data path if container is running
-	if lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"; then
-		cp "$routes_file" "$data_path/haproxy-routes.json"
-		log_info "Routes synced to container"
-	fi
+	# Copy routes to all instance data paths
+	local instances=$(uci show mitmproxy 2>/dev/null | grep '=instance$' | sed 's/mitmproxy\.\([^=]*\)=instance/\1/')
+	for inst in $instances; do
+		local inst_data_path=$(uci -q get mitmproxy.${inst}.data_path)
+		# Default to /srv/mitmproxy-<instance> if not set
+		[ -z "$inst_data_path" ] && inst_data_path="/srv/mitmproxy-${inst}"
+		if [ -d "$inst_data_path" ]; then
+			cp "$routes_file" "$inst_data_path/haproxy-routes.json"
+			log_info "Routes synced to $inst_data_path"
+		fi
+	done
 }
 
 cmd_haproxy_enable() {
