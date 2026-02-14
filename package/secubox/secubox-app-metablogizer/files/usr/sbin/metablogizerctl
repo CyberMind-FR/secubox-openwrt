@@ -44,8 +44,10 @@ Site Commands:
                         1. DNS A record (Gandi/OVH)
                         2. Vortex DNS mesh publication
                         3. HAProxy vhost with SSL
-                        4. ACME certificate
-                        5. Zero-downtime reload
+                        4. WAF/mitmproxy integration
+                        5. Path ACL (secubox.in/gk2/{name})
+                        6. SSL certificate (or wildcard)
+                        7. Zero-downtime reload
 
 Runtime Commands:
   runtime               Show current runtime
@@ -838,6 +840,65 @@ _emancipate_haproxy() {
 	fi
 }
 
+_emancipate_mitmproxy() {
+	local name="$1"
+	local domain="$2"
+	local port=$(uci_get site_${name}.port)
+	local routes_file="/srv/mitmproxy-in/haproxy-routes.json"
+
+	log_info "[WAF] Adding $domain to mitmproxy routes"
+
+	# Check if mitmproxy routes file exists
+	if [ ! -f "$routes_file" ]; then
+		log_warn "[WAF] mitmproxy routes file not found, skipping"
+		return 1
+	fi
+
+	# Add domain to mitmproxy routes using Python
+	python3 -c "
+import json
+try:
+    with open('$routes_file') as f:
+        data = json.load(f)
+    data['$domain'] = ['192.168.255.1', $port]
+    with open('$routes_file', 'w') as f:
+        json.dump(data, f, indent=2)
+    print('[WAF] Route added: $domain -> 192.168.255.1:$port')
+except Exception as e:
+    print(f'[WAF] Error: {e}')
+" 2>/dev/null
+
+	# Restart mitmproxy-in container to reload routes
+	if command -v lxc-stop >/dev/null 2>&1; then
+		log_info "[WAF] Restarting mitmproxy-in container..."
+		lxc-stop -n mitmproxy-in 2>/dev/null
+		sleep 1
+		lxc-start -n mitmproxy-in 2>/dev/null
+		sleep 2
+		log_info "[WAF] mitmproxy-in restarted"
+	fi
+}
+
+_emancipate_path_acl() {
+	local name="$1"
+	local backend_name="metablog_${name}"
+
+	log_info "[PATH] Adding /gk2/$name path ACL to secubox.in"
+
+	# Create path ACL for secubox.in/gk2/{name}
+	local acl_name="path_gk2_${name}"
+	uci set haproxy.${acl_name}=acl
+	uci set haproxy.${acl_name}.type="path_beg"
+	uci set haproxy.${acl_name}.pattern="/gk2/${name}"
+	uci set haproxy.${acl_name}.backend="$backend_name"
+	uci set haproxy.${acl_name}.host="secubox.in"
+	uci set haproxy.${acl_name}.enabled="1"
+	uci set haproxy.${acl_name}.waf_bypass="1"
+
+	uci commit haproxy
+	log_info "[PATH] Path ACL created: secubox.in/gk2/$name -> $backend_name"
+}
+
 _emancipate_ssl() {
 	local domain="$1"
 
@@ -910,10 +971,24 @@ cmd_emancipate() {
 	# Step 3: HAProxy vhost + backend
 	_emancipate_haproxy "$name" "$domain"
 
-	# Step 4: SSL Certificate
-	_emancipate_ssl "$domain"
+	# Step 4: WAF/mitmproxy integration
+	_emancipate_mitmproxy "$name" "$domain"
 
-	# Step 5: Reload HAProxy
+	# Step 5: Path ACL for secubox.in/gk2/{name}
+	_emancipate_path_acl "$name"
+
+	# Step 6: SSL Certificate (wildcard covers *.gk2.secubox.in)
+	# Only request if not covered by wildcard
+	case "$domain" in
+		*.gk2.secubox.in)
+			log_info "[SSL] Using wildcard certificate *.gk2.secubox.in"
+			;;
+		*)
+			_emancipate_ssl "$domain"
+			;;
+	esac
+
+	# Step 7: Reload HAProxy
 	_emancipate_reload
 
 	# Mark site as emancipated
