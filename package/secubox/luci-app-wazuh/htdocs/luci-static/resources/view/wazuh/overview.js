@@ -3,197 +3,252 @@
 'require dom';
 'require poll';
 'require wazuh.api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
-    handleSaveApply: null,
-    handleSave: null,
-    handleReset: null,
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null,
 
-    load: function() {
-        return Promise.all([
-            api.getOverview(),
-            api.getAlertSummary(),
-            api.getCrowdSecCorrelation()
-        ]);
-    },
+	load: function() {
+		return Promise.all([
+			api.getOverview(),
+			api.getAlertSummary(),
+			api.getCrowdSecCorrelation()
+		]);
+	},
 
-    render: function(data) {
-        var overview = data[0] || {};
-        var alerts = data[1] || {};
-        var crowdsec = data[2] || {};
+	render: function(data) {
+		var self = this;
+		var overview = data[0] || {};
+		var alerts = data[1] || {};
+		var crowdsec = data[2] || {};
 
-        var view = E('div', { 'class': 'cbi-map' }, [
-            E('h2', {}, _('Wazuh SIEM Dashboard')),
-            E('div', { 'class': 'cbi-map-descr' },
-                _('Security Information and Event Management powered by Wazuh XDR')
-            ),
+		// Determine health status
+		var agentOk = overview.agent && overview.agent.connected;
+		var managerOk = overview.manager && overview.manager.running;
+		var indexerOk = overview.manager && overview.manager.indexer_status === 'green';
+		var crowdsecOk = crowdsec.crowdsec_running;
 
-            // Status Cards Row
-            E('div', { 'class': 'cbi-section', 'style': 'display: flex; flex-wrap: wrap; gap: 1rem;' }, [
-                // Agent Status Card
-                this.renderStatusCard(
-                    'Agent Status',
-                    overview.agent ? (overview.agent.connected ? 'Connected' : (overview.agent.running ? 'Running' : 'Stopped')) : 'Unknown',
-                    overview.agent && overview.agent.connected ? 'success' : (overview.agent && overview.agent.running ? 'warning' : 'danger'),
-                    'Local security agent monitoring this device'
-                ),
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px; flex-wrap: wrap;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'Wazuh SIEM'),
+					KissTheme.badge(managerOk ? 'RUNNING' : 'STOPPED', managerOk ? 'green' : 'red')
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' },
+					'Security Information and Event Management')
+			]),
 
-                // Manager Status Card
-                this.renderStatusCard(
-                    'Manager Status',
-                    overview.manager ? (overview.manager.running ? 'Running' : 'Stopped') : 'Unknown',
-                    overview.manager && overview.manager.running ? 'success' : 'danger',
-                    'Central SIEM manager in LXC container'
-                ),
+			// Navigation tabs
+			this.renderNav('overview'),
 
-                // Indexer Status Card
-                this.renderStatusCard(
-                    'Indexer Health',
-                    overview.manager ? (overview.manager.indexer_status || 'Unknown') : 'Unknown',
-                    overview.manager && overview.manager.indexer_status === 'green' ? 'success' :
-                    (overview.manager && overview.manager.indexer_status === 'yellow' ? 'warning' : 'danger'),
-                    'OpenSearch cluster for alert storage'
-                ),
+			// Stats row
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'id': 'wazuh-stats', 'style': 'margin: 20px 0;' }, [
+				KissTheme.stat(alerts.critical || 0, 'Critical', this.colors.red),
+				KissTheme.stat(alerts.high || 0, 'High', this.colors.orange),
+				KissTheme.stat(alerts.medium || 0, 'Medium', this.colors.yellow),
+				KissTheme.stat(alerts.total || 0, 'Total Alerts', this.colors.cyan)
+			]),
 
-                // CrowdSec Integration Card
-                this.renderStatusCard(
-                    'CrowdSec Integration',
-                    crowdsec.crowdsec_running ? 'Active' : 'Inactive',
-                    crowdsec.crowdsec_running ? 'success' : 'notice',
-                    crowdsec.active_decisions + ' active ban decisions'
-                )
-            ]),
+			// Two column layout
+			E('div', { 'class': 'kiss-grid kiss-grid-2' }, [
+				// Health Status card
+				KissTheme.card('System Health', this.renderHealth(overview, crowdsec)),
+				// Quick Actions card
+				KissTheme.card('Quick Actions', this.renderActions())
+			]),
 
-            // Alert Summary Section
-            E('div', { 'class': 'cbi-section' }, [
-                E('h3', {}, _('Alert Summary')),
-                E('div', { 'style': 'display: flex; flex-wrap: wrap; gap: 1rem;' }, [
-                    this.renderAlertBadge('Critical', alerts.critical || 0, 'danger'),
-                    this.renderAlertBadge('High', alerts.high || 0, 'warning'),
-                    this.renderAlertBadge('Medium', alerts.medium || 0, 'notice'),
-                    this.renderAlertBadge('Low', alerts.low || 0, 'info'),
-                    this.renderAlertBadge('Total', alerts.total || 0, 'secondary')
-                ])
-            ]),
+			// Security Layers
+			KissTheme.card('Security Layers', this.renderLayers(overview, crowdsec))
+		];
 
-            // Quick Actions Section
-            E('div', { 'class': 'cbi-section' }, [
-                E('h3', {}, _('Quick Actions')),
-                E('div', { 'style': 'display: flex; gap: 1rem; flex-wrap: wrap;' }, [
-                    E('a', {
-                        'href': 'https://wazuh.gk2.secubox.in',
-                        'target': '_blank',
-                        'class': 'btn cbi-button cbi-button-action'
-                    }, _('Open Wazuh Dashboard')),
+		poll.add(L.bind(this.pollData, this), 30);
+		return KissTheme.wrap(content, 'admin/services/wazuh/overview');
+	},
 
-                    E('button', {
-                        'class': 'btn cbi-button cbi-button-apply',
-                        'click': L.bind(this.handleRestartAgent, this)
-                    }, _('Restart Agent')),
+	colors: {
+		green: '#00C853',
+		red: '#FF1744',
+		orange: '#fb923c',
+		yellow: '#fbbf24',
+		cyan: '#22d3ee',
+		muted: '#94a3b8'
+	},
 
-                    E('a', {
-                        'href': L.url('admin/services/wazuh/alerts'),
-                        'class': 'btn cbi-button'
-                    }, _('View Alerts')),
+	renderNav: function(active) {
+		var tabs = [
+			{ name: 'Overview', path: 'admin/services/wazuh/overview' },
+			{ name: 'Alerts', path: 'admin/services/wazuh/alerts' },
+			{ name: 'File Integrity', path: 'admin/services/wazuh/fim' },
+			{ name: 'Agents', path: 'admin/services/wazuh/agents' }
+		];
 
-                    E('a', {
-                        'href': L.url('admin/services/wazuh/fim'),
-                        'class': 'btn cbi-button'
-                    }, _('File Integrity'))
-                ])
-            ]),
+		return E('div', { 'class': 'kiss-tabs' }, tabs.map(function(tab) {
+			var isActive = tab.path.indexOf(active) !== -1;
+			return E('a', {
+				'href': L.url(tab.path),
+				'class': 'kiss-tab' + (isActive ? ' active' : '')
+			}, tab.name);
+		}));
+	},
 
-            // Security Layers Info
-            E('div', { 'class': 'cbi-section' }, [
-                E('h3', {}, _('Security Layers (SysWarden-Inspired)')),
-                E('table', { 'class': 'table' }, [
-                    E('tr', { 'class': 'tr' }, [
-                        E('th', { 'class': 'th' }, _('Layer')),
-                        E('th', { 'class': 'th' }, _('Component')),
-                        E('th', { 'class': 'th' }, _('Function')),
-                        E('th', { 'class': 'th' }, _('Status'))
-                    ]),
-                    E('tr', { 'class': 'tr' }, [
-                        E('td', { 'class': 'td' }, _('Layer 1: Firewall')),
-                        E('td', { 'class': 'td' }, _('Vortex Firewall + nftables')),
-                        E('td', { 'class': 'td' }, _('Kernel-level IP blocking')),
-                        E('td', { 'class': 'td' }, E('span', { 'class': 'badge success' }, _('Active')))
-                    ]),
-                    E('tr', { 'class': 'tr' }, [
-                        E('td', { 'class': 'td' }, _('Layer 2: IPS')),
-                        E('td', { 'class': 'td' }, _('CrowdSec + Bouncer')),
-                        E('td', { 'class': 'td' }, _('Behavior-based threat detection')),
-                        E('td', { 'class': 'td' }, E('span', {
-                            'class': 'badge ' + (crowdsec.crowdsec_running ? 'success' : 'danger')
-                        }, crowdsec.crowdsec_running ? _('Active') : _('Inactive')))
-                    ]),
-                    E('tr', { 'class': 'tr' }, [
-                        E('td', { 'class': 'td' }, _('Layer 3: SIEM/XDR')),
-                        E('td', { 'class': 'td' }, _('Wazuh Manager')),
-                        E('td', { 'class': 'td' }, _('Log analysis, FIM, threat correlation')),
-                        E('td', { 'class': 'td' }, E('span', {
-                            'class': 'badge ' + (overview.manager && overview.manager.running ? 'success' : 'danger')
-                        }, overview.manager && overview.manager.running ? _('Active') : _('Inactive')))
-                    ]),
-                    E('tr', { 'class': 'tr' }, [
-                        E('td', { 'class': 'td' }, _('Layer 4: WAF')),
-                        E('td', { 'class': 'td' }, _('mitmproxy + HAProxy')),
-                        E('td', { 'class': 'td' }, _('Web application firewall')),
-                        E('td', { 'class': 'td' }, E('span', { 'class': 'badge success' }, _('Active')))
-                    ])
-                ])
-            ])
-        ]);
+	renderHealth: function(overview, crowdsec) {
+		var self = this;
+		var items = [
+			{
+				name: 'Wazuh Agent',
+				status: overview.agent && overview.agent.connected ? 'Connected' :
+					(overview.agent && overview.agent.running ? 'Running' : 'Stopped'),
+				ok: overview.agent && overview.agent.connected,
+				desc: 'Local security monitoring'
+			},
+			{
+				name: 'Wazuh Manager',
+				status: overview.manager && overview.manager.running ? 'Running' : 'Stopped',
+				ok: overview.manager && overview.manager.running,
+				desc: 'SIEM server in LXC'
+			},
+			{
+				name: 'Indexer',
+				status: overview.manager ? (overview.manager.indexer_status || 'Unknown') : 'Unknown',
+				ok: overview.manager && overview.manager.indexer_status === 'green',
+				desc: 'OpenSearch cluster'
+			},
+			{
+				name: 'CrowdSec',
+				status: crowdsec.crowdsec_running ? 'Active' : 'Inactive',
+				ok: crowdsec.crowdsec_running,
+				desc: (crowdsec.active_decisions || 0) + ' ban decisions'
+			}
+		];
 
-        // Setup polling for real-time updates
-        poll.add(L.bind(this.pollStatus, this), 30);
+		return E('div', {}, items.map(function(item) {
+			return E('div', {
+				'style': 'display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--kiss-line);'
+			}, [
+				E('div', {}, [
+					E('div', { 'style': 'font-weight: 600;' }, item.name),
+					E('div', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, item.desc)
+				]),
+				KissTheme.badge(item.status, item.ok ? 'green' : 'red')
+			]);
+		}));
+	},
 
-        return view;
-    },
+	renderActions: function() {
+		var self = this;
+		return E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px;' }, [
+			E('a', {
+				'href': 'https://wazuh.gk2.secubox.in',
+				'target': '_blank',
+				'class': 'kiss-btn kiss-btn-green',
+				'style': 'text-decoration: none; justify-content: center;'
+			}, '🔗 Open Wazuh Dashboard'),
 
-    renderStatusCard: function(title, status, statusClass, description) {
-        return E('div', {
-            'class': 'cbi-value',
-            'style': 'flex: 1; min-width: 200px; background: var(--background-color-high); padding: 1rem; border-radius: 8px; border-left: 4px solid var(--' + statusClass + '-color, #666);'
-        }, [
-            E('div', { 'style': 'font-weight: bold; margin-bottom: 0.5rem;' }, title),
-            E('div', {
-                'class': 'badge ' + statusClass,
-                'style': 'font-size: 1.2em; padding: 0.3rem 0.6rem;'
-            }, status),
-            E('div', { 'style': 'font-size: 0.85em; color: var(--text-color-low); margin-top: 0.5rem;' }, description)
-        ]);
-    },
+			E('button', {
+				'class': 'kiss-btn kiss-btn-blue',
+				'click': L.bind(this.handleRestartAgent, this)
+			}, '🔄 Restart Agent'),
 
-    renderAlertBadge: function(label, count, badgeClass) {
-        return E('div', {
-            'style': 'text-align: center; padding: 0.5rem 1rem; background: var(--background-color-high); border-radius: 8px; min-width: 80px;'
-        }, [
-            E('div', { 'style': 'font-size: 1.5em; font-weight: bold;' }, String(count)),
-            E('div', { 'class': 'badge ' + badgeClass }, label)
-        ]);
-    },
+			E('a', {
+				'href': L.url('admin/services/wazuh/alerts'),
+				'class': 'kiss-btn',
+				'style': 'text-decoration: none; justify-content: center;'
+			}, '📋 View Alerts'),
 
-    handleRestartAgent: function() {
-        var self = this;
-        return api.restartAgent().then(function(res) {
-            if (res.success) {
-                L.ui.addNotification(null, E('p', _('Wazuh agent restarted successfully')), 'info');
-            } else {
-                L.ui.addNotification(null, E('p', _('Failed to restart agent')), 'error');
-            }
-            return self.load().then(L.bind(self.render, self));
-        });
-    },
+			E('a', {
+				'href': L.url('admin/services/wazuh/fim'),
+				'class': 'kiss-btn',
+				'style': 'text-decoration: none; justify-content: center;'
+			}, '📁 File Integrity')
+		]);
+	},
 
-    pollStatus: function() {
-        return api.getOverview().then(L.bind(function(overview) {
-            // Update status indicators
-            var agentBadge = document.querySelector('.cbi-section .badge');
-            if (agentBadge && overview.agent) {
-                agentBadge.textContent = overview.agent.connected ? 'Connected' :
-                    (overview.agent.running ? 'Running' : 'Stopped');
-            }
-        }, this));
-    }
+	renderLayers: function(overview, crowdsec) {
+		var layers = [
+			{
+				num: 1,
+				name: 'Firewall',
+				component: 'Vortex + nftables',
+				desc: 'Kernel-level IP blocking',
+				ok: true
+			},
+			{
+				num: 2,
+				name: 'IPS',
+				component: 'CrowdSec + Bouncer',
+				desc: 'Behavior-based detection',
+				ok: crowdsec.crowdsec_running
+			},
+			{
+				num: 3,
+				name: 'SIEM/XDR',
+				component: 'Wazuh Manager',
+				desc: 'Log analysis & correlation',
+				ok: overview.manager && overview.manager.running
+			},
+			{
+				num: 4,
+				name: 'WAF',
+				component: 'mitmproxy + HAProxy',
+				desc: 'Web application firewall',
+				ok: true
+			}
+		];
+
+		return E('table', { 'class': 'kiss-table' }, [
+			E('thead', {}, [
+				E('tr', {}, [
+					E('th', {}, 'Layer'),
+					E('th', {}, 'Component'),
+					E('th', {}, 'Function'),
+					E('th', { 'style': 'text-align: right;' }, 'Status')
+				])
+			]),
+			E('tbody', {}, layers.map(function(layer) {
+				return E('tr', {}, [
+					E('td', {}, 'L' + layer.num + ': ' + layer.name),
+					E('td', { 'style': 'font-family: monospace;' }, layer.component),
+					E('td', { 'style': 'color: var(--kiss-muted);' }, layer.desc),
+					E('td', { 'style': 'text-align: right;' },
+						KissTheme.badge(layer.ok ? 'ACTIVE' : 'DOWN', layer.ok ? 'green' : 'red')
+					)
+				]);
+			}))
+		]);
+	},
+
+	handleRestartAgent: function() {
+		return api.restartAgent().then(function(res) {
+			if (res.success) {
+				L.ui.addNotification(null, E('p', 'Wazuh agent restarted successfully'), 'info');
+			} else {
+				L.ui.addNotification(null, E('p', 'Failed to restart agent'), 'error');
+			}
+		});
+	},
+
+	pollData: function() {
+		var self = this;
+		return Promise.all([
+			api.getOverview(),
+			api.getAlertSummary()
+		]).then(function(data) {
+			var overview = data[0] || {};
+			var alerts = data[1] || {};
+
+			// Update stats
+			var statsEl = document.getElementById('wazuh-stats');
+			if (statsEl) {
+				dom.content(statsEl, [
+					KissTheme.stat(alerts.critical || 0, 'Critical', self.colors.red),
+					KissTheme.stat(alerts.high || 0, 'High', self.colors.orange),
+					KissTheme.stat(alerts.medium || 0, 'Medium', self.colors.yellow),
+					KissTheme.stat(alerts.total || 0, 'Total Alerts', self.colors.cyan)
+				]);
+			}
+		});
+	}
 });
