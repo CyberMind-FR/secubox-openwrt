@@ -236,7 +236,13 @@ load_config() {
 	addon_script="$(uci_get filtering.addon_script || echo /data/addons/secubox_analytics.py)"
 
 	# HAProxy router settings
-	haproxy_router_enabled="$(uci_get haproxy_router.enabled || echo 0)"
+	# Check instance-specific override first, then global
+	local inst_haproxy_enabled="$(uci_get ${INSTANCE}.haproxy_router_enabled 2>/dev/null)"
+	if [ -n "$inst_haproxy_enabled" ]; then
+		haproxy_router_enabled="$inst_haproxy_enabled"
+	else
+		haproxy_router_enabled="$(uci_get haproxy_router.enabled || echo 0)"
+	fi
 	haproxy_listen_port="$(uci_get haproxy_router.listen_port || echo 8889)"
 	haproxy_threat_detection="$(uci_get haproxy_router.threat_detection || echo 1)"
 	haproxy_routes_file="$(uci_get haproxy_router.routes_file || echo /srv/mitmproxy/haproxy-routes.json)"
