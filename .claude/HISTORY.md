@@ -1609,3 +1609,37 @@ bday, clock, comic, eval, geo, gondwana, lldh, sdlc, wanted, devel, gandalf, gk2
 - **SSL Certificates**: 52 active
 - **LXC Containers**: 5 running (haproxy, mitmproxy-in, jellyfin, gotosocial, domoticz)
 - **Public IP**: 82.67.100.75
+
+## 2026-02-14: WAF Architecture Configuration
+
+### WAF Routing Strategy
+Configured mitmproxy WAF filtering with selective bypass:
+
+**Through WAF (mitmproxy filtering enabled):**
+- All Streamlit apps (20+) - security analysis active
+- All MetaBlogizer sites (15+) - security analysis active
+- Standard web vhosts for logging and threat detection
+
+**WAF Bypass (direct HAProxy → backend):**
+| Service | Reason |
+|---------|--------|
+| media.maegia.tv | Jellyfin streaming incompatible |
+| localai.secubox.in | AI API performance |
+| mail.secubox.in | Mail protocols |
+| glances.gk2.secubox.in | Monitoring API |
+| social.gk2.secubox.in | ActivityPub federation |
+| webmail.gk2.secubox.in | Roundcube webmail |
+| client.gk2.secubox.in | Mastodon client |
+| All path ACLs (/gk2/*) | mitmproxy routes by host only |
+
+### Path ACL Fix
+- Path-based routing (`secubox.in/gk2/*`) requires `waf_bypass=1`
+- mitmproxy haproxy_router.py routes by hostname, not path
+- 38 path ACLs configured with waf_bypass for direct routing
+
+### Architecture
+```
+Client → HAProxy → mitmproxy (WAF) → Backend (Streamlit/MetaBlog)
+Client → HAProxy → Backend (Infrastructure - bypass WAF)
+Client → HAProxy → Backend (Path ACLs - bypass WAF)
+```
