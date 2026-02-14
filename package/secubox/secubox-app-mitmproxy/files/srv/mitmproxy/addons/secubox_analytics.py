@@ -216,7 +216,9 @@ BOT_SIGNATURES = [
     'bytespider', 'petalbot', 'dataforseo', 'serpstatbot',
 
     # ==== EMPTY/SUSPICIOUS USER AGENTS ====
-    '-', '', 'mozilla/4.0', 'mozilla/5.0',
+    # Note: Do NOT include 'mozilla/5.0' here - it's the standard prefix for ALL modern browsers!
+    # Only flag clearly suspicious minimal/empty user agents
+    '-',
 ]
 
 # Behavioral patterns for bot detection (request path based)
@@ -942,11 +944,11 @@ class SecuBoxAnalytics:
         is_suspicious_ua = False
         if not ua or ua == '-' or len(ua) < 10:
             is_suspicious_ua = True
-        elif ua.lower() in ['mozilla/4.0', 'mozilla/5.0']:
+        # Note: 'mozilla/5.0' is the standard prefix for ALL modern browsers
+        # Only flag if UA is EXACTLY 'mozilla/4.0' (nothing else) which is outdated
+        elif ua.lower() == 'mozilla/4.0':
             is_suspicious_ua = True
-        elif not accept_lang and not accept_enc:
-            # Real browsers always send these
-            is_suspicious_ua = True
+        # Don't flag based on missing accept headers - many legitimate clients skip them
 
         # Parse UA for device info
         device = 'unknown'
