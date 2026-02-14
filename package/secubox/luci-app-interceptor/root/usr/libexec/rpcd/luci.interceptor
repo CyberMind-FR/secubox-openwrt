@@ -46,9 +46,10 @@ get_mitm_status() {
 	# Check UCI config
 	enabled=$(uci -q get mitmproxy.main.enabled || echo "0")
 
-	# Check if LXC container is running (use lxc-info which is more reliable)
+	# Check if any mitmproxy LXC container is running (in/out instances)
 	if command -v lxc-info >/dev/null 2>&1; then
-		lxc-info -n mitmproxy -s 2>/dev/null | grep -q "RUNNING" && running=1
+		lxc-info -n mitmproxy-in -s 2>/dev/null | grep -q "RUNNING" && running=1
+		[ "$running" = "0" ] && lxc-info -n mitmproxy-out -s 2>/dev/null | grep -q "RUNNING" && running=1
 	fi
 
 	# Count today's threats from log
@@ -156,10 +157,10 @@ get_failover_status() {
 get_insider_waf_status() {
 	local enabled=0 running=0 insider_threats=0 blocked_clients=0 exfil_attempts=0
 
-	# Insider WAF is enabled when mitmproxy container is running
+	# Insider WAF is enabled when mitmproxy-out container is running
 	# This inspects LAN→WAN traffic for insider threats
 	if command -v lxc-info >/dev/null 2>&1; then
-		lxc-info -n mitmproxy -s 2>/dev/null | grep -q "RUNNING" && running=1
+		lxc-info -n mitmproxy-out -s 2>/dev/null | grep -q "RUNNING" && running=1
 	fi
 
 	# Check mitmproxy config for outbound inspection
@@ -240,8 +241,8 @@ case "$1" in
 					pillars_active=$((pillars_active + 1))
 				fi
 
-				# mitmproxy running (external WAF)
-				if pgrep mitmproxy >/dev/null 2>&1 || lxc-info -n mitmproxy -s 2>/dev/null | grep -q "RUNNING"; then
+				# mitmproxy running (external WAF) - check mitmproxy-in container
+				if pgrep mitmproxy >/dev/null 2>&1 || lxc-info -n mitmproxy-in -s 2>/dev/null | grep -q "RUNNING"; then
 					score=$((score + 17))
 					pillars_active=$((pillars_active + 1))
 				fi
@@ -264,8 +265,8 @@ case "$1" in
 					pillars_active=$((pillars_active + 1))
 				fi
 
-				# Insider WAF (mitmproxy outbound instance)
-				if lxc-info -n mitmproxy -s 2>/dev/null | grep -q "RUNNING"; then
+				# Insider WAF (mitmproxy-out outbound instance)
+				if lxc-info -n mitmproxy-out -s 2>/dev/null | grep -q "RUNNING"; then
 					score=$((score + 16))
 					pillars_active=$((pillars_active + 1))
 				fi
