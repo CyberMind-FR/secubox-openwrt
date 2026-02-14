@@ -1,0 +1,387 @@
+#!/bin/sh
+# SecuBox Wazuh LuCI RPCD Handler
+# Provides API for Wazuh dashboard
+
+WAZUH_DIR="/var/ossec"
+WAZUH_MANAGER_CONTAINER="wazuh"
+WAZUH_AGENT_CONTAINER="wazuh-agent"
+MANAGER_IP="192.168.255.50"
+
+# ============================================
+# CrowdSec Integration
+# ============================================
+
+get_crowdsec_correlation() {
+    local crowdsec_running="false"
+    local decisions=0
+    local wazuh_parser="false"
+
+    if pgrep crowdsec >/dev/null 2>&1; then
+        crowdsec_running="true"
+        decisions=$(cscli decisions list -o json 2>/dev/null | grep -c '"id"' 2>/dev/null || echo 0)
+    fi
+
+    if [ -f "/etc/crowdsec/parsers/s01-parse/wazuh.yaml" ]; then
+        wazuh_parser="true"
+    fi
+
+    printf '{"crowdsec_running":%s,"active_decisions":%d,"wazuh_parser_enabled":%s}\n' \
+        "$crowdsec_running" "$decisions" "$wazuh_parser"
+}
+
+# ============================================
+# Agent Status
+# ============================================
+
+get_agent_status() {
+    local agent_running="false"
+    local agent_connected="false"
+    local agent_id=""
+    local agent_name=""
+    local manager_ip=""
+
+    if lxc-info -n "$WAZUH_AGENT_CONTAINER" -s 2>/dev/null | grep -q RUNNING; then
+        agent_running="true"
+        if lxc-attach -n "$WAZUH_AGENT_CONTAINER" -- pgrep -f wazuh-agentd >/dev/null 2>&1; then
+            agent_connected="true"
+            local client_keys=$(lxc-attach -n "$WAZUH_AGENT_CONTAINER" -- cat "$WAZUH_DIR/etc/client.keys" 2>/dev/null | head -1)
+            if [ -n "$client_keys" ]; then
+                agent_id=$(echo "$client_keys" | awk '{print $1}')
+                agent_name=$(echo "$client_keys" | awk '{print $2}')
+            fi
+        fi
+    fi
+
+    manager_ip=$(uci -q get wazuh.main.manager_ip 2>/dev/null || echo "$MANAGER_IP")
+
+    printf '{"running":%s,"connected":%s,"agent_id":"%s","agent_name":"%s","manager_ip":"%s","container":"%s"}\n' \
+        "$agent_running" "$agent_connected" "$agent_id" "$agent_name" "$manager_ip" "$WAZUH_AGENT_CONTAINER"
+}
+
+# ============================================
+# Manager Status
+# ============================================
+
+get_manager_status() {
+    local manager_running="false"
+    local indexer_running="false"
+    local dashboard_running="false"
+    local cluster_health="unknown"
+    local agents_total=0
+    local agents_active=0
+
+    if lxc-info -n "$WAZUH_MANAGER_CONTAINER" -s 2>/dev/null | grep -q RUNNING; then
+        manager_running="true"
+
+        if lxc-attach -n "$WAZUH_MANAGER_CONTAINER" -- netstat -tlnp 2>/dev/null | grep -q ":9200 "; then
+            indexer_running="true"
+            cluster_health=$(lxc-attach -n "$WAZUH_MANAGER_CONTAINER" -- curl -sk -u admin:admin "https://127.0.0.1:9200/_cluster/health" 2>/dev/null | grep -o '"status":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
+        fi
+
+        if lxc-attach -n "$WAZUH_MANAGER_CONTAINER" -- netstat -tlnp 2>/dev/null | grep -q ":5601 "; then
+            dashboard_running="true"
+        fi
+
+        local agent_list=$(lxc-attach -n "$WAZUH_MANAGER_CONTAINER" -- /var/ossec/bin/agent_control -l 2>/dev/null)
+        agents_total=$(echo "$agent_list" | grep -c "ID:" 2>/dev/null || echo 0)
+        agents_active=$(echo "$agent_list" | grep -c "Active" 2>/dev/null || echo 0)
+    fi
+
+    printf '{"running":%s,"indexer_running":%s,"dashboard_running":%s,"cluster_health":"%s","agents_total":%d,"agents_active":%d,"dashboard_url":"https://wazuh.gk2.secubox.in","container":"%s"}\n' \
+        "$manager_running" "$indexer_running" "$dashboard_running" "$cluster_health" "$agents_total" "$agents_active" "$WAZUH_MANAGER_CONTAINER"
+}
+
+# ============================================
+# Alert Summary
+# ============================================
+
+get_alert_summary() {
+    local critical=0
+    local high=0
+    local medium=0
+    local low=0
+    local total=0
+
+    if lxc-info -n "$WAZUH_MANAGER_CONTAINER" -s 2>/dev/null | grep -q RUNNING; then
+        # Count alerts by severity using simple grep
+        local alerts_file="/var/ossec/logs/alerts/alerts.json"
+        critical=$(lxc-attach -n "$WAZUH_MANAGER_CONTAINER" -- sh -c "tail -n 1000 $alerts_file 2>/dev/null | grep -c '\"level\":1[2-5]' 2>/dev/null" || echo 0)
+        high=$(lxc-attach -n "$WAZUH_MANAGER_CONTAINER" -- sh -c "tail -n 1000 $alerts_file 2>/dev/null | grep -c '\"level\":[9]' 2>/dev/null" || echo 0)
+        medium=$(lxc-attach -n "$WAZUH_MANAGER_CONTAINER" -- sh -c "tail -n 1000 $alerts_file 2>/dev/null | grep -c '\"level\":[5-8]' 2>/dev/null" || echo 0)
+        low=$(lxc-attach -n "$WAZUH_MANAGER_CONTAINER" -- sh -c "tail -n 1000 $alerts_file 2>/dev/null | grep -c '\"level\":[1-4]' 2>/dev/null" || echo 0)
+        # Ensure values are numeric
+        critical=${critical:-0}
+        high=${high:-0}
+        medium=${medium:-0}
+        low=${low:-0}
+        # Strip any non-numeric chars
+        critical=$(echo "$critical" | tr -cd '0-9')
+        high=$(echo "$high" | tr -cd '0-9')
+        medium=$(echo "$medium" | tr -cd '0-9')
+        low=$(echo "$low" | tr -cd '0-9')
+        [ -z "$critical" ] && critical=0
+        [ -z "$high" ] && high=0
+        [ -z "$medium" ] && medium=0
+        [ -z "$low" ] && low=0
+        total=$((critical + high + medium + low))
+    fi
+
+    printf '{"critical":%d,"high":%d,"medium":%d,"low":%d,"total":%d}\n' \
+        "$critical" "$high" "$medium" "$low" "$total"
+}
+
+# ============================================
+# Alerts List
+# ============================================
+
+get_alerts() {
+    local count="${1:-20}"
+    local level="${2:-0}"
+
+    printf '{"alerts":['
+
+    if lxc-info -n "$WAZUH_MANAGER_CONTAINER" -s 2>/dev/null | grep -q RUNNING; then
+        local first=1
+        lxc-attach -n "$WAZUH_MANAGER_CONTAINER" -- tail -n "$count" /var/ossec/logs/alerts/alerts.json 2>/dev/null | while read -r line; do
+            if [ -n "$line" ]; then
+                local rule_level=$(echo "$line" | grep -oE '"level":[0-9]+' | head -1 | cut -d':' -f2)
+                if [ -n "$rule_level" ] && [ "$rule_level" -ge "$level" ] 2>/dev/null; then
+                    local timestamp=$(echo "$line" | grep -oE '"timestamp":"[^"]*"' | head -1 | cut -d'"' -f4)
+                    local rule_id=$(echo "$line" | grep -oE '"id":"[0-9]+"' | head -1 | cut -d'"' -f4)
+                    local rule_desc=$(echo "$line" | grep -oE '"description":"[^"]*"' | head -1 | cut -d'"' -f4 | sed 's/"/\\"/g')
+                    local agent_name=$(echo "$line" | grep -oE '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
+                    local src_ip=$(echo "$line" | grep -oE '"srcip":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+                    [ $first -eq 0 ] && printf ','
+                    first=0
+                    printf '{"timestamp":"%s","rule_level":%s,"rule_id":"%s","rule_description":"%s","agent_name":"%s","src_ip":"%s"}' \
+                        "$timestamp" "$rule_level" "$rule_id" "$rule_desc" "$agent_name" "$src_ip"
+                fi
+            fi
+        done
+    fi
+
+    printf ']}\n'
+}
+
+# ============================================
+# FIM Functions
+# ============================================
+
+get_fim_events() {
+    local count="${1:-50}"
+
+    printf '{"events":['
+
+    if lxc-info -n "$WAZUH_MANAGER_CONTAINER" -s 2>/dev/null | grep -q RUNNING; then
+        local first=1
+        lxc-attach -n "$WAZUH_MANAGER_CONTAINER" -- grep -E 'syscheck' /var/ossec/logs/alerts/alerts.json 2>/dev/null | tail -n "$count" | while read -r line; do
+            if [ -n "$line" ]; then
+                local timestamp=$(echo "$line" | grep -oE '"timestamp":"[^"]*"' | head -1 | cut -d'"' -f4)
+                local path=$(echo "$line" | grep -oE '"path":"[^"]*"' | head -1 | cut -d'"' -f4 | sed 's/"/\\"/g')
+                local event_type=$(echo "$line" | grep -oE '"event":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+                [ $first -eq 0 ] && printf ','
+                first=0
+                printf '{"timestamp":"%s","path":"%s","event_type":"%s"}' \
+                    "$timestamp" "$path" "$event_type"
+            fi
+        done
+    fi
+
+    printf ']}\n'
+}
+
+get_fim_config() {
+    printf '{"directories":["/etc/config","/etc/init.d","/usr/sbin","/usr/libexec/rpcd","/srv/haproxy/config","/etc/passwd","/etc/shadow"]}\n'
+}
+
+# ============================================
+# Agent Management
+# ============================================
+
+list_agents() {
+    printf '{"agents":['
+
+    if lxc-info -n "$WAZUH_MANAGER_CONTAINER" -s 2>/dev/null | grep -q RUNNING; then
+        local first=1
+        lxc-attach -n "$WAZUH_MANAGER_CONTAINER" -- /var/ossec/bin/agent_control -l 2>/dev/null | grep "ID:" | while read -r line; do
+            local id=$(echo "$line" | sed 's/.*ID: \([0-9]*\),.*/\1/')
+            local name=$(echo "$line" | sed 's/.*Name: \([^,]*\),.*/\1/')
+            local ip=$(echo "$line" | sed 's/.*IP: \([^,]*\),.*/\1/')
+            local status=$(echo "$line" | sed 's/.*IP: [^,]*, \(.*\)/\1/' | tr -d ' ')
+
+            [ $first -eq 0 ] && printf ','
+            first=0
+            printf '{"id":"%s","name":"%s","ip":"%s","status":"%s"}' \
+                "$id" "$name" "$ip" "$status"
+        done
+    fi
+
+    printf ']}\n'
+}
+
+# ============================================
+# Service Control
+# ============================================
+
+start_agent() {
+    local success="false"
+    if lxc-info -n "$WAZUH_AGENT_CONTAINER" -s 2>/dev/null | grep -q RUNNING; then
+        lxc-attach -n "$WAZUH_AGENT_CONTAINER" -- /var/ossec/bin/wazuh-control start >/dev/null 2>&1
+        success="true"
+    fi
+    printf '{"success":%s}\n' "$success"
+}
+
+stop_agent() {
+    local success="false"
+    if lxc-info -n "$WAZUH_AGENT_CONTAINER" -s 2>/dev/null | grep -q RUNNING; then
+        lxc-attach -n "$WAZUH_AGENT_CONTAINER" -- /var/ossec/bin/wazuh-control stop >/dev/null 2>&1
+        success="true"
+    fi
+    printf '{"success":%s}\n' "$success"
+}
+
+restart_agent() {
+    local success="false"
+    if lxc-info -n "$WAZUH_AGENT_CONTAINER" -s 2>/dev/null | grep -q RUNNING; then
+        lxc-attach -n "$WAZUH_AGENT_CONTAINER" -- /var/ossec/bin/wazuh-control restart >/dev/null 2>&1
+        success="true"
+    fi
+    printf '{"success":%s}\n' "$success"
+}
+
+# ============================================
+# Overview / Dashboard Data
+# ============================================
+
+get_overview() {
+    local agent_running="false"
+    local agent_connected="false"
+    local manager_running="false"
+    local indexer_status="unknown"
+    local dashboard_accessible="false"
+    local critical=0
+    local high=0
+    local total=0
+    local crowdsec_integrated="false"
+
+    # Agent status
+    if lxc-info -n "$WAZUH_AGENT_CONTAINER" -s 2>/dev/null | grep -q RUNNING; then
+        agent_running="true"
+        if lxc-attach -n "$WAZUH_AGENT_CONTAINER" -- pgrep -f wazuh-agentd >/dev/null 2>&1; then
+            agent_connected="true"
+        fi
+    fi
+
+    # Manager status
+    if lxc-info -n "$WAZUH_MANAGER_CONTAINER" -s 2>/dev/null | grep -q RUNNING; then
+        manager_running="true"
+        indexer_status=$(lxc-attach -n "$WAZUH_MANAGER_CONTAINER" -- curl -sk -u admin:admin "https://127.0.0.1:9200/_cluster/health" 2>/dev/null | grep -o '"status":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
+        [ -z "$indexer_status" ] && indexer_status="unknown"
+        if lxc-attach -n "$WAZUH_MANAGER_CONTAINER" -- netstat -tlnp 2>/dev/null | grep -q ":5601 "; then
+            dashboard_accessible="true"
+        fi
+
+        # Alert counts - run directly in container to avoid variable issues
+        local alerts_file="/var/ossec/logs/alerts/alerts.json"
+        critical=$(lxc-attach -n "$WAZUH_MANAGER_CONTAINER" -- sh -c "tail -n 500 $alerts_file 2>/dev/null | grep -c '\"level\":1[2-5]' 2>/dev/null" || echo 0)
+        high=$(lxc-attach -n "$WAZUH_MANAGER_CONTAINER" -- sh -c "tail -n 500 $alerts_file 2>/dev/null | grep -c '\"level\":[9]' 2>/dev/null" || echo 0)
+        total=$(lxc-attach -n "$WAZUH_MANAGER_CONTAINER" -- sh -c "tail -n 500 $alerts_file 2>/dev/null | wc -l 2>/dev/null" || echo 0)
+        # Strip non-numeric chars
+        critical=$(echo "$critical" | tr -cd '0-9')
+        high=$(echo "$high" | tr -cd '0-9')
+        total=$(echo "$total" | tr -cd '0-9')
+        [ -z "$critical" ] && critical=0
+        [ -z "$high" ] && high=0
+        [ -z "$total" ] && total=0
+    fi
+
+    # CrowdSec
+    if pgrep crowdsec >/dev/null 2>&1; then
+        crowdsec_integrated="true"
+    fi
+
+    printf '{"agent":{"running":%s,"connected":%s},"manager":{"running":%s,"indexer_status":"%s","dashboard_accessible":%s},"alerts":{"critical":%d,"high":%d,"total":%d},"crowdsec_integrated":%s}\n' \
+        "$agent_running" "$agent_connected" "$manager_running" "$indexer_status" "$dashboard_accessible" "$critical" "$high" "$total" "$crowdsec_integrated"
+}
+
+# ============================================
+# RPCD Interface
+# ============================================
+
+case "$1" in
+    list)
+        cat <<'EOF'
+{
+    "get_overview": {},
+    "get_agent_status": {},
+    "get_manager_status": {},
+    "get_alerts": {"count": 20, "level": 0},
+    "get_alert_summary": {},
+    "get_fim_events": {"count": 50},
+    "get_fim_config": {},
+    "list_agents": {},
+    "get_crowdsec_correlation": {},
+    "start_agent": {},
+    "stop_agent": {},
+    "restart_agent": {}
+}
+EOF
+        ;;
+    call)
+        case "$2" in
+            get_overview)
+                get_overview
+                ;;
+            get_agent_status)
+                get_agent_status
+                ;;
+            get_manager_status)
+                get_manager_status
+                ;;
+            get_alerts)
+                read -r input
+                count=$(echo "$input" | grep -oE '"count":[0-9]+' | cut -d':' -f2 || echo 20)
+                level=$(echo "$input" | grep -oE '"level":[0-9]+' | cut -d':' -f2 || echo 0)
+                [ -z "$count" ] && count=20
+                [ -z "$level" ] && level=0
+                get_alerts "$count" "$level"
+                ;;
+            get_alert_summary)
+                get_alert_summary
+                ;;
+            get_fim_events)
+                read -r input
+                count=$(echo "$input" | grep -oE '"count":[0-9]+' | cut -d':' -f2 || echo 50)
+                [ -z "$count" ] && count=50
+                get_fim_events "$count"
+                ;;
+            get_fim_config)
+                get_fim_config
+                ;;
+            list_agents)
+                list_agents
+                ;;
+            get_crowdsec_correlation)
+                get_crowdsec_correlation
+                ;;
+            start_agent)
+                start_agent
+                ;;
+            stop_agent)
+                stop_agent
+                ;;
+            restart_agent)
+                restart_agent
+                ;;
+            *)
+                echo '{"error": "Unknown method"}'
+                ;;
+        esac
+        ;;
+    *)
+        echo '{"error": "Unknown command"}'
+        ;;
+esac

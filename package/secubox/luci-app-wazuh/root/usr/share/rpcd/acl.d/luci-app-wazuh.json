@@ -1,0 +1,31 @@
+{
+    "luci-app-wazuh": {
+        "description": "Grant access to Wazuh SIEM dashboard",
+        "read": {
+            "ubus": {
+                "luci.wazuh": [
+                    "get_overview",
+                    "get_agent_status",
+                    "get_manager_status",
+                    "get_alerts",
+                    "get_alert_summary",
+                    "get_fim_events",
+                    "get_fim_config",
+                    "list_agents",
+                    "get_crowdsec_correlation"
+                ]
+            },
+            "uci": ["wazuh", "wazuh-manager"]
+        },
+        "write": {
+            "ubus": {
+                "luci.wazuh": [
+                    "start_agent",
+                    "stop_agent",
+                    "restart_agent"
+                ]
+            },
+            "uci": ["wazuh", "wazuh-manager"]
+        }
+    }
+}

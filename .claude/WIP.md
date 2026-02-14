@@ -64,6 +64,14 @@ _Last updated: 2026-02-14 (WAF architecture configured)_
 
 ### Just Completed (2026-02-14)
 
+- **Wazuh SIEM LuCI Dashboard** — DONE (2026-02-14)
+  - Created `luci-app-wazuh` package for unified Wazuh security monitoring
+  - 4 views: Overview, Alerts, File Integrity, Agents
+  - SysWarden-inspired 4-layer security visualization
+  - RPCD handler (luci.wazuh) with 12 API methods
+  - CrowdSec integration for threat correlation display
+  - Full RPCD testing verified via ubus calls
+
 - **MetaBlogizer SDLC Content Restoration** — DONE (2026-02-14)
   - sdlc.gk2.secubox.in was showing GK2 Hub template instead of original content
   - GK2 Hub generator had overwritten local index.html

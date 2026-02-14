@@ -1679,3 +1679,21 @@ git checkout HEAD -- index.html
 - Site now displays medieval/renaissance cinematic presentation
 - Title: "Les Seigneurs de La Chambre - Présentation Cinématique"
 - Description: "seigneurs de la Chambre" (from UCI config)
+
+### 2026-02-14: Wazuh SIEM LuCI Dashboard Integration
+- **Created luci-app-wazuh package** - unified Wazuh SIEM monitoring dashboard
+  - 4 views: Overview, Alerts, FIM (File Integrity), Agents
+  - SysWarden-inspired 4-layer security visualization:
+    - Layer 1: Vortex Firewall + nftables (kernel-level)
+    - Layer 2: CrowdSec + Bouncer (IPS)
+    - Layer 3: Wazuh Manager (SIEM/XDR)
+    - Layer 4: mitmproxy + HAProxy (WAF)
+- **RPCD handler (luci.wazuh)** with 12 API methods:
+  - get_overview, get_agent_status, get_manager_status
+  - get_alerts, get_alert_summary
+  - get_fim_events, get_fim_config
+  - list_agents, get_crowdsec_correlation
+  - start_agent, stop_agent, restart_agent
+- **API wrapper (wazuh/api.js)** with helper functions for alert levels and timestamps
+- **Fixed jshn segfault issue** - simplified to printf-based JSON output
+- Tested all RPCD methods via ubus calls

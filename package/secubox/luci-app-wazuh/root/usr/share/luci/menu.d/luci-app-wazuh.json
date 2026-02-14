@@ -1,0 +1,46 @@
+{
+    "admin/services/wazuh": {
+        "title": "Wazuh SIEM",
+        "order": 15,
+        "action": {
+            "type": "view",
+            "path": "wazuh/overview"
+        },
+        "depends": {
+            "acl": ["luci-app-wazuh"],
+            "uci": {"wazuh": true}
+        }
+    },
+    "admin/services/wazuh/overview": {
+        "title": "Overview",
+        "order": 1,
+        "action": {
+            "type": "view",
+            "path": "wazuh/overview"
+        }
+    },
+    "admin/services/wazuh/alerts": {
+        "title": "Alerts",
+        "order": 2,
+        "action": {
+            "type": "view",
+            "path": "wazuh/alerts"
+        }
+    },
+    "admin/services/wazuh/fim": {
+        "title": "File Integrity",
+        "order": 3,
+        "action": {
+            "type": "view",
+            "path": "wazuh/fim"
+        }
+    },
+    "admin/services/wazuh/agents": {
+        "title": "Agents",
+        "order": 4,
+        "action": {
+            "type": "view",
+            "path": "wazuh/agents"
+        }
+    }
+}
