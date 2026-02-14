@@ -1,0 +1,17 @@
+{
+	"luci-app-gotosocial": {
+		"description": "Grant access to GoToSocial Fediverse Server",
+		"read": {
+			"ubus": {
+				"luci.gotosocial": ["status", "users", "get_config", "logs"]
+			},
+			"uci": ["gotosocial"]
+		},
+		"write": {
+			"ubus": {
+				"luci.gotosocial": ["install", "start", "stop", "restart", "create_user", "delete_user", "promote_user", "demote_user", "save_config", "emancipate", "revoke", "backup"]
+			},
+			"uci": ["gotosocial"]
+		}
+	}
+}

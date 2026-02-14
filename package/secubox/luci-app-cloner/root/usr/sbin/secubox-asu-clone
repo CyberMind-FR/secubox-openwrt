@@ -1,0 +1,509 @@
+#!/bin/sh
+#
+# SecuBox ASU Clone Builder - On-the-fly firmware generation
+# Uses ASU (Attended Sysupgrade) to build custom images with SecuBox provisioning
+#
+
+ASU_API="https://sysupgrade.openwrt.org/api/v1"
+WORK_DIR="/tmp/asu-clone"
+MASTER_KEY_FILE="/root/.ssh/id_dropbear.pub"
+
+# Auto-detect master IP from br-lan
+get_master_ip() {
+    ip -4 addr show br-lan 2>/dev/null | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -1
+}
+
+MASTER_IP=$(get_master_ip)
+SECUBOX_FEED="http://${MASTER_IP:-192.168.255.1}:8081/secubox-feed"
+
+# Device profiles
+get_asu_profile() {
+    case "$1" in
+        mochabin) echo "globalscale_mochabin" ;;
+        espressobin-v7) echo "globalscale_espressobin-v7" ;;
+        espressobin-ultra) echo "globalscale_espressobin-ultra" ;;
+        x86-64) echo "generic" ;;
+        *) echo "" ;;
+    esac
+}
+
+get_asu_target() {
+    case "$1" in
+        mochabin) echo "mvebu/cortexa72" ;;
+        espressobin*) echo "mvebu/cortexa53" ;;
+        x86-64) echo "x86/64" ;;
+        *) echo "" ;;
+    esac
+}
+
+# Request ASU build
+request_build() {
+    local device="$1"
+    local version="${2:-24.10.5}"
+
+    local profile=$(get_asu_profile "$device")
+    local target=$(get_asu_target "$device")
+
+    [ -z "$profile" ] && { echo "Unknown device: $device"; return 1; }
+
+    echo "Requesting ASU build for $device ($profile) version $version..."
+
+    local resp=$(curl -s -X POST "$ASU_API/build" \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"profile\": \"$profile\",
+            \"target\": \"$target\",
+            \"version\": \"$version\",
+            \"packages\": [\"luci\", \"luci-ssl\", \"luci-base\", \"luci-mod-admin-full\", \"luci-mod-network\", \"luci-mod-status\", \"luci-mod-system\", \"luci-proto-ipv6\", \"luci-theme-bootstrap\", \"uhttpd\", \"uhttpd-mod-ubus\", \"rpcd\", \"rpcd-mod-file\", \"rpcd-mod-iwinfo\", \"rpcd-mod-luci\", \"rpcd-mod-ucode\", \"wget-ssl\", \"curl\", \"kmod-usb-storage\", \"block-mount\", \"e2fsprogs\", \"fdisk\", \"resize2fs\", \"partx-utils\", \"dropbear\"]
+        }")
+
+    local hash=$(echo "$resp" | jsonfilter -e '@.request_hash' 2>/dev/null)
+    [ -z "$hash" ] && { echo "Failed to queue build"; echo "$resp"; return 1; }
+
+    echo "$hash"
+}
+
+# Wait for build completion
+wait_build() {
+    local hash="$1"
+    local timeout="${2:-300}"
+    local elapsed=0
+
+    echo "Waiting for build $hash..."
+
+    while [ $elapsed -lt $timeout ]; do
+        sleep 10
+        elapsed=$((elapsed + 10))
+
+        local resp=$(curl -s "$ASU_API/build/$hash")
+        local status=$(echo "$resp" | jsonfilter -e '@.imagebuilder_status' 2>/dev/null)
+
+        echo "  Status: $status ($elapsed/$timeout s)"
+
+        case "$status" in
+            done)
+                # Get ext4 image name
+                local img=$(echo "$resp" | grep -oE '"name":"[^"]*ext4-sdcard[^"]*"' | cut -d'"' -f4 | head -1)
+                [ -z "$img" ] && img=$(echo "$resp" | grep -oE '"name":"[^"]*ext4-combined[^"]*"' | cut -d'"' -f4 | head -1)
+                echo "https://sysupgrade.openwrt.org/store/$hash/$img"
+                return 0
+                ;;
+            failed|error)
+                echo "Build failed!"
+                echo "$resp" | jsonfilter -e '@.detail' 2>/dev/null
+                return 1
+                ;;
+        esac
+    done
+
+    echo "Build timeout"
+    return 1
+}
+
+# Download and customize image
+customize_image() {
+    local img_url="$1"
+    local output="$2"
+
+    mkdir -p "$WORK_DIR"
+    cd "$WORK_DIR"
+
+    echo "Downloading image..."
+    wget -q "$img_url" -O image.img.gz || return 1
+
+    echo "Decompressing..."
+    gunzip -f image.img.gz || return 1
+
+    # Find root partition offset
+    local part2_start=$(fdisk -l image.img 2>/dev/null | grep "image.img2" | awk '{print $2}')
+    [ -z "$part2_start" ] && part2_start=36864
+    local offset=$((part2_start * 512))
+
+    echo "Mounting root partition (offset $offset)..."
+    mkdir -p mnt
+    mount -o loop,offset=$offset image.img mnt || return 1
+
+    # Add SSH key
+    if [ -f "$MASTER_KEY_FILE" ]; then
+        echo "Adding SSH key..."
+        mkdir -p mnt/etc/dropbear
+        cat "$MASTER_KEY_FILE" > mnt/etc/dropbear/authorized_keys
+        chmod 600 mnt/etc/dropbear/authorized_keys
+    fi
+
+    # Add master info
+    local master_ip=$(ip -4 addr show br-lan | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -1)
+    local master_hostname=$(cat /proc/sys/kernel/hostname)
+
+    mkdir -p mnt/etc/secubox
+    echo "$master_hostname" > mnt/etc/secubox/master-hostname
+    echo "$master_ip" > mnt/etc/secubox/master-ip
+
+    # Add SecuBox provisioning script
+    cat > mnt/etc/uci-defaults/99-secubox-provision << 'PROVISION'
+#!/bin/sh
+# SecuBox Clone Auto-Provisioning
+
+LOG="/tmp/secubox-provision.log"
+echo "SecuBox provisioning started: $(date)" > $LOG
+
+# Ensure firewall allows outbound traffic for opkg
+/etc/init.d/firewall stop 2>/dev/null
+echo "Firewall stopped for provisioning" >> $LOG
+
+# Read master info
+MASTER_IP=$(cat /etc/secubox/master-ip 2>/dev/null)
+MASTER=$(cat /etc/secubox/master-hostname 2>/dev/null)
+echo "Master: $MASTER @ $MASTER_IP" >> $LOG
+
+# Wait for network with retry
+wait_network() {
+    local tries=0
+    local max_tries=30
+    while [ $tries -lt $max_tries ]; do
+        if ping -c 1 -W 2 "$MASTER_IP" >/dev/null 2>&1; then
+            echo "Network ready after $tries attempts" >> $LOG
+            return 0
+        fi
+        tries=$((tries + 1))
+        sleep 5
+    done
+    echo "Network timeout after $max_tries attempts" >> $LOG
+    return 1
+}
+
+if ! wait_network; then
+    echo "ERROR: Cannot reach master, aborting provisioning" >> $LOG
+    # Re-enable firewall and exit
+    /etc/init.d/firewall start 2>/dev/null
+    exit 1
+fi
+
+# Add SecuBox feed
+FEED_URL="http://${MASTER_IP}:8081/secubox-feed"
+grep -q "secubox" /etc/opkg/customfeeds.conf 2>/dev/null || \
+    echo "src/gz secubox $FEED_URL" >> /etc/opkg/customfeeds.conf
+echo "Added SecuBox feed: $FEED_URL" >> $LOG
+
+# Disable signature verification for local feed
+echo "option check_signature 0" >> /etc/opkg.conf
+
+# Update package lists with retry
+opkg_update_retry() {
+    local tries=0
+    local max_tries=5
+    while [ $tries -lt $max_tries ]; do
+        if opkg update >> $LOG 2>&1; then
+            echo "opkg update succeeded" >> $LOG
+            return 0
+        fi
+        tries=$((tries + 1))
+        echo "opkg update attempt $tries failed, retrying..." >> $LOG
+        sleep 10
+    done
+    return 1
+}
+
+if ! opkg_update_retry; then
+    echo "ERROR: opkg update failed after retries" >> $LOG
+fi
+
+# Install SecuBox core packages
+PKGS="secubox-core luci-app-secubox luci-theme-secubox"
+for pkg in $PKGS; do
+    echo "Installing $pkg..." >> $LOG
+    opkg install "$pkg" >> $LOG 2>&1 || echo "WARN: $pkg install failed" >> $LOG
+done
+
+# Optional: Install master-link if available
+opkg install secubox-master-link >> $LOG 2>&1
+
+# Join mesh if token provided
+if [ -f /etc/secubox/clone-token ]; then
+    TOKEN=$(cat /etc/secubox/clone-token)
+    if [ -x /usr/lib/secubox/master-link.sh ]; then
+        /usr/lib/secubox/master-link.sh join "$MASTER_IP" "$TOKEN" >> $LOG 2>&1
+    fi
+fi
+
+# Re-enable firewall with proper rules
+/etc/init.d/firewall start 2>/dev/null
+
+# Ensure SSH stays accessible
+uci set dropbear.@dropbear[0].Interface=''
+uci commit dropbear
+/etc/init.d/dropbear restart
+
+echo "Provisioning complete: $(date)" >> $LOG
+touch /etc/secubox/provisioned
+exit 0
+PROVISION
+    chmod +x mnt/etc/uci-defaults/99-secubox-provision
+
+    # Add partition expansion script (runs early on first boot)
+    cat > mnt/etc/uci-defaults/10-expand-rootfs << 'EXPAND'
+#!/bin/sh
+# Expand root partition to use full SD card/eMMC
+# Handles UUID changes properly for boot compatibility
+
+LOG="/tmp/expand-rootfs.log"
+echo "Root expansion started: $(date)" > $LOG
+
+# Detect root device
+ROOT_DEV=""
+if [ -b /dev/mmcblk0 ]; then
+    ROOT_DEV="/dev/mmcblk0"
+    ROOT_PART="${ROOT_DEV}p2"
+    BOOT_PART="${ROOT_DEV}p1"
+elif [ -b /dev/sda ]; then
+    ROOT_DEV="/dev/sda"
+    ROOT_PART="${ROOT_DEV}2"
+    BOOT_PART="${ROOT_DEV}1"
+else
+    echo "No suitable root device found" >> $LOG
+    exit 0
+fi
+
+echo "Root device: $ROOT_DEV, partition: $ROOT_PART" >> $LOG
+
+# Check if already expanded (partition > 500MB = ~1M sectors)
+PART_SIZE=$(cat /sys/class/block/$(basename $ROOT_PART)/size 2>/dev/null)
+if [ -n "$PART_SIZE" ] && [ "$PART_SIZE" -gt 1000000 ]; then
+    echo "Partition already large ($PART_SIZE sectors), skipping expansion" >> $LOG
+    exit 0
+fi
+
+# Store current UUID before modification
+OLD_UUID=$(blkid -s UUID -o value $ROOT_PART 2>/dev/null)
+echo "Current root UUID: $OLD_UUID" >> $LOG
+
+# Get current partition info
+PART_START=$(fdisk -l $ROOT_DEV 2>/dev/null | grep "${ROOT_PART}" | awk '{print $2}')
+[ -z "$PART_START" ] && { echo "Cannot detect partition start" >> $LOG; exit 0; }
+
+echo "Partition 2 starts at sector $PART_START" >> $LOG
+
+# Resize partition using fdisk (GPT-aware)
+# Check if GPT or MBR
+if fdisk -l $ROOT_DEV 2>/dev/null | grep -q "GPT"; then
+    echo "GPT partition table detected" >> $LOG
+    # Use sgdisk for GPT
+    if command -v sgdisk >/dev/null 2>&1; then
+        sgdisk -e $ROOT_DEV >> $LOG 2>&1  # Move backup GPT to end
+        sgdisk -d 2 $ROOT_DEV >> $LOG 2>&1  # Delete partition 2
+        sgdisk -n 2:$PART_START:0 $ROOT_DEV >> $LOG 2>&1  # New partition to end
+        sgdisk -t 2:8300 $ROOT_DEV >> $LOG 2>&1  # Set type to Linux filesystem
+    else
+        echo "sgdisk not available for GPT resize" >> $LOG
+    fi
+else
+    echo "MBR partition table detected" >> $LOG
+    {
+        echo d      # Delete partition
+        echo 2      # Partition 2
+        echo n      # New partition
+        echo p      # Primary
+        echo 2      # Partition 2
+        echo $PART_START  # Same start
+        echo        # Default end (full disk)
+        echo n      # Don't remove ext4 signature
+        echo w      # Write
+    } | fdisk $ROOT_DEV >> $LOG 2>&1
+fi
+
+echo "Partition table updated" >> $LOG
+
+# Reread partition table
+partprobe $ROOT_DEV 2>/dev/null || blockdev --rereadpt $ROOT_DEV 2>/dev/null
+sleep 2
+
+# Get new UUID (may have changed)
+NEW_UUID=$(blkid -s UUID -o value $ROOT_PART 2>/dev/null)
+echo "New root UUID: $NEW_UUID" >> $LOG
+
+# Update fstab if UUID changed
+if [ -n "$OLD_UUID" ] && [ -n "$NEW_UUID" ] && [ "$OLD_UUID" != "$NEW_UUID" ]; then
+    echo "UUID changed, updating fstab..." >> $LOG
+    sed -i "s/$OLD_UUID/$NEW_UUID/g" /etc/fstab 2>/dev/null
+    # Also update UCI fstab config
+    sed -i "s/$OLD_UUID/$NEW_UUID/g" /etc/config/fstab 2>/dev/null
+fi
+
+# Ensure boot partition is properly referenced (by device, not UUID for reliability)
+# Update extlinux/grub if present
+if [ -f /boot/extlinux/extlinux.conf ]; then
+    echo "Updating extlinux boot config..." >> $LOG
+    # Use PARTUUID or device path for reliability
+    PARTUUID=$(blkid -s PARTUUID -o value $ROOT_PART 2>/dev/null)
+    if [ -n "$PARTUUID" ]; then
+        sed -i "s/root=UUID=[^ ]*/root=PARTUUID=$PARTUUID/" /boot/extlinux/extlinux.conf 2>/dev/null
+    else
+        sed -i "s/root=UUID=[^ ]*/root=$ROOT_PART/" /boot/extlinux/extlinux.conf 2>/dev/null
+    fi
+fi
+
+# Create resize filesystem script to run after reboot
+mkdir -p /etc/rc.local.d
+cat > /etc/rc.local.d/resize-fs.sh << 'RESIZE_FS'
+#!/bin/sh
+# One-time filesystem resize after partition expansion
+LOG="/tmp/resize-fs.log"
+echo "Filesystem resize started: $(date)" > $LOG
+
+sleep 5
+
+ROOT_PART=""
+if [ -b /dev/mmcblk0p2 ]; then
+    ROOT_PART="/dev/mmcblk0p2"
+elif [ -b /dev/sda2 ]; then
+    ROOT_PART="/dev/sda2"
+fi
+
+if [ -n "$ROOT_PART" ]; then
+    echo "Resizing $ROOT_PART..." >> $LOG
+    # Check and resize ext4 filesystem
+    e2fsck -fy $ROOT_PART >> $LOG 2>&1
+    resize2fs $ROOT_PART >> $LOG 2>&1
+    echo "Resize complete" >> $LOG
+
+    # Show new size
+    df -h / >> $LOG 2>&1
+fi
+
+# Self-remove after execution
+rm -f /etc/rc.local.d/resize-fs.sh
+RESIZE_FS
+chmod +x /etc/rc.local.d/resize-fs.sh
+
+# Ensure rc.local runs scripts from rc.local.d
+if [ -f /etc/rc.local ]; then
+    if ! grep -q "rc.local.d" /etc/rc.local; then
+        # Insert before exit 0
+        sed -i '/^exit 0/d' /etc/rc.local
+        cat >> /etc/rc.local << 'RCLOCAL'
+# Run custom scripts
+for script in /etc/rc.local.d/*.sh; do
+    [ -x "$script" ] && "$script"
+done
+exit 0
+RCLOCAL
+    fi
+else
+    cat > /etc/rc.local << 'RCLOCAL'
+#!/bin/sh
+# Run custom scripts
+for script in /etc/rc.local.d/*.sh; do
+    [ -x "$script" ] && "$script"
+done
+exit 0
+RCLOCAL
+    chmod +x /etc/rc.local
+fi
+
+echo "Expansion script complete, will resize filesystem after reboot" >> $LOG
+echo "IMPORTANT: System should reboot to apply partition changes" >> $LOG
+exit 0
+EXPAND
+    chmod +x mnt/etc/uci-defaults/10-expand-rootfs
+
+    echo "Finalizing image..."
+    sync
+    umount mnt
+
+    gzip -c image.img > "$output"
+
+    # Cleanup
+    rm -rf "$WORK_DIR"
+
+    echo "Image ready: $output"
+}
+
+# Build and flash to remote
+build_and_flash() {
+    local device="$1"
+    local remote_ip="$2"
+    local version="${3:-24.10.5}"
+    local token="$4"
+
+    echo "=== SecuBox ASU Clone Builder ==="
+    echo "Device: $device"
+    echo "Target: $remote_ip"
+    echo "Version: $version"
+    echo ""
+
+    # Request build
+    local hash=$(request_build "$device" "$version")
+    [ $? -ne 0 ] && return 1
+
+    # Wait for completion
+    local img_url=$(wait_build "$hash" 300)
+    [ $? -ne 0 ] && return 1
+
+    # Customize
+    local output="/srv/tftp/secubox-clone-${device}-asu.img.gz"
+    customize_image "$img_url" "$output" || return 1
+
+    # Inject token if provided
+    if [ -n "$token" ]; then
+        # Re-mount to add token
+        cd /tmp
+        gunzip -c "$output" > asu-tmp.img
+        local offset=$((36864 * 512))
+        mkdir -p mnt
+        mount -o loop,offset=$offset asu-tmp.img mnt
+        echo "$token" > mnt/etc/secubox/clone-token
+        sync
+        umount mnt
+        gzip -c asu-tmp.img > "$output"
+        rm -f asu-tmp.img
+        rmdir mnt
+    fi
+
+    # Also copy to web root
+    cp "$output" /www/secubox-clone-${device}-asu.img.gz
+
+    echo ""
+    echo "Image ready at:"
+    echo "  - $output"
+    echo "  - http://$(cat /etc/secubox/master-ip 2>/dev/null || echo '192.168.255.1')/secubox-clone-${device}-asu.img.gz"
+
+    # Flash if remote IP provided
+    if [ -n "$remote_ip" ]; then
+        echo ""
+        echo "Flashing to $remote_ip..."
+        cat "$output" | dbclient -i /root/.ssh/id_dropbear -y "root@$remote_ip" "cat > /tmp/firmware.img.gz && gunzip -f /tmp/firmware.img.gz" 2>/dev/null
+        dbclient -i /root/.ssh/id_dropbear -y "root@$remote_ip" "sysupgrade -n -F /tmp/firmware.img" 2>/dev/null &
+        echo "Flash initiated - device will reboot"
+    fi
+
+    return 0
+}
+
+# CLI
+case "$1" in
+    build)
+        request_build "$2" "$3"
+        ;;
+    wait)
+        wait_build "$2" "$3"
+        ;;
+    customize)
+        customize_image "$2" "$3"
+        ;;
+    flash)
+        # flash <device> <remote_ip> [version] [token]
+        build_and_flash "$2" "$3" "$4" "$5"
+        ;;
+    *)
+        echo "SecuBox ASU Clone Builder"
+        echo ""
+        echo "Usage:"
+        echo "  $0 build <device> [version]     - Request ASU build"
+        echo "  $0 wait <hash> [timeout]        - Wait for build"
+        echo "  $0 customize <url> <output>     - Download and customize image"
+        echo "  $0 flash <device> <ip> [ver] [token] - Full workflow"
+        echo ""
+        echo "Devices: mochabin, espressobin-v7, espressobin-ultra, x86-64"
+        echo "Default version: 24.10.5"
+        ;;
+esac

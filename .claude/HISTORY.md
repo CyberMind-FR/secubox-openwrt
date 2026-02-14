@@ -1218,3 +1218,180 @@ _Last updated: 2026-02-11_
       - `out`: LAN→Internet transparent proxy (port 8888/8089)
       - `in`: WAF/services upstream proxy (port 8889/8090)
     - README updated with multi-instance documentation
+
+51. **InterceptoR Plan Verification Complete (2026-02-12)**
+    - Verified all 5 phases of InterceptoR "Gandalf Proxy" plan are fully implemented:
+      - Phase 1: WPAD Safety Net — `setup_wpad_enforce()` in `network-tweaks-sync`
+      - Phase 2: Cookie Tracker — `secubox-cookie-tracker` + `luci-app-cookie-tracker`
+      - Phase 3: API Failover — `cdn-cache` UCI config + `99-cdn-offline` hotplug
+      - Phase 4: CrowdSec Scenarios — 8 scenarios in `secubox-mitmproxy-threats.yaml`
+      - Phase 5: Unified Dashboard — `luci-app-interceptor` with 5-pillar status
+    - CrowdSec scenarios include: SQLi, XSS, command injection, SSRF, CVE exploitation, bot scanners, shell hunters
+    - Plan file updated to reflect completion status
+
+52. **InterceptoR Insider WAF - 6th Pillar (2026-02-12)**
+    - Added Insider WAF as 6th pillar to InterceptoR for LAN client threat detection.
+    - **RPCD handler updates** (`luci.interceptor`):
+      - New `get_insider_waf_status()` function tracking insider threats, blocked clients, exfil attempts, DNS anomalies
+      - Health score recalculated for 6 pillars (17 points each)
+      - Detects threats from internal IPs (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+    - **LuCI dashboard updates** (`overview.js`):
+      - New "Insider WAF" pillar card with 🔒 icon
+      - Stats: insider threats, blocked clients, exfil attempts, DNS anomalies
+      - Description: "LAN threat detection"
+    - **CrowdSec insider threat scenarios** (`secubox-insider-threats.yaml`):
+      - `secubox/insider-c2-beacon` — C2 beacon detection from LAN hosts
+      - `secubox/insider-exfiltration` — Data exfiltration attempts (large uploads, base64, DNS)
+      - `secubox/insider-dns-tunnel` — DNS tunneling/DGA from internal hosts
+      - `secubox/insider-lateral-movement` — Lateral movement within LAN
+      - `secubox/insider-cryptominer` — Cryptominer activity detection
+      - `secubox/insider-iot-botnet` — IoT botnet C2 (Mirai, Gafgyt, Mozi)
+      - `secubox/insider-bad-tld` — Suspicious outbound to high-risk TLDs
+      - `secubox/insider-high-volume` — Unusual high-volume outbound traffic
+    - Updated `secubox-app-crowdsec-custom` Makefile to install new scenarios
+
+53. **DDoS Protection Hardening Profile (2026-02-12)**
+    - **Config Advisor DDoS checks** (`checks.sh`):
+      - DDOS-001: SYN cookies enabled
+      - DDOS-002: Connection tracking limit (65536+)
+      - DDOS-003: CrowdSec http-dos collection installed
+      - DDOS-004: ICMP rate limiting
+      - DDOS-005: Reverse path filtering (anti-spoofing)
+      - DDOS-006: HAProxy connection limits (maxconn)
+      - DDOS-007: mitmproxy WAF active (L7 flood detection)
+      - DDOS-008: Vortex DNS firewall (botnet C2 blocking)
+    - **ANSSI rules JSON** (`anssi-rules.json`):
+      - New "ddos" category with 8 rules and remediation steps
+    - **Documentation** (`DOCS/DDOS-PROTECTION.md`):
+      - Complete DDoS protection guide
+      - Layer-by-layer explanation (L3/L4/L7/DNS)
+      - Configuration examples for all components
+      - Quick hardening checklist
+      - Monitoring commands during attacks
+      - Limitations and upstream protection options (Cloudflare, etc.)
+
+54. **HAProxy vhosts.js KISS Migration (2026-02-12)**
+    - Rewrote HAProxy Virtual Hosts dashboard to use KissTheme.
+    - Self-contained inline CSS using KISS variables.
+    - Removed external `dashboard.css` dependency.
+    - Add vhost form with domain/backend/SSL inputs.
+    - Vhosts table with status badges and actions (edit/toggle/delete).
+    - Edit modal and delete confirmation dialogs.
+    - Toast notifications for user feedback.
+
+55. **InterceptoR LXC Detection Fix (2026-02-12)**
+    - Changed LXC container status detection from `lxc-ls` to `lxc-info`.
+    - `lxc-info -n mitmproxy -s` provides direct state query (more reliable).
+    - Fixed container name from `secbx-mitmproxy` to `mitmproxy`.
+    - Applied to all pillar status checks in `luci.interceptor` RPCD handler.
+
+56. **HAProxy backends.js KISS Migration (2026-02-12)**
+    - Rewrote HAProxy Backends dashboard to use KissTheme.
+    - Removed external `dashboard.css` dependency.
+    - Replaced all `hp-` classes with `kiss-` classes and inline styles.
+    - Backend cards with server lists, health check info.
+    - Add backend form with mode, balance algorithm, health check options.
+    - Add/edit server modals with quick service selector for auto-fill.
+    - Delete confirmations and toast notifications.
+    - Consistent styling with vhosts.js KISS migration.
+
+57. **HAProxy stats.js KISS Migration (2026-02-12)**
+    - Rewrote HAProxy Statistics dashboard to use KissTheme.
+    - Removed CSS import via style element.
+    - Stats iframe with KISS-styled border.
+    - Logs viewer with line count selector and refresh button.
+    - Empty state for disabled stats or stopped service.
+
+58. **Cloning Station Dashboard Enhancements (2026-02-13)**
+    - Major enhancement to `luci-app-cloner` with 5-tab dashboard and 10 new RPCD methods.
+    - **Build Progress UI**:
+      - Real-time log streaming from `/tmp/cloner-build.log` via base64 encoding
+      - Progress bar with stage indicators (initializing, downloading, building, packaging, complete, failed)
+      - Color-coded stage icons and animated progress fill
+      - RPCD method: `build_log` with lines/offset params
+    - **Serial Console Tab**:
+      - Port detection and selection via `serial_ports` method
+      - Live serial output display with Start/Stop/Clear controls
+      - Command input with Enter-to-send support
+      - Polling-based serial read with 500ms interval
+      - RPCD methods: `serial_ports`, `serial_read`, `serial_write`
+    - **Clone History Tab**:
+      - JSON-based history tracking in `/var/run/secubox/clone-history.json`
+      - Records: timestamp, device, image, status, token
+      - Relative time display (e.g., "2h ago")
+      - Clear history functionality
+      - RPCD methods: `history_list`, `history_add`, `history_clear`
+    - **Image Manager Tab**:
+      - Storage overview with clone/TFTP directory sizes
+      - Usage progress bar with available space display
+      - Image cards with details button (size, checksum, modified, valid)
+      - Delete image functionality
+      - RPCD methods: `storage_info`, `image_details`, `image_rename`
+    - **Overview Tab Improvements**:
+      - 4-column stats grid with live polling
+      - Storage info card with dual-directory display
+      - Token management with copy-to-clipboard
+      - U-Boot flash commands with copy button
+    - Tab navigation with 5-second refresh polling
+    - Updated ACL with 13 read and 9 write methods
+
+59. **Cloning Station Remote Device Management (2026-02-13)**
+    - Added 6th "Remotes" tab for managing remote SecuBox devices.
+    - **SSH Key Authentication**:
+      - Generates dropbear Ed25519 keypair on master
+      - Uses dbclient (dropbear SSH client) instead of OpenSSH for OpenWrt compatibility
+      - Auto-copies public key to remote devices' authorized_keys
+    - **Remote Device Features**:
+      - Add/remove remote devices by IP and name
+      - Network scan discovers SecuBox devices on subnet
+      - Remote status retrieves: hostname, model, version, uptime, LuCI accessibility
+    - **Remote Flash Workflow**:
+      - Select image from local TFTP/clone directory
+      - Optional token injection for mesh join
+      - Image upload via dbclient (pipe-based SCP alternative)
+      - Token, master hostname, and master IP embedded in image
+      - Triggers sysupgrade with keep_settings option
+    - **RPCD Methods** (7 new):
+      - `list_remotes`, `add_remote`, `remove_remote`: Remote device management
+      - `remote_status`: SSH-based device info retrieval
+      - `remote_upload`: Image upload via dbclient
+      - `remote_flash`: Complete flash workflow with token injection
+      - `scan_network`: Discover SecuBox devices on LAN
+    - **BusyBox Compatibility Fixes**:
+      - Replaced `grep -P` (Perl regex) with `grep -oE` for IP extraction
+      - Uses dropbear's dbclient with `-i` key and `-y` auto-accept
+    - Updated ACL with 4 read methods and 4 write methods for remotes
+    - Tested with moka1 (192.168.255.125) - MOCHAbin running OpenWrt 24.10.5
+
+60. **GoToSocial Fediverse Server Deployment (2026-02-13)**
+    - Deployed GoToSocial v0.17.0 ActivityPub server on C3BOX.
+    - **Installation**:
+      - Direct execution mode (no LXC - v0.18.0 has cgroup panics)
+      - Binary at `/srv/gotosocial/gotosocial` (ARM64)
+      - Data at `/srv/gotosocial/` (database, storage, web assets)
+      - Downloaded from Codeberg releases (GitHub redirects fail on wget)
+    - **Configuration**:
+      - Domain: `social.gk2.secubox.in`
+      - Port: 8484 (internal)
+      - SQLite database with WAL mode
+      - Web templates and assets from release tarball
+    - **Admin User Created**:
+      - Username: `admin`
+      - Email: `admin@secubox.in`
+      - Promoted to admin + moderator role
+    - **HAProxy Exposure**:
+      - Backend: `gotosocial` → `192.168.255.1:8484`
+      - Vhost: `social_gk2_secubox_in` with SSL redirect
+      - Uses wildcard certificate `*.gk2.secubox.in` (Let's Encrypt)
+      - Added domain to certs.list for SNI matching
+    - **UCI Configuration**:
+      - `haproxy.gotosocial` backend
+      - `haproxy.gotosocial_srv` server entry
+      - `haproxy.social_gk2_secubox_in` vhost
+      - `haproxy.cert_social_gk2_secubox_in` certificate
+      - `gotosocial.main.host`, `gotosocial.proxy.*` settings
+    - **Key Fixes**:
+      - Config.yaml paths: `/data/` → `/srv/gotosocial/`
+      - Backend address: HAProxy in LXC cannot reach 127.0.0.1, must use LAN IP
+      - WASM compilation: ~90 seconds on ARM64 at startup
+    - Live at: https://social.gk2.secubox.in

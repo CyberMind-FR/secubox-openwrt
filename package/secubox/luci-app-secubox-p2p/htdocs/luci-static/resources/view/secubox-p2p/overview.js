@@ -246,7 +246,7 @@ return view.extend({
 	scanPeers: function() {
 		var self = this;
 		ui.showModal(_('Scanning...'), E('p', { 'class': 'spinning' }, _('Discovering peers...')));
-		P2PAPI.discoverPeers().then(function(result) {
+		P2PAPI.discover().then(function(result) {
 			ui.hideModal();
 			var count = (result && result.length) || 0;
 			ui.addNotification(null, E('p', {}, 'Found ' + count + ' peer(s)'), 'info');

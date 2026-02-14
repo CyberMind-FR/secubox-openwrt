@@ -1653,6 +1653,9 @@ cmd_vhost_add() {
 	uci commit haproxy
 
 	log_info "Virtual host added: $domain -> $backend"
+
+	# Regenerate GK2 Hub landing page if generator exists
+	[ -x /usr/bin/gk2hub-generate ] && /usr/bin/gk2hub-generate >/dev/null 2>&1 &
 }
 
 cmd_vhost_remove() {
@@ -1666,6 +1669,9 @@ cmd_vhost_remove() {
 	uci commit haproxy
 
 	log_info "Virtual host removed: $domain"
+
+	# Regenerate GK2 Hub landing page if generator exists
+	[ -x /usr/bin/gk2hub-generate ] && /usr/bin/gk2hub-generate >/dev/null 2>&1 &
 }
 
 # ===========================================
@@ -1813,6 +1819,9 @@ cmd_reload() {
 		log_error "Could not signal HAProxy for reload"
 
 	log_info "Reload complete"
+
+	# Regenerate GK2 Hub landing page if generator exists
+	[ -x /usr/bin/gk2hub-generate ] && /usr/bin/gk2hub-generate >/dev/null 2>&1 &
 }
 
 cmd_validate() {

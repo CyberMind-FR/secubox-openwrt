@@ -6,7 +6,7 @@
 'require secubox/kiss-theme';
 
 /**
- * HAProxy Backends Management
+ * HAProxy Backends Management - KISS Style
  * Copyright (C) 2025 CyberMind.fr
  */
 
@@ -14,12 +14,6 @@ return view.extend({
 	title: _('Backends'),
 
 	load: function() {
-		// Load CSS
-		var cssLink = document.createElement('link');
-		cssLink.rel = 'stylesheet';
-		cssLink.href = L.resource('haproxy/dashboard.css');
-		document.head.appendChild(cssLink);
-
 		return api.listBackends().then(function(result) {
 			var backends = (result && result.backends) || result || [];
 			return Promise.all([
@@ -37,6 +31,7 @@ return view.extend({
 		var servers = (serversResult && serversResult.servers) || serversResult || [];
 		var exposedResult = data[2] || {};
 		self.exposedServices = (exposedResult && exposedResult.services) || exposedResult || [];
+		var K = KissTheme;
 
 		// Group servers by backend
 		var serversByBackend = {};
@@ -47,189 +42,188 @@ return view.extend({
 			serversByBackend[s.backend].push(s);
 		});
 
-		var content = E('div', { 'class': 'haproxy-dashboard' }, [
+		var content = K.E('div', {}, [
 			// Page Header
-			E('div', { 'class': 'hp-page-header' }, [
-				E('div', {}, [
-					E('h1', { 'class': 'hp-page-title' }, [
-						E('span', { 'class': 'hp-page-title-icon' }, '\u{1F5C4}'),
+			K.E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;' }, [
+				K.E('div', {}, [
+					K.E('h2', { 'style': 'margin: 0; font-size: 24px; display: flex; align-items: center; gap: 10px;' }, [
+						K.E('span', {}, '🗄️'),
 						'Backends'
 					]),
-					E('p', { 'class': 'hp-page-subtitle' }, 'Manage backend server pools and load balancing settings')
-				]),
-				E('a', {
-					'href': L.url('admin/services/haproxy/overview'),
-					'class': 'hp-btn hp-btn-secondary'
-				}, ['\u2190', ' Back to Overview'])
-			]),
-
-			// Add Backend Card
-			E('div', { 'class': 'hp-card' }, [
-				E('div', { 'class': 'hp-card-header' }, [
-					E('div', { 'class': 'hp-card-title' }, [
-						E('span', { 'class': 'hp-card-title-icon' }, '\u2795'),
-						'Add Backend'
-					])
-				]),
-				E('div', { 'class': 'hp-card-body' }, [
-					E('div', { 'class': 'hp-grid hp-grid-2', 'style': 'gap: 16px;' }, [
-						E('div', { 'class': 'hp-form-group' }, [
-							E('label', { 'class': 'hp-form-label' }, 'Name'),
-							E('input', {
-								'type': 'text',
-								'id': 'new-backend-name',
-								'class': 'hp-form-input',
-								'placeholder': 'web-servers'
-							})
-						]),
-						E('div', { 'class': 'hp-form-group' }, [
-							E('label', { 'class': 'hp-form-label' }, 'Mode'),
-							E('select', { 'id': 'new-backend-mode', 'class': 'hp-form-input' }, [
-								E('option', { 'value': 'http', 'selected': true }, 'HTTP'),
-								E('option', { 'value': 'tcp' }, 'TCP')
-							])
-						]),
-						E('div', { 'class': 'hp-form-group' }, [
-							E('label', { 'class': 'hp-form-label' }, 'Balance Algorithm'),
-							E('select', { 'id': 'new-backend-balance', 'class': 'hp-form-input' }, [
-								E('option', { 'value': 'roundrobin', 'selected': true }, 'Round Robin'),
-								E('option', { 'value': 'leastconn' }, 'Least Connections'),
-								E('option', { 'value': 'source' }, 'Source IP Hash'),
-								E('option', { 'value': 'uri' }, 'URI Hash'),
-								E('option', { 'value': 'first' }, 'First Available')
-							])
-						]),
-						E('div', { 'class': 'hp-form-group' }, [
-							E('label', { 'class': 'hp-form-label' }, 'Health Check'),
-							E('select', { 'id': 'new-backend-health', 'class': 'hp-form-input' }, [
-								E('option', { 'value': '' }, 'None'),
-								E('option', { 'value': 'httpchk' }, 'HTTP Check')
-							])
-						]),
-						E('div', { 'class': 'hp-form-group' }, [
-							E('label', { 'class': 'hp-form-label' }, 'Health Check URI'),
-							E('input', {
-								'type': 'text',
-								'id': 'new-backend-health-uri',
-								'class': 'hp-form-input',
-								'placeholder': '/_stcore/health or /health'
-							})
-						])
-					]),
-					E('button', {
-						'class': 'hp-btn hp-btn-primary',
-						'style': 'margin-top: 16px;',
-						'click': function() { self.handleAddBackend(); }
-					}, ['\u2795', ' Add Backend'])
+					K.E('p', { 'style': 'margin: 4px 0 0; color: var(--kiss-muted, #94a3b8); font-size: 14px;' },
+						'Manage backend server pools and load balancing settings')
 				])
 			]),
 
-			// Backends List
-			E('div', { 'class': 'hp-card' }, [
-				E('div', { 'class': 'hp-card-header' }, [
-					E('div', { 'class': 'hp-card-title' }, [
-						E('span', { 'class': 'hp-card-title-icon' }, '\u{1F4CB}'),
-						'Configured Backends (' + backends.length + ')'
+			// Add Backend Card
+			K.E('div', { 'class': 'kiss-card' }, [
+				K.E('div', { 'class': 'kiss-card-title' }, ['➕ ', 'Add Backend']),
+				K.E('div', { 'class': 'kiss-grid kiss-grid-2', 'style': 'gap: 16px; margin-bottom: 16px;' }, [
+					K.E('div', {}, [
+						K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Name'),
+						K.E('input', {
+							'type': 'text',
+							'id': 'new-backend-name',
+							'placeholder': 'web-servers',
+							'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
+						})
+					]),
+					K.E('div', {}, [
+						K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Mode'),
+						K.E('select', {
+							'id': 'new-backend-mode',
+							'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
+						}, [
+							K.E('option', { 'value': 'http', 'selected': true }, 'HTTP'),
+							K.E('option', { 'value': 'tcp' }, 'TCP')
+						])
+					]),
+					K.E('div', {}, [
+						K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Balance Algorithm'),
+						K.E('select', {
+							'id': 'new-backend-balance',
+							'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
+						}, [
+							K.E('option', { 'value': 'roundrobin', 'selected': true }, 'Round Robin'),
+							K.E('option', { 'value': 'leastconn' }, 'Least Connections'),
+							K.E('option', { 'value': 'source' }, 'Source IP Hash'),
+							K.E('option', { 'value': 'uri' }, 'URI Hash'),
+							K.E('option', { 'value': 'first' }, 'First Available')
+						])
+					]),
+					K.E('div', {}, [
+						K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Health Check'),
+						K.E('select', {
+							'id': 'new-backend-health',
+							'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
+						}, [
+							K.E('option', { 'value': '' }, 'None'),
+							K.E('option', { 'value': 'httpchk' }, 'HTTP Check')
+						])
+					]),
+					K.E('div', { 'style': 'grid-column: span 2;' }, [
+						K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Health Check URI'),
+						K.E('input', {
+							'type': 'text',
+							'id': 'new-backend-health-uri',
+							'placeholder': '/_stcore/health or /health',
+							'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
+						})
 					])
 				]),
-				E('div', { 'class': 'hp-card-body' },
-					backends.length === 0 ? [
-						E('div', { 'class': 'hp-empty' }, [
-							E('div', { 'class': 'hp-empty-icon' }, '\u{1F5C4}'),
-							E('div', { 'class': 'hp-empty-text' }, 'No backends configured'),
-							E('div', { 'class': 'hp-empty-hint' }, 'Add a backend above to create a server pool')
-						])
-					] : [
-						E('div', { 'class': 'hp-backends-grid' },
-							backends.map(function(backend) {
-								return self.renderBackendCard(backend, serversByBackend[backend.id] || []);
-							})
-						)
-					]
-				)
+				K.E('button', {
+					'class': 'kiss-btn kiss-btn-green',
+					'click': function() { self.handleAddBackend(); }
+				}, '➕ Add Backend')
+			]),
+
+			// Backends List
+			K.E('div', { 'class': 'kiss-card' }, [
+				K.E('div', { 'class': 'kiss-card-title' }, ['📋 ', 'Configured Backends (', String(backends.length), ')']),
+				backends.length === 0 ?
+					K.E('div', { 'style': 'text-align: center; padding: 40px 20px; color: var(--kiss-muted);' }, [
+						K.E('div', { 'style': 'font-size: 48px; margin-bottom: 12px;' }, '🗄️'),
+						K.E('div', { 'style': 'font-size: 16px;' }, 'No backends configured'),
+						K.E('div', { 'style': 'font-size: 13px; margin-top: 6px;' }, 'Add a backend above to create a server pool')
+					]) :
+					K.E('div', { 'style': 'display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 16px;' },
+						backends.map(function(backend) {
+							return self.renderBackendCard(backend, serversByBackend[backend.id] || []);
+						})
+					)
 			])
 		]);
 
-		return KissTheme.wrap([content], 'admin/services/haproxy/backends');
+		return KissTheme.wrap(content, 'admin/services/haproxy/backends');
 	},
 
 	renderBackendCard: function(backend, servers) {
 		var self = this;
+		var K = KissTheme;
 
-		return E('div', { 'class': 'hp-backend-card', 'data-id': backend.id }, [
+		return K.E('div', {
+			'data-id': backend.id,
+			'style': 'background: var(--kiss-bg2, #111827); border: 1px solid var(--kiss-line, #1e293b); border-radius: 12px; overflow: hidden;'
+		}, [
 			// Header
-			E('div', { 'class': 'hp-backend-header' }, [
-				E('div', {}, [
-					E('h4', { 'style': 'margin: 0 0 4px 0;' }, backend.name),
-					E('small', { 'style': 'color: var(--hp-text-muted);' }, [
+			K.E('div', { 'style': 'padding: 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--kiss-line, #1e293b);' }, [
+				K.E('div', {}, [
+					K.E('h4', { 'style': 'margin: 0 0 4px 0; font-size: 16px; font-weight: 600;' }, backend.name),
+					K.E('small', { 'style': 'color: var(--kiss-muted, #94a3b8); font-size: 12px;' }, [
 						backend.mode.toUpperCase(),
-						' \u2022 ',
+						' • ',
 						this.getBalanceLabel(backend.balance)
 					])
 				]),
-				E('div', { 'style': 'display: flex; gap: 8px; align-items: center;' }, [
-					E('span', {
-						'class': 'hp-badge ' + (backend.enabled ? 'hp-badge-success' : 'hp-badge-danger')
-					}, backend.enabled ? 'Enabled' : 'Disabled'),
-					E('button', {
-						'class': 'hp-btn hp-btn-sm hp-btn-primary',
+				K.E('div', { 'style': 'display: flex; gap: 8px; align-items: center;' }, [
+					K.badge(backend.enabled ? '✅ Enabled' : '⛔ Disabled', backend.enabled ? 'green' : 'red'),
+					K.E('button', {
+						'class': 'kiss-btn',
+						'style': 'padding: 6px 10px; font-size: 12px;',
 						'click': function() { self.showEditBackendModal(backend); }
-					}, '\u270F')
+					}, '✏️')
 				])
 			]),
 
 			// Health check info
-			backend.health_check ? E('div', { 'style': 'padding: 8px 16px; background: var(--hp-bg-tertiary, #f5f5f5); font-size: 12px; color: var(--hp-text-muted);' }, [
-				'\u{1F3E5} Health Check: ',
-				E('code', {}, backend.health_check + (backend.health_check_uri ? ' ' + backend.health_check_uri : ''))
+			backend.health_check ? K.E('div', { 'style': 'padding: 8px 16px; background: var(--kiss-bg, #0f172a); font-size: 12px; color: var(--kiss-muted, #94a3b8);' }, [
+				'🏥 Health Check: ',
+				K.E('code', { 'style': 'background: var(--kiss-bg2); padding: 2px 6px; border-radius: 4px;' },
+					backend.health_check + (backend.health_check_uri ? ' ' + backend.health_check_uri : ''))
 			]) : null,
 
 			// Servers
-			E('div', { 'class': 'hp-backend-servers' },
+			K.E('div', { 'style': 'padding: 12px 16px;' },
 				servers.length === 0 ? [
-					E('div', { 'style': 'padding: 20px; text-align: center; color: var(--hp-text-muted);' }, [
-						E('div', {}, '\u{1F4E6} No servers configured'),
-						E('small', {}, 'Add a server to this backend')
+					K.E('div', { 'style': 'padding: 20px; text-align: center; color: var(--kiss-muted, #94a3b8);' }, [
+						K.E('div', {}, '📦 No servers configured'),
+						K.E('small', {}, 'Add a server to this backend')
 					])
 				] : servers.map(function(server) {
-					return E('div', { 'class': 'hp-server-item' }, [
-						E('div', { 'class': 'hp-server-info' }, [
-							E('span', { 'class': 'hp-server-name' }, server.name),
-							E('span', { 'class': 'hp-server-address' }, server.address + ':' + server.port)
+					return K.E('div', {
+						'style': 'display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: var(--kiss-bg, #0f172a); border-radius: 8px; margin-bottom: 8px;'
+					}, [
+						K.E('div', {}, [
+							K.E('span', { 'style': 'font-weight: 500; font-size: 14px;' }, server.name),
+							K.E('span', { 'style': 'color: var(--kiss-muted); font-size: 13px; margin-left: 10px; font-family: monospace;' },
+								server.address + ':' + server.port)
 						]),
-						E('div', { 'class': 'hp-server-actions' }, [
-							E('span', { 'class': 'hp-badge hp-badge-secondary', 'style': 'font-size: 11px;' }, 'W:' + server.weight),
-							server.check ? E('span', { 'class': 'hp-badge hp-badge-info', 'style': 'font-size: 11px;' }, '\u2713 Check') : null,
-							E('button', {
-								'class': 'hp-btn hp-btn-sm hp-btn-secondary',
-								'style': 'padding: 2px 6px;',
+						K.E('div', { 'style': 'display: flex; gap: 6px; align-items: center;' }, [
+							K.E('span', { 'style': 'font-size: 11px; padding: 2px 6px; background: var(--kiss-bg2); border-radius: 4px; color: var(--kiss-muted);' }, 'W:' + server.weight),
+							server.check ? K.badge('✓ Check', 'blue') : null,
+							K.E('button', {
+								'class': 'kiss-btn',
+								'style': 'padding: 4px 8px; font-size: 11px;',
 								'click': function() { self.showEditServerModal(server, backend); }
-							}, '\u270F'),
-							E('button', {
-								'class': 'hp-btn hp-btn-sm hp-btn-danger',
-								'style': 'padding: 2px 6px;',
+							}, '✏️'),
+							K.E('button', {
+								'class': 'kiss-btn kiss-btn-red',
+								'style': 'padding: 4px 8px; font-size: 11px;',
 								'click': function() { self.handleDeleteServer(server); }
-							}, '\u2715')
+							}, '✕')
 						])
 					]);
 				})
 			),
 
 			// Footer Actions
-			E('div', { 'class': 'hp-backend-footer' }, [
-				E('button', {
-					'class': 'hp-btn hp-btn-sm hp-btn-primary',
+			K.E('div', { 'style': 'padding: 12px 16px; border-top: 1px solid var(--kiss-line, #1e293b); display: flex; justify-content: space-between; align-items: center;' }, [
+				K.E('button', {
+					'class': 'kiss-btn kiss-btn-blue',
+					'style': 'padding: 6px 12px; font-size: 12px;',
 					'click': function() { self.showAddServerModal(backend); }
-				}, ['\u2795', ' Add Server']),
-				E('div', { 'style': 'display: flex; gap: 8px;' }, [
-					E('button', {
-						'class': 'hp-btn hp-btn-sm ' + (backend.enabled ? 'hp-btn-secondary' : 'hp-btn-success'),
+				}, '➕ Add Server'),
+				K.E('div', { 'style': 'display: flex; gap: 8px;' }, [
+					K.E('button', {
+						'class': 'kiss-btn ' + (backend.enabled ? '' : 'kiss-btn-green'),
+						'style': 'padding: 6px 12px; font-size: 12px;',
 						'click': function() { self.handleToggleBackend(backend); }
-					}, backend.enabled ? 'Disable' : 'Enable'),
-					E('button', {
-						'class': 'hp-btn hp-btn-sm hp-btn-danger',
+					}, backend.enabled ? '⏸️ Disable' : '▶️ Enable'),
+					K.E('button', {
+						'class': 'kiss-btn kiss-btn-red',
+						'style': 'padding: 6px 12px; font-size: 12px;',
 						'click': function() { self.handleDeleteBackend(backend); }
-					}, 'Delete')
+					}, '🗑️ Delete')
 				])
 			])
 		]);
@@ -276,82 +270,75 @@ return view.extend({
 
 	showEditBackendModal: function(backend) {
 		var self = this;
+		var K = KissTheme;
 
-		ui.showModal('Edit Backend: ' + backend.name, [
-			E('div', { 'style': 'max-width: 500px;' }, [
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Name'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
-							'type': 'text',
-							'id': 'edit-backend-name',
-							'class': 'cbi-input-text',
-							'value': backend.name,
-							'style': 'width: 100%;'
-						})
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Mode'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('select', { 'id': 'edit-backend-mode', 'class': 'cbi-input-select', 'style': 'width: 100%;' }, [
-							E('option', { 'value': 'http', 'selected': backend.mode === 'http' }, 'HTTP'),
-							E('option', { 'value': 'tcp', 'selected': backend.mode === 'tcp' }, 'TCP')
-						])
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Balance Algorithm'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('select', { 'id': 'edit-backend-balance', 'class': 'cbi-input-select', 'style': 'width: 100%;' }, [
-							E('option', { 'value': 'roundrobin', 'selected': backend.balance === 'roundrobin' }, 'Round Robin'),
-							E('option', { 'value': 'leastconn', 'selected': backend.balance === 'leastconn' }, 'Least Connections'),
-							E('option', { 'value': 'source', 'selected': backend.balance === 'source' }, 'Source IP Hash'),
-							E('option', { 'value': 'uri', 'selected': backend.balance === 'uri' }, 'URI Hash'),
-							E('option', { 'value': 'first', 'selected': backend.balance === 'first' }, 'First Available')
-						])
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Health Check'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('select', { 'id': 'edit-backend-health', 'class': 'cbi-input-select', 'style': 'width: 100%;' }, [
-							E('option', { 'value': '', 'selected': !backend.health_check }, 'None'),
-							E('option', { 'value': 'httpchk', 'selected': backend.health_check === 'httpchk' }, 'HTTP Check')
-						])
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Health Check URI'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
-							'type': 'text',
-							'id': 'edit-backend-health-uri',
-							'class': 'cbi-input-text',
-							'value': backend.health_check_uri || '',
-							'placeholder': '/_stcore/health or /health',
-							'style': 'width: 100%;'
-						}),
-						E('small', { 'style': 'color: var(--hp-text-muted);' }, 'For Streamlit use: /_stcore/health')
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Status'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('label', {}, [
-							E('input', { 'type': 'checkbox', 'id': 'edit-backend-enabled', 'checked': backend.enabled }),
-							' Enabled'
-						])
-					])
+		var modalContent = K.E('div', { 'style': 'max-width: 480px;' }, [
+			K.E('div', { 'style': 'margin-bottom: 16px;' }, [
+				K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Name'),
+				K.E('input', {
+					'type': 'text',
+					'id': 'edit-backend-name',
+					'value': backend.name,
+					'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
+				})
+			]),
+			K.E('div', { 'style': 'margin-bottom: 16px;' }, [
+				K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Mode'),
+				K.E('select', {
+					'id': 'edit-backend-mode',
+					'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
+				}, [
+					K.E('option', { 'value': 'http', 'selected': backend.mode === 'http' }, 'HTTP'),
+					K.E('option', { 'value': 'tcp', 'selected': backend.mode === 'tcp' }, 'TCP')
 				])
 			]),
-			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px;' }, [
-				E('button', {
-					'class': 'hp-btn hp-btn-secondary',
+			K.E('div', { 'style': 'margin-bottom: 16px;' }, [
+				K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Balance Algorithm'),
+				K.E('select', {
+					'id': 'edit-backend-balance',
+					'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
+				}, [
+					K.E('option', { 'value': 'roundrobin', 'selected': backend.balance === 'roundrobin' }, 'Round Robin'),
+					K.E('option', { 'value': 'leastconn', 'selected': backend.balance === 'leastconn' }, 'Least Connections'),
+					K.E('option', { 'value': 'source', 'selected': backend.balance === 'source' }, 'Source IP Hash'),
+					K.E('option', { 'value': 'uri', 'selected': backend.balance === 'uri' }, 'URI Hash'),
+					K.E('option', { 'value': 'first', 'selected': backend.balance === 'first' }, 'First Available')
+				])
+			]),
+			K.E('div', { 'style': 'margin-bottom: 16px;' }, [
+				K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Health Check'),
+				K.E('select', {
+					'id': 'edit-backend-health',
+					'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
+				}, [
+					K.E('option', { 'value': '', 'selected': !backend.health_check }, 'None'),
+					K.E('option', { 'value': 'httpchk', 'selected': backend.health_check === 'httpchk' }, 'HTTP Check')
+				])
+			]),
+			K.E('div', { 'style': 'margin-bottom: 16px;' }, [
+				K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Health Check URI'),
+				K.E('input', {
+					'type': 'text',
+					'id': 'edit-backend-health-uri',
+					'value': backend.health_check_uri || '',
+					'placeholder': '/_stcore/health or /health',
+					'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
+				}),
+				K.E('small', { 'style': 'color: var(--kiss-muted); font-size: 11px; margin-top: 4px; display: block;' }, 'For Streamlit use: /_stcore/health')
+			]),
+			K.E('div', { 'style': 'margin-bottom: 20px;' }, [
+				K.E('label', { 'style': 'display: flex; align-items: center; gap: 8px; cursor: pointer;' }, [
+					K.E('input', { 'type': 'checkbox', 'id': 'edit-backend-enabled', 'checked': backend.enabled }),
+					'✅ Enabled'
+				])
+			]),
+			K.E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px;' }, [
+				K.E('button', {
+					'class': 'kiss-btn',
 					'click': ui.hideModal
 				}, 'Cancel'),
-				E('button', {
-					'class': 'hp-btn hp-btn-primary',
+				K.E('button', {
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() {
 						var name = document.getElementById('edit-backend-name').value.trim();
 						var mode = document.getElementById('edit-backend-mode').value;
@@ -375,9 +362,11 @@ return view.extend({
 							}
 						});
 					}
-				}, 'Save Changes')
+				}, '💾 Save Changes')
 			])
 		]);
+
+		ui.showModal('Edit: ' + backend.name, [modalContent]);
 	},
 
 	handleToggleBackend: function(backend) {
@@ -397,21 +386,20 @@ return view.extend({
 
 	handleDeleteBackend: function(backend) {
 		var self = this;
+		var K = KissTheme;
 
-		ui.showModal('Delete Backend', [
-			E('div', { 'style': 'margin-bottom: 16px;' }, [
-				E('p', { 'style': 'margin: 0;' }, 'Are you sure you want to delete this backend and all its servers?'),
-				E('div', {
-					'style': 'margin-top: 12px; padding: 12px; background: var(--hp-bg-tertiary, #f5f5f5); border-radius: 8px; font-family: monospace;'
-				}, backend.name)
-			]),
-			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px;' }, [
-				E('button', {
-					'class': 'hp-btn hp-btn-secondary',
+		var modalContent = K.E('div', {}, [
+			K.E('p', { 'style': 'margin: 0 0 12px;' }, 'Are you sure you want to delete this backend and all its servers?'),
+			K.E('div', {
+				'style': 'padding: 12px 16px; background: var(--kiss-bg2, #111827); border-radius: 8px; font-family: monospace; margin-bottom: 20px;'
+			}, backend.name),
+			K.E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px;' }, [
+				K.E('button', {
+					'class': 'kiss-btn',
 					'click': ui.hideModal
 				}, 'Cancel'),
-				E('button', {
-					'class': 'hp-btn hp-btn-danger',
+				K.E('button', {
+					'class': 'kiss-btn kiss-btn-red',
 					'click': function() {
 						ui.hideModal();
 						api.deleteBackend(backend.id).then(function(res) {
@@ -423,21 +411,24 @@ return view.extend({
 							}
 						});
 					}
-				}, 'Delete')
+				}, '🗑️ Delete')
 			])
 		]);
+
+		ui.showModal('Delete Backend', [modalContent]);
 	},
 
 	showAddServerModal: function(backend) {
 		var self = this;
+		var K = KissTheme;
 		var exposedServices = self.exposedServices || [];
 
 		// Build service selector options
-		var serviceOptions = [E('option', { 'value': '' }, '-- Select a service --')];
+		var serviceOptions = [K.E('option', { 'value': '' }, '-- Select a service --')];
 		exposedServices.forEach(function(svc) {
 			var label = svc.name + ' (' + svc.address + ':' + svc.port + ')';
 			if (svc.category) label += ' [' + svc.category + ']';
-			serviceOptions.push(E('option', {
+			serviceOptions.push(K.E('option', {
 				'value': JSON.stringify(svc),
 				'data-name': svc.name,
 				'data-address': svc.address,
@@ -445,101 +436,83 @@ return view.extend({
 			}, label));
 		});
 
-		ui.showModal('Add Server to ' + backend.name, [
-			E('div', { 'style': 'max-width: 500px;' }, [
-				// Quick service selector
-				exposedServices.length > 0 ? E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Quick Select'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('select', {
-							'id': 'modal-service-select',
-							'class': 'cbi-input-select',
-							'style': 'width: 100%;',
-							'change': function(ev) {
-								var val = ev.target.value;
-								if (val) {
-									var svc = JSON.parse(val);
-									document.getElementById('modal-server-name').value = svc.name;
-									document.getElementById('modal-server-address').value = svc.address;
-									document.getElementById('modal-server-port').value = svc.port;
-								}
-							}
-						}, serviceOptions),
-						E('small', { 'style': 'color: var(--hp-text-muted); display: block; margin-top: 4px;' },
-							'Select a known service to auto-fill details, or enter manually below')
-					])
-				]) : null,
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Server Name'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
-							'type': 'text',
-							'id': 'modal-server-name',
-							'class': 'cbi-input-text',
-							'placeholder': 'server1',
-							'style': 'width: 100%;'
-						})
-					])
+		var modalContent = K.E('div', { 'style': 'max-width: 480px;' }, [
+			// Quick service selector
+			exposedServices.length > 0 ? K.E('div', { 'style': 'margin-bottom: 16px;' }, [
+				K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Quick Select'),
+				K.E('select', {
+					'id': 'modal-service-select',
+					'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;',
+					'change': function(ev) {
+						var val = ev.target.value;
+						if (val) {
+							var svc = JSON.parse(val);
+							document.getElementById('modal-server-name').value = svc.name;
+							document.getElementById('modal-server-address').value = svc.address;
+							document.getElementById('modal-server-port').value = svc.port;
+						}
+					}
+				}, serviceOptions),
+				K.E('small', { 'style': 'color: var(--kiss-muted); font-size: 11px; margin-top: 4px; display: block;' },
+					'Select a known service to auto-fill details, or enter manually below')
+			]) : null,
+			K.E('div', { 'style': 'margin-bottom: 16px;' }, [
+				K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Server Name'),
+				K.E('input', {
+					'type': 'text',
+					'id': 'modal-server-name',
+					'placeholder': 'server1',
+					'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
+				})
+			]),
+			K.E('div', { 'class': 'kiss-grid kiss-grid-2', 'style': 'gap: 16px; margin-bottom: 16px;' }, [
+				K.E('div', {}, [
+					K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Address'),
+					K.E('input', {
+						'type': 'text',
+						'id': 'modal-server-address',
+						'placeholder': '192.168.1.10',
+						'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
+					})
 				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Address'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
-							'type': 'text',
-							'id': 'modal-server-address',
-							'class': 'cbi-input-text',
-							'placeholder': '192.168.1.10',
-							'style': 'width: 100%;'
-						})
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Port'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
-							'type': 'number',
-							'id': 'modal-server-port',
-							'class': 'cbi-input-text',
-							'placeholder': '8080',
-							'value': '80',
-							'min': '1',
-							'max': '65535',
-							'style': 'width: 100%;'
-						})
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Weight'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
-							'type': 'number',
-							'id': 'modal-server-weight',
-							'class': 'cbi-input-text',
-							'value': '100',
-							'min': '0',
-							'max': '256',
-							'style': 'width: 100%;'
-						}),
-						E('small', { 'style': 'color: var(--hp-text-muted);' }, 'Higher weight = more traffic (0-256)')
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Options'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('label', {}, [
-							E('input', { 'type': 'checkbox', 'id': 'modal-server-check', 'checked': true }),
-							' Enable health check'
-						])
-					])
+				K.E('div', {}, [
+					K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Port'),
+					K.E('input', {
+						'type': 'number',
+						'id': 'modal-server-port',
+						'placeholder': '8080',
+						'value': '80',
+						'min': '1',
+						'max': '65535',
+						'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
+					})
 				])
 			]),
-			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px;' }, [
-				E('button', {
-					'class': 'hp-btn hp-btn-secondary',
+			K.E('div', { 'style': 'margin-bottom: 16px;' }, [
+				K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Weight'),
+				K.E('input', {
+					'type': 'number',
+					'id': 'modal-server-weight',
+					'value': '100',
+					'min': '0',
+					'max': '256',
+					'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
+				}),
+				K.E('small', { 'style': 'color: var(--kiss-muted); font-size: 11px; margin-top: 4px; display: block;' }, 'Higher weight = more traffic (0-256)')
+			]),
+			K.E('div', { 'style': 'margin-bottom: 20px;' }, [
+				K.E('label', { 'style': 'display: flex; align-items: center; gap: 8px; cursor: pointer;' }, [
+					K.E('input', { 'type': 'checkbox', 'id': 'modal-server-check', 'checked': true }),
+					'🏥 Enable health check'
+				])
+			]),
+			K.E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px;' }, [
+				K.E('button', {
+					'class': 'kiss-btn',
 					'click': ui.hideModal
 				}, 'Cancel'),
-				E('button', {
-					'class': 'hp-btn hp-btn-primary',
+				K.E('button', {
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() {
 						var name = document.getElementById('modal-server-name').value.trim();
 						var address = document.getElementById('modal-server-address').value.trim();
@@ -562,91 +535,77 @@ return view.extend({
 							}
 						});
 					}
-				}, 'Add Server')
+				}, '➕ Add Server')
 			])
 		]);
+
+		ui.showModal('Add Server to ' + backend.name, [modalContent]);
 	},
 
 	showEditServerModal: function(server, backend) {
 		var self = this;
+		var K = KissTheme;
 
-		ui.showModal('Edit Server: ' + server.name, [
-			E('div', { 'style': 'max-width: 500px;' }, [
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Server Name'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
-							'type': 'text',
-							'id': 'edit-server-name',
-							'class': 'cbi-input-text',
-							'value': server.name,
-							'style': 'width: 100%;'
-						})
-					])
+		var modalContent = K.E('div', { 'style': 'max-width: 480px;' }, [
+			K.E('div', { 'style': 'margin-bottom: 16px;' }, [
+				K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Server Name'),
+				K.E('input', {
+					'type': 'text',
+					'id': 'edit-server-name',
+					'value': server.name,
+					'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
+				})
+			]),
+			K.E('div', { 'class': 'kiss-grid kiss-grid-2', 'style': 'gap: 16px; margin-bottom: 16px;' }, [
+				K.E('div', {}, [
+					K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Address'),
+					K.E('input', {
+						'type': 'text',
+						'id': 'edit-server-address',
+						'value': server.address,
+						'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
+					})
 				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Address'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
-							'type': 'text',
-							'id': 'edit-server-address',
-							'class': 'cbi-input-text',
-							'value': server.address,
-							'style': 'width: 100%;'
-						})
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Port'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
-							'type': 'number',
-							'id': 'edit-server-port',
-							'class': 'cbi-input-text',
-							'value': server.port,
-							'min': '1',
-							'max': '65535',
-							'style': 'width: 100%;'
-						})
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Weight'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
-							'type': 'number',
-							'id': 'edit-server-weight',
-							'class': 'cbi-input-text',
-							'value': server.weight,
-							'min': '0',
-							'max': '256',
-							'style': 'width: 100%;'
-						})
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Options'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('div', { 'style': 'display: flex; flex-direction: column; gap: 8px;' }, [
-							E('label', {}, [
-								E('input', { 'type': 'checkbox', 'id': 'edit-server-check', 'checked': server.check }),
-								' Enable health check'
-							]),
-							E('label', {}, [
-								E('input', { 'type': 'checkbox', 'id': 'edit-server-enabled', 'checked': server.enabled }),
-								' Enabled'
-							])
-						])
-					])
+				K.E('div', {}, [
+					K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Port'),
+					K.E('input', {
+						'type': 'number',
+						'id': 'edit-server-port',
+						'value': server.port,
+						'min': '1',
+						'max': '65535',
+						'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
+					})
 				])
 			]),
-			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px;' }, [
-				E('button', {
-					'class': 'hp-btn hp-btn-secondary',
+			K.E('div', { 'style': 'margin-bottom: 16px;' }, [
+				K.E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted); text-transform: uppercase; display: block; margin-bottom: 6px;' }, 'Weight'),
+				K.E('input', {
+					'type': 'number',
+					'id': 'edit-server-weight',
+					'value': server.weight,
+					'min': '0',
+					'max': '256',
+					'style': 'width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--kiss-line, #1e293b); background: var(--kiss-bg2, #111827); color: var(--kiss-text, #e2e8f0); font-size: 14px;'
+				})
+			]),
+			K.E('div', { 'style': 'margin-bottom: 20px; display: flex; flex-direction: column; gap: 10px;' }, [
+				K.E('label', { 'style': 'display: flex; align-items: center; gap: 8px; cursor: pointer;' }, [
+					K.E('input', { 'type': 'checkbox', 'id': 'edit-server-check', 'checked': server.check }),
+					'🏥 Enable health check'
+				]),
+				K.E('label', { 'style': 'display: flex; align-items: center; gap: 8px; cursor: pointer;' }, [
+					K.E('input', { 'type': 'checkbox', 'id': 'edit-server-enabled', 'checked': server.enabled }),
+					'✅ Enabled'
+				])
+			]),
+			K.E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px;' }, [
+				K.E('button', {
+					'class': 'kiss-btn',
 					'click': ui.hideModal
 				}, 'Cancel'),
-				E('button', {
-					'class': 'hp-btn hp-btn-primary',
+				K.E('button', {
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() {
 						var name = document.getElementById('edit-server-name').value.trim();
 						var address = document.getElementById('edit-server-address').value.trim();
@@ -671,28 +630,29 @@ return view.extend({
 							}
 						});
 					}
-				}, 'Save Changes')
+				}, '💾 Save Changes')
 			])
 		]);
+
+		ui.showModal('Edit: ' + server.name, [modalContent]);
 	},
 
 	handleDeleteServer: function(server) {
 		var self = this;
+		var K = KissTheme;
 
-		ui.showModal('Delete Server', [
-			E('div', { 'style': 'margin-bottom: 16px;' }, [
-				E('p', { 'style': 'margin: 0;' }, 'Are you sure you want to delete this server?'),
-				E('div', {
-					'style': 'margin-top: 12px; padding: 12px; background: var(--hp-bg-tertiary, #f5f5f5); border-radius: 8px; font-family: monospace;'
-				}, server.name + ' (' + server.address + ':' + server.port + ')')
-			]),
-			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px;' }, [
-				E('button', {
-					'class': 'hp-btn hp-btn-secondary',
+		var modalContent = K.E('div', {}, [
+			K.E('p', { 'style': 'margin: 0 0 12px;' }, 'Are you sure you want to delete this server?'),
+			K.E('div', {
+				'style': 'padding: 12px 16px; background: var(--kiss-bg2, #111827); border-radius: 8px; font-family: monospace; margin-bottom: 20px;'
+			}, server.name + ' (' + server.address + ':' + server.port + ')'),
+			K.E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px;' }, [
+				K.E('button', {
+					'class': 'kiss-btn',
 					'click': ui.hideModal
 				}, 'Cancel'),
-				E('button', {
-					'class': 'hp-btn hp-btn-danger',
+				K.E('button', {
+					'class': 'kiss-btn kiss-btn-red',
 					'click': function() {
 						ui.hideModal();
 						var inline = server.inline ? 1 : 0;
@@ -705,30 +665,31 @@ return view.extend({
 							}
 						});
 					}
-				}, 'Delete')
+				}, '🗑️ Delete')
 			])
 		]);
+
+		ui.showModal('Delete Server', [modalContent]);
 	},
 
 	showToast: function(message, type) {
-		var existing = document.querySelector('.hp-toast');
+		var existing = document.querySelector('.kiss-toast');
 		if (existing) existing.remove();
 
-		var iconMap = {
-			'success': '\u2705',
-			'error': '\u274C',
-			'warning': '\u26A0\uFE0F'
+		var icons = { success: '✅', error: '❌', warning: '⚠️' };
+		var colors = {
+			success: 'var(--kiss-green, #00C853)',
+			error: 'var(--kiss-red, #FF1744)',
+			warning: 'var(--kiss-yellow, #fbbf24)'
 		};
 
-		var toast = E('div', { 'class': 'hp-toast ' + (type || '') }, [
-			E('span', {}, iconMap[type] || '\u2139\uFE0F'),
-			message
-		]);
-		document.body.appendChild(toast);
+		var toast = document.createElement('div');
+		toast.className = 'kiss-toast';
+		toast.style.cssText = 'position: fixed; bottom: 80px; right: 20px; padding: 12px 20px; border-radius: 8px; background: var(--kiss-card, #161e2e); border: 1px solid ' + (colors[type] || 'var(--kiss-line)') + '; color: var(--kiss-text, #e2e8f0); font-size: 14px; display: flex; align-items: center; gap: 10px; z-index: 9999; box-shadow: 0 4px 20px rgba(0,0,0,0.3);';
+		toast.innerHTML = (icons[type] || 'ℹ️') + ' ' + message;
 
-		setTimeout(function() {
-			toast.remove();
-		}, 4000);
+		document.body.appendChild(toast);
+		setTimeout(function() { toast.remove(); }, 4000);
 	},
 
 	handleSaveApply: null,

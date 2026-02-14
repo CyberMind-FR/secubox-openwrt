@@ -1,0 +1,37 @@
+{
+	"admin/services/gotosocial": {
+		"title": "GoToSocial",
+		"order": 60,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-gotosocial"],
+			"uci": {"gotosocial": true}
+		}
+	},
+	"admin/services/gotosocial/overview": {
+		"title": "Overview",
+		"order": 1,
+		"action": {
+			"type": "view",
+			"path": "gotosocial/overview"
+		}
+	},
+	"admin/services/gotosocial/users": {
+		"title": "Users",
+		"order": 2,
+		"action": {
+			"type": "view",
+			"path": "gotosocial/users"
+		}
+	},
+	"admin/services/gotosocial/settings": {
+		"title": "Settings",
+		"order": 3,
+		"action": {
+			"type": "view",
+			"path": "gotosocial/settings"
+		}
+	}
+}

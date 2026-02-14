@@ -9,6 +9,10 @@ CLONE_DIR="/srv/secubox/clone"
 TFTP_ROOT="/srv/tftp"
 TOKENS_DIR="/var/run/secubox/clone-tokens"
 STATE_FILE="/var/run/secubox/cloner.state"
+HISTORY_FILE="/var/run/secubox/clone-history.json"
+BUILD_LOG="/tmp/cloner-build.log"
+SERIAL_PORT="/dev/ttyUSB0"
+SERIAL_BAUD="115200"
 
 # Detect device type
 detect_device() {
@@ -357,16 +361,16 @@ do_build_progress() {
 	if pgrep -f "secubox-cloner build" >/dev/null 2>&1; then
 		building=1
 		# Parse log for progress
-		if [ -f /tmp/cloner-build.log ]; then
-			log_tail=$(tail -5 /tmp/cloner-build.log 2>/dev/null | tr '\n' ' ' | cut -c1-200)
+		if [ -f "$BUILD_LOG" ]; then
+			log_tail=$(tail -5 "$BUILD_LOG" 2>/dev/null | tr '\n' ' ' | cut -c1-200)
 			# Estimate progress from log content
-			if grep -q "Downloading" /tmp/cloner-build.log 2>/dev/null; then
+			if grep -q "Downloading" "$BUILD_LOG" 2>/dev/null; then
 				stage="downloading"
 				progress=20
-			elif grep -q "Compiling\|Building" /tmp/cloner-build.log 2>/dev/null; then
+			elif grep -q "Compiling\|Building" "$BUILD_LOG" 2>/dev/null; then
 				stage="building"
 				progress=50
-			elif grep -q "Packaging\|Creating" /tmp/cloner-build.log 2>/dev/null; then
+			elif grep -q "Packaging\|Creating" "$BUILD_LOG" 2>/dev/null; then
 				stage="packaging"
 				progress=80
 			else
@@ -374,22 +378,770 @@ do_build_progress() {
 				progress=10
 			fi
 		fi
-	elif [ -f /tmp/cloner-build.log ]; then
+	elif [ -f "$BUILD_LOG" ]; then
 		# Build finished - check result
-		if grep -q "Build complete\|Successfully" /tmp/cloner-build.log 2>/dev/null; then
+		if grep -q "Build complete\|Successfully" "$BUILD_LOG" 2>/dev/null; then
 			stage="complete"
 			progress=100
-		elif grep -q "Error\|Failed\|error:" /tmp/cloner-build.log 2>/dev/null; then
+		elif grep -q "Error\|Failed\|error:" "$BUILD_LOG" 2>/dev/null; then
 			stage="failed"
 			progress=0
 		fi
-		log_tail=$(tail -5 /tmp/cloner-build.log 2>/dev/null | tr '\n' ' ' | cut -c1-200)
+		log_tail=$(tail -5 "$BUILD_LOG" 2>/dev/null | tr '\n' ' ' | cut -c1-200)
 	fi
 
 	json_add_boolean "building" "$building"
 	json_add_int "progress" "$progress"
 	json_add_string "stage" "$stage"
 	json_add_string "log" "$log_tail"
+	json_dump
+}
+
+# ============================================================================
+# Build Log Streaming
+# ============================================================================
+
+do_build_log() {
+	local input lines offset
+
+	read input
+	lines=$(echo "$input" | jsonfilter -e '@.lines' 2>/dev/null)
+	offset=$(echo "$input" | jsonfilter -e '@.offset' 2>/dev/null)
+	[ -z "$lines" ] && lines=50
+	[ -z "$offset" ] && offset=0
+
+	json_init
+
+	if [ -f "$BUILD_LOG" ]; then
+		local total_lines=$(wc -l < "$BUILD_LOG" 2>/dev/null || echo 0)
+		local content=""
+
+		if [ "$offset" -gt 0 ]; then
+			content=$(tail -n +"$offset" "$BUILD_LOG" 2>/dev/null | head -n "$lines" | base64 -w 0)
+		else
+			content=$(tail -n "$lines" "$BUILD_LOG" 2>/dev/null | base64 -w 0)
+		fi
+
+		json_add_boolean "exists" 1
+		json_add_int "total_lines" "$total_lines"
+		json_add_string "content" "$content"
+	else
+		json_add_boolean "exists" 0
+		json_add_int "total_lines" 0
+		json_add_string "content" ""
+	fi
+
+	json_dump
+}
+
+# ============================================================================
+# Serial Console
+# ============================================================================
+
+do_serial_ports() {
+	json_init
+	json_add_array "ports"
+
+	for port in /dev/ttyUSB* /dev/ttyACM*; do
+		[ -c "$port" ] || continue
+		json_add_object ""
+		json_add_string "path" "$port"
+		json_add_string "name" "$(basename "$port")"
+		# Try to detect if port is in use
+		if fuser "$port" >/dev/null 2>&1; then
+			json_add_boolean "in_use" 1
+		else
+			json_add_boolean "in_use" 0
+		fi
+		json_close_object
+	done
+
+	json_close_array
+	json_dump
+}
+
+SERIAL_LOG="/tmp/cloner-serial.log"
+SERIAL_PID="/var/run/cloner-serial.pid"
+
+do_serial_start() {
+	local input port
+
+	read input
+	port=$(echo "$input" | jsonfilter -e '@.port' 2>/dev/null)
+	[ -z "$port" ] && port="$SERIAL_PORT"
+
+	json_init
+
+	# Kill any existing monitor
+	[ -f "$SERIAL_PID" ] && kill $(cat "$SERIAL_PID") 2>/dev/null
+	rm -f "$SERIAL_PID"
+
+	if [ -c "$port" ]; then
+		# Clear log
+		: > "$SERIAL_LOG"
+		# Configure serial port
+		stty -F "$port" "$SERIAL_BAUD" cs8 -cstopb -parenb raw -echo 2>/dev/null
+		# Start background cat monitor - read from serial and append to log
+		(while true; do
+			cat "$port" >> "$SERIAL_LOG" 2>/dev/null
+			sleep 0.1
+		done) &
+		echo $! > "$SERIAL_PID"
+		json_add_boolean "success" 1
+		json_add_string "message" "Serial monitor started on $port"
+		json_add_string "port" "$port"
+		json_add_int "pid" "$(cat $SERIAL_PID)"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Port not found: $port"
+	fi
+
+	json_dump
+}
+
+do_serial_stop() {
+	json_init
+
+	if [ -f "$SERIAL_PID" ]; then
+		local pid=$(cat "$SERIAL_PID")
+		kill "$pid" 2>/dev/null
+		# Also kill any child processes
+		pkill -P "$pid" 2>/dev/null
+		rm -f "$SERIAL_PID"
+		json_add_boolean "success" 1
+		json_add_string "message" "Serial monitor stopped"
+	else
+		json_add_boolean "success" 1
+		json_add_string "message" "No monitor running"
+	fi
+
+	json_dump
+}
+
+do_serial_read() {
+	local input lines
+
+	read input
+	lines=$(echo "$input" | jsonfilter -e '@.lines' 2>/dev/null)
+	[ -z "$lines" ] && lines=100
+
+	json_init
+
+	local running=0
+	[ -f "$SERIAL_PID" ] && kill -0 $(cat "$SERIAL_PID") 2>/dev/null && running=1
+
+	json_add_boolean "running" "$running"
+
+	if [ -f "$SERIAL_LOG" ]; then
+		local content=$(tail -n "$lines" "$SERIAL_LOG" 2>/dev/null | base64 -w 0)
+		local total=$(wc -l < "$SERIAL_LOG" 2>/dev/null || echo 0)
+		local size=$(stat -c%s "$SERIAL_LOG" 2>/dev/null || echo 0)
+		json_add_boolean "exists" 1
+		json_add_int "total_lines" "$total"
+		json_add_int "size_bytes" "$size"
+		json_add_string "data" "$content"
+	else
+		json_add_boolean "exists" 0
+		json_add_int "total_lines" 0
+		json_add_int "size_bytes" 0
+		json_add_string "data" ""
+	fi
+
+	json_dump
+}
+
+do_serial_write() {
+	local input port cmd
+
+	read input
+	port=$(echo "$input" | jsonfilter -e '@.port' 2>/dev/null)
+	cmd=$(echo "$input" | jsonfilter -e '@.command' 2>/dev/null)
+	[ -z "$port" ] && port="$SERIAL_PORT"
+
+	json_init
+
+	if [ -z "$cmd" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "No command specified"
+	elif [ -c "$port" ]; then
+		# Configure and write to serial port
+		stty -F "$port" "$SERIAL_BAUD" cs8 -cstopb -parenb raw -echo 2>/dev/null
+		printf "%s\r\n" "$cmd" > "$port" 2>/dev/null
+		# Also log what we sent
+		echo "[TX] $cmd" >> "$SERIAL_LOG" 2>/dev/null
+		json_add_boolean "success" 1
+		json_add_string "message" "Command sent: $cmd"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Port not found: $port"
+	fi
+
+	json_dump
+}
+
+# ============================================================================
+# Clone History
+# ============================================================================
+
+do_history_list() {
+	json_init
+	json_add_array "history"
+
+	if [ -f "$HISTORY_FILE" ]; then
+		# Read JSON array entries
+		local count=$(jsonfilter -i "$HISTORY_FILE" -e '@[*]' 2>/dev/null | wc -l)
+		local i=0
+		while [ $i -lt "$count" ] && [ $i -lt 100 ]; do
+			local entry=$(jsonfilter -i "$HISTORY_FILE" -e "@[$i]" 2>/dev/null)
+			if [ -n "$entry" ]; then
+				local ts=$(echo "$entry" | jsonfilter -e '@.timestamp' 2>/dev/null)
+				local dev=$(echo "$entry" | jsonfilter -e '@.device' 2>/dev/null)
+				local img=$(echo "$entry" | jsonfilter -e '@.image' 2>/dev/null)
+				local status=$(echo "$entry" | jsonfilter -e '@.status' 2>/dev/null)
+				local token=$(echo "$entry" | jsonfilter -e '@.token' 2>/dev/null)
+
+				json_add_object ""
+				json_add_string "timestamp" "$ts"
+				json_add_string "device" "$dev"
+				json_add_string "image" "$img"
+				json_add_string "status" "$status"
+				json_add_string "token" "${token:0:12}..."
+				json_close_object
+			fi
+			i=$((i + 1))
+		done
+	fi
+
+	json_close_array
+	json_dump
+}
+
+do_history_add() {
+	local input device image status token
+
+	read input
+	device=$(echo "$input" | jsonfilter -e '@.device' 2>/dev/null)
+	image=$(echo "$input" | jsonfilter -e '@.image' 2>/dev/null)
+	status=$(echo "$input" | jsonfilter -e '@.status' 2>/dev/null)
+	token=$(echo "$input" | jsonfilter -e '@.token' 2>/dev/null)
+
+	mkdir -p "$(dirname "$HISTORY_FILE")"
+
+	# Create or append to history
+	local new_entry=$(cat <<EOF
+{"timestamp":"$(date -Iseconds)","device":"$device","image":"$image","status":"$status","token":"$token"}
+EOF
+)
+
+	if [ -f "$HISTORY_FILE" ]; then
+		# Append to existing array (simple approach: rewrite file)
+		local existing=$(cat "$HISTORY_FILE" 2>/dev/null | tr -d '\n')
+		if [ "$existing" = "[]" ] || [ -z "$existing" ]; then
+			echo "[$new_entry]" > "$HISTORY_FILE"
+		else
+			# Remove trailing ] and add new entry
+			echo "${existing%]},${new_entry}]" > "$HISTORY_FILE"
+		fi
+	else
+		echo "[$new_entry]" > "$HISTORY_FILE"
+	fi
+
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
+do_history_clear() {
+	json_init
+
+	if [ -f "$HISTORY_FILE" ]; then
+		rm -f "$HISTORY_FILE"
+		json_add_boolean "success" 1
+		json_add_string "message" "History cleared"
+	else
+		json_add_boolean "success" 1
+		json_add_string "message" "No history to clear"
+	fi
+
+	json_dump
+}
+
+# ============================================================================
+# Image Manager
+# ============================================================================
+
+do_storage_info() {
+	json_init
+
+	# Clone directory size
+	local clone_size=0
+	if [ -d "$CLONE_DIR" ]; then
+		clone_size=$(du -sb "$CLONE_DIR" 2>/dev/null | awk '{print $1}')
+	fi
+	json_add_int "clone_dir_bytes" "${clone_size:-0}"
+	json_add_string "clone_dir" "$CLONE_DIR"
+
+	# TFTP directory size
+	local tftp_size=0
+	if [ -d "$TFTP_ROOT" ]; then
+		tftp_size=$(du -sb "$TFTP_ROOT" 2>/dev/null | awk '{print $1}')
+	fi
+	json_add_int "tftp_dir_bytes" "${tftp_size:-0}"
+	json_add_string "tftp_dir" "$TFTP_ROOT"
+
+	# Total available space on /srv or /
+	local avail_bytes=0
+	if [ -d "/srv" ]; then
+		avail_bytes=$(df -B1 /srv 2>/dev/null | tail -1 | awk '{print $4}')
+	else
+		avail_bytes=$(df -B1 / 2>/dev/null | tail -1 | awk '{print $4}')
+	fi
+	json_add_int "available_bytes" "${avail_bytes:-0}"
+
+	# Image count
+	local image_count=0
+	image_count=$(ls "$TFTP_ROOT"/*.img "$CLONE_DIR"/*.img "$CLONE_DIR"/*.img.gz 2>/dev/null | wc -l)
+	json_add_int "image_count" "$image_count"
+
+	json_dump
+}
+
+do_image_rename() {
+	local input old_name new_name
+
+	read input
+	old_name=$(echo "$input" | jsonfilter -e '@.old_name' 2>/dev/null)
+	new_name=$(echo "$input" | jsonfilter -e '@.new_name' 2>/dev/null)
+
+	json_init
+
+	if [ -z "$old_name" ] || [ -z "$new_name" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Both old_name and new_name required"
+	else
+		local renamed=0
+		# Try in both directories
+		if [ -f "$TFTP_ROOT/$old_name" ]; then
+			mv "$TFTP_ROOT/$old_name" "$TFTP_ROOT/$new_name" && renamed=1
+		fi
+		if [ -f "$CLONE_DIR/$old_name" ]; then
+			mv "$CLONE_DIR/$old_name" "$CLONE_DIR/$new_name" && renamed=1
+		fi
+
+		if [ "$renamed" = "1" ]; then
+			json_add_boolean "success" 1
+			json_add_string "message" "Image renamed"
+		else
+			json_add_boolean "success" 0
+			json_add_string "error" "Image not found: $old_name"
+		fi
+	fi
+
+	json_dump
+}
+
+do_image_details() {
+	local input name
+
+	read input
+	name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+
+	json_init
+
+	local img_path=""
+	[ -f "$TFTP_ROOT/$name" ] && img_path="$TFTP_ROOT/$name"
+	[ -f "$CLONE_DIR/$name" ] && img_path="$CLONE_DIR/$name"
+
+	if [ -n "$img_path" ] && [ -f "$img_path" ]; then
+		json_add_boolean "found" 1
+		json_add_string "path" "$img_path"
+		json_add_int "size_bytes" "$(stat -c%s "$img_path" 2>/dev/null || echo 0)"
+		json_add_string "modified" "$(stat -c%Y "$img_path" 2>/dev/null | xargs -I{} date -d @{} -Iseconds 2>/dev/null || echo "")"
+		json_add_string "checksum" "$(md5sum "$img_path" 2>/dev/null | cut -d' ' -f1)"
+		# Check if it's a valid image (ext4 superblock)
+		if file "$img_path" 2>/dev/null | grep -qi "ext4\|filesystem"; then
+			json_add_boolean "valid" 1
+		else
+			json_add_boolean "valid" 0
+		fi
+	else
+		json_add_boolean "found" 0
+		json_add_string "error" "Image not found"
+	fi
+
+	json_dump
+}
+
+# ============================================================================
+# Remote Device Management
+# ============================================================================
+
+REMOTES_FILE="/etc/secubox/clone-remotes.json"
+SSH_KEY="/root/.ssh/id_dropbear"
+
+# SSH wrapper using dropbear client
+do_ssh() {
+	local ip="$1"
+	shift
+	dbclient -i "$SSH_KEY" -y -o "ConnectTimeout=5" "root@$ip" "$@" 2>/dev/null
+}
+
+# SCP wrapper using dropbear
+do_scp() {
+	local src="$1"
+	local dest="$2"
+	# dropbear doesn't have scp, use dbclient with cat for file transfer
+	local ip=$(echo "$dest" | cut -d':' -f1 | sed 's/root@//')
+	local remote_path=$(echo "$dest" | cut -d':' -f2)
+
+	# Check source file exists
+	[ ! -f "$src" ] && return 1
+
+	# Clean any stale host keys (prevents mismatch errors after device reflash)
+	for khfile in /root/.ssh/known_hosts /.ssh/known_hosts /overlay/upper/.ssh/known_hosts; do
+		[ -f "$khfile" ] && sed -i "/^$ip /d" "$khfile" 2>/dev/null
+	done
+
+	# Transfer file - dbclient with -y accepts new host keys
+	cat "$src" | dbclient -i "$SSH_KEY" -y "root@$ip" "cat > $remote_path" 2>/dev/null
+	local ret=$?
+
+	# Verify file exists on remote (BusyBox compatible)
+	if [ $ret -eq 0 ]; then
+		dbclient -i "$SSH_KEY" -y "root@$ip" "[ -s $remote_path ]" 2>/dev/null && return 0
+	fi
+	return 1
+}
+
+do_list_remotes() {
+	json_init
+	json_add_array "remotes"
+
+	# Read configured remotes
+	if [ -f "$REMOTES_FILE" ]; then
+		local count=$(jsonfilter -i "$REMOTES_FILE" -e '@[*]' 2>/dev/null | wc -l)
+		local i=0
+		while [ $i -lt "$count" ]; do
+			local entry=$(jsonfilter -i "$REMOTES_FILE" -e "@[$i]" 2>/dev/null)
+			if [ -n "$entry" ]; then
+				local ip=$(echo "$entry" | jsonfilter -e '@.ip' 2>/dev/null)
+				local name=$(echo "$entry" | jsonfilter -e '@.name' 2>/dev/null)
+				local token=$(echo "$entry" | jsonfilter -e '@.token' 2>/dev/null)
+
+				# Check if reachable
+				local online=0
+				ping -c 1 -W 1 "$ip" >/dev/null 2>&1 && online=1
+
+				json_add_object ""
+				json_add_string "ip" "$ip"
+				json_add_string "name" "$name"
+				json_add_string "token" "${token:0:12}..."
+				json_add_boolean "online" "$online"
+				json_close_object
+			fi
+			i=$((i + 1))
+		done
+	fi
+
+	json_close_array
+	json_dump
+}
+
+do_add_remote() {
+	local input ip name token
+
+	read input
+	ip=$(echo "$input" | jsonfilter -e '@.ip' 2>/dev/null)
+	name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+	token=$(echo "$input" | jsonfilter -e '@.token' 2>/dev/null)
+
+	json_init
+
+	if [ -z "$ip" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "IP address required"
+		json_dump
+		return
+	fi
+
+	[ -z "$name" ] && name="$ip"
+
+	mkdir -p "$(dirname "$REMOTES_FILE")"
+
+	local new_entry="{\"ip\":\"$ip\",\"name\":\"$name\",\"token\":\"$token\",\"added\":\"$(date -Iseconds)\"}"
+
+	if [ -f "$REMOTES_FILE" ]; then
+		local existing=$(cat "$REMOTES_FILE" 2>/dev/null | tr -d '\n')
+		if [ "$existing" = "[]" ] || [ -z "$existing" ]; then
+			echo "[$new_entry]" > "$REMOTES_FILE"
+		else
+			echo "${existing%]},${new_entry}]" > "$REMOTES_FILE"
+		fi
+	else
+		echo "[$new_entry]" > "$REMOTES_FILE"
+	fi
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Remote added: $name ($ip)"
+	json_dump
+}
+
+do_remove_remote() {
+	local input ip
+
+	read input
+	ip=$(echo "$input" | jsonfilter -e '@.ip' 2>/dev/null)
+
+	json_init
+
+	if [ -z "$ip" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "IP address required"
+		json_dump
+		return
+	fi
+
+	if [ -f "$REMOTES_FILE" ]; then
+		# Simple removal - rebuild without matching IP
+		local tmpfile="/tmp/remotes_$$.json"
+		echo "[" > "$tmpfile"
+		local first=1
+		local count=$(jsonfilter -i "$REMOTES_FILE" -e '@[*]' 2>/dev/null | wc -l)
+		local i=0
+		while [ $i -lt "$count" ]; do
+			local entry_ip=$(jsonfilter -i "$REMOTES_FILE" -e "@[$i].ip" 2>/dev/null)
+			if [ "$entry_ip" != "$ip" ]; then
+				local entry=$(jsonfilter -i "$REMOTES_FILE" -e "@[$i]" 2>/dev/null)
+				[ "$first" = "0" ] && printf "," >> "$tmpfile"
+				echo "$entry" >> "$tmpfile"
+				first=0
+			fi
+			i=$((i + 1))
+		done
+		echo "]" >> "$tmpfile"
+		mv "$tmpfile" "$REMOTES_FILE"
+		json_add_boolean "success" 1
+		json_add_string "message" "Remote removed: $ip"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "No remotes configured"
+	fi
+
+	json_dump
+}
+
+do_remote_status() {
+	local input ip
+
+	read input
+	ip=$(echo "$input" | jsonfilter -e '@.ip' 2>/dev/null)
+
+	json_init
+
+	if [ -z "$ip" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "IP address required"
+		json_dump
+		return
+	fi
+
+	# Check if reachable
+	if ! ping -c 1 -W 2 "$ip" >/dev/null 2>&1; then
+		json_add_boolean "success" 0
+		json_add_boolean "online" 0
+		json_add_string "error" "Device not reachable"
+		json_dump
+		return
+	fi
+
+	json_add_boolean "success" 1
+	json_add_boolean "online" 1
+	json_add_string "ip" "$ip"
+
+	# Try to get device info via SSH (using dropbear client)
+	local hostname=$(do_ssh "$ip" 'cat /proc/sys/kernel/hostname')
+	local model=$(do_ssh "$ip" 'cat /tmp/sysinfo/model 2>/dev/null || echo unknown')
+	local version=$(do_ssh "$ip" '. /etc/openwrt_release 2>/dev/null && echo $DISTRIB_RELEASE')
+	local uptime=$(do_ssh "$ip" 'cat /proc/uptime | cut -d. -f1')
+
+	json_add_string "hostname" "${hostname:-unknown}"
+	json_add_string "model" "${model:-unknown}"
+	json_add_string "version" "${version:-unknown}"
+	json_add_string "uptime" "${uptime:-0}"
+
+	# Check if LuCI is accessible
+	local luci_ok=0
+	curl -s -o /dev/null -w "%{http_code}" --connect-timeout 3 "http://$ip/cgi-bin/luci/" 2>/dev/null | grep -q "200\|302" && luci_ok=1
+	json_add_boolean "luci_accessible" "$luci_ok"
+
+	json_dump
+}
+
+do_remote_upload() {
+	local input ip image keep_settings
+
+	read input
+	ip=$(echo "$input" | jsonfilter -e '@.ip' 2>/dev/null)
+	image=$(echo "$input" | jsonfilter -e '@.image' 2>/dev/null)
+	keep_settings=$(echo "$input" | jsonfilter -e '@.keep_settings' 2>/dev/null)
+
+	json_init
+
+	if [ -z "$ip" ] || [ -z "$image" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "IP and image name required"
+		json_dump
+		return
+	fi
+
+	# Find image path
+	local img_path=""
+	[ -f "$TFTP_ROOT/$image" ] && img_path="$TFTP_ROOT/$image"
+	[ -f "$CLONE_DIR/$image" ] && img_path="$CLONE_DIR/$image"
+
+	if [ -z "$img_path" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Image not found: $image"
+		json_dump
+		return
+	fi
+
+	# Upload via dropbear (stream file via dbclient)
+	local remote_path="/tmp/firmware.img"
+	if do_scp "$img_path" "root@$ip:$remote_path"; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Image uploaded to $ip:$remote_path"
+		json_add_string "remote_path" "$remote_path"
+		json_add_int "size" "$(stat -c%s "$img_path" 2>/dev/null || echo 0)"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Upload failed - check SSH key auth"
+	fi
+
+	json_dump
+}
+
+do_remote_flash() {
+	local input ip image keep_settings token
+
+	read input
+	ip=$(echo "$input" | jsonfilter -e '@.ip' 2>/dev/null)
+	image=$(echo "$input" | jsonfilter -e '@.image' 2>/dev/null)
+	keep_settings=$(echo "$input" | jsonfilter -e '@.keep_settings' 2>/dev/null)
+	token=$(echo "$input" | jsonfilter -e '@.token' 2>/dev/null)
+
+	json_init
+
+	if [ -z "$ip" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "IP address required"
+		json_dump
+		return
+	fi
+
+	# Check if device is reachable
+	if ! ping -c 1 -W 2 "$ip" >/dev/null 2>&1; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Device not reachable: $ip"
+		json_dump
+		return
+	fi
+
+	local remote_path="/tmp/firmware.img"
+
+	# If image specified, upload first
+	if [ -n "$image" ]; then
+		local img_path=""
+		[ -f "$TFTP_ROOT/$image" ] && img_path="$TFTP_ROOT/$image"
+		[ -f "$CLONE_DIR/$image" ] && img_path="$CLONE_DIR/$image"
+
+		if [ -z "$img_path" ]; then
+			json_add_boolean "success" 0
+			json_add_string "error" "Image not found: $image"
+			json_dump
+			return
+		fi
+
+		# Upload via dropbear
+		if ! do_scp "$img_path" "root@$ip:$remote_path"; then
+			json_add_boolean "success" 0
+			json_add_string "error" "Failed to upload image"
+			json_dump
+			return
+		fi
+	fi
+
+	# Inject token into image if provided
+	if [ -n "$token" ]; then
+		local master_hostname=$(uci -q get system.@system[0].hostname)
+		local master_ip=$(ip -4 addr show br-lan | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -1)
+		do_ssh "$ip" "mkdir -p /tmp/imgmnt; mount -o loop $remote_path /tmp/imgmnt 2>/dev/null; if [ -d /tmp/imgmnt/etc ]; then mkdir -p /tmp/imgmnt/etc/secubox; echo '$token' > /tmp/imgmnt/etc/secubox/clone-token; echo '$master_hostname' > /tmp/imgmnt/etc/secubox/master-hostname; echo '$master_ip' > /tmp/imgmnt/etc/secubox/master-ip; fi; umount /tmp/imgmnt 2>/dev/null; rmdir /tmp/imgmnt"
+	fi
+
+	# Trigger sysupgrade
+	local sysupgrade_opts=""
+	[ "$keep_settings" = "true" ] || sysupgrade_opts="-n"
+
+	# Run sysupgrade in background (device will reboot)
+	do_ssh "$ip" "nohup sh -c 'sleep 2 && sysupgrade $sysupgrade_opts $remote_path' >/dev/null 2>&1 &"
+
+	# Add to history
+	echo "{\"timestamp\":\"$(date -Iseconds)\",\"device\":\"$ip\",\"image\":\"${image:-uploaded}\",\"status\":\"flashing\",\"token\":\"${token:-none}\"}" >> "$HISTORY_FILE.tmp"
+	if [ -f "$HISTORY_FILE" ]; then
+		local existing=$(cat "$HISTORY_FILE" 2>/dev/null | tr -d '\n')
+		local new_entry=$(cat "$HISTORY_FILE.tmp")
+		rm -f "$HISTORY_FILE.tmp"
+		if [ "$existing" = "[]" ] || [ -z "$existing" ]; then
+			echo "[$new_entry]" > "$HISTORY_FILE"
+		else
+			echo "${existing%]},${new_entry}]" > "$HISTORY_FILE"
+		fi
+	fi
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Flashing initiated on $ip - device will reboot"
+	json_add_string "ip" "$ip"
+	json_dump
+}
+
+do_scan_network() {
+	json_init
+	json_add_array "devices"
+
+	# Scan common SecuBox IPs - use grep -oE for BusyBox compatibility
+	local my_ip=$(ip -4 addr show br-lan | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -1)
+	local subnet=$(echo "$my_ip" | cut -d. -f1-3)
+
+	for i in 1 100 101 102 103 104 105 125 150 200 254; do
+		local ip="${subnet}.$i"
+		# Skip self
+		[ "$ip" = "$my_ip" ] && continue
+
+		if ping -c 1 -W 1 "$ip" >/dev/null 2>&1; then
+			# Try to identify as OpenWrt/SecuBox
+			local hostname=$(do_ssh "$ip" 'cat /proc/sys/kernel/hostname')
+			if [ -n "$hostname" ]; then
+				json_add_object ""
+				json_add_string "ip" "$ip"
+				json_add_string "hostname" "$hostname"
+				json_add_boolean "ssh_ok" 1
+				json_close_object
+			else
+				# Check if HTTP responds
+				local http_ok=0
+				curl -s -o /dev/null --connect-timeout 1 "http://$ip/" 2>/dev/null && http_ok=1
+				if [ "$http_ok" = "1" ]; then
+					json_add_object ""
+					json_add_string "ip" "$ip"
+					json_add_string "hostname" "unknown"
+					json_add_boolean "ssh_ok" 0
+					json_close_object
+				fi
+			fi
+		fi
+	done
+
+	json_close_array
 	json_dump
 }
 
@@ -402,12 +1154,31 @@ case "$1" in
 		echo '"list_clones":{},'
 		echo '"list_devices":{},'
 		echo '"build_progress":{},'
+		echo '"build_log":{"lines":"Number","offset":"Number"},'
+		echo '"serial_ports":{},'
+		echo '"serial_start":{"port":"String"},'
+		echo '"serial_stop":{},'
+		echo '"serial_read":{"lines":"Number"},'
+		echo '"serial_write":{"port":"String","command":"String"},'
+		echo '"history_list":{},'
+		echo '"history_add":{"device":"String","image":"String","status":"String","token":"String"},'
+		echo '"history_clear":{},'
+		echo '"storage_info":{},'
+		echo '"image_details":{"name":"String"},'
+		echo '"image_rename":{"old_name":"String","new_name":"String"},'
 		echo '"generate_token":{"auto_approve":"Boolean"},'
 		echo '"build_image":{"device_type":"String"},'
 		echo '"tftp_start":{},'
 		echo '"tftp_stop":{},'
 		echo '"delete_token":{"token":"String"},'
-		echo '"delete_image":{"name":"String"}'
+		echo '"delete_image":{"name":"String"},'
+		echo '"list_remotes":{},'
+		echo '"add_remote":{"ip":"String","name":"String","token":"String"},'
+		echo '"remove_remote":{"ip":"String"},'
+		echo '"remote_status":{"ip":"String"},'
+		echo '"remote_upload":{"ip":"String","image":"String"},'
+		echo '"remote_flash":{"ip":"String","image":"String","keep_settings":"Boolean","token":"String"},'
+		echo '"scan_network":{}'
 		echo '}'
 		;;
 	call)
@@ -418,12 +1189,31 @@ case "$1" in
 			list_clones) do_list_clones ;;
 			list_devices) do_list_devices ;;
 			build_progress) do_build_progress ;;
+			build_log) do_build_log ;;
+			serial_ports) do_serial_ports ;;
+			serial_start) do_serial_start ;;
+			serial_stop) do_serial_stop ;;
+			serial_read) do_serial_read ;;
+			serial_write) do_serial_write ;;
+			history_list) do_history_list ;;
+			history_add) do_history_add ;;
+			history_clear) do_history_clear ;;
+			storage_info) do_storage_info ;;
+			image_details) do_image_details ;;
+			image_rename) do_image_rename ;;
 			generate_token) do_generate_token ;;
 			build_image) do_build_image ;;
 			tftp_start) do_tftp_start ;;
 			tftp_stop) do_tftp_stop ;;
 			delete_token) do_delete_token ;;
 			delete_image) do_delete_image ;;
+			list_remotes) do_list_remotes ;;
+			add_remote) do_add_remote ;;
+			remove_remote) do_remove_remote ;;
+			remote_status) do_remote_status ;;
+			remote_upload) do_remote_upload ;;
+			remote_flash) do_remote_flash ;;
+			scan_network) do_scan_network ;;
 		esac
 		;;
 esac

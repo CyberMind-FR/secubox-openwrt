@@ -208,9 +208,9 @@ EOF
 				;;
 
 			health_check)
-				local peers_online=0
-				local peers_total=0
-				local services_running=0
+				peers_online=0
+				peers_total=0
+				services_running=0
 
 				# Count online peers
 				if [ -f /tmp/secubox-p2p-peers.json ]; then

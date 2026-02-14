@@ -32,6 +32,8 @@ define Package/secubox-app-crowdsec-custom/description
   - Gitea web/SSH/API bruteforce detection
   - Streamlit app flooding and auth protection
   - Webapp generic auth bruteforce protection
+  - mitmproxy threat detection (SQLi, XSS, SSRF, CVE)
+  - Insider WAF: LAN threat detection (C2, exfiltration, lateral movement)
   - Whitelist for trusted networks
 endef
 
@@ -68,6 +70,7 @@ define Package/secubox-app-crowdsec-custom/install
 	$(INSTALL_DATA) ./files/scenarios/secubox-gitea-bruteforce.yaml $(1)/etc/crowdsec/scenarios/
 	$(INSTALL_DATA) ./files/scenarios/secubox-streamlit-bruteforce.yaml $(1)/etc/crowdsec/scenarios/
 	$(INSTALL_DATA) ./files/scenarios/secubox-webapp-bruteforce.yaml $(1)/etc/crowdsec/scenarios/
+	$(INSTALL_DATA) ./files/scenarios/secubox-insider-threats.yaml $(1)/etc/crowdsec/scenarios/
 
 	# UCI defaults for first boot setup
 	$(INSTALL_DIR) $(1)/etc/uci-defaults

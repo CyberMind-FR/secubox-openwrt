@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-11_
+_Last updated: 2026-02-13 (GoToSocial deployed)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -61,6 +61,36 @@ _Last updated: 2026-02-11_
   - First Peek auto-registration of services
   - Gossip-based exposure config sync via secubox-p2p
   - Created `luci-app-vortex-dns` dashboard
+
+### Just Completed (2026-02-13)
+
+- **GoToSocial Fediverse Server** — DONE (2026-02-13)
+  - Deployed GoToSocial v0.17.0 ActivityPub server
+  - Direct execution mode (v0.18.0 has cgroup panics)
+  - Domain: `social.gk2.secubox.in` with wildcard SSL
+  - HAProxy exposure with backend to 192.168.255.1:8484
+  - Admin user created and promoted
+  - SQLite database, web assets configured
+  - Live at https://social.gk2.secubox.in
+
+- **Cloning Station Remote Device Management** — DONE (2026-02-13)
+  - 6-tab tabbed interface: Overview, Remotes, Build, Console, History, Images
+  - Remote device management via UCI and RPCD
+  - SSH key authentication setup using dropbear
+  - Network scan for discovering SecuBox devices
+  - Remote status: hostname, model, version, uptime
+  - Image upload and remote flash with token injection
+  - sysupgrade with keep_settings option
+  - 7 new RPCD methods: list_remotes, add_remote, remove_remote, remote_status, remote_upload, remote_flash, scan_network
+  - Uses dropbear's dbclient for SSH (OpenWrt native)
+
+- **Cloning Station Dashboard Enhancements** — DONE (2026-02-13)
+  - 5-tab tabbed interface: Overview, Build, Console, History, Images
+  - Build Progress UI: real-time log streaming, stage indicators, progress bar
+  - Serial Console: port selection, live output, command input (requires stty)
+  - Clone History: JSON-based tracking with timestamp/device/status
+  - Image Manager: storage info, image details modal, delete/rename
+  - 10 new RPCD methods added with ACL permissions
 
 ### Just Completed (2026-02-08 PM)
 
@@ -334,6 +364,29 @@ _Last updated: 2026-02-11_
   - Join flow: request → approval → peer added at depth+1
   - Blockchain: `peer_approved` blocks recorded correctly
   - Threat Intel: 288 local IOCs, 67 threat_ioc blocks in chain
+
+### Just Completed (2026-02-12)
+
+- **HAProxy stats.js KISS Migration** — DONE (2026-02-12)
+  - Rewrote Statistics dashboard to use KissTheme
+  - Stats iframe, logs viewer with refresh
+  - Removed CSS import via style element
+
+- **HAProxy backends.js KISS Migration** — DONE (2026-02-12)
+  - Rewrote Backends dashboard to use KissTheme
+  - Backend cards with server lists, health check info
+  - Add/edit server modals with quick service selector
+  - Removed external dashboard.css dependency
+
+- **HAProxy vhosts.js KISS Migration** — DONE (2026-02-12)
+  - Rewrote Virtual Hosts dashboard to use KissTheme
+  - Self-contained inline CSS, removed external dashboard.css
+  - Add vhost form, vhosts table, edit modal, delete confirmation
+
+- **InterceptoR LXC Detection Fix** — DONE (2026-02-12)
+  - Changed from `lxc-ls --running` to `lxc-info -n mitmproxy -s`
+  - More reliable container state detection
+  - Fixed container name from `secbx-mitmproxy` to `mitmproxy`
 
 ### Just Completed (2026-02-11)
 

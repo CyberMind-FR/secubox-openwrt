@@ -357,11 +357,22 @@ get_services() {
 # Get shared services (from peers)
 get_shared_services() {
 	local all_services="[]"
-	local peers=$(get_peers | jq -r '.peers[] | select(.status=="online") | .address')
+	# Use active_address if available, skip IPv6 and local nodes
+	local peers=$(get_peers | jq -r '.peers[] | select(.status=="online") | select(.is_local==false or .is_local==null) | .active_address // .address' | grep -v '^\[' | sed 's/ .*//')
 
 	for peer_addr in $peers; do
-		local peer_services=$(curl -s --connect-timeout 2 "http://${peer_addr}:8080/p2p/services" 2>/dev/null || echo "[]")
-		all_services=$(echo "$all_services" | jq ". += $peer_services")
+		[ -z "$peer_addr" ] && continue
+		[ "$peer_addr" = "null" ] && continue
+		# Fetch services with reasonable timeout
+		local response=$(curl -s --connect-timeout 2 --max-time 10 "http://${peer_addr}/cgi-bin/p2p-services" 2>/dev/null)
+		if [ -n "$response" ]; then
+			local peer_services=$(echo "$response" | jq -c '.services // []' 2>/dev/null)
+			if [ -n "$peer_services" ] && [ "$peer_services" != "null" ] && [ "$peer_services" != "[]" ]; then
+				# Add peer info to each service
+				peer_services=$(echo "$peer_services" | jq --arg addr "$peer_addr" '[.[] | . + {peer: $addr}]')
+				all_services=$(echo "$all_services" "$peer_services" | jq -s '.[0] + .[1]' 2>/dev/null)
+			fi
+		fi
 	done
 
 	echo "{\"shared_services\":$all_services}"

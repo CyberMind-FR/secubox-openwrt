@@ -1,6 +1,6 @@
 {
-	"admin/secubox/mirrorbox": {
-		"title": "MirrorBox",
+	"admin/services/secubox-p2p": {
+		"title": "SecuBox P2P",
 		"order": 15,
 		"action": {
 			"type": "view",
@@ -10,7 +10,7 @@
 			"acl": ["luci-app-secubox-p2p"]
 		}
 	},
-	"admin/secubox/mirrorbox/overview": {
+	"admin/services/secubox-p2p/overview": {
 		"title": "Overview",
 		"order": 10,
 		"action": {
@@ -18,7 +18,7 @@
 			"path": "secubox-p2p/overview"
 		}
 	},
-	"admin/secubox/mirrorbox/hub": {
+	"admin/services/secubox-p2p/hub": {
 		"title": "P2P Hub",
 		"order": 20,
 		"action": {
@@ -26,7 +26,7 @@
 			"path": "secubox-p2p/hub"
 		}
 	},
-	"admin/secubox/mirrorbox/peers": {
+	"admin/services/secubox-p2p/peers": {
 		"title": "Peers",
 		"order": 30,
 		"action": {
@@ -34,7 +34,7 @@
 			"path": "secubox-p2p/peers"
 		}
 	},
-	"admin/secubox/mirrorbox/services": {
+	"admin/services/secubox-p2p/services": {
 		"title": "Services",
 		"order": 40,
 		"action": {
@@ -42,7 +42,7 @@
 			"path": "secubox-p2p/services"
 		}
 	},
-	"admin/secubox/mirrorbox/profiles": {
+	"admin/services/secubox-p2p/profiles": {
 		"title": "Profiles",
 		"order": 50,
 		"action": {
@@ -50,7 +50,7 @@
 			"path": "secubox-p2p/profiles"
 		}
 	},
-	"admin/secubox/mirrorbox/mesh": {
+	"admin/services/secubox-p2p/mesh": {
 		"title": "Mesh Network",
 		"order": 60,
 		"action": {
@@ -58,7 +58,7 @@
 			"path": "secubox-p2p/mesh"
 		}
 	},
-	"admin/secubox/mirrorbox/factory": {
+	"admin/services/secubox-p2p/factory": {
 		"title": "Factory",
 		"order": 70,
 		"action": {
@@ -66,7 +66,7 @@
 			"path": "secubox-p2p/factory"
 		}
 	},
-	"admin/secubox/mirrorbox/devstatus": {
+	"admin/services/secubox-p2p/devstatus": {
 		"title": "Dev Status",
 		"order": 73,
 		"action": {
@@ -74,7 +74,7 @@
 			"path": "secubox-p2p/devstatus"
 		}
 	},
-	"admin/secubox/mirrorbox/packages": {
+	"admin/services/secubox-p2p/packages": {
 		"title": "App Store",
 		"order": 75,
 		"action": {
@@ -82,7 +82,7 @@
 			"path": "secubox-p2p/packages"
 		}
 	},
-	"admin/secubox/mirrorbox/p2p-hub": {
+	"admin/services/secubox-p2p/threat-hub": {
 		"title": "Threat Intel",
 		"order": 25,
 		"action": {
@@ -90,7 +90,7 @@
 			"path": "secubox-p2p/threat-hub"
 		}
 	},
-	"admin/secubox/mirrorbox/settings": {
+	"admin/services/secubox-p2p/settings": {
 		"title": "Settings",
 		"order": 90,
 		"action": {

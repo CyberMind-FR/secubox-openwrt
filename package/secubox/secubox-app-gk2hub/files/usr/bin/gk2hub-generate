@@ -1,0 +1,222 @@
+#!/bin/sh
+# GK2 Hub Landing Page Generator
+# Reads from HAProxy, Streamlit, and MetaBlogizer configs
+# Copyright (C) 2025 CyberMind.fr
+
+OUTPUT="/www/gk2-hub/index.html"
+
+# Icons mapping
+get_icon() {
+    case "$1" in
+        evolution|secubox_evolution) echo "📈" ;;
+        control|secubox_control) echo "🎛️" ;;
+        fabricator|fabric) echo "🏭" ;;
+        yijing*|yling|hermes) echo "☯️" ;;
+        play) echo "🎮" ;;
+        console|secubox_console) echo "🖥️" ;;
+        glances) echo "📊" ;;
+        lldh) echo "📖" ;;
+        wanted|want) echo "🎯" ;;
+        gandalf) echo "🧙" ;;
+        cyberzine) echo "💾" ;;
+        devel|dev) echo "👨‍💻" ;;
+        c3box) echo "📦" ;;
+        gk2) echo "✨" ;;
+        secubox) echo "🛡️" ;;
+        press|presse) echo "📰" ;;
+        oracle) echo "🔮" ;;
+        bazi*|pix|bweep|bweek|BASIC) echo "🀄" ;;
+        slides|sliders) echo "🎞️" ;;
+        comic) echo "📚" ;;
+        eval) echo "🧪" ;;
+        sappix) echo "🔧" ;;
+        ftvm) echo "📺" ;;
+        cineposter*|cpf) echo "🎬" ;;
+        wuyun) echo "🌬️" ;;
+        hello) echo "👋" ;;
+        *) echo "🚀" ;;
+    esac
+}
+
+# Generate HTML
+cat > "$OUTPUT" << 'HTML_HEAD'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GK² Hub - SecuBox Services</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0a0f; color: #e0e0e0; min-height: 100vh; padding: 20px; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        header { text-align: center; padding: 40px 20px; background: linear-gradient(135deg, rgba(102,126,234,0.1), rgba(118,75,162,0.1)); border: 1px solid rgba(255,255,255,0.05); border-radius: 16px; margin-bottom: 40px; }
+        h1 { font-size: 3rem; background: linear-gradient(90deg, #667eea, #764ba2, #00f0ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 8px; }
+        .subtitle { color: #888; font-size: 1.1rem; }
+        .section { margin-bottom: 40px; }
+        .section-title { font-size: 1.5rem; color: #00f0ff; margin-bottom: 20px; padding-left: 12px; border-left: 3px solid #00f0ff; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; }
+        .card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 20px; text-decoration: none; color: inherit; transition: all 0.2s; display: block; }
+        .card:hover { background: rgba(102,126,234,0.1); border-color: rgba(102,126,234,0.3); transform: translateY(-2px); }
+        .card-icon { font-size: 2rem; margin-bottom: 12px; }
+        .card-title { font-weight: 600; font-size: 1.1rem; margin-bottom: 4px; }
+        .card-desc { font-size: 0.85rem; color: #888; }
+        .streamlit .card { border-color: rgba(255,75,75,0.2); }
+        .streamlit .card:hover { border-color: rgba(255,75,75,0.5); background: rgba(255,75,75,0.05); }
+        .metablog .card { border-color: rgba(0,240,255,0.2); }
+        .metablog .card:hover { border-color: rgba(0,240,255,0.5); background: rgba(0,240,255,0.05); }
+        .infra .card { border-color: rgba(0,255,100,0.2); }
+        .infra .card:hover { border-color: rgba(0,255,100,0.5); background: rgba(0,255,100,0.05); }
+        footer { text-align: center; padding: 30px; color: #555; font-size: 0.85rem; }
+        .generated { font-size: 0.75rem; color: #444; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>⚡ GK² Hub</h1>
+            <p class="subtitle">SecuBox Service Directory • gk2.secubox.in</p>
+        </header>
+HTML_HEAD
+
+# Streamlit Apps Section
+echo '        <div class="section streamlit">' >> "$OUTPUT"
+echo '            <h2 class="section-title">🚀 Streamlit Apps</h2>' >> "$OUTPUT"
+echo '            <div class="grid">' >> "$OUTPUT"
+
+# Get all streamlit instances from UCI config
+grep -E "^config instance" /etc/config/streamlit 2>/dev/null | while read line; do
+    section=$(echo "$line" | sed "s/config instance '\([^']*\)'/\1/")
+    [ -z "$section" ] && continue
+
+    # Read instance config
+    app=$(uci -q get streamlit.$section.app)
+    port=$(uci -q get streamlit.$section.port)
+    enabled=$(uci -q get streamlit.$section.enabled)
+    domain=$(uci -q get streamlit.$section.domain)
+
+    [ "$enabled" != "1" ] && continue
+    [ -z "$app" ] && continue
+    [ -z "$port" ] && continue
+
+    # Check if there's a HAProxy vhost for this app
+    if [ -n "$domain" ]; then
+        url="https://$domain"
+    else
+        # Check HAProxy for matching vhost
+        vhost_domain=$(uci show haproxy 2>/dev/null | grep -E "\.domain=.*${section}.*gk2\.secubox\.in" | head -1 | sed "s/.*domain='\([^']*\)'/\1/")
+        if [ -n "$vhost_domain" ]; then
+            url="https://$vhost_domain"
+        else
+            url="http://192.168.255.1:$port"
+        fi
+    fi
+
+    icon=$(get_icon "$section")
+    display_name="$section"
+
+    cat >> "$OUTPUT" << EOF
+                <a href="$url" class="card">
+                    <div class="card-icon">$icon</div>
+                    <div class="card-title">$display_name</div>
+                    <div class="card-desc">$app :$port</div>
+                </a>
+EOF
+done
+
+echo '            </div>' >> "$OUTPUT"
+echo '        </div>' >> "$OUTPUT"
+
+# MetaBlogizer Section
+echo '        <div class="section metablog">' >> "$OUTPUT"
+echo '            <h2 class="section-title">📰 MetaBlogizer Webs</h2>' >> "$OUTPUT"
+echo '            <div class="grid">' >> "$OUTPUT"
+
+for site in $(ls -1 /srv/metablogizer/sites/ 2>/dev/null | sort); do
+    [ -f "/srv/metablogizer/sites/$site/index.html" ] || continue
+    icon=$(get_icon "$site")
+
+    # Try to get domain from UCI
+    section="site_$(echo "$site" | tr '-' '_')"
+    domain=$(uci -q get metablogizer.$section.domain)
+
+    # Default URL mapping if no domain configured
+    if [ -z "$domain" ]; then
+        case "$site" in
+            lldh) url="https://lldh.gk2.secubox.in" ;;
+            want) url="https://wanted.gk2.secubox.in" ;;
+            gandalf) url="https://gandalf.maegia.tv" ;;
+            cyberzine) url="https://cyberzine.maegia.tv" ;;
+            devel) url="https://devel.maegia.tv" ;;
+            c3box) url="https://c3box.maegia.tv" ;;
+            gk2) url="https://gk2.maegia.tv" ;;
+            *) url="https://secubox.in/gk2/$site" ;;
+        esac
+    else
+        url="https://$domain"
+    fi
+
+    cat >> "$OUTPUT" << EOF
+                <a href="$url" class="card">
+                    <div class="card-icon">$icon</div>
+                    <div class="card-title">$site</div>
+                </a>
+EOF
+done
+
+echo '            </div>' >> "$OUTPUT"
+echo '        </div>' >> "$OUTPUT"
+
+# Infrastructure Section
+echo '        <div class="section infra">' >> "$OUTPUT"
+echo '            <h2 class="section-title">🔧 Infrastructure</h2>' >> "$OUTPUT"
+echo '            <div class="grid">' >> "$OUTPUT"
+
+cat >> "$OUTPUT" << 'INFRA'
+                <a href="https://console.gk2.secubox.in" class="card">
+                    <div class="card-icon">🖥️</div>
+                    <div class="card-title">Console</div>
+                    <div class="card-desc">LuCI Admin</div>
+                </a>
+                <a href="https://glances.gk2.secubox.in" class="card">
+                    <div class="card-icon">📊</div>
+                    <div class="card-title">Glances</div>
+                    <div class="card-desc">Monitoring</div>
+                </a>
+                <a href="https://secubox.in/gk2/jellyfin" class="card">
+                    <div class="card-icon">🎬</div>
+                    <div class="card-title">Jellyfin</div>
+                    <div class="card-desc">Media Server</div>
+                </a>
+                <a href="https://secubox.in/gk2/localai" class="card">
+                    <div class="card-icon">🤖</div>
+                    <div class="card-title">LocalAI</div>
+                    <div class="card-desc">AI Gateway</div>
+                </a>
+                <a href="https://secubox.in/gk2/webmail" class="card">
+                    <div class="card-icon">📧</div>
+                    <div class="card-title">Webmail</div>
+                    <div class="card-desc">Roundcube</div>
+                </a>
+                <a href="https://secubox.in/gk2/feed" class="card">
+                    <div class="card-icon">📦</div>
+                    <div class="card-title">Package Feed</div>
+                    <div class="card-desc">IPK Repository</div>
+                </a>
+INFRA
+
+echo '            </div>' >> "$OUTPUT"
+echo '        </div>' >> "$OUTPUT"
+
+# Footer
+cat >> "$OUTPUT" << EOF
+        <footer>
+            GK² • CyberMind.FR • SecuBox v0.18 • $(date +%Y)
+            <div class="generated">Auto-generated $(date '+%Y-%m-%d %H:%M')</div>
+        </footer>
+    </div>
+</body>
+</html>
+EOF
+
+echo "Generated $OUTPUT"

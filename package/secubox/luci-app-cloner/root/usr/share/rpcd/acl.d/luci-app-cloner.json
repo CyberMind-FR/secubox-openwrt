@@ -3,12 +3,22 @@
 		"description": "Grant access to SecuBox Cloning Station",
 		"read": {
 			"ubus": {
-				"luci.cloner": ["status", "list_images", "list_tokens", "list_clones", "list_devices", "build_progress"]
+				"luci.cloner": [
+					"status", "list_images", "list_tokens", "list_clones", "list_devices",
+					"build_progress", "build_log", "serial_ports", "serial_read",
+					"history_list", "storage_info", "image_details",
+					"list_remotes", "remote_status", "scan_network"
+				]
 			}
 		},
 		"write": {
 			"ubus": {
-				"luci.cloner": ["generate_token", "build_image", "tftp_start", "tftp_stop", "delete_token", "delete_image"]
+				"luci.cloner": [
+					"generate_token", "build_image", "tftp_start", "tftp_stop",
+					"delete_token", "delete_image", "serial_start", "serial_stop", "serial_write",
+					"history_add", "history_clear", "image_rename",
+					"add_remote", "remove_remote", "remote_upload", "remote_flash"
+				]
 			}
 		}
 	}

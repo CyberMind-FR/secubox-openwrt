@@ -217,7 +217,7 @@ mkdir -p "$PIDS_DIR" "$LOG_DIR"
 if [ ! -f /opt/.installed ]; then
     echo "Installing Python 3.12 and dependencies..."
     apk update
-    apk add --no-cache python3 py3-pip git procps
+    apk add --no-cache python3 py3-pip git procps poppler-utils
 
     echo "Installing Streamlit..."
     pip3 install --break-system-packages streamlit 2>/dev/null || \
@@ -671,6 +671,9 @@ cmd_app_delete() {
 	uci commit "$CONFIG"
 
 	log_info "App '$name' deleted"
+
+	# Regenerate GK2 Hub landing page if generator exists
+	[ -x /usr/bin/gk2hub-generate ] && /usr/bin/gk2hub-generate >/dev/null 2>&1 &
 }
 
 cmd_app_deploy() {
@@ -811,6 +814,9 @@ cmd_instance_add() {
 
 	log_info "Instance added: $app on port $port"
 	log_info "Restart service to apply: /etc/init.d/streamlit restart"
+
+	# Regenerate GK2 Hub landing page if generator exists
+	[ -x /usr/bin/gk2hub-generate ] && /usr/bin/gk2hub-generate >/dev/null 2>&1 &
 }
 
 cmd_instance_remove() {
@@ -832,6 +838,9 @@ cmd_instance_remove() {
 	generate_instances_conf
 
 	log_info "Instance '$name' removed"
+
+	# Regenerate GK2 Hub landing page if generator exists
+	[ -x /usr/bin/gk2hub-generate ] && /usr/bin/gk2hub-generate >/dev/null 2>&1 &
 }
 
 cmd_instance_start() {
@@ -1348,6 +1357,129 @@ _emancipate_reload() {
 	else
 		log_warn "[RELOAD] HAProxy may not have started properly"
 	fi
+
+	# Regenerate GK2 Hub landing page if generator exists
+	[ -x /usr/bin/gk2hub-generate ] && /usr/bin/gk2hub-generate >/dev/null 2>&1 &
+}
+
+_emancipate_acl() {
+	local name="$1"
+	local domain="$2"
+	local port="$3"
+
+	log_info "[ACL] Creating routing rules for $name"
+
+	# Create ACL rule for Streamlit WebSocket paths
+	local acl_name="streamlit_${name}_acl"
+	local vhost_name=$(echo "$domain" | tr '.-' '_')
+	local backend_name="streamlit_${name}"
+
+	# ACL for Streamlit-specific paths (WebSocket + static)
+	uci set haproxy.${acl_name}=acl
+	uci set haproxy.${acl_name}.name="path_streamlit_${name}"
+	uci set haproxy.${acl_name}.criterion="path_beg"
+	uci set haproxy.${acl_name}.pattern="/_stcore /static /component /media /health"
+	uci set haproxy.${acl_name}.backend="$backend_name"
+	uci set haproxy.${acl_name}.vhost="$vhost_name"
+	uci set haproxy.${acl_name}.enabled="1"
+
+	uci commit haproxy
+	log_info "[ACL] Rule $acl_name created for vhost $vhost_name"
+}
+
+_emancipate_mesh() {
+	local name="$1"
+	local domain="$2"
+	local port="$3"
+
+	log_info "[MESH] Publishing $name to P2P mesh"
+
+	# Register in secubox-p2p shared services
+	if command -v ubus >/dev/null 2>&1; then
+		ubus call luci.secubox-p2p share_service "{\"name\":\"streamlit_${name}\",\"port\":$port,\"domain\":\"$domain\",\"type\":\"streamlit\"}" 2>/dev/null && \
+			log_info "[MESH] Service published to local mesh registry"
+	fi
+
+	# Sync to peers if P2P is enabled
+	local p2p_enabled=$(uci -q get secubox-p2p.main.enabled)
+	if [ "$p2p_enabled" = "1" ]; then
+		# Get peer list and sync
+		local peers=$(uci -q get secubox-p2p.main.peers 2>/dev/null)
+		for peer in $peers; do
+			local peer_addr=$(uci -q get secubox-p2p.${peer}.address 2>/dev/null)
+			if [ -n "$peer_addr" ]; then
+				log_info "[MESH] Syncing to peer: $peer_addr"
+				# Use dbclient to sync emancipation state
+				dbclient -y -i /root/.ssh/id_dropbear "root@$peer_addr" \
+					"uci set streamlit.${name}_remote=remote_instance; \
+					 uci set streamlit.${name}_remote.origin_host='$(uci -q get system.@system[0].hostname)'; \
+					 uci set streamlit.${name}_remote.domain='$domain'; \
+					 uci set streamlit.${name}_remote.port='$port'; \
+					 uci commit streamlit" 2>/dev/null && \
+					log_info "[MESH] Peer $peer_addr updated" || \
+					log_warn "[MESH] Failed to sync to $peer_addr"
+			fi
+		done
+	fi
+}
+
+cmd_emancipate_all() {
+	require_root
+	load_config
+
+	echo ""
+	echo "=============================================="
+	echo "  BULK EMANCIPATION: All Streamlit Instances"
+	echo "=============================================="
+	echo ""
+
+	# Get all enabled instances
+	local instances=$(uci show ${CONFIG} 2>/dev/null | grep "=instance$" | cut -d'.' -f2 | cut -d'=' -f1)
+	local count=0
+	local success=0
+	local failed=0
+
+	for inst in $instances; do
+		local enabled=$(uci -q get ${CONFIG}.${inst}.enabled)
+		local port=$(uci -q get ${CONFIG}.${inst}.port)
+		local app=$(uci -q get ${CONFIG}.${inst}.app)
+
+		if [ "$enabled" = "1" ] && [ -n "$port" ]; then
+			count=$((count + 1))
+			echo "[$count] Emancipating: $inst (app: $app, port: $port)"
+
+			# Check if already emancipated
+			local already=$(uci -q get ${CONFIG}.${inst}.emancipated)
+			if [ "$already" = "1" ]; then
+				local existing_domain=$(uci -q get ${CONFIG}.${inst}.domain)
+				echo "    Already emancipated: $existing_domain"
+				success=$((success + 1))
+				continue
+			fi
+
+			# Run emancipation
+			if cmd_emancipate "$inst" 2>/dev/null; then
+				success=$((success + 1))
+				echo "    ✓ Success"
+			else
+				failed=$((failed + 1))
+				echo "    ✗ Failed"
+			fi
+		fi
+	done
+
+	echo ""
+	echo "=============================================="
+	echo "  BULK EMANCIPATION COMPLETE"
+	echo "=============================================="
+	echo ""
+	echo "  Total:     $count instances"
+	echo "  Success:   $success"
+	echo "  Failed:    $failed"
+	echo ""
+
+	# Final reload
+	_emancipate_reload
 }
 
 cmd_emancipate() {
@@ -1357,17 +1489,30 @@ cmd_emancipate() {
 	local name="$1"
 	local domain="$2"
 
-	[ -z "$name" ] && { log_error "App name required"; usage; return 1; }
+	[ -z "$name" ] && { log_error "Instance name required"; usage; return 1; }
 
-	# Check if app exists
-	if [ ! -d "$APPS_PATH/$name" ] && [ ! -f "$APPS_PATH/${name}.py" ]; then
-		log_error "App '$name' not found"
-		log_error "Create first: streamlitctl app create $name"
-		return 1
+	# Get instance port and app name from UCI
+	local port=$(uci -q get ${CONFIG}.${name}.port)
+	local app=$(uci -q get ${CONFIG}.${name}.app)
+
+	# If no port, this might be an app name not instance name
+	if [ -z "$port" ]; then
+		# Try to find an instance for this app
+		local found_inst=$(uci show ${CONFIG} 2>/dev/null | grep "\.app='$name'" | head -1 | cut -d'.' -f2)
+		if [ -n "$found_inst" ]; then
+			port=$(uci -q get ${CONFIG}.${found_inst}.port)
+			app="$name"
+			name="$found_inst"
+		fi
 	fi
 
-	# Get instance port from UCI
-	local port=$(uci -q get ${CONFIG}.${name}.port)
+	# Check if app folder exists (use app name, not instance name)
+	local app_to_check="${app:-$name}"
+	if [ ! -d "$APPS_PATH/$app_to_check" ] && [ ! -f "$APPS_PATH/${app_to_check}.py" ]; then
+		log_error "App '$app_to_check' not found in $APPS_PATH"
+		log_error "Create first: streamlitctl app create $app_to_check"
+		return 1
+	fi
 	if [ -z "$port" ]; then
 		log_error "No instance configured for app '$name'"
 		log_error "Add instance first: streamlitctl instance add $name <port>"
@@ -1407,10 +1552,16 @@ cmd_emancipate() {
 	# Step 3: HAProxy vhost + backend
 	_emancipate_haproxy "$name" "$domain" "$port"
 
-	# Step 4: SSL Certificate
+	# Step 4: HAProxy ACL rules for routing
+	_emancipate_acl "$name" "$domain" "$port"
+
+	# Step 5: SSL Certificate
 	_emancipate_ssl "$domain"
 
-	# Step 5: Reload HAProxy
+	# Step 6: Mesh P2P distribution to peers
+	_emancipate_mesh "$name" "$domain" "$port"
+
+	# Step 7: Reload HAProxy
 	_emancipate_reload
 
 	# Mark app as emancipated
@@ -1628,6 +1779,7 @@ case "${1:-}" in
 	service-stop) shift; cmd_service_stop "$@" ;;
 
 	emancipate) shift; cmd_emancipate "$@" ;;
+	emancipate-all) cmd_emancipate_all ;;
 
 	*)          usage ;;
 esac

@@ -644,8 +644,9 @@ method_publish_service() {
 			# Create backend
 			ubus call luci.haproxy create_backend "{\"name\":\"$section_id\",\"mode\":\"http\"}" 2>/dev/null
 
-			# Create server pointing to local port
-			ubus call luci.haproxy create_server "{\"backend\":\"$section_id\",\"name\":\"local\",\"address\":\"127.0.0.1\",\"port\":$local_port}" 2>/dev/null
+			# Create server pointing to local port (use LAN IP - HAProxy is in LXC container)
+			local lan_ip=$(uci -q get network.lan.ipaddr || echo "192.168.255.1")
+			ubus call luci.haproxy create_server "{\"backend\":\"$section_id\",\"name\":\"local\",\"address\":\"$lan_ip\",\"port\":$local_port}" 2>/dev/null
 
 			# Create vhost with SSL
 			ubus call luci.haproxy create_vhost "{\"domain\":\"$domain\",\"backend\":\"$section_id\",\"ssl\":1,\"ssl_redirect\":1,\"acme\":1,\"enabled\":1}" 2>/dev/null
