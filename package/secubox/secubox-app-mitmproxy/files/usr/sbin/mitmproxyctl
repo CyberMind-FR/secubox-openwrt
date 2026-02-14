@@ -1435,11 +1435,24 @@ cmd_haproxy_enable() {
 # =============================================================================
 
 cmd_reload_autoban_config() {
-	load_config
-
 	log_info "Reloading auto-ban configuration..."
-	write_autoban_config
-	log_info "Auto-ban config updated at $data_path/autoban.json"
+
+	# Write to all instance data paths
+	local instances=$(uci show mitmproxy 2>/dev/null | grep '=instance$' | sed 's/mitmproxy\.\([^=]*\)=instance/\1/')
+
+	if [ -n "$instances" ]; then
+		for inst in $instances; do
+			load_instance_config "$inst"
+			load_config
+			write_autoban_config
+			log_info "Auto-ban config updated at $data_path/autoban.json"
+		done
+	else
+		# Legacy single-instance mode
+		load_config
+		write_autoban_config
+		log_info "Auto-ban config updated at $data_path/autoban.json"
+	fi
 }
 
 cmd_process_autoban() {
