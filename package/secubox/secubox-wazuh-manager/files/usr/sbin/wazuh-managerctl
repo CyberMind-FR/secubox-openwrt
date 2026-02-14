@@ -1,0 +1,595 @@
+#!/bin/bash
+# SecuBox Wazuh Manager Controller
+# Manages Wazuh SIEM stack in LXC container
+
+set -e
+
+WAZUH_VERSION="4.9.2"
+CONFIG="wazuh-manager"
+LXC_PATH="/srv/lxc"
+CONTAINER_NAME="wazuh"
+DATA_PATH="/srv/wazuh"
+
+. /lib/functions.sh
+
+log_info() { echo "[INFO] $*"; logger -t wazuh-manager "$*"; }
+log_warn() { echo "[WARN] $*" >&2; }
+log_error() { echo "[ERROR] $*" >&2; }
+
+uci_get() { uci -q get ${CONFIG}.$1; }
+uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
+
+load_config() {
+	CONTAINER_NAME=$(uci_get main.container_name) || CONTAINER_NAME="wazuh"
+	LXC_PATH=$(uci_get main.lxc_path) || LXC_PATH="/srv/lxc"
+	DATA_PATH=$(uci_get main.data_path) || DATA_PATH="/srv/wazuh"
+}
+
+usage() {
+	cat <<'EOF'
+SecuBox Wazuh Manager Controller
+
+Usage: wazuh-managerctl <command> [options]
+
+Installation:
+  install                 Create and configure Wazuh LXC container
+  uninstall               Remove container and data
+  upgrade                 Upgrade Wazuh to latest version
+
+Service Control:
+  start                   Start Wazuh Manager container
+  stop                    Stop container
+  restart                 Restart container
+  status                  Show container and service status
+
+Configuration:
+  configure-haproxy       Add HAProxy vhost for dashboard
+  configure-firewall      Open required firewall ports
+  generate-certs          Generate SSL certificates
+  reset-password          Reset admin password
+
+Agent Management:
+  list-agents             List registered agents
+  agent-info <id>         Show agent details
+  remove-agent <id>       Remove agent
+
+API:
+  api-status              Check API status
+  api-token               Generate API token
+
+Logs & Monitoring:
+  logs [service]          Show logs (manager|indexer|dashboard)
+  alerts [n]              Show recent alerts
+  stats                   Show cluster statistics
+
+Shell:
+  shell                   Open shell in container
+  exec <cmd>              Execute command in container
+
+Examples:
+  wazuh-managerctl install
+  wazuh-managerctl start
+  wazuh-managerctl configure-haproxy
+  wazuh-managerctl list-agents
+EOF
+}
+
+# ===========================================
+# Container Management
+# ===========================================
+
+container_exists() {
+	[ -d "$LXC_PATH/$CONTAINER_NAME/rootfs" ]
+}
+
+container_running() {
+	lxc-info -n "$CONTAINER_NAME" -s 2>/dev/null | grep -q RUNNING
+}
+
+cmd_install() {
+	load_config
+
+	if container_exists; then
+		log_warn "Container already exists at $LXC_PATH/$CONTAINER_NAME"
+		return 0
+	fi
+
+	log_info "Installing Wazuh Manager v$WAZUH_VERSION..."
+	log_info "This may take 10-15 minutes..."
+
+	# Create directories
+	mkdir -p "$LXC_PATH/$CONTAINER_NAME"
+	mkdir -p "$DATA_PATH"/{indexer,manager,dashboard}
+
+	# Get network config
+	local ip_addr=$(uci_get network.ip_address) || ip_addr="192.168.255.50"
+	local gateway=$(uci_get network.gateway) || gateway="192.168.255.1"
+	local bridge=$(uci_get network.bridge) || bridge="br-lan"
+
+	# Create LXC config
+	cat > "$LXC_PATH/$CONTAINER_NAME/config" <<LXCCONF
+# Wazuh Manager LXC Configuration
+lxc.uts.name = $CONTAINER_NAME
+lxc.arch = linux64
+
+# Root filesystem
+lxc.rootfs.path = dir:$LXC_PATH/$CONTAINER_NAME/rootfs
+
+# Network
+lxc.net.0.type = veth
+lxc.net.0.link = $bridge
+lxc.net.0.flags = up
+lxc.net.0.ipv4.address = $ip_addr/24
+lxc.net.0.ipv4.gateway = $gateway
+lxc.net.0.name = eth0
+
+# Capabilities
+lxc.cap.drop = sys_admin
+
+# Mounts
+lxc.mount.auto = proc:mixed sys:ro
+lxc.mount.entry = $DATA_PATH/indexer var/lib/wazuh-indexer none bind,create=dir 0 0
+lxc.mount.entry = $DATA_PATH/manager var/ossec none bind,create=dir 0 0
+
+# cgroup v2
+lxc.cgroup2.devices.allow = c 1:3 rwm
+lxc.cgroup2.devices.allow = c 1:5 rwm
+lxc.cgroup2.devices.allow = c 1:7 rwm
+lxc.cgroup2.devices.allow = c 1:8 rwm
+lxc.cgroup2.devices.allow = c 1:9 rwm
+lxc.cgroup2.devices.allow = c 5:0 rwm
+lxc.cgroup2.devices.allow = c 5:1 rwm
+lxc.cgroup2.devices.allow = c 5:2 rwm
+lxc.cgroup2.devices.allow = c 136:* rwm
+
+lxc.tty.max = 4
+lxc.pty.max = 128
+LXCCONF
+
+	# Download Debian base image
+	log_info "Downloading Debian 12 (Bookworm) base image..."
+	local rootfs="$LXC_PATH/$CONTAINER_NAME/rootfs"
+	mkdir -p "$rootfs"
+
+	# Use debootstrap if available, otherwise download tarball
+	if command -v debootstrap >/dev/null 2>&1; then
+		debootstrap --arch=arm64 bookworm "$rootfs" http://deb.debian.org/debian
+	else
+		# Download pre-built rootfs
+		local rootfs_url="https://images.linuxcontainers.org/images/debian/bookworm/arm64/default"
+		curl -fsSL "$rootfs_url/rootfs.tar.xz" | tar -xJf - -C "$rootfs" || {
+			log_error "Failed to download rootfs"
+			return 1
+		}
+	fi
+
+	# Configure container
+	log_info "Configuring container..."
+
+	# Set hostname
+	echo "$CONTAINER_NAME" > "$rootfs/etc/hostname"
+
+	# Configure DNS
+	cat > "$rootfs/etc/resolv.conf" <<DNS
+nameserver $gateway
+nameserver 8.8.8.8
+DNS
+
+	# Create Wazuh install script
+	cat > "$rootfs/root/install-wazuh.sh" <<'INSTALL'
+#!/bin/bash
+set -e
+
+echo "Installing Wazuh components..."
+
+# Install dependencies
+apt-get update
+apt-get install -y curl apt-transport-https gnupg2 lsb-release
+
+# Add Wazuh repository
+curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | gpg --dearmor -o /usr/share/keyrings/wazuh.gpg
+echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt stable main" > /etc/apt/sources.list.d/wazuh.list
+apt-get update
+
+# Install Wazuh Indexer
+echo "Installing Wazuh Indexer..."
+apt-get install -y wazuh-indexer
+
+# Configure indexer
+cat > /etc/wazuh-indexer/opensearch.yml <<EOF
+network.host: 0.0.0.0
+node.name: wazuh-indexer
+cluster.name: wazuh-cluster
+cluster.initial_cluster_manager_nodes: ["wazuh-indexer"]
+path.data: /var/lib/wazuh-indexer
+path.logs: /var/log/wazuh-indexer
+plugins.security.disabled: true
+EOF
+
+# Start indexer
+systemctl enable wazuh-indexer
+systemctl start wazuh-indexer
+
+# Install Wazuh Manager
+echo "Installing Wazuh Manager..."
+apt-get install -y wazuh-manager
+
+# Start manager
+systemctl enable wazuh-manager
+systemctl start wazuh-manager
+
+# Install Wazuh Dashboard
+echo "Installing Wazuh Dashboard..."
+apt-get install -y wazuh-dashboard
+
+# Configure dashboard
+cat > /etc/wazuh-dashboard/opensearch_dashboards.yml <<EOF
+server.host: 0.0.0.0
+server.port: 5601
+opensearch.hosts: ["http://localhost:9200"]
+opensearch.requestHeadersAllowlist: ["securitytenant","Authorization"]
+opensearch_security.multitenancy.enabled: false
+opensearch_security.readonly_mode.roles: ["kibana_read_only"]
+server.ssl.enabled: false
+EOF
+
+# Start dashboard
+systemctl enable wazuh-dashboard
+systemctl start wazuh-dashboard
+
+echo "Wazuh installation complete!"
+echo "Dashboard: http://localhost:5601"
+echo "Default credentials: admin / admin"
+INSTALL
+
+	chmod +x "$rootfs/root/install-wazuh.sh"
+
+	# Start container and run install
+	log_info "Starting container..."
+	lxc-start -n "$CONTAINER_NAME" -d
+	sleep 10
+
+	log_info "Running Wazuh installation inside container..."
+	log_info "This will take several minutes..."
+	lxc-attach -n "$CONTAINER_NAME" -- /root/install-wazuh.sh || {
+		log_warn "Installation may have partially failed. Check logs."
+	}
+
+	log_info "Wazuh Manager installed successfully!"
+	log_info ""
+	log_info "Container IP: $ip_addr"
+	log_info "Dashboard: http://$ip_addr:5601"
+	log_info "API: https://$ip_addr:55000"
+	log_info ""
+	log_info "Next steps:"
+	log_info "  wazuh-managerctl configure-haproxy"
+	log_info "  wazuh-managerctl status"
+}
+
+cmd_uninstall() {
+	load_config
+
+	log_warn "This will remove the Wazuh container and all data!"
+	echo -n "Continue? [y/N] "
+	read -r confirm
+	[ "$confirm" != "y" ] && return 0
+
+	# Stop container
+	container_running && lxc-stop -n "$CONTAINER_NAME"
+
+	# Remove container
+	rm -rf "$LXC_PATH/$CONTAINER_NAME"
+
+	# Optionally remove data
+	echo -n "Remove data at $DATA_PATH? [y/N] "
+	read -r confirm_data
+	[ "$confirm_data" = "y" ] && rm -rf "$DATA_PATH"
+
+	log_info "Wazuh Manager uninstalled"
+}
+
+# ===========================================
+# Service Control
+# ===========================================
+
+cmd_start() {
+	load_config
+
+	if ! container_exists; then
+		log_error "Container not installed. Run: wazuh-managerctl install"
+		return 1
+	fi
+
+	if container_running; then
+		log_info "Container already running"
+		return 0
+	fi
+
+	uci_set main.enabled "1"
+	lxc-start -n "$CONTAINER_NAME" -d
+	sleep 5
+	log_info "Wazuh Manager started"
+
+	# Show access info
+	local ip_addr=$(uci_get network.ip_address)
+	log_info "Dashboard: http://$ip_addr:5601"
+}
+
+cmd_stop() {
+	load_config
+
+	if container_running; then
+		lxc-stop -n "$CONTAINER_NAME"
+		log_info "Wazuh Manager stopped"
+	else
+		log_info "Container not running"
+	fi
+}
+
+cmd_restart() {
+	cmd_stop
+	sleep 3
+	cmd_start
+}
+
+cmd_status() {
+	load_config
+
+	echo "=== Wazuh Manager Status ==="
+	echo ""
+
+	local ip_addr=$(uci_get network.ip_address)
+
+	if container_running; then
+		echo "Container: RUNNING"
+		echo "IP Address: $ip_addr"
+		echo ""
+
+		echo "Services:"
+		lxc-attach -n "$CONTAINER_NAME" -- systemctl is-active wazuh-manager 2>/dev/null && echo "  Manager: Running" || echo "  Manager: Stopped"
+		lxc-attach -n "$CONTAINER_NAME" -- systemctl is-active wazuh-indexer 2>/dev/null && echo "  Indexer: Running" || echo "  Indexer: Stopped"
+		lxc-attach -n "$CONTAINER_NAME" -- systemctl is-active wazuh-dashboard 2>/dev/null && echo "  Dashboard: Running" || echo "  Dashboard: Stopped"
+
+		echo ""
+		echo "Access:"
+		echo "  Dashboard: http://$ip_addr:5601"
+		echo "  API: https://$ip_addr:55000"
+	else
+		echo "Container: STOPPED"
+	fi
+}
+
+# ===========================================
+# Configuration
+# ===========================================
+
+cmd_configure_haproxy() {
+	load_config
+
+	local domain=$(uci_get haproxy.domain) || domain="wazuh.gk2.secubox.in"
+	local ip_addr=$(uci_get network.ip_address)
+	local dashboard_port=$(uci_get ports.dashboard) || dashboard_port="5601"
+
+	log_info "Configuring HAProxy for $domain..."
+
+	# Create backend
+	uci set haproxy.wazuh_dashboard=backend
+	uci set haproxy.wazuh_dashboard.name="wazuh_dashboard"
+	uci set haproxy.wazuh_dashboard.mode="http"
+	uci set haproxy.wazuh_dashboard.balance="roundrobin"
+	uci set haproxy.wazuh_dashboard.enabled="1"
+
+	# Create server
+	uci set haproxy.wazuh_dashboard_srv=server
+	uci set haproxy.wazuh_dashboard_srv.backend="wazuh_dashboard"
+	uci set haproxy.wazuh_dashboard_srv.name="srv"
+	uci set haproxy.wazuh_dashboard_srv.address="$ip_addr"
+	uci set haproxy.wazuh_dashboard_srv.port="$dashboard_port"
+	uci set haproxy.wazuh_dashboard_srv.weight="100"
+	uci set haproxy.wazuh_dashboard_srv.check="1"
+	uci set haproxy.wazuh_dashboard_srv.enabled="1"
+
+	# Create vhost
+	local vhost_name=$(echo "$domain" | tr '.-' '_')
+	uci set haproxy.${vhost_name}=vhost
+	uci set haproxy.${vhost_name}.domain="$domain"
+	uci set haproxy.${vhost_name}.backend="wazuh_dashboard"
+	uci set haproxy.${vhost_name}.ssl="1"
+	uci set haproxy.${vhost_name}.ssl_redirect="1"
+	uci set haproxy.${vhost_name}.waf_bypass="1"
+	uci set haproxy.${vhost_name}.enabled="1"
+
+	uci commit haproxy
+
+	# Add to mitmproxy routes
+	if [ -f /srv/mitmproxy-in/haproxy-routes.json ]; then
+		python3 -c "
+import json
+with open('/srv/mitmproxy-in/haproxy-routes.json') as f:
+    data = json.load(f)
+data['$domain'] = ['$ip_addr', $dashboard_port]
+with open('/srv/mitmproxy-in/haproxy-routes.json', 'w') as f:
+    json.dump(data, f, indent=2)
+" 2>/dev/null
+	fi
+
+	# Regenerate HAProxy config
+	haproxyctl generate 2>/dev/null
+	haproxyctl reload 2>/dev/null
+
+	log_info "HAProxy configured: https://$domain"
+}
+
+cmd_configure_firewall() {
+	load_config
+
+	local ip_addr=$(uci_get network.ip_address)
+
+	log_info "Configuring firewall rules..."
+
+	# Agent registration (1514 TCP/UDP)
+	# API (55000)
+	# These ports need to be accessible from agents
+
+	cat >> /etc/firewall.user <<FIREWALL
+# Wazuh Manager ports
+iptables -t nat -A PREROUTING -p tcp --dport 1514 -j DNAT --to-destination $ip_addr:1514
+iptables -t nat -A PREROUTING -p udp --dport 1514 -j DNAT --to-destination $ip_addr:1514
+iptables -t nat -A PREROUTING -p tcp --dport 1515 -j DNAT --to-destination $ip_addr:1515
+iptables -t nat -A PREROUTING -p tcp --dport 55000 -j DNAT --to-destination $ip_addr:55000
+FIREWALL
+
+	/etc/init.d/firewall reload
+
+	log_info "Firewall configured for Wazuh ports"
+}
+
+# ===========================================
+# Agent Management
+# ===========================================
+
+cmd_list_agents() {
+	load_config
+
+	if ! container_running; then
+		log_error "Container not running"
+		return 1
+	fi
+
+	lxc-attach -n "$CONTAINER_NAME" -- /var/ossec/bin/agent_control -l
+}
+
+cmd_agent_info() {
+	load_config
+	local agent_id="$1"
+	[ -z "$agent_id" ] && { log_error "Agent ID required"; return 1; }
+
+	lxc-attach -n "$CONTAINER_NAME" -- /var/ossec/bin/agent_control -i "$agent_id"
+}
+
+cmd_remove_agent() {
+	load_config
+	local agent_id="$1"
+	[ -z "$agent_id" ] && { log_error "Agent ID required"; return 1; }
+
+	lxc-attach -n "$CONTAINER_NAME" -- /var/ossec/bin/manage_agents -r "$agent_id"
+}
+
+# ===========================================
+# API
+# ===========================================
+
+cmd_api_status() {
+	load_config
+	local ip_addr=$(uci_get network.ip_address)
+
+	curl -sk "https://$ip_addr:55000/" 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "API not responding"
+}
+
+cmd_api_token() {
+	load_config
+	local ip_addr=$(uci_get network.ip_address)
+
+	log_info "Getting API token..."
+	curl -sk -X POST "https://$ip_addr:55000/security/user/authenticate" \
+		-H "Content-Type: application/json" \
+		-u "wazuh:wazuh" 2>/dev/null | python3 -m json.tool
+}
+
+# ===========================================
+# Logs & Monitoring
+# ===========================================
+
+cmd_logs() {
+	load_config
+	local service="${1:-manager}"
+
+	case "$service" in
+		manager)
+			lxc-attach -n "$CONTAINER_NAME" -- tail -100 /var/ossec/logs/ossec.log
+			;;
+		indexer)
+			lxc-attach -n "$CONTAINER_NAME" -- tail -100 /var/log/wazuh-indexer/wazuh-cluster.log
+			;;
+		dashboard)
+			lxc-attach -n "$CONTAINER_NAME" -- journalctl -u wazuh-dashboard -n 100
+			;;
+		*)
+			log_error "Unknown service: $service (manager|indexer|dashboard)"
+			;;
+	esac
+}
+
+cmd_alerts() {
+	load_config
+	local count="${1:-20}"
+
+	lxc-attach -n "$CONTAINER_NAME" -- tail -n "$count" /var/ossec/logs/alerts/alerts.json | \
+		python3 -m json.tool 2>/dev/null || \
+		lxc-attach -n "$CONTAINER_NAME" -- tail -n "$count" /var/ossec/logs/alerts/alerts.json
+}
+
+cmd_stats() {
+	load_config
+
+	echo "=== Wazuh Cluster Statistics ==="
+	lxc-attach -n "$CONTAINER_NAME" -- /var/ossec/bin/cluster_control -l 2>/dev/null || echo "Single-node deployment"
+	echo ""
+	echo "=== Agent Statistics ==="
+	lxc-attach -n "$CONTAINER_NAME" -- /var/ossec/bin/agent_control -l | head -20
+}
+
+# ===========================================
+# Shell Access
+# ===========================================
+
+cmd_shell() {
+	load_config
+
+	if ! container_running; then
+		log_error "Container not running"
+		return 1
+	fi
+
+	lxc-attach -n "$CONTAINER_NAME" -- /bin/bash
+}
+
+cmd_exec() {
+	load_config
+	shift
+
+	if ! container_running; then
+		log_error "Container not running"
+		return 1
+	fi
+
+	lxc-attach -n "$CONTAINER_NAME" -- "$@"
+}
+
+# ===========================================
+# Main
+# ===========================================
+
+case "$1" in
+	install)             cmd_install ;;
+	uninstall)           cmd_uninstall ;;
+	upgrade)             cmd_uninstall && cmd_install ;;
+	start)               cmd_start ;;
+	stop)                cmd_stop ;;
+	restart)             cmd_restart ;;
+	status)              cmd_status ;;
+	configure-haproxy)   cmd_configure_haproxy ;;
+	configure-firewall)  cmd_configure_firewall ;;
+	list-agents)         cmd_list_agents ;;
+	agent-info)          shift; cmd_agent_info "$@" ;;
+	remove-agent)        shift; cmd_remove_agent "$@" ;;
+	api-status)          cmd_api_status ;;
+	api-token)           cmd_api_token ;;
+	logs)                shift; cmd_logs "$@" ;;
+	alerts)              shift; cmd_alerts "$@" ;;
+	stats)               cmd_stats ;;
+	shell)               cmd_shell ;;
+	exec)                cmd_exec "$@" ;;
+	-h|--help|help|"")   usage ;;
+	*)                   log_error "Unknown command: $1"; usage; exit 1 ;;
+esac

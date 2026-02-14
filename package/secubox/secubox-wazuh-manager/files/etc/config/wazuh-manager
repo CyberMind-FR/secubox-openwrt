@@ -1,0 +1,38 @@
+config wazuh_manager 'main'
+	option enabled '0'
+	option container_name 'wazuh'
+	option lxc_path '/srv/lxc'
+	option data_path '/srv/wazuh'
+
+config network 'network'
+	option ip_address '192.168.255.50'
+	option gateway '192.168.255.1'
+	option bridge 'br-lan'
+
+config ports 'ports'
+	option manager '1514'
+	option manager_tcp '1515'
+	option api '55000'
+	option indexer '9200'
+	option dashboard '5601'
+
+config resources 'resources'
+	option memory_limit '4G'
+	option cpu_shares '1024'
+
+config haproxy 'haproxy'
+	option enabled '1'
+	option domain 'wazuh.gk2.secubox.in'
+	option dashboard_port '5601'
+
+config indexer 'indexer'
+	option cluster_name 'wazuh-cluster'
+	option node_name 'wazuh-indexer'
+	option shards '1'
+	option replicas '0'
+
+config manager 'manager'
+	option cluster_enabled '0'
+	option cluster_name 'wazuh'
+	option node_name 'master'
+	option node_type 'master'
