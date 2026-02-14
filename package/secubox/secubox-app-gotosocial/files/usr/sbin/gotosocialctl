@@ -115,10 +115,10 @@ bind-address: "$bind"
 port: $port
 
 db-type: "sqlite"
-db-address: "/data/gotosocial.db"
+db-address: "/srv/gotosocial/gotosocial.db"
 
 storage-backend: "local"
-storage-local-base-path: "/data/storage"
+storage-local-base-path: "/srv/gotosocial/storage"
 
 instance-expose-public-timeline: true
 instance-expose-suspended: false
@@ -377,18 +377,18 @@ cmd_user_create() {
 		--username "$username" \
 		--email "$email" \
 		--password "$password" \
-		--config "$DATA_PATH/config.yaml"
+		--config-path "$DATA_PATH/config.yaml"
 
 	if [ "$admin" = "true" ]; then
 		HOME="$DATA_PATH" "$BINARY_PATH" admin account promote \
 			--username "$username" \
-			--config "$DATA_PATH/config.yaml"
+			--config-path "$DATA_PATH/config.yaml"
 	fi
 
 	# Confirm the user
 	HOME="$DATA_PATH" "$BINARY_PATH" admin account confirm \
 		--username "$username" \
-		--config "$DATA_PATH/config.yaml" 2>/dev/null || true
+		--config-path "$DATA_PATH/config.yaml" 2>/dev/null || true
 
 	echo ""
 	echo "User created successfully!"
@@ -444,7 +444,7 @@ cmd_user_confirm() {
 
 	HOME="$DATA_PATH" "$BINARY_PATH" admin account confirm \
 		--username "$username" \
-		--config "$DATA_PATH/config.yaml"
+		--config-path "$DATA_PATH/config.yaml"
 
 	log_info "User $username confirmed"
 }
