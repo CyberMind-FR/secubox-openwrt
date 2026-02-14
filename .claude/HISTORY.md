@@ -1530,3 +1530,44 @@ Updated `/etc/init.d/secubox-lxc` to manage all LXC containers:
 ### Result
 - https://home.maegia.tv → Domoticz (200 OK)
 - https://gk2.secubox.in → GK2 Hub (200 OK, redirect loop fixed)
+
+## 2026-02-14: Vhost Routing Fixes & Glances Installation
+
+### Mitmproxy Routes Duplicate Fix
+- **Issue:** Multiple vhosts showing mixed/wrong content (sdlc, console, control)
+- **Root cause:** Duplicate entries in `/srv/mitmproxy-in/haproxy-routes.json`
+  - `console.gk2.secubox.in` appeared twice (8501 then 8081 - second wins)
+  - `control.gk2.secubox.in` appeared twice (8511 then 8081 - second wins)
+- **Fix:** Removed duplicate entries, kept correct Streamlit ports
+
+### Service Backend Fixes
+- **play.maegia.tv:** Changed backend from `mitmproxy_inspector` to `streamlit_yijing` (port 8501)
+- **client.gk2.secubox.in:** Enabled `pinafore_srv` server with health check
+- **social.gk2.secubox.in:** Started GoToSocial LXC container
+
+### Pinafore Static Server
+- Added uhttpd instance on port 4002 for Mastodon client landing page
+- Serves `/srv/pinafore/index.html` with links to Mastodon web clients
+
+### Glances Installation
+- Installed `python3-pip` via opkg
+- Installed Glances 4.5.0.4 via pip3 with dependencies:
+  - bottle, fastapi, uvicorn, psutil, jinja2, pydantic
+- Created dummy `/usr/lib/python3.11/webbrowser.py` for headless operation
+- Started Glances web server on port 61208
+
+### Verified Services
+| Service | URL | Status |
+|---------|-----|--------|
+| sdlc.gk2.secubox.in | MetaBlog SDLC | ✓ HTTP 200 |
+| console.gk2.secubox.in | Streamlit Console | ✓ HTTP 200 |
+| control.gk2.secubox.in | Streamlit Control | ✓ HTTP 200 |
+| play.maegia.tv | Streamlit Yijing | ✓ HTTP 200 |
+| glances.gk2.secubox.in | Glances Monitor | ✓ HTTP 200 |
+| social.gk2.secubox.in | GoToSocial | ✓ Working |
+| client.gk2.secubox.in | Pinafore Landing | ✓ HTTP 200 |
+
+### Total Operational
+- 70+ vhosts verified working
+- 55 SSL certificates active
+- WAF/mitmproxy routing stable
