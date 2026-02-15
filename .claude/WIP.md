@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-14 (WAF architecture configured)_
+_Last updated: 2026-02-15 (PeerTube + Generative LuCI Tree)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -74,15 +74,34 @@ _Last updated: 2026-02-14 (WAF architecture configured)_
   - User management: create-user, reset-password, list-users
   - Backup/restore PostgreSQL database
   - UCI config: main, server, live, transcoding, storage, network, admin sections
+  - Fixed: Redis ARM64-COW-BUG via `ignore-warnings` config
+  - Fixed: Redis sentinel disabled (using standalone Redis)
+  - Fixed: RTMPS disabled (no SSL keys needed)
+  - Fixed: HAProxy waf_bypass=1 for proper OAuth routing
 
 - **PeerTube LuCI Dashboard** — DONE (2026-02-15)
   - Created `luci-app-peertube` package
-  - RPCD handler with 11 methods: status, start, stop, install, uninstall, update, logs, emancipate, live_enable, live_disable, configure_haproxy
+  - RPRD handler with 11 methods: status, start, stop, install, uninstall, update, logs, emancipate, live_enable, live_disable, configure_haproxy
   - Dashboard with install wizard, status display, service controls
   - Live streaming toggle with firewall integration
   - HAProxy configuration button
   - Emancipate form for public exposure
   - Logs viewer with refresh
+
+- **Generative LuCI Tree** — DONE (2026-02-15)
+  - Created `luci.secubox-portal` RPCD backend for dynamic component discovery
+  - Three RPC methods: get_tree, get_containers, get_vhosts
+  - Auto-discovers all installed `luci-app-*` packages and groups by category:
+    - SecuBox Core, Security, Media & Streaming, Network & Proxy
+    - Development & CMS, IoT & Home, AI & Communication, System & Management
+  - Discovers LXC containers from `/srv/lxc/` with running state
+  - Discovers HAProxy vhosts from UCI with domain/backend/ssl info
+  - Updated `luci-tree.js` with:
+    - Three tabs: LuCI Apps, Containers, Vhosts
+    - Refresh button for live updates
+    - Stats showing packages, containers, vhosts counts
+    - Search functionality for filtering
+  - ACL permissions for unauthenticated portal access
 
 ### Just Completed (2026-02-14)
 

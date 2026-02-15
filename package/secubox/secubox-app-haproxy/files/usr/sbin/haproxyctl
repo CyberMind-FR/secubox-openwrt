@@ -1821,6 +1821,8 @@ cmd_reload() {
 	generate_config
 
 	log_info "Reloading HAProxy configuration..."
+	# Copy generated config to container's /etc/haproxy/ (HAProxy reads from there)
+	lxc_exec cp /opt/haproxy/config/haproxy.cfg /etc/haproxy/haproxy.cfg
 	# HAProxy in master-worker mode (-W) reloads gracefully on SIGUSR2
 	# Fallback to SIGHUP if USR2 fails
 	lxc_exec killall -USR2 haproxy 2>/dev/null || \

@@ -1749,3 +1749,27 @@ git checkout HEAD -- index.html
   - HAProxy configuration status with configure button
   - Emancipate form for public exposure
   - Logs viewer with refresh button
+
+### 2026-02-15: Generative LuCI Navigation Tree
+- **Created luci.secubox-portal RPCD backend** for dynamic component discovery
+  - `get_tree`: Auto-discovers all `luci-app-*` packages, groups by category
+  - `get_containers`: Lists LXC containers from `/srv/lxc/` with running state
+  - `get_vhosts`: Lists HAProxy vhosts from UCI with domain/backend/ssl info
+  - Categories: SecuBox Core, Security, Media & Streaming, Network & Proxy, Development & CMS, IoT & Home, AI & Communication, System & Management, Other SecuBox Apps
+- **Updated luci-tree.js** with dynamic RPC-based interface
+  - Three tabs: LuCI Apps, Containers, Vhosts
+  - Refresh button for live updates without page reload
+  - Stats row showing categories, links, packages, containers, vhosts counts
+  - Search functionality for filtering modules
+  - Cyberpunk dark theme with green/cyan accents
+- **ACL permissions** for unauthenticated portal access to tree methods
+
+### 2026-02-15: PeerTube Configuration Fixes
+- **Redis ARM64-COW-BUG**: Added `ignore-warnings ARM64-COW-BUG` to redis.conf
+- **Redis sentinel**: Disabled (using standalone Redis, not sentinel cluster)
+- **RTMPS**: Disabled (no SSL key file needed for live streaming)
+- **HAProxy WAF bypass**: Added `waf_bypass=1` to tube.gk2.secubox.in vhost
+  - Without bypass, mitmproxy WAF stripped Host header causing OAuth errors
+  - PeerTube validates requests against configured webserver.hostname
+- **Listen hostname**: Set to `0.0.0.0` (not domain name) for proper binding
+- **Webserver hostname**: Set to `tube.gk2.secubox.in` for OAuth validation

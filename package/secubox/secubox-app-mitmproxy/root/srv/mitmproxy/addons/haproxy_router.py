@@ -116,12 +116,19 @@ class HaproxyRouter:
         host = flow.request.host_header or flow.request.host
         backend = self._get_backend(host)
 
-        # Set the upstream server
+        # Save original Host header before routing
+        original_host_header = flow.request.headers.get("Host", host)
+
+        # Set the upstream server (changes internal routing destination)
         flow.request.host = backend[0]
         flow.request.port = backend[1]
 
+        # CRITICAL: Restore original Host header for backend validation
+        # Many backends (PeerTube OAuth, etc.) validate Host header against config
+        flow.request.headers["Host"] = original_host_header
+
         # Log routing decision
-        ctx.log.debug(f"ROUTE: {host} -> {backend[0]}:{backend[1]}")
+        ctx.log.debug(f"ROUTE: {host} -> {backend[0]}:{backend[1]} (Host: {original_host_header})")
 
         # Store original host for analytics
         flow.metadata['original_host'] = host
