@@ -1815,3 +1815,18 @@ git checkout HEAD -- index.html
 - **Streamlit evolution**: Instance was not running, added on port 8510
 - **Streamlit Gitea sync**: Pushed 4 missing apps (cineposter_fixed, pdf_slideshow, pharmacopoeia_secubox, wuyun_liuqi)
 - **RTMP firewall**: Opened port 1935 for PeerTube live streaming
+
+### 2026-02-15: Mailserver gk2 Account Restoration
+- **Restored gk2@secubox.in** user from backup
+  - Container was reinstalled on Feb 14, only admin@ was recreated
+  - Found gk2 credentials in `/srv/backups/mailserver/config-20260206-171132.tar.gz`
+  - Extracted password hash and added to `/etc/dovecot/users` in container
+  - Created maildir at `/var/mail/secubox.in/gk2/{cur,new,tmp}`
+- **Data loss**: Maildir was already empty in Feb 6 backup (emails lost before backup)
+- **Root cause**: mailserver container reinstallation did not restore all users
+
+### 2026-02-15: Gitea Repository Privacy Fix
+- **Verified** streamlitctl creates repos with `private:true` by default
+- **Fixed** `secubox-evolution` repo which was public → now private
+- **API call**: `PATCH /api/v1/repos/gandalf/secubox-evolution` with `{"private":true}`
+- All 30 Gitea repos now private

@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-15 (HAProxy/Mitmproxy WAF fixes + Wazuh watchdog)_
+_Last updated: 2026-02-15 (Mailserver gk2 restore + Gitea privacy fix)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -86,6 +86,14 @@ _Last updated: 2026-02-15 (HAProxy/Mitmproxy WAF fixes + Wazuh watchdog)_
   - Auto-push on first upload confirmed working
   - Pushed 4 missing apps to Gitea (cineposter_fixed, pdf_slideshow, pharmacopoeia_secubox, wuyun_liuqi)
   - 18 apps now have Gitea repos
+  - Fixed `secubox-evolution` repo privacy (was public → now private)
+  - All Gitea repos now created with `private:true` by default
+
+- **Mailserver gk2 Account Restoration** — DONE (2026-02-15)
+  - Container was reinstalled on Feb 14, only admin@ was recreated
+  - Restored gk2@secubox.in from backup (config-20260206-171132.tar.gz)
+  - Same password hash preserved (no password change needed)
+  - Note: Maildir was already empty in backup (emails lost before Feb 6)
 
 - **PeerTube Video Platform Package** — DONE (2026-02-15)
   - Created `secubox-app-peertube` package for self-hosted video streaming
