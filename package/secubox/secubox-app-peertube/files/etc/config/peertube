@@ -7,7 +7,7 @@ config peertube 'main'
 
 config peertube 'server'
 	option hostname 'peertube.local'
-	option port '9000'
+	option port '9001'
 	option https '1'
 	option webserver_hostname ''
 
