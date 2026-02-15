@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-15 (PeerTube + Generative LuCI Tree)_
+_Last updated: 2026-02-15 (HAProxy/Mitmproxy WAF fixes + Wazuh watchdog)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -63,6 +63,29 @@ _Last updated: 2026-02-15 (PeerTube + Generative LuCI Tree)_
   - Created `luci-app-vortex-dns` dashboard
 
 ### Just Completed (2026-02-15)
+
+- **HAProxy & Mitmproxy WAF Fixes** — DONE (2026-02-15)
+  - Fixed HAProxy reload: copy config to `/etc/haproxy/` before signal
+  - Fixed mitmproxy Host header preservation for OAuth compatibility
+  - Reset WAF globally: removed `waf_bypass` from 70 vhosts/ACLs
+  - All traffic now routes through mitmproxy for inspection
+  - Committed: f3f6eb4e
+
+- **PeerTube Email Configuration** — DONE (2026-02-15)
+  - Configured SMTP with local mailserver (192.168.255.30:25)
+  - Fixed STARTTLS self-signed cert error (disable_starttls: true)
+  - Password resets and notifications working
+
+- **Wazuh Agent Watchdog** — DONE (2026-02-15)
+  - Added watchdog loop to check wazuh-agentd every 60 seconds
+  - Auto-restarts service if process dies
+  - Logs to `/var/log/wazuh-watchdog.log`
+  - Committed: 851910e1
+
+- **Streamlit Gitea Integration** — DONE (2026-02-15)
+  - Auto-push on first upload confirmed working
+  - Pushed 4 missing apps to Gitea (cineposter_fixed, pdf_slideshow, pharmacopoeia_secubox, wuyun_liuqi)
+  - 18 apps now have Gitea repos
 
 - **PeerTube Video Platform Package** — DONE (2026-02-15)
   - Created `secubox-app-peertube` package for self-hosted video streaming

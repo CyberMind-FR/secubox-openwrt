@@ -1773,3 +1773,45 @@ git checkout HEAD -- index.html
   - PeerTube validates requests against configured webserver.hostname
 - **Listen hostname**: Set to `0.0.0.0` (not domain name) for proper binding
 - **Webserver hostname**: Set to `tube.gk2.secubox.in` for OAuth validation
+
+### 2026-02-15: HAProxy & Mitmproxy WAF Fixes
+- **HAProxy reload fix** in haproxyctl
+  - HAProxy reads from `/etc/haproxy/haproxy.cfg` inside container
+  - Config was generated at `/opt/haproxy/config/haproxy.cfg` but not copied
+  - Added `lxc_exec cp /opt/haproxy/config/haproxy.cfg /etc/haproxy/haproxy.cfg` before reload signal
+- **Mitmproxy Host header preservation** in haproxy_router.py
+  - Fixed PeerTube OAuth "Invalid client" error when WAF enabled
+  - Issue: `flow.request.host = backend[0]` was modifying the Host header
+  - Fix: Save original Host header, set backend destination, restore Host header
+  - Backends that validate Host (PeerTube OAuth, etc.) now work through WAF
+- **WAF global reset**
+  - Removed `waf_bypass=1` from 70 vhosts and path ACLs
+  - All traffic now routes through mitmproxy for inspection
+  - Streamlit apps, infrastructure services all WAF-enabled
+- **Committed**: f3f6eb4e - fix(haproxy,mitmproxy): Fix config reload and preserve Host header
+
+### 2026-02-15: PeerTube Email Configuration
+- **Configured SMTP** for local mailserver (192.168.255.30)
+  - Port 25, no TLS, disable_starttls=true (internal network)
+  - Auth: admin@secubox.in
+  - From: peertube@secubox.in
+- **Fixed self-signed certificate error**
+  - Mailserver STARTTLS was enabled with self-signed cert
+  - Set `disable_starttls: true` in production.yaml
+- **Added peertube@secubox.in alias** to mailserver virtual aliases
+- PeerTube now sends registration confirmations and password resets
+
+### 2026-02-15: Wazuh Agent Watchdog
+- **Added watchdog** to wazuh-agent startup script
+  - Checks every 60 seconds if `wazuh-agentd` is running
+  - Automatically restarts Wazuh service if process dies
+  - Logs restart events to `/var/log/wazuh-watchdog.log`
+- **Root cause**: wazuh-agentd process had stopped, agent showed disconnected
+- **Committed**: 851910e1 - feat(wazuh): Add watchdog to wazuh-agent startup script
+
+### 2026-02-15: Service Fixes
+- **Roundcube webmail**: Container was stopped, started it
+- **Wazuh dashboard**: Added waf_bypass (HTTPS backend incompatible with HTTP WAF)
+- **Streamlit evolution**: Instance was not running, added on port 8510
+- **Streamlit Gitea sync**: Pushed 4 missing apps (cineposter_fixed, pdf_slideshow, pharmacopoeia_secubox, wuyun_liuqi)
+- **RTMP firewall**: Opened port 1935 for PeerTube live streaming
