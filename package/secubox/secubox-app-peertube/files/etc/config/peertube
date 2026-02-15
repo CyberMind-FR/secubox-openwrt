@@ -6,7 +6,7 @@ config peertube 'main'
 	option timezone 'Europe/Paris'
 
 config peertube 'server'
-	option hostname 'peertube.local'
+	option hostname 'tube.gk2.secubox.in'
 	option port '9001'
 	option https '1'
 	option webserver_hostname ''
