@@ -34,6 +34,19 @@ get_icon() {
         cineposter*|cpf) echo "🎬" ;;
         wuyun) echo "🌬️" ;;
         hello) echo "👋" ;;
+        tube|peertube) echo "📺" ;;
+        social|gotosocial) echo "🐘" ;;
+        wazuh) echo "🔒" ;;
+        webmail|mail) echo "📧" ;;
+        media|jellyfin) echo "🎬" ;;
+        pdf|papyrus) echo "📄" ;;
+        geo|gondwana) echo "🌍" ;;
+        clock) echo "🕐" ;;
+        money) echo "💰" ;;
+        osint) echo "🔍" ;;
+        flash) echo "⚡" ;;
+        client) echo "👤" ;;
+        mvox) echo "🎤" ;;
         *) echo "🚀" ;;
     esac
 }
@@ -140,18 +153,23 @@ for site in $(ls -1 /srv/metablogizer/sites/ 2>/dev/null | sort); do
     section="site_$(echo "$site" | tr '-' '_')"
     domain=$(uci -q get metablogizer.$section.domain)
 
-    # Default URL mapping if no domain configured
+    # Default URL mapping - try gk2.secubox.in subdomain, fallback to maegia.tv
     if [ -z "$domain" ]; then
-        case "$site" in
-            lldh) url="https://lldh.gk2.secubox.in" ;;
-            want) url="https://wanted.gk2.secubox.in" ;;
-            gandalf) url="https://gandalf.maegia.tv" ;;
-            cyberzine) url="https://cyberzine.maegia.tv" ;;
-            devel) url="https://devel.maegia.tv" ;;
-            c3box) url="https://c3box.maegia.tv" ;;
-            gk2) url="https://gk2.maegia.tv" ;;
-            *) url="https://secubox.in/gk2/$site" ;;
-        esac
+        # Check if HAProxy vhost exists for gk2.secubox.in
+        vhost_domain=$(uci show haproxy 2>/dev/null | grep -E "\.domain='${site}\.gk2\.secubox\.in'" | head -1 | sed "s/.*domain='\([^']*\)'/\1/")
+        if [ -n "$vhost_domain" ]; then
+            url="https://$vhost_domain"
+        else
+            # Fallback to maegia.tv for some known sites
+            case "$site" in
+                gandalf) url="https://gandalf.maegia.tv" ;;
+                cyberzine) url="https://cyberzine.maegia.tv" ;;
+                devel) url="https://devel.maegia.tv" ;;
+                c3box) url="https://c3box.maegia.tv" ;;
+                gk2) url="https://gk2.maegia.tv" ;;
+                *) url="https://${site}.gk2.secubox.in" ;;
+            esac
+        fi
     else
         url="https://$domain"
     fi
@@ -183,25 +201,40 @@ cat >> "$OUTPUT" << 'INFRA'
                     <div class="card-title">Glances</div>
                     <div class="card-desc">Monitoring</div>
                 </a>
-                <a href="https://secubox.in/gk2/jellyfin" class="card">
+                <a href="https://media.gk2.secubox.in" class="card">
                     <div class="card-icon">🎬</div>
                     <div class="card-title">Jellyfin</div>
                     <div class="card-desc">Media Server</div>
                 </a>
-                <a href="https://secubox.in/gk2/localai" class="card">
+                <a href="https://localai.gk2.secubox.in" class="card">
                     <div class="card-icon">🤖</div>
                     <div class="card-title">LocalAI</div>
                     <div class="card-desc">AI Gateway</div>
                 </a>
-                <a href="https://secubox.in/gk2/webmail" class="card">
+                <a href="https://webmail.gk2.secubox.in" class="card">
                     <div class="card-icon">📧</div>
                     <div class="card-title">Webmail</div>
                     <div class="card-desc">Roundcube</div>
                 </a>
-                <a href="https://secubox.in/gk2/feed" class="card">
+                <a href="https://feed.gk2.secubox.in" class="card">
                     <div class="card-icon">📦</div>
                     <div class="card-title">Package Feed</div>
                     <div class="card-desc">IPK Repository</div>
+                </a>
+                <a href="https://tube.gk2.secubox.in" class="card">
+                    <div class="card-icon">📺</div>
+                    <div class="card-title">PeerTube</div>
+                    <div class="card-desc">Video Streaming</div>
+                </a>
+                <a href="https://social.gk2.secubox.in" class="card">
+                    <div class="card-icon">🐘</div>
+                    <div class="card-title">GoToSocial</div>
+                    <div class="card-desc">Fediverse</div>
+                </a>
+                <a href="https://wazuh.gk2.secubox.in" class="card">
+                    <div class="card-icon">🔒</div>
+                    <div class="card-title">Wazuh</div>
+                    <div class="card-desc">SIEM Dashboard</div>
                 </a>
 INFRA
 

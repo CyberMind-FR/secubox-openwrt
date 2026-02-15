@@ -1840,3 +1840,24 @@ git checkout HEAD -- index.html
 - **Fixed** container running check to detect mitmproxy-in and mitmproxy-out
 - **Result**: Dashboard now shows 997 threats today, 29 pending autobans
 - **Committed**: 42d85c4d
+
+### 2026-02-15: PeerTube Transcoding Jobs Fix
+- **Root cause**: Videos stuck with `waitTranscoding=true` not showing in public listing
+- **Investigation**: Found `runnerJob` table with 6 jobs stuck in state=1 (pending)
+- **Problem**: Admin enabled "remote runners" for transcoding but no runners registered
+- **Fix**: Set `waitTranscoding=false` directly in PostgreSQL database
+  ```sql
+  UPDATE video SET "waitTranscoding" = false WHERE "waitTranscoding" = true;
+  ```
+- **Result**: 2 videos now visible in public listing
+- **Future fix**: Disable remote runners in admin panel, use local ffmpeg transcoding
+
+### 2026-02-15: GK2 Hub Landing Page Subdomain URLs
+- **Updated** `gk2hub-generate` script to use direct subdomain URLs
+- **Previous**: Used redirect paths like `https://secubox.in/gk2/jellyfin`
+- **New**: Uses subdomain URLs like `https://media.gk2.secubox.in`
+- **Changes**:
+  - Infrastructure section: media, localai, webmail, feed, tube, social, wazuh
+  - MetaBlogizer: HAProxy vhost lookup for automatic subdomain detection
+  - Added more icons for new service types
+- **Result**: 67 services with proper subdomain URLs

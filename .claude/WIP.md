@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-15 (Mitmproxy WAF dashboard data path fix)_
+_Last updated: 2026-02-15 (PeerTube transcoding fix, GK2 Hub subdomain URLs)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -101,6 +101,20 @@ _Last updated: 2026-02-15 (Mitmproxy WAF dashboard data path fix)_
   - Now displays correct stats: 997 threats today, 29 pending autobans
   - Updated: get_status, get_alerts, get_threat_stats, get_subdomain_metrics
   - Committed: 42d85c4d
+
+- **PeerTube Transcoding Jobs Fix** — DONE (2026-02-15)
+  - Videos were stuck with `waitTranscoding=true` and not showing in public listing
+  - Root cause: Admin enabled "remote runners" for transcoding but no runners registered
+  - `runnerJob` table had 6 jobs stuck in pending state (state=1)
+  - Fix: Set `waitTranscoding=false` directly in database to make videos visible
+  - Alternative fix (for future uploads): Disable remote runners in admin panel, use local ffmpeg
+
+- **GK2 Hub Landing Page Subdomain URLs** — DONE (2026-02-15)
+  - Previous version used redirect paths (`secubox.in/gk2/service`)
+  - Updated `gk2hub-generate` to use direct subdomain URLs (`service.gk2.secubox.in`)
+  - Added HAProxy vhost lookup for automatic subdomain detection
+  - Added PeerTube, GoToSocial, Wazuh to Infrastructure section
+  - 67 services now display with proper subdomain URLs
 
 - **PeerTube Video Platform Package** — DONE (2026-02-15)
   - Created `secubox-app-peertube` package for self-hosted video streaming
