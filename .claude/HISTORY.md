@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-02-14_
+_Last updated: 2026-02-15_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -1712,3 +1712,40 @@ git checkout HEAD -- index.html
   - `_emancipate_mitmproxy()` now uses `mitmproxyctl sync-routes` instead of direct file manipulation
   - Ensures HAProxy and mitmproxy routes stay in sync
   - MetaBlogizer sites now properly routed through WAF
+
+### 2026-02-15: PeerTube Video Platform Package
+- **Created secubox-app-peertube package** - federated video streaming platform
+  - LXC container with Debian Bookworm base image
+  - Stack: PostgreSQL 15, Redis 7, Node.js 18 LTS, FFmpeg
+  - `peertubectl` CLI with 15+ commands:
+    - Container: install, uninstall, update, start, stop, status, logs, shell
+    - User mgmt: admin create-user, admin reset-password, admin list-users
+    - Live: live enable, live disable, live status (RTMP on port 1935)
+    - Exposure: configure-haproxy, emancipate
+    - Backup: backup, restore (PostgreSQL dump)
+  - HAProxy integration with extended timeouts (3600s) for streaming/WebSocket
+  - Full emancipation workflow: DNS → Vortex → HAProxy → ACL → SSL → Mesh → Mitmproxy → Reload
+- **UCI config sections:**
+  - main: enabled, data_path, videos_path, memory_limit, timezone
+  - server: hostname, port, https, webserver_hostname
+  - live: enabled, rtmp_port, max_duration, allow_replay, transcoding_enabled
+  - transcoding: enabled, threads, allow_audio_files, hls_enabled, resolutions
+  - storage: external_enabled, s3_endpoint, s3_region, s3_bucket, s3_access_key, s3_secret_key
+  - network: domain, haproxy, haproxy_ssl, firewall_wan
+  - admin: email, initial_password
+
+### 2026-02-15: PeerTube LuCI Dashboard
+- **Created luci-app-peertube package**
+  - RPCD handler (luci.peertube) with 11 methods:
+    - status, start, stop, install, uninstall, update, logs
+    - emancipate, live_enable, live_disable, configure_haproxy
+  - ACL permissions: read (status, logs), write (all actions)
+  - Menu entry: Admin → Services → PeerTube
+- **Dashboard features:**
+  - Install wizard with features list and requirements
+  - Status badge (Running/Stopped) with access URL
+  - Service info: hostname, port, admin email
+  - Live streaming toggle with enable/disable buttons
+  - HAProxy configuration status with configure button
+  - Emancipate form for public exposure
+  - Logs viewer with refresh button

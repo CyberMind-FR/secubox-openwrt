@@ -1,0 +1,17 @@
+{
+	"luci-app-peertube": {
+		"description": "Grant access to PeerTube management",
+		"read": {
+			"ubus": {
+				"luci.peertube": ["status", "logs"]
+			},
+			"uci": ["peertube"]
+		},
+		"write": {
+			"ubus": {
+				"luci.peertube": ["start", "stop", "install", "uninstall", "update", "emancipate", "live_enable", "live_disable", "configure_haproxy"]
+			},
+			"uci": ["peertube"]
+		}
+	}
+}

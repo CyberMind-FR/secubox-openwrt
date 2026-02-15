@@ -62,6 +62,28 @@ _Last updated: 2026-02-14 (WAF architecture configured)_
   - Gossip-based exposure config sync via secubox-p2p
   - Created `luci-app-vortex-dns` dashboard
 
+### Just Completed (2026-02-15)
+
+- **PeerTube Video Platform Package** — DONE (2026-02-15)
+  - Created `secubox-app-peertube` package for self-hosted video streaming
+  - LXC Debian Bookworm container with PostgreSQL 15, Redis 7, Node.js 18, FFmpeg
+  - `peertubectl` CLI with 15+ commands: install/uninstall/update/start/stop/status
+  - Live streaming support with RTMP port 1935
+  - HAProxy integration with extended timeouts (3600s) for streaming
+  - Emancipation workflow for public exposure
+  - User management: create-user, reset-password, list-users
+  - Backup/restore PostgreSQL database
+  - UCI config: main, server, live, transcoding, storage, network, admin sections
+
+- **PeerTube LuCI Dashboard** — DONE (2026-02-15)
+  - Created `luci-app-peertube` package
+  - RPCD handler with 11 methods: status, start, stop, install, uninstall, update, logs, emancipate, live_enable, live_disable, configure_haproxy
+  - Dashboard with install wizard, status display, service controls
+  - Live streaming toggle with firewall integration
+  - HAProxy configuration button
+  - Emancipate form for public exposure
+  - Logs viewer with refresh
+
 ### Just Completed (2026-02-14)
 
 - **mitmproxy WAF Wildcard Route Priority Fix** — DONE (2026-02-14)
