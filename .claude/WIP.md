@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-15 (Mailserver gk2 restore + Gitea privacy fix)_
+_Last updated: 2026-02-15 (Mitmproxy WAF dashboard data path fix)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -94,6 +94,13 @@ _Last updated: 2026-02-15 (Mailserver gk2 restore + Gitea privacy fix)_
   - Restored gk2@secubox.in from backup (config-20260206-171132.tar.gz)
   - Same password hash preserved (no password change needed)
   - Note: Maildir was already empty in backup (emails lost before Feb 6)
+
+- **Mitmproxy WAF Dashboard Data Path Fix** — DONE (2026-02-15)
+  - Dashboard was showing 0 threats because RPCD read from `/srv/mitmproxy` (out)
+  - Fixed to read from `/srv/mitmproxy-in` (WAF input instance)
+  - Now displays correct stats: 997 threats today, 29 pending autobans
+  - Updated: get_status, get_alerts, get_threat_stats, get_subdomain_metrics
+  - Committed: 42d85c4d
 
 - **PeerTube Video Platform Package** — DONE (2026-02-15)
   - Created `secubox-app-peertube` package for self-hosted video streaming

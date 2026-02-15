@@ -1830,3 +1830,13 @@ git checkout HEAD -- index.html
 - **Fixed** `secubox-evolution` repo which was public → now private
 - **API call**: `PATCH /api/v1/repos/gandalf/secubox-evolution` with `{"private":true}`
 - All 30 Gitea repos now private
+
+### 2026-02-15: Mitmproxy WAF Dashboard Data Path Fix
+- **Fixed** RPCD handler reading from wrong data path
+  - Was reading from `/srv/mitmproxy` (outbound instance, no threats)
+  - Now reads from `/srv/mitmproxy-in` (WAF input instance)
+- **Added** `WAF_DATA_PATH` constant for clarity
+- **Updated methods**: get_status, get_alerts, get_threat_stats, get_subdomain_metrics, clear_alerts
+- **Fixed** container running check to detect mitmproxy-in and mitmproxy-out
+- **Result**: Dashboard now shows 997 threats today, 29 pending autobans
+- **Committed**: 42d85c4d
