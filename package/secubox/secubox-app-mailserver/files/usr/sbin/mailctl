@@ -589,6 +589,94 @@ EOF
 }
 
 # ============================================================================
+# Firewall Setup
+# ============================================================================
+
+cmd_firewall_setup() {
+	local container=$(uci_get main.container)
+	container="${container:-mailserver}"
+
+	# Get mail server IP
+	local mail_ip=$(lxc-info -n "$container" -iH 2>/dev/null | head -1)
+	if [ -z "$mail_ip" ]; then
+		mail_ip="192.168.255.30"
+		warn "Container not running, using default IP: $mail_ip"
+	fi
+
+	# Get LAN subnet
+	local lan_ip=$(uci -q get network.lan.ipaddr)
+	local lan_subnet="${lan_ip%.*}.0/24"
+
+	log "Setting up mail firewall rules..."
+	log "Mail server IP: $mail_ip"
+	log "LAN subnet: $lan_subnet (excluded from redirect)"
+
+	# Create firewall.user rules
+	local fw_file="/etc/firewall.user"
+	local fw_backup="${fw_file}.bak"
+
+	# Backup existing file
+	[ -f "$fw_file" ] && cp "$fw_file" "$fw_backup"
+
+	# Remove old mail rules and add new ones
+	local tmpfile="/tmp/firewall.user.$$"
+	if [ -f "$fw_file" ]; then
+		grep -v "mailserver\|192.168.255.30\|dport 143\|dport 993\|dport 25\|dport 465\|dport 587" "$fw_file" > "$tmpfile" 2>/dev/null || true
+	else
+		touch "$tmpfile"
+	fi
+
+	cat >> "$tmpfile" << EOF
+
+# SecuBox Mail Server Firewall Rules
+# Redirect mail ports to local mailserver - EXCLUDING LAN clients
+# LAN clients can still reach external mail servers (OVH, Gmail, etc.)
+iptables -t nat -A PREROUTING ! -s $lan_subnet -p tcp --dport 143 -j DNAT --to-destination ${mail_ip}:143
+iptables -t nat -A PREROUTING ! -s $lan_subnet -p tcp --dport 993 -j DNAT --to-destination ${mail_ip}:993
+iptables -t nat -A PREROUTING ! -s $lan_subnet -p tcp --dport 25 -j DNAT --to-destination ${mail_ip}:25
+iptables -t nat -A PREROUTING ! -s $lan_subnet -p tcp --dport 465 -j DNAT --to-destination ${mail_ip}:465
+iptables -t nat -A PREROUTING ! -s $lan_subnet -p tcp --dport 587 -j DNAT --to-destination ${mail_ip}:587
+
+# Allow forwarding to mailserver
+iptables -A FORWARD -d $mail_ip -p tcp -m multiport --dports 25,143,465,587,993 -j ACCEPT
+EOF
+
+	mv "$tmpfile" "$fw_file"
+	chmod 644 "$fw_file"
+
+	# Apply rules immediately (firewall reload runs firewall.user automatically)
+	log "Applying firewall rules..."
+	/etc/init.d/firewall reload 2>/dev/null
+
+	log "Firewall setup complete"
+	log "WAN traffic on mail ports -> redirected to local mailserver"
+	log "LAN clients -> can reach external mail servers directly"
+}
+
+cmd_firewall_clear() {
+	log "Removing mail firewall rules..."
+
+	# Remove DNAT rules
+	for port in 143 993 25 465 587; do
+		iptables -t nat -D PREROUTING -p tcp --dport $port -j DNAT --to-destination 192.168.255.30:$port 2>/dev/null || true
+		# Also try with ! -s prefix
+		for subnet in "192.168.255.0/24" "192.168.1.0/24" "10.0.0.0/8"; do
+			iptables -t nat -D PREROUTING ! -s $subnet -p tcp --dport $port -j DNAT --to-destination 192.168.255.30:$port 2>/dev/null || true
+		done
+	done
+
+	# Remove from firewall.user
+	local fw_file="/etc/firewall.user"
+	if [ -f "$fw_file" ]; then
+		local tmpfile="/tmp/firewall.user.$$"
+		grep -v "mailserver\|192.168.255.30\|dport 143\|dport 993\|dport 25\|dport 465\|dport 587" "$fw_file" > "$tmpfile" 2>/dev/null || true
+		mv "$tmpfile" "$fw_file"
+	fi
+
+	log "Mail firewall rules removed"
+}
+
+# ============================================================================
 # Help
 # ============================================================================
 
@@ -603,6 +691,8 @@ Setup:
   uninstall            Remove mail server
   dns-setup            Set up MX/SPF/DKIM/DMARC via dnsctl
   ssl-setup            Obtain SSL certificate
+  firewall-setup       Setup mail port forwarding (WAN only)
+  firewall-clear       Remove mail firewall rules
 
 Service:
   start                Start mail server
@@ -642,6 +732,8 @@ Diagnostics:
   ssl-status           Show SSL cert info
   fix-postfix          Fix LMDB maps and DNS resolution
   fix-ports            Enable submission/smtps/pop3s ports
+  firewall-setup       Setup mail port forwarding (WAN only)
+  firewall-clear       Remove mail firewall rules
 
 Examples:
   mailctl install
@@ -675,6 +767,8 @@ case "${1:-}" in
 	report)      shift; cmd_report "$@" ;;
 	fix-postfix) shift; cmd_fix_postfix "$@" ;;
 	fix-ports)   shift; cmd_fix_ports "$@" ;;
+	firewall-setup) shift; cmd_firewall_setup "$@" ;;
+	firewall-clear) shift; cmd_firewall_clear "$@" ;;
 	help|--help|-h|'') show_help ;;
 	*)           error "Unknown command: $1"; show_help >&2; exit 1 ;;
 esac
