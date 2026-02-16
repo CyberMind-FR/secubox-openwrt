@@ -50,12 +50,22 @@ user_add() {
 	[ -z "$hash" ] && hash=$(openssl passwd -6 "$password")
 
 	grep -v "^$email:" "$passfile" > "${passfile}.tmp" 2>/dev/null
-	echo "$email:$hash" >> "${passfile}.tmp"
+	printf '%s\n' "$email:$hash" >> "${passfile}.tmp"
 	mv "${passfile}.tmp" "$passfile"
 
 	# Sync to Dovecot inside container
-	local dovecot_entry="$email:$hash:1000:1000::/home/vmail/$domain/$user"
-	lxc-attach -n "$container" -- sh -c "grep -v '^$email:' /etc/dovecot/users > /tmp/users.tmp 2>/dev/null; echo '$dovecot_entry' >> /tmp/users.tmp; mv /tmp/users.tmp /etc/dovecot/users"
+	# Use correct uid:gid for vmail user (102:105) and proper mail path with userdb_mail
+	local mail_path="/var/mail/$domain/$user"
+	local dovecot_entry="$email:$hash:102:105::$mail_path::userdb_mail=maildir:$mail_path"
+
+	# Write to temp file first to avoid shell expansion issues with $6$ in hash
+	local tmpfile="/tmp/dovecot_entry_$$"
+	printf '%s\n' "$dovecot_entry" > "$tmpfile"
+
+	# Copy to container and merge with existing users file
+	lxc-attach -n "$container" -- sh -c "grep -v '^$email:' /etc/dovecot/users > /tmp/users.tmp 2>/dev/null || true"
+	cat "$tmpfile" | lxc-attach -n "$container" -- sh -c "cat >> /tmp/users.tmp && mv /tmp/users.tmp /etc/dovecot/users"
+	rm -f "$tmpfile"
 
 	# Postmap
 	lxc-attach -n "$container" -- postmap /etc/postfix/vmailbox 2>/dev/null
@@ -129,10 +139,23 @@ user_passwd() {
 	sed -i "s|^$email:.*|$email:$hash|" "$passfile"
 
 	# Sync to Dovecot inside container
+	# Use correct uid:gid for vmail user (102:105) and proper mail path with userdb_mail
 	local user=$(echo "$email" | cut -d@ -f1)
 	local domain=$(echo "$email" | cut -d@ -f2)
-	local dovecot_entry="$email:$hash:1000:1000::/home/vmail/$domain/$user"
-	lxc-attach -n "$container" -- sh -c "grep -v '^$email:' /etc/dovecot/users > /tmp/users.tmp 2>/dev/null; echo '$dovecot_entry' >> /tmp/users.tmp; mv /tmp/users.tmp /etc/dovecot/users"
+	local mail_path="/var/mail/$domain/$user"
+
+	# Build dovecot entry with proper format:
+	# user:password:uid:gid:gecos:home:shell:userdb_mail=maildir:/path
+	local dovecot_entry="$email:$hash:102:105::$mail_path::userdb_mail=maildir:$mail_path"
+
+	# Write to temp file first to avoid shell expansion issues with $6$ in hash
+	local tmpfile="/tmp/dovecot_entry_$$"
+	printf '%s\n' "$dovecot_entry" > "$tmpfile"
+
+	# Copy to container and merge with existing users file
+	lxc-attach -n "$container" -- sh -c "grep -v '^$email:' /etc/dovecot/users > /tmp/users.tmp 2>/dev/null || true"
+	cat "$tmpfile" | lxc-attach -n "$container" -- sh -c "cat >> /tmp/users.tmp && mv /tmp/users.tmp /etc/dovecot/users"
+	rm -f "$tmpfile"
 
 	echo "Password changed for: $email"
 }
