@@ -172,10 +172,12 @@ cmd_alias() {
 
 	case "$action" in
 		add)   alias_add "$@" ;;
+		del)   alias_del "$@" ;;
 		list)  alias_list ;;
 		*)
 			echo "Alias commands:"
 			echo "  alias add <alias> <target>  Add email alias"
+			echo "  alias del <alias>           Delete email alias"
 			echo "  alias list                  List aliases"
 			;;
 	esac

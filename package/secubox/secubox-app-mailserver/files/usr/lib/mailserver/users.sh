@@ -156,6 +156,27 @@ alias_add() {
 	echo "Alias added: $alias → $target"
 }
 
+# Delete alias
+alias_del() {
+	local alias="$1"
+
+	[ -z "$alias" ] && { echo "Usage: alias_del <alias@domain>"; return 1; }
+
+	local container=$(get_container)
+	local data_path=$(get_data_path)
+	local valias="$data_path/config/valias"
+
+	if [ ! -f "$valias" ] || ! grep -q "^$alias " "$valias"; then
+		echo "Alias not found: $alias"
+		return 1
+	fi
+
+	sed -i "/^$alias /d" "$valias"
+	lxc-attach -n "$container" -- postmap /etc/postfix/valias 2>/dev/null
+
+	echo "Alias deleted: $alias"
+}
+
 # List aliases
 alias_list() {
 	local data_path=$(get_data_path)
