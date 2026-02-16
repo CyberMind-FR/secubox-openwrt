@@ -20,10 +20,10 @@ return view.extend({
 			api.listBackups()
 		]).then(function(results) {
 			return {
-				instances: results[0].instances || [],
+				instances: results[0] || [],
 				status: results[1],
 				stats: results[2],
-				backups: results[3].backups || []
+				backups: results[3] || []
 			};
 		});
 	},
