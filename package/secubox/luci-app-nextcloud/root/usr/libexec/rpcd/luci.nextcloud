@@ -1,47 +1,62 @@
 #!/bin/sh
-# RPCD backend for Nextcloud LuCI app
+# RPCD backend for Nextcloud LuCI app (LXC version)
+# Copyright (C) 2025 CyberMind.fr
 
 CONFIG="nextcloud"
-CONTAINER="secbx-nextcloud"
+LXC_NAME="nextcloud"
+LXC_ROOTFS="/srv/lxc/nextcloud/rootfs"
 
-uci_get() { uci -q get ${CONFIG}.main.$1; }
-uci_set() { uci set ${CONFIG}.main.$1="$2" && uci commit ${CONFIG}; }
+uci_get() { uci -q get ${CONFIG}.$1; }
+uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
+
+# Check if LXC container is running
+lxc_running() {
+	lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"
+}
+
+# Check if container is installed
+lxc_installed() {
+	[ -d "$LXC_ROOTFS" ] && [ -f "/srv/lxc/$LXC_NAME/config" ]
+}
 
 # Get service status
 get_status() {
-	local enabled=$(uci_get enabled)
-	local port=$(uci_get port)
-	local data_path=$(uci_get data_path)
-	local admin_user=$(uci_get admin_user)
-	local trusted_domains=$(uci_get trusted_domains)
-	local image=$(uci_get image)
+	local enabled=$(uci_get main.enabled)
+	local http_port=$(uci_get main.http_port)
+	local data_path=$(uci_get main.data_path)
+	local domain=$(uci_get main.domain)
+	local ssl_enabled=$(uci_get ssl.enabled)
+	local ssl_domain=$(uci_get ssl.domain)
 
-	# Check if Docker is available
-	local docker_available=0
-	command -v docker >/dev/null 2>&1 && docker_available=1
-
-	# Check if container is running
+	# Container status
 	local running=0
-	local container_status="stopped"
-	if [ "$docker_available" = "1" ]; then
-		if docker ps --filter "name=$CONTAINER" --format "{{.Names}}" 2>/dev/null | grep -q "$CONTAINER"; then
-			running=1
-			container_status="running"
-		elif docker ps -a --filter "name=$CONTAINER" --format "{{.Names}}" 2>/dev/null | grep -q "$CONTAINER"; then
-			container_status="stopped"
-		fi
-	fi
-
-	# Check if installed (image exists)
 	local installed=0
-	if [ "$docker_available" = "1" ]; then
-		docker images --format "{{.Repository}}" 2>/dev/null | grep -q "nextcloud" && installed=1
+	local version=""
+	local user_count=0
+	local disk_used="0"
+
+	lxc_installed && installed=1
+	lxc_running && running=1
+
+	# Get Nextcloud info if running
+	if [ "$running" = "1" ]; then
+		version=$(lxc-attach -n "$LXC_NAME" -- su -s /bin/bash www-data -c "php /var/www/nextcloud/occ -V" 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "")
+		user_count=$(lxc-attach -n "$LXC_NAME" -- su -s /bin/bash www-data -c "php /var/www/nextcloud/occ user:list --output=json" 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l || echo 0)
 	fi
 
-	# Check web UI accessibility
+	# Get disk usage
+	if [ -d "${data_path:-/srv/nextcloud}/data" ]; then
+		disk_used=$(du -sh "${data_path:-/srv/nextcloud}/data" 2>/dev/null | awk '{print $1}' || echo "0")
+	fi
+
+	# Get LAN IP
+	local lan_ip
+	lan_ip=$(uci -q get network.lan.ipaddr || echo "192.168.255.1")
+
+	# Check web accessibility
 	local web_accessible=0
 	if [ "$running" = "1" ]; then
-		wget -q -O /dev/null --timeout=2 "http://127.0.0.1:${port:-80}/" 2>/dev/null && web_accessible=1
+		wget -q -O /dev/null --timeout=2 "http://127.0.0.1:${http_port:-8080}/status.php" 2>/dev/null && web_accessible=1
 	fi
 
 	cat <<EOF
@@ -49,40 +64,50 @@ get_status() {
 	"enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
 	"running": $([ "$running" = "1" ] && echo "true" || echo "false"),
 	"installed": $([ "$installed" = "1" ] && echo "true" || echo "false"),
-	"docker_available": $([ "$docker_available" = "1" ] && echo "true" || echo "false"),
-	"container_status": "$container_status",
-	"port": ${port:-80},
+	"version": "$version",
+	"http_port": ${http_port:-8080},
 	"data_path": "${data_path:-/srv/nextcloud}",
-	"admin_user": "${admin_user:-admin}",
-	"trusted_domains": "${trusted_domains:-cloud.local}",
-	"image": "${image:-nextcloud:latest}",
+	"domain": "${domain:-cloud.local}",
+	"user_count": $user_count,
+	"disk_used": "$disk_used",
+	"web_url": "http://${lan_ip}:${http_port:-8080}",
 	"web_accessible": $([ "$web_accessible" = "1" ] && echo "true" || echo "false"),
-	"web_url": "http://192.168.255.1:${port:-80}"
+	"ssl_enabled": $([ "$ssl_enabled" = "1" ] && echo "true" || echo "false"),
+	"ssl_domain": "${ssl_domain:-}",
+	"container_name": "$LXC_NAME"
 }
 EOF
 }
 
 # Get configuration
 get_config() {
-	local enabled=$(uci_get enabled)
-	local port=$(uci_get port)
-	local data_path=$(uci_get data_path)
-	local admin_user=$(uci_get admin_user)
-	local admin_password=$(uci_get admin_password)
-	local trusted_domains=$(uci_get trusted_domains)
-	local timezone=$(uci_get timezone)
-	local image=$(uci_get image)
+	local enabled=$(uci_get main.enabled)
+	local http_port=$(uci_get main.http_port)
+	local data_path=$(uci_get main.data_path)
+	local domain=$(uci_get main.domain)
+	local admin_user=$(uci_get main.admin_user)
+	local memory_limit=$(uci_get main.memory_limit)
+	local upload_max=$(uci_get main.upload_max)
+	local redis_enabled=$(uci_get redis.enabled)
+	local ssl_enabled=$(uci_get ssl.enabled)
+	local ssl_domain=$(uci_get ssl.domain)
+	local backup_enabled=$(uci_get backup.enabled)
+	local backup_keep=$(uci_get backup.keep)
 
 	cat <<EOF
 {
 	"enabled": "${enabled:-0}",
-	"port": "${port:-80}",
+	"http_port": "${http_port:-8080}",
 	"data_path": "${data_path:-/srv/nextcloud}",
+	"domain": "${domain:-cloud.local}",
 	"admin_user": "${admin_user:-admin}",
-	"admin_password": "${admin_password:-}",
-	"trusted_domains": "${trusted_domains:-cloud.local}",
-	"timezone": "${timezone:-UTC}",
-	"image": "${image:-nextcloud:latest}"
+	"memory_limit": "${memory_limit:-1G}",
+	"upload_max": "${upload_max:-512M}",
+	"redis_enabled": "${redis_enabled:-1}",
+	"ssl_enabled": "${ssl_enabled:-0}",
+	"ssl_domain": "${ssl_domain:-}",
+	"backup_enabled": "${backup_enabled:-1}",
+	"backup_keep": "${backup_keep:-7}"
 }
 EOF
 }
@@ -92,19 +117,19 @@ save_config() {
 	local input
 	read -r input
 
-	local port=$(echo "$input" | jsonfilter -e '@.port' 2>/dev/null)
+	local http_port=$(echo "$input" | jsonfilter -e '@.http_port' 2>/dev/null)
 	local data_path=$(echo "$input" | jsonfilter -e '@.data_path' 2>/dev/null)
+	local domain=$(echo "$input" | jsonfilter -e '@.domain' 2>/dev/null)
 	local admin_user=$(echo "$input" | jsonfilter -e '@.admin_user' 2>/dev/null)
-	local admin_password=$(echo "$input" | jsonfilter -e '@.admin_password' 2>/dev/null)
-	local trusted_domains=$(echo "$input" | jsonfilter -e '@.trusted_domains' 2>/dev/null)
-	local timezone=$(echo "$input" | jsonfilter -e '@.timezone' 2>/dev/null)
+	local memory_limit=$(echo "$input" | jsonfilter -e '@.memory_limit' 2>/dev/null)
+	local upload_max=$(echo "$input" | jsonfilter -e '@.upload_max' 2>/dev/null)
 
-	[ -n "$port" ] && uci_set port "$port"
-	[ -n "$data_path" ] && uci_set data_path "$data_path"
-	[ -n "$admin_user" ] && uci_set admin_user "$admin_user"
-	[ -n "$admin_password" ] && uci_set admin_password "$admin_password"
-	[ -n "$trusted_domains" ] && uci_set trusted_domains "$trusted_domains"
-	[ -n "$timezone" ] && uci_set timezone "$timezone"
+	[ -n "$http_port" ] && uci_set main.http_port "$http_port"
+	[ -n "$data_path" ] && uci_set main.data_path "$data_path"
+	[ -n "$domain" ] && uci_set main.domain "$domain"
+	[ -n "$admin_user" ] && uci_set main.admin_user "$admin_user"
+	[ -n "$memory_limit" ] && uci_set main.memory_limit "$memory_limit"
+	[ -n "$upload_max" ] && uci_set main.upload_max "$upload_max"
 
 	echo '{"success": true}'
 }
@@ -122,8 +147,9 @@ do_install() {
 # Start service
 do_start() {
 	if [ -x /etc/init.d/nextcloud ]; then
+		uci_set main.enabled '1'
 		/etc/init.d/nextcloud start >/dev/null 2>&1
-		uci_set enabled '1'
+		sleep 2
 		echo '{"success": true}'
 	else
 		echo '{"success": false, "error": "Service not installed"}'
@@ -160,6 +186,99 @@ do_update() {
 	fi
 }
 
+# Create backup
+do_backup() {
+	local input
+	read -r input
+	local name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+
+	if command -v nextcloudctl >/dev/null 2>&1; then
+		local result
+		if [ -n "$name" ]; then
+			result=$(nextcloudctl backup "$name" 2>&1)
+		else
+			result=$(nextcloudctl backup 2>&1)
+		fi
+		echo "{\"success\": true, \"backup_name\": \"$result\"}"
+	else
+		echo '{"success": false, "error": "nextcloudctl not found"}'
+	fi
+}
+
+# Restore backup
+do_restore() {
+	local input
+	read -r input
+	local name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+
+	if [ -z "$name" ]; then
+		echo '{"success": false, "error": "No backup name specified"}'
+		return
+	fi
+
+	if command -v nextcloudctl >/dev/null 2>&1; then
+		nextcloudctl restore "$name" >/tmp/nextcloud-restore.log 2>&1 &
+		echo '{"success": true, "message": "Restore started in background"}'
+	else
+		echo '{"success": false, "error": "nextcloudctl not found"}'
+	fi
+}
+
+# List backups
+list_backups() {
+	local data_path=$(uci_get main.data_path)
+	local backup_dir="${data_path:-/srv/nextcloud}/backups"
+	local backups="[]"
+
+	if [ -d "$backup_dir" ]; then
+		backups=$(ls -1 "$backup_dir"/*-db.sql 2>/dev/null | while read f; do
+			local name=$(basename "$f" -db.sql)
+			local data_file="$backup_dir/$name-data.tar.gz"
+			local size="N/A"
+			local timestamp=0
+
+			if [ -f "$data_file" ]; then
+				size=$(ls -lh "$data_file" | awk '{print $5}')
+			fi
+			timestamp=$(stat -c %Y "$f" 2>/dev/null || echo 0)
+
+			printf '{"name":"%s","size":"%s","timestamp":%d},' "$name" "$size" "$timestamp"
+		done | sed 's/,$//' | sed 's/^/[/;s/$/]/')
+	fi
+
+	[ -z "$backups" ] && backups="[]"
+	echo "{\"backups\": $backups}"
+}
+
+# Enable SSL
+do_ssl_enable() {
+	local input
+	read -r input
+	local domain=$(echo "$input" | jsonfilter -e '@.domain' 2>/dev/null)
+
+	if [ -z "$domain" ]; then
+		echo '{"success": false, "error": "No domain specified"}'
+		return
+	fi
+
+	if command -v nextcloudctl >/dev/null 2>&1; then
+		nextcloudctl ssl-enable "$domain" >/tmp/nextcloud-ssl.log 2>&1
+		echo '{"success": true, "message": "SSL enabled for '$domain'"}'
+	else
+		echo '{"success": false, "error": "nextcloudctl not found"}'
+	fi
+}
+
+# Disable SSL
+do_ssl_disable() {
+	if command -v nextcloudctl >/dev/null 2>&1; then
+		nextcloudctl ssl-disable >/dev/null 2>&1
+		echo '{"success": true}'
+	else
+		echo '{"success": false, "error": "nextcloudctl not found"}'
+	fi
+}
+
 # Run OCC command
 do_occ() {
 	local input
@@ -173,7 +292,8 @@ do_occ() {
 
 	if command -v nextcloudctl >/dev/null 2>&1; then
 		local output=$(nextcloudctl occ $cmd 2>&1)
-		echo "{\"success\": true, \"output\": \"$(echo "$output" | sed 's/"/\\"/g' | tr '\n' ' ')\"}"
+		local escaped=$(echo "$output" | sed 's/"/\\"/g' | tr '\n' ' ')
+		echo "{\"success\": true, \"output\": \"$escaped\"}"
 	else
 		echo '{"success": false, "error": "nextcloudctl not found"}'
 	fi
@@ -181,9 +301,10 @@ do_occ() {
 
 # Get logs
 get_logs() {
-	local lines=50
+	local lines=100
 	local log_content=""
 
+	# Check install log
 	if [ -f /tmp/nextcloud-install.log ]; then
 		log_content=$(tail -n $lines /tmp/nextcloud-install.log 2>/dev/null | sed 's/"/\\"/g' | tr '\n' '|')
 	fi
@@ -197,12 +318,17 @@ list_methods() {
 {
 	"status": {},
 	"get_config": {},
-	"save_config": {"port": "string", "data_path": "string", "admin_user": "string", "admin_password": "string", "trusted_domains": "string", "timezone": "string"},
+	"save_config": {"http_port": "string", "data_path": "string", "domain": "string", "admin_user": "string", "memory_limit": "string", "upload_max": "string"},
 	"install": {},
 	"start": {},
 	"stop": {},
 	"restart": {},
 	"update": {},
+	"backup": {"name": "string"},
+	"restore": {"name": "string"},
+	"list_backups": {},
+	"ssl_enable": {"domain": "string"},
+	"ssl_disable": {},
 	"occ": {"command": "string"},
 	"logs": {}
 }
@@ -216,17 +342,22 @@ case "$1" in
 		;;
 	call)
 		case "$2" in
-			status)      get_status ;;
-			get_config)  get_config ;;
-			save_config) save_config ;;
-			install)     do_install ;;
-			start)       do_start ;;
-			stop)        do_stop ;;
-			restart)     do_restart ;;
-			update)      do_update ;;
-			occ)         do_occ ;;
-			logs)        get_logs ;;
-			*)           echo '{"error": "Unknown method"}' ;;
+			status)       get_status ;;
+			get_config)   get_config ;;
+			save_config)  save_config ;;
+			install)      do_install ;;
+			start)        do_start ;;
+			stop)         do_stop ;;
+			restart)      do_restart ;;
+			update)       do_update ;;
+			backup)       do_backup ;;
+			restore)      do_restore ;;
+			list_backups) list_backups ;;
+			ssl_enable)   do_ssl_enable ;;
+			ssl_disable)  do_ssl_disable ;;
+			occ)          do_occ ;;
+			logs)         get_logs ;;
+			*)            echo '{"error": "Unknown method"}' ;;
 		esac
 		;;
 	*)

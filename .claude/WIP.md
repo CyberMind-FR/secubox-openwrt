@@ -62,7 +62,16 @@ _Last updated: 2026-02-15 (PeerTube transcoding fix, GK2 Hub subdomain URLs)_
   - Gossip-based exposure config sync via secubox-p2p
   - Created `luci-app-vortex-dns` dashboard
 
-### Just Completed (2026-02-15)
+### Just Completed (2026-02-16)
+
+- **Nextcloud LXC Enhancement** — DONE (2026-02-16)
+  - Migrated from Docker to Debian 12 LXC container
+  - Full-stack: Nginx, MariaDB, Redis, PHP 8.2-FPM, Nextcloud
+  - `nextcloudctl` CLI with install/backup/restore/ssl/occ commands
+  - KISS dashboard with Overview/Backups/SSL/Logs tabs
+  - RPCD backend with 15 methods
+
+### Recently Completed (2026-02-15)
 
 - **HAProxy & Mitmproxy WAF Fixes** — DONE (2026-02-15)
   - Fixed HAProxy reload: copy config to `/etc/haproxy/` before signal

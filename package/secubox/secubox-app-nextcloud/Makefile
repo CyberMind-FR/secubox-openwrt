@@ -14,14 +14,14 @@ define Package/secubox-app-nextcloud
   CATEGORY:=Utilities
   PKGARCH:=all
   SUBMENU:=SecuBox Apps
-  TITLE:=SecuBox Nextcloud docker app
-  DEPENDS:=dockerd +docker +containerd
+  TITLE:=SecuBox Nextcloud LXC app
+  DEPENDS:=+lxc +lxc-common +tar +wget-ssl +jsonfilter +openssl-util +unzip +xz
 endef
 
 define Package/secubox-app-nextcloud/description
-Installer, configuration, and service manager for running Nextcloud
-inside Docker on SecuBox-powered OpenWrt systems. Self-hosted file
-sync and share with calendar, contacts, and collaboration.
+Nextcloud file sync and collaboration platform running in a Debian-based
+LXC container with MariaDB, Redis, and Nginx. Features HAProxy SSL
+integration, automated backups, and KISS LuCI dashboard.
 endef
 
 define Package/secubox-app-nextcloud/conffiles

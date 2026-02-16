@@ -1,135 +1,1018 @@
 #!/bin/sh
-# SecuBox Nextcloud manager
+# SecuBox Nextcloud Platform Controller
+# Copyright (C) 2025 CyberMind.fr
+#
+# Manages Nextcloud in Debian-based LXC container with MariaDB & Redis
 
 CONFIG="nextcloud"
-CONTAINER="secbx-nextcloud"
-OPKG_UPDATED=0
+LXC_NAME="nextcloud"
+NEXTCLOUD_VERSION="30.0.4"
 
-usage() {
-	cat <<'USAGE'
-Usage: nextcloudctl <command>
+# Paths
+LXC_PATH="/srv/lxc"
+LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
+LXC_CONFIG="$LXC_PATH/$LXC_NAME/config"
+DATA_PATH="/srv/nextcloud"
+BACKUP_PATH="/srv/nextcloud/backups"
 
-Commands:
-  install         Install prerequisites, prepare directories, pull image
-  check           Run prerequisite checks
-  update          Pull new image and restart
-  status          Show container status
-  logs            Show container logs (use -f to follow)
-  occ             Run Nextcloud OCC command (e.g., occ config:system:set trusted_domains 1 --value=example.com)
-  service-run     Internal: run container via procd
-  service-stop    Stop container
-USAGE
+# Logging
+log_info() { echo "[INFO] $*"; logger -t nextcloud "$*"; }
+log_error() { echo "[ERROR] $*" >&2; logger -t nextcloud -p err "$*"; }
+log_debug() { [ "$DEBUG" = "1" ] && echo "[DEBUG] $*"; }
+
+# Helpers
+require_root() {
+	[ "$(id -u)" -eq 0 ] || {
+		log_error "This command requires root privileges"
+		exit 1
+	}
 }
 
-require_root() { [ "$(id -u)" -eq 0 ]; }
-
-uci_get() { uci -q get ${CONFIG}.main.$1; }
-
-defaults() {
-	image="$(uci_get image || echo nextcloud:latest)"
-	data_path="$(uci_get data_path || echo /srv/nextcloud)"
-	port="$(uci_get port || echo 80)"
-	admin_user="$(uci_get admin_user || echo admin)"
-	admin_password="$(uci_get admin_password)"
-	trusted_domains="$(uci_get trusted_domains || echo cloud.local)"
-	timezone="$(uci_get timezone || echo UTC)"
-}
+has_lxc() { command -v lxc-start >/dev/null 2>&1; }
 
 ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
 
-ensure_packages() {
-	for pkg in "$@"; do
-		if ! opkg status "$pkg" >/dev/null 2>&1; then
-			if [ "$OPKG_UPDATED" -eq 0 ]; then
-				opkg update || return 1
-				OPKG_UPDATED=1
-			fi
-			opkg install "$pkg" || return 1
+uci_get() { uci -q get ${CONFIG}.$1; }
+uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
+
+# Generate random password
+gen_password() {
+	head -c 16 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 16
+}
+
+# Load configuration
+load_config() {
+	http_port="$(uci_get main.http_port)" || http_port="8080"
+	data_path="$(uci_get main.data_path)" || data_path="/srv/nextcloud"
+	domain="$(uci_get main.domain)" || domain="cloud.local"
+	admin_user="$(uci_get main.admin_user)" || admin_user="admin"
+	admin_password="$(uci_get main.admin_password)"
+	memory_limit="$(uci_get main.memory_limit)" || memory_limit="1G"
+	upload_max="$(uci_get main.upload_max)" || upload_max="512M"
+	trusted_proxies="$(uci_get main.trusted_proxies)" || trusted_proxies="127.0.0.1"
+
+	# Database settings
+	db_name="$(uci_get db.name)" || db_name="nextcloud"
+	db_user="$(uci_get db.user)" || db_user="nextcloud"
+	db_password="$(uci_get db.password)"
+
+	# Redis settings
+	redis_enabled="$(uci_get redis.enabled)" || redis_enabled="1"
+	redis_memory="$(uci_get redis.memory)" || redis_memory="128M"
+
+	# HAProxy/SSL settings
+	ssl_enabled="$(uci_get ssl.enabled)" || ssl_enabled="0"
+	ssl_domain="$(uci_get ssl.domain)"
+	ssl_acme="$(uci_get ssl.acme)" || ssl_acme="1"
+
+	# Backup settings
+	backup_enabled="$(uci_get backup.enabled)" || backup_enabled="1"
+	backup_keep="$(uci_get backup.keep)" || backup_keep="7"
+
+	DATA_PATH="$data_path"
+	BACKUP_PATH="$data_path/backups"
+
+	ensure_dir "$data_path"
+	ensure_dir "$data_path/data"
+	ensure_dir "$data_path/config"
+	ensure_dir "$BACKUP_PATH"
+}
+
+# Usage
+usage() {
+	cat <<EOF
+SecuBox Nextcloud Platform Controller
+
+Usage: $(basename $0) <command> [options]
+
+Commands:
+  install       Create Debian LXC and install Nextcloud stack
+  uninstall     Remove container (preserves data)
+  update        Update Nextcloud to latest version
+  start         Start Nextcloud service (via init)
+  stop          Stop Nextcloud service (via init)
+  restart       Restart Nextcloud service
+  status        Show service status (JSON format)
+  logs [-f]     Show container logs
+  shell         Open shell in container
+
+  occ <cmd>     Run Nextcloud OCC command
+  backup [name] Create backup of data and database
+  restore <name> Restore from backup
+  list-backups  List available backups
+
+  ssl-enable <domain>   Register with HAProxy for SSL
+  ssl-disable           Remove HAProxy registration
+
+  service-run   Start service (used by init)
+  service-stop  Stop service (used by init)
+
+Configuration:
+  /etc/config/nextcloud
+
+Data directory:
+  /srv/nextcloud
+
+EOF
+}
+
+# Check prerequisites
+lxc_check_prereqs() {
+	if ! has_lxc; then
+		log_error "LXC not installed. Install with: opkg install lxc lxc-common"
+		return 1
+	fi
+	return 0
+}
+
+# Create LXC rootfs from Debian
+lxc_create_rootfs() {
+	local rootfs="$LXC_ROOTFS"
+	local arch=$(uname -m)
+
+	log_info "Creating Debian 12 rootfs for Nextcloud..."
+
+	ensure_dir "$rootfs"
+
+	# Use Debian mini rootfs from LXC images
+	case "$arch" in
+		x86_64) deb_arch="amd64" ;;
+		aarch64) deb_arch="arm64" ;;
+		armv7l) deb_arch="armhf" ;;
+		*) log_error "Unsupported architecture: $arch"; return 1 ;;
+	esac
+
+	# Download Debian rootfs from LXC image server
+	local base_url="https://images.linuxcontainers.org/images/debian/bookworm/${deb_arch}/default"
+	local index_url="${base_url}/index.json"
+	local tmpdir="/tmp/debian-rootfs-$$"
+	mkdir -p "$tmpdir"
+
+	log_info "Fetching latest Debian 12 rootfs index..."
+	local latest_path
+	latest_path=$(wget -q -O- "$index_url" 2>/dev/null | jsonfilter -e '@[*].path' 2>/dev/null | head -1)
+
+	if [ -z "$latest_path" ]; then
+		# Fallback: try direct date-based path
+		local today=$(date +%Y%m%d)
+		latest_path="${today}_05:10"
+	fi
+
+	local rootfs_url="https://images.linuxcontainers.org${latest_path}/rootfs.tar.xz"
+	local tmpfile="$tmpdir/rootfs.tar.xz"
+
+	log_info "Downloading Debian rootfs..."
+	wget -q --show-progress -O "$tmpfile" "$rootfs_url" || {
+		# Fallback: try alternate URL format
+		rootfs_url="${base_url}/${latest_path}/rootfs.tar.xz"
+		wget -q --show-progress -O "$tmpfile" "$rootfs_url" || {
+			log_error "Failed to download Debian rootfs"
+			rm -rf "$tmpdir"
+			return 1
+		}
+	}
+
+	log_info "Extracting rootfs..."
+	tar -xJf "$tmpfile" -C "$rootfs" || {
+		log_error "Failed to extract rootfs"
+		rm -rf "$tmpdir"
+		return 1
+	}
+	rm -rf "$tmpdir"
+
+	# Setup resolv.conf
+	cp /etc/resolv.conf "$rootfs/etc/resolv.conf" 2>/dev/null || \
+		echo "nameserver 1.1.1.1" > "$rootfs/etc/resolv.conf"
+
+	# Create required directories
+	mkdir -p "$rootfs/opt"
+	mkdir -p "$rootfs/run"
+	mkdir -p "$rootfs/var/www/nextcloud"
+
+	log_info "Rootfs created successfully"
+	return 0
+}
+
+# Install packages inside container
+install_container_packages() {
+	local rootfs="$LXC_ROOTFS"
+
+	log_info "Installing Nextcloud stack packages..."
+
+	# Create install script
+	cat > "$rootfs/tmp/install-deps.sh" << 'SCRIPT'
+#!/bin/bash
+set -e
+
+export DEBIAN_FRONTEND=noninteractive
+
+# Update and install packages
+apt-get update
+apt-get install -y --no-install-recommends \
+    nginx \
+    mariadb-server \
+    redis-server \
+    php-fpm \
+    php-gd \
+    php-mysql \
+    php-curl \
+    php-mbstring \
+    php-intl \
+    php-gmp \
+    php-bcmath \
+    php-xml \
+    php-zip \
+    php-imagick \
+    php-redis \
+    php-apcu \
+    php-ldap \
+    php-smbclient \
+    unzip \
+    curl \
+    wget \
+    cron
+
+# Clean up
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+
+touch /tmp/.deps-installed
+SCRIPT
+	chmod +x "$rootfs/tmp/install-deps.sh"
+
+	# Run via chroot (container not started yet)
+	log_info "Running package installation via chroot..."
+	chroot "$rootfs" /tmp/install-deps.sh || {
+		log_error "Failed to install packages"
+		return 1
+	}
+
+	rm -f "$rootfs/tmp/install-deps.sh"
+	log_info "Container packages installed"
+	return 0
+}
+
+# Download and install Nextcloud
+install_nextcloud() {
+	local rootfs="$LXC_ROOTFS"
+	local nc_dir="$rootfs/var/www/nextcloud"
+
+	log_info "Downloading Nextcloud ${NEXTCLOUD_VERSION}..."
+
+	local nc_url="https://download.nextcloud.com/server/releases/nextcloud-${NEXTCLOUD_VERSION}.zip"
+	local tmpfile="/tmp/nextcloud.zip"
+
+	wget -q --show-progress -O "$tmpfile" "$nc_url" || {
+		log_error "Failed to download Nextcloud"
+		return 1
+	}
+
+	log_info "Extracting Nextcloud..."
+	unzip -q "$tmpfile" -d "$rootfs/var/www/" || {
+		log_error "Failed to extract Nextcloud"
+		rm -f "$tmpfile"
+		return 1
+	}
+	rm -f "$tmpfile"
+
+	# Set ownership (will be fixed inside container)
+	chown -R 33:33 "$nc_dir" 2>/dev/null || true
+
+	log_info "Nextcloud installed"
+	return 0
+}
+
+# Create startup script
+create_startup_script() {
+	local rootfs="$LXC_ROOTFS"
+
+	cat > "$rootfs/opt/start-nextcloud.sh" << 'STARTUP'
+#!/bin/bash
+set -e
+
+export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
+
+# Start MariaDB
+echo "Starting MariaDB..."
+service mariadb start
+sleep 2
+
+# Start Redis
+echo "Starting Redis..."
+service redis-server start
+
+# Configure PHP-FPM pool
+PHP_VERSION=$(ls /etc/php/ | head -1)
+PHP_FPM_POOL="/etc/php/${PHP_VERSION}/fpm/pool.d/www.conf"
+
+# Increase PHP limits
+sed -i "s/upload_max_filesize = .*/upload_max_filesize = ${NEXTCLOUD_UPLOAD_MAX:-512M}/" /etc/php/${PHP_VERSION}/fpm/php.ini
+sed -i "s/post_max_size = .*/post_max_size = ${NEXTCLOUD_UPLOAD_MAX:-512M}/" /etc/php/${PHP_VERSION}/fpm/php.ini
+sed -i "s/memory_limit = .*/memory_limit = 512M/" /etc/php/${PHP_VERSION}/fpm/php.ini
+sed -i "s/max_execution_time = .*/max_execution_time = 3600/" /etc/php/${PHP_VERSION}/fpm/php.ini
+
+# Enable opcache
+echo "opcache.enable=1" >> /etc/php/${PHP_VERSION}/fpm/php.ini
+echo "opcache.memory_consumption=128" >> /etc/php/${PHP_VERSION}/fpm/php.ini
+echo "opcache.interned_strings_buffer=16" >> /etc/php/${PHP_VERSION}/fpm/php.ini
+echo "opcache.max_accelerated_files=10000" >> /etc/php/${PHP_VERSION}/fpm/php.ini
+
+# Start PHP-FPM
+echo "Starting PHP-FPM..."
+service php${PHP_VERSION}-fpm start
+
+# Configure Nginx
+cat > /etc/nginx/sites-available/nextcloud << 'NGINX'
+server {
+    listen 80;
+    server_name _;
+
+    root /var/www/nextcloud;
+    index index.php index.html;
+
+    client_max_body_size 512M;
+    fastcgi_buffers 64 4K;
+
+    gzip on;
+    gzip_vary on;
+    gzip_comp_level 4;
+    gzip_min_length 256;
+    gzip_proxied expired no-cache no-store private no_last_modified no_etag auth;
+    gzip_types application/atom+xml text/javascript application/javascript application/json application/ld+json application/manifest+json application/rss+xml application/vnd.geo+json application/vnd.ms-fontobject application/wasm application/x-font-ttf application/x-web-app-manifest+json application/xhtml+xml application/xml font/opentype image/bmp image/svg+xml image/x-icon text/cache-manifest text/css text/plain text/vcard text/vnd.rim.location.xloc text/vtt text/x-component text/x-cross-domain-policy;
+
+    add_header Referrer-Policy "no-referrer" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Permitted-Cross-Domain-Policies "none" always;
+    add_header X-Robots-Tag "noindex, nofollow" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+
+    location = /robots.txt {
+        allow all;
+        log_not_found off;
+        access_log off;
+    }
+
+    location ^~ /.well-known {
+        location = /.well-known/carddav { return 301 /remote.php/dav/; }
+        location = /.well-known/caldav  { return 301 /remote.php/dav/; }
+        location /.well-known/acme-challenge { try_files $uri $uri/ =404; }
+        location /.well-known/pki-validation { try_files $uri $uri/ =404; }
+        return 301 /index.php$request_uri;
+    }
+
+    location ~ ^/(?:build|tests|config|lib|3rdparty|templates|data)(?:$|/) { return 404; }
+    location ~ ^/(?:\.|autotest|occ|issue|indie|db_|console) { return 404; }
+
+    location ~ \.php(?:$|/) {
+        rewrite ^/(?!index|remote|public|cron|core\/ajax\/update|status|ocs\/v[12]|updater\/.+|ocs-provider\/.+|.+\/richdocumentscode(_arm64)?\/proxy) /index.php$request_uri;
+
+        fastcgi_split_path_info ^(.+?\.php)(/.*)$;
+        set $path_info $fastcgi_path_info;
+
+        try_files $fastcgi_script_name =404;
+
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $path_info;
+
+        fastcgi_param modHeadersAvailable true;
+        fastcgi_param front_controller_active true;
+        fastcgi_pass unix:/run/php/php-fpm.sock;
+
+        fastcgi_intercept_errors on;
+        fastcgi_request_buffering off;
+        fastcgi_max_temp_file_size 0;
+    }
+
+    location ~ \.(?:css|js|mjs|svg|gif|png|jpg|ico|wasm|tflite|map|ogg|flac)$ {
+        try_files $uri /index.php$request_uri;
+        add_header Cache-Control "public, max-age=15778463, immutable";
+        access_log off;
+    }
+
+    location ~ \.woff2?$ {
+        try_files $uri /index.php$request_uri;
+        expires 7d;
+        access_log off;
+    }
+
+    location /remote {
+        return 301 /remote.php$request_uri;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.php$request_uri;
+    }
+}
+NGINX
+
+rm -f /etc/nginx/sites-enabled/default
+ln -sf /etc/nginx/sites-available/nextcloud /etc/nginx/sites-enabled/nextcloud
+
+# Start Nginx (foreground for procd)
+echo "Starting Nginx..."
+exec nginx -g 'daemon off;'
+STARTUP
+	chmod +x "$rootfs/opt/start-nextcloud.sh"
+}
+
+# Setup database
+setup_database() {
+	load_config
+
+	# Generate password if not set
+	if [ -z "$db_password" ]; then
+		db_password=$(gen_password)
+		uci_set db.password "$db_password"
+	fi
+
+	log_info "Setting up MariaDB database..."
+
+	# Create setup script
+	cat > "$LXC_ROOTFS/tmp/setup-db.sh" << DBSCRIPT
+#!/bin/bash
+service mariadb start
+sleep 2
+
+mysql -u root << EOF
+CREATE DATABASE IF NOT EXISTS ${db_name} CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+CREATE USER IF NOT EXISTS '${db_user}'@'localhost' IDENTIFIED BY '${db_password}';
+GRANT ALL PRIVILEGES ON ${db_name}.* TO '${db_user}'@'localhost';
+FLUSH PRIVILEGES;
+EOF
+DBSCRIPT
+	chmod +x "$LXC_ROOTFS/tmp/setup-db.sh"
+
+	# Run via chroot
+	chroot "$LXC_ROOTFS" /tmp/setup-db.sh || {
+		log_error "Failed to setup database"
+		return 1
+	}
+
+	rm -f "$LXC_ROOTFS/tmp/setup-db.sh"
+	log_info "Database setup complete"
+}
+
+# Configure Redis
+setup_redis() {
+	load_config
+	local rootfs="$LXC_ROOTFS"
+
+	log_info "Configuring Redis..."
+
+	# Get memory in MB
+	local redis_mb="${redis_memory%M}"
+	redis_mb="${redis_mb%m}"
+
+	# Configure Redis
+	cat > "$rootfs/etc/redis/redis.conf" << EOF
+bind 127.0.0.1
+port 6379
+daemonize yes
+pidfile /run/redis/redis-server.pid
+loglevel notice
+logfile /var/log/redis/redis-server.log
+databases 16
+maxmemory ${redis_mb}mb
+maxmemory-policy allkeys-lru
+EOF
+
+	log_info "Redis configured"
+}
+
+# Create LXC config
+lxc_create_config() {
+	load_config
+
+	ensure_dir "$(dirname "$LXC_CONFIG")"
+
+	# Convert memory limit to bytes
+	local mem_bytes
+	case "$memory_limit" in
+		*G|*g) mem_bytes=$((${memory_limit%[Gg]} * 1024 * 1024 * 1024)) ;;
+		*M|*m) mem_bytes=$((${memory_limit%[Mm]} * 1024 * 1024)) ;;
+		*K|*k) mem_bytes=$((${memory_limit%[Kk]} * 1024)) ;;
+		*) mem_bytes="$memory_limit" ;;
+	esac
+
+	cat > "$LXC_CONFIG" << EOF
+# Nextcloud Platform LXC Configuration
+lxc.uts.name = $LXC_NAME
+lxc.rootfs.path = dir:$LXC_ROOTFS
+lxc.arch = $(uname -m)
+
+# Network: use host network
+lxc.net.0.type = none
+
+# Mount points
+lxc.mount.auto = proc:mixed sys:ro
+lxc.mount.entry = $data_path/data var/www/nextcloud/data none bind,create=dir 0 0
+lxc.mount.entry = $data_path/config var/www/nextcloud/config none bind,create=dir 0 0
+
+# Environment
+lxc.environment = NEXTCLOUD_DOMAIN=$domain
+lxc.environment = NEXTCLOUD_HTTP_PORT=$http_port
+lxc.environment = NEXTCLOUD_UPLOAD_MAX=$upload_max
+lxc.environment = NEXTCLOUD_TRUSTED_PROXIES=$trusted_proxies
+
+# Security
+lxc.cap.drop = sys_admin sys_module mac_admin mac_override sys_time sys_rawio
+
+# Init command
+lxc.init.cmd = /opt/start-nextcloud.sh
+EOF
+
+	log_info "LXC config created"
+}
+
+# Container control
+lxc_running() {
+	lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"
+}
+
+lxc_exists() {
+	[ -f "$LXC_CONFIG" ] && [ -d "$LXC_ROOTFS" ]
+}
+
+lxc_stop() {
+	if lxc_running; then
+		log_info "Stopping Nextcloud container..."
+		lxc-stop -n "$LXC_NAME" -k 2>/dev/null || true
+		sleep 2
+	fi
+}
+
+lxc_run() {
+	load_config
+	lxc_stop
+
+	if ! lxc_exists; then
+		log_error "Container not installed. Run: nextcloudctl install"
+		return 1
+	fi
+
+	# Regenerate config in case settings changed
+	lxc_create_config
+
+	log_info "Starting Nextcloud container..."
+	exec lxc-start -n "$LXC_NAME" -F -f "$LXC_CONFIG"
+}
+
+# Execute command in container
+lxc_exec() {
+	if ! lxc_running; then
+		log_error "Container not running"
+		return 1
+	fi
+	lxc-attach -n "$LXC_NAME" -- "$@"
+}
+
+# Run OCC command
+lxc_occ() {
+	if ! lxc_running; then
+		log_error "Container not running"
+		return 1
+	fi
+	lxc-attach -n "$LXC_NAME" -- su -s /bin/bash www-data -c "php /var/www/nextcloud/occ $*"
+}
+
+# Commands
+cmd_install() {
+	require_root
+	load_config
+
+	log_info "Installing Nextcloud Platform..."
+
+	lxc_check_prereqs || exit 1
+
+	# Generate admin password if not set
+	if [ -z "$admin_password" ]; then
+		admin_password=$(gen_password)
+		uci_set main.admin_password "$admin_password"
+		log_info "Generated admin password: $admin_password"
+	fi
+
+	# Create container
+	if ! lxc_exists; then
+		lxc_create_rootfs || exit 1
+	fi
+
+	# Install packages
+	install_container_packages || exit 1
+
+	# Download Nextcloud
+	if [ ! -f "$LXC_ROOTFS/var/www/nextcloud/occ" ]; then
+		install_nextcloud || exit 1
+	fi
+
+	# Setup services
+	setup_database || exit 1
+	setup_redis || exit 1
+
+	# Create startup script
+	create_startup_script
+
+	# Create LXC config
+	lxc_create_config || exit 1
+
+	# Enable service
+	uci_set main.enabled '1'
+	/etc/init.d/nextcloud enable 2>/dev/null || true
+
+	log_info ""
+	log_info "Installation complete!"
+	log_info ""
+	log_info "Start with: /etc/init.d/nextcloud start"
+	log_info "Web interface: http://<router-ip>:$http_port"
+	log_info ""
+	log_info "After first start, run Nextcloud setup:"
+	log_info "  nextcloudctl occ maintenance:install \\"
+	log_info "    --database mysql --database-name $db_name \\"
+	log_info "    --database-user $db_user --database-pass '$db_password' \\"
+	log_info "    --admin-user $admin_user --admin-pass '$admin_password'"
+	log_info ""
+}
+
+cmd_uninstall() {
+	require_root
+
+	log_info "Uninstalling Nextcloud Platform..."
+
+	# Stop service
+	/etc/init.d/nextcloud stop 2>/dev/null || true
+	/etc/init.d/nextcloud disable 2>/dev/null || true
+
+	lxc_stop
+
+	# Remove container (keep data)
+	if [ -d "$LXC_PATH/$LXC_NAME" ]; then
+		rm -rf "$LXC_PATH/$LXC_NAME"
+		log_info "Container removed"
+	fi
+
+	uci_set main.enabled '0'
+
+	log_info "Nextcloud Platform uninstalled"
+	log_info "Data preserved in: $(uci_get main.data_path)"
+}
+
+cmd_update() {
+	require_root
+	load_config
+
+	if ! lxc_exists; then
+		log_error "Container not installed. Run: nextcloudctl install"
+		return 1
+	fi
+
+	log_info "Updating Nextcloud..."
+
+	# Enable maintenance mode
+	if lxc_running; then
+		lxc_occ maintenance:mode --on
+	fi
+
+	# Download new Nextcloud
+	install_nextcloud || exit 1
+
+	# Run upgrade
+	if lxc_running; then
+		lxc_occ upgrade
+		lxc_occ maintenance:mode --off
+	fi
+
+	log_info "Update complete"
+}
+
+cmd_status() {
+	load_config
+
+	local enabled="$(uci_get main.enabled)"
+	local running="false"
+	local installed="false"
+	local version=""
+	local user_count=0
+	local disk_used="0"
+
+	if lxc_exists; then
+		installed="true"
+	fi
+
+	if lxc_running; then
+		running="true"
+
+		# Get Nextcloud version
+		version=$(lxc_occ -V 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "")
+
+		# Get user count
+		user_count=$(lxc_occ user:list --output=json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l || echo 0)
+	fi
+
+	# Get disk usage
+	if [ -d "$data_path/data" ]; then
+		disk_used=$(du -sh "$data_path/data" 2>/dev/null | awk '{print $1}' || echo "0")
+	fi
+
+	# Get LAN IP
+	local lan_ip
+	lan_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
+
+	cat << EOF
+{
+  "enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
+  "running": $running,
+  "installed": $installed,
+  "version": "$version",
+  "http_port": $http_port,
+  "data_path": "$data_path",
+  "memory_limit": "$memory_limit",
+  "domain": "$domain",
+  "user_count": $user_count,
+  "disk_used": "$disk_used",
+  "http_url": "http://${lan_ip}:${http_port}",
+  "ssl_enabled": $([ "$ssl_enabled" = "1" ] && echo "true" || echo "false"),
+  "ssl_domain": "$ssl_domain",
+  "redis_enabled": $([ "$redis_enabled" = "1" ] && echo "true" || echo "false"),
+  "container_name": "$LXC_NAME"
+}
+EOF
+}
+
+cmd_logs() {
+	load_config
+
+	if lxc_running; then
+		if [ "$1" = "-f" ]; then
+			lxc_exec tail -f /var/log/nginx/error.log /var/www/nextcloud/data/nextcloud.log 2>/dev/null
+		else
+			echo "=== Nginx Error Log ==="
+			lxc_exec tail -50 /var/log/nginx/error.log 2>/dev/null || echo "No logs"
+			echo ""
+			echo "=== Nextcloud Log ==="
+			lxc_exec tail -50 /var/www/nextcloud/data/nextcloud.log 2>/dev/null || echo "No logs"
 		fi
+	else
+		echo "Container not running"
+	fi
+}
+
+cmd_shell() {
+	require_root
+
+	if ! lxc_running; then
+		log_error "Container not running"
+		exit 1
+	fi
+
+	lxc-attach -n "$LXC_NAME" -- /bin/bash
+}
+
+cmd_occ() {
+	require_root
+	lxc_occ "$@"
+}
+
+cmd_backup() {
+	require_root
+	load_config
+
+	local name="${1:-$(date +%Y%m%d-%H%M%S)}"
+	local backup_dir="$BACKUP_PATH"
+
+	ensure_dir "$backup_dir"
+
+	log_info "Creating backup: $name"
+
+	# Enable maintenance mode if running
+	local was_running=0
+	if lxc_running; then
+		was_running=1
+		lxc_occ maintenance:mode --on
+	fi
+
+	# Dump database
+	log_info "Dumping database..."
+	if lxc_running; then
+		lxc_exec mysqldump -u "$db_user" -p"$db_password" "$db_name" > "$backup_dir/$name-db.sql" || {
+			log_error "Database dump failed"
+			[ $was_running -eq 1 ] && lxc_occ maintenance:mode --off
+			return 1
+		}
+	fi
+
+	# Backup data and config
+	log_info "Backing up data..."
+	tar -czf "$backup_dir/$name-data.tar.gz" \
+		-C "$data_path" data config 2>/dev/null || {
+		log_error "Data backup failed"
+		[ $was_running -eq 1 ] && lxc_occ maintenance:mode --off
+		return 1
+	}
+
+	# Disable maintenance mode
+	if [ $was_running -eq 1 ]; then
+		lxc_occ maintenance:mode --off
+	fi
+
+	local size=$(ls -lh "$backup_dir/$name-data.tar.gz" 2>/dev/null | awk '{print $5}')
+	log_info "Backup created: $backup_dir/$name-* ($size)"
+
+	# Cleanup old backups
+	if [ "$backup_keep" -gt 0 ]; then
+		ls -t "$backup_dir"/*-db.sql 2>/dev/null | tail -n +$((backup_keep + 1)) | while read f; do
+			local base=$(basename "$f" -db.sql)
+			rm -f "$backup_dir/$base-db.sql" "$backup_dir/$base-data.tar.gz"
+			log_info "Removed old backup: $base"
+		done
+	fi
+
+	echo "$name"
+}
+
+cmd_restore() {
+	require_root
+	load_config
+
+	local name="$1"
+
+	if [ -z "$name" ]; then
+		log_error "Usage: nextcloudctl restore <backup-name>"
+		log_error "Available backups:"
+		cmd_list_backups
+		return 1
+	fi
+
+	local backup_dir="$BACKUP_PATH"
+
+	if [ ! -f "$backup_dir/$name-db.sql" ]; then
+		log_error "Backup not found: $name"
+		return 1
+	fi
+
+	log_info "Restoring from backup: $name"
+
+	# Enable maintenance mode
+	local was_running=0
+	if lxc_running; then
+		was_running=1
+		lxc_occ maintenance:mode --on
+	fi
+
+	# Restore database
+	log_info "Restoring database..."
+	if lxc_running; then
+		lxc_exec mysql -u "$db_user" -p"$db_password" "$db_name" < "$backup_dir/$name-db.sql" || {
+			log_error "Database restore failed"
+			return 1
+		}
+	fi
+
+	# Restore data
+	log_info "Restoring data..."
+	tar -xzf "$backup_dir/$name-data.tar.gz" -C "$data_path" || {
+		log_error "Data restore failed"
+		return 1
+	}
+
+	# Fix permissions
+	if lxc_running; then
+		lxc_exec chown -R www-data:www-data /var/www/nextcloud
+		lxc_occ maintenance:mode --off
+	fi
+
+	log_info "Restore complete"
+}
+
+cmd_list_backups() {
+	load_config
+
+	local backup_dir="$BACKUP_PATH"
+
+	if [ ! -d "$backup_dir" ]; then
+		echo "No backups found"
+		return
+	fi
+
+	echo "Available backups:"
+	ls -1 "$backup_dir"/*-db.sql 2>/dev/null | while read f; do
+		local name=$(basename "$f" -db.sql)
+		local data_file="$backup_dir/$name-data.tar.gz"
+		local size="N/A"
+		local date="N/A"
+
+		if [ -f "$data_file" ]; then
+			size=$(ls -lh "$data_file" | awk '{print $5}')
+		fi
+		date=$(stat -c '%y' "$f" 2>/dev/null | cut -d. -f1)
+
+		echo "  $name  ($size)  $date"
 	done
 }
 
-check_prereqs() {
-	defaults
-	ensure_dir "$data_path"
-	[ -d /sys/fs/cgroup ] || { echo "[ERROR] /sys/fs/cgroup missing" >&2; return 1; }
-	ensure_packages dockerd docker containerd
-	/etc/init.d/dockerd enable >/dev/null 2>&1
-	/etc/init.d/dockerd start >/dev/null 2>&1
+cmd_ssl_enable() {
+	require_root
+	load_config
+
+	local domain="$1"
+
+	if [ -z "$domain" ]; then
+		log_error "Usage: nextcloudctl ssl-enable <domain>"
+		return 1
+	fi
+
+	log_info "Enabling SSL for $domain via HAProxy..."
+
+	# Check if HAProxy is available
+	if [ ! -x /usr/sbin/haproxyctl ]; then
+		log_error "HAProxy not installed. Install secubox-app-haproxy first."
+		return 1
+	fi
+
+	# Add vhost to HAProxy
+	local vhost_name="nextcloud_${domain//\./_}"
+
+	uci add haproxy vhost
+	uci set haproxy.@vhost[-1].name="$vhost_name"
+	uci set haproxy.@vhost[-1].domain="$domain"
+	uci set haproxy.@vhost[-1].backend="nextcloud_backend"
+	uci set haproxy.@vhost[-1].ssl='1'
+	uci set haproxy.@vhost[-1].acme='1'
+	uci set haproxy.@vhost[-1].enabled='1'
+
+	# Add backend
+	uci add haproxy backend
+	uci set haproxy.@backend[-1].name="nextcloud_backend"
+	uci set haproxy.@backend[-1].mode='http'
+
+	# Add server
+	uci add haproxy server
+	uci set haproxy.@server[-1].backend="nextcloud_backend"
+	uci set haproxy.@server[-1].address="127.0.0.1"
+	uci set haproxy.@server[-1].port="$http_port"
+
+	uci commit haproxy
+
+	# Update Nextcloud config
+	uci_set ssl.enabled '1'
+	uci_set ssl.domain "$domain"
+
+	# Reload HAProxy
+	/etc/init.d/haproxy reload 2>/dev/null || true
+
+	# Add trusted domain in Nextcloud
+	if lxc_running; then
+		lxc_occ config:system:set trusted_domains 1 --value="$domain"
+		lxc_occ config:system:set overwriteprotocol --value="https"
+	fi
+
+	log_info "SSL enabled for $domain"
+	log_info "Access Nextcloud at: https://$domain"
 }
 
-pull_image() { defaults; docker pull "$image"; }
+cmd_ssl_disable() {
+	require_root
+	load_config
 
-stop_container() { docker stop "$CONTAINER" >/dev/null 2>&1 || true; docker rm "$CONTAINER" >/dev/null 2>&1 || true; }
+	log_info "Disabling SSL..."
 
-cmd_install() {
-	require_root || { echo Root required >&2; exit 1; }
-	check_prereqs || exit 1
-	ensure_dir "$data_path/html"
-	ensure_dir "$data_path/apps"
-	ensure_dir "$data_path/config"
-	ensure_dir "$data_path/data"
-	pull_image || exit 1
-	uci set ${CONFIG}.main.enabled='1'
-	uci commit ${CONFIG}
-	/etc/init.d/nextcloud enable
-	echo "Nextcloud prerequisites installed."
-	echo "IMPORTANT: Set admin_password in /etc/config/nextcloud before starting"
-	echo "Start with: /etc/init.d/nextcloud start"
-	echo "Then configure trusted domains with: nextcloudctl occ config:system:set trusted_domains 1 --value=your-domain.com"
-}
+	# Remove HAProxy config (simplified - just disable)
+	uci_set ssl.enabled '0'
 
-cmd_check() { check_prereqs; echo "Prerequisite check completed."; }
-
-cmd_update() {
-	require_root || { echo Root required >&2; exit 1; }
-	pull_image || exit 1
-	/etc/init.d/nextcloud restart
-}
-
-cmd_status() { docker ps -a --filter "name=$CONTAINER"; }
-
-cmd_logs() { docker logs "$@" "$CONTAINER"; }
-
-cmd_occ() {
-	docker exec -u www-data "$CONTAINER" php occ "$@"
+	log_info "SSL disabled"
 }
 
 cmd_service_run() {
-	require_root || { echo Root required >&2; exit 1; }
-	check_prereqs || exit 1
-	defaults
-	stop_container
+	require_root
+	load_config
 
-	local docker_args="--name $CONTAINER"
-	docker_args="$docker_args -p ${port}:80"
-	docker_args="$docker_args -v $data_path/html:/var/www/html"
-	docker_args="$docker_args -v $data_path/apps:/var/www/html/custom_apps"
-	docker_args="$docker_args -v $data_path/config:/var/www/html/config"
-	docker_args="$docker_args -v $data_path/data:/var/www/html/data"
-	docker_args="$docker_args -e TZ=$timezone"
-
-	# Set admin credentials if provided
-	[ -n "$admin_user" ] && docker_args="$docker_args -e NEXTCLOUD_ADMIN_USER=$admin_user"
-	[ -n "$admin_password" ] && docker_args="$docker_args -e NEXTCLOUD_ADMIN_PASSWORD=$admin_password"
-
-	# Set trusted domains
-	[ -n "$trusted_domains" ] && docker_args="$docker_args -e NEXTCLOUD_TRUSTED_DOMAINS=$trusted_domains"
-
-	exec docker run --rm $docker_args "$image"
+	lxc_check_prereqs || exit 1
+	lxc_run
 }
 
-cmd_service_stop() { require_root || { echo Root required >&2; exit 1; }; stop_container; }
+cmd_service_stop() {
+	require_root
+	lxc_stop
+}
 
+# Main
 case "${1:-}" in
-	install) shift; cmd_install "$@" ;;
-	check) shift; cmd_check "$@" ;;
-	update) shift; cmd_update "$@" ;;
-	status) shift; cmd_status "$@" ;;
-	logs) shift; cmd_logs "$@" ;;
-	occ) shift; cmd_occ "$@" ;;
-	service-run) shift; cmd_service_run "$@" ;;
+	install)      shift; cmd_install "$@" ;;
+	uninstall)    shift; cmd_uninstall "$@" ;;
+	update)       shift; cmd_update "$@" ;;
+	start)        /etc/init.d/nextcloud start ;;
+	stop)         /etc/init.d/nextcloud stop ;;
+	restart)      /etc/init.d/nextcloud restart ;;
+	status)       shift; cmd_status "$@" ;;
+	logs)         shift; cmd_logs "$@" ;;
+	shell)        shift; cmd_shell "$@" ;;
+	occ)          shift; cmd_occ "$@" ;;
+	backup)       shift; cmd_backup "$@" ;;
+	restore)      shift; cmd_restore "$@" ;;
+	list-backups) shift; cmd_list_backups "$@" ;;
+	ssl-enable)   shift; cmd_ssl_enable "$@" ;;
+	ssl-disable)  shift; cmd_ssl_disable "$@" ;;
+	service-run)  shift; cmd_service_run "$@" ;;
 	service-stop) shift; cmd_service_stop "$@" ;;
-	help|--help|-h|'') usage ;;
-	*) echo "Unknown command: $1" >&2; usage >&2; exit 1 ;;
+	*)            usage ;;
 esac

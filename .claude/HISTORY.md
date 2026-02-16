@@ -1861,3 +1861,26 @@ git checkout HEAD -- index.html
   - MetaBlogizer: HAProxy vhost lookup for automatic subdomain detection
   - Added more icons for new service types
 - **Result**: 67 services with proper subdomain URLs
+
+### 2026-02-16: Nextcloud LXC Enhancement
+- **Migrated** secubox-app-nextcloud from Docker to LXC (Debian 12 based)
+- **Complete rewrite** of `nextcloudctl` CLI (1018 lines):
+  - Commands: install, uninstall, update, status, logs, shell, occ, backup, restore, ssl-enable, ssl-disable
+  - Downloads Debian 12 rootfs from LXC image server
+  - Installs full stack: Nginx, MariaDB, Redis, PHP 8.2-FPM, Nextcloud
+  - Automated database setup and configuration
+- **New UCI config schema** with sections: main, db, redis, ssl, backup
+- **Enhanced RPCD backend** (366 lines) with 15 methods:
+  - status, get_config, save_config, install, start, stop, restart
+  - update, backup, restore, list_backups, ssl_enable, ssl_disable, occ, logs
+- **KISS Dashboard** (725 lines) with:
+  - Install view with feature cards
+  - Overview tab with stats grid (Status, Version, Users, Storage)
+  - Backups tab with create/restore functionality
+  - SSL tab for HAProxy/ACME integration
+  - Logs tab for operation monitoring
+- **Updated dependencies**:
+  - secubox-app-nextcloud: +lxc +lxc-common +tar +wget-ssl +jsonfilter +openssl-util +unzip +xz
+  - luci-app-nextcloud: +luci-lib-secubox +secubox-app-nextcloud
+- **Updated ACL** with all new RPCD methods
+- **Updated menu** to SecuBox path (admin/secubox/services/nextcloud)
