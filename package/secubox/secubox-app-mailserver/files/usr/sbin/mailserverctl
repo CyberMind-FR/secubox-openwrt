@@ -193,7 +193,7 @@ mynetworks = 127.0.0.0/8 [::1]/128 192.168.255.0/24
 # Virtual mailbox
 virtual_mailbox_domains = $domain
 virtual_mailbox_base = /var/mail
-virtual_mailbox_maps = hash:/etc/postfix/vmailbox
+virtual_mailbox_maps = lmdb:/etc/postfix/vmailbox
 virtual_uid_maps = static:102
 virtual_gid_maps = static:105
 virtual_transport = lmtp:unix:private/dovecot-lmtp
