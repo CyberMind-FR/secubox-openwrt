@@ -11,7 +11,7 @@ Description:  Unified AI security insights dashboard for SecuBox.
  DNS Guard, Network Anomaly, CVE Triage, and LocalRecall.
  Provides security posture scoring and AI-powered analysis.
 Filename: luci-app-ai-insights_1.0.0-r1_all.ipk
-Size: 11641
+Size: 11634
 
 Package: luci-app-auth-guardian
 Version: 0.4.0-r3
@@ -23,7 +23,7 @@ Architecture: all
 Installed-Size: 71680
 Description:  Comprehensive authentication and session management with captive portal, OAuth2/OIDC integration, voucher system, and time-based access control
 Filename: luci-app-auth-guardian_0.4.0-r3_all.ipk
-Size: 12396
+Size: 12393
 
 Package: luci-app-backup
 Version: 1.0.0-r1
@@ -35,7 +35,7 @@ Architecture: all
 Installed-Size: 30720
 Description:  LuCI Backup Manager
 Filename: luci-app-backup_1.0.0-r1_all.ipk
-Size: 4540
+Size: 4532
 
 Package: luci-app-bandwidth-manager
 Version: 0.5.0-r2
@@ -47,7 +47,7 @@ Architecture: all
 Installed-Size: 337920
 Description:  Advanced bandwidth management with QoS rules, client quotas, and SQM integration
 Filename: luci-app-bandwidth-manager_0.5.0-r2_all.ipk
-Size: 61685
+Size: 61686
 
 Package: luci-app-cdn-cache
 Version: 0.5.0-r3
@@ -71,7 +71,7 @@ Architecture: all
 Installed-Size: 276480
 Description:  Network Access Control with client monitoring, zone management, captive portal, parental controls, and SMS/email alerts
 Filename: luci-app-client-guardian_0.4.0-r7_all.ipk
-Size: 52682
+Size: 52686
 
 Package: luci-app-cloner
 Version: 1.0.0-r1
@@ -82,7 +82,7 @@ Architecture: all
 Installed-Size: 102400
 Description:  SecuBox cloning station for building and deploying clone images
 Filename: luci-app-cloner_1.0.0-r1_all.ipk
-Size: 19434
+Size: 19433
 
 Package: luci-app-config-advisor
 Version: 1.0.0-r1
@@ -94,7 +94,7 @@ Architecture: all
 Installed-Size: 51200
 Description:  ANSSI CSPN compliance checking and security configuration advisor
 Filename: luci-app-config-advisor_1.0.0-r1_all.ipk
-Size: 8860
+Size: 8861
 
 Package: luci-app-cookie-tracker
 Version: 1.0.0-r1
@@ -105,7 +105,7 @@ Architecture: all
 Installed-Size: 30720
 Description:  LuCI Cookie Tracker Dashboard
 Filename: luci-app-cookie-tracker_1.0.0-r1_all.ipk
-Size: 5657
+Size: 5660
 
 Package: luci-app-crowdsec-dashboard
 Version: 0.7.0-r32
@@ -117,7 +117,7 @@ Architecture: all
 Installed-Size: 184320
 Description:  Real-time security monitoring dashboard for CrowdSec on OpenWrt
 Filename: luci-app-crowdsec-dashboard_0.7.0-r32_all.ipk
-Size: 34937
+Size: 34938
 
 Package: luci-app-cve-triage
 Version: 1.0.0-r1
@@ -129,7 +129,7 @@ Architecture: all
 Installed-Size: 30720
 Description:  LuCI CVE Triage Dashboard
 Filename: luci-app-cve-triage_1.0.0-r1_all.ipk
-Size: 5944
+Size: 5941
 
 Package: luci-app-cyberfeed
 Version: 0.1.1-r1
@@ -153,7 +153,7 @@ Architecture: all
 Installed-Size: 71680
 Description:  LuCI SecuBox Device Intelligence
 Filename: luci-app-device-intel_1.0.0-r1_all.ipk
-Size: 12050
+Size: 12052
 
 Package: luci-app-dnsguard
 Version: 1.1.0-r1
@@ -172,7 +172,7 @@ Description:  SecuBox DNS Guard provides privacy-focused DNS management with AI-
  - Real-time alerts and blocklist management
  - Domain analysis with LocalAI integration
 Filename: luci-app-dnsguard_1.1.0-r1_all.ipk
-Size: 12449
+Size: 12451
 
 Package: luci-app-dns-provider
 Version: 1.0.0-r1
@@ -184,7 +184,7 @@ Architecture: all
 Installed-Size: 40960
 Description:  LuCI DNS Provider Manager
 Filename: luci-app-dns-provider_1.0.0-r1_all.ipk
-Size: 7171
+Size: 7169
 
 Package: luci-app-domoticz
 Version: 1.0.0-r1
@@ -196,7 +196,7 @@ Architecture: all
 Installed-Size: 40960
 Description:  LuCI Domoticz Home Automation Configuration
 Filename: luci-app-domoticz_1.0.0-r1_all.ipk
-Size: 7129
+Size: 7121
 
 Package: luci-app-exposure
 Version: 1.0.0-r3
@@ -208,7 +208,7 @@ Architecture: all
 Installed-Size: 71680
 Description:  LuCI SecuBox Service Exposure Manager
 Filename: luci-app-exposure_1.0.0-r3_all.ipk
-Size: 11700
+Size: 11698
 
 Package: luci-app-gitea
 Version: 1.0.0-r2
@@ -232,7 +232,7 @@ Architecture: all
 Installed-Size: 51200
 Description:  Modern dashboard for Glances system monitoring with SecuBox theme
 Filename: luci-app-glances_1.0.0-r2_all.ipk
-Size: 7016
+Size: 7013
 
 Package: luci-app-gotosocial
 Version: 0.1.0-r1
@@ -256,7 +256,7 @@ Architecture: all
 Installed-Size: 225280
 Description:  Web interface for managing HAProxy load balancer with vhosts, SSL certificates, and backend routing
 Filename: luci-app-haproxy_1.0.0-r8_all.ipk
-Size: 35342
+Size: 35341
 
 Package: luci-app-hexojs
 Version: 1.0.0-r3
@@ -268,7 +268,7 @@ Architecture: all
 Installed-Size: 194560
 Description:  Modern dashboard for Hexo static site generator on OpenWrt
 Filename: luci-app-hexojs_1.0.0-r3_all.ipk
-Size: 30449
+Size: 30450
 
 Package: luci-app-iot-guard
 Version: 1.0.0-r1
@@ -292,7 +292,7 @@ Architecture: all
 Installed-Size: 51200
 Description:  LuCI Jellyfin Media Server Configuration
 Filename: luci-app-jellyfin_1.0.0-r1_all.ipk
-Size: 10484
+Size: 10482
 
 Package: luci-app-jitsi
 Version: 1.0.0-r1
@@ -304,7 +304,7 @@ Architecture: all
 Installed-Size: 30720
 Description:  LuCI Jitsi Meet Configuration
 Filename: luci-app-jitsi_1.0.0-r1_all.ipk
-Size: 5177
+Size: 5172
 
 Package: luci-app-ksm-manager
 Version: 0.4.0-r2
@@ -316,7 +316,7 @@ Architecture: all
 Installed-Size: 112640
 Description:  Centralized cryptographic key management with hardware security module (HSM) support for Nitrokey and YubiKey devices. Provides secure key storage, certificate management, SSH key handling, and secret storage with audit logging.
 Filename: luci-app-ksm-manager_0.4.0-r2_all.ipk
-Size: 18781
+Size: 18777
 
 Package: luci-app-localai
 Version: 0.1.0-r15
@@ -328,7 +328,7 @@ Architecture: all
 Installed-Size: 71680
 Description:  Modern dashboard for LocalAI LLM management on OpenWrt
 Filename: luci-app-localai_0.1.0-r15_all.ipk
-Size: 13319
+Size: 13318
 
 Package: luci-app-localrecall
 Version: 1.0.0-r1
@@ -352,7 +352,7 @@ Architecture: all
 Installed-Size: 40960
 Description:  LuCI support for Lyrion Music Server
 Filename: luci-app-lyrion_1.0.0-r1_all.ipk
-Size: 6837
+Size: 6839
 
 Package: luci-app-mac-guardian
 Version: 0.5.0-r1
@@ -376,7 +376,7 @@ Architecture: all
 Installed-Size: 71680
 Description:  Modern dashboard for MagicMirror2 smart display platform with module manager and SecuBox theme
 Filename: luci-app-magicmirror2_0.4.0-r6_all.ipk
-Size: 12361
+Size: 12359
 
 Package: luci-app-mailinabox
 Version: 1.0.0-r1
@@ -388,7 +388,7 @@ Architecture: all
 Installed-Size: 30720
 Description:  LuCI support for Mail-in-a-Box
 Filename: luci-app-mailinabox_1.0.0-r1_all.ipk
-Size: 5485
+Size: 5477
 
 Package: luci-app-mailserver
 Version: 1.0.0-r1
@@ -400,7 +400,7 @@ Architecture: all
 Installed-Size: 40960
 Description:  LuCI Mail Server Manager
 Filename: luci-app-mailserver_1.0.0-r1_all.ipk
-Size: 6510
+Size: 6507
 
 Package: luci-app-master-link
 Version: 1.0.0-r1
@@ -424,7 +424,7 @@ Architecture: all
 Installed-Size: 133120
 Description:  Real-time detection and monitoring of streaming services (Netflix, YouTube, Spotify, etc.) with quality estimation, history tracking, and alerts. Supports nDPId local DPI and netifyd.
 Filename: luci-app-media-flow_0.6.4-r1_all.ipk
-Size: 25381
+Size: 25378
 
 Package: luci-app-metablogizer
 Version: 1.1.0-r1
@@ -436,7 +436,7 @@ Architecture: all
 Installed-Size: 133120
 Description:  LuCI support for MetaBlogizer Static Site Publisher
 Filename: luci-app-metablogizer_1.1.0-r1_all.ipk
-Size: 26206
+Size: 26205
 
 Package: luci-app-metabolizer
 Version: 1.0.0-r2
@@ -448,7 +448,7 @@ Architecture: all
 Installed-Size: 30720
 Description:  LuCI support for Metabolizer CMS
 Filename: luci-app-metabolizer_1.0.0-r2_all.ipk
-Size: 4819
+Size: 4820
 
 Package: luci-app-mitmproxy
 Version: 0.5.0-r2
@@ -460,7 +460,7 @@ Architecture: all
 Installed-Size: 71680
 Description:  Modern dashboard for mitmproxy HTTPS traffic inspection with SecuBox theme
 Filename: luci-app-mitmproxy_0.5.0-r2_all.ipk
-Size: 13233
+Size: 13231
 
 Package: luci-app-mmpm
 Version: 0.2.0-r3
@@ -472,7 +472,7 @@ Architecture: all
 Installed-Size: 51200
 Description:  Web interface for MMPM - MagicMirror Package Manager
 Filename: luci-app-mmpm_0.2.0-r3_all.ipk
-Size: 7972
+Size: 7973
 
 Package: luci-app-mqtt-bridge
 Version: 0.4.0-r4
@@ -484,7 +484,7 @@ Architecture: all
 Installed-Size: 122880
 Description:  USB-to-MQTT IoT hub with SecuBox theme
 Filename: luci-app-mqtt-bridge_0.4.0-r4_all.ipk
-Size: 22690
+Size: 22689
 
 Package: luci-app-ndpid
 Version: 1.1.2-r2
@@ -496,7 +496,7 @@ Architecture: all
 Installed-Size: 122880
 Description:  Modern dashboard for nDPId deep packet inspection on OpenWrt
 Filename: luci-app-ndpid_1.1.2-r2_all.ipk
-Size: 21703
+Size: 21701
 
 Package: luci-app-netdata-dashboard
 Version: 0.5.0-r2
@@ -520,7 +520,7 @@ Architecture: all
 Installed-Size: 40960
 Description:  LuCI Network Anomaly Detection Dashboard
 Filename: luci-app-network-anomaly_1.0.0-r1_all.ipk
-Size: 7645
+Size: 7646
 
 Package: luci-app-network-modes
 Version: 0.5.0-r3
@@ -532,7 +532,7 @@ Architecture: all
 Installed-Size: 286720
 Description:  Configure OpenWrt for different network modes: Sniffer, Access Point, Relay, Router
 Filename: luci-app-network-modes_0.5.0-r3_all.ipk
-Size: 54227
+Size: 54225
 
 Package: luci-app-network-tweaks
 Version: 1.0.0-r7
@@ -548,15 +548,15 @@ Size: 15946
 
 Package: luci-app-nextcloud
 Version: 1.0.0-r1
-Depends: luci-base
+Depends: luci-base, luci-lib-secubox, secubox-app-nextcloud
 License: GPL-2.0
 Section: luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
-Installed-Size: 40960
-Description:  LuCI support for Nextcloud
+Installed-Size: 51200
+Description:  LuCI support for Nextcloud LXC
 Filename: luci-app-nextcloud_1.0.0-r1_all.ipk
-Size: 6570
+Size: 10348
 
 Package: luci-app-ollama
 Version: 0.1.0-r1
@@ -568,7 +568,7 @@ Architecture: all
 Installed-Size: 71680
 Description:  Modern dashboard for Ollama LLM management on OpenWrt
 Filename: luci-app-ollama_0.1.0-r1_all.ipk
-Size: 14337
+Size: 14335
 
 Package: luci-app-peertube
 Version: 0
@@ -580,7 +580,7 @@ Architecture: all
 Installed-Size: 30720
 Description:  LuCI PeerTube Video Platform
 Filename: luci-app-peertube_0_all.ipk
-Size: 5757
+Size: 5760
 
 Package: luci-app-picobrew
 Version: 1.0.0-r1
@@ -592,7 +592,7 @@ Architecture: all
 Installed-Size: 51200
 Description:  Modern dashboard for PicoBrew Server management on OpenWrt
 Filename: luci-app-picobrew_1.0.0-r1_all.ipk
-Size: 9533
+Size: 9528
 
 Package: luci-app-secubox
 Version: 0.7.1-r4
@@ -604,7 +604,7 @@ Architecture: all
 Installed-Size: 440320
 Description:  Central control hub for all SecuBox modules. Provides unified dashboard, module status, system health monitoring, and quick actions.
 Filename: luci-app-secubox_0.7.1-r4_all.ipk
-Size: 82098
+Size: 82095
 
 Package: luci-app-secubox-admin
 Version: 1.0.0-r19
@@ -615,7 +615,7 @@ Architecture: all
 Installed-Size: 337920
 Description:  Unified admin control center for SecuBox appstore plugins with system monitoring
 Filename: luci-app-secubox-admin_1.0.0-r19_all.ipk
-Size: 58040
+Size: 58039
 
 Package: luci-app-secubox-crowdsec
 Version: 1.0.0-r3
@@ -627,7 +627,7 @@ Architecture: all
 Installed-Size: 81920
 Description:  LuCI SecuBox CrowdSec Dashboard
 Filename: luci-app-secubox-crowdsec_1.0.0-r3_all.ipk
-Size: 13922
+Size: 13918
 
 Package: luci-app-secubox-mirror
 Version: 0.1.0-r1
@@ -639,7 +639,7 @@ Architecture: all
 Installed-Size: 40960
 Description:  LuCI MirrorNet Dashboard
 Filename: luci-app-secubox-mirror_0.1.0-r1_all.ipk
-Size: 5848
+Size: 5846
 
 Package: luci-app-secubox-netdiag
 Version: 1.0.0-r1
@@ -651,7 +651,7 @@ Architecture: all
 Installed-Size: 81920
 Description:  Real-time DSA switch port statistics, error monitoring, and network health diagnostics
 Filename: luci-app-secubox-netdiag_1.0.0-r1_all.ipk
-Size: 15347
+Size: 15344
 
 Package: luci-app-secubox-netifyd
 Version: 1.2.1-r1
@@ -663,7 +663,7 @@ Architecture: all
 Installed-Size: 194560
 Description:  Complete LuCI interface for netifyd DPI engine with real-time flow monitoring, application detection, network analytics, and flow action plugins
 Filename: luci-app-secubox-netifyd_1.2.1-r1_all.ipk
-Size: 36720
+Size: 36719
 
 Package: luci-app-secubox-p2p
 Version: 0.1.0-r1
@@ -675,7 +675,7 @@ Architecture: all
 Installed-Size: 245760
 Description:  LuCI SecuBox P2P Hub
 Filename: luci-app-secubox-p2p_0.1.0-r1_all.ipk
-Size: 46832
+Size: 46833
 
 Package: luci-app-secubox-portal
 Version: 0.7.0-r3
@@ -687,7 +687,7 @@ Architecture: all
 Installed-Size: 194560
 Description:  Unified entry point for all SecuBox applications with tabbed navigation
 Filename: luci-app-secubox-portal_0.7.0-r3_all.ipk
-Size: 41685
+Size: 41684
 
 Package: luci-app-secubox-security-threats
 Version: 1.0.0-r4
@@ -699,7 +699,7 @@ Architecture: all
 Installed-Size: 61440
 Description:  Unified dashboard integrating netifyd DPI threats with CrowdSec intelligence for real-time threat monitoring and automated blocking
 Filename: luci-app-secubox-security-threats_1.0.0-r4_all.ipk
-Size: 10658
+Size: 10654
 
 Package: luci-app-service-registry
 Version: 1.0.0-r1
@@ -723,7 +723,7 @@ Architecture: all
 Installed-Size: 40960
 Description:  LuCI SimpleX Chat Server Configuration
 Filename: luci-app-simplex_1.0.0-r1_all.ipk
-Size: 7037
+Size: 7039
 
 Package: luci-app-streamlit
 Version: 1.0.0-r11
@@ -735,7 +735,7 @@ Architecture: all
 Installed-Size: 112640
 Description:  Multi-instance Streamlit management with Gitea integration
 Filename: luci-app-streamlit_1.0.0-r11_all.ipk
-Size: 20570
+Size: 20568
 
 Package: luci-app-system-hub
 Version: 0.5.1-r4
@@ -747,7 +747,7 @@ Architecture: all
 Installed-Size: 327680
 Description:  Central system control with monitoring, services, logs, and backup
 Filename: luci-app-system-hub_0.5.1-r4_all.ipk
-Size: 62081
+Size: 62080
 
 Package: luci-app-threat-analyst
 Version: 1.0.0-r1
@@ -759,7 +759,7 @@ Architecture: all
 Installed-Size: 51200
 Description:  LuCI Threat Analyst Dashboard
 Filename: luci-app-threat-analyst_1.0.0-r1_all.ipk
-Size: 10142
+Size: 10141
 
 Package: luci-app-tor
 Version: 1.0.0-r1
@@ -771,7 +771,7 @@ Architecture: all
 Installed-Size: 92160
 Description:  Modern dashboard for Tor anonymization on OpenWrt
 Filename: luci-app-tor_1.0.0-r1_all.ipk
-Size: 17822
+Size: 17817
 
 Package: luci-app-tor-shield
 Version: 1.0.0-r10
@@ -783,7 +783,7 @@ Architecture: all
 Installed-Size: 122880
 Description:  Modern dashboard for Tor anonymization on OpenWrt
 Filename: luci-app-tor-shield_1.0.0-r10_all.ipk
-Size: 22766
+Size: 22764
 
 Package: luci-app-traffic-shaper
 Version: 0.4.0-r2
@@ -795,7 +795,7 @@ Architecture: all
 Installed-Size: 81920
 Description:  Advanced traffic shaping with TC/CAKE for precise bandwidth control
 Filename: luci-app-traffic-shaper_0.4.0-r2_all.ipk
-Size: 14588
+Size: 14591
 
 Package: luci-app-vhost-manager
 Version: 0.5.0-r5
@@ -807,7 +807,7 @@ Architecture: all
 Installed-Size: 153600
 Description:  Nginx reverse proxy manager with Let's Encrypt SSL certificates, authentication, and WebSocket support
 Filename: luci-app-vhost-manager_0.5.0-r5_all.ipk
-Size: 26282
+Size: 26279
 
 Package: luci-app-vortex-dns
 Version: 1.0.0-r1
@@ -819,7 +819,7 @@ Architecture: all
 Installed-Size: 40960
 Description:  LuCI Vortex DNS Dashboard
 Filename: luci-app-vortex-dns_1.0.0-r1_all.ipk
-Size: 6078
+Size: 6079
 
 Package: luci-app-vortex-firewall
 Version: 1.0.0-r1
@@ -831,7 +831,7 @@ Architecture: all
 Installed-Size: 30720
 Description:  LuCI Vortex DNS Firewall Dashboard
 Filename: luci-app-vortex-firewall_1.0.0-r1_all.ipk
-Size: 5457
+Size: 5454
 
 Package: luci-app-wazuh
 Version: 1.0.0-r1
@@ -842,7 +842,7 @@ Architecture: all
 Installed-Size: 71680
 Description:  Unified security monitoring dashboard for Wazuh SIEM/XDR integration
 Filename: luci-app-wazuh_1.0.0-r1_all.ipk
-Size: 11073
+Size: 11070
 
 Package: luci-app-wireguard-dashboard
 Version: 0.7.0-r5
@@ -854,7 +854,7 @@ Architecture: all
 Installed-Size: 215040
 Description:  Modern dashboard for WireGuard VPN monitoring on OpenWrt
 Filename: luci-app-wireguard-dashboard_0.7.0-r5_all.ipk
-Size: 42289
+Size: 42285
 
 Package: luci-app-zigbee2mqtt
 Version: 1.0.0-r2
@@ -866,7 +866,7 @@ Architecture: all
 Installed-Size: 40960
 Description:  Graphical interface for managing the Zigbee2MQTT LXC application.
 Filename: luci-app-zigbee2mqtt_1.0.0-r2_all.ipk
-Size: 6596
+Size: 6590
 
 Package: luci-theme-secubox
 Version: 0.4.7-r1
@@ -878,7 +878,7 @@ Architecture: all
 Installed-Size: 450560
 Description:  Global CyberMood design system (CSS/JS/i18n) shared by all SecuBox dashboards.
 Filename: luci-theme-secubox_0.4.7-r1_all.ipk
-Size: 110240
+Size: 110243
 
 Package: secubox-app
 Version: 1.0.0-r2
@@ -903,7 +903,7 @@ Description:  Installer, configuration, and service manager for running AdGuard 
  inside Docker on SecuBox-powered OpenWrt systems. Network-wide ad blocker
  with DNS-over-HTTPS/TLS support and detailed analytics.
 Filename: secubox-app-adguardhome_1.0.0-r2_all.ipk
-Size: 2884
+Size: 2878
 
 Package: secubox-app-auth-logger
 Version: 1.2.2-r1
@@ -946,7 +946,7 @@ Description:  Custom CrowdSec configurations for SecuBox web interface protectio
  - Insider WAF: LAN threat detection (C2, exfiltration, lateral movement)
  - Whitelist for trusted networks
 Filename: secubox-app-crowdsec-custom_1.1.0-r1_all.ipk
-Size: 6941
+Size: 6937
 
 Package: secubox-app-cs-firewall-bouncer
 Version: 0.0.31-r4
@@ -973,7 +973,7 @@ Description:  SecuBox CrowdSec Firewall Bouncer for OpenWrt.
  - Automatic restart on firewall reload
  - procd service management
 Filename: secubox-app-cs-firewall-bouncer_0.0.31-r4_aarch64_cortex-a72.ipk
-Size: 5049324
+Size: 5049323
 
 Package: secubox-app-cyberfeed
 Version: 0.2.1-r1
@@ -987,7 +987,7 @@ Description:  Cyberpunk-themed RSS feed aggregator for OpenWrt/SecuBox.
  Features emoji injection, neon styling, and RSS-Bridge support
  for social media feeds (Facebook, Twitter, Mastodon).
 Filename: secubox-app-cyberfeed_0.2.1-r1_all.ipk
-Size: 12456
+Size: 12449
 
 Package: secubox-app-device-intel
 Version: 1.0.0-r1
@@ -1001,7 +1001,7 @@ Description:  Unified device inventory aggregating mac-guardian, client-guardian
  P2P mesh, and exposure scanner data. Includes heuristic classification
  and pluggable emulator modules for MQTT, Zigbee, and USB devices.
 Filename: secubox-app-device-intel_1.0.0-r1_all.ipk
-Size: 13102
+Size: 13105
 
 Package: secubox-app-dns-provider
 Version: 1.0.0-r1
@@ -1028,7 +1028,7 @@ Installed-Size: 30720
 Description:  Installer, configuration, and service manager for running Domoticz
  inside an LXC Alpine container on SecuBox-powered OpenWrt systems.
 Filename: secubox-app-domoticz_1.0.0-r4_all.ipk
-Size: 7510
+Size: 7507
 
 Package: secubox-app-exposure
 Version: 1.0.0-r1
@@ -1066,7 +1066,7 @@ Description:  Gitea Git Platform - Self-hosted lightweight Git service
  Runs in LXC container with Alpine Linux.
  Configure in /etc/config/gitea.
 Filename: secubox-app-gitea_1.0.0-r5_all.ipk
-Size: 9441
+Size: 9437
 
 Package: secubox-app-gk2hub
 Version: 0.1.0-r1
@@ -1080,7 +1080,7 @@ Description:  Dynamic landing page generator for GK2 SecuBox services.
  Aggregates Streamlit apps, MetaBlogizer sites, and infrastructure
  services into a single service directory page.
 Filename: secubox-app-gk2hub_0.1.0-r1_all.ipk
-Size: 4059
+Size: 4057
 
 Package: secubox-app-glances
 Version: 1.0.0-r1
@@ -1103,7 +1103,7 @@ Description:  Glances - Cross-platform system monitoring tool for SecuBox.
  Runs in LXC container for isolation and security.
  Configure in /etc/config/glances.
 Filename: secubox-app-glances_1.0.0-r1_all.ipk
-Size: 6136
+Size: 6137
 
 Package: secubox-app-guacamole
 Version: 1.0.0-r1
@@ -1117,7 +1117,7 @@ Description:  Apache Guacamole clientless remote desktop gateway.
  Runs in an LXC Debian container with guacd and Tomcat.
  Supports SSH, VNC, and RDP connections via web browser.
 Filename: secubox-app-guacamole_1.0.0-r1_all.ipk
-Size: 6949
+Size: 6944
 
 Package: secubox-app-haproxy
 Version: 1.0.0-r24
@@ -1137,7 +1137,7 @@ Description:  HAProxy load balancer and reverse proxy running in an LXC containe
  - Stats dashboard
  - Rate limiting and ACLs
 Filename: secubox-app-haproxy_1.0.0-r24_all.ipk
-Size: 22009
+Size: 22004
 
 Package: secubox-app-hexojs
 Version: 1.0.0-r8
@@ -1161,7 +1161,7 @@ Description:  Hexo CMS - Self-hosted static blog generator for OpenWrt
  Runs in LXC container with Alpine Linux.
  Configure in /etc/config/hexojs.
 Filename: secubox-app-hexojs_1.0.0-r8_all.ipk
-Size: 94936
+Size: 94934
 
 Package: secubox-app-jellyfin
 Version: 3.0.0-r1
@@ -1174,7 +1174,7 @@ Installed-Size: 20480
 Description:  Jellyfin media server running in LXC container.
  Free media server for streaming movies, TV shows, music, and photos.
 Filename: secubox-app-jellyfin_3.0.0-r1_all.ipk
-Size: 4749
+Size: 4753
 
 Package: secubox-app-jitsi
 Version: 1.0.0-r1
@@ -1221,7 +1221,7 @@ Description:  LocalAI native binary package for OpenWrt.
  
  API: http://<router-ip>:8081/v1
 Filename: secubox-app-localai_3.9.0-r1_all.ipk
-Size: 5844
+Size: 5846
 
 Package: secubox-app-localai-wb
 Version: 2.25.0-r1
@@ -1245,7 +1245,7 @@ Description:  LocalAI native binary package for OpenWrt.
  
  API: http://<router-ip>:8080/v1
 Filename: secubox-app-localai-wb_2.25.0-r1_all.ipk
-Size: 7954
+Size: 7952
 
 Package: secubox-app-lyrion
 Version: 2.0.2-r1
@@ -1265,7 +1265,7 @@ Description:  Lyrion Media Server (formerly Logitech Media Server / Squeezebox S
  Auto-detects available runtime, preferring LXC for lower resource usage.
  Configure runtime in /etc/config/lyrion.
 Filename: secubox-app-lyrion_2.0.2-r1_all.ipk
-Size: 8128
+Size: 8125
 
 Package: secubox-app-mac-guardian
 Version: 0.5.0-r1
@@ -1280,7 +1280,7 @@ Description:  WiFi MAC address security monitor for SecuBox.
  and spoofing. Integrates with CrowdSec and provides
  real-time hostapd hotplug detection.
 Filename: secubox-app-mac-guardian_0.5.0-r1_all.ipk
-Size: 12097
+Size: 12099
 
 Package: secubox-app-magicmirror2
 Version: 0.4.0-r8
@@ -1302,7 +1302,7 @@ Description:  MagicMirror² - Open source modular smart mirror platform for Secu
  Runs in LXC container for isolation and security.
  Configure in /etc/config/magicmirror2.
 Filename: secubox-app-magicmirror2_0.4.0-r8_all.ipk
-Size: 9253
+Size: 9249
 
 Package: secubox-app-mailinabox
 Version: 2.0.0-r1
@@ -1327,7 +1327,7 @@ Description:  Complete email server solution using docker-mailserver for SecuBox
  
  Commands: mailinaboxctl --help
 Filename: secubox-app-mailinabox_2.0.0-r1_all.ipk
-Size: 7572
+Size: 7567
 
 Package: secubox-app-metabolizer
 Version: 1.0.0-r3
@@ -1348,7 +1348,7 @@ Description:  Metabolizer Blog Pipeline - Integrated CMS with Git-based workflow
  
  Pipeline: Edit in Streamlit -> Push to Gitea -> Build with Hexo -> Publish
 Filename: secubox-app-metabolizer_1.0.0-r3_all.ipk
-Size: 13975
+Size: 13976
 
 Package: secubox-app-mitmproxy
 Version: 0.5.0-r19
@@ -1375,7 +1375,7 @@ Description:  mitmproxy - Interactive HTTPS proxy for SecuBox-powered OpenWrt sy
  Runs in LXC container for isolation and security.
  Configure in /etc/config/mitmproxy.
 Filename: secubox-app-mitmproxy_0.5.0-r19_all.ipk
-Size: 22957
+Size: 22958
 
 Package: secubox-app-mmpm
 Version: 0.2.0-r5
@@ -1396,21 +1396,21 @@ Description:  MMPM (MagicMirror Package Manager) for SecuBox.
  
  Runs inside the MagicMirror2 LXC container.
 Filename: secubox-app-mmpm_0.2.0-r5_all.ipk
-Size: 3979
+Size: 3977
 
 Package: secubox-app-nextcloud
 Version: 1.0.0-r2
-Depends: dockerd, docker, containerd
+Depends: lxc, lxc-common, tar, wget-ssl, jsonfilter, openssl-util, unzip, xz
 License: Apache-2.0
 Section: utils
 Maintainer: CyberMind Studio <contact@cybermind.fr>
 Architecture: all
-Installed-Size: 20480
-Description:  Installer, configuration, and service manager for running Nextcloud
- inside Docker on SecuBox-powered OpenWrt systems. Self-hosted file
- sync and share with calendar, contacts, and collaboration.
+Installed-Size: 40960
+Description:  Nextcloud file sync and collaboration platform running in a Debian-based
+ LXC container with MariaDB, Redis, and Nginx. Features HAProxy SSL
+ integration, automated backups, and KISS LuCI dashboard.
 Filename: secubox-app-nextcloud_1.0.0-r2_all.ipk
-Size: 2957
+Size: 9673
 
 Package: secubox-app-ollama
 Version: 0.1.0-r1
@@ -1432,7 +1432,7 @@ Description:  Ollama - Simple local LLM runtime for SecuBox-powered OpenWrt syst
  Runs in Docker/Podman container.
  Configure in /etc/config/ollama.
 Filename: secubox-app-ollama_0.1.0-r1_all.ipk
-Size: 5739
+Size: 5740
 
 Package: secubox-app-picobrew
 Version: 1.0.0-r7
@@ -1454,7 +1454,7 @@ Description:  PicoBrew Server - Self-hosted brewing controller for PicoBrew devi
  Runs in LXC container with Python/Flask backend.
  Configure in /etc/config/picobrew.
 Filename: secubox-app-picobrew_1.0.0-r7_all.ipk
-Size: 5539
+Size: 5541
 
 Package: secubox-app-rustdesk
 Version: 1.0.0-r1
@@ -1467,7 +1467,7 @@ Installed-Size: 20480
 Description:  Self-hosted RustDesk relay server for remote desktop access.
  Downloads and manages hbbs (ID server) and hbbr (relay server) binaries.
 Filename: secubox-app-rustdesk_1.0.0-r1_all.ipk
-Size: 4464
+Size: 4466
 
 Package: secubox-app-simplex
 Version: 1.0.0-r1
@@ -1491,7 +1491,7 @@ Description:  SimpleX Chat self-hosted messaging infrastructure for SecuBox.
  Privacy-first messaging relay that you control.
  Configure in /etc/config/simplex.
 Filename: secubox-app-simplex_1.0.0-r1_all.ipk
-Size: 9371
+Size: 9362
 
 Package: secubox-app-smbfs
 Version: 1.0.0-r1
@@ -1505,7 +1505,7 @@ Description:  SMB/CIFS remote directory mount manager for SecuBox. Manages share
  network mounts for media servers (Jellyfin, Lyrion), backups, and
  general-purpose remote storage over SMB/CIFS protocol.
 Filename: secubox-app-smbfs_1.0.0-r1_all.ipk
-Size: 5266
+Size: 5268
 
 Package: secubox-app-streamlit
 Version: 1.0.0-r5
@@ -1532,7 +1532,7 @@ Description:  Streamlit App Platform - Self-hosted Python data app platform
  
  Configure in /etc/config/streamlit.
 Filename: secubox-app-streamlit_1.0.0-r5_all.ipk
-Size: 16516
+Size: 16517
 
 Package: secubox-app-tor
 Version: 1.0.0-r1
@@ -1555,7 +1555,7 @@ Description:  SecuBox Tor Shield - One-click Tor anonymization for OpenWrt
  
  Configure in /etc/config/tor-shield.
 Filename: secubox-app-tor_1.0.0-r1_all.ipk
-Size: 7370
+Size: 7371
 
 Package: secubox-app-webapp
 Version: 1.5.0-r7
@@ -1573,7 +1573,7 @@ Description:  SecuBox Control Center Dashboard - A web-based dashboard for monit
  - Service management
  - Network interface control
 Filename: secubox-app-webapp_1.5.0-r7_all.ipk
-Size: 39178
+Size: 39177
 
 Package: secubox-app-zigbee2mqtt
 Version: 1.0.0-r3
@@ -1586,7 +1586,7 @@ Installed-Size: 20480
 Description:  Installer, configuration, and service manager for running Zigbee2MQTT
  inside an Alpine LXC container on SecuBox-powered OpenWrt systems.
 Filename: secubox-app-zigbee2mqtt_1.0.0-r3_all.ipk
-Size: 5540
+Size: 5533
 
 Package: secubox-config-advisor
 Version: 0.1.0-r1
@@ -1605,7 +1605,7 @@ Description:  AI-powered configuration security advisor for SecuBox.
  - LocalAI integration for intelligent analysis
  - Automated remediation suggestions
 Filename: secubox-config-advisor_0.1.0-r1_all.ipk
-Size: 14849
+Size: 14850
 
 Package: secubox-content-pkg
 Version: 1.0.0-r1
@@ -1661,7 +1661,7 @@ Description:  SecuBox Core Framework provides the foundational infrastructure fo
  - Unified CLI interface
  - ubus RPC backend
 Filename: secubox-core_0.10.0-r16_all.ipk
-Size: 123054
+Size: 123047
 
 Package: secubox-cve-triage
 Version: 1.0.0-r1
@@ -1681,7 +1681,7 @@ Description:  AI-powered CVE analysis and vulnerability management agent for Sec
  - Approval workflow for patch recommendations
  - LXC and Docker package monitoring
 Filename: secubox-cve-triage_1.0.0-r1_all.ipk
-Size: 11826
+Size: 11832
 
 Package: secubox-dns-guard
 Version: 1.0.0-r1
@@ -1700,7 +1700,7 @@ Description:  SecuBox DNS Guard provides AI-powered DNS anomaly detection using 
  - Unusual TLD pattern detection
  - Automatic blocklist generation with approval workflow
 Filename: secubox-dns-guard_1.0.0-r1_all.ipk
-Size: 12487
+Size: 12486
 
 Package: secubox-identity
 Version: 0.1.0-r1
@@ -1719,7 +1719,7 @@ Description:  Decentralized identity management for SecuBox mesh nodes.
  - Peer identity verification
  - Trust scoring integration
 Filename: secubox-identity_0.1.0-r1_all.ipk
-Size: 8091
+Size: 8088
 
 Package: secubox-iot-guard
 Version: 1.0.0-r1
@@ -1735,7 +1735,7 @@ Description:  IoT device isolation, classification, and security monitoring.
  risk scoring. Orchestrates Client Guardian, MAC Guardian
  Vortex Firewall, and Bandwidth Manager for IoT protection.
 Filename: secubox-iot-guard_1.0.0-r1_all.ipk
-Size: 13371
+Size: 13365
 
 Package: secubox-localrecall
 Version: 1.0.0-r1
@@ -1750,7 +1750,7 @@ Description:  Persistent memory system for SecuBox AI agents.
  for context across sessions. LocalAI integration for
  semantic search and AI-powered summarization.
 Filename: secubox-localrecall_1.0.0-r1_all.ipk
-Size: 7805
+Size: 7798
 
 Package: secubox-master-link
 Version: 1.0.0-r1
@@ -1800,7 +1800,7 @@ Description:  Model Context Protocol (MCP) server for SecuBox.
  - ai.explain_ban (Explain CrowdSec decisions)
  - ai.security_posture (Security assessment)
 Filename: secubox-mcp-server_1.0.0-r1_all.ipk
-Size: 11430
+Size: 11432
 
 Package: secubox-mirrornet
 Version: 0.1.0-r1
@@ -1818,7 +1818,7 @@ Description:  MirrorNet core mesh orchestration for SecuBox.
  - Mesh health monitoring and anomaly detection
  - DID-based identity (did:plc compatible)
 Filename: secubox-mirrornet_0.1.0-r1_all.ipk
-Size: 15309
+Size: 15304
 
 Package: secubox-network-anomaly
 Version: 1.0.0-r1
@@ -1833,7 +1833,7 @@ Description:  AI-powered network anomaly detection for SecuBox.
  DNS anomalies, and protocol anomalies using statistical
  analysis and optional LocalAI integration.
 Filename: secubox-network-anomaly_1.0.0-r1_all.ipk
-Size: 6168
+Size: 6166
 
 Package: secubox-p2p
 Version: 0.6.0-r3
@@ -1871,7 +1871,7 @@ Description:  Decentralized threat intelligence sharing for SecuBox mesh.
  - CrowdSec and mitmproxy integration
  - Automatic firewall rule application
 Filename: secubox-p2p-intel_0.1.0-r1_all.ipk
-Size: 9798
+Size: 9799
 
 Package: secubox-threat-analyst
 Version: 1.0.0-r1
@@ -1924,5 +1924,5 @@ Description:  DNS-level threat blocking with x47 impact multiplier.
  any connection is established. Integrates threat feeds from
  abuse.ch, OpenPhish, and local DNS Guard detections.
 Filename: secubox-vortex-firewall_1.0.0-r1_all.ipk
-Size: 8900
+Size: 8895
 
