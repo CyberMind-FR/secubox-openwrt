@@ -2074,3 +2074,24 @@ git checkout HEAD -- index.html
 
 **Files Modified:**
 - `secubox-app-mailserver/files/usr/lib/mailserver/users.sh`
+
+### 2026-02-16: Nextcloud User Management & WAF Fixes
+
+**LuCI Enhancement: luci-app-nextcloud**
+- Added Users tab with user list from OCC
+- Added password reset modal for user password changes
+- Fixed list_users JSON parsing for Nextcloud user:displayname format
+
+**Nextcloud Mail Integration Fix**
+- Set `app.mail.verify-tls-peer=false` to allow self-signed certs
+- Set `allow_local_remote_servers=true` for local IMAP access
+- Added mailserver certificate to Nextcloud trusted CA store
+
+**WAF/Mitmproxy Route Sync Fix**
+- Fixed mitmproxy routes sync between host (/srv/mitmproxy) and container (/srv/mitmproxy-in)
+- Enabled WAF for cloud.gk2.secubox.in
+- Routes file must be copied to /srv/mitmproxy-in/haproxy-routes.json for mitmproxy-in container
+
+**Files Modified:**
+- `luci-app-nextcloud/htdocs/luci-static/resources/view/nextcloud/overview.js`
+- `luci-app-nextcloud/root/usr/libexec/rpcd/luci.nextcloud`
