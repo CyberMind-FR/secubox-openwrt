@@ -93,7 +93,7 @@ case "$1" in
 				if [ "$state" = "running" ]; then
 					container_ports=$(lxc-attach -n "$container" -- netstat -tln 2>/dev/null)
 				fi
-				for port in 25 587 465 993 995; do
+				for port in 25 143 587 465 993 995; do
 					if echo "$container_ports" | grep -q ":$port "; then
 						json_add_boolean "$port" 1
 					else
