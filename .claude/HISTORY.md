@@ -1909,3 +1909,28 @@ git checkout HEAD -- index.html
 - Autoconfig XML at `/.well-known/autoconfig/mail/config-v1.1.xml`
 - Mozilla/Thunderbird format with IMAP (993/143) and SMTP (587/465)
 - HAProxy vhosts and mitmproxy routes configured
+
+### 2026-02-16: Mailserver LuCI KISS Enhancement
+
+**IMAP Connectivity Fix:**
+- Fixed hairpin NAT issue for internal clients (Nextcloud container)
+- Added `/etc/hosts` override in Nextcloud container: `mail.gk2.secubox.in` → `192.168.255.30`
+- Added firewall rules for mail ports (IMAP 993, SMTP 587/465)
+
+**LuCI Dashboard KISS Regeneration:**
+- Complete rewrite of `overview.js` (672 lines) with full KISS theme styling:
+  - Header with server FQDN
+  - 4-column stats grid (Status, Users, Storage, SSL)
+  - Control buttons (Start/Stop, DNS Setup, SSL Setup, Fix Ports, Backup)
+  - Port status cards with visual indicators (SMTP, Submission, SMTPS, IMAPS, IMAP)
+  - Two-column layout: Users table + Aliases table
+  - Webmail (Roundcube) card with status badge and quick actions
+  - Connection info panel with IMAP/SMTP server details
+  - Live polling with 10s refresh
+- Updated ACL with `fix_ports`, `alias_del` methods
+- Added Mail Server + Nextcloud to KISS theme navigation sidebar
+
+**Files Modified:**
+- `luci-app-mailserver/htdocs/.../overview.js` (rewritten)
+- `luci-app-mailserver/root/usr/share/rpcd/acl.d/luci-app-mailserver.json`
+- `luci-app-secubox-portal/htdocs/.../kiss-theme.js` (nav update)
