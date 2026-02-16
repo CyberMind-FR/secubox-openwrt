@@ -2063,3 +2063,14 @@ git checkout HEAD -- index.html
 - `luci-app-mailserver/root/usr/share/rpcd/acl.d/luci-app-mailserver.json`
 - `luci-app-nextcloud/root/usr/libexec/rpcd/luci.nextcloud`
 - `luci-app-nextcloud/root/usr/share/rpcd/acl.d/luci-app-nextcloud.json`
+
+### 2026-02-16: Mailserver Password Reset Fix
+
+**Bug Fix: secubox-app-mailserver**
+- Fixed SHA512-CRYPT hash corruption in `user_passwd` and `user_add` functions
+- Root cause: `$6$` prefix was being interpreted as shell variable when passed through nested shell commands
+- Fix: Use `printf` instead of `echo`, write to temp file before piping to container
+- Corrected dovecot passwd format: uid:gid 102:105 (vmail user) with `userdb_mail=maildir:/var/mail/domain/user`
+
+**Files Modified:**
+- `secubox-app-mailserver/files/usr/lib/mailserver/users.sh`
