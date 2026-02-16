@@ -4,12 +4,10 @@
 'require rpc';
 'require hexojs/api as api';
 
-var K = null; // KissTheme reference
-
 return view.extend({
 	load: function() {
 		return Promise.all([
-			L.require('secubox/kiss-theme').then(function(m) { K = new m(); }),
+			L.require('secubox/kiss-theme'),
 			api.listInstances(),
 			api.getStatus(),
 			api.getSiteStats(),
@@ -21,6 +19,7 @@ return view.extend({
 
 	render: function(d) {
 		var self = this;
+		var K = window.KissTheme;
 		K.apply();
 
 		return K.wrap([

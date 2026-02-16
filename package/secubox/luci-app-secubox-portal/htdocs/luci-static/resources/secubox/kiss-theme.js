@@ -99,7 +99,16 @@ var KissThemeClass = baseclass.extend({
 			{ icon: '☁️', name: 'Nextcloud', path: 'admin/secubox/services/nextcloud' },
 			{ icon: '🎬', name: 'Media Flow', path: 'admin/services/media-flow' },
 			{ icon: '🪞', name: 'MagicMirror', path: 'admin/services/magicmirror2' },
-			{ icon: '📰', name: 'HexoJS', path: 'admin/services/hexojs' },
+			{ icon: '📰', name: 'HexoJS', path: 'admin/services/hexojs', tabs: [
+				{ name: 'Overview', path: 'admin/services/hexojs/overview' },
+				{ name: 'Posts', path: 'admin/services/hexojs/posts' },
+				{ name: 'Editor', path: 'admin/services/hexojs/editor' },
+				{ name: 'Media', path: 'admin/services/hexojs/media' },
+				{ name: 'Deploy', path: 'admin/services/hexojs/deploy' },
+				{ name: 'Sync', path: 'admin/services/hexojs/sync' },
+				{ name: 'Theme', path: 'admin/services/hexojs/theme' },
+				{ name: 'Settings', path: 'admin/services/hexojs/settings' }
+			]},
 			{ icon: '📺', name: 'Netdata', path: 'admin/services/netdata-dashboard' },
 			{ icon: '🏠', name: 'Vhost Manager', path: 'admin/services/vhost-manager' },
 			{ icon: '📦', name: 'App Store', path: 'admin/secubox/apps' }
