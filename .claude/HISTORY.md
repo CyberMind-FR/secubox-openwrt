@@ -2095,3 +2095,11 @@ git checkout HEAD -- index.html
 **Files Modified:**
 - `luci-app-nextcloud/htdocs/luci-static/resources/view/nextcloud/overview.js`
 - `luci-app-nextcloud/root/usr/libexec/rpcd/luci.nextcloud`
+
+**Dovecot Permission Fix (Permanent)**
+- Fixed anvil-auth-penalty socket permission issues that caused authentication failures
+- Added /run/dovecot permission setup to container startup script (start-mail.sh)
+- Ensures correct ownership (dovecot:dovecot) before and after dovecot starts
+
+**Files Modified:**
+- `secubox-app-mailserver/files/usr/sbin/mailserverctl` (create_startup_script function)

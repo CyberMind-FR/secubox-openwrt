@@ -76,6 +76,9 @@ create_startup_script() {
 #!/bin/sh
 # Mailserver startup script
 
+# Ensure dovenull is in dovecot group (fixes login directory access)
+addgroup dovenull dovecot 2>/dev/null || true
+
 # Ensure dovecot run directory exists with correct permissions
 # This fixes anvil-auth-penalty socket permission issues
 mkdir -p /run/dovecot
