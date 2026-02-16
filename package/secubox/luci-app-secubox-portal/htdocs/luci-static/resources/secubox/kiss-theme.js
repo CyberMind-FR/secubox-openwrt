@@ -96,7 +96,10 @@ var KissThemeClass = baseclass.extend({
 		]},
 		{ cat: 'Apps', icon: '📦', collapsed: true, items: [
 			{ icon: '✉️', name: 'Mail Server', path: 'admin/services/mailserver' },
-			{ icon: '☁️', name: 'Nextcloud', path: 'admin/secubox/services/nextcloud' },
+			{ icon: '☁️', name: 'Nextcloud', path: 'admin/secubox/services/nextcloud', tabs: [
+				{ name: 'Overview', path: 'admin/secubox/services/nextcloud/overview' },
+				{ name: 'Settings', path: 'admin/secubox/services/nextcloud/settings' }
+			]},
 			{ icon: '🎬', name: 'Media Flow', path: 'admin/services/media-flow' },
 			{ icon: '🪞', name: 'MagicMirror', path: 'admin/services/magicmirror2' },
 			{ icon: '📰', name: 'HexoJS', path: 'admin/services/hexojs', tabs: [
