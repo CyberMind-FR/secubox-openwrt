@@ -2035,3 +2035,31 @@ git checkout HEAD -- index.html
 - `secubox-app-mailserver/files/usr/lib/mailserver/users.sh`
 - `secubox-app-mailserver/files/usr/sbin/mailctl`
 - `luci-app-mailserver/root/usr/libexec/rpcd/luci.mailserver`
+
+### 2026-02-16: Mail Autoconfig & Repair Features
+
+**Mail Autoconfig Setup**
+- Created autoconfig files for automatic mail client configuration:
+  - `config-v1.1.xml` - Mozilla Thunderbird format
+  - `autodiscover.xml` - Microsoft Outlook format  
+  - `email.mobileconfig` - Apple iOS/macOS format
+- Set up uhttpd instance on port 8025 to serve autoconfig files
+- Added HAProxy backends with waf_bypass for autoconfig.secubox.in and autoconfig.gk2.secubox.in
+- Created mailctl autoconfig-setup and autoconfig-status commands
+
+**LuCI Enhancement: luci-app-mailserver**
+- Added `user_repair` method for mailbox repair (doveadm force-resync)
+- Added repair button (🔧) to user actions in overview
+- Updated ACL with new permission
+
+**LuCI Enhancement: luci-app-nextcloud**
+- Added `list_users` method to list Nextcloud users
+- Added `reset_password` method for password reset via OCC
+- Updated ACL with new permissions
+
+**Files Modified:**
+- `luci-app-mailserver/root/usr/libexec/rpcd/luci.mailserver`
+- `luci-app-mailserver/htdocs/luci-static/resources/view/mailserver/overview.js`
+- `luci-app-mailserver/root/usr/share/rpcd/acl.d/luci-app-mailserver.json`
+- `luci-app-nextcloud/root/usr/libexec/rpcd/luci.nextcloud`
+- `luci-app-nextcloud/root/usr/share/rpcd/acl.d/luci-app-nextcloud.json`

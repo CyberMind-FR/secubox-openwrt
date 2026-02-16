@@ -105,6 +105,13 @@ var callFixPorts = rpc.declare({
 	expect: {}
 });
 
+var callUserRepair = rpc.declare({
+	object: 'luci.mailserver',
+	method: 'user_repair',
+	params: ['email'],
+	expect: {}
+});
+
 return view.extend({
 	load: function() {
 		return Promise.all([
@@ -333,7 +340,7 @@ return view.extend({
 					E('th', {}, 'Email'),
 					E('th', {}, 'Size'),
 					E('th', {}, 'Msgs'),
-					E('th', { 'style': 'width: 120px;' }, 'Actions')
+					E('th', { 'style': 'width: 160px;' }, 'Actions')
 				])
 			]),
 			E('tbody', {}, users.map(function(u) {
@@ -345,11 +352,19 @@ return view.extend({
 						E('button', {
 							'class': 'kiss-btn',
 							'style': 'padding: 4px 8px; font-size: 11px; margin-right: 4px;',
+							'title': 'Reset Password',
 							'click': ui.createHandlerFn(self, self.showResetPasswordModal, u.email)
 						}, '\ud83d\udd11'),
 						E('button', {
+							'class': 'kiss-btn',
+							'style': 'padding: 4px 8px; font-size: 11px; margin-right: 4px;',
+							'title': 'Repair Mailbox',
+							'click': ui.createHandlerFn(self, self.doRepairMailbox, u.email)
+						}, '\ud83d\udd27'),
+						E('button', {
 							'class': 'kiss-btn kiss-btn-red',
 							'style': 'padding: 4px 8px; font-size: 11px;',
+							'title': 'Delete User',
 							'click': ui.createHandlerFn(self, self.doDeleteUser, u.email)
 						}, '\ud83d\uddd1')
 					])
@@ -595,6 +610,21 @@ return view.extend({
 			} else {
 				ui.addNotification(null, E('p', 'Failed: ' + (res.error || res.output)), 'error');
 			}
+		});
+	},
+
+	doRepairMailbox: function(email) {
+		ui.showModal('Repairing Mailbox', [
+			E('p', { 'class': 'spinning' }, 'Repairing mailbox for ' + email + '...')
+		]);
+		return callUserRepair(email).then(function(res) {
+			ui.hideModal();
+			if (res.code === 0) {
+				ui.addNotification(null, E('p', 'Mailbox repaired for ' + email), 'success');
+			} else {
+				ui.addNotification(null, E('p', 'Repair output: ' + (res.output || 'No issues found')), 'info');
+			}
+			window.location.reload();
 		});
 	},
 

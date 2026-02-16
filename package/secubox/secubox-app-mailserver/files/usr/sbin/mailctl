@@ -589,6 +589,277 @@ EOF
 }
 
 # ============================================================================
+# Autoconfig / Autodiscover Setup
+# ============================================================================
+
+cmd_autoconfig_setup() {
+	local domain=$(uci_get main.domain)
+	local hostname=$(uci_get main.hostname)
+	hostname="${hostname:-mail}"
+	local mail_fqdn="${hostname}.${domain}"
+	local data_path=$(uci_get main.data_path)
+	data_path="${data_path:-/srv/mailserver}"
+
+	if [ -z "$domain" ]; then
+		error "Domain not configured. Set with: uci set mailserver.main.domain=example.com"
+		return 1
+	fi
+
+	log "Setting up mail autoconfig for $domain..."
+
+	local autoconfig_dir="$data_path/autoconfig"
+	mkdir -p "$autoconfig_dir/mail"
+	mkdir -p "$autoconfig_dir/autodiscover"
+
+	# Thunderbird autoconfig (config-v1.1.xml)
+	cat > "$autoconfig_dir/mail/config-v1.1.xml" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<clientConfig version="1.1">
+  <emailProvider id="$domain">
+    <domain>$domain</domain>
+    <displayName>$domain Mail</displayName>
+    <displayShortName>$domain</displayShortName>
+    <incomingServer type="imap">
+      <hostname>$mail_fqdn</hostname>
+      <port>993</port>
+      <socketType>SSL</socketType>
+      <authentication>password-cleartext</authentication>
+      <username>%EMAILADDRESS%</username>
+    </incomingServer>
+    <incomingServer type="imap">
+      <hostname>$mail_fqdn</hostname>
+      <port>143</port>
+      <socketType>STARTTLS</socketType>
+      <authentication>password-cleartext</authentication>
+      <username>%EMAILADDRESS%</username>
+    </incomingServer>
+    <outgoingServer type="smtp">
+      <hostname>$mail_fqdn</hostname>
+      <port>587</port>
+      <socketType>STARTTLS</socketType>
+      <authentication>password-cleartext</authentication>
+      <username>%EMAILADDRESS%</username>
+    </outgoingServer>
+    <outgoingServer type="smtp">
+      <hostname>$mail_fqdn</hostname>
+      <port>465</port>
+      <socketType>SSL</socketType>
+      <authentication>password-cleartext</authentication>
+      <username>%EMAILADDRESS%</username>
+    </outgoingServer>
+  </emailProvider>
+</clientConfig>
+EOF
+
+	# Outlook/ActiveSync autodiscover (autodiscover.xml)
+	cat > "$autoconfig_dir/autodiscover/autodiscover.xml" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<Autodiscover xmlns="http://schemas.microsoft.com/exchange/autodiscover/responseschema/2006">
+  <Response xmlns="http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a">
+    <Account>
+      <AccountType>email</AccountType>
+      <Action>settings</Action>
+      <Protocol>
+        <Type>IMAP</Type>
+        <Server>$mail_fqdn</Server>
+        <Port>993</Port>
+        <DomainRequired>off</DomainRequired>
+        <LoginName></LoginName>
+        <SPA>off</SPA>
+        <SSL>on</SSL>
+        <AuthRequired>on</AuthRequired>
+      </Protocol>
+      <Protocol>
+        <Type>SMTP</Type>
+        <Server>$mail_fqdn</Server>
+        <Port>587</Port>
+        <DomainRequired>off</DomainRequired>
+        <LoginName></LoginName>
+        <SPA>off</SPA>
+        <Encryption>TLS</Encryption>
+        <AuthRequired>on</AuthRequired>
+        <UsePOPAuth>on</UsePOPAuth>
+        <SMTPLast>off</SMTPLast>
+      </Protocol>
+    </Account>
+  </Response>
+</Autodiscover>
+EOF
+
+	# Apple mobileconfig profile
+	cat > "$autoconfig_dir/$domain.mobileconfig" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>PayloadContent</key>
+  <array>
+    <dict>
+      <key>EmailAccountDescription</key>
+      <string>$domain Mail</string>
+      <key>EmailAccountName</key>
+      <string>$domain</string>
+      <key>EmailAccountType</key>
+      <string>EmailTypeIMAP</string>
+      <key>EmailAddress</key>
+      <string></string>
+      <key>IncomingMailServerAuthentication</key>
+      <string>EmailAuthPassword</string>
+      <key>IncomingMailServerHostName</key>
+      <string>$mail_fqdn</string>
+      <key>IncomingMailServerPortNumber</key>
+      <integer>993</integer>
+      <key>IncomingMailServerUseSSL</key>
+      <true/>
+      <key>IncomingMailServerUsername</key>
+      <string></string>
+      <key>OutgoingMailServerAuthentication</key>
+      <string>EmailAuthPassword</string>
+      <key>OutgoingMailServerHostName</key>
+      <string>$mail_fqdn</string>
+      <key>OutgoingMailServerPortNumber</key>
+      <integer>587</integer>
+      <key>OutgoingMailServerUseSSL</key>
+      <true/>
+      <key>OutgoingMailServerUsername</key>
+      <string></string>
+      <key>OutgoingPasswordSameAsIncomingPassword</key>
+      <true/>
+      <key>PayloadDescription</key>
+      <string>Email account configuration for $domain</string>
+      <key>PayloadDisplayName</key>
+      <string>$domain Email</string>
+      <key>PayloadIdentifier</key>
+      <string>com.$domain.email</string>
+      <key>PayloadType</key>
+      <string>com.apple.mail.managed</string>
+      <key>PayloadUUID</key>
+      <string>$(cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "12345678-1234-1234-1234-123456789012")</string>
+      <key>PayloadVersion</key>
+      <integer>1</integer>
+    </dict>
+  </array>
+  <key>PayloadDisplayName</key>
+  <string>$domain Mail Configuration</string>
+  <key>PayloadIdentifier</key>
+  <string>com.$domain.profile</string>
+  <key>PayloadType</key>
+  <string>Configuration</string>
+  <key>PayloadUUID</key>
+  <string>$(cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "87654321-4321-4321-4321-210987654321")</string>
+  <key>PayloadVersion</key>
+  <integer>1</integer>
+</dict>
+</plist>
+EOF
+
+	log "Autoconfig files created in $autoconfig_dir"
+
+	# Setup DNS SRV records via dnsctl if available
+	if command -v dnsctl >/dev/null 2>&1; then
+		log "Setting up DNS autodiscover records..."
+
+		# Autoconfig/Autodiscover CNAME records
+		# Syntax: dnsctl add <TYPE> <subdomain> <target>
+		dnsctl add CNAME "autoconfig" "$mail_fqdn." 2>/dev/null || true
+		dnsctl add CNAME "autodiscover" "$mail_fqdn." 2>/dev/null || true
+
+		# SRV records for autodiscover (if supported by provider)
+		dnsctl add SRV "_autodiscover._tcp" "0 1 443 $mail_fqdn." 2>/dev/null || true
+		dnsctl add SRV "_imaps._tcp" "0 1 993 $mail_fqdn." 2>/dev/null || true
+		dnsctl add SRV "_submission._tcp" "0 1 587 $mail_fqdn." 2>/dev/null || true
+
+		log "DNS records configured"
+	else
+		warn "dnsctl not found - add DNS records manually:"
+		echo "  autoconfig.$domain    CNAME  $mail_fqdn"
+		echo "  autodiscover.$domain  CNAME  $mail_fqdn"
+		echo "  _autodiscover._tcp.$domain  SRV  0 1 443 $mail_fqdn"
+		echo "  _imaps._tcp.$domain         SRV  0 1 993 $mail_fqdn"
+		echo "  _submission._tcp.$domain    SRV  0 1 587 $mail_fqdn"
+	fi
+
+	# Register with HAProxy for autoconfig serving
+	if [ -x /usr/sbin/haproxyctl ]; then
+		log "Registering autoconfig with HAProxy..."
+
+		# Check if autoconfig vhost exists
+		local vhost_exists=$(uci show haproxy 2>/dev/null | grep "autoconfig_${domain//\./_}" || true)
+
+		if [ -z "$vhost_exists" ]; then
+			# Create a simple static file server for autoconfig
+			# HAProxy will serve these files
+			uci add haproxy vhost >/dev/null
+			uci set haproxy.@vhost[-1].name="autoconfig_${domain//\./_}"
+			uci set haproxy.@vhost[-1].domain="autoconfig.$domain"
+			uci set haproxy.@vhost[-1].backend="autoconfig_backend"
+			uci set haproxy.@vhost[-1].ssl='1'
+			uci set haproxy.@vhost[-1].acme='1'
+			uci set haproxy.@vhost[-1].enabled='1'
+
+			uci add haproxy vhost >/dev/null
+			uci set haproxy.@vhost[-1].name="autodiscover_${domain//\./_}"
+			uci set haproxy.@vhost[-1].domain="autodiscover.$domain"
+			uci set haproxy.@vhost[-1].backend="autoconfig_backend"
+			uci set haproxy.@vhost[-1].ssl='1'
+			uci set haproxy.@vhost[-1].acme='1'
+			uci set haproxy.@vhost[-1].enabled='1'
+
+			uci commit haproxy
+			log "HAProxy vhosts created for autoconfig.$domain and autodiscover.$domain"
+		fi
+	fi
+
+	log ""
+	log "Autoconfig setup complete!"
+	log ""
+	log "Thunderbird: https://autoconfig.$domain/mail/config-v1.1.xml"
+	log "Outlook:     https://autodiscover.$domain/autodiscover/autodiscover.xml"
+	log "Apple:       https://$mail_fqdn/$domain.mobileconfig"
+	log ""
+	log "DNS records needed:"
+	log "  autoconfig.$domain    CNAME  $mail_fqdn"
+	log "  autodiscover.$domain  CNAME  $mail_fqdn"
+}
+
+cmd_autoconfig_status() {
+	local domain=$(uci_get main.domain)
+	local hostname=$(uci_get main.hostname)
+	hostname="${hostname:-mail}"
+	local data_path=$(uci_get main.data_path)
+	data_path="${data_path:-/srv/mailserver}"
+	local autoconfig_dir="$data_path/autoconfig"
+
+	echo "Autoconfig Status for $domain"
+	echo "=============================="
+	echo ""
+
+	if [ -f "$autoconfig_dir/mail/config-v1.1.xml" ]; then
+		echo "Thunderbird config: OK"
+	else
+		echo "Thunderbird config: NOT FOUND"
+	fi
+
+	if [ -f "$autoconfig_dir/autodiscover/autodiscover.xml" ]; then
+		echo "Outlook config:     OK"
+	else
+		echo "Outlook config:     NOT FOUND"
+	fi
+
+	if [ -f "$autoconfig_dir/$domain.mobileconfig" ]; then
+		echo "Apple config:       OK"
+	else
+		echo "Apple config:       NOT FOUND"
+	fi
+
+	echo ""
+	echo "DNS Check:"
+	echo "----------"
+	host autoconfig.$domain 2>/dev/null | head -1 || echo "autoconfig.$domain: NOT RESOLVED"
+	host autodiscover.$domain 2>/dev/null | head -1 || echo "autodiscover.$domain: NOT RESOLVED"
+}
+
+# ============================================================================
 # Firewall Setup
 # ============================================================================
 
@@ -693,6 +964,8 @@ Setup:
   ssl-setup            Obtain SSL certificate
   firewall-setup       Setup mail port forwarding (WAN only)
   firewall-clear       Remove mail firewall rules
+  autoconfig-setup     Setup autodiscover for mail clients
+  autoconfig-status    Check autoconfig status
 
 Service:
   start                Start mail server
@@ -769,6 +1042,8 @@ case "${1:-}" in
 	fix-ports)   shift; cmd_fix_ports "$@" ;;
 	firewall-setup) shift; cmd_firewall_setup "$@" ;;
 	firewall-clear) shift; cmd_firewall_clear "$@" ;;
+	autoconfig-setup) shift; cmd_autoconfig_setup "$@" ;;
+	autoconfig-status) shift; cmd_autoconfig_status "$@" ;;
 	help|--help|-h|'') show_help ;;
 	*)           error "Unknown command: $1"; show_help >&2; exit 1 ;;
 esac

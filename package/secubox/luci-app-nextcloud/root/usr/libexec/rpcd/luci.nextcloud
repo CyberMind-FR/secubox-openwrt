@@ -312,6 +312,61 @@ get_logs() {
 	echo "{\"logs\": \"$log_content\"}"
 }
 
+# List users
+list_users() {
+	if ! lxc_running; then
+		echo '{"users": []}'
+		return
+	fi
+
+	local users_json
+	users_json=$(lxc-attach -n "$LXC_NAME" -- su -s /bin/bash www-data -c "php /var/www/nextcloud/occ user:list --output=json" 2>/dev/null)
+
+	if [ -z "$users_json" ] || [ "$users_json" = "{}" ]; then
+		echo '{"users": []}'
+		return
+	fi
+
+	# Convert from {uid: displayname} to [{uid: x, displayname: y}]
+	local users_array="[]"
+	users_array=$(echo "$users_json" | jsonfilter -e '@' 2>/dev/null | \
+		awk -F: '{gsub(/[{}"]/,"",$1); gsub(/[{}"]/,"",$2); if($1!="") printf "{\"uid\":\"%s\",\"displayname\":\"%s\"},", $1, $2}' | \
+		sed 's/,$//' | sed 's/^/[/;s/$/]/')
+
+	[ -z "$users_array" ] && users_array="[]"
+	echo "{\"users\": $users_array}"
+}
+
+# Reset user password
+reset_password() {
+	local input
+	read -r input
+	local uid=$(echo "$input" | jsonfilter -e '@.uid' 2>/dev/null)
+	local password=$(echo "$input" | jsonfilter -e '@.password' 2>/dev/null)
+
+	if [ -z "$uid" ] || [ -z "$password" ]; then
+		echo '{"success": false, "error": "User ID and password required"}'
+		return
+	fi
+
+	if ! lxc_running; then
+		echo '{"success": false, "error": "Container not running"}'
+		return
+	fi
+
+	# Reset password via OCC
+	local result
+	result=$(lxc-attach -n "$LXC_NAME" -- su -s /bin/bash www-data -c "OC_PASS='$password' php /var/www/nextcloud/occ user:resetpassword --password-from-env '$uid'" 2>&1)
+	local rc=$?
+
+	if [ $rc -eq 0 ]; then
+		echo '{"success": true, "message": "Password reset for '"$uid"'"}'
+	else
+		local escaped=$(echo "$result" | sed 's/"/\\"/g' | tr '\n' ' ')
+		echo "{\"success\": false, \"error\": \"$escaped\"}"
+	fi
+}
+
 # RPCD list method
 list_methods() {
 	cat <<'EOF'
@@ -330,7 +385,9 @@ list_methods() {
 	"ssl_enable": {"domain": "string"},
 	"ssl_disable": {},
 	"occ": {"command": "string"},
-	"logs": {}
+	"logs": {},
+	"list_users": {},
+	"reset_password": {"uid": "string", "password": "string"}
 }
 EOF
 }
@@ -357,6 +414,8 @@ case "$1" in
 			ssl_disable)  do_ssl_disable ;;
 			occ)          do_occ ;;
 			logs)         get_logs ;;
+			list_users)   list_users ;;
+			reset_password) reset_password ;;
 			*)            echo '{"error": "Unknown method"}' ;;
 		esac
 		;;

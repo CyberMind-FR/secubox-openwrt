@@ -29,7 +29,8 @@ case "$1" in
 			"webmail_configure": {},
 			"mesh_backup": {},
 			"mesh_sync": { "mode": "string" },
-			"fix_ports": {}
+			"fix_ports": {},
+			"user_repair": { "email": "string" }
 		}
 		EOF
 		;;
@@ -369,6 +370,31 @@ case "$1" in
 				output=$($MAILCTL fix-ports 2>&1)
 				json_add_int "code" "$?"
 				json_add_string "output" "$output"
+				json_dump
+				;;
+
+			user_repair)
+				# Read JSON from stdin or $3
+				if [ -n "$3" ]; then
+					json_load "$3"
+				else
+					read -r _input
+					json_load "$_input"
+				fi
+				json_get_var email email
+
+				json_init
+				if [ -z "$email" ]; then
+					json_add_int "code" 1
+					json_add_string "error" "Email required"
+				else
+					container=$(uci -q get $CONFIG.main.container)
+					container="${container:-mailserver}"
+					# Run doveadm force-resync to repair mailbox
+					output=$(lxc-attach -n "$container" -- doveadm force-resync -u "$email" '*' 2>&1)
+					json_add_int "code" "$?"
+					json_add_string "output" "$output"
+				fi
 				json_dump
 				;;
 		esac
