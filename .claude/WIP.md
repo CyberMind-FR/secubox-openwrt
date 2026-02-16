@@ -119,6 +119,17 @@ _Last updated: 2026-02-16 (DNS Master app, Mailserver KISS)_
   - Mozilla/Thunderbird format with IMAP (993/143) and SMTP (587/465)
   - HAProxy vhost and mitmproxy routes configured
 
+- **Nextcloud Upgrade 31.0.14** — DONE (2026-02-16)
+  - Upgraded from 30.0.17 → 31.0.14 via OCC updater
+  - All apps updated: mail, tasks, external, spreed/Talk
+  - Database schema migrations completed
+
+- **Mailctl Firewall Rules Persistence** — DONE (2026-02-16)
+  - Updated `cmd_firewall_setup()` with UCI firewall rules
+  - Input rules for WAN (ports 25, 143, 465, 587, 993)
+  - Forward rules for WAN-to-LAN mailserver
+  - Rules persist across firewall restarts
+
 ### Recently Completed (2026-02-15)
 
 - **HAProxy & Mitmproxy WAF Fixes** — DONE (2026-02-15)

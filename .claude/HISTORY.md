@@ -2123,3 +2123,20 @@ git checkout HEAD -- index.html
 **Files Modified:**
 - `secubox-app-mailserver/files/usr/sbin/mailserverctl`
 - UCI firewall rules persisted for mail port forwarding
+
+### 2026-02-16: Mailctl Firewall & Nextcloud Upgrade
+
+**mailctl Firewall Rules Enhancement:**
+- Updated `cmd_firewall_setup()` to add UCI firewall rules for mail ports
+- Added input rules for WAN acceptance (ports 25, 143, 465, 587, 993)
+- Added forward rules for WAN-to-LAN mailserver forwarding
+- Rules now persist across firewall restarts via UCI config
+
+**Nextcloud Upgrade to 31.0.14:**
+- Upgraded from 30.0.17 → 31.0.14 using OCC updater
+- All apps updated (mail, tasks, external, spreed/Talk)
+- Database schema migrations completed successfully
+- System running with maintenance mode disabled
+
+**Files Modified:**
+- `secubox-app-mailserver/files/usr/sbin/mailctl` (cmd_firewall_setup function)
