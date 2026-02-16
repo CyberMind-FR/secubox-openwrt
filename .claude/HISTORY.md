@@ -2103,3 +2103,23 @@ git checkout HEAD -- index.html
 
 **Files Modified:**
 - `secubox-app-mailserver/files/usr/sbin/mailserverctl` (create_startup_script function)
+
+### 2026-02-16: Mail Reception Fix
+
+**nftables Rules Missing:**
+- Port 25 missing from `input_wan` accept rules
+- Mail ports missing from `forward_wan` chain (blocked by `drop_to_wan`)
+- Fix: Added accept rules for ports 25, 143, 465, 587, 993 in both chains
+
+**Postfix LMDB Fix:**
+- Alpine Linux uses LMDB, not Berkeley DB hash
+- `virtual_mailbox_maps = hash:` caused "unsupported dictionary type" error
+- Fix: Changed to `lmdb:/etc/postfix/vmailbox`
+
+**vmailbox Sync:**
+- gk2@secubox.in was missing from vmailbox file
+- Added user and rebuilt postmap
+
+**Files Modified:**
+- `secubox-app-mailserver/files/usr/sbin/mailserverctl`
+- UCI firewall rules persisted for mail port forwarding

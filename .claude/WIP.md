@@ -542,7 +542,7 @@ _Last updated: 2026-02-16 (DNS Master app, Mailserver KISS)_
   - Fix in `users.sh`: Create `$domain/$user/Maildir/{cur,new,tmp}` structure
   - Updated vmailbox format to include `Maildir/` suffix
 
-- **Inbound Port 25 Blocked by Free ISP** — KNOWN ISSUE
+- **Inbound Port 25 Blocked by Free ISP** — RESOLVED (2026-02-16)
   - Free ISP blocks inbound port 25 on residential lines
   - Outbound mail works, inbound from external fails
   - Workaround options: VPS relay, Mailgun/SendGrid, or contact Free support

@@ -346,7 +346,9 @@
       "WebFetch(domain:bazi.gk2.secubox.in)",
       "WebFetch(domain:webmail.gk2.secubox.in)",
       "WebFetch(domain:documentation.wazuh.com)",
-      "WebFetch(domain:syswarden.io)"
+      "WebFetch(domain:syswarden.io)",
+      "Bash({)",
+      "Bash(})"
     ]
   }
 }
