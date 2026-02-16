@@ -85,6 +85,9 @@ mkdir -p /run/dovecot
 chown -R dovecot:dovecot /run/dovecot
 chmod 755 /run/dovecot
 
+# Ensure dovecot users file is readable (fixes LMTP lookup errors)
+[ -f /etc/dovecot/users ] && chmod 644 /etc/dovecot/users && chown root:dovecot /etc/dovecot/users
+
 # Start services
 /usr/sbin/rsyslogd
 sleep 1
