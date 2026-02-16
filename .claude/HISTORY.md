@@ -1884,3 +1884,28 @@ git checkout HEAD -- index.html
   - luci-app-nextcloud: +luci-lib-secubox +secubox-app-nextcloud
 - **Updated ACL** with all new RPCD methods
 - **Updated menu** to SecuBox path (admin/secubox/services/nextcloud)
+
+### 2026-02-16: Nextcloud SSL, WAF Rules & Mail Autoconfig
+
+**Nextcloud Production Deploy:**
+- Fixed nginx port conflict (80→8080) to avoid HAProxy collision
+- Fixed PHP-FPM socket path to use `php8.2-fpm.sock`
+- Fixed nginx routing with rewrite rule for `/apps/*` URLs
+- Configured HAProxy SSL: https://cloud.gk2.secubox.in
+- Updated mitmproxy routes for direct backend access (port 8080)
+- **Commits**: 5b6bf856, 2bc2eac9
+
+**WAF Rules for Nextcloud & Roundcube:**
+- Added 20 CVE-based rules to `/srv/mitmproxy/waf-rules.json`
+- **Nextcloud patterns**: CVE-2023-49791 (Text SSE RCE), CVE-2024-22403 (Dashboard XSS), CVE-2024-37315 (User Enum), CVE-2024-22212 (Federation SQLi)
+- **Roundcube patterns**: CVE-2024-37383 (Skin RCE), CVE-2023-5631 (Stored XSS), CVE-2020-35730 (Upload RCE), CVE-2023-43770 (Link XSS)
+- Common patterns: path traversal, config file access, script injection
+
+**Mail Client Autoconfig:**
+- DNS records added to `secubox.in.zone`:
+  - `autoconfig.gk2.secubox.in`, `autodiscover.gk2.secubox.in` (A/AAAA)
+  - `_imaps._tcp.gk2.secubox.in` SRV 0 0 993 mail.gk2.secubox.in
+  - `_submission._tcp.gk2.secubox.in` SRV 0 0 587 mail.gk2.secubox.in
+- Autoconfig XML at `/.well-known/autoconfig/mail/config-v1.1.xml`
+- Mozilla/Thunderbird format with IMAP (993/143) and SMTP (587/465)
+- HAProxy vhosts and mitmproxy routes configured

@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-15 (PeerTube transcoding fix, GK2 Hub subdomain URLs)_
+_Last updated: 2026-02-16 (Nextcloud SSL, WAF rules, Mail autoconfig)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -64,12 +64,25 @@ _Last updated: 2026-02-15 (PeerTube transcoding fix, GK2 Hub subdomain URLs)_
 
 ### Just Completed (2026-02-16)
 
-- **Nextcloud LXC Enhancement** — DONE (2026-02-16)
-  - Migrated from Docker to Debian 12 LXC container
-  - Full-stack: Nginx, MariaDB, Redis, PHP 8.2-FPM, Nextcloud
-  - `nextcloudctl` CLI with install/backup/restore/ssl/occ commands
-  - KISS dashboard with Overview/Backups/SSL/Logs tabs
-  - RPCD backend with 15 methods
+- **Nextcloud LXC Production Deploy** — DONE (2026-02-16)
+  - Installed on c3box with Debian 12 LXC
+  - Fixed nginx port conflict (80→8080) with HAProxy
+  - Fixed PHP-FPM socket path (php8.2-fpm.sock)
+  - Fixed nginx routing (rewrite to index.php for /apps/*)
+  - HAProxy SSL configured: https://cloud.gk2.secubox.in
+  - Mitmproxy routes updated for direct backend access
+
+- **WAF Rules for Nextcloud & Roundcube** — DONE (2026-02-16)
+  - Added 20 CVE-based rules to `/srv/mitmproxy/waf-rules.json`
+  - Nextcloud: CVE-2023-49791, CVE-2024-22403, CVE-2024-37315, etc.
+  - Roundcube: CVE-2024-37383, CVE-2023-5631, CVE-2020-35730, etc.
+  - Common attack patterns: path traversal, XSS, SQLi, RCE
+
+- **Mail Client Autoconfig** — DONE (2026-02-16)
+  - DNS records: autoconfig.*, autodiscover.*, SRV for _imaps/_submission
+  - Autoconfig XML at `/.well-known/autoconfig/mail/config-v1.1.xml`
+  - Mozilla/Thunderbird format with IMAP (993/143) and SMTP (587/465)
+  - HAProxy vhost and mitmproxy routes configured
 
 ### Recently Completed (2026-02-15)
 
