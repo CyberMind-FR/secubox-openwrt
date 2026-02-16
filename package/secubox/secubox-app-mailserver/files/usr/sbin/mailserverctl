@@ -76,11 +76,22 @@ create_startup_script() {
 #!/bin/sh
 # Mailserver startup script
 
+# Ensure dovecot run directory exists with correct permissions
+# This fixes anvil-auth-penalty socket permission issues
+mkdir -p /run/dovecot
+chown -R dovecot:dovecot /run/dovecot
+chmod 755 /run/dovecot
+
 # Start services
 /usr/sbin/rsyslogd
 sleep 1
 /usr/sbin/postfix start
 /usr/sbin/dovecot
+
+# Give dovecot a moment to create sockets, then fix permissions
+sleep 1
+chown -R dovecot:dovecot /run/dovecot
+
 echo "Mail services started"
 
 # Keep container running
