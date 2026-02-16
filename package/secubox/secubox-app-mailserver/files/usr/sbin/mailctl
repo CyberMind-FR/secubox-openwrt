@@ -882,7 +882,42 @@ cmd_firewall_setup() {
 	log "Mail server IP: $mail_ip"
 	log "LAN subnet: $lan_subnet (excluded from redirect)"
 
-	# Create firewall.user rules
+	# Add UCI firewall rules for input (accept from WAN)
+	log "Adding input rules for mail ports..."
+	for port in 25 143 465 587 993; do
+		local rule_name="Mail-Port-${port}"
+		# Check if rule already exists
+		local exists=$(uci show firewall 2>/dev/null | grep "name='${rule_name}'" || true)
+		if [ -z "$exists" ]; then
+			uci add firewall rule >/dev/null
+			uci set firewall.@rule[-1].name="$rule_name"
+			uci set firewall.@rule[-1].src='wan'
+			uci set firewall.@rule[-1].proto='tcp'
+			uci set firewall.@rule[-1].dest_port="$port"
+			uci set firewall.@rule[-1].target='ACCEPT'
+		fi
+	done
+
+	# Add UCI firewall rules for forward (WAN -> LAN mailserver)
+	log "Adding forward rules for mail ports..."
+	for port in 25 143 465 587 993; do
+		local rule_name="Forward-Mail-${port}"
+		# Check if rule already exists
+		local exists=$(uci show firewall 2>/dev/null | grep "name='${rule_name}'" || true)
+		if [ -z "$exists" ]; then
+			uci add firewall rule >/dev/null
+			uci set firewall.@rule[-1].name="$rule_name"
+			uci set firewall.@rule[-1].src='wan'
+			uci set firewall.@rule[-1].dest='lan'
+			uci set firewall.@rule[-1].proto='tcp'
+			uci set firewall.@rule[-1].dest_port="$port"
+			uci set firewall.@rule[-1].target='ACCEPT'
+		fi
+	done
+
+	uci commit firewall
+
+	# Create firewall.user rules for DNAT
 	local fw_file="/etc/firewall.user"
 	local fw_backup="${fw_file}.bak"
 
