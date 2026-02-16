@@ -438,7 +438,7 @@ server {
     }
 
     location / {
-        try_files $uri $uri/ /index.php$request_uri;
+        rewrite ^ /index.php\$request_uri last;
     }
 }
 NGINX
