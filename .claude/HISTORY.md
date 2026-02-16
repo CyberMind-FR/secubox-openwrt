@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-02-15_
+_Last updated: 2026-02-16_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -1934,3 +1934,86 @@ git checkout HEAD -- index.html
 - `luci-app-mailserver/htdocs/.../overview.js` (rewritten)
 - `luci-app-mailserver/root/usr/share/rpcd/acl.d/luci-app-mailserver.json`
 - `luci-app-secubox-portal/htdocs/.../kiss-theme.js` (nav update)
+
+### 2026-02-16: DNS Master LuCI App
+
+**New Package: secubox-app-dns-master**
+- BIND DNS zone management CLI tool (`dnsmaster`)
+- Commands: status, zone-list, zone-show, zone-add, records-json, record-add, record-del, reload, check, logs, backup
+- JSON output support for LuCI integration
+- Auto serial bump on zone modifications
+- Zone validation via `named-checkzone`
+- UCI config: `/etc/config/dns-master`
+
+**New Package: luci-app-dns-master**
+- KISS-themed dashboard with:
+  - 4-column stats grid (Status, Zones, Records, TTL)
+  - Control buttons (Reload BIND, Check Zones, Backup All, Add Zone)
+  - Interactive zones table with Edit/Check/Backup actions
+  - Inline records editor with type-colored badges
+  - Add Zone modal for creating new DNS zones
+  - Add Record modal with type dropdown (A, AAAA, MX, TXT, CNAME, SRV, NS, PTR)
+  - Delete record with confirmation
+  - Live polling with 10s refresh
+- RPCD backend: 10 methods (status, zones, records, add_record, del_record, add_zone, reload, check, logs, backup)
+- Added DNS Master to KISS theme Network category
+
+**Files Created:**
+- `secubox-app-dns-master/Makefile`
+- `secubox-app-dns-master/files/etc/config/dns-master`
+- `secubox-app-dns-master/files/usr/sbin/dnsmaster`
+- `luci-app-dns-master/Makefile`
+- `luci-app-dns-master/root/usr/libexec/rpcd/luci.dns-master`
+- `luci-app-dns-master/root/usr/share/luci/menu.d/luci-app-dns-master.json`
+- `luci-app-dns-master/root/usr/share/rpcd/acl.d/luci-app-dns-master.json`
+- `luci-app-dns-master/htdocs/luci-static/resources/view/dns-master/overview.js`
+
+
+### 2026-02-16: HexoCMS Multi-Instance Enhancement
+
+**Backend Enhancement: secubox-app-hexojs**
+- Added backup/restore commands:
+  - `hexoctl backup [instance] [name]` - Create full backup
+  - `hexoctl backup list` - List all backups with size/timestamp
+  - `hexoctl backup delete <name>` - Delete backup
+  - `hexoctl restore <name> [instance]` - Restore from backup
+- Added GitHub clone support:
+  - `hexoctl github clone <repo_url> [instance] [branch]` - Clone from GitHub
+  - Supports full Hexo sites with auto npm install
+- Added Gitea push support:
+  - `hexoctl gitea push [instance] [message]` - Push changes to Gitea
+- Added quick-publish command:
+  - `hexoctl quick-publish [instance]` - Clean + build + publish in one step
+- Added JSON status commands:
+  - `hexoctl status-json` - Full container and instance status
+  - `hexoctl instance-list-json` - Instance list for RPCD
+
+**RPCD Enhancement: luci.hexojs**
+- Added 15 new methods:
+  - Instance management: `list_instances`, `create_instance`, `delete_instance`, `start_instance`, `stop_instance`
+  - Backup/restore: `list_backups`, `create_backup`, `restore_backup`, `delete_backup`
+  - Git integration: `github_clone`, `gitea_push`, `quick_publish`
+- Updated ACL with new permissions (read + write)
+
+**Frontend Enhancement: luci-app-hexojs**
+- Rewrote `overview.js` with KISS theme:
+  - 4-column stats grid (Instances, Posts, Drafts, Backups)
+  - Quick actions bar: New Instance, Clone from GitHub/Gitea, New Post, Settings
+  - Instance cards with status indicators:
+    - Controls: Start/Stop, Quick Publish, Backup, Editor, Preview, Delete
+    - Port and domain display
+    - Running status badge
+  - Backup table with restore/delete actions
+  - Create Instance modal (name, title, port)
+  - Delete Instance modal with data deletion option
+  - GitHub/Gitea clone modal (repo URL, instance, branch)
+  - Gitea push modal (commit message)
+  - Quick Publish modal with progress
+- Updated API with 12 new RPC declarations
+
+**Files Modified:**
+- `secubox-app-hexojs/files/usr/sbin/hexoctl` (new commands)
+- `luci-app-hexojs/root/usr/libexec/rpcd/luci.hexojs` (new methods)
+- `luci-app-hexojs/htdocs/luci-static/resources/hexojs/api.js` (new declarations)
+- `luci-app-hexojs/htdocs/luci-static/resources/view/hexojs/overview.js` (KISS rewrite)
+- `luci-app-hexojs/root/usr/share/rpcd/acl.d/luci-app-hexojs.json` (new permissions)

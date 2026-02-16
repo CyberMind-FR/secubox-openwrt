@@ -1,0 +1,17 @@
+{
+	"luci-app-dns-master": {
+		"description": "Grant access to DNS Master",
+		"read": {
+			"ubus": {
+				"luci.dns-master": ["status", "zones", "records", "logs"]
+			},
+			"uci": ["dns-master"]
+		},
+		"write": {
+			"ubus": {
+				"luci.dns-master": ["add_record", "del_record", "add_zone", "reload", "check", "backup"]
+			},
+			"uci": ["dns-master"]
+		}
+	}
+}

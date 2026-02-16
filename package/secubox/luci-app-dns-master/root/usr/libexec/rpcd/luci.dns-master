@@ -1,0 +1,169 @@
+#!/bin/sh
+# SecuBox DNS Master RPCD Handler
+
+. /usr/share/libubox/jshn.sh
+
+DNSMASTER="/usr/sbin/dnsmaster"
+CONFIG="dns-master"
+
+case "$1" in
+	list)
+		cat <<-EOF
+		{
+			"status": {},
+			"zones": {},
+			"records": { "zone": "string" },
+			"add_record": { "zone": "string", "type": "string", "name": "string", "value": "string", "ttl": "number" },
+			"del_record": { "zone": "string", "type": "string", "name": "string", "value": "string" },
+			"add_zone": { "name": "string" },
+			"reload": {},
+			"check": { "zone": "string" },
+			"logs": { "lines": "number" },
+			"backup": { "zone": "string" }
+		}
+		EOF
+		;;
+
+	call)
+		# Read JSON input
+		read_json_input() {
+			if [ -n "$1" ]; then
+				json_load "$1"
+			else
+				local _input
+				read -r _input
+				json_load "$_input"
+			fi
+		}
+
+		case "$2" in
+			status)
+				$DNSMASTER status-json 2>/dev/null || echo '{"running":false,"zones":0,"records":0}'
+				;;
+
+			zones)
+				$DNSMASTER zone-list-json 2>/dev/null || echo '{"zones":[]}'
+				;;
+
+			records)
+				read_json_input "$3"
+				json_get_var zone zone
+
+				if [ -z "$zone" ]; then
+					echo '{"error":"Zone required"}'
+				else
+					$DNSMASTER records-json "$zone" 2>/dev/null || echo "{\"error\":\"Zone not found\",\"zone\":\"$zone\"}"
+				fi
+				;;
+
+			add_record)
+				read_json_input "$3"
+				json_get_var zone zone
+				json_get_var type type
+				json_get_var name name
+				json_get_var value value
+				json_get_var ttl ttl
+
+				json_init
+				if [ -z "$zone" ] || [ -z "$type" ] || [ -z "$name" ] || [ -z "$value" ]; then
+					json_add_int "code" 1
+					json_add_string "error" "Missing required fields"
+				else
+					output=$($DNSMASTER record-add "$zone" "$type" "$name" "$value" "$ttl" 2>&1)
+					rc=$?
+					json_add_int "code" "$rc"
+					json_add_string "output" "$output"
+				fi
+				json_dump
+				;;
+
+			del_record)
+				read_json_input "$3"
+				json_get_var zone zone
+				json_get_var type type
+				json_get_var name name
+				json_get_var value value
+
+				json_init
+				if [ -z "$zone" ] || [ -z "$type" ] || [ -z "$name" ]; then
+					json_add_int "code" 1
+					json_add_string "error" "Missing required fields"
+				else
+					output=$($DNSMASTER record-del "$zone" "$type" "$name" "$value" 2>&1)
+					rc=$?
+					json_add_int "code" "$rc"
+					json_add_string "output" "$output"
+				fi
+				json_dump
+				;;
+
+			add_zone)
+				read_json_input "$3"
+				json_get_var name name
+
+				json_init
+				if [ -z "$name" ]; then
+					json_add_int "code" 1
+					json_add_string "error" "Zone name required"
+				else
+					output=$($DNSMASTER zone-add "$name" 2>&1)
+					rc=$?
+					json_add_int "code" "$rc"
+					json_add_string "output" "$output"
+				fi
+				json_dump
+				;;
+
+			reload)
+				json_init
+				output=$($DNSMASTER reload 2>&1)
+				json_add_int "code" "$?"
+				json_add_string "output" "$output"
+				json_dump
+				;;
+
+			check)
+				read_json_input "$3"
+				json_get_var zone zone
+
+				json_init
+				if [ -n "$zone" ]; then
+					output=$($DNSMASTER check "$zone" 2>&1)
+				else
+					output=$($DNSMASTER check 2>&1)
+				fi
+				json_add_int "code" "$?"
+				json_add_string "output" "$output"
+				json_dump
+				;;
+
+			logs)
+				read_json_input "$3"
+				json_get_var lines lines
+				lines="${lines:-50}"
+
+				json_init
+				log_output=$($DNSMASTER logs "$lines" 2>/dev/null)
+				json_add_string "logs" "$log_output"
+				json_dump
+				;;
+
+			backup)
+				read_json_input "$3"
+				json_get_var zone zone
+
+				json_init
+				if [ -n "$zone" ]; then
+					output=$($DNSMASTER backup "$zone" 2>&1)
+				else
+					output=$($DNSMASTER backup 2>&1)
+				fi
+				json_add_int "code" "$?"
+				json_add_string "output" "$output"
+				json_dump
+				;;
+		esac
+		;;
+esac
+
+exit 0

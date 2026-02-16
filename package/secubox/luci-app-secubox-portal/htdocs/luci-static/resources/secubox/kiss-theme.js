@@ -81,7 +81,8 @@ var KissThemeClass = baseclass.extend({
 				{ name: 'Presets', path: 'admin/secubox/network/traffic-shaper/presets' }
 			]},
 			{ icon: '🌐', name: 'Network Modes', path: 'admin/secubox/network/network-modes' },
-			{ icon: '🔌', name: 'Interfaces', path: 'admin/network/network' }
+			{ icon: '🔌', name: 'Interfaces', path: 'admin/network/network' },
+			{ icon: '🌐', name: 'DNS Master', path: 'admin/services/dns-master' }
 		]},
 		{ cat: 'AI & LLM', icon: '🤖', collapsed: true, items: [
 			{ icon: '🧠', name: 'AI Insights', path: 'admin/secubox/ai/insights' },

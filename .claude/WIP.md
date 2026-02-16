@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-16 (Nextcloud SSL, WAF rules, Mail autoconfig)_
+_Last updated: 2026-02-16 (DNS Master app, Mailserver KISS)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -63,6 +63,41 @@ _Last updated: 2026-02-16 (Nextcloud SSL, WAF rules, Mail autoconfig)_
   - Created `luci-app-vortex-dns` dashboard
 
 ### Just Completed (2026-02-16)
+
+- **HexoCMS Multi-Instance Enhancement** — DONE (2026-02-16)
+  - Added backup/restore commands to hexoctl
+  - Added GitHub clone support (`hexoctl github clone <url> [instance] [branch]`)
+  - Added Gitea push support (`hexoctl gitea push [instance] [message]`)
+  - Added quick-publish command (clean + build + publish)
+  - Added status-json and instance-list-json for RPCD
+  - Enhanced RPCD handler with 15 new methods:
+    - Instance: list_instances, create_instance, delete_instance, start_instance, stop_instance
+    - Backup: list_backups, create_backup, restore_backup, delete_backup
+    - Git: github_clone, gitea_push, quick_publish
+  - Rewrote LuCI dashboard with KISS theme:
+    - Multi-instance management with cards
+    - Instance controls: start/stop, quick publish, backup, editor, preview
+    - GitHub/Gitea clone modals
+    - Backup table with restore/delete
+    - Stats grid: instances, posts, drafts, backups
+    - Quick actions: new instance, clone from GitHub/Gitea, new post, settings
+  - Updated API with 12 new RPC declarations
+  - Updated ACL with new permissions
+
+- **DNS Master LuCI App** — DONE (2026-02-16)
+  - Created `secubox-app-dns-master` with `dnsmaster` CLI
+  - Commands: status, zone-list, zone-add, records-json, record-add/del, reload, check, backup
+  - Created `luci-app-dns-master` with KISS dashboard
+  - Zones table with Edit/Check/Backup, Records editor with type badges
+  - Add Zone/Record modals, live polling, auto serial bump
+  - Added to KISS nav Network category
+
+- **Mailserver LuCI KISS Regeneration** — DONE (2026-02-16)
+  - Complete rewrite of overview.js with KISS theme
+  - Fixed IMAP hairpin NAT issue (hosts override in Nextcloud container)
+  - Fixed port 143 detection in RPCD script
+  - Stats grid, port cards, users/aliases tables, webmail card
+  - Added to KISS nav Apps category
 
 - **Nextcloud LXC Production Deploy** — DONE (2026-02-16)
   - Installed on c3box with Debian 12 LXC

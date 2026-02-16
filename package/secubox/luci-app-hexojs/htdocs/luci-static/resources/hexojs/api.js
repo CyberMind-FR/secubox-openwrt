@@ -312,6 +312,108 @@ var callGitGetCredentials = rpc.declare({
 });
 
 // ============================================
+// Instance Management
+// ============================================
+
+var callListInstances = rpc.declare({
+	object: 'luci.hexojs',
+	method: 'list_instances',
+	expect: { instances: [] }
+});
+
+var callCreateInstance = rpc.declare({
+	object: 'luci.hexojs',
+	method: 'create_instance',
+	params: ['name', 'title', 'port'],
+	expect: {}
+});
+
+var callDeleteInstance = rpc.declare({
+	object: 'luci.hexojs',
+	method: 'delete_instance',
+	params: ['name', 'delete_data'],
+	expect: {}
+});
+
+var callStartInstance = rpc.declare({
+	object: 'luci.hexojs',
+	method: 'start_instance',
+	params: ['name'],
+	expect: {}
+});
+
+var callStopInstance = rpc.declare({
+	object: 'luci.hexojs',
+	method: 'stop_instance',
+	params: ['name'],
+	expect: {}
+});
+
+// ============================================
+// Backup/Restore
+// ============================================
+
+var callListBackups = rpc.declare({
+	object: 'luci.hexojs',
+	method: 'list_backups',
+	expect: { backups: [] }
+});
+
+var callCreateBackup = rpc.declare({
+	object: 'luci.hexojs',
+	method: 'create_backup',
+	params: ['instance', 'name'],
+	expect: {}
+});
+
+var callRestoreBackup = rpc.declare({
+	object: 'luci.hexojs',
+	method: 'restore_backup',
+	params: ['name', 'instance'],
+	expect: {}
+});
+
+var callDeleteBackup = rpc.declare({
+	object: 'luci.hexojs',
+	method: 'delete_backup',
+	params: ['name'],
+	expect: {}
+});
+
+// ============================================
+// GitHub Integration
+// ============================================
+
+var callGitHubClone = rpc.declare({
+	object: 'luci.hexojs',
+	method: 'github_clone',
+	params: ['repo', 'instance', 'branch'],
+	expect: {}
+});
+
+// ============================================
+// Gitea Push
+// ============================================
+
+var callGiteaPush = rpc.declare({
+	object: 'luci.hexojs',
+	method: 'gitea_push',
+	params: ['instance', 'message'],
+	expect: {}
+});
+
+// ============================================
+// Quick Publish
+// ============================================
+
+var callQuickPublish = rpc.declare({
+	object: 'luci.hexojs',
+	method: 'quick_publish',
+	params: ['instance'],
+	expect: {}
+});
+
+// ============================================
 // Utility Functions
 // ============================================
 
@@ -522,6 +624,28 @@ return baseclass.extend({
 	gitReset: callGitReset,
 	gitSetCredentials: callGitSetCredentials,
 	gitGetCredentials: callGitGetCredentials,
+
+	// Instance Management
+	listInstances: callListInstances,
+	createInstance: callCreateInstance,
+	deleteInstance: callDeleteInstance,
+	startInstance: callStartInstance,
+	stopInstance: callStopInstance,
+
+	// Backup/Restore
+	listBackups: callListBackups,
+	createBackup: callCreateBackup,
+	restoreBackup: callRestoreBackup,
+	deleteBackup: callDeleteBackup,
+
+	// GitHub Integration
+	gitHubClone: callGitHubClone,
+
+	// Gitea Push
+	giteaPush: callGiteaPush,
+
+	// Quick Publish
+	quickPublish: callQuickPublish,
 
 	// Combined fetchers
 	getDashboardData: getDashboardData,
