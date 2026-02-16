@@ -358,9 +358,9 @@ echo "Starting PHP-FPM..."
 service php${PHP_VERSION}-fpm start
 
 # Configure Nginx
-cat > /etc/nginx/sites-available/nextcloud << 'NGINX'
+cat > /etc/nginx/sites-available/nextcloud << NGINX
 server {
-    listen 80;
+    listen ${NEXTCLOUD_HTTP_PORT:-8080};
     server_name _;
 
     root /var/www/nextcloud;
@@ -414,7 +414,7 @@ server {
 
         fastcgi_param modHeadersAvailable true;
         fastcgi_param front_controller_active true;
-        fastcgi_pass unix:/run/php/php-fpm.sock;
+        fastcgi_pass unix:/run/php/php${PHP_VERSION}-fpm.sock;
 
         fastcgi_intercept_errors on;
         fastcgi_request_buffering off;
