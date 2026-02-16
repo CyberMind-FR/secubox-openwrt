@@ -91,6 +91,19 @@ var callLogs = rpc.declare({
 	expect: {}
 });
 
+var callListUsers = rpc.declare({
+	object: 'luci.nextcloud',
+	method: 'list_users',
+	expect: { users: [] }
+});
+
+var callResetPassword = rpc.declare({
+	object: 'luci.nextcloud',
+	method: 'reset_password',
+	params: ['uid', 'password'],
+	expect: {}
+});
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -120,13 +133,15 @@ return view.extend({
 	status: {},
 	config: {},
 	backups: [],
+	users: [],
 	currentTab: 'overview',
 
 	load: function() {
 		return Promise.all([
 			callStatus(),
 			callGetConfig(),
-			callListBackups().catch(function() { return { backups: [] }; })
+			callListBackups().catch(function() { return { backups: [] }; }),
+			callListUsers().catch(function() { return { users: [] }; })
 		]);
 	},
 
@@ -135,6 +150,7 @@ return view.extend({
 		this.status = data[0] || {};
 		this.config = data[1] || {};
 		this.backups = (data[2] || {}).backups || [];
+		this.users = (data[3] || {}).users || [];
 
 		// Not installed - show install view
 		if (!this.status.installed) {
@@ -144,6 +160,7 @@ return view.extend({
 		// Tab navigation
 		var tabs = [
 			{ id: 'overview', label: 'Overview', icon: '🎛️' },
+			{ id: 'users', label: 'Users', icon: '👥' },
 			{ id: 'backups', label: 'Backups', icon: '💾' },
 			{ id: 'ssl', label: 'SSL', icon: '🔒' },
 			{ id: 'logs', label: 'Logs', icon: '📜' }
@@ -197,6 +214,7 @@ return view.extend({
 
 	renderTabContent: function() {
 		switch (this.currentTab) {
+			case 'users': return this.renderUsersTab();
 			case 'backups': return this.renderBackupsTab();
 			case 'ssl': return this.renderSSLTab();
 			case 'logs': return this.renderLogsTab();
@@ -341,6 +359,125 @@ return view.extend({
 			E('span', { 'style': 'color:var(--kiss-muted);' }, label),
 			E('span', { 'style': 'font-weight:500;' }, String(value))
 		]);
+	},
+
+	// ========================================================================
+	// Users Tab
+	// ========================================================================
+
+	renderUsersTab: function() {
+		var self = this;
+
+		return E('div', {}, [
+			// Users List
+			KissTheme.card([
+				E('span', {}, '👥 Nextcloud Users'),
+				E('span', { 'style': 'margin-left:auto;font-size:12px;color:var(--kiss-muted);' }, this.users.length + ' users')
+			], E('div', { 'id': 'users-list' }, this.renderUsersList()))
+		]);
+	},
+
+	renderUsersList: function() {
+		var self = this;
+
+		if (!this.users.length) {
+			return E('div', { 'style': 'text-align:center;padding:40px;color:var(--kiss-muted);' }, [
+				E('div', { 'style': 'font-size:48px;margin-bottom:12px;' }, '👤'),
+				E('div', { 'style': 'font-size:16px;' }, 'No users found'),
+				E('div', { 'style': 'font-size:12px;margin-top:8px;' }, 'Container may not be running')
+			]);
+		}
+
+		return E('table', { 'class': 'kiss-table' }, [
+			E('thead', {}, E('tr', {}, [
+				E('th', {}, 'User ID'),
+				E('th', {}, 'Display Name'),
+				E('th', { 'style': 'width:120px;' }, 'Actions')
+			])),
+			E('tbody', {}, this.users.map(function(u) {
+				return E('tr', {}, [
+					E('td', { 'style': 'font-family:monospace;' }, u.uid || u),
+					E('td', {}, u.displayname || '-'),
+					E('td', {}, [
+						E('button', {
+							'class': 'kiss-btn',
+							'style': 'padding:4px 10px;font-size:11px;',
+							'title': 'Reset Password',
+							'data-uid': u.uid || u,
+							'click': function(ev) { self.showResetPasswordModal(ev.currentTarget.dataset.uid); }
+						}, '🔑')
+					])
+				]);
+			}))
+		]);
+	},
+
+	showResetPasswordModal: function(uid) {
+		var self = this;
+		var passwordInput, confirmInput;
+
+		ui.showModal('Reset Password - ' + uid, [
+			E('div', { 'style': 'padding:16px;' }, [
+				E('p', { 'style': 'margin-bottom:16px;color:var(--kiss-muted);' },
+					'Enter new password for user: ' + uid),
+				E('div', { 'style': 'margin-bottom:12px;' }, [
+					E('label', { 'style': 'display:block;font-size:12px;color:var(--kiss-muted);margin-bottom:4px;' }, 'New Password'),
+					passwordInput = E('input', {
+						'type': 'password',
+						'style': 'width:100%;padding:10px;background:var(--kiss-bg2);border:1px solid var(--kiss-line);border-radius:6px;color:var(--kiss-text);'
+					})
+				]),
+				E('div', { 'style': 'margin-bottom:16px;' }, [
+					E('label', { 'style': 'display:block;font-size:12px;color:var(--kiss-muted);margin-bottom:4px;' }, 'Confirm Password'),
+					confirmInput = E('input', {
+						'type': 'password',
+						'style': 'width:100%;padding:10px;background:var(--kiss-bg2);border:1px solid var(--kiss-line);border-radius:6px;color:var(--kiss-text);'
+					})
+				]),
+				E('div', { 'style': 'display:flex;gap:8px;justify-content:flex-end;' }, [
+					E('button', {
+						'class': 'kiss-btn',
+						'click': ui.hideModal
+					}, 'Cancel'),
+					E('button', {
+						'class': 'kiss-btn kiss-btn-green',
+						'click': function() {
+							var password = passwordInput.value;
+							var confirm = confirmInput.value;
+							if (!password) {
+								ui.addNotification(null, E('p', 'Password required'), 'error');
+								return;
+							}
+							if (password !== confirm) {
+								ui.addNotification(null, E('p', 'Passwords do not match'), 'error');
+								return;
+							}
+							ui.hideModal();
+							self.handleResetPassword(uid, password);
+						}
+					}, 'Reset Password')
+				])
+			])
+		]);
+	},
+
+	handleResetPassword: function(uid, password) {
+		var self = this;
+		ui.showModal('Resetting Password', [
+			E('p', { 'class': 'spinning' }, 'Resetting password for ' + uid + '...')
+		]);
+
+		callResetPassword(uid, password).then(function(r) {
+			ui.hideModal();
+			if (r.success) {
+				ui.addNotification(null, E('p', 'Password reset for ' + uid), 'info');
+			} else {
+				ui.addNotification(null, E('p', 'Failed: ' + (r.error || 'Unknown error')), 'error');
+			}
+		}).catch(function(e) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', 'Error: ' + e.message), 'error');
+		});
 	},
 
 	// ========================================================================
@@ -701,10 +838,12 @@ return view.extend({
 		var self = this;
 		return Promise.all([
 			callStatus(),
-			callListBackups().catch(function() { return { backups: [] }; })
+			callListBackups().catch(function() { return { backups: [] }; }),
+			callListUsers().catch(function() { return { users: [] }; })
 		]).then(function(data) {
 			self.status = data[0] || {};
 			self.backups = (data[1] || {}).backups || [];
+			self.users = (data[2] || {}).users || [];
 
 			// Update tab content
 			var tabContent = document.getElementById('tab-content');
