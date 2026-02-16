@@ -4,13 +4,9 @@
 'require ui';
 'require rpc';
 'require hexojs/api as api';
-'require secubox/kiss-theme';
 
 return view.extend({
-	title: _('Hexo CMS'),
 	pollInterval: 10,
-	pollActive: true,
-	currentInstance: null,
 
 	load: function() {
 		return Promise.all([
@@ -21,260 +17,203 @@ return view.extend({
 		]).then(function(results) {
 			return {
 				instances: results[0] || [],
-				status: results[1],
-				stats: results[2],
+				status: results[1] || {},
+				stats: results[2] || {},
 				backups: results[3] || []
 			};
 		});
 	},
 
-	// ─── Instance Management ───
+	css: function() {
+		return `
+:root { --k-bg:#0d1117; --k-surface:#161b22; --k-card:#1c2128; --k-line:#30363d;
+        --k-text:#e6edf3; --k-muted:#8b949e; --k-accent:#58a6ff; --k-green:#3fb950;
+        --k-red:#f85149; --k-yellow:#d29922; --k-purple:#a371f7; }
+.k-wrap { max-width:1200px; margin:0 auto; padding:20px; color:var(--k-text); font-family:system-ui,-apple-system,sans-serif; }
+.k-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; }
+.k-title { font-size:24px; font-weight:600; display:flex; align-items:center; gap:12px; }
+.k-title span { color:var(--k-accent); }
+.k-badge { padding:4px 12px; border-radius:20px; font-size:12px; font-weight:500; }
+.k-badge-green { background:rgba(63,185,80,0.15); color:var(--k-green); }
+.k-badge-red { background:rgba(248,81,73,0.15); color:var(--k-red); }
+.k-grid { display:grid; gap:16px; margin-bottom:24px; }
+.k-grid-4 { grid-template-columns:repeat(4,1fr); }
+.k-stat { background:var(--k-card); border:1px solid var(--k-line); border-radius:8px; padding:20px; text-align:center; }
+.k-stat-value { font-size:32px; font-weight:700; color:var(--k-accent); }
+.k-stat-label { color:var(--k-muted); font-size:13px; margin-top:4px; }
+.k-card { background:var(--k-card); border:1px solid var(--k-line); border-radius:8px; padding:20px; margin-bottom:16px; }
+.k-card-title { font-size:14px; font-weight:600; color:var(--k-muted); margin-bottom:16px; text-transform:uppercase; letter-spacing:0.5px; }
+.k-actions { display:flex; gap:8px; flex-wrap:wrap; }
+.k-btn { padding:8px 16px; border-radius:6px; border:1px solid var(--k-line); background:var(--k-surface);
+         color:var(--k-text); cursor:pointer; font-size:13px; text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
+.k-btn:hover { border-color:var(--k-accent); color:var(--k-accent); }
+.k-btn-green { background:var(--k-green); border-color:var(--k-green); color:#fff; }
+.k-btn-green:hover { background:#2ea043; }
+.k-btn-sm { padding:6px 10px; font-size:12px; }
+.k-table { width:100%; border-collapse:collapse; }
+.k-table th { text-align:left; padding:12px; color:var(--k-muted); font-size:12px; text-transform:uppercase;
+              border-bottom:1px solid var(--k-line); }
+.k-table td { padding:12px; border-bottom:1px solid var(--k-line); }
+.k-table tr:hover { background:var(--k-surface); }
+.k-instance { display:flex; justify-content:space-between; align-items:center; padding:16px;
+              background:var(--k-surface); border-radius:8px; margin-bottom:8px; }
+.k-instance-info h4 { margin:0 0 4px; font-size:15px; }
+.k-instance-info p { margin:0; color:var(--k-muted); font-size:13px; }
+.k-instance-actions { display:flex; gap:6px; }
+.k-empty { text-align:center; padding:40px; color:var(--k-muted); }
+@media(max-width:768px) { .k-grid-4{grid-template-columns:repeat(2,1fr);} }
+`;
+	},
+
 	handleCreateInstance: function() {
-		var self = this;
-		ui.showModal(_('Create Instance'), [
-			E('div', { 'class': 'k-form' }, [
-				E('div', { 'class': 'k-form-group' }, [
-					E('label', {}, _('Name (lowercase, no spaces)')),
-					E('input', { 'type': 'text', 'id': 'new-instance-name', 'placeholder': 'myblog',
-						'pattern': '^[a-z][a-z0-9_]*$', 'style': 'width: 100%' })
-				]),
-				E('div', { 'class': 'k-form-group' }, [
-					E('label', {}, _('Title')),
-					E('input', { 'type': 'text', 'id': 'new-instance-title', 'placeholder': 'My Blog',
-						'style': 'width: 100%' })
-				]),
-				E('div', { 'class': 'k-form-group' }, [
-					E('label', {}, _('Port (auto if empty)')),
-					E('input', { 'type': 'number', 'id': 'new-instance-port', 'placeholder': '4000',
-						'style': 'width: 100%' })
-				])
+		var nameInput, titleInput, portInput;
+		ui.showModal(_('New Instance'), [
+			E('div', { style: 'margin-bottom:16px' }, [
+				E('label', { style: 'display:block;margin-bottom:4px;color:#8b949e;font-size:13px' }, 'Name'),
+				nameInput = E('input', { type: 'text', placeholder: 'myblog', style: 'width:100%;padding:8px;border-radius:4px;border:1px solid #30363d;background:#161b22;color:#e6edf3' })
 			]),
-			E('div', { 'class': 'right', 'style': 'margin-top: 16px' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
-				E('button', { 'class': 'cbi-button cbi-button-positive', 'style': 'margin-left: 8px',
-					'click': function() {
-						var name = document.getElementById('new-instance-name').value;
-						var title = document.getElementById('new-instance-title').value;
-						var port = document.getElementById('new-instance-port').value;
-						if (!name) { ui.addNotification(null, E('p', _('Name required')), 'error'); return; }
-						ui.showModal(_('Creating...'), [E('p', { 'class': 'spinning' }, _('Creating instance...'))]);
-						api.createInstance(name, title || null, port ? parseInt(port) : null).then(function(r) {
-							ui.hideModal();
-							if (r.success) {
-								ui.addNotification(null, E('p', _('Instance created: %s').format(name)), 'info');
-								window.location.reload();
-							} else {
-								ui.addNotification(null, E('p', r.error || _('Failed')), 'error');
-							}
-						});
-					}
-				}, _('Create'))
+			E('div', { style: 'margin-bottom:16px' }, [
+				E('label', { style: 'display:block;margin-bottom:4px;color:#8b949e;font-size:13px' }, 'Title'),
+				titleInput = E('input', { type: 'text', placeholder: 'My Blog', style: 'width:100%;padding:8px;border-radius:4px;border:1px solid #30363d;background:#161b22;color:#e6edf3' })
+			]),
+			E('div', { style: 'margin-bottom:16px' }, [
+				E('label', { style: 'display:block;margin-bottom:4px;color:#8b949e;font-size:13px' }, 'Port (auto)'),
+				portInput = E('input', { type: 'number', placeholder: '4000', style: 'width:100%;padding:8px;border-radius:4px;border:1px solid #30363d;background:#161b22;color:#e6edf3' })
+			]),
+			E('div', { style: 'display:flex;gap:8px;justify-content:flex-end;margin-top:20px' }, [
+				E('button', { class: 'cbi-button', click: ui.hideModal }, 'Cancel'),
+				E('button', { class: 'cbi-button cbi-button-positive', click: function() {
+					var name = nameInput.value.trim();
+					if (!name) return;
+					ui.showModal(_('Creating...'), [E('p', { class: 'spinning' }, 'Creating instance...')]);
+					api.createInstance(name, titleInput.value || null, portInput.value ? parseInt(portInput.value) : null).then(function(r) {
+						ui.hideModal();
+						if (r.success) window.location.reload();
+						else ui.addNotification(null, E('p', r.error || 'Failed'));
+					});
+				}}, 'Create')
 			])
 		]);
 	},
 
-	handleDeleteInstance: function(name) {
-		var self = this;
-		ui.showModal(_('Delete Instance'), [
-			E('p', {}, _('Delete instance "%s"?').format(name)),
-			E('label', { 'style': 'display: block; margin: 12px 0' }, [
-				E('input', { 'type': 'checkbox', 'id': 'delete-data-check' }),
-				E('span', { 'style': 'margin-left: 8px' }, _('Also delete site data'))
+	handleGitClone: function(source) {
+		var repoInput, instInput, branchInput;
+		var title = source === 'github' ? 'Clone from GitHub' : 'Clone from Gitea';
+		ui.showModal(_(title), [
+			E('div', { style: 'margin-bottom:16px' }, [
+				E('label', { style: 'display:block;margin-bottom:4px;color:#8b949e;font-size:13px' }, 'Repository URL'),
+				repoInput = E('input', { type: 'text', placeholder: source === 'github' ? 'https://github.com/user/repo' : 'http://gitea.local/user/repo', style: 'width:100%;padding:8px;border-radius:4px;border:1px solid #30363d;background:#161b22;color:#e6edf3' })
 			]),
-			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
-				E('button', { 'class': 'cbi-button cbi-button-negative', 'style': 'margin-left: 8px',
-					'click': function() {
-						var deleteData = document.getElementById('delete-data-check').checked;
-						ui.showModal(_('Deleting...'), [E('p', { 'class': 'spinning' }, _('Deleting...'))]);
-						api.deleteInstance(name, deleteData).then(function() {
-							ui.hideModal();
-							window.location.reload();
-						});
-					}
-				}, _('Delete'))
+			E('div', { style: 'margin-bottom:16px' }, [
+				E('label', { style: 'display:block;margin-bottom:4px;color:#8b949e;font-size:13px' }, 'Instance'),
+				instInput = E('input', { type: 'text', placeholder: 'default', style: 'width:100%;padding:8px;border-radius:4px;border:1px solid #30363d;background:#161b22;color:#e6edf3' })
+			]),
+			E('div', { style: 'margin-bottom:16px' }, [
+				E('label', { style: 'display:block;margin-bottom:4px;color:#8b949e;font-size:13px' }, 'Branch'),
+				branchInput = E('input', { type: 'text', placeholder: 'main', style: 'width:100%;padding:8px;border-radius:4px;border:1px solid #30363d;background:#161b22;color:#e6edf3' })
+			]),
+			E('div', { style: 'display:flex;gap:8px;justify-content:flex-end;margin-top:20px' }, [
+				E('button', { class: 'cbi-button', click: ui.hideModal }, 'Cancel'),
+				E('button', { class: 'cbi-button cbi-button-positive', click: function() {
+					var repo = repoInput.value.trim();
+					if (!repo) return;
+					ui.showModal(_('Cloning...'), [E('p', { class: 'spinning' }, 'Cloning repository...')]);
+					var fn = source === 'github' ? api.gitHubClone : api.gitClone;
+					fn(repo, instInput.value || 'default', branchInput.value || 'main').then(function(r) {
+						ui.hideModal();
+						if (r.success) window.location.reload();
+						else ui.addNotification(null, E('p', r.error || 'Clone failed'));
+					});
+				}}, 'Clone')
 			])
 		]);
 	},
 
-	handleToggleInstance: function(inst) {
-		var self = this;
-		var action = inst.running ? api.stopInstance : api.startInstance;
-		var msg = inst.running ? _('Stopping...') : _('Starting...');
-		ui.showModal(msg, [E('p', { 'class': 'spinning' }, msg)]);
-		action(inst.name).then(function(r) {
-			ui.hideModal();
-			if (r.success) {
-				ui.addNotification(null, E('p', r.message), 'info');
-				setTimeout(function() { window.location.reload(); }, 1500);
-			} else {
-				ui.addNotification(null, E('p', r.error || _('Failed')), 'error');
-			}
-		});
-	},
-
-	// ─── Backup/Restore ───
 	handleBackup: function(instance) {
-		ui.showModal(_('Create Backup'), [E('p', { 'class': 'spinning' }, _('Creating backup...'))]);
-		api.createBackup(instance || 'default', null).then(function(r) {
+		ui.showModal(_('Backup'), [E('p', { class: 'spinning' }, 'Creating backup...')]);
+		api.createBackup(instance, null).then(function(r) {
 			ui.hideModal();
 			if (r.success) {
-				ui.addNotification(null, E('p', _('Backup created: %s').format(r.name)), 'info');
+				ui.addNotification(null, E('p', 'Backup created: ' + (r.name || 'success')));
 				window.location.reload();
 			} else {
-				ui.addNotification(null, E('p', r.error || _('Backup failed')), 'error');
+				ui.addNotification(null, E('p', r.error || 'Backup failed'));
 			}
 		});
 	},
 
-	handleRestore: function(backupName, instance) {
-		ui.showModal(_('Restore Backup'), [
-			E('p', {}, _('Restore backup "%s"?').format(backupName)),
-			E('p', { 'style': 'color: var(--k-warning)' }, _('This will overwrite current site data!')),
-			E('div', { 'class': 'right', 'style': 'margin-top: 16px' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
-				E('button', { 'class': 'cbi-button cbi-button-action', 'style': 'margin-left: 8px',
-					'click': function() {
-						ui.showModal(_('Restoring...'), [E('p', { 'class': 'spinning' }, _('Restoring...'))]);
-						api.restoreBackup(backupName, instance || 'default').then(function(r) {
-							ui.hideModal();
-							if (r.success) {
-								ui.addNotification(null, E('p', _('Backup restored')), 'info');
-							} else {
-								ui.addNotification(null, E('p', r.error || _('Restore failed')), 'error');
-							}
-						});
-					}
-				}, _('Restore'))
+	handleRestore: function(name) {
+		ui.showModal(_('Restore'), [
+			E('p', {}, 'Restore backup "' + name + '"?'),
+			E('p', { style: 'color:#d29922' }, 'This will overwrite current data!'),
+			E('div', { style: 'display:flex;gap:8px;justify-content:flex-end;margin-top:20px' }, [
+				E('button', { class: 'cbi-button', click: ui.hideModal }, 'Cancel'),
+				E('button', { class: 'cbi-button cbi-button-negative', click: function() {
+					ui.showModal(_('Restoring...'), [E('p', { class: 'spinning' }, 'Restoring...')]);
+					api.restoreBackup(name, 'default').then(function(r) {
+						ui.hideModal();
+						if (r.success) ui.addNotification(null, E('p', 'Restored'));
+						else ui.addNotification(null, E('p', r.error || 'Failed'));
+					});
+				}}, 'Restore')
 			])
 		]);
 	},
 
 	handleDeleteBackup: function(name) {
 		ui.showModal(_('Delete Backup'), [
-			E('p', {}, _('Delete backup "%s"?').format(name)),
-			E('div', { 'class': 'right', 'style': 'margin-top: 16px' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
-				E('button', { 'class': 'cbi-button cbi-button-negative', 'style': 'margin-left: 8px',
-					'click': function() {
-						api.deleteBackup(name).then(function(r) {
-							ui.hideModal();
-							if (r.success) window.location.reload();
-						});
-					}
-				}, _('Delete'))
+			E('p', {}, 'Delete backup "' + name + '"?'),
+			E('div', { style: 'display:flex;gap:8px;justify-content:flex-end;margin-top:20px' }, [
+				E('button', { class: 'cbi-button', click: ui.hideModal }, 'Cancel'),
+				E('button', { class: 'cbi-button cbi-button-negative', click: function() {
+					api.deleteBackup(name).then(function() { ui.hideModal(); window.location.reload(); });
+				}}, 'Delete')
 			])
 		]);
 	},
 
-	// ─── GitHub/Gitea Clone ───
-	handleGitClone: function(source) {
-		var self = this;
-		var title = source === 'github' ? _('Clone from GitHub') : _('Clone from Gitea');
-		ui.showModal(title, [
-			E('div', { 'class': 'k-form' }, [
-				E('div', { 'class': 'k-form-group' }, [
-					E('label', {}, _('Repository URL')),
-					E('input', { 'type': 'text', 'id': 'clone-repo', 'style': 'width: 100%',
-						'placeholder': source === 'github' ? 'https://github.com/user/repo.git' : 'http://gitea.local/user/repo.git' })
-				]),
-				E('div', { 'class': 'k-form-group' }, [
-					E('label', {}, _('Instance (existing or new)')),
-					E('input', { 'type': 'text', 'id': 'clone-instance', 'style': 'width: 100%',
-						'placeholder': 'default' })
-				]),
-				E('div', { 'class': 'k-form-group' }, [
-					E('label', {}, _('Branch')),
-					E('input', { 'type': 'text', 'id': 'clone-branch', 'style': 'width: 100%',
-						'placeholder': 'main' })
-				])
+	handleToggle: function(inst) {
+		var action = inst.running ? api.stopInstance : api.startInstance;
+		var msg = inst.running ? 'Stopping...' : 'Starting...';
+		ui.showModal(_(msg), [E('p', { class: 'spinning' }, msg)]);
+		action(inst.name).then(function(r) {
+			ui.hideModal();
+			setTimeout(function() { window.location.reload(); }, 1500);
+		});
+	},
+
+	handleDelete: function(name) {
+		ui.showModal(_('Delete Instance'), [
+			E('p', {}, 'Delete instance "' + name + '"?'),
+			E('label', { style: 'display:block;margin:12px 0' }, [
+				E('input', { type: 'checkbox', id: 'del-data' }),
+				E('span', { style: 'margin-left:8px' }, 'Also delete data')
 			]),
-			E('div', { 'class': 'right', 'style': 'margin-top: 16px' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
-				E('button', { 'class': 'cbi-button cbi-button-positive', 'style': 'margin-left: 8px',
-					'click': function() {
-						var repo = document.getElementById('clone-repo').value;
-						var instance = document.getElementById('clone-instance').value || 'default';
-						var branch = document.getElementById('clone-branch').value || 'main';
-						if (!repo) { ui.addNotification(null, E('p', _('Repo URL required')), 'error'); return; }
-						ui.showModal(_('Cloning...'), [E('p', { 'class': 'spinning' }, _('Cloning repository...'))]);
-						var cloneFn = source === 'github' ? api.gitHubClone : api.gitClone;
-						cloneFn(repo, instance, branch).then(function(r) {
-							ui.hideModal();
-							if (r.success) {
-								ui.addNotification(null, E('p', r.message || _('Clone successful')), 'info');
-								window.location.reload();
-							} else {
-								ui.addNotification(null, E('p', r.error || _('Clone failed')), 'error');
-							}
-						});
-					}
-				}, _('Clone'))
+			E('div', { style: 'display:flex;gap:8px;justify-content:flex-end;margin-top:20px' }, [
+				E('button', { class: 'cbi-button', click: ui.hideModal }, 'Cancel'),
+				E('button', { class: 'cbi-button cbi-button-negative', click: function() {
+					var delData = document.getElementById('del-data').checked;
+					api.deleteInstance(name, delData).then(function() { ui.hideModal(); window.location.reload(); });
+				}}, 'Delete')
 			])
 		]);
 	},
 
-	// ─── Quick Publish ───
 	handleQuickPublish: function(instance) {
-		ui.showModal(_('Quick Publish'), [
-			E('p', { 'class': 'spinning' }, _('Building and publishing...'))
-		]);
-		api.quickPublish(instance || 'default').then(function(r) {
+		ui.showModal(_('Publishing'), [E('p', { class: 'spinning' }, 'Building and publishing...')]);
+		api.quickPublish(instance).then(function(r) {
 			ui.hideModal();
-			if (r.success) {
-				ui.addNotification(null, E('p', _('Published successfully!')), 'info');
-			} else {
-				ui.addNotification(null, E('p', r.error || _('Publish failed')), 'error');
-			}
+			ui.addNotification(null, E('p', r.success ? 'Published!' : (r.error || 'Failed')));
 		});
 	},
 
-	// ─── Gitea Push ───
-	handleGiteaPush: function(instance) {
-		ui.showModal(_('Push to Gitea'), [
-			E('div', { 'class': 'k-form' }, [
-				E('div', { 'class': 'k-form-group' }, [
-					E('label', {}, _('Commit Message')),
-					E('input', { 'type': 'text', 'id': 'push-message', 'style': 'width: 100%',
-						'placeholder': 'Update content' })
-				])
-			]),
-			E('div', { 'class': 'right', 'style': 'margin-top: 16px' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
-				E('button', { 'class': 'cbi-button cbi-button-positive', 'style': 'margin-left: 8px',
-					'click': function() {
-						var msg = document.getElementById('push-message').value || 'Update from SecuBox';
-						ui.showModal(_('Pushing...'), [E('p', { 'class': 'spinning' }, _('Pushing to Gitea...'))]);
-						api.giteaPush(instance || 'default', msg).then(function(r) {
-							ui.hideModal();
-							if (r.success) {
-								ui.addNotification(null, E('p', r.message || _('Push successful')), 'info');
-							} else {
-								ui.addNotification(null, E('p', r.error || _('Push failed')), 'error');
-							}
-						});
-					}
-				}, _('Push'))
-			])
-		]);
-	},
-
-	// ─── Service Control ───
 	handleServiceToggle: function(status) {
-		var self = this;
 		var action = status.running ? api.serviceStop : api.serviceStart;
-		var msg = status.running ? _('Stopping...') : _('Starting...');
-		ui.showModal(msg, [E('p', { 'class': 'spinning' }, msg)]);
-		action().then(function(r) {
-			ui.hideModal();
-			if (r.success) {
-				ui.addNotification(null, E('p', r.message), 'info');
-				setTimeout(function() { window.location.reload(); }, 2000);
-			}
-		});
+		var msg = status.running ? 'Stopping...' : 'Starting...';
+		ui.showModal(_(msg), [E('p', { class: 'spinning' }, msg)]);
+		action().then(function() { ui.hideModal(); setTimeout(function() { window.location.reload(); }, 2000); });
 	},
 
-	// ─── Render ───
 	render: function(data) {
 		var self = this;
 		var instances = data.instances || [];
@@ -282,149 +221,98 @@ return view.extend({
 		var stats = data.stats || {};
 		var backups = data.backups || [];
 
-		// ─── Stat Card Helper ───
-		var statCard = function(icon, value, label, color) {
-			return E('div', { 'class': 'k-stat' }, [
-				E('div', { 'class': 'k-stat-icon', 'style': 'color: ' + (color || 'var(--k-accent)') }, icon),
-				E('div', { 'class': 'k-stat-value' }, String(value)),
-				E('div', { 'class': 'k-stat-label' }, label)
-			]);
-		};
+		return E('div', { class: 'k-wrap' }, [
+			E('style', {}, this.css()),
 
-		// ─── Instance Card Helper ───
-		var instanceCard = function(inst) {
-			var statusColor = inst.running ? 'var(--k-green)' : 'var(--k-muted)';
-			var statusText = inst.running ? _('Running') : _('Stopped');
-			return E('div', { 'class': 'k-card', 'style': 'border-left: 3px solid ' + statusColor },
-				E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center' }, [
-					E('div', {}, [
-						E('div', { 'class': 'k-card-title', 'style': 'margin-bottom: 4px' }, [
-							inst.title || inst.name,
-							E('span', { 'class': 'k-badge', 'style': 'margin-left: 8px; background: ' + statusColor }, statusText)
-						]),
-						E('div', { 'style': 'color: var(--k-muted); font-size: 12px' }, [
-							'Port: ', String(inst.port),
-							inst.domain ? [' | ', E('a', { 'href': 'https://' + inst.domain, 'target': '_blank' }, inst.domain)] : ''
-						])
-					]),
-					E('div', { 'style': 'display: flex; gap: 8px' }, [
-						E('button', {
-							'class': 'k-btn k-btn-sm ' + (inst.running ? 'k-btn-danger' : 'k-btn-success'),
-							'click': function() { self.handleToggleInstance(inst); }
-						}, inst.running ? '\u25A0' : '\u25B6'),
-						E('button', { 'class': 'k-btn k-btn-sm', 'title': _('Quick Publish'),
-							'click': function() { self.handleQuickPublish(inst.name); }
-						}, '\uD83D\uDE80'),
-						E('button', { 'class': 'k-btn k-btn-sm', 'title': _('Backup'),
-							'click': function() { self.handleBackup(inst.name); }
-						}, '\uD83D\uDCBE'),
-						E('a', { 'class': 'k-btn k-btn-sm', 'title': _('Editor'),
-							'href': L.url('admin', 'services', 'hexojs', 'editor') + '?instance=' + inst.name
-						}, '\u270F'),
-						inst.running ? E('a', { 'class': 'k-btn k-btn-sm', 'title': _('Preview'),
-							'href': 'http://' + window.location.hostname + ':' + inst.port,
-							'target': '_blank'
-						}, '\uD83D\uDC41') : '',
-						E('button', { 'class': 'k-btn k-btn-sm k-btn-danger', 'title': _('Delete'),
-							'click': function() { self.handleDeleteInstance(inst.name); }
-						}, '\u2715')
-					])
-				])
-			);
-		};
-
-		// ─── Backup Row Helper ───
-		var backupRow = function(bk) {
-			var date = bk.timestamp ? new Date(bk.timestamp * 1000).toLocaleString() : '-';
-			return E('tr', {}, [
-				E('td', {}, bk.name),
-				E('td', {}, bk.size),
-				E('td', {}, date),
-				E('td', { 'style': 'text-align: right' }, [
-					E('button', { 'class': 'k-btn k-btn-sm', 'click': function() { self.handleRestore(bk.name); } }, '\u21BA'),
-					E('button', { 'class': 'k-btn k-btn-sm k-btn-danger', 'style': 'margin-left: 4px',
-						'click': function() { self.handleDeleteBackup(bk.name); }
-					}, '\u2715')
-				])
-			]);
-		};
-
-		// ─── Main Layout ───
-		var content = [
 			// Header
-			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px' }, [
-				E('div', {}, [
-					E('h2', { 'style': 'margin: 0' }, ['\uD83D\uDCDD ', _('Hexo CMS')]),
-					E('p', { 'style': 'color: var(--k-muted); margin: 4px 0 0' }, _('Multi-instance static site generator'))
-				]),
-				E('div', { 'style': 'display: flex; gap: 8px' }, [
-					E('button', {
-						'class': 'k-btn ' + (status.running ? 'k-btn-danger' : 'k-btn-success'),
-						'click': function() { self.handleServiceToggle(status); }
-					}, status.running ? ['\u25A0 ', _('Stop Container')] : ['\u25B6 ', _('Start Container')])
-				])
+			E('div', { class: 'k-header' }, [
+				E('div', { class: 'k-title' }, ['📝 Hexo ', E('span', {}, 'CMS')]),
+				E('button', {
+					class: 'k-btn ' + (status.running ? 'k-btn-green' : ''),
+					click: function() { self.handleServiceToggle(status); }
+				}, status.running ? '● Running' : '○ Stopped')
 			]),
 
-			// Stats Grid
-			E('div', { 'class': 'k-grid k-grid-4', 'style': 'margin-bottom: 20px' }, [
-				statCard('\uD83D\uDCE6', instances.length, _('Instances'), 'var(--k-blue)'),
-				statCard('\uD83D\uDCDD', stats.posts || 0, _('Posts'), 'var(--k-green)'),
-				statCard('\uD83D\uDCCB', stats.drafts || 0, _('Drafts'), 'var(--k-yellow)'),
-				statCard('\uD83D\uDCBE', backups.length, _('Backups'), 'var(--k-purple)')
+			// Stats
+			E('div', { class: 'k-grid k-grid-4' }, [
+				E('div', { class: 'k-stat' }, [E('div', { class: 'k-stat-value' }, String(instances.length)), E('div', { class: 'k-stat-label' }, 'Instances')]),
+				E('div', { class: 'k-stat' }, [E('div', { class: 'k-stat-value' }, String(stats.posts || 0)), E('div', { class: 'k-stat-label' }, 'Posts')]),
+				E('div', { class: 'k-stat' }, [E('div', { class: 'k-stat-value' }, String(stats.drafts || 0)), E('div', { class: 'k-stat-label' }, 'Drafts')]),
+				E('div', { class: 'k-stat' }, [E('div', { class: 'k-stat-value' }, String(backups.length)), E('div', { class: 'k-stat-label' }, 'Backups')])
 			]),
 
 			// Quick Actions
-			E('div', { 'class': 'k-card', 'style': 'margin-bottom: 20px' }, [
-				E('div', { 'class': 'k-card-title' }, ['\u26A1 ', _('Quick Actions')]),
-				E('div', { 'style': 'display: flex; gap: 8px; flex-wrap: wrap' }, [
-					E('button', { 'class': 'k-btn k-btn-success', 'click': function() { self.handleCreateInstance(); } },
-						['\u2795 ', _('New Instance')]),
-					E('button', { 'class': 'k-btn', 'click': function() { self.handleGitClone('github'); } },
-						['\uD83D\uDC19 ', _('Clone from GitHub')]),
-					E('button', { 'class': 'k-btn', 'click': function() { self.handleGitClone('gitea'); } },
-						['\uD83C\uDF75 ', _('Clone from Gitea')]),
-					E('a', { 'class': 'k-btn', 'href': L.url('admin', 'services', 'hexojs', 'editor') },
-						['\u270F ', _('New Post')]),
-					E('a', { 'class': 'k-btn', 'href': L.url('admin', 'services', 'hexojs', 'settings') },
-						['\u2699 ', _('Settings')])
+			E('div', { class: 'k-card' }, [
+				E('div', { class: 'k-card-title' }, 'Quick Actions'),
+				E('div', { class: 'k-actions' }, [
+					E('button', { class: 'k-btn k-btn-green', click: function() { self.handleCreateInstance(); } }, '+ New Instance'),
+					E('button', { class: 'k-btn', click: function() { self.handleGitClone('github'); } }, '🐙 GitHub'),
+					E('button', { class: 'k-btn', click: function() { self.handleGitClone('gitea'); } }, '🍵 Gitea'),
+					E('a', { class: 'k-btn', href: L.url('admin', 'services', 'hexojs', 'editor') }, '✏ New Post'),
+					E('a', { class: 'k-btn', href: L.url('admin', 'services', 'hexojs', 'settings') }, '⚙ Settings')
 				])
 			]),
 
-			// Instances Section
-			E('div', { 'class': 'k-card', 'style': 'margin-bottom: 20px' }, [
-				E('div', { 'class': 'k-card-title' }, ['\uD83D\uDCE6 ', _('Instances')]),
+			// Instances
+			E('div', { class: 'k-card' }, [
+				E('div', { class: 'k-card-title' }, 'Instances'),
 				instances.length > 0
-					? E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px' },
-						instances.map(instanceCard))
-					: E('div', { 'class': 'k-empty' }, [
-						E('div', { 'style': 'font-size: 48px; margin-bottom: 12px' }, '\uD83D\uDCE6'),
-						E('p', {}, _('No instances yet. Create your first instance!')),
-						E('button', { 'class': 'k-btn k-btn-success', 'click': function() { self.handleCreateInstance(); } },
-							['\u2795 ', _('Create Instance')])
-					])
+					? E('div', {}, instances.map(function(inst) {
+						return E('div', { class: 'k-instance' }, [
+							E('div', { class: 'k-instance-info' }, [
+								E('h4', {}, [
+									inst.title || inst.name,
+									E('span', { class: 'k-badge ' + (inst.running ? 'k-badge-green' : 'k-badge-red'), style: 'margin-left:8px' },
+										inst.running ? 'Running' : 'Stopped')
+								]),
+								E('p', {}, 'Port: ' + inst.port + (inst.domain ? ' · ' + inst.domain : ''))
+							]),
+							E('div', { class: 'k-instance-actions' }, [
+								E('button', { class: 'k-btn k-btn-sm', title: inst.running ? 'Stop' : 'Start',
+									click: function() { self.handleToggle(inst); } }, inst.running ? '⏹' : '▶'),
+								E('button', { class: 'k-btn k-btn-sm', title: 'Publish',
+									click: function() { self.handleQuickPublish(inst.name); } }, '🚀'),
+								E('button', { class: 'k-btn k-btn-sm', title: 'Backup',
+									click: function() { self.handleBackup(inst.name); } }, '💾'),
+								E('a', { class: 'k-btn k-btn-sm', title: 'Editor',
+									href: L.url('admin', 'services', 'hexojs', 'editor') + '?instance=' + inst.name }, '✏'),
+								inst.running ? E('a', { class: 'k-btn k-btn-sm', title: 'Preview', target: '_blank',
+									href: 'http://' + window.location.hostname + ':' + inst.port }, '👁') : '',
+								E('button', { class: 'k-btn k-btn-sm', title: 'Delete', style: 'color:#f85149',
+									click: function() { self.handleDelete(inst.name); } }, '✕')
+							])
+						]);
+					}))
+					: E('div', { class: 'k-empty' }, 'No instances yet')
 			]),
 
-			// Backups Section
-			E('div', { 'class': 'k-card' }, [
-				E('div', { 'class': 'k-card-title' }, ['\uD83D\uDCBE ', _('Backups')]),
+			// Backups
+			E('div', { class: 'k-card' }, [
+				E('div', { class: 'k-card-title' }, 'Backups'),
 				backups.length > 0
-					? E('table', { 'class': 'k-table' }, [
+					? E('table', { class: 'k-table' }, [
 						E('thead', {}, E('tr', {}, [
-							E('th', {}, _('Name')),
-							E('th', {}, _('Size')),
-							E('th', {}, _('Date')),
-							E('th', { 'style': 'text-align: right' }, _('Actions'))
+							E('th', {}, 'Name'),
+							E('th', {}, 'Size'),
+							E('th', {}, 'Date'),
+							E('th', { style: 'text-align:right' }, 'Actions')
 						])),
-						E('tbody', {}, backups.map(backupRow))
+						E('tbody', {}, backups.map(function(bk) {
+							return E('tr', {}, [
+								E('td', {}, bk.name),
+								E('td', {}, bk.size || '-'),
+								E('td', {}, bk.timestamp ? new Date(bk.timestamp * 1000).toLocaleDateString() : '-'),
+								E('td', { style: 'text-align:right' }, [
+									E('button', { class: 'k-btn k-btn-sm', click: function() { self.handleRestore(bk.name); } }, '↩'),
+									E('button', { class: 'k-btn k-btn-sm', style: 'color:#f85149;margin-left:4px',
+										click: function() { self.handleDeleteBackup(bk.name); } }, '✕')
+								])
+							]);
+						}))
 					])
-					: E('div', { 'class': 'k-empty' }, [
-						E('div', { 'style': 'font-size: 48px; margin-bottom: 12px' }, '\uD83D\uDCBE'),
-						E('p', {}, _('No backups yet.'))
-					])
+					: E('div', { class: 'k-empty' }, 'No backups yet')
 			])
-		];
-
-		return KissTheme.wrap(content, 'admin/services/hexojs');
+		]);
 	},
 
 	handleSaveApply: null,
