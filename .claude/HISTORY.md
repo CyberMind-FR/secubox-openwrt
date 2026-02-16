@@ -2017,3 +2017,21 @@ git checkout HEAD -- index.html
 - `luci-app-hexojs/htdocs/luci-static/resources/hexojs/api.js` (new declarations)
 - `luci-app-hexojs/htdocs/luci-static/resources/view/hexojs/overview.js` (KISS rewrite)
 - `luci-app-hexojs/root/usr/share/rpcd/acl.d/luci-app-hexojs.json` (new permissions)
+
+### 2026-02-16: Mail Server Alias Management
+
+**Backend Enhancement: secubox-app-mailserver**
+- Added `alias_del` function to `users.sh`:
+  - Removes alias from valias file
+  - Updates Postfix maps
+- Added `alias del <alias>` command to `mailctl`
+
+**RPCD Enhancement: luci.mailserver**
+- Fixed `alias_add` to read JSON from stdin (ubus compatibility)
+- Added `alias_del` method for deleting aliases
+- Both methods now work via ubus call
+
+**Files Modified:**
+- `secubox-app-mailserver/files/usr/lib/mailserver/users.sh`
+- `secubox-app-mailserver/files/usr/sbin/mailctl`
+- `luci-app-mailserver/root/usr/libexec/rpcd/luci.mailserver`
