@@ -2251,3 +2251,23 @@ git checkout HEAD -- index.html
 - Jellyfin: Started stopped container, enabled auto-start
 - Webmail: Restarted dead PHP-FPM process in roundcube container
 - Both services now operational
+
+### 2026-02-17: Mailserver Migration Alpine → Debian
+
+**Problem:**
+- Alpine Linux mailserver had persistent Dovecot permission issues
+- imap-login process couldn't access auth sockets due to UID/GID mismatches
+- Webmail logins timing out repeatedly
+
+**Solution:**
+- Created new Debian 12 (Bookworm) LXC container
+- Installed Postfix + Dovecot with proper Debian packages
+- Migrated mail data, users, SSL certificates
+- Fixed passwd-file format for Debian Dovecot
+
+**Configuration:**
+- Container: `/srv/lxc/mailserver/` (Debian 12)
+- IP: 192.168.255.30 (unchanged)
+- Ports: 25, 143, 587, 993
+- Mail storage: `/var/mail/` with vmail user (uid 5000)
+- Old Alpine backup: `/srv/lxc/mailserver-alpine-backup/`
