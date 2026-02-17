@@ -64,6 +64,14 @@ _Last updated: 2026-02-17 (v0.21.0 - Nextcloud LXC + WebRadio)_
 
 ### Just Completed (2026-02-17)
 
+- **mitmproxy WAF Filters UI** — DONE (2026-02-17)
+  - Added new "WAF Filters" tab to mitmproxy LuCI interface
+  - Displays 10 filter categories: sqli, xss, lfi, rce, cve_2024, scanners, webmail, api_abuse, nextcloud, roundcube
+  - Toggle enable/disable per category with live updates
+  - Expandable rules tables showing patterns, descriptions, CVE links
+  - Summary stats: total categories, active filters, rule count
+  - RPCD methods: get_waf_rules, toggle_waf_category
+
 - **Security KISS Dashboard Enhancements** — DONE (2026-02-17)
   - Added ndpid (nDPI daemon) to service status monitoring
   - Added Wazuh SIEM to security services list (earlier today)

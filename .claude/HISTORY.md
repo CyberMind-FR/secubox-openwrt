@@ -2271,3 +2271,22 @@ git checkout HEAD -- index.html
 - Ports: 25, 143, 587, 993
 - Mail storage: `/var/mail/` with vmail user (uid 5000)
 - Old Alpine backup: `/srv/lxc/mailserver-alpine-backup/`
+
+### 2026-02-17: mitmproxy WAF Filters UI
+
+**New LuCI View:**
+- Added "WAF Filters" tab to mitmproxy security interface
+- Displays all 10 WAF detection categories with enable/disable toggles
+- Categories: sqli, xss, lfi, rce, cve_2024, scanners, webmail, api_abuse, nextcloud, roundcube
+- Summary stats: total categories, active filters, rule count
+- Expandable rules tables showing patterns, descriptions, CVE links
+
+**RPCD Methods:**
+- `get_waf_rules` - Returns WAF rules JSON from `/srv/mitmproxy/waf-rules.json`
+- `toggle_waf_category` - Enable/disable category in rules file
+
+**Files Created/Modified:**
+- `luci-app-mitmproxy/htdocs/.../view/mitmproxy/waf-filters.js` (new)
+- `luci-app-mitmproxy/root/usr/libexec/rpcd/luci.mitmproxy` (added methods)
+- `luci-app-mitmproxy/root/usr/share/luci/menu.d/luci-app-mitmproxy.json` (menu entry)
+- `luci-app-mitmproxy/root/usr/share/rpcd/acl.d/luci-app-mitmproxy.json` (ACL permissions)

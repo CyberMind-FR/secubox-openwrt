@@ -3,7 +3,7 @@
 		"description": "Grant access to mitmproxy",
 		"read": {
 			"ubus": {
-				"luci.mitmproxy": ["status", "settings", "alerts", "threat_stats", "subdomain_metrics", "bans"]
+				"luci.mitmproxy": ["status", "settings", "alerts", "threat_stats", "subdomain_metrics", "bans", "get_waf_rules"]
 			},
 			"uci": ["mitmproxy"]
 		},
@@ -24,7 +24,8 @@
 					"haproxy_enable",
 					"haproxy_disable",
 					"sync_routes",
-					"unban"
+					"unban",
+					"toggle_waf_category"
 				]
 			},
 			"uci": ["mitmproxy"]
