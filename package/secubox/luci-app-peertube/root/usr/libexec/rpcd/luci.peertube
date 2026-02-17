@@ -254,6 +254,85 @@ method_configure_haproxy() {
 	json_dump
 }
 
+# Method: import_video (yt-dlp)
+method_import_video() {
+	read -r input
+	json_load "$input"
+	json_get_var url url
+
+	if [ -z "$url" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "URL is required"
+		json_dump
+		return
+	fi
+
+	# Check container is running
+	if ! lxc-info -n peertube 2>/dev/null | grep -q "RUNNING"; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "PeerTube container is not running"
+		json_dump
+		return
+	fi
+
+	# Get videos path from UCI or use default
+	local videos_path
+	videos_path=$(uci_get main videos_path "/srv/peertube/videos")
+
+	# Create import directory inside container
+	local import_dir="/var/lib/peertube/storage/tmp/import"
+	lxc-attach -n peertube -- mkdir -p "$import_dir" 2>/dev/null
+
+	# Run yt-dlp in background, save to import directory
+	local logfile="/tmp/ytdlp-import-$$.log"
+	lxc-attach -n peertube -- /usr/local/bin/yt-dlp \
+		--no-playlist \
+		--format "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" \
+		--merge-output-format mp4 \
+		--output "$import_dir/%(title)s.%(ext)s" \
+		--write-info-json \
+		--write-thumbnail \
+		"$url" > "$logfile" 2>&1 &
+
+	local pid=$!
+
+	# Wait up to 5 seconds for initial response
+	sleep 2
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Download started in background (PID: $pid)"
+	json_add_string "log_file" "$logfile"
+	json_add_string "import_dir" "$import_dir"
+	json_dump
+}
+
+# Method: import_status - Check import progress
+method_import_status() {
+	local import_dir="/var/lib/peertube/storage/tmp/import"
+	local files=""
+	local count=0
+
+	if lxc-info -n peertube 2>/dev/null | grep -q "RUNNING"; then
+		files=$(lxc-attach -n peertube -- ls -la "$import_dir" 2>/dev/null | tail -10)
+		count=$(lxc-attach -n peertube -- find "$import_dir" -name "*.mp4" 2>/dev/null | wc -l)
+	fi
+
+	# Check for running yt-dlp processes
+	local downloading="false"
+	if lxc-attach -n peertube -- pgrep -f yt-dlp >/dev/null 2>&1; then
+		downloading="true"
+	fi
+
+	json_init
+	json_add_string "downloading" "$downloading"
+	json_add_int "video_count" "$count"
+	json_add_string "files" "$files"
+	json_dump
+}
+
 # List available methods
 list_methods() {
 	json_init
@@ -280,6 +359,11 @@ list_methods() {
 	json_add_object "live_disable"
 	json_close_object
 	json_add_object "configure_haproxy"
+	json_close_object
+	json_add_object "import_video"
+	json_add_string "url" ""
+	json_close_object
+	json_add_object "import_status"
 	json_close_object
 	json_dump
 }
@@ -326,6 +410,12 @@ case "$1" in
 				;;
 			configure_haproxy)
 				method_configure_haproxy
+				;;
+			import_video)
+				method_import_video
+				;;
+			import_status)
+				method_import_status
 				;;
 			*)
 				echo '{"error":"Method not found"}'

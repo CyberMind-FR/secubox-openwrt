@@ -68,5 +68,18 @@ return L.Class.extend({
 		object: 'luci.peertube',
 		method: 'configure_haproxy',
 		expect: { }
+	}),
+
+	importVideo: rpc.declare({
+		object: 'luci.peertube',
+		method: 'import_video',
+		params: ['url'],
+		expect: { }
+	}),
+
+	importStatus: rpc.declare({
+		object: 'luci.peertube',
+		method: 'import_status',
+		expect: { }
 	})
 });

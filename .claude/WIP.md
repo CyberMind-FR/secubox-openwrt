@@ -64,6 +64,13 @@ _Last updated: 2026-02-17 (v0.21.0 - Nextcloud LXC + WebRadio)_
 
 ### Just Completed (2026-02-17)
 
+- **PeerTube yt-dlp Video Import** — DONE (2026-02-17)
+  - Installed yt-dlp in PeerTube LXC container
+  - Added RPCD methods: import_video, import_status
+  - LuCI UI section with URL input and download button
+  - Supports YouTube, Vimeo, and 1000+ sites
+  - Downloads to import folder for PeerTube admin upload
+
 - **mitmproxy WAF Filters UI** — DONE (2026-02-17)
   - Added new "WAF Filters" tab to mitmproxy LuCI interface
   - Displays 10 filter categories: sqli, xss, lfi, rce, cve_2024, scanners, webmail, api_abuse, nextcloud, roundcube

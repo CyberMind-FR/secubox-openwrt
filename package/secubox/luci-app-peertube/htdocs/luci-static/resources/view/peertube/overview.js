@@ -53,6 +53,15 @@ return view.extend({
 				}
 				promise = api.emancipate(domain);
 				break;
+			case 'import_video':
+				var url = args;
+				if (!url) {
+					ui.hideModal();
+					ui.addNotification(null, E('p', _('Video URL is required')), 'error');
+					return;
+				}
+				promise = api.importVideo(url);
+				break;
 			default:
 				ui.hideModal();
 				return;
@@ -262,6 +271,61 @@ return view.extend({
 						self.handleAction('emancipate', domainInput.value);
 					}
 				}, _('Emancipate'))
+			]),
+
+			E('hr'),
+
+			E('h4', {}, _('Import Video (yt-dlp)')),
+			E('p', {}, _('Download and import videos from YouTube, Vimeo, and 1000+ other sites using yt-dlp.')),
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, _('Video URL')),
+				E('div', { 'class': 'cbi-value-field' }, [
+					E('input', {
+						'type': 'text',
+						'id': 'import-video-url',
+						'class': 'cbi-input-text',
+						'placeholder': 'https://www.youtube.com/watch?v=...',
+						'style': 'width: 100%; max-width: 500px;'
+					})
+				])
+			]),
+			E('div', { 'class': 'cbi-page-actions', 'style': 'margin-bottom: 15px;' }, [
+				E('button', {
+					'class': 'btn cbi-button cbi-button-action',
+					'click': function() {
+						var urlInput = document.getElementById('import-video-url');
+						self.handleAction('import_video', urlInput.value);
+					}
+				}, _('Download Video')),
+				' ',
+				E('button', {
+					'class': 'btn cbi-button',
+					'click': function() {
+						api.importStatus().then(function(res) {
+							var statusText = res.downloading === 'true' ?
+								_('Download in progress...') :
+								_('No download running');
+							statusText += '\n' + _('Videos ready: ') + (res.video_count || 0);
+							if (res.files) {
+								statusText += '\n\n' + res.files;
+							}
+							ui.showModal(_('Import Status'), [
+								E('pre', { 'style': 'white-space: pre-wrap; max-height: 300px; overflow: auto;' }, statusText),
+								E('div', { 'class': 'right' }, [
+									E('button', {
+										'class': 'btn',
+										'click': ui.hideModal
+									}, _('Close'))
+								])
+							]);
+						});
+					}
+				}, _('Check Status'))
+			]),
+			E('p', { 'style': 'font-size: 12px; color: #666;' }, [
+				_('Supported sites: YouTube, Vimeo, Dailymotion, Twitter, TikTok, and '),
+				E('a', { 'href': 'https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md', 'target': '_blank' }, _('1000+ more')),
+				_('. Videos are saved to the import folder for manual upload via PeerTube admin.')
 			]),
 
 			E('hr'),
