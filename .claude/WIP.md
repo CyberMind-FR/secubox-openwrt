@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-17 (v0.20.6 - Mailserver/Nextcloud/DNS fixes + WebRadio)_
+_Last updated: 2026-02-17 (v0.20.7 - Nextcloud LXC + WebRadio)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -72,6 +72,14 @@ _Last updated: 2026-02-17 (v0.20.6 - Mailserver/Nextcloud/DNS fixes + WebRadio)_
   - Programming grid scheduler with jingle support
   - Live audio input via DarkIce (ALSA)
   - Source: https://github.com/gkerma/webradio-openwrt
+
+- **Nextcloud LXC Enhancement** — DONE (2026-02-17)
+  - Updated version to 31.0.5, added auto-start and cgroup memory limit
+  - Fixed nginx /apps/ path for static assets
+  - Added Storage tab with disk usage visualization
+  - Added backup delete functionality
+  - Added RPCD: uninstall, get_storage, delete_backup (20 methods total)
+  - Rewrote README.md with LXC architecture docs
 
 - **SecuBox Cloner MochaBin LED Fix** — DONE (2026-02-17)
   - Added i2c LED blacklist to clone provision scripts

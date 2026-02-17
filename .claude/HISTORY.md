@@ -2196,3 +2196,31 @@ git checkout HEAD -- index.html
 
 **Source Repository:**
 - https://github.com/gkerma/webradio-openwrt
+
+### 2026-02-17: Nextcloud LXC Package Enhancement
+
+**nextcloudctl Enhancements:**
+- Updated Nextcloud version to 31.0.5
+- Added LXC auto-start (lxc.start.auto = 1) for boot persistence
+- Added memory limit cgroup configuration (lxc.cgroup2.memory.max)
+- Fixed nginx /apps/ path for static assets (CSS, JS, SVG icons)
+
+**RPCD Backend (luci.nextcloud):**
+- Added `uninstall` method
+- Added `get_storage` method for disk usage stats
+- Added `delete_backup` method
+- Total: 20 RPCD methods
+
+**LuCI Dashboard:**
+- Added Storage tab with disk usage visualization
+- Added disk usage progress bar
+- Added storage breakdown (user data, backups, total)
+- Added delete button for backups
+- Enhanced backup management UX
+
+**Files Modified:**
+- `secubox-app-nextcloud/files/usr/sbin/nextcloudctl`
+- `luci-app-nextcloud/root/usr/libexec/rpcd/luci.nextcloud`
+- `luci-app-nextcloud/htdocs/.../overview.js`
+- `luci-app-nextcloud/root/usr/share/rpcd/acl.d/luci-app-nextcloud.json`
+- `secubox-app-nextcloud/README.md` (full rewrite)
