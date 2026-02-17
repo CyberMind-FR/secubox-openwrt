@@ -81,9 +81,14 @@ addgroup dovenull dovecot 2>/dev/null || true
 
 # Ensure dovecot run directory exists with correct permissions
 # This fixes anvil-auth-penalty socket permission issues
-mkdir -p /run/dovecot
+mkdir -p /run/dovecot /run/dovecot/login /run/dovecot/token-login /run/dovecot/empty
 chown -R dovecot:dovecot /run/dovecot
+chown root:dovenull /run/dovecot/login /run/dovecot/token-login
 chmod 755 /run/dovecot
+chmod 750 /run/dovecot/login /run/dovecot/token-login
+
+# Remove stale auth token (prevents "compromised token" errors on restart)
+rm -f /run/dovecot/auth-token-secret.dat
 
 # Ensure dovecot users file is readable (fixes LMTP lookup errors)
 [ -f /etc/dovecot/users ] && chmod 644 /etc/dovecot/users && chown root:dovecot /etc/dovecot/users
@@ -95,8 +100,9 @@ sleep 1
 /usr/sbin/dovecot
 
 # Give dovecot a moment to create sockets, then fix permissions
-sleep 1
+sleep 2
 chown -R dovecot:dovecot /run/dovecot
+chown root:dovenull /run/dovecot/login /run/dovecot/token-login
 
 echo "Mail services started"
 
