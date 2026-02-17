@@ -302,10 +302,12 @@ bump_serial() {
     local current_serial=$(grep -oE '[0-9]{10}' "$zone_file" | head -1)
 
     local new_serial
-    if [ "${current_serial:0:8}" = "$today" ]; then
+    local serial_date=$(echo "$current_serial" | cut -c1-8)
+    if [ "$serial_date" = "$today" ]; then
         # Same day, increment counter
-        local counter="${current_serial:8:2}"
-        counter=$((10#$counter + 1))
+        local counter=$(echo "$current_serial" | cut -c9-10)
+        # Remove leading zero and increment
+        counter=$(expr "$counter" + 1 2>/dev/null || echo 1)
         new_serial="${today}$(printf '%02d' $counter)"
     else
         # New day, reset counter
