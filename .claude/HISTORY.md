@@ -2140,3 +2140,35 @@ git checkout HEAD -- index.html
 
 **Files Modified:**
 - `secubox-app-mailserver/files/usr/sbin/mailctl` (cmd_firewall_setup function)
+
+### 2026-02-17: v0.20.6 Release - Mailserver, Nextcloud & DNS Master Fixes
+
+**Mailserver Dovecot Permissions:**
+- Fixed startup script: create login/token-login/empty directories with correct ownership
+- Set root:dovenull ownership on login directories (mode 0750)
+- Remove stale auth-token-secret.dat on startup (prevents "compromised token" errors)
+- Fixed users.sh: user_add and user_passwd now set correct permissions (644 root:dovecot)
+- Password reset no longer breaks authentication
+
+**Nextcloud Nginx Fix:**
+- Removed overly aggressive `/apps/` location block that was breaking SVG icons
+- Static files (.svg, .css, .js) now served correctly
+- Added cron job setup for background tasks (every 5 minutes)
+
+**DNS Master POSIX Compatibility:**
+- Fixed bump_serial() function for busybox ash compatibility
+- Replaced bash-specific ${var:0:8} with POSIX cut -c1-8
+- Replaced $((10#$var + 1)) with expr
+- del_record now works via RPCD
+
+**LXC Container Auto-Start:**
+- Enabled lxc.start.auto = 1 for mailserver, roundcube, nextcloud
+- Containers now survive reboots
+
+**Files Modified:**
+- `secubox-app-mailserver/files/usr/sbin/mailserverctl`
+- `secubox-app-mailserver/files/usr/lib/mailserver/users.sh`
+- `secubox-app-nextcloud/files/usr/sbin/nextcloudctl`
+- `secubox-app-dns-master/files/usr/sbin/dnsmaster`
+
+**Release:** v0.20.6
