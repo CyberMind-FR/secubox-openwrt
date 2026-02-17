@@ -172,10 +172,12 @@ cmd_alias() {
 
 	case "$action" in
 		add)   alias_add "$@" ;;
+		del)   alias_del "$@" ;;
 		list)  alias_list ;;
 		*)
 			echo "Alias commands:"
 			echo "  alias add <alias> <target>  Add email alias"
+			echo "  alias del <alias>           Delete email alias"
 			echo "  alias list                  List aliases"
 			;;
 	esac
@@ -587,6 +589,400 @@ EOF
 }
 
 # ============================================================================
+# Autoconfig / Autodiscover Setup
+# ============================================================================
+
+cmd_autoconfig_setup() {
+	local domain=$(uci_get main.domain)
+	local hostname=$(uci_get main.hostname)
+	hostname="${hostname:-mail}"
+	local mail_fqdn="${hostname}.${domain}"
+	local data_path=$(uci_get main.data_path)
+	data_path="${data_path:-/srv/mailserver}"
+
+	if [ -z "$domain" ]; then
+		error "Domain not configured. Set with: uci set mailserver.main.domain=example.com"
+		return 1
+	fi
+
+	log "Setting up mail autoconfig for $domain..."
+
+	local autoconfig_dir="$data_path/autoconfig"
+	mkdir -p "$autoconfig_dir/mail"
+	mkdir -p "$autoconfig_dir/autodiscover"
+
+	# Thunderbird autoconfig (config-v1.1.xml)
+	cat > "$autoconfig_dir/mail/config-v1.1.xml" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<clientConfig version="1.1">
+  <emailProvider id="$domain">
+    <domain>$domain</domain>
+    <displayName>$domain Mail</displayName>
+    <displayShortName>$domain</displayShortName>
+    <incomingServer type="imap">
+      <hostname>$mail_fqdn</hostname>
+      <port>993</port>
+      <socketType>SSL</socketType>
+      <authentication>password-cleartext</authentication>
+      <username>%EMAILADDRESS%</username>
+    </incomingServer>
+    <incomingServer type="imap">
+      <hostname>$mail_fqdn</hostname>
+      <port>143</port>
+      <socketType>STARTTLS</socketType>
+      <authentication>password-cleartext</authentication>
+      <username>%EMAILADDRESS%</username>
+    </incomingServer>
+    <outgoingServer type="smtp">
+      <hostname>$mail_fqdn</hostname>
+      <port>587</port>
+      <socketType>STARTTLS</socketType>
+      <authentication>password-cleartext</authentication>
+      <username>%EMAILADDRESS%</username>
+    </outgoingServer>
+    <outgoingServer type="smtp">
+      <hostname>$mail_fqdn</hostname>
+      <port>465</port>
+      <socketType>SSL</socketType>
+      <authentication>password-cleartext</authentication>
+      <username>%EMAILADDRESS%</username>
+    </outgoingServer>
+  </emailProvider>
+</clientConfig>
+EOF
+
+	# Outlook/ActiveSync autodiscover (autodiscover.xml)
+	cat > "$autoconfig_dir/autodiscover/autodiscover.xml" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<Autodiscover xmlns="http://schemas.microsoft.com/exchange/autodiscover/responseschema/2006">
+  <Response xmlns="http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a">
+    <Account>
+      <AccountType>email</AccountType>
+      <Action>settings</Action>
+      <Protocol>
+        <Type>IMAP</Type>
+        <Server>$mail_fqdn</Server>
+        <Port>993</Port>
+        <DomainRequired>off</DomainRequired>
+        <LoginName></LoginName>
+        <SPA>off</SPA>
+        <SSL>on</SSL>
+        <AuthRequired>on</AuthRequired>
+      </Protocol>
+      <Protocol>
+        <Type>SMTP</Type>
+        <Server>$mail_fqdn</Server>
+        <Port>587</Port>
+        <DomainRequired>off</DomainRequired>
+        <LoginName></LoginName>
+        <SPA>off</SPA>
+        <Encryption>TLS</Encryption>
+        <AuthRequired>on</AuthRequired>
+        <UsePOPAuth>on</UsePOPAuth>
+        <SMTPLast>off</SMTPLast>
+      </Protocol>
+    </Account>
+  </Response>
+</Autodiscover>
+EOF
+
+	# Apple mobileconfig profile
+	cat > "$autoconfig_dir/$domain.mobileconfig" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>PayloadContent</key>
+  <array>
+    <dict>
+      <key>EmailAccountDescription</key>
+      <string>$domain Mail</string>
+      <key>EmailAccountName</key>
+      <string>$domain</string>
+      <key>EmailAccountType</key>
+      <string>EmailTypeIMAP</string>
+      <key>EmailAddress</key>
+      <string></string>
+      <key>IncomingMailServerAuthentication</key>
+      <string>EmailAuthPassword</string>
+      <key>IncomingMailServerHostName</key>
+      <string>$mail_fqdn</string>
+      <key>IncomingMailServerPortNumber</key>
+      <integer>993</integer>
+      <key>IncomingMailServerUseSSL</key>
+      <true/>
+      <key>IncomingMailServerUsername</key>
+      <string></string>
+      <key>OutgoingMailServerAuthentication</key>
+      <string>EmailAuthPassword</string>
+      <key>OutgoingMailServerHostName</key>
+      <string>$mail_fqdn</string>
+      <key>OutgoingMailServerPortNumber</key>
+      <integer>587</integer>
+      <key>OutgoingMailServerUseSSL</key>
+      <true/>
+      <key>OutgoingMailServerUsername</key>
+      <string></string>
+      <key>OutgoingPasswordSameAsIncomingPassword</key>
+      <true/>
+      <key>PayloadDescription</key>
+      <string>Email account configuration for $domain</string>
+      <key>PayloadDisplayName</key>
+      <string>$domain Email</string>
+      <key>PayloadIdentifier</key>
+      <string>com.$domain.email</string>
+      <key>PayloadType</key>
+      <string>com.apple.mail.managed</string>
+      <key>PayloadUUID</key>
+      <string>$(cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "12345678-1234-1234-1234-123456789012")</string>
+      <key>PayloadVersion</key>
+      <integer>1</integer>
+    </dict>
+  </array>
+  <key>PayloadDisplayName</key>
+  <string>$domain Mail Configuration</string>
+  <key>PayloadIdentifier</key>
+  <string>com.$domain.profile</string>
+  <key>PayloadType</key>
+  <string>Configuration</string>
+  <key>PayloadUUID</key>
+  <string>$(cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "87654321-4321-4321-4321-210987654321")</string>
+  <key>PayloadVersion</key>
+  <integer>1</integer>
+</dict>
+</plist>
+EOF
+
+	log "Autoconfig files created in $autoconfig_dir"
+
+	# Setup DNS SRV records via dnsctl if available
+	if command -v dnsctl >/dev/null 2>&1; then
+		log "Setting up DNS autodiscover records..."
+
+		# Autoconfig/Autodiscover CNAME records
+		# Syntax: dnsctl add <TYPE> <subdomain> <target>
+		dnsctl add CNAME "autoconfig" "$mail_fqdn." 2>/dev/null || true
+		dnsctl add CNAME "autodiscover" "$mail_fqdn." 2>/dev/null || true
+
+		# SRV records for autodiscover (if supported by provider)
+		dnsctl add SRV "_autodiscover._tcp" "0 1 443 $mail_fqdn." 2>/dev/null || true
+		dnsctl add SRV "_imaps._tcp" "0 1 993 $mail_fqdn." 2>/dev/null || true
+		dnsctl add SRV "_submission._tcp" "0 1 587 $mail_fqdn." 2>/dev/null || true
+
+		log "DNS records configured"
+	else
+		warn "dnsctl not found - add DNS records manually:"
+		echo "  autoconfig.$domain    CNAME  $mail_fqdn"
+		echo "  autodiscover.$domain  CNAME  $mail_fqdn"
+		echo "  _autodiscover._tcp.$domain  SRV  0 1 443 $mail_fqdn"
+		echo "  _imaps._tcp.$domain         SRV  0 1 993 $mail_fqdn"
+		echo "  _submission._tcp.$domain    SRV  0 1 587 $mail_fqdn"
+	fi
+
+	# Register with HAProxy for autoconfig serving
+	if [ -x /usr/sbin/haproxyctl ]; then
+		log "Registering autoconfig with HAProxy..."
+
+		# Check if autoconfig vhost exists
+		local vhost_exists=$(uci show haproxy 2>/dev/null | grep "autoconfig_${domain//\./_}" || true)
+
+		if [ -z "$vhost_exists" ]; then
+			# Create a simple static file server for autoconfig
+			# HAProxy will serve these files
+			uci add haproxy vhost >/dev/null
+			uci set haproxy.@vhost[-1].name="autoconfig_${domain//\./_}"
+			uci set haproxy.@vhost[-1].domain="autoconfig.$domain"
+			uci set haproxy.@vhost[-1].backend="autoconfig_backend"
+			uci set haproxy.@vhost[-1].ssl='1'
+			uci set haproxy.@vhost[-1].acme='1'
+			uci set haproxy.@vhost[-1].enabled='1'
+
+			uci add haproxy vhost >/dev/null
+			uci set haproxy.@vhost[-1].name="autodiscover_${domain//\./_}"
+			uci set haproxy.@vhost[-1].domain="autodiscover.$domain"
+			uci set haproxy.@vhost[-1].backend="autoconfig_backend"
+			uci set haproxy.@vhost[-1].ssl='1'
+			uci set haproxy.@vhost[-1].acme='1'
+			uci set haproxy.@vhost[-1].enabled='1'
+
+			uci commit haproxy
+			log "HAProxy vhosts created for autoconfig.$domain and autodiscover.$domain"
+		fi
+	fi
+
+	log ""
+	log "Autoconfig setup complete!"
+	log ""
+	log "Thunderbird: https://autoconfig.$domain/mail/config-v1.1.xml"
+	log "Outlook:     https://autodiscover.$domain/autodiscover/autodiscover.xml"
+	log "Apple:       https://$mail_fqdn/$domain.mobileconfig"
+	log ""
+	log "DNS records needed:"
+	log "  autoconfig.$domain    CNAME  $mail_fqdn"
+	log "  autodiscover.$domain  CNAME  $mail_fqdn"
+}
+
+cmd_autoconfig_status() {
+	local domain=$(uci_get main.domain)
+	local hostname=$(uci_get main.hostname)
+	hostname="${hostname:-mail}"
+	local data_path=$(uci_get main.data_path)
+	data_path="${data_path:-/srv/mailserver}"
+	local autoconfig_dir="$data_path/autoconfig"
+
+	echo "Autoconfig Status for $domain"
+	echo "=============================="
+	echo ""
+
+	if [ -f "$autoconfig_dir/mail/config-v1.1.xml" ]; then
+		echo "Thunderbird config: OK"
+	else
+		echo "Thunderbird config: NOT FOUND"
+	fi
+
+	if [ -f "$autoconfig_dir/autodiscover/autodiscover.xml" ]; then
+		echo "Outlook config:     OK"
+	else
+		echo "Outlook config:     NOT FOUND"
+	fi
+
+	if [ -f "$autoconfig_dir/$domain.mobileconfig" ]; then
+		echo "Apple config:       OK"
+	else
+		echo "Apple config:       NOT FOUND"
+	fi
+
+	echo ""
+	echo "DNS Check:"
+	echo "----------"
+	host autoconfig.$domain 2>/dev/null | head -1 || echo "autoconfig.$domain: NOT RESOLVED"
+	host autodiscover.$domain 2>/dev/null | head -1 || echo "autodiscover.$domain: NOT RESOLVED"
+}
+
+# ============================================================================
+# Firewall Setup
+# ============================================================================
+
+cmd_firewall_setup() {
+	local container=$(uci_get main.container)
+	container="${container:-mailserver}"
+
+	# Get mail server IP
+	local mail_ip=$(lxc-info -n "$container" -iH 2>/dev/null | head -1)
+	if [ -z "$mail_ip" ]; then
+		mail_ip="192.168.255.30"
+		warn "Container not running, using default IP: $mail_ip"
+	fi
+
+	# Get LAN subnet
+	local lan_ip=$(uci -q get network.lan.ipaddr)
+	local lan_subnet="${lan_ip%.*}.0/24"
+
+	log "Setting up mail firewall rules..."
+	log "Mail server IP: $mail_ip"
+	log "LAN subnet: $lan_subnet (excluded from redirect)"
+
+	# Add UCI firewall rules for input (accept from WAN)
+	log "Adding input rules for mail ports..."
+	for port in 25 143 465 587 993; do
+		local rule_name="Mail-Port-${port}"
+		# Check if rule already exists
+		local exists=$(uci show firewall 2>/dev/null | grep "name='${rule_name}'" || true)
+		if [ -z "$exists" ]; then
+			uci add firewall rule >/dev/null
+			uci set firewall.@rule[-1].name="$rule_name"
+			uci set firewall.@rule[-1].src='wan'
+			uci set firewall.@rule[-1].proto='tcp'
+			uci set firewall.@rule[-1].dest_port="$port"
+			uci set firewall.@rule[-1].target='ACCEPT'
+		fi
+	done
+
+	# Add UCI firewall rules for forward (WAN -> LAN mailserver)
+	log "Adding forward rules for mail ports..."
+	for port in 25 143 465 587 993; do
+		local rule_name="Forward-Mail-${port}"
+		# Check if rule already exists
+		local exists=$(uci show firewall 2>/dev/null | grep "name='${rule_name}'" || true)
+		if [ -z "$exists" ]; then
+			uci add firewall rule >/dev/null
+			uci set firewall.@rule[-1].name="$rule_name"
+			uci set firewall.@rule[-1].src='wan'
+			uci set firewall.@rule[-1].dest='lan'
+			uci set firewall.@rule[-1].proto='tcp'
+			uci set firewall.@rule[-1].dest_port="$port"
+			uci set firewall.@rule[-1].target='ACCEPT'
+		fi
+	done
+
+	uci commit firewall
+
+	# Create firewall.user rules for DNAT
+	local fw_file="/etc/firewall.user"
+	local fw_backup="${fw_file}.bak"
+
+	# Backup existing file
+	[ -f "$fw_file" ] && cp "$fw_file" "$fw_backup"
+
+	# Remove old mail rules and add new ones
+	local tmpfile="/tmp/firewall.user.$$"
+	if [ -f "$fw_file" ]; then
+		grep -v "mailserver\|192.168.255.30\|dport 143\|dport 993\|dport 25\|dport 465\|dport 587" "$fw_file" > "$tmpfile" 2>/dev/null || true
+	else
+		touch "$tmpfile"
+	fi
+
+	cat >> "$tmpfile" << EOF
+
+# SecuBox Mail Server Firewall Rules
+# Redirect mail ports to local mailserver - EXCLUDING LAN clients
+# LAN clients can still reach external mail servers (OVH, Gmail, etc.)
+iptables -t nat -A PREROUTING ! -s $lan_subnet -p tcp --dport 143 -j DNAT --to-destination ${mail_ip}:143
+iptables -t nat -A PREROUTING ! -s $lan_subnet -p tcp --dport 993 -j DNAT --to-destination ${mail_ip}:993
+iptables -t nat -A PREROUTING ! -s $lan_subnet -p tcp --dport 25 -j DNAT --to-destination ${mail_ip}:25
+iptables -t nat -A PREROUTING ! -s $lan_subnet -p tcp --dport 465 -j DNAT --to-destination ${mail_ip}:465
+iptables -t nat -A PREROUTING ! -s $lan_subnet -p tcp --dport 587 -j DNAT --to-destination ${mail_ip}:587
+
+# Allow forwarding to mailserver
+iptables -A FORWARD -d $mail_ip -p tcp -m multiport --dports 25,143,465,587,993 -j ACCEPT
+EOF
+
+	mv "$tmpfile" "$fw_file"
+	chmod 644 "$fw_file"
+
+	# Apply rules immediately (firewall reload runs firewall.user automatically)
+	log "Applying firewall rules..."
+	/etc/init.d/firewall reload 2>/dev/null
+
+	log "Firewall setup complete"
+	log "WAN traffic on mail ports -> redirected to local mailserver"
+	log "LAN clients -> can reach external mail servers directly"
+}
+
+cmd_firewall_clear() {
+	log "Removing mail firewall rules..."
+
+	# Remove DNAT rules
+	for port in 143 993 25 465 587; do
+		iptables -t nat -D PREROUTING -p tcp --dport $port -j DNAT --to-destination 192.168.255.30:$port 2>/dev/null || true
+		# Also try with ! -s prefix
+		for subnet in "192.168.255.0/24" "192.168.1.0/24" "10.0.0.0/8"; do
+			iptables -t nat -D PREROUTING ! -s $subnet -p tcp --dport $port -j DNAT --to-destination 192.168.255.30:$port 2>/dev/null || true
+		done
+	done
+
+	# Remove from firewall.user
+	local fw_file="/etc/firewall.user"
+	if [ -f "$fw_file" ]; then
+		local tmpfile="/tmp/firewall.user.$$"
+		grep -v "mailserver\|192.168.255.30\|dport 143\|dport 993\|dport 25\|dport 465\|dport 587" "$fw_file" > "$tmpfile" 2>/dev/null || true
+		mv "$tmpfile" "$fw_file"
+	fi
+
+	log "Mail firewall rules removed"
+}
+
+# ============================================================================
 # Help
 # ============================================================================
 
@@ -601,6 +997,10 @@ Setup:
   uninstall            Remove mail server
   dns-setup            Set up MX/SPF/DKIM/DMARC via dnsctl
   ssl-setup            Obtain SSL certificate
+  firewall-setup       Setup mail port forwarding (WAN only)
+  firewall-clear       Remove mail firewall rules
+  autoconfig-setup     Setup autodiscover for mail clients
+  autoconfig-status    Check autoconfig status
 
 Service:
   start                Start mail server
@@ -640,6 +1040,8 @@ Diagnostics:
   ssl-status           Show SSL cert info
   fix-postfix          Fix LMDB maps and DNS resolution
   fix-ports            Enable submission/smtps/pop3s ports
+  firewall-setup       Setup mail port forwarding (WAN only)
+  firewall-clear       Remove mail firewall rules
 
 Examples:
   mailctl install
@@ -673,6 +1075,10 @@ case "${1:-}" in
 	report)      shift; cmd_report "$@" ;;
 	fix-postfix) shift; cmd_fix_postfix "$@" ;;
 	fix-ports)   shift; cmd_fix_ports "$@" ;;
+	firewall-setup) shift; cmd_firewall_setup "$@" ;;
+	firewall-clear) shift; cmd_firewall_clear "$@" ;;
+	autoconfig-setup) shift; cmd_autoconfig_setup "$@" ;;
+	autoconfig-status) shift; cmd_autoconfig_status "$@" ;;
 	help|--help|-h|'') show_help ;;
 	*)           error "Unknown command: $1"; show_help >&2; exit 1 ;;
 esac

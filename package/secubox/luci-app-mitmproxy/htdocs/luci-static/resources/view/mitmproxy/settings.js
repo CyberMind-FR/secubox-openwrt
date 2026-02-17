@@ -166,6 +166,63 @@ return view.extend({
 		o.description = _('Log all requests (not just threats) for analysis');
 		o.depends('enabled', '1');
 
+		// Auto-ban Settings
+		s = m.section(form.TypedSection, 'autoban', _('Auto-ban Settings'));
+		s.anonymous = true;
+		s.description = _('Automatically ban IPs that trigger threat detection. Works with CrowdSec for distributed blocking.');
+
+		o = s.option(form.Flag, 'enabled', _('Enable Auto-ban'));
+		o.description = _('Automatically ban IPs that match threat patterns');
+		o.default = '1';
+		o.rmempty = false;
+
+		o = s.option(form.ListValue, 'sensitivity', _('Sensitivity Level'));
+		o.description = _('Controls how quickly IPs are banned. Strict: immediate ban on first threat. Moderate: ban after 3 threats in 5 minutes. Permissive: ban after 5 threats in 1 hour.');
+		o.value('strict', _('Strict (Immediate ban)'));
+		o.value('moderate', _('Moderate (3 threats / 5 min)'));
+		o.value('permissive', _('Permissive (5 threats / 1 hour)'));
+		o.default = 'moderate';
+		o.depends('enabled', '1');
+
+		o = s.option(form.ListValue, 'min_severity', _('Minimum Severity'));
+		o.description = _('Minimum threat severity level to trigger auto-ban');
+		o.value('low', _('Low'));
+		o.value('medium', _('Medium'));
+		o.value('high', _('High'));
+		o.value('critical', _('Critical'));
+		o.default = 'high';
+		o.depends('enabled', '1');
+
+		o = s.option(form.Value, 'ban_duration', _('Ban Duration'));
+		o.description = _('How long to ban offending IPs (e.g., 1h, 4h, 24h, 7d)');
+		o.default = '4h';
+		o.depends('enabled', '1');
+
+		o = s.option(form.Flag, 'ban_sqli', _('Ban SQL Injection'));
+		o.default = '1';
+		o.depends('enabled', '1');
+
+		o = s.option(form.Flag, 'ban_cve_exploits', _('Ban CVE Exploits'));
+		o.default = '1';
+		o.depends('enabled', '1');
+
+		o = s.option(form.Flag, 'ban_scanners', _('Ban Scanners'));
+		o.description = _('Ban known vulnerability scanners (Nikto, SQLMap, etc.)');
+		o.default = '1';
+		o.depends('enabled', '1');
+
+		o = s.option(form.Flag, 'ban_traversal', _('Ban Path Traversal'));
+		o.default = '1';
+		o.depends('enabled', '1');
+
+		o = s.option(form.Flag, 'ban_cmdi', _('Ban Command Injection'));
+		o.default = '1';
+		o.depends('enabled', '1');
+
+		o = s.option(form.DynamicList, 'whitelist_bots', _('Whitelisted Bots'));
+		o.description = _('Bot user-agents to whitelist (e.g., google, bing, facebook)');
+		o.depends('enabled', '1');
+
 		// HAProxy Router
 		s = m.section(form.TypedSection, 'haproxy_router', _('HAProxy Backend Inspection'));
 		s.anonymous = true;

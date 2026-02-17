@@ -162,6 +162,19 @@ Gitea Integration:
   gitea setup [instance]   Configure git credentials
   gitea clone [instance]   Clone content repo
   gitea sync [instance]    Pull latest content
+  gitea push [instance]    Push changes to Gitea
+
+GitHub Integration:
+  github clone <url> [instance] [branch]  Clone from GitHub
+
+Backup/Restore:
+  backup [instance] [name]     Create backup
+  backup list                  List all backups
+  backup delete <name>         Delete a backup
+  restore <name> [instance]    Restore from backup
+
+Quick Commands:
+  quick-publish [instance]     Clean, build, and publish
 
 Utility:
   shell               Open shell in container
@@ -1171,6 +1184,293 @@ cmd_gitea_sync() {
 	log_info "Content synced for '$instance'"
 }
 
+cmd_gitea_push() {
+	require_root
+	load_config
+
+	local instance="${1:-default}"
+	local message="${2:-Auto-commit from SecuBox}"
+	load_instance_config "$instance" || { log_error "Instance not found"; return 1; }
+
+	local content_path="$instance_path/content"
+	[ -d "$content_path/.git" ] || { log_error "Content not cloned"; return 1; }
+
+	log_info "Pushing changes for '$instance'..."
+	cd "$content_path"
+	git add -A
+	git commit -m "$message" 2>/dev/null || log_info "Nothing to commit"
+	git push
+
+	log_info "Content pushed for '$instance'"
+}
+
+# GitHub integration (public repos)
+cmd_github_clone() {
+	require_root
+	load_config
+
+	local repo_url="$1"
+	local instance="${2:-default}"
+	local branch="${3:-main}"
+
+	[ -z "$repo_url" ] && { log_error "GitHub repo URL required"; return 1; }
+	load_instance_config "$instance" || {
+		log_info "Creating instance '$instance'..."
+		cmd_instance_create "$instance"
+		load_instance_config "$instance"
+	}
+
+	if ! lxc_running; then
+		log_error "Container not running"
+		return 1
+	fi
+
+	local content_path="$instance_path/content"
+	log_info "Cloning from GitHub: $repo_url (branch: $branch)"
+
+	ensure_dir "$(dirname "$content_path")"
+	rm -rf "$content_path"
+
+	git clone -b "$branch" "$repo_url" "$content_path" || {
+		log_error "Failed to clone from GitHub"
+		return 1
+	}
+
+	# Check if content is a full hexo site
+	if [ -f "$content_path/package.json" ] && [ -d "$content_path/source" ]; then
+		log_info "Content is a complete Hexo site, linking..."
+		lxc_exec sh -c "
+			rm -rf /opt/hexojs/instances/$instance/site
+			ln -sf /opt/hexojs/instances/$instance/content /opt/hexojs/instances/$instance/site
+			cd /opt/hexojs/instances/$instance/site && npm install
+		"
+	fi
+
+	log_info "GitHub repo cloned for instance '$instance'"
+}
+
+# Backup/Restore commands
+cmd_backup() {
+	require_root
+	load_config
+
+	local instance="${1:-default}"
+	local backup_name="${2:-$(date +%Y%m%d-%H%M%S)}"
+
+	load_instance_config "$instance" || { log_error "Instance not found"; return 1; }
+
+	local backup_dir="$data_path/backups"
+	ensure_dir "$backup_dir"
+
+	local backup_file="$backup_dir/${instance}_${backup_name}.tar.gz"
+
+	if [ ! -d "$instance_site" ]; then
+		log_error "No site to backup for instance '$instance'"
+		return 1
+	fi
+
+	log_info "Creating backup: $backup_file"
+
+	# Backup site directory and config
+	tar -czf "$backup_file" \
+		-C "$instance_path" site \
+		-C /etc/config hexojs 2>/dev/null || {
+		log_error "Backup failed"
+		return 1
+	}
+
+	local size=$(du -h "$backup_file" | cut -f1)
+	log_info "Backup created: $backup_file ($size)"
+}
+
+cmd_restore() {
+	require_root
+	load_config
+
+	local backup_name="$1"
+	local instance="${2:-default}"
+
+	[ -z "$backup_name" ] && { log_error "Backup name required"; return 1; }
+
+	local backup_dir="$data_path/backups"
+	local backup_file="$backup_dir/$backup_name"
+
+	# Try with and without .tar.gz extension
+	[ -f "$backup_file" ] || backup_file="$backup_dir/${backup_name}.tar.gz"
+	[ -f "$backup_file" ] || backup_file="$backup_dir/${instance}_${backup_name}.tar.gz"
+	[ -f "$backup_file" ] || { log_error "Backup not found: $backup_name"; return 1; }
+
+	load_instance_config "$instance" || {
+		log_info "Creating instance '$instance'..."
+		cmd_instance_create "$instance"
+		load_instance_config "$instance"
+	}
+
+	# Stop instance if running
+	cmd_instance_stop "$instance" 2>/dev/null
+
+	log_info "Restoring from: $backup_file"
+
+	# Remove existing site
+	rm -rf "$instance_site"
+	ensure_dir "$instance_path"
+
+	# Extract backup
+	tar -xzf "$backup_file" -C "$instance_path" || {
+		log_error "Restore failed"
+		return 1
+	}
+
+	log_info "Backup restored for instance '$instance'"
+	log_info "Start with: hexoctl instance start $instance"
+}
+
+cmd_backup_list() {
+	load_config
+
+	local backup_dir="$data_path/backups"
+	[ -d "$backup_dir" ] || { echo "[]"; return; }
+
+	echo "["
+	local first=1
+	for f in "$backup_dir"/*.tar.gz; do
+		[ -f "$f" ] || continue
+		local name=$(basename "$f" .tar.gz)
+		local size=$(du -h "$f" | cut -f1)
+		local ts=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null)
+
+		[ "$first" = "1" ] || echo ","
+		first=0
+		printf '  {"name": "%s", "size": "%s", "timestamp": %s}' "$name" "$size" "${ts:-0}"
+	done
+	echo ""
+	echo "]"
+}
+
+cmd_backup_delete() {
+	require_root
+	load_config
+
+	local backup_name="$1"
+	[ -z "$backup_name" ] && { log_error "Backup name required"; return 1; }
+
+	local backup_dir="$data_path/backups"
+	local backup_file="$backup_dir/$backup_name"
+
+	[ -f "$backup_file" ] || backup_file="$backup_dir/${backup_name}.tar.gz"
+	[ -f "$backup_file" ] || { log_error "Backup not found: $backup_name"; return 1; }
+
+	rm -f "$backup_file"
+	log_info "Backup deleted: $backup_name"
+}
+
+# Quick publish (build + deploy in one command)
+cmd_quick_publish() {
+	require_root
+	load_config
+
+	local instance="${1:-default}"
+	load_instance_config "$instance" || { log_error "Instance not found"; return 1; }
+
+	if ! lxc_running; then
+		log_error "Container not running"
+		return 1
+	fi
+
+	log_info "Quick publish for '$instance'..."
+
+	# Clean, build, publish
+	lxc_exec sh -c "cd /opt/hexojs/instances/$instance/site && hexo clean && hexo generate" || {
+		log_error "Build failed"
+		return 1
+	}
+
+	cmd_publish "$instance"
+	log_info "Quick publish complete!"
+}
+
+# Status JSON (for RPCD)
+cmd_status_json() {
+	load_config
+
+	local enabled="$(uci_get main.enabled)"
+	local running="false"
+	lxc_running && running="true"
+
+	local installed="false"
+	lxc_exists && installed="true"
+
+	cat << EOF
+{
+  "enabled": $([ "$enabled" = "1" ] && echo true || echo false),
+  "running": $running,
+  "installed": $installed,
+  "data_path": "$data_path",
+  "memory_limit": "$memory_limit",
+  "instances": [
+EOF
+
+	local first=1
+	for instance in $(get_enabled_instances); do
+		load_instance_config "$instance" || continue
+		local inst_running="false"
+		if [ "$running" = "true" ]; then
+			local pid=$(lxc_exec cat /var/run/hexo/$instance.pid 2>/dev/null)
+			[ -n "$pid" ] && inst_running="true"
+		fi
+		local site_exists="false"
+		[ -d "$instance_site" ] && site_exists="true"
+
+		[ "$first" = "1" ] || printf ","
+		first=0
+		cat << EOF
+    {
+      "name": "$instance",
+      "enabled": $([ "$instance_enabled" = "1" ] && echo true || echo false),
+      "running": $inst_running,
+      "port": $instance_port,
+      "title": "$instance_title",
+      "theme": "$instance_theme",
+      "site_exists": $site_exists
+    }
+EOF
+	done
+
+	echo "  ]"
+	echo "}"
+}
+
+cmd_instance_list_json() {
+	load_config
+
+	echo "["
+	local first=1
+	for section in $(uci show hexojs 2>/dev/null | grep '=instance$' | cut -d'.' -f2 | cut -d'=' -f1); do
+		load_instance_config "$section"
+		local running="false"
+		if lxc_running && [ -f "$LXC_ROOTFS/var/run/hexo/${section}.pid" ]; then
+			running="true"
+		fi
+		local site_exists="false"
+		[ -d "$instance_site" ] && site_exists="true"
+
+		[ "$first" = "1" ] || echo ","
+		first=0
+		cat << EOF
+  {
+    "name": "$section",
+    "enabled": $([ "$instance_enabled" = "1" ] && echo true || echo false),
+    "running": $running,
+    "port": $instance_port,
+    "title": "$instance_title",
+    "theme": "$instance_theme",
+    "site_exists": $site_exists
+  }
+EOF
+	done
+	echo "]"
+}
+
 # Main
 case "${1:-}" in
 	install)    shift; cmd_install "$@" ;;
@@ -1238,9 +1538,35 @@ case "${1:-}" in
 			setup)  shift; cmd_gitea_setup "$@" ;;
 			clone)  shift; cmd_gitea_clone "$@" ;;
 			sync)   shift; cmd_gitea_sync "$@" ;;
-			*)      echo "Usage: hexoctl gitea {setup|clone|sync} [instance]" ;;
+			push)   shift; cmd_gitea_push "$@" ;;
+			*)      echo "Usage: hexoctl gitea {setup|clone|sync|push} [instance] [message]" ;;
 		esac
 		;;
+
+	github)
+		shift
+		case "${1:-}" in
+			clone)  shift; cmd_github_clone "$@" ;;
+			*)      echo "Usage: hexoctl github clone <repo_url> [instance] [branch]" ;;
+		esac
+		;;
+
+	backup)
+		shift
+		case "${1:-}" in
+			list)   shift; cmd_backup_list "$@" ;;
+			create) shift; cmd_backup "$@" ;;
+			delete) shift; cmd_backup_delete "$@" ;;
+			restore) shift; cmd_restore "$@" ;;
+			"")     cmd_backup "$@" ;;
+			*)      cmd_backup "$@" ;;
+		esac
+		;;
+
+	restore)    shift; cmd_restore "$@" ;;
+	quick-publish) shift; cmd_quick_publish "$@" ;;
+	status-json) cmd_status_json ;;
+	instance-list-json) cmd_instance_list_json ;;
 
 	*)          usage ;;
 esac

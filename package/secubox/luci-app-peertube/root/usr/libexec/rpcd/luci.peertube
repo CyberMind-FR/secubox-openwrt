@@ -1,0 +1,338 @@
+#!/bin/sh
+
+# RPCD backend for PeerTube LuCI app
+
+. /usr/share/libubox/jshn.sh
+
+PEERTUBECTL="/usr/sbin/peertubectl"
+
+# Helper to get UCI value
+uci_get() {
+	local section="$1"
+	local option="$2"
+	local default="$3"
+	local val
+	val=$(uci -q get "peertube.${section}.${option}")
+	echo "${val:-$default}"
+}
+
+# Get container status
+get_container_status() {
+	local state="not_installed"
+	local running="false"
+	local lxc_info=""
+
+	if [ -d "/srv/lxc/peertube" ]; then
+		state="installed"
+		lxc_info=$(lxc-info -n peertube 2>/dev/null)
+		if echo "$lxc_info" | grep -q "State:.*RUNNING"; then
+			running="true"
+		fi
+	fi
+
+	echo "$state $running"
+}
+
+# Method: status
+method_status() {
+	local enabled hostname port https live_enabled
+	local container_state running
+	local info
+
+	enabled=$(uci_get main enabled 0)
+	hostname=$(uci_get server hostname "peertube.local")
+	port=$(uci_get server port "9000")
+	https=$(uci_get server https "1")
+	live_enabled=$(uci_get live enabled "0")
+
+	info=$(get_container_status)
+	container_state=$(echo "$info" | awk '{print $1}')
+	running=$(echo "$info" | awk '{print $2}')
+
+	json_init
+	json_add_string "enabled" "$enabled"
+	json_add_string "container_state" "$container_state"
+	json_add_string "running" "$running"
+	json_add_string "hostname" "$hostname"
+	json_add_string "port" "$port"
+	json_add_string "https" "$https"
+	json_add_string "live_enabled" "$live_enabled"
+
+	# Get configured domain if emancipated
+	local domain haproxy
+	domain=$(uci_get network domain "")
+	haproxy=$(uci_get network haproxy "0")
+	json_add_string "domain" "$domain"
+	json_add_string "haproxy" "$haproxy"
+
+	# Get admin email
+	local admin_email
+	admin_email=$(uci_get admin email "admin@localhost")
+	json_add_string "admin_email" "$admin_email"
+
+	json_dump
+}
+
+# Method: start
+method_start() {
+	local output
+	output=$($PEERTUBECTL start 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "PeerTube started successfully"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: stop
+method_stop() {
+	local output
+	output=$($PEERTUBECTL stop 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "PeerTube stopped successfully"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: install
+method_install() {
+	local output
+	output=$($PEERTUBECTL install 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "PeerTube installed successfully"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: uninstall
+method_uninstall() {
+	local output
+	output=$($PEERTUBECTL uninstall 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "PeerTube uninstalled successfully"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: update
+method_update() {
+	local output
+	output=$($PEERTUBECTL update 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "PeerTube updated successfully"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: logs
+method_logs() {
+	local lines="${1:-50}"
+	local output
+
+	if [ -d "/srv/lxc/peertube" ]; then
+		output=$($PEERTUBECTL logs "$lines" 2>&1 | tail -n "$lines")
+	else
+		output="Container not installed"
+	fi
+
+	json_init
+	json_add_string "logs" "$output"
+	json_dump
+}
+
+# Method: emancipate
+method_emancipate() {
+	read -r input
+	json_load "$input"
+	json_get_var domain domain
+
+	if [ -z "$domain" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Domain is required"
+		json_dump
+		return
+	fi
+
+	local output
+	output=$($PEERTUBECTL emancipate "$domain" 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "PeerTube emancipated to $domain"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: live_enable
+method_live_enable() {
+	local output
+	output=$($PEERTUBECTL live enable 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Live streaming enabled"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: live_disable
+method_live_disable() {
+	local output
+	output=$($PEERTUBECTL live disable 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Live streaming disabled"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: configure_haproxy
+method_configure_haproxy() {
+	local output
+	output=$($PEERTUBECTL configure-haproxy 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "HAProxy configured for PeerTube"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# List available methods
+list_methods() {
+	json_init
+	json_add_object "status"
+	json_close_object
+	json_add_object "start"
+	json_close_object
+	json_add_object "stop"
+	json_close_object
+	json_add_object "install"
+	json_close_object
+	json_add_object "uninstall"
+	json_close_object
+	json_add_object "update"
+	json_close_object
+	json_add_object "logs"
+	json_add_int "lines" 50
+	json_close_object
+	json_add_object "emancipate"
+	json_add_string "domain" ""
+	json_close_object
+	json_add_object "live_enable"
+	json_close_object
+	json_add_object "live_disable"
+	json_close_object
+	json_add_object "configure_haproxy"
+	json_close_object
+	json_dump
+}
+
+# Main dispatcher
+case "$1" in
+	list)
+		list_methods
+		;;
+	call)
+		case "$2" in
+			status)
+				method_status
+				;;
+			start)
+				method_start
+				;;
+			stop)
+				method_stop
+				;;
+			install)
+				method_install
+				;;
+			uninstall)
+				method_uninstall
+				;;
+			update)
+				method_update
+				;;
+			logs)
+				read -r input
+				json_load "$input"
+				json_get_var lines lines
+				method_logs "${lines:-50}"
+				;;
+			emancipate)
+				method_emancipate
+				;;
+			live_enable)
+				method_live_enable
+				;;
+			live_disable)
+				method_live_disable
+				;;
+			configure_haproxy)
+				method_configure_haproxy
+				;;
+			*)
+				echo '{"error":"Method not found"}'
+				;;
+		esac
+		;;
+	*)
+		echo '{"error":"Invalid action"}'
+		;;
+esac

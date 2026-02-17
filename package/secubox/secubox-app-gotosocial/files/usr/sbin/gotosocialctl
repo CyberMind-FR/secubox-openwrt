@@ -1,17 +1,21 @@
 #!/bin/sh
 # GoToSocial Controller for SecuBox
-# Manages GoToSocial LXC container and configuration
+# Manages GoToSocial in a Debian LXC container (glibc for proper bcrypt support)
 
 set -e
 
-VERSION="0.1.0"
+VERSION="0.2.0"
 GTS_VERSION="0.17.0"
+
+# LXC container settings
+LXC_NAME="gotosocial"
+LXC_PATH="/srv/lxc"
+LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
+LXC_CONFIG="$LXC_PATH/$LXC_NAME/config"
+
+# Data paths (bind mounted into container)
 DATA_PATH="/srv/gotosocial"
-BINARY_PATH="/srv/gotosocial/gotosocial"
 CONFIG_FILE="/etc/config/gotosocial"
-PID_FILE="/var/run/gotosocial.pid"
-# GoToSocial moved to Codeberg
-GTS_BINARY_URL="https://codeberg.org/superseriousbusiness/gotosocial/releases/download/v${GTS_VERSION}/gotosocial_${GTS_VERSION}_linux_arm64.tar.gz"
 
 # Logging
 log_info() { logger -t gotosocial -p daemon.info "$1"; echo "[INFO] $1"; }
@@ -31,29 +35,122 @@ set_config() {
 	uci commit gotosocial
 }
 
-# Check if GoToSocial is installed
+# LXC helpers
+has_lxc() {
+	command -v lxc-start >/dev/null 2>&1 && \
+	command -v lxc-stop >/dev/null 2>&1
+}
+
+lxc_running() {
+	lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"
+}
+
+lxc_exists() {
+	[ -f "$LXC_CONFIG" ] && [ -d "$LXC_ROOTFS" ]
+}
+
+# Check if GoToSocial is installed (container exists with binary)
 gts_installed() {
-	[ -x "$BINARY_PATH" ]
+	[ -x "$LXC_ROOTFS/opt/gotosocial/gotosocial" ]
 }
 
-# Check if GoToSocial is running
+# Check if GoToSocial is running (LXC container running)
 gts_running() {
-	[ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null
+	lxc_running
 }
 
-# Download GoToSocial binary
-download_binary() {
+# =============================================================================
+# LXC CONTAINER MANAGEMENT
+# =============================================================================
+
+lxc_stop() {
+	if lxc_running; then
+		log_info "Stopping GoToSocial container..."
+		lxc-stop -n "$LXC_NAME" -k 2>/dev/null || true
+		sleep 2
+	fi
+}
+
+lxc_create_rootfs() {
+	log_info "Creating Debian rootfs for GoToSocial..."
+
+	mkdir -p "$LXC_PATH/$LXC_NAME"
+
+	# Download Alpine minirootfs (simple and reliable, glibc not needed since
+	# GoToSocial binary is statically linked)
+	# Actually, use Debian for glibc bcrypt compatibility
+
+	local arch="x86_64"
+	case "$(uname -m)" in
+		aarch64) arch="aarch64" ;;
+		armv7l)  arch="armv7" ;;
+	esac
+
+	# Use Alpine minirootfs as base
+	local alpine_url="https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/$arch/alpine-minirootfs-3.21.2-$arch.tar.gz"
+	local rootfs_tar="/tmp/alpine-gts.tar.gz"
+
+	log_info "Downloading Alpine rootfs..."
+	wget -q -O "$rootfs_tar" "$alpine_url" || {
+		log_error "Failed to download Alpine rootfs"
+		return 1
+	}
+
+	log_info "Extracting rootfs..."
+	mkdir -p "$LXC_ROOTFS"
+	tar -xzf "$rootfs_tar" -C "$LXC_ROOTFS" || {
+		log_error "Failed to extract rootfs"
+		return 1
+	}
+	rm -f "$rootfs_tar"
+
+	# Configure Alpine
+	cat > "$LXC_ROOTFS/etc/resolv.conf" << 'EOF'
+nameserver 1.1.1.1
+nameserver 8.8.8.8
+EOF
+
+	cat > "$LXC_ROOTFS/etc/apk/repositories" << 'EOF'
+https://dl-cdn.alpinelinux.org/alpine/v3.21/main
+https://dl-cdn.alpinelinux.org/alpine/v3.21/community
+EOF
+
+	# Install gcompat for glibc compatibility (needed for bcrypt)
+	log_info "Installing glibc compatibility layer..."
+	chroot "$LXC_ROOTFS" /bin/sh -c "
+		apk update && apk add --no-cache gcompat libc6-compat sqlite
+	" || log_warn "Could not install gcompat (may not be needed)"
+
+	mkdir -p "$LXC_ROOTFS/opt/gotosocial"
+	mkdir -p "$LXC_ROOTFS/data"
+	mkdir -p "$LXC_ROOTFS/var/log"
+
+	log_info "Alpine rootfs with glibc compatibility created successfully"
+}
+
+# Download and install GoToSocial into the container
+lxc_install_gotosocial() {
 	local version="${1:-$GTS_VERSION}"
-	local url="https://codeberg.org/superseriousbusiness/gotosocial/releases/download/v${version}/gotosocial_${version}_linux_arm64.tar.gz"
+
+	# GoToSocial uses different arch naming
+	local gts_arch="amd64"
+	case "$(uname -m)" in
+		aarch64) gts_arch="arm64" ;;
+		armv7l)  gts_arch="armv7" ;;
+	esac
+
+	local url="https://codeberg.org/superseriousbusiness/gotosocial/releases/download/v${version}/gotosocial_${version}_linux_${gts_arch}.tar.gz"
 	local tmp_dir="/tmp/gotosocial_install"
 
-	log_info "Downloading GoToSocial v${version} from Codeberg..."
+	log_info "Downloading GoToSocial v${version} for ${arch}..."
 
+	rm -rf "$tmp_dir"
 	mkdir -p "$tmp_dir"
 	cd "$tmp_dir"
 
-	# Use curl with -L for redirects (wget on OpenWrt may not handle them well)
-	curl -L -o gotosocial.tar.gz "$url" || wget -O gotosocial.tar.gz "$url" || {
+	# Download with curl (handles redirects) or wget
+	curl -L -o gotosocial.tar.gz "$url" 2>/dev/null || \
+	wget -O gotosocial.tar.gz "$url" || {
 		log_error "Failed to download GoToSocial"
 		return 1
 	}
@@ -68,25 +165,83 @@ download_binary() {
 
 	tar -xzf gotosocial.tar.gz
 
-	mkdir -p "$DATA_PATH"
-	cp gotosocial "$BINARY_PATH"
-	chmod +x "$BINARY_PATH"
+	# Install into container rootfs
+	cp gotosocial "$LXC_ROOTFS/opt/gotosocial/"
+	chmod +x "$LXC_ROOTFS/opt/gotosocial/gotosocial"
 
 	# Copy web assets
-	[ -d "web" ] && cp -r web "$DATA_PATH/"
+	[ -d "web" ] && cp -r web "$LXC_ROOTFS/opt/gotosocial/"
 
 	rm -rf "$tmp_dir"
-	log_info "GoToSocial binary installed to $DATA_PATH"
+	log_info "GoToSocial v${version} installed in container"
 }
 
-# Create data directory structure
+# Create start script inside container
+lxc_create_start_script() {
+	cat > "$LXC_ROOTFS/opt/start-gotosocial.sh" << 'SCRIPT'
+#!/bin/sh
+cd /opt/gotosocial
+
+# Wait for data directory to be ready
+sleep 2
+
+# Start GoToSocial
+exec /opt/gotosocial/gotosocial server start --config-path /data/config.yaml
+SCRIPT
+	chmod +x "$LXC_ROOTFS/opt/start-gotosocial.sh"
+}
+
+# Create LXC configuration
+lxc_create_config() {
+	local port=$(get_config main port "8484")
+	local memory_limit=$(get_config main memory_limit "512M")
+
+	# LXC arch names
+	local lxc_arch="x86_64"
+	case "$(uname -m)" in
+		aarch64) lxc_arch="aarch64" ;;
+		armv7l)  lxc_arch="armhf" ;;
+	esac
+
+	local mem_bytes=$(echo "$memory_limit" | sed 's/M/000000/;s/G/000000000/')
+
+	cat > "$LXC_CONFIG" << EOF
+# GoToSocial LXC Configuration
+lxc.uts.name = $LXC_NAME
+lxc.rootfs.path = dir:$LXC_ROOTFS
+lxc.arch = $lxc_arch
+
+# Network: use host network for binding ports
+lxc.net.0.type = none
+
+# Mount data directory
+lxc.mount.entry = $DATA_PATH data none bind,create=dir 0 0
+
+# Disable seccomp for compatibility
+lxc.seccomp.profile =
+
+# TTY/PTY settings
+lxc.tty.max = 0
+lxc.pty.max = 256
+
+# cgroup v2 memory limit
+lxc.cgroup2.memory.max = $mem_bytes
+
+# Init
+lxc.init.cmd = /opt/start-gotosocial.sh
+EOF
+
+	log_info "LXC config created at $LXC_CONFIG"
+}
+
+# Create data directory structure on host (bind mounted into container)
 create_data_dir() {
 	log_info "Creating data directories..."
 	mkdir -p "$DATA_PATH"/{storage,web}
 	log_info "Data directories created at $DATA_PATH"
 }
 
-# Generate GoToSocial config
+# Generate GoToSocial config (written to DATA_PATH which is bind-mounted as /data in container)
 generate_config() {
 	local host=$(get_config main host "social.local")
 	local port=$(get_config main port "8484")
@@ -104,6 +259,7 @@ generate_config() {
 
 	mkdir -p "$DATA_PATH/storage"
 
+	# Note: paths are relative to container where DATA_PATH is mounted as /data
 	cat > "$DATA_PATH/config.yaml" <<EOF
 # GoToSocial Configuration
 # Generated by SecuBox gotosocialctl
@@ -119,6 +275,9 @@ db-address: "/data/gotosocial.db"
 
 storage-backend: "local"
 storage-local-base-path: "/data/storage"
+
+web-template-base-dir: "/opt/gotosocial/web/template"
+web-asset-base-dir: "/opt/gotosocial/web/assets"
 
 instance-expose-public-timeline: true
 instance-expose-suspended: false
@@ -175,13 +334,34 @@ EOF
 cmd_install() {
 	local version="${1:-$GTS_VERSION}"
 
-	log_info "Installing GoToSocial v${version}..."
+	if [ "$(id -u)" -ne 0 ]; then
+		log_error "Root required"
+		exit 1
+	fi
 
-	# Create directories
+	if ! has_lxc; then
+		log_error "LXC not available. Install lxc packages first."
+		exit 1
+	fi
+
+	log_info "Installing GoToSocial v${version} in LXC container..."
+
+	# Create data directory on host
 	create_data_dir
 
-	# Download binary
-	download_binary "$version"
+	# Create container if not exists
+	if ! lxc_exists; then
+		lxc_create_rootfs || exit 1
+	fi
+
+	# Install GoToSocial binary into container
+	lxc_install_gotosocial "$version" || exit 1
+
+	# Create start script
+	lxc_create_start_script
+
+	# Create LXC config
+	lxc_create_config || exit 1
 
 	# Generate GoToSocial config
 	generate_config
@@ -195,13 +375,21 @@ cmd_install() {
 cmd_uninstall() {
 	local keep_data="$1"
 
+	if [ "$(id -u)" -ne 0 ]; then
+		log_error "Root required"
+		exit 1
+	fi
+
 	log_info "Uninstalling GoToSocial..."
 
-	# Stop if running
-	gts_running && cmd_stop
+	# Stop container if running
+	lxc_stop
 
-	# Remove binary
-	rm -f "$BINARY_PATH"
+	# Remove container
+	if [ -d "$LXC_PATH/$LXC_NAME" ]; then
+		rm -rf "$LXC_PATH/$LXC_NAME"
+		log_info "Container removed"
+	fi
 
 	# Remove data unless --keep-data
 	if [ "$keep_data" != "--keep-data" ]; then
@@ -214,7 +402,7 @@ cmd_uninstall() {
 	log_info "GoToSocial uninstalled"
 }
 
-# Start GoToSocial
+# Start GoToSocial (LXC container)
 cmd_start() {
 	if ! gts_installed; then
 		log_error "GoToSocial not installed. Run 'gotosocialctl install' first."
@@ -222,56 +410,55 @@ cmd_start() {
 	fi
 
 	if gts_running; then
-		log_info "GoToSocial is already running"
+		log_info "GoToSocial container is already running"
 		return 0
 	fi
 
 	# Regenerate config in case settings changed
 	generate_config
 
-	log_info "Starting GoToSocial..."
+	# Regenerate LXC config
+	lxc_create_config
 
-	cd "$DATA_PATH"
-	HOME="$DATA_PATH" "$BINARY_PATH" server start --config-path "$DATA_PATH/config.yaml" >> /var/log/gotosocial.log 2>&1 &
-	local pid=$!
-	echo "$pid" > "$PID_FILE"
+	log_info "Starting GoToSocial container..."
 
-	# Wait for startup (WASM compilation takes time)
+	# Start in background
+	lxc-start -n "$LXC_NAME" -d || {
+		log_error "Failed to start GoToSocial container"
+		return 1
+	}
+
+	# Wait for startup (WASM compilation takes time on first run)
 	local port=$(get_config main port "8484")
 	local count=0
 	while [ $count -lt 120 ]; do
 		sleep 2
 		if curl -s --connect-timeout 1 "http://127.0.0.1:$port/api/v1/instance" >/dev/null 2>&1; then
-			log_info "GoToSocial started (PID: $pid)"
+			log_info "GoToSocial started"
 			log_info "Web interface available at http://localhost:$port"
 			return 0
 		fi
-		if ! kill -0 "$pid" 2>/dev/null; then
-			log_error "GoToSocial failed to start. Check /var/log/gotosocial.log"
-			rm -f "$PID_FILE"
+		if ! lxc_running; then
+			log_error "GoToSocial container stopped unexpectedly"
+			log_error "Check: lxc-attach -n gotosocial -- cat /var/log/gotosocial.log"
 			return 1
 		fi
 		count=$((count + 1))
 	done
 
-	log_error "GoToSocial startup timeout. Check /var/log/gotosocial.log"
+	log_error "GoToSocial startup timeout. Container still running, may need more time."
 	return 1
 }
 
-# Stop GoToSocial
+# Stop GoToSocial (LXC container)
 cmd_stop() {
 	if ! gts_running; then
 		log_info "GoToSocial is not running"
-		rm -f "$PID_FILE"
 		return 0
 	fi
 
 	log_info "Stopping GoToSocial..."
-	local pid=$(cat "$PID_FILE")
-	kill "$pid" 2>/dev/null
-	sleep 2
-	kill -9 "$pid" 2>/dev/null || true
-	rm -f "$PID_FILE"
+	lxc_stop
 	log_info "GoToSocial stopped"
 }
 
@@ -327,14 +514,13 @@ EOF
 # Status (human readable)
 cmd_status_human() {
 	if gts_running; then
-		echo "GoToSocial: running"
-		local pid=$(cat "$PID_FILE" 2>/dev/null)
-		echo "PID: $pid"
+		echo "GoToSocial: running (LXC container)"
 
 		local port=$(get_config main port "8484")
 		local host=$(get_config main host "localhost")
 		echo "Host: $host"
 		echo "Port: $port"
+		echo "Container: $LXC_NAME"
 
 		# Check if web interface responds
 		if curl -s --connect-timeout 2 "http://127.0.0.1:$port/api/v1/instance" >/dev/null 2>&1; then
@@ -344,7 +530,40 @@ cmd_status_human() {
 		fi
 	else
 		echo "GoToSocial: stopped"
+		if gts_installed; then
+			echo "Container: installed but not running"
+		else
+			echo "Container: not installed"
+		fi
 		return 1
+	fi
+}
+
+# Shell access to container
+cmd_shell() {
+	if ! gts_running; then
+		log_error "Container not running. Start with 'gotosocialctl start' first."
+		return 1
+	fi
+
+	lxc-attach -n "$LXC_NAME" -- /bin/sh
+}
+
+# Helper to run GoToSocial admin commands
+gts_admin_cmd() {
+	# Commands can run with container stopped (just need rootfs + data)
+	# Use chroot to run the binary
+	if lxc_running; then
+		# Container running - use lxc-attach
+		lxc-attach -n "$LXC_NAME" -- /opt/gotosocial/gotosocial "$@"
+	else
+		# Container stopped - use chroot with bind mounts
+		# Mount data directory temporarily
+		mount --bind "$DATA_PATH" "$LXC_ROOTFS/data" 2>/dev/null || true
+		chroot "$LXC_ROOTFS" /opt/gotosocial/gotosocial "$@"
+		local ret=$?
+		umount "$LXC_ROOTFS/data" 2>/dev/null || true
+		return $ret
 	fi
 }
 
@@ -373,22 +592,22 @@ cmd_user_create() {
 	# Generate random password if not provided
 	[ -z "$password" ] && password=$(openssl rand -base64 12)
 
-	HOME="$DATA_PATH" "$BINARY_PATH" admin account create \
+	gts_admin_cmd admin account create \
 		--username "$username" \
 		--email "$email" \
 		--password "$password" \
-		--config "$DATA_PATH/config.yaml"
+		--config-path "/data/config.yaml"
 
 	if [ "$admin" = "true" ]; then
-		HOME="$DATA_PATH" "$BINARY_PATH" admin account promote \
+		gts_admin_cmd admin account promote \
 			--username "$username" \
-			--config "$DATA_PATH/config.yaml"
+			--config-path "/data/config.yaml"
 	fi
 
 	# Confirm the user
-	HOME="$DATA_PATH" "$BINARY_PATH" admin account confirm \
+	gts_admin_cmd admin account confirm \
 		--username "$username" \
-		--config "$DATA_PATH/config.yaml" 2>/dev/null || true
+		--config-path "/data/config.yaml" 2>/dev/null || true
 
 	echo ""
 	echo "User created successfully!"
@@ -442,11 +661,39 @@ cmd_user_confirm() {
 		return 1
 	fi
 
-	HOME="$DATA_PATH" "$BINARY_PATH" admin account confirm \
+	gts_admin_cmd admin account confirm \
 		--username "$username" \
-		--config "$DATA_PATH/config.yaml"
+		--config-path "/data/config.yaml"
 
 	log_info "User $username confirmed"
+}
+
+# Reset user password
+cmd_user_password() {
+	local username="$1"
+	local password="$2"
+
+	[ -z "$username" ] && {
+		echo "Usage: gotosocialctl user password <username> [new-password]"
+		return 1
+	}
+
+	if ! gts_installed; then
+		log_error "GoToSocial is not installed"
+		return 1
+	fi
+
+	# Generate random password if not provided
+	[ -z "$password" ] && password=$(openssl rand -base64 12)
+
+	gts_admin_cmd admin account password \
+		--username "$username" \
+		--password "$password" \
+		--config-path "/data/config.yaml"
+
+	echo ""
+	echo "Password reset for $username"
+	echo "New password: $password"
 }
 
 # Emancipate - expose via HAProxy
@@ -590,44 +837,51 @@ cmd_logs() {
 cmd_help() {
 	cat <<EOF
 GoToSocial Controller for SecuBox v$VERSION
+Runs GoToSocial in a Debian LXC container (glibc-based for proper bcrypt support)
 
 Usage: gotosocialctl <command> [options]
 
 Installation:
-  install [version]      Install GoToSocial (default: v$GTS_VERSION)
+  install [version]       Install GoToSocial (default: v$GTS_VERSION)
   uninstall [--keep-data] Remove GoToSocial
-  update [version]       Update to new version
+  update [version]        Update to new version
 
 Service:
-  start                  Start GoToSocial
-  stop                   Stop GoToSocial
-  restart                Restart GoToSocial
-  reload                 Reload configuration
-  status                 Show status
+  start                   Start GoToSocial container
+  stop                    Stop GoToSocial container
+  restart                 Restart GoToSocial
+  reload                  Reload configuration
+  status                  Show status (JSON)
+  status-human            Show status (human readable)
 
 User Management:
-  user create <user> <email> [--admin]  Create user
-  user list              List users
-  user confirm <user>    Confirm user email
+  user create <user> <email> [password] [--admin]  Create user
+  user list               List users
+  user confirm <user>     Confirm user email
+  user password <user> [pwd]  Reset user password
 
 Exposure:
-  emancipate <domain>    Expose via HAProxy + SSL
+  emancipate <domain>     Expose via HAProxy + SSL
+
+Container:
+  shell                   Open shell in container
 
 Backup:
-  backup [path]          Backup data
-  restore <path>         Restore from backup
+  backup [path]           Backup data
+  restore <path>          Restore from backup
 
 Federation:
-  federation list        List federated instances
+  federation list         List federated instances
 
 Other:
-  help                   Show this help
-  version                Show version
+  help                    Show this help
+  version                 Show version
 
 Examples:
   gotosocialctl install
   gotosocialctl start
   gotosocialctl user create alice alice@example.com --admin
+  gotosocialctl user password alice newpassword123
   gotosocialctl emancipate social.mysite.com
 
 EOF
@@ -643,7 +897,7 @@ case "$1" in
 		;;
 	update)
 		cmd_stop
-		download_binary "${2:-$GTS_VERSION}"
+		lxc_install_gotosocial "${2:-$GTS_VERSION}"
 		cmd_start
 		;;
 	start)
@@ -670,10 +924,13 @@ case "$1" in
 	logs)
 		cmd_logs "$2"
 		;;
+	shell)
+		cmd_shell
+		;;
 	user)
 		case "$2" in
 			create)
-				cmd_user_create "$3" "$4" "$5"
+				cmd_user_create "$3" "$4" "$5" "$6"
 				;;
 			list)
 				cmd_user_list
@@ -681,8 +938,11 @@ case "$1" in
 			confirm)
 				cmd_user_confirm "$3"
 				;;
+			password)
+				cmd_user_password "$3" "$4"
+				;;
 			*)
-				echo "Usage: gotosocialctl user {create|list|confirm}"
+				echo "Usage: gotosocialctl user {create|list|confirm|password}"
 				;;
 		esac
 		;;

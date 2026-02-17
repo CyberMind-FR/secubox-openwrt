@@ -1,0 +1,347 @@
+#!/bin/sh
+
+# RPCD backend for SecuBox Portal - Generative LuCI Tree
+
+. /usr/share/libubox/jshn.sh
+
+# Discover LuCI menu entries from menu.d JSON files
+discover_luci_menus() {
+	local menus=""
+	for f in /usr/share/luci/menu.d/*.json; do
+		[ -f "$f" ] || continue
+		# Extract paths from JSON - format: "admin/path": {...}
+		local paths=$(grep -oE '"admin/[^"]+":' "$f" 2>/dev/null | tr -d '":' | sort -u)
+		for p in $paths; do
+			menus="$menus $p"
+		done
+	done
+	echo "$menus" | tr ' ' '\n' | sort -u | grep -v '^$'
+}
+
+# Discover installed SecuBox packages
+discover_packages() {
+	opkg list-installed 2>/dev/null | grep -E '^(secubox|luci-app-)' | awk '{print $1}'
+}
+
+# Discover LXC containers
+discover_containers() {
+	ls /srv/lxc/ 2>/dev/null | while read c; do
+		local state="stopped"
+		if lxc-info -n "$c" 2>/dev/null | grep -q "State:.*RUNNING"; then
+			state="running"
+		fi
+		echo "$c:$state"
+	done
+}
+
+# Discover HAProxy vhosts
+discover_vhosts() {
+	uci show haproxy 2>/dev/null | grep "=vhost" | sed 's/haproxy\.//;s/=vhost//' | while read vh; do
+		local domain=$(uci -q get haproxy.$vh.domain)
+		local backend=$(uci -q get haproxy.$vh.backend)
+		local enabled=$(uci -q get haproxy.$vh.enabled)
+		[ "$enabled" = "1" ] && echo "$domain:$backend"
+	done
+}
+
+# Discover running services from init.d
+discover_services() {
+	for f in /etc/init.d/*; do
+		[ -x "$f" ] || continue
+		local name=$(basename "$f")
+		# Skip system services
+		case "$name" in
+			boot|done|rcS|umount|sysctl|urandom|gpio*|led*|log*) continue ;;
+		esac
+		local enabled="0"
+		local running="0"
+		[ -L "/etc/rc.d/S"*"$name" ] 2>/dev/null && enabled="1"
+		"$f" status >/dev/null 2>&1 && running="1"
+		echo "$name:$enabled:$running"
+	done 2>/dev/null
+}
+
+# Build tree categories from LuCI menus
+build_tree() {
+	json_init
+	json_add_array "categories"
+
+	# SecuBox Core
+	json_add_object ""
+	json_add_string "cat" "SecuBox Core"
+	json_add_array "items"
+	for path in admin/secubox/dashboard admin/secubox/apps admin/secubox/modules admin/secubox/alerts admin/secubox/settings; do
+		if [ -f "/usr/share/luci/menu.d/"*".json" ]; then
+			json_add_object ""
+			json_add_string "name" "$(echo "$path" | sed 's|.*/||' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++)$i=toupper(substr($i,1,1))tolower(substr($i,2))}1')"
+			json_add_string "path" "$path"
+			json_close_object
+		fi
+	done
+	json_close_array
+	json_close_object
+
+	# Discover all luci-app-* packages and group them
+	local apps=$(opkg list-installed 2>/dev/null | grep "^luci-app-" | awk '{print $1}' | sort)
+
+	# Security Apps
+	json_add_object ""
+	json_add_string "cat" "Security"
+	json_add_array "items"
+	for app in $apps; do
+		case "$app" in
+			luci-app-crowdsec*|luci-app-mitmproxy*|luci-app-guardian*|luci-app-dnsguard*|luci-app-threat*|luci-app-wazuh*|luci-app-vortex*)
+				local name=$(echo "$app" | sed 's/luci-app-//' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++)$i=toupper(substr($i,1,1))tolower(substr($i,2))}1')
+				json_add_object ""
+				json_add_string "name" "$name"
+				json_add_string "path" "admin/services/$(echo "$app" | sed 's/luci-app-//')"
+				json_add_string "package" "$app"
+				json_close_object
+				;;
+		esac
+	done
+	json_close_array
+	json_close_object
+
+	# Media & Streaming Apps
+	json_add_object ""
+	json_add_string "cat" "Media & Streaming"
+	json_add_array "items"
+	for app in $apps; do
+		case "$app" in
+			luci-app-jellyfin*|luci-app-lyrion*|luci-app-streamlit*|luci-app-peertube*|luci-app-magicmirror*)
+				local name=$(echo "$app" | sed 's/luci-app-//' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++)$i=toupper(substr($i,1,1))tolower(substr($i,2))}1')
+				json_add_object ""
+				json_add_string "name" "$name"
+				json_add_string "path" "admin/services/$(echo "$app" | sed 's/luci-app-//')"
+				json_add_string "package" "$app"
+				json_close_object
+				;;
+		esac
+	done
+	json_close_array
+	json_close_object
+
+	# Network & Proxy Apps
+	json_add_object ""
+	json_add_string "cat" "Network & Proxy"
+	json_add_array "items"
+	for app in $apps; do
+		case "$app" in
+			luci-app-haproxy*|luci-app-wireguard*|luci-app-tor*|luci-app-cdn*|luci-app-exposure*|luci-app-dns-provider*)
+				local name=$(echo "$app" | sed 's/luci-app-//' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++)$i=toupper(substr($i,1,1))tolower(substr($i,2))}1')
+				json_add_object ""
+				json_add_string "name" "$name"
+				json_add_string "path" "admin/services/$(echo "$app" | sed 's/luci-app-//')"
+				json_add_string "package" "$app"
+				json_close_object
+				;;
+		esac
+	done
+	json_close_array
+	json_close_object
+
+	# Development & CMS Apps
+	json_add_object ""
+	json_add_string "cat" "Development & CMS"
+	json_add_array "items"
+	for app in $apps; do
+		case "$app" in
+			luci-app-gitea*|luci-app-hexo*|luci-app-metablog*|luci-app-metabol*)
+				local name=$(echo "$app" | sed 's/luci-app-//' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++)$i=toupper(substr($i,1,1))tolower(substr($i,2))}1')
+				json_add_object ""
+				json_add_string "name" "$name"
+				json_add_string "path" "admin/services/$(echo "$app" | sed 's/luci-app-//')"
+				json_add_string "package" "$app"
+				json_close_object
+				;;
+		esac
+	done
+	json_close_array
+	json_close_object
+
+	# IoT & Home Automation Apps
+	json_add_object ""
+	json_add_string "cat" "IoT & Home"
+	json_add_array "items"
+	for app in $apps; do
+		case "$app" in
+			luci-app-domoticz*|luci-app-zigbee*|luci-app-iot*|luci-app-mqtt*)
+				local name=$(echo "$app" | sed 's/luci-app-//' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++)$i=toupper(substr($i,1,1))tolower(substr($i,2))}1')
+				json_add_object ""
+				json_add_string "name" "$name"
+				json_add_string "path" "admin/services/$(echo "$app" | sed 's/luci-app-//')"
+				json_add_string "package" "$app"
+				json_close_object
+				;;
+		esac
+	done
+	json_close_array
+	json_close_object
+
+	# AI & Chat Apps
+	json_add_object ""
+	json_add_string "cat" "AI & Communication"
+	json_add_array "items"
+	for app in $apps; do
+		case "$app" in
+			luci-app-localai*|luci-app-ollama*|luci-app-simplex*|luci-app-gotosocial*|luci-app-ai-*)
+				local name=$(echo "$app" | sed 's/luci-app-//' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++)$i=toupper(substr($i,1,1))tolower(substr($i,2))}1')
+				json_add_object ""
+				json_add_string "name" "$name"
+				json_add_string "path" "admin/services/$(echo "$app" | sed 's/luci-app-//')"
+				json_add_string "package" "$app"
+				json_close_object
+				;;
+		esac
+	done
+	json_close_array
+	json_close_object
+
+	# System & Management Apps
+	json_add_object ""
+	json_add_string "cat" "System & Management"
+	json_add_array "items"
+	for app in $apps; do
+		case "$app" in
+			luci-app-cloner*|luci-app-backup*|luci-app-system*|luci-app-config-advisor*|luci-app-service-registry*)
+				local name=$(echo "$app" | sed 's/luci-app-//' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++)$i=toupper(substr($i,1,1))tolower(substr($i,2))}1')
+				json_add_object ""
+				json_add_string "name" "$name"
+				json_add_string "path" "admin/services/$(echo "$app" | sed 's/luci-app-//')"
+				json_add_string "package" "$app"
+				json_close_object
+				;;
+		esac
+	done
+	json_close_array
+	json_close_object
+
+	# Other SecuBox Apps (catch-all)
+	json_add_object ""
+	json_add_string "cat" "Other SecuBox Apps"
+	json_add_array "items"
+	for app in $apps; do
+		case "$app" in
+			luci-app-crowdsec*|luci-app-mitmproxy*|luci-app-guardian*|luci-app-dnsguard*|luci-app-threat*|luci-app-wazuh*|luci-app-vortex*) continue ;;
+			luci-app-jellyfin*|luci-app-lyrion*|luci-app-streamlit*|luci-app-peertube*|luci-app-magicmirror*) continue ;;
+			luci-app-haproxy*|luci-app-wireguard*|luci-app-tor*|luci-app-cdn*|luci-app-exposure*|luci-app-dns-provider*) continue ;;
+			luci-app-gitea*|luci-app-hexo*|luci-app-metablog*|luci-app-metabol*) continue ;;
+			luci-app-domoticz*|luci-app-zigbee*|luci-app-iot*|luci-app-mqtt*) continue ;;
+			luci-app-localai*|luci-app-ollama*|luci-app-simplex*|luci-app-gotosocial*|luci-app-ai-*) continue ;;
+			luci-app-cloner*|luci-app-backup*|luci-app-system*|luci-app-config-advisor*|luci-app-service-registry*) continue ;;
+			luci-app-secubox*|luci-app-*secubox*)
+				local name=$(echo "$app" | sed 's/luci-app-//' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++)$i=toupper(substr($i,1,1))tolower(substr($i,2))}1')
+				json_add_object ""
+				json_add_string "name" "$name"
+				json_add_string "path" "admin/secubox/$(echo "$app" | sed 's/luci-app-secubox-//' | sed 's/luci-app-//')"
+				json_add_string "package" "$app"
+				json_close_object
+				;;
+		esac
+	done
+	json_close_array
+	json_close_object
+
+	json_close_array
+
+	# Add stats
+	local pkg_count=$(echo "$apps" | wc -w)
+	local container_count=$(ls /srv/lxc/ 2>/dev/null | wc -l)
+	local vhost_count=$(uci show haproxy 2>/dev/null | grep "=vhost" | wc -l)
+
+	json_add_object "stats"
+	json_add_int "packages" "$pkg_count"
+	json_add_int "containers" "$container_count"
+	json_add_int "vhosts" "$vhost_count"
+	json_close_object
+
+	json_dump
+}
+
+# Method: get_tree
+method_get_tree() {
+	build_tree
+}
+
+# Method: get_containers
+method_get_containers() {
+	json_init
+	json_add_array "containers"
+
+	for c in $(ls /srv/lxc/ 2>/dev/null); do
+		json_add_object ""
+		json_add_string "name" "$c"
+		if lxc-info -n "$c" 2>/dev/null | grep -q "State:.*RUNNING"; then
+			json_add_string "state" "running"
+		else
+			json_add_string "state" "stopped"
+		fi
+		json_close_object
+	done
+
+	json_close_array
+	json_dump
+}
+
+# Method: get_vhosts
+method_get_vhosts() {
+	json_init
+	json_add_array "vhosts"
+
+	for vh in $(uci show haproxy 2>/dev/null | grep "=vhost" | sed 's/haproxy\.//;s/=vhost//'); do
+		local domain=$(uci -q get haproxy.$vh.domain)
+		local backend=$(uci -q get haproxy.$vh.backend)
+		local enabled=$(uci -q get haproxy.$vh.enabled)
+		local ssl=$(uci -q get haproxy.$vh.ssl)
+
+		json_add_object ""
+		json_add_string "id" "$vh"
+		json_add_string "domain" "$domain"
+		json_add_string "backend" "$backend"
+		json_add_string "enabled" "${enabled:-0}"
+		json_add_string "ssl" "${ssl:-0}"
+		json_close_object
+	done
+
+	json_close_array
+	json_dump
+}
+
+# List available methods
+list_methods() {
+	json_init
+	json_add_object "get_tree"
+	json_close_object
+	json_add_object "get_containers"
+	json_close_object
+	json_add_object "get_vhosts"
+	json_close_object
+	json_dump
+}
+
+# Main dispatcher
+case "$1" in
+	list)
+		list_methods
+		;;
+	call)
+		case "$2" in
+			get_tree)
+				method_get_tree
+				;;
+			get_containers)
+				method_get_containers
+				;;
+			get_vhosts)
+				method_get_vhosts
+				;;
+			*)
+				echo '{"error":"Method not found"}'
+				;;
+		esac
+		;;
+	*)
+		echo '{"error":"Invalid action"}'
+		;;
+esac

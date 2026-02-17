@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-13 (GoToSocial deployed)_
+_Last updated: 2026-02-17 (v0.21.0 - Nextcloud LXC + WebRadio)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -61,6 +61,307 @@ _Last updated: 2026-02-13 (GoToSocial deployed)_
   - First Peek auto-registration of services
   - Gossip-based exposure config sync via secubox-p2p
   - Created `luci-app-vortex-dns` dashboard
+
+### Just Completed (2026-02-17)
+
+- **Security KISS Dashboard Enhancements** — DONE (2026-02-17)
+  - Added ndpid (nDPI daemon) to service status monitoring
+  - Added Wazuh SIEM to security services list (earlier today)
+  - 6 services now monitored: CrowdSec, Wazuh, netifyd, ndpid, mitmproxy, Threat Intel
+
+- **APPS Portal Extensions** — DONE (2026-02-17)
+  - Added Streamlit and MetaBlogizer to Services category in KISS portal
+  - Apps now accessible via Extended Apps view
+
+- **Jellyfin Container Restore** — DONE (2026-02-17)
+  - Started stopped jellyfin container
+  - Enabled auto-start (lxc.start.auto = 1)
+  - Verified port 8096 accessible
+
+- **Webmail PHP-FPM Fix** — DONE (2026-02-17)
+  - Fixed 504 timeout by restarting dead PHP-FPM process in roundcube container
+  - Login/authentication working again
+
+- **WebRadio LuCI App** — DONE (2026-02-17)
+  - Added `luci-app-webradio` package from webradio-openwrt project
+  - 7 LuCI JS views: overview, server, playlist, schedule, jingles, live, security
+  - RPCD backend with 15+ methods
+  - CrowdSec integration for Icecast abuse detection
+  - Programming grid scheduler with jingle support
+  - Live audio input via DarkIce (ALSA)
+  - Source: https://github.com/gkerma/webradio-openwrt
+
+- **Nextcloud LXC Enhancement** — DONE (2026-02-17)
+  - Updated version to 31.0.5, added auto-start and cgroup memory limit
+  - Fixed nginx /apps/ path for static assets
+  - Added Storage tab with disk usage visualization
+  - Added backup delete functionality
+  - Added RPCD: uninstall, get_storage, delete_backup (20 methods total)
+  - Rewrote README.md with LXC architecture docs
+
+- **SecuBox Cloner MochaBin LED Fix** — DONE (2026-02-17)
+  - Added i2c LED blacklist to clone provision scripts
+  - Prevents PCA955x I2C bus lockup on MochaBin devices
+  - Three-method fix: kernel bootarg, module removal, LED trigger disable
+  - Clone backup generator includes 00-disable-i2c-leds firstboot script
+  - Successfully cloned moka1 from c3box with sysupgrade method
+
+- **Mailserver Dovecot Permissions Fix** — DONE (2026-02-17)
+  - Fixed startup permissions: login/token-login directories owned by root:dovenull
+  - Remove stale auth-token-secret.dat on startup (prevents "compromised token" errors)
+  - Fixed users file permissions in user_add/user_passwd functions (644 root:dovecot)
+  - Password reset no longer breaks authentication
+  - Released in v0.20.6
+
+- **Nextcloud 31.0.14 Upgrade & Fixes** — DONE (2026-02-17)
+  - Upgraded from 30.0.17 to 31.0.14
+  - Fixed nginx 403 on /apps/* paths (removed overly aggressive location block)
+  - Added cron job setup for background tasks (every 5 minutes)
+  - All apps updated: mail, tasks, external, spreed/Talk
+
+- **DNS Master POSIX Fix** — DONE (2026-02-17)
+  - Fixed bump_serial() bash-specific syntax for busybox ash compatibility
+  - del_record now works via RPCD (was failing with "arithmetic syntax error")
+  - All DNS Master LuCI buttons tested and working
+
+- **LXC Container Auto-Start** — DONE (2026-02-17)
+  - Enabled lxc.start.auto for mailserver, roundcube, nextcloud
+  - Containers now survive reboots
+
+- **Mailctl Firewall Rules** — DONE (2026-02-17)
+  - Updated cmd_firewall_setup() with UCI firewall rules
+  - Input rules for WAN (ports 25, 143, 465, 587, 993)
+  - Forward rules for WAN-to-LAN mailserver
+
+### Just Completed (2026-02-16)
+
+- **HexoCMS Multi-Instance Enhancement** — DONE (2026-02-16)
+  - Added backup/restore commands to hexoctl
+  - Added GitHub clone support (`hexoctl github clone <url> [instance] [branch]`)
+  - Added Gitea push support (`hexoctl gitea push [instance] [message]`)
+  - Added quick-publish command (clean + build + publish)
+  - Added status-json and instance-list-json for RPCD
+  - Enhanced RPCD handler with 15 new methods:
+    - Instance: list_instances, create_instance, delete_instance, start_instance, stop_instance
+    - Backup: list_backups, create_backup, restore_backup, delete_backup
+    - Git: github_clone, gitea_push, quick_publish
+  - Rewrote LuCI dashboard with KISS theme:
+    - Multi-instance management with cards
+    - Instance controls: start/stop, quick publish, backup, editor, preview
+    - GitHub/Gitea clone modals
+    - Backup table with restore/delete
+    - Stats grid: instances, posts, drafts, backups
+    - Quick actions: new instance, clone from GitHub/Gitea, new post, settings
+  - Updated API with 12 new RPC declarations
+  - Updated ACL with new permissions
+
+- **DNS Master LuCI App** — DONE (2026-02-16)
+  - Created `secubox-app-dns-master` with `dnsmaster` CLI
+  - Commands: status, zone-list, zone-add, records-json, record-add/del, reload, check, backup
+  - Created `luci-app-dns-master` with KISS dashboard
+  - Zones table with Edit/Check/Backup, Records editor with type badges
+  - Add Zone/Record modals, live polling, auto serial bump
+  - Added to KISS nav Network category
+
+- **Mailserver LuCI KISS Regeneration** — DONE (2026-02-16)
+  - Complete rewrite of overview.js with KISS theme
+  - Fixed IMAP hairpin NAT issue (hosts override in Nextcloud container)
+  - Fixed port 143 detection in RPCD script
+  - Stats grid, port cards, users/aliases tables, webmail card
+  - Added to KISS nav Apps category
+
+- **Nextcloud LXC Production Deploy** — DONE (2026-02-16)
+  - Installed on c3box with Debian 12 LXC
+  - Fixed nginx port conflict (80→8080) with HAProxy
+  - Fixed PHP-FPM socket path (php8.2-fpm.sock)
+  - Fixed nginx routing (rewrite to index.php for /apps/*)
+  - HAProxy SSL configured: https://cloud.gk2.secubox.in
+  - Mitmproxy routes updated for direct backend access
+
+- **WAF Rules for Nextcloud & Roundcube** — DONE (2026-02-16)
+  - Added 20 CVE-based rules to `/srv/mitmproxy/waf-rules.json`
+  - Nextcloud: CVE-2023-49791, CVE-2024-22403, CVE-2024-37315, etc.
+  - Roundcube: CVE-2024-37383, CVE-2023-5631, CVE-2020-35730, etc.
+  - Common attack patterns: path traversal, XSS, SQLi, RCE
+
+- **Mail Client Autoconfig** — DONE (2026-02-16)
+  - DNS records: autoconfig.*, autodiscover.*, SRV for _imaps/_submission
+  - Autoconfig XML at `/.well-known/autoconfig/mail/config-v1.1.xml`
+  - Mozilla/Thunderbird format with IMAP (993/143) and SMTP (587/465)
+  - HAProxy vhost and mitmproxy routes configured
+
+- **Nextcloud Upgrade 31.0.14** — DONE (2026-02-16)
+  - Upgraded from 30.0.17 → 31.0.14 via OCC updater
+  - All apps updated: mail, tasks, external, spreed/Talk
+  - Database schema migrations completed
+
+- **Mailctl Firewall Rules Persistence** — DONE (2026-02-16)
+  - Updated `cmd_firewall_setup()` with UCI firewall rules
+  - Input rules for WAN (ports 25, 143, 465, 587, 993)
+  - Forward rules for WAN-to-LAN mailserver
+  - Rules persist across firewall restarts
+
+### Recently Completed (2026-02-15)
+
+- **HAProxy & Mitmproxy WAF Fixes** — DONE (2026-02-15)
+  - Fixed HAProxy reload: copy config to `/etc/haproxy/` before signal
+  - Fixed mitmproxy Host header preservation for OAuth compatibility
+  - Reset WAF globally: removed `waf_bypass` from 70 vhosts/ACLs
+  - All traffic now routes through mitmproxy for inspection
+  - Committed: f3f6eb4e
+
+- **PeerTube Email Configuration** — DONE (2026-02-15)
+  - Configured SMTP with local mailserver (192.168.255.30:25)
+  - Fixed STARTTLS self-signed cert error (disable_starttls: true)
+  - Password resets and notifications working
+
+- **Wazuh Agent Watchdog** — DONE (2026-02-15)
+  - Added watchdog loop to check wazuh-agentd every 60 seconds
+  - Auto-restarts service if process dies
+  - Logs to `/var/log/wazuh-watchdog.log`
+  - Committed: 851910e1
+
+- **Streamlit Gitea Integration** — DONE (2026-02-15)
+  - Auto-push on first upload confirmed working
+  - Pushed 4 missing apps to Gitea (cineposter_fixed, pdf_slideshow, pharmacopoeia_secubox, wuyun_liuqi)
+  - 18 apps now have Gitea repos
+  - Fixed `secubox-evolution` repo privacy (was public → now private)
+  - All Gitea repos now created with `private:true` by default
+
+- **Mailserver gk2 Account Restoration** — DONE (2026-02-15)
+  - Container was reinstalled on Feb 14, only admin@ was recreated
+  - Restored gk2@secubox.in from backup (config-20260206-171132.tar.gz)
+  - Same password hash preserved (no password change needed)
+  - Note: Maildir was already empty in backup (emails lost before Feb 6)
+
+- **Mitmproxy WAF Dashboard Data Path Fix** — DONE (2026-02-15)
+  - Dashboard was showing 0 threats because RPCD read from `/srv/mitmproxy` (out)
+  - Fixed to read from `/srv/mitmproxy-in` (WAF input instance)
+  - Now displays correct stats: 997 threats today, 29 pending autobans
+  - Updated: get_status, get_alerts, get_threat_stats, get_subdomain_metrics
+  - Committed: 42d85c4d
+
+- **PeerTube Transcoding Jobs Fix** — DONE (2026-02-15)
+  - Videos were stuck with `waitTranscoding=true` and not showing in public listing
+  - Root cause: Admin enabled "remote runners" for transcoding but no runners registered
+  - `runnerJob` table had 6 jobs stuck in pending state (state=1)
+  - Fix: Set `waitTranscoding=false` directly in database to make videos visible
+  - Alternative fix (for future uploads): Disable remote runners in admin panel, use local ffmpeg
+
+- **GK2 Hub Landing Page Subdomain URLs** — DONE (2026-02-15)
+  - Previous version used redirect paths (`secubox.in/gk2/service`)
+  - Updated `gk2hub-generate` to use direct subdomain URLs (`service.gk2.secubox.in`)
+  - Added HAProxy vhost lookup for automatic subdomain detection
+  - Added PeerTube, GoToSocial, Wazuh to Infrastructure section
+  - 67 services now display with proper subdomain URLs
+
+- **PeerTube Video Platform Package** — DONE (2026-02-15)
+  - Created `secubox-app-peertube` package for self-hosted video streaming
+  - LXC Debian Bookworm container with PostgreSQL 15, Redis 7, Node.js 18, FFmpeg
+  - `peertubectl` CLI with 15+ commands: install/uninstall/update/start/stop/status
+  - Live streaming support with RTMP port 1935
+  - HAProxy integration with extended timeouts (3600s) for streaming
+  - Emancipation workflow for public exposure
+  - User management: create-user, reset-password, list-users
+  - Backup/restore PostgreSQL database
+  - UCI config: main, server, live, transcoding, storage, network, admin sections
+  - Fixed: Redis ARM64-COW-BUG via `ignore-warnings` config
+  - Fixed: Redis sentinel disabled (using standalone Redis)
+  - Fixed: RTMPS disabled (no SSL keys needed)
+  - Fixed: HAProxy waf_bypass=1 for proper OAuth routing
+
+- **PeerTube LuCI Dashboard** — DONE (2026-02-15)
+  - Created `luci-app-peertube` package
+  - RPRD handler with 11 methods: status, start, stop, install, uninstall, update, logs, emancipate, live_enable, live_disable, configure_haproxy
+  - Dashboard with install wizard, status display, service controls
+  - Live streaming toggle with firewall integration
+  - HAProxy configuration button
+  - Emancipate form for public exposure
+  - Logs viewer with refresh
+
+- **Generative LuCI Tree** — DONE (2026-02-15)
+  - Created `luci.secubox-portal` RPCD backend for dynamic component discovery
+  - Three RPC methods: get_tree, get_containers, get_vhosts
+  - Auto-discovers all installed `luci-app-*` packages and groups by category:
+    - SecuBox Core, Security, Media & Streaming, Network & Proxy
+    - Development & CMS, IoT & Home, AI & Communication, System & Management
+  - Discovers LXC containers from `/srv/lxc/` with running state
+  - Discovers HAProxy vhosts from UCI with domain/backend/ssl info
+  - Updated `luci-tree.js` with:
+    - Three tabs: LuCI Apps, Containers, Vhosts
+    - Refresh button for live updates
+    - Stats showing packages, containers, vhosts counts
+    - Search functionality for filtering
+  - ACL permissions for unauthenticated portal access
+
+### Just Completed (2026-02-14)
+
+- **mitmproxy WAF Wildcard Route Priority Fix** — DONE (2026-02-14)
+  - Fixed wildcard route matching in `haproxy_router.py`
+  - Issue: `.gk2.secubox.in` wildcard (port 4000) matched before specific routes like `apr.gk2.secubox.in` (port 8928)
+  - Fix: Support both `*.domain` and `.domain` wildcard formats
+  - Fix: Sort wildcards by length (longest/most specific first)
+  - Added auto-reload: Routes file checked every 10 requests, reloads if modified
+  - Updated `metablogizerctl` to use `mitmproxyctl sync-routes` instead of direct file manipulation
+  - MetaBlogizer sites now properly routed through WAF
+
+- **Wazuh SIEM LuCI Dashboard** — DONE (2026-02-14)
+  - Created `luci-app-wazuh` package for unified Wazuh security monitoring
+  - 4 views: Overview, Alerts, File Integrity, Agents
+  - SysWarden-inspired 4-layer security visualization
+  - RPCD handler (luci.wazuh) with 12 API methods
+  - CrowdSec integration for threat correlation display
+  - Full RPCD testing verified via ubus calls
+
+- **MetaBlogizer SDLC Content Restoration** — DONE (2026-02-14)
+  - sdlc.gk2.secubox.in was showing GK2 Hub template instead of original content
+  - GK2 Hub generator had overwritten local index.html
+  - Original "Les Seigneurs de La Chambre - Présentation Cinématique" preserved in git
+  - Restored via `git checkout HEAD -- index.html`
+  - Site now correctly displaying cinematic presentation content
+
+- **Streamlit WebSocket WAF Bypass** — DONE (2026-02-14)
+  - Streamlit apps use WebSockets which are incompatible with MITM proxy
+  - Re-added `waf_bypass=1` to all 20 Streamlit apps
+  - Apps now route directly through HAProxy without mitmproxy filtering
+  - Trade-off: Streamlit apps bypass WAF for WebSocket compatibility
+
+- **WAF Architecture Configuration** — DONE (2026-02-14)
+  - WAF (mitmproxy) enabled for Streamlit apps and MetaBlogizer sites
+  - WAF bypass for infrastructure: Jellyfin, Mail, Glances, GoToSocial, Webmail
+  - Path ACLs (`/gk2/*`) bypass WAF - mitmproxy routes by host only
+  - 38 path ACLs configured with `waf_bypass=1`
+  - Architecture: HAProxy → mitmproxy (WAF) → Backend (filtered) or HAProxy → Backend (bypass)
+
+- **C3BOX SDLC Full Service Verification** — DONE (2026-02-14)
+  - Verified all 70 services across 12 zones on C3BOX dashboard
+  - Zones: *.cybermind.fr (2), *.cybermood.eu (2), *.ganimed.fr (2), *.maegia.tv (19), *.secubox.in (29), *.sb.local (4), *.secubox.local (2)
+  - 20 Streamlit apps, 15 MetaBlog sites, infrastructure services
+  - 77 vhosts configured, 52 SSL certificates, 5 LXC containers running
+  - All public services returning HTTP 200
+
+- **Mitmproxy Routes Duplicate Fix** — DONE (2026-02-14)
+  - Fixed duplicate entries in `/srv/mitmproxy-in/haproxy-routes.json`
+  - `console.gk2.secubox.in` and `control.gk2.secubox.in` had duplicate routes
+  - Second entry (port 8081) was overriding correct Streamlit ports (8501/8511)
+  - Removed duplicates, verified correct routing
+
+- **Service Backend Fixes** — DONE (2026-02-14)
+  - `play.maegia.tv`: Changed backend from `mitmproxy_inspector` to `streamlit_yijing`
+  - `client.gk2.secubox.in`: Enabled `pinafore_srv` server with health check
+  - Added uhttpd instance on port 4002 for Pinafore static landing page
+
+- **Glances System Monitor** — DONE (2026-02-14)
+  - Installed `python3-pip` via opkg
+  - Installed Glances 4.5.0.4 via pip3 with dependencies
+  - Created dummy `webbrowser.py` module for headless operation
+  - Started Glances web server on port 61208
+  - https://glances.gk2.secubox.in now operational
+
+- **GoToSocial Service Start** — DONE (2026-02-14)
+  - Enabled GoToSocial in UCI config
+  - Started LXC container via `gotosocialctl start`
+  - https://social.gk2.secubox.in operational
 
 ### Just Completed (2026-02-13)
 
@@ -323,7 +624,7 @@ _Last updated: 2026-02-13 (GoToSocial deployed)_
   - Fix in `users.sh`: Create `$domain/$user/Maildir/{cur,new,tmp}` structure
   - Updated vmailbox format to include `Maildir/` suffix
 
-- **Inbound Port 25 Blocked by Free ISP** — KNOWN ISSUE
+- **Inbound Port 25 Blocked by Free ISP** — RESOLVED (2026-02-16)
   - Free ISP blocks inbound port 25 on residential lines
   - Outbound mail works, inbound from external fails
   - Workaround options: VPS relay, Mailgun/SendGrid, or contact Free support

@@ -1,0 +1,453 @@
+#!/bin/sh
+# SecuBox DNS Master - BIND Zone Management
+# Manages DNS zones and records for BIND server
+
+VERSION="1.0.0"
+CONFIG="dns-master"
+BIND_DIR="/etc/bind"
+ZONES_DIR="/etc/bind/zones"
+NAMED_CONF="/etc/bind/named.conf"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+log() { echo -e "${GREEN}[DNS]${NC} $1"; }
+warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+error() { echo -e "${RED}[ERROR]${NC} $1"; }
+
+uci_get() { uci -q get ${CONFIG}.$1; }
+
+# ============================================================================
+# Status
+# ============================================================================
+
+cmd_status() {
+    echo ""
+    echo "========================================"
+    echo "  SecuBox DNS Master v$VERSION"
+    echo "========================================"
+    echo ""
+
+    # BIND status
+    if pgrep named >/dev/null 2>&1; then
+        local pid=$(pgrep named | head -1)
+        echo -e "  BIND Status:  ${GREEN}Running${NC} (PID: $pid)"
+    else
+        echo -e "  BIND Status:  ${RED}Stopped${NC}"
+    fi
+
+    # Zone count
+    local zone_count=$(ls -1 "$ZONES_DIR"/*.zone 2>/dev/null | wc -l)
+    echo "  Zones:        $zone_count"
+
+    # Total records
+    local record_count=0
+    for zone in "$ZONES_DIR"/*.zone; do
+        [ -f "$zone" ] || continue
+        local cnt=$(grep -cE "^\s*[^;].*\s+IN\s+" "$zone" 2>/dev/null || echo 0)
+        record_count=$((record_count + cnt))
+    done
+    echo "  Records:      $record_count"
+
+    echo ""
+    echo "  Zones Directory: $ZONES_DIR"
+    echo "  Config File:     $NAMED_CONF"
+    echo ""
+}
+
+cmd_status_json() {
+    local running=0
+    local pid=""
+    pgrep named >/dev/null 2>&1 && { running=1; pid=$(pgrep named | head -1); }
+
+    local zone_count=$(ls -1 "$ZONES_DIR"/*.zone 2>/dev/null | wc -l)
+    local record_count=0
+    for zone in "$ZONES_DIR"/*.zone; do
+        [ -f "$zone" ] || continue
+        local cnt=$(grep -cE "^\s*[^;].*\s+IN\s+" "$zone" 2>/dev/null || echo 0)
+        record_count=$((record_count + cnt))
+    done
+
+    local default_ttl=$(uci_get main.default_ttl)
+    default_ttl="${default_ttl:-300}"
+
+    cat << EOF
+{
+    "running": $([ "$running" = "1" ] && echo true || echo false),
+    "pid": "$pid",
+    "zones": $zone_count,
+    "records": $record_count,
+    "default_ttl": $default_ttl,
+    "zones_dir": "$ZONES_DIR",
+    "bind_dir": "$BIND_DIR"
+}
+EOF
+}
+
+# ============================================================================
+# Zone Management
+# ============================================================================
+
+cmd_zone_list() {
+    echo "Zones:"
+    echo ""
+    for zone_file in "$ZONES_DIR"/*.zone; do
+        [ -f "$zone_file" ] || continue
+        local name=$(basename "$zone_file" .zone)
+        local records=$(grep -cE "^\s*[^;].*\s+IN\s+" "$zone_file" 2>/dev/null || echo 0)
+        local serial=$(grep -oE '[0-9]{10}' "$zone_file" | head -1)
+        echo "  $name ($records records, serial: $serial)"
+    done
+}
+
+cmd_zone_list_json() {
+    local zones=""
+    local first=1
+
+    for zone_file in "$ZONES_DIR"/*.zone; do
+        [ -f "$zone_file" ] || continue
+        local name=$(basename "$zone_file" .zone)
+        local records=$(grep -cE "^\s*[^;].*\s+IN\s+" "$zone_file" 2>/dev/null || echo 0)
+        local serial=$(grep -oE '[0-9]{10}' "$zone_file" | head -1)
+        local mtime=$(stat -c %Y "$zone_file" 2>/dev/null || echo 0)
+
+        # Check zone validity
+        local valid=1
+        named-checkzone "$name" "$zone_file" >/dev/null 2>&1 || valid=0
+
+        [ $first -eq 0 ] && zones="$zones,"
+        zones="$zones{\"name\":\"$name\",\"file\":\"$zone_file\",\"records\":$records,\"serial\":\"$serial\",\"valid\":$([ $valid -eq 1 ] && echo true || echo false),\"mtime\":$mtime}"
+        first=0
+    done
+
+    echo "{\"zones\":[$zones]}"
+}
+
+cmd_zone_show() {
+    local zone="$1"
+    [ -z "$zone" ] && { error "Usage: dnsmaster zone-show <zone>"; return 1; }
+
+    local zone_file="$ZONES_DIR/${zone}.zone"
+    [ -f "$zone_file" ] || { error "Zone file not found: $zone_file"; return 1; }
+
+    echo "Zone: $zone"
+    echo "File: $zone_file"
+    echo ""
+    cat "$zone_file"
+}
+
+cmd_zone_add() {
+    local zone="$1"
+    [ -z "$zone" ] && { error "Usage: dnsmaster zone-add <zone>"; return 1; }
+
+    local zone_file="$ZONES_DIR/${zone}.zone"
+    [ -f "$zone_file" ] && { error "Zone already exists"; return 1; }
+
+    local serial=$(date +%Y%m%d01)
+    local ttl=$(uci_get main.default_ttl)
+    ttl="${ttl:-300}"
+
+    cat > "$zone_file" << EOF
+\$TTL $ttl
+@       IN      SOA     ns1.${zone}. admin.${zone}. (
+                        $serial      ; Serial
+                        3600         ; Refresh
+                        600          ; Retry
+                        604800       ; Expire
+                        $ttl )       ; Negative TTL
+
+; Nameservers
+@       IN      NS      ns1.${zone}.
+
+; A records
+@       IN      A       127.0.0.1
+ns1     IN      A       127.0.0.1
+EOF
+
+    log "Created zone: $zone"
+    log "Edit $zone_file to add records"
+}
+
+# ============================================================================
+# Record Management
+# ============================================================================
+
+cmd_records_json() {
+    local zone="$1"
+    [ -z "$zone" ] && { echo '{"error":"Zone required"}'; return 1; }
+
+    local zone_file="$ZONES_DIR/${zone}.zone"
+    [ -f "$zone_file" ] || { echo '{"error":"Zone not found"}'; return 1; }
+
+    local records=""
+    local first=1
+
+    # Parse zone file for records
+    # Match: name [ttl] IN type value
+    while IFS= read -r line; do
+        # Skip comments and empty lines
+        echo "$line" | grep -qE '^\s*(;|$)' && continue
+        # Skip SOA and control directives
+        echo "$line" | grep -qE '^\$|SOA' && continue
+
+        # Parse record line
+        local name type value ttl
+        if echo "$line" | grep -qE '\s+IN\s+'; then
+            name=$(echo "$line" | awk '{print $1}')
+            # Check if TTL is present
+            if echo "$line" | grep -qE '^[^[:space:]]+\s+[0-9]+\s+IN\s+'; then
+                ttl=$(echo "$line" | awk '{print $2}')
+                type=$(echo "$line" | awk '{print $4}')
+                value=$(echo "$line" | cut -d' ' -f5-)
+            else
+                ttl=""
+                type=$(echo "$line" | awk '{print $3}')
+                value=$(echo "$line" | cut -d' ' -f4-)
+            fi
+
+            # Clean value (remove trailing comments)
+            value=$(echo "$value" | sed 's/\s*;.*//')
+
+            # Skip NS records for now (handled separately)
+            [ "$type" = "NS" ] && continue
+
+            [ $first -eq 0 ] && records="$records,"
+            # Escape quotes in value
+            value=$(echo "$value" | sed 's/"/\\"/g')
+            records="$records{\"name\":\"$name\",\"type\":\"$type\",\"value\":\"$value\",\"ttl\":\"$ttl\"}"
+            first=0
+        fi
+    done < "$zone_file"
+
+    echo "{\"zone\":\"$zone\",\"records\":[$records]}"
+}
+
+cmd_record_add() {
+    local zone="$1"
+    local type="$2"
+    local name="$3"
+    local value="$4"
+    local ttl="${5:-}"
+
+    [ -z "$zone" ] || [ -z "$type" ] || [ -z "$name" ] || [ -z "$value" ] && {
+        error "Usage: dnsmaster record-add <zone> <type> <name> <value> [ttl]"
+        return 1
+    }
+
+    local zone_file="$ZONES_DIR/${zone}.zone"
+    [ -f "$zone_file" ] || { error "Zone not found"; return 1; }
+
+    # Bump serial
+    bump_serial "$zone_file"
+
+    # Format record line
+    local record
+    if [ -n "$ttl" ]; then
+        record="$name\t$ttl\tIN\t$type\t$value"
+    else
+        record="$name\t\tIN\t$type\t$value"
+    fi
+
+    # Append record to zone file
+    echo -e "$record" >> "$zone_file"
+
+    log "Added $type record: $name -> $value"
+
+    # Reload BIND
+    cmd_reload
+}
+
+cmd_record_del() {
+    local zone="$1"
+    local type="$2"
+    local name="$3"
+    local value="$4"
+
+    [ -z "$zone" ] || [ -z "$type" ] || [ -z "$name" ] && {
+        error "Usage: dnsmaster record-del <zone> <type> <name> [value]"
+        return 1
+    }
+
+    local zone_file="$ZONES_DIR/${zone}.zone"
+    [ -f "$zone_file" ] || { error "Zone not found"; return 1; }
+
+    # Backup first
+    cp "$zone_file" "${zone_file}.bak"
+
+    # Bump serial
+    bump_serial "$zone_file"
+
+    # Delete matching record(s)
+    if [ -n "$value" ]; then
+        # Match specific value
+        sed -i "/^${name}[[:space:]].*IN[[:space:]]*${type}[[:space:]]*${value}/d" "$zone_file"
+    else
+        # Match any value for this name/type
+        sed -i "/^${name}[[:space:]].*IN[[:space:]]*${type}/d" "$zone_file"
+    fi
+
+    log "Deleted $type record for $name"
+
+    # Reload BIND
+    cmd_reload
+}
+
+bump_serial() {
+    local zone_file="$1"
+    local today=$(date +%Y%m%d)
+    local current_serial=$(grep -oE '[0-9]{10}' "$zone_file" | head -1)
+
+    local new_serial
+    local serial_date=$(echo "$current_serial" | cut -c1-8)
+    if [ "$serial_date" = "$today" ]; then
+        # Same day, increment counter
+        local counter=$(echo "$current_serial" | cut -c9-10)
+        # Remove leading zero and increment
+        counter=$(expr "$counter" + 1 2>/dev/null || echo 1)
+        new_serial="${today}$(printf '%02d' $counter)"
+    else
+        # New day, reset counter
+        new_serial="${today}01"
+    fi
+
+    sed -i "s/$current_serial/$new_serial/" "$zone_file"
+}
+
+# ============================================================================
+# BIND Control
+# ============================================================================
+
+cmd_reload() {
+    log "Reloading BIND..."
+    rndc reload 2>/dev/null || {
+        warn "rndc reload failed, trying service restart"
+        /etc/init.d/named restart 2>/dev/null || /etc/init.d/bind restart 2>/dev/null
+    }
+    log "BIND reloaded"
+}
+
+cmd_check() {
+    local zone="$1"
+
+    if [ -n "$zone" ]; then
+        local zone_file="$ZONES_DIR/${zone}.zone"
+        [ -f "$zone_file" ] || { error "Zone not found"; return 1; }
+
+        log "Checking zone: $zone"
+        named-checkzone "$zone" "$zone_file"
+        return $?
+    else
+        # Check all zones
+        local errors=0
+        for zone_file in "$ZONES_DIR"/*.zone; do
+            [ -f "$zone_file" ] || continue
+            local name=$(basename "$zone_file" .zone)
+            if named-checkzone "$name" "$zone_file" >/dev/null 2>&1; then
+                echo -e "${GREEN}OK${NC}    $name"
+            else
+                echo -e "${RED}ERROR${NC} $name"
+                errors=$((errors + 1))
+            fi
+        done
+        return $errors
+    fi
+}
+
+cmd_logs() {
+    local lines="${1:-50}"
+    logread -l "$lines" 2>/dev/null | grep -i "named\|bind" || \
+        tail -n "$lines" /var/log/messages 2>/dev/null | grep -i "named\|bind" || \
+        echo "No BIND logs found"
+}
+
+cmd_backup() {
+    local zone="$1"
+    local backup_dir="/srv/dns-master/backups"
+    local timestamp=$(date +%Y%m%d-%H%M%S)
+
+    mkdir -p "$backup_dir"
+
+    if [ -n "$zone" ]; then
+        local zone_file="$ZONES_DIR/${zone}.zone"
+        [ -f "$zone_file" ] || { error "Zone not found"; return 1; }
+        cp "$zone_file" "$backup_dir/${zone}-${timestamp}.zone"
+        log "Backed up: $zone -> $backup_dir/${zone}-${timestamp}.zone"
+    else
+        # Backup all zones
+        for zone_file in "$ZONES_DIR"/*.zone; do
+            [ -f "$zone_file" ] || continue
+            local name=$(basename "$zone_file" .zone)
+            cp "$zone_file" "$backup_dir/${name}-${timestamp}.zone"
+        done
+        log "Backed up all zones to $backup_dir"
+    fi
+}
+
+# ============================================================================
+# Help
+# ============================================================================
+
+show_help() {
+    cat << EOF
+SecuBox DNS Master v$VERSION
+
+Usage: dnsmaster <command> [options]
+
+Status:
+  status              Show BIND server status
+  status-json         Status in JSON format
+
+Zones:
+  zone-list           List all zones
+  zone-list-json      List zones in JSON format
+  zone-show <zone>    Show zone file contents
+  zone-add <zone>     Create new zone
+
+Records:
+  records-json <zone>                       Get records as JSON
+  record-add <zone> <type> <name> <value> [ttl]
+  record-del <zone> <type> <name> [value]
+
+Control:
+  reload              Reload BIND configuration
+  check [zone]        Validate zone file(s)
+  logs [lines]        View BIND logs
+  backup [zone]       Backup zone file(s)
+
+Examples:
+  dnsmaster zone-list
+  dnsmaster record-add secubox.in A www 192.168.1.100
+  dnsmaster record-add secubox.in MX @ "10 mail.secubox.in."
+  dnsmaster record-del secubox.in A www
+  dnsmaster check secubox.in
+
+EOF
+}
+
+# ============================================================================
+# Main
+# ============================================================================
+
+case "${1:-}" in
+    status)           shift; cmd_status "$@" ;;
+    status-json)      shift; cmd_status_json "$@" ;;
+    zone-list)        shift; cmd_zone_list "$@" ;;
+    zone-list-json)   shift; cmd_zone_list_json "$@" ;;
+    zone-show)        shift; cmd_zone_show "$@" ;;
+    zone-add)         shift; cmd_zone_add "$@" ;;
+    records-json)     shift; cmd_records_json "$@" ;;
+    record-add)       shift; cmd_record_add "$@" ;;
+    record-del)       shift; cmd_record_del "$@" ;;
+    reload)           shift; cmd_reload "$@" ;;
+    check)            shift; cmd_check "$@" ;;
+    logs)             shift; cmd_logs "$@" ;;
+    backup)           shift; cmd_backup "$@" ;;
+    help|--help|-h|'') show_help ;;
+    *)                error "Unknown command: $1"; show_help >&2; exit 1 ;;
+esac
+
+exit 0

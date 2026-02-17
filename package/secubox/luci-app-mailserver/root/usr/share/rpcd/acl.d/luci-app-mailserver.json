@@ -9,7 +9,7 @@
 		},
 		"write": {
 			"ubus": {
-				"luci.mailserver": ["install", "start", "stop", "restart", "user_add", "user_del", "user_passwd", "alias_add", "dns_setup", "ssl_setup", "webmail_configure", "mesh_backup", "mesh_sync"]
+				"luci.mailserver": ["install", "start", "stop", "restart", "user_add", "user_del", "user_passwd", "alias_add", "dns_setup", "ssl_setup", "webmail_configure", "mesh_backup", "mesh_sync", "fix_ports", "alias_del", "user_repair"]
 			},
 			"uci": ["mailserver"]
 		}

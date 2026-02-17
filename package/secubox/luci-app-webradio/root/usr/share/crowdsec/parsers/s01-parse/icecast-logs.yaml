@@ -1,0 +1,40 @@
+# CrowdSec parser for Icecast access logs
+# Parses Icecast access.log format
+# Install: cp to /etc/crowdsec/parsers/s01-parse/
+
+name: cybermind/icecast-logs
+description: "Parse Icecast streaming server access logs"
+filter: "evt.Parsed.program == 'icecast'"
+
+# Icecast log format:
+# 192.168.1.100 - - [17/Feb/2024:12:00:00 +0000] "GET /live HTTP/1.1" 200 12345 "-" "VLC/3.0.16"
+# Also handles connection events from error.log
+
+onsuccess: next_stage
+pattern_syntax:
+  ICECAST_TIMESTAMP: '\d{2}/\w{3}/\d{4}:\d{2}:\d{2}:\d{2}\s[+-]\d{4}'
+  ICECAST_METHOD: '\w+'
+  ICECAST_PATH: '[^\s]+'
+  ICECAST_PROTO: 'HTTP/[\d.]+'
+  ICECAST_STATUS: '\d{3}'
+  ICECAST_BYTES: '\d+'
+  ICECAST_AGENT: '[^"]*'
+
+grok:
+  # Standard access log format
+  - name: ICECAST_ACCESS
+    apply_on: message
+    pattern: '%{IP:src_ip}\s+-\s+-\s+\[%{ICECAST_TIMESTAMP:timestamp}\]\s+"%{ICECAST_METHOD:http_method}\s+%{ICECAST_PATH:http_path}\s+%{ICECAST_PROTO:http_proto}"\s+%{ICECAST_STATUS:http_status}\s+%{ICECAST_BYTES:bytes_sent}\s+"[^"]*"\s+"%{ICECAST_AGENT:user_agent}"'
+
+  # Connection event format
+  - name: ICECAST_CONNECTION
+    apply_on: message
+    pattern: '\[%{ICECAST_TIMESTAMP:timestamp}\]\s+INFO\s+connection/.*:\s+%{IP:src_ip}\s+'
+
+statics:
+  - meta: service
+    value: icecast
+  - meta: log_type
+    expression: "evt.Parsed.http_path != '' ? 'access' : 'connection'"
+  - target: evt.StrTime
+    expression: evt.Parsed.timestamp

@@ -1,0 +1,14 @@
+{
+	"admin/services/dns-master": {
+		"title": "DNS Master",
+		"action": {
+			"type": "view",
+			"path": "dns-master/overview"
+		},
+		"depends": {
+			"acl": ["luci-app-dns-master"],
+			"uci": { "dns-master": true }
+		},
+		"order": 55
+	}
+}

@@ -123,6 +123,8 @@ load_config() {
 	maxconn="$(uci_get main.maxconn)" || maxconn="4096"
 	log_level="$(uci_get main.log_level)" || log_level="warning"
 	default_backend="$(uci_get main.default_backend)" || default_backend="default_luci"
+	waf_enabled="$(uci_get main.waf_enabled)" || waf_enabled="0"
+	waf_backend="$(uci_get main.waf_backend)" || waf_backend="mitmproxy_inspector"
 
 	CERTS_PATH="$data_path/certs"
 	CONFIG_PATH="$data_path/config"
@@ -719,11 +721,14 @@ _emit_sorted_path_acls() {
 				;;
 		esac
 
-		# Generate use_backend rule
+		# Generate use_backend rule (use WAF backend if enabled)
+		local effective_backend="$backend"
+		config_get waf_bypass "$section" waf_bypass "0"
+	[ "$waf_enabled" = "1" ] && [ "$waf_bypass" != "1" ] && effective_backend="$waf_backend"
 		if [ -n "$host_acl_name" ]; then
-			echo "    use_backend $backend if host_${host_acl_name} ${acl_name}"
+			echo "    use_backend $effective_backend if host_${host_acl_name} ${acl_name}"
 		else
-			echo "    use_backend $backend if ${acl_name}"
+			echo "    use_backend $effective_backend if ${acl_name}"
 		fi
 	done
 
@@ -782,7 +787,11 @@ _add_vhost_acl() {
 			echo "    acl host_${acl_name} hdr(host) -i $domain"
 			;;
 	esac
-	echo "    use_backend $backend if host_${acl_name}"
+	# Use WAF backend if enabled, otherwise use original backend
+	local effective_backend="$backend"
+	config_get waf_bypass "$section" waf_bypass "0"
+	[ "$waf_enabled" = "1" ] && [ "$waf_bypass" != "1" ] && effective_backend="$waf_backend"
+	echo "    use_backend $effective_backend if host_${acl_name}"
 }
 
 _generate_backends() {
@@ -1812,6 +1821,8 @@ cmd_reload() {
 	generate_config
 
 	log_info "Reloading HAProxy configuration..."
+	# Copy generated config to container's /etc/haproxy/ (HAProxy reads from there)
+	lxc_exec cp /opt/haproxy/config/haproxy.cfg /etc/haproxy/haproxy.cfg
 	# HAProxy in master-worker mode (-W) reloads gracefully on SIGUSR2
 	# Fallback to SIGHUP if USR2 fails
 	lxc_exec killall -USR2 haproxy 2>/dev/null || \

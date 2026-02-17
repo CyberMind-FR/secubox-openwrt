@@ -7,6 +7,11 @@
 				"/bin/sh": ["exec"]
 			},
 			"ubus": {
+				"luci.secubox-portal": [
+					"get_tree",
+					"get_containers",
+					"get_vhosts"
+				],
 				"luci.secubox": [
 					"modules",
 					"getModules",
@@ -33,6 +38,11 @@
 		"description": "Public access for SecuBox Portal",
 		"read": {
 			"ubus": {
+				"luci.secubox-portal": [
+					"get_tree",
+					"get_containers",
+					"get_vhosts"
+				],
 				"luci.secubox": [
 					"modules",
 					"getModules",

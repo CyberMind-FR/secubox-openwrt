@@ -236,7 +236,13 @@ load_config() {
 	addon_script="$(uci_get filtering.addon_script || echo /data/addons/secubox_analytics.py)"
 
 	# HAProxy router settings
-	haproxy_router_enabled="$(uci_get haproxy_router.enabled || echo 0)"
+	# Check instance-specific override first, then global
+	local inst_haproxy_enabled="$(uci_get ${INSTANCE}.haproxy_router_enabled 2>/dev/null)"
+	if [ -n "$inst_haproxy_enabled" ]; then
+		haproxy_router_enabled="$inst_haproxy_enabled"
+	else
+		haproxy_router_enabled="$(uci_get haproxy_router.enabled || echo 0)"
+	fi
 	haproxy_listen_port="$(uci_get haproxy_router.listen_port || echo 8889)"
 	haproxy_threat_detection="$(uci_get haproxy_router.threat_detection || echo 1)"
 	haproxy_routes_file="$(uci_get haproxy_router.routes_file || echo /srv/mitmproxy/haproxy-routes.json)"
@@ -1358,11 +1364,17 @@ cmd_sync_routes() {
 
 	log_info "Generated $routes_file with $count routes"
 
-	# Copy to container data path if container is running
-	if lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"; then
-		cp "$routes_file" "$data_path/haproxy-routes.json"
-		log_info "Routes synced to container"
-	fi
+	# Copy routes to all instance data paths
+	local instances=$(uci show mitmproxy 2>/dev/null | grep '=instance$' | sed 's/mitmproxy\.\([^=]*\)=instance/\1/')
+	for inst in $instances; do
+		local inst_data_path=$(uci -q get mitmproxy.${inst}.data_path)
+		# Default to /srv/mitmproxy-<instance> if not set
+		[ -z "$inst_data_path" ] && inst_data_path="/srv/mitmproxy-${inst}"
+		if [ -d "$inst_data_path" ]; then
+			cp "$routes_file" "$inst_data_path/haproxy-routes.json"
+			log_info "Routes synced to $inst_data_path"
+		fi
+	done
 }
 
 cmd_haproxy_enable() {
@@ -1429,11 +1441,24 @@ cmd_haproxy_enable() {
 # =============================================================================
 
 cmd_reload_autoban_config() {
-	load_config
-
 	log_info "Reloading auto-ban configuration..."
-	write_autoban_config
-	log_info "Auto-ban config updated at $data_path/autoban.json"
+
+	# Write to all instance data paths
+	local instances=$(uci show mitmproxy 2>/dev/null | grep '=instance$' | sed 's/mitmproxy\.\([^=]*\)=instance/\1/')
+
+	if [ -n "$instances" ]; then
+		for inst in $instances; do
+			load_instance_config "$inst"
+			load_config
+			write_autoban_config
+			log_info "Auto-ban config updated at $data_path/autoban.json"
+		done
+	else
+		# Legacy single-instance mode
+		load_config
+		write_autoban_config
+		log_info "Auto-ban config updated at $data_path/autoban.json"
+	fi
 }
 
 cmd_process_autoban() {

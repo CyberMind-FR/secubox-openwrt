@@ -2863,6 +2863,405 @@ get_pipeline_status() {
 }
 
 # ============================================
+# Instance Management Methods
+# ============================================
+
+list_instances() {
+	json_init
+	json_add_array "instances"
+
+	for instance in $(uci -q show hexojs | grep "=instance" | sed 's/hexojs\.\([^=]*\)=instance/\1/'); do
+		local port=$(uci -q get hexojs.${instance}.port)
+		local enabled=$(uci -q get hexojs.${instance}.enabled)
+		local title=$(uci -q get hexojs.${instance}.title)
+		local theme=$(uci -q get hexojs.${instance}.theme)
+		local domain=$(uci -q get hexojs.${instance}.domain)
+		local data_path=$(uci_get main.data_path) || data_path="$DATA_PATH"
+		local site_path="$data_path/instances/$instance/site"
+
+		local running="false"
+		local site_exists="false"
+		[ -d "$site_path" ] && site_exists="true"
+		netstat -tln 2>/dev/null | grep -q ":${port}[[:space:]]" && running="true"
+
+		json_add_object
+		json_add_string "name" "$instance"
+		json_add_boolean "enabled" "${enabled:-0}"
+		json_add_boolean "running" "$([ "$running" = "true" ] && echo 1 || echo 0)"
+		json_add_int "port" "${port:-4000}"
+		json_add_string "title" "${title:-$instance Blog}"
+		json_add_string "theme" "${theme:-cybermind}"
+		json_add_string "domain" "$domain"
+		json_add_boolean "site_exists" "$([ "$site_exists" = "true" ] && echo 1 || echo 0)"
+		json_close_object
+	done
+
+	json_close_array
+	json_dump
+}
+
+create_instance() {
+	read input
+	json_load "$input"
+	json_get_var name name
+	json_get_var title title
+	json_get_var port port
+
+	json_init
+
+	if [ -z "$name" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Instance name required"
+		json_dump
+		return
+	fi
+
+	# Validate name
+	echo "$name" | grep -qE '^[a-z][a-z0-9_]*$' || {
+		json_add_boolean "success" 0
+		json_add_string "error" "Invalid name. Use lowercase letters, numbers, underscore."
+		json_dump
+		return
+	}
+
+	# Check if exists
+	local existing=$(uci -q get hexojs.${name})
+	if [ -n "$existing" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Instance '$name' already exists"
+		json_dump
+		return
+	fi
+
+	# Find next available port if not specified
+	if [ -z "$port" ]; then
+		port=4000
+		while uci -q show hexojs | grep -q "port='$port'"; do
+			port=$((port + 1))
+		done
+	fi
+
+	# Create UCI config
+	uci set hexojs.${name}=instance
+	uci set hexojs.${name}.enabled='1'
+	uci set hexojs.${name}.port="$port"
+	uci set hexojs.${name}.title="${title:-$name Blog}"
+	uci set hexojs.${name}.theme='cybermind'
+	uci commit hexojs
+
+	# Create directory
+	local data_path=$(uci_get main.data_path) || data_path="$DATA_PATH"
+	mkdir -p "$data_path/instances/$name"
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Instance '$name' created on port $port"
+	json_add_string "name" "$name"
+	json_add_int "port" "$port"
+
+	json_dump
+}
+
+delete_instance() {
+	read input
+	json_load "$input"
+	json_get_var name name
+	json_get_var delete_data delete_data
+
+	json_init
+
+	if [ -z "$name" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Instance name required"
+		json_dump
+		return
+	fi
+
+	# Stop instance if running
+	"$HEXOCTL" instance stop "$name" 2>/dev/null
+
+	# Remove UCI config
+	uci delete hexojs.${name} 2>/dev/null
+	uci commit hexojs
+
+	# Optionally delete data
+	if [ "$delete_data" = "1" ]; then
+		local data_path=$(uci_get main.data_path) || data_path="$DATA_PATH"
+		rm -rf "$data_path/instances/$name"
+	fi
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Instance '$name' deleted"
+
+	json_dump
+}
+
+start_instance() {
+	read input
+	json_load "$input"
+	json_get_var name name
+
+	json_init
+
+	if [ -z "$name" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Instance name required"
+		json_dump
+		return
+	fi
+
+	local output=$("$HEXOCTL" instance start "$name" 2>&1)
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Instance started"
+		json_add_string "output" "$output"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+
+	json_dump
+}
+
+stop_instance() {
+	read input
+	json_load "$input"
+	json_get_var name name
+
+	json_init
+
+	if [ -z "$name" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Instance name required"
+		json_dump
+		return
+	fi
+
+	local output=$("$HEXOCTL" instance stop "$name" 2>&1)
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Instance stopped"
+
+	json_dump
+}
+
+# ============================================
+# Backup/Restore Methods
+# ============================================
+
+list_backups() {
+	local data_path=$(uci_get main.data_path) || data_path="$DATA_PATH"
+	local backup_dir="$data_path/backups"
+
+	json_init
+	json_add_array "backups"
+
+	if [ -d "$backup_dir" ]; then
+		for f in "$backup_dir"/*.tar.gz; do
+			[ -f "$f" ] || continue
+			local name=$(basename "$f" .tar.gz)
+			local size=$(du -h "$f" | cut -f1)
+			local ts=$(stat -c %Y "$f" 2>/dev/null || echo 0)
+
+			json_add_object
+			json_add_string "name" "$name"
+			json_add_string "size" "$size"
+			json_add_int "timestamp" "$ts"
+			json_close_object
+		done
+	fi
+
+	json_close_array
+	json_dump
+}
+
+create_backup() {
+	read input
+	json_load "$input"
+	json_get_var instance instance
+	json_get_var name name
+
+	json_init
+
+	[ -z "$instance" ] && instance="default"
+	[ -z "$name" ] && name="$(date +%Y%m%d-%H%M%S)"
+
+	local output=$("$HEXOCTL" backup "$instance" "$name" 2>&1)
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Backup created"
+		json_add_string "name" "${instance}_${name}"
+		json_add_string "output" "$output"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+
+	json_dump
+}
+
+restore_backup() {
+	read input
+	json_load "$input"
+	json_get_var name name
+	json_get_var instance instance
+
+	json_init
+
+	if [ -z "$name" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Backup name required"
+		json_dump
+		return
+	fi
+
+	[ -z "$instance" ] && instance="default"
+
+	local output=$("$HEXOCTL" restore "$name" "$instance" 2>&1)
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Backup restored"
+		json_add_string "output" "$output"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+
+	json_dump
+}
+
+delete_backup() {
+	read input
+	json_load "$input"
+	json_get_var name name
+
+	json_init
+
+	if [ -z "$name" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Backup name required"
+		json_dump
+		return
+	fi
+
+	local output=$("$HEXOCTL" backup delete "$name" 2>&1)
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Backup deleted"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+
+	json_dump
+}
+
+# ============================================
+# GitHub Integration Methods
+# ============================================
+
+github_clone() {
+	read input
+	json_load "$input"
+	json_get_var repo repo
+	json_get_var instance instance
+	json_get_var branch branch
+
+	json_init
+
+	if [ -z "$repo" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "GitHub repo URL required"
+		json_dump
+		return
+	fi
+
+	[ -z "$instance" ] && instance="default"
+	[ -z "$branch" ] && branch="main"
+
+	local output=$("$HEXOCTL" github clone "$repo" "$instance" "$branch" 2>&1)
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "GitHub repo cloned successfully"
+		json_add_string "instance" "$instance"
+		json_add_string "repo" "$repo"
+		json_add_string "branch" "$branch"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+
+	json_dump
+}
+
+# ============================================
+# Gitea Push Method
+# ============================================
+
+gitea_push() {
+	read input
+	json_load "$input"
+	json_get_var instance instance
+	json_get_var message message
+
+	json_init
+
+	[ -z "$instance" ] && instance="default"
+	[ -z "$message" ] && message="Auto-commit from SecuBox"
+
+	local output=$("$HEXOCTL" gitea push "$instance" "$message" 2>&1)
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Changes pushed to Gitea"
+		json_add_string "output" "$output"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+
+	json_dump
+}
+
+# ============================================
+# Quick Publish Method
+# ============================================
+
+quick_publish() {
+	read input
+	json_load "$input"
+	json_get_var instance instance
+
+	json_init
+
+	[ -z "$instance" ] && instance="default"
+
+	local output=$("$HEXOCTL" quick-publish "$instance" 2>&1)
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Quick publish completed"
+		json_add_string "output" "$output"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+
+	json_dump
+}
+
+# ============================================
 # Service Control
 # ============================================
 
@@ -2953,6 +3352,18 @@ case "$1" in
   "gitea_clone": {},
   "gitea_sync": {},
   "gitea_save_config": {"enabled": "bool", "gitea_url": "str", "gitea_user": "str", "gitea_token": "str", "content_repo": "str", "content_branch": "str", "auto_sync": "bool"},
+  "gitea_push": {"instance": "str", "message": "str"},
+  "list_instances": {},
+  "create_instance": {"name": "str", "title": "str", "port": "int"},
+  "delete_instance": {"name": "str", "delete_data": "bool"},
+  "start_instance": {"name": "str"},
+  "stop_instance": {"name": "str"},
+  "list_backups": {},
+  "create_backup": {"instance": "str", "name": "str"},
+  "restore_backup": {"name": "str", "instance": "str"},
+  "delete_backup": {"name": "str"},
+  "github_clone": {"repo": "str", "instance": "str", "branch": "str"},
+  "quick_publish": {"instance": "str"},
   "publish_to_www": {"path": "str"},
   "get_workflow_status": {},
   "list_profiles": {},
@@ -3020,6 +3431,18 @@ EOF
 			gitea_clone) gitea_clone ;;
 			gitea_sync) gitea_sync ;;
 			gitea_save_config) gitea_save_config ;;
+			gitea_push) gitea_push ;;
+			list_instances) list_instances ;;
+			create_instance) create_instance ;;
+			delete_instance) delete_instance ;;
+			start_instance) start_instance ;;
+			stop_instance) stop_instance ;;
+			list_backups) list_backups ;;
+			create_backup) create_backup ;;
+			restore_backup) restore_backup ;;
+			delete_backup) delete_backup ;;
+			github_clone) github_clone ;;
+			quick_publish) quick_publish ;;
 			publish_to_www) publish_to_www ;;
 			get_workflow_status) get_workflow_status ;;
 			list_profiles) list_profiles ;;

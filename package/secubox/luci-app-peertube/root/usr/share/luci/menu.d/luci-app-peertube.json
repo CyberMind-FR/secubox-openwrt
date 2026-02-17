@@ -1,0 +1,14 @@
+{
+	"admin/services/peertube": {
+		"title": "PeerTube",
+		"order": 65,
+		"action": {
+			"type": "view",
+			"path": "peertube/overview"
+		},
+		"depends": {
+			"acl": ["luci-app-peertube"],
+			"uci": {"peertube": true}
+		}
+	}
+}

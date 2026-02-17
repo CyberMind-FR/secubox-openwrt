@@ -1,0 +1,1083 @@
+#!/bin/sh
+# SecuBox PeerTube Manager - LXC Debian container with PostgreSQL/Redis/Node.js
+
+CONFIG="peertube"
+LXC_NAME="peertube"
+LXC_PATH="/srv/lxc"
+LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
+LXC_CONF="$LXC_PATH/$LXC_NAME/config"
+DATA_PATH_DEFAULT="/srv/peertube"
+PEERTUBE_VERSION="6.3.2"
+OPKG_UPDATED=0
+
+usage() {
+	cat <<'USAGE'
+Usage: peertubectl <command>
+
+Installation:
+  install              Create LXC container with PeerTube stack
+  uninstall            Remove container (preserves data)
+  update               Update PeerTube to latest version
+  check                Run prerequisite checks
+
+Service:
+  start                Start PeerTube (via init)
+  stop                 Stop PeerTube
+  restart              Restart PeerTube
+  status               Show container and service status
+  logs [N]             Show last N lines of logs (default: 50)
+  shell                Open interactive shell in container
+
+Administration:
+  admin create-user --username <n> --email <e> [--password <p>]
+  admin reset-password --username <n>
+  admin list-users     List all users
+
+Live Streaming:
+  live enable          Enable RTMP live streaming
+  live disable         Disable RTMP live streaming
+  live status          Show live streaming status
+
+Exposure:
+  configure-haproxy    Setup HAProxy vhost with WebSocket support
+  emancipate <domain>  Full exposure (HAProxy + ACME + firewall)
+
+Backup:
+  backup [path]        Backup database and config
+  restore <path>       Restore from backup
+
+Internal:
+  service-run          Run container via procd
+  service-stop         Stop container
+USAGE
+}
+
+# ---------- helpers ----------
+
+require_root() { [ "$(id -u)" -eq 0 ]; }
+
+uci_get() {
+	local key="$1"
+	local section="${2:-main}"
+	uci -q get ${CONFIG}.${section}.$key
+}
+
+uci_set() {
+	local key="$1"
+	local value="$2"
+	local section="${3:-main}"
+	uci set ${CONFIG}.${section}.$key="$value"
+}
+
+log_info()  { echo "[INFO] $*"; logger -t peertubectl "$*"; }
+log_warn()  { echo "[WARN] $*"; logger -t peertubectl -p warning "$*"; }
+log_error() { echo "[ERROR] $*" >&2; logger -t peertubectl -p err "$*"; }
+
+ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
+
+ensure_packages() {
+	for pkg in "$@"; do
+		if ! opkg status "$pkg" 2>/dev/null | grep -q "Status:.*installed"; then
+			if [ "$OPKG_UPDATED" -eq 0 ]; then
+				opkg update || return 1
+				OPKG_UPDATED=1
+			fi
+			opkg install "$pkg" || return 1
+		fi
+	done
+}
+
+defaults() {
+	data_path="$(uci_get data_path || echo $DATA_PATH_DEFAULT)"
+	videos_path="$(uci_get videos_path || echo $DATA_PATH_DEFAULT/videos)"
+	memory_limit="$(uci_get memory_limit || echo 2048)"
+	port="$(uci_get port server || echo 9000)"
+	hostname="$(uci_get hostname server || echo peertube.local)"
+	timezone="$(uci_get timezone || echo Europe/Paris)"
+}
+
+detect_arch() {
+	case "$(uname -m)" in
+		aarch64) echo "aarch64" ;;
+		armv7l)  echo "armv7" ;;
+		x86_64)  echo "x86_64" ;;
+		*)       echo "x86_64" ;;
+	esac
+}
+
+generate_password() {
+	head -c 32 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 24
+}
+
+# ---------- LXC helpers ----------
+
+lxc_running() {
+	lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"
+}
+
+lxc_exists() {
+	[ -f "$LXC_CONF" ] && [ -d "$LXC_ROOTFS" ]
+}
+
+lxc_exec() {
+	lxc-attach -n "$LXC_NAME" -- "$@"
+}
+
+lxc_stop() {
+	if lxc_running; then
+		lxc-stop -n "$LXC_NAME" -k 2>/dev/null || true
+		sleep 2
+	fi
+}
+
+# ---------- rootfs creation ----------
+
+lxc_create_rootfs() {
+	local arch=$(detect_arch)
+
+	# Map to Debian architecture names
+	local debian_arch
+	case "$arch" in
+		aarch64) debian_arch="arm64" ;;
+		armv7)   debian_arch="armhf" ;;
+		x86_64)  debian_arch="amd64" ;;
+		*)       debian_arch="amd64" ;;
+	esac
+
+	ensure_dir "$LXC_ROOTFS"
+
+	# Minimal Debian rootfs via tarball from LXC image server
+	local rootfs_url="https://images.linuxcontainers.org/images/debian/bookworm/${debian_arch}/default/"
+	log_info "Downloading Debian bookworm rootfs for ${debian_arch}..."
+
+	# Get latest build directory
+	local latest_path
+	latest_path=$(wget -q -O - "$rootfs_url" 2>/dev/null | grep -oE '[0-9]{8}_[0-9]{2}:[0-9]{2}' | tail -1)
+	if [ -z "$latest_path" ]; then
+		log_error "Failed to find latest Debian rootfs build"
+		return 1
+	fi
+
+	local tarball="/tmp/debian-peertube.tar.xz"
+	local tarball_url="${rootfs_url}${latest_path}/rootfs.tar.xz"
+	wget -q -O "$tarball" "$tarball_url" || {
+		log_error "Failed to download Debian rootfs from $tarball_url"
+		return 1
+	}
+
+	tar -xJf "$tarball" -C "$LXC_ROOTFS" || {
+		log_error "Failed to extract Debian rootfs"
+		return 1
+	}
+	rm -f "$tarball"
+
+	# DNS
+	cp /etc/resolv.conf "$LXC_ROOTFS/etc/resolv.conf" 2>/dev/null || \
+		echo "nameserver 8.8.8.8" > "$LXC_ROOTFS/etc/resolv.conf"
+
+	# Create minimal /dev for chroot operations
+	mkdir -p "$LXC_ROOTFS/dev"
+	[ -c "$LXC_ROOTFS/dev/null" ] || mknod -m 666 "$LXC_ROOTFS/dev/null" c 1 3 2>/dev/null
+	[ -c "$LXC_ROOTFS/dev/zero" ] || mknod -m 666 "$LXC_ROOTFS/dev/zero" c 1 5 2>/dev/null
+	[ -c "$LXC_ROOTFS/dev/random" ] || mknod -m 666 "$LXC_ROOTFS/dev/random" c 1 8 2>/dev/null
+	[ -c "$LXC_ROOTFS/dev/urandom" ] || mknod -m 666 "$LXC_ROOTFS/dev/urandom" c 1 9 2>/dev/null
+
+	# Configure apt sources
+	cat > "$LXC_ROOTFS/etc/apt/sources.list" <<'SOURCES'
+deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
+deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
+deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
+SOURCES
+
+	# Install PeerTube stack
+	log_info "Installing PeerTube dependencies (this takes a while)..."
+	chroot "$LXC_ROOTFS" /bin/sh -c "
+		export DEBIAN_FRONTEND=noninteractive
+		apt-get update && \
+		apt-get install -y --no-install-recommends \
+			curl wget ca-certificates gnupg \
+			postgresql postgresql-contrib \
+			redis-server \
+			ffmpeg \
+			python3 \
+			g++ make \
+			openssl \
+			procps
+	" || {
+		log_error "Failed to install base dependencies"
+		return 1
+	}
+
+	# Add NodeSource repository for Node.js 18 LTS
+	log_info "Installing Node.js 18 LTS..."
+	chroot "$LXC_ROOTFS" /bin/sh -c "
+		export DEBIAN_FRONTEND=noninteractive
+		curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+		apt-get install -y nodejs && \
+		npm install -g yarn
+	" || {
+		log_error "Failed to install Node.js"
+		return 1
+	}
+
+	# Create peertube user
+	chroot "$LXC_ROOTFS" /bin/sh -c "
+		useradd -r -s /bin/bash -d /opt/peertube -m peertube
+	"
+
+	# Download and install PeerTube
+	log_info "Downloading PeerTube v${PEERTUBE_VERSION}..."
+	local pt_url="https://github.com/Chocobozzz/PeerTube/releases/download/v${PEERTUBE_VERSION}/peertube-v${PEERTUBE_VERSION}.zip"
+	wget -q -O "/tmp/peertube.zip" "$pt_url" || {
+		log_error "Failed to download PeerTube"
+		return 1
+	}
+
+	chroot "$LXC_ROOTFS" /bin/sh -c "
+		apt-get install -y --no-install-recommends unzip
+		cd /opt/peertube
+		unzip /tmp/peertube.zip
+		mv peertube-v${PEERTUBE_VERSION} peertube-latest
+		cd peertube-latest
+		yarn install --production --pure-lockfile
+		chown -R peertube:peertube /opt/peertube
+	" || {
+		log_error "Failed to install PeerTube"
+		return 1
+	}
+	rm -f /tmp/peertube.zip
+
+	# Create directories
+	mkdir -p "$LXC_ROOTFS/opt/peertube/config"
+	mkdir -p "$LXC_ROOTFS/opt/peertube/storage"
+
+	# Create startup script
+	create_startup_script
+
+	# Clean up apt cache
+	chroot "$LXC_ROOTFS" /bin/sh -c "
+		apt-get clean
+		rm -rf /var/lib/apt/lists/*
+	"
+
+	log_info "Rootfs created successfully"
+}
+
+create_startup_script() {
+	cat > "$LXC_ROOTFS/opt/start-peertube.sh" <<'STARTUP'
+#!/bin/bash
+set -e
+
+export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+
+# Start PostgreSQL
+echo "[PEERTUBE] Starting PostgreSQL..."
+service postgresql start
+sleep 3
+
+# Start Redis
+echo "[PEERTUBE] Starting Redis..."
+service redis-server start
+sleep 2
+
+# Initialize database on first run
+if [ ! -f /opt/peertube/.initialized ]; then
+    echo "[PEERTUBE] First run - initializing database..."
+
+    # Generate database password
+    DB_PASSWORD=$(head -c 32 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 24)
+
+    # Create database and user
+    su - postgres -c "psql -c \"CREATE USER peertube WITH PASSWORD '${DB_PASSWORD}';\""
+    su - postgres -c "psql -c \"CREATE DATABASE peertube OWNER peertube;\""
+    su - postgres -c "psql -c \"GRANT ALL PRIVILEGES ON DATABASE peertube TO peertube;\""
+
+    # Create extensions
+    su - postgres -c "psql -d peertube -c 'CREATE EXTENSION IF NOT EXISTS pg_trgm;'"
+    su - postgres -c "psql -d peertube -c 'CREATE EXTENSION IF NOT EXISTS unaccent;'"
+
+    # Save password for config generation
+    echo "$DB_PASSWORD" > /opt/peertube/.db_password
+    chmod 600 /opt/peertube/.db_password
+
+    touch /opt/peertube/.initialized
+    echo "[PEERTUBE] Database initialized"
+fi
+
+# Generate PeerTube config if not exists
+if [ ! -f /opt/peertube/config/production.yaml ]; then
+    echo "[PEERTUBE] Generating production config..."
+
+    DB_PASSWORD=$(cat /opt/peertube/.db_password 2>/dev/null || echo "peertube")
+    SECRET=$(head -c 64 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 32)
+
+    cat > /opt/peertube/config/production.yaml <<YAML
+listen:
+  hostname: '0.0.0.0'
+  port: 9000
+
+webserver:
+  https: true
+  hostname: '${PEERTUBE_HOSTNAME:-peertube.local}'
+  port: 443
+
+database:
+  hostname: 'localhost'
+  port: 5432
+  name: 'peertube'
+  username: 'peertube'
+  password: '${DB_PASSWORD}'
+
+redis:
+  hostname: 'localhost'
+  port: 6379
+
+smtp:
+  transport: sendmail
+  sendmail: '/usr/sbin/sendmail'
+
+storage:
+  tmp: '/opt/peertube/storage/tmp/'
+  avatars: '/opt/peertube/storage/avatars/'
+  videos: '/opt/peertube/storage/videos/'
+  streaming_playlists: '/opt/peertube/storage/streaming-playlists/'
+  redundancy: '/opt/peertube/storage/redundancy/'
+  logs: '/opt/peertube/storage/logs/'
+  previews: '/opt/peertube/storage/previews/'
+  thumbnails: '/opt/peertube/storage/thumbnails/'
+  torrents: '/opt/peertube/storage/torrents/'
+  captions: '/opt/peertube/storage/captions/'
+  cache: '/opt/peertube/storage/cache/'
+  plugins: '/opt/peertube/storage/plugins/'
+  client_overrides: '/opt/peertube/storage/client-overrides/'
+
+log:
+  level: 'info'
+
+secrets:
+  peertube: '${SECRET}'
+
+trust_proxy:
+  - '127.0.0.1'
+  - 'loopback'
+
+admin:
+  email: 'admin@localhost'
+
+transcoding:
+  enabled: true
+  threads: 2
+  resolutions:
+    144p: false
+    240p: false
+    360p: false
+    480p: true
+    720p: true
+    1080p: false
+    1440p: false
+    2160p: false
+  hls:
+    enabled: true
+
+live:
+  enabled: false
+  rtmp:
+    port: 1935
+YAML
+
+    chown peertube:peertube /opt/peertube/config/production.yaml
+fi
+
+# Ensure storage directories exist
+mkdir -p /opt/peertube/storage/{tmp,avatars,videos,streaming-playlists,redundancy,logs,previews,thumbnails,torrents,captions,cache,plugins,client-overrides}
+chown -R peertube:peertube /opt/peertube/storage
+
+echo "[PEERTUBE] Starting PeerTube..."
+cd /opt/peertube/peertube-latest
+
+# Run PeerTube as peertube user
+exec su - peertube -c "cd /opt/peertube/peertube-latest && NODE_ENV=production NODE_CONFIG_DIR=/opt/peertube/config node dist/server"
+STARTUP
+
+	chmod +x "$LXC_ROOTFS/opt/start-peertube.sh"
+}
+
+lxc_create_config() {
+	defaults
+	local mem_bytes=$((memory_limit * 1024 * 1024))
+
+	ensure_dir "$LXC_PATH/$LXC_NAME"
+	ensure_dir "$data_path"
+	ensure_dir "$data_path/config"
+	ensure_dir "$data_path/storage"
+	ensure_dir "$videos_path"
+
+	cat > "$LXC_CONF" <<EOF
+# PeerTube LXC Container
+lxc.uts.name = $LXC_NAME
+lxc.rootfs.path = dir:$LXC_ROOTFS
+lxc.arch = $(detect_arch)
+
+# Network: share host network
+lxc.net.0.type = none
+
+# Auto-mounts
+lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+
+# Bind mounts for persistent data
+lxc.mount.entry = $data_path/config opt/peertube/config none bind,create=dir 0 0
+lxc.mount.entry = $data_path/storage opt/peertube/storage none bind,create=dir 0 0
+lxc.mount.entry = $videos_path opt/peertube/storage/videos none bind,create=dir 0 0
+
+# Environment
+lxc.environment = PEERTUBE_HOSTNAME=$hostname
+lxc.environment = NODE_ENV=production
+
+# Resource limits
+lxc.cgroup2.memory.max = $mem_bytes
+
+# Security
+lxc.cap.drop = sys_module mac_admin mac_override sys_time
+
+# TTY/PTY for cgroup2
+lxc.tty.max = 4
+lxc.pty.max = 16
+lxc.cgroup2.devices.allow = c 1:3 rwm
+lxc.cgroup2.devices.allow = c 1:5 rwm
+lxc.cgroup2.devices.allow = c 1:7 rwm
+lxc.cgroup2.devices.allow = c 1:8 rwm
+lxc.cgroup2.devices.allow = c 1:9 rwm
+lxc.cgroup2.devices.allow = c 5:0 rwm
+lxc.cgroup2.devices.allow = c 5:1 rwm
+lxc.cgroup2.devices.allow = c 5:2 rwm
+lxc.cgroup2.devices.allow = c 136:* rwm
+
+# Startup command
+lxc.init.cmd = /opt/start-peertube.sh
+EOF
+
+	log_info "LXC config created"
+}
+
+# ---------- commands ----------
+
+cmd_install() {
+	require_root || { log_error "Must run as root"; return 1; }
+
+	log_info "Installing PeerTube..."
+	log_info "This will take 10-15 minutes to download and configure all components."
+
+	# Check prerequisites
+	ensure_packages lxc lxc-common wget tar || return 1
+
+	# Create LXC rootfs
+	if ! lxc_exists; then
+		lxc_create_rootfs || return 1
+	else
+		log_info "Container already exists, skipping rootfs creation"
+	fi
+
+	# Create LXC config
+	lxc_create_config
+
+	# Enable and start
+	uci_set enabled '1'
+	uci commit "$CONFIG"
+	/etc/init.d/peertube enable
+	/etc/init.d/peertube start
+
+	defaults
+	local lan_ip=$(uci -q get network.lan.ipaddr || echo '192.168.255.1')
+
+	log_info ""
+	log_info "=============================================="
+	log_info "  PeerTube installed successfully!"
+	log_info "=============================================="
+	log_info ""
+	log_info "  Access:     http://${lan_ip}:${port}"
+	log_info "  Admin:      First user registered becomes admin"
+	log_info ""
+	log_info "  Next steps:"
+	log_info "    1. Access the web interface"
+	log_info "    2. Register first user (becomes admin)"
+	log_info "    3. Configure instance settings"
+	log_info "    4. Expose externally:"
+	log_info "       peertubectl emancipate peertube.example.com"
+	log_info ""
+}
+
+cmd_uninstall() {
+	require_root || { log_error "Must run as root"; return 1; }
+
+	log_info "Uninstalling PeerTube..."
+
+	# Stop and disable
+	/etc/init.d/peertube stop 2>/dev/null
+	/etc/init.d/peertube disable 2>/dev/null
+	lxc_stop
+
+	# Remove container but keep data
+	rm -rf "$LXC_ROOTFS" "$LXC_CONF"
+
+	uci_set enabled '0'
+	uci commit "$CONFIG"
+
+	defaults
+	log_info "Container removed. Data preserved in $data_path"
+}
+
+cmd_update() {
+	require_root || { log_error "Must run as root"; return 1; }
+
+	log_info "Updating PeerTube..."
+	lxc_stop
+
+	# Get current and new version
+	local new_version
+	new_version=$(wget -q -O - "https://api.github.com/repos/Chocobozzz/PeerTube/releases/latest" 2>/dev/null | \
+		jsonfilter -e '@.tag_name' | sed 's/^v//')
+
+	if [ -z "$new_version" ]; then
+		log_error "Failed to get latest version"
+		return 1
+	fi
+
+	log_info "Updating to version $new_version..."
+
+	# Download new version
+	local pt_url="https://github.com/Chocobozzz/PeerTube/releases/download/v${new_version}/peertube-v${new_version}.zip"
+	wget -q -O "/tmp/peertube.zip" "$pt_url" || {
+		log_error "Failed to download PeerTube"
+		return 1
+	}
+
+	# Extract and install
+	chroot "$LXC_ROOTFS" /bin/sh -c "
+		cd /opt/peertube
+		unzip -o /tmp/peertube.zip
+		mv peertube-v${new_version} peertube-latest-new
+		cd peertube-latest-new
+		yarn install --production --pure-lockfile
+		cd ..
+		rm -rf peertube-latest-old
+		mv peertube-latest peertube-latest-old
+		mv peertube-latest-new peertube-latest
+		chown -R peertube:peertube /opt/peertube
+	"
+	rm -f /tmp/peertube.zip
+
+	/etc/init.d/peertube start
+	log_info "Update complete (version $new_version)"
+}
+
+cmd_check() {
+	echo "PeerTube Prerequisites Check"
+	echo "============================="
+
+	# LXC
+	if command -v lxc-start >/dev/null 2>&1; then
+		echo "[OK] LXC installed"
+	else
+		echo "[FAIL] LXC not installed"
+	fi
+
+	# Container exists
+	if lxc_exists; then
+		echo "[OK] Container exists"
+	else
+		echo "[--] Container not created"
+	fi
+
+	# Container running
+	if lxc_running; then
+		echo "[OK] Container running"
+	else
+		echo "[--] Container not running"
+	fi
+
+	# PeerTube port
+	defaults
+	if netstat -tln 2>/dev/null | grep -q ":${port} " || \
+	   grep -q ":$(printf '%04X' $port) " /proc/net/tcp 2>/dev/null; then
+		echo "[OK] PeerTube listening on port $port"
+	else
+		echo "[--] PeerTube not listening"
+	fi
+
+	# Services in container
+	if lxc_running; then
+		if lxc_exec pgrep postgres >/dev/null 2>&1; then
+			echo "[OK] PostgreSQL running"
+		else
+			echo "[FAIL] PostgreSQL not running"
+		fi
+
+		if lxc_exec pgrep redis-server >/dev/null 2>&1; then
+			echo "[OK] Redis running"
+		else
+			echo "[FAIL] Redis not running"
+		fi
+
+		if lxc_exec pgrep -f "node dist/server" >/dev/null 2>&1; then
+			echo "[OK] PeerTube process running"
+		else
+			echo "[FAIL] PeerTube process not running"
+		fi
+	fi
+}
+
+cmd_status() {
+	defaults
+
+	# JSON output for RPCD
+	if [ "$1" = "--json" ]; then
+		local running=0
+		local postgres=0
+		local redis=0
+		local peertube_proc=0
+
+		lxc_running && running=1
+		if [ "$running" = "1" ]; then
+			lxc_exec pgrep postgres >/dev/null 2>&1 && postgres=1
+			lxc_exec pgrep redis-server >/dev/null 2>&1 && redis=1
+			lxc_exec pgrep -f "node dist/server" >/dev/null 2>&1 && peertube_proc=1
+		fi
+
+		cat <<EOF
+{
+  "enabled": $(uci_get enabled || echo 0),
+  "running": $running,
+  "port": $port,
+  "hostname": "$hostname",
+  "data_path": "$data_path",
+  "videos_path": "$videos_path",
+  "memory_limit": $memory_limit,
+  "services": {
+    "postgresql": $postgres,
+    "redis": $redis,
+    "peertube": $peertube_proc
+  }
+}
+EOF
+		return
+	fi
+
+	echo "PeerTube Status"
+	echo "==============="
+	echo ""
+	echo "Configuration:"
+	echo "  Enabled:      $(uci_get enabled || echo '0')"
+	echo "  Port:         $port"
+	echo "  Hostname:     $hostname"
+	echo "  Memory:       ${memory_limit}M"
+	echo "  Data Path:    $data_path"
+	echo "  Videos Path:  $videos_path"
+	echo ""
+
+	if lxc_exists; then
+		echo "Container:      EXISTS"
+	else
+		echo "Container:      NOT CREATED (run: peertubectl install)"
+		return 0
+	fi
+
+	if lxc_running; then
+		echo "State:          RUNNING"
+		lxc-info -n "$LXC_NAME" | grep -E "PID|Memory" | sed 's/^/  /'
+		echo ""
+		echo "Services:"
+		lxc_exec pgrep postgres >/dev/null 2>&1 && echo "  PostgreSQL:   UP" || echo "  PostgreSQL:   DOWN"
+		lxc_exec pgrep redis-server >/dev/null 2>&1 && echo "  Redis:        UP" || echo "  Redis:        DOWN"
+		lxc_exec pgrep -f "node dist/server" >/dev/null 2>&1 && echo "  PeerTube:     UP" || echo "  PeerTube:     DOWN"
+	else
+		echo "State:          STOPPED"
+	fi
+
+	echo ""
+	local lan_ip=$(uci -q get network.lan.ipaddr || echo '192.168.255.1')
+	echo "Access URL:     http://${lan_ip}:${port}"
+}
+
+cmd_logs() {
+	local lines="${1:-50}"
+
+	if lxc_running; then
+		echo "=== PeerTube logs ==="
+		lxc_exec tail -n "$lines" /opt/peertube/storage/logs/peertube.log 2>/dev/null || \
+			echo "No PeerTube logs found"
+	else
+		echo "Container not running"
+	fi
+}
+
+cmd_shell() {
+	if lxc_running; then
+		lxc_exec /bin/bash || lxc_exec /bin/sh
+	else
+		log_error "Container not running"
+		return 1
+	fi
+}
+
+cmd_start() {
+	require_root || { log_error "Must run as root"; return 1; }
+	/etc/init.d/peertube start
+}
+
+cmd_stop() {
+	require_root || { log_error "Must run as root"; return 1; }
+	/etc/init.d/peertube stop
+}
+
+cmd_restart() {
+	require_root || { log_error "Must run as root"; return 1; }
+	/etc/init.d/peertube restart
+}
+
+# ---------- admin commands ----------
+
+cmd_admin() {
+	local subcmd="$1"
+	shift
+
+	case "$subcmd" in
+		create-user)
+			cmd_admin_create_user "$@"
+			;;
+		reset-password)
+			cmd_admin_reset_password "$@"
+			;;
+		list-users)
+			cmd_admin_list_users
+			;;
+		*)
+			echo "Usage: peertubectl admin <create-user|reset-password|list-users>"
+			return 1
+			;;
+	esac
+}
+
+cmd_admin_create_user() {
+	local username="" email="" password="" admin=""
+
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--username) username="$2"; shift 2 ;;
+			--email) email="$2"; shift 2 ;;
+			--password) password="$2"; shift 2 ;;
+			--admin) admin="--role 0"; shift ;;
+			*) shift ;;
+		esac
+	done
+
+	[ -z "$username" ] || [ -z "$email" ] && {
+		echo "Usage: peertubectl admin create-user --username <n> --email <e> [--password <p>] [--admin]"
+		return 1
+	}
+
+	[ -z "$password" ] && password=$(generate_password)
+
+	lxc_running || { log_error "Container not running"; return 1; }
+
+	lxc_exec su - peertube -c "cd /opt/peertube/peertube-latest && \
+		NODE_ENV=production NODE_CONFIG_DIR=/opt/peertube/config \
+		npm run create-user -- \
+			--url https://localhost \
+			--username '$username' \
+			--email '$email' \
+			--password '$password' \
+			$admin"
+
+	log_info "User created: $username"
+	log_info "Password: $password"
+}
+
+cmd_admin_reset_password() {
+	local username=""
+
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--username) username="$2"; shift 2 ;;
+			*) shift ;;
+		esac
+	done
+
+	[ -z "$username" ] && {
+		echo "Usage: peertubectl admin reset-password --username <n>"
+		return 1
+	}
+
+	local password=$(generate_password)
+
+	lxc_running || { log_error "Container not running"; return 1; }
+
+	lxc_exec su - peertube -c "cd /opt/peertube/peertube-latest && \
+		NODE_ENV=production NODE_CONFIG_DIR=/opt/peertube/config \
+		npm run reset-password -- \
+			--username '$username'"
+
+	log_info "Password reset initiated for: $username"
+}
+
+cmd_admin_list_users() {
+	lxc_running || { log_error "Container not running"; return 1; }
+
+	lxc_exec su - postgres -c "psql -d peertube -c 'SELECT id, username, email, \"createdAt\" FROM \"user\" ORDER BY id;'"
+}
+
+# ---------- live streaming ----------
+
+cmd_live() {
+	local subcmd="$1"
+
+	case "$subcmd" in
+		enable)
+			uci_set enabled '1' live
+			uci commit "$CONFIG"
+			# Update PeerTube config
+			if lxc_running; then
+				lxc_exec sed -i 's/enabled: false/enabled: true/' /opt/peertube/config/production.yaml
+				# Open RTMP port
+				local rtmp_port=$(uci_get rtmp_port live || echo 1935)
+				uci add firewall rule
+				uci set firewall.@rule[-1].name='PeerTube-RTMP'
+				uci set firewall.@rule[-1].src='wan'
+				uci set firewall.@rule[-1].dest_port="$rtmp_port"
+				uci set firewall.@rule[-1].proto='tcp'
+				uci set firewall.@rule[-1].target='ACCEPT'
+				uci commit firewall
+				/etc/init.d/firewall reload
+			fi
+			log_info "Live streaming enabled (RTMP port: $rtmp_port)"
+			;;
+		disable)
+			uci_set enabled '0' live
+			uci commit "$CONFIG"
+			if lxc_running; then
+				lxc_exec sed -i 's/enabled: true/enabled: false/' /opt/peertube/config/production.yaml
+			fi
+			log_info "Live streaming disabled"
+			;;
+		status)
+			local enabled=$(uci_get enabled live || echo 0)
+			local rtmp_port=$(uci_get rtmp_port live || echo 1935)
+			echo "Live Streaming: $([ "$enabled" = "1" ] && echo "ENABLED" || echo "DISABLED")"
+			echo "RTMP Port: $rtmp_port"
+			;;
+		*)
+			echo "Usage: peertubectl live <enable|disable|status>"
+			return 1
+			;;
+	esac
+}
+
+# ---------- HAProxy integration ----------
+
+cmd_configure_haproxy() {
+	require_root || { log_error "Must run as root"; return 1; }
+	defaults
+
+	local domain=$(uci_get domain network)
+	[ -z "$domain" ] && domain="$hostname"
+
+	# Create backend with extended timeouts for streaming/WebSocket
+	local backend_name="peertube_web"
+
+	uci set haproxy.${backend_name}=backend
+	uci set haproxy.${backend_name}.name="$backend_name"
+	uci set haproxy.${backend_name}.mode='http'
+	uci set haproxy.${backend_name}.balance='roundrobin'
+	uci set haproxy.${backend_name}.enabled='1'
+	uci set haproxy.${backend_name}.timeout_server='3600s'
+	uci set haproxy.${backend_name}.timeout_tunnel='3600s'
+	uci set haproxy.${backend_name}.server="peertube 127.0.0.1:${port} check"
+
+	# Create vhost
+	local vhost_name=$(echo "$domain" | tr '.-' '_')
+	uci set haproxy.${vhost_name}=vhost
+	uci set haproxy.${vhost_name}.domain="$domain"
+	uci set haproxy.${vhost_name}.backend="$backend_name"
+	uci set haproxy.${vhost_name}.ssl='1'
+	uci set haproxy.${vhost_name}.ssl_redirect='1'
+	uci set haproxy.${vhost_name}.acme='1'
+	uci set haproxy.${vhost_name}.enabled='1'
+
+	uci commit haproxy
+
+	# Update network config
+	uci_set haproxy '1' network
+	uci_set domain "$domain" network
+	uci commit "$CONFIG"
+
+	# Regenerate and reload
+	if command -v haproxyctl >/dev/null 2>&1; then
+		haproxyctl generate
+		/etc/init.d/haproxy reload
+	fi
+
+	log_info "HAProxy configured for $domain"
+	log_info "SSL certificate will be requested via ACME"
+}
+
+cmd_emancipate() {
+	local domain="$1"
+
+	[ -z "$domain" ] && {
+		echo "Usage: peertubectl emancipate <domain>"
+		return 1
+	}
+
+	require_root || { log_error "Must run as root"; return 1; }
+
+	log_info "Emancipating PeerTube at $domain..."
+
+	# Update hostname
+	uci_set hostname "$domain" server
+	uci_set domain "$domain" network
+	uci commit "$CONFIG"
+
+	# Update PeerTube config
+	if lxc_running; then
+		lxc_exec sed -i "s/hostname: '.*'/hostname: '$domain'/" /opt/peertube/config/production.yaml
+	fi
+
+	# Configure HAProxy
+	cmd_configure_haproxy
+
+	# Sync mitmproxy routes
+	if command -v mitmproxyctl >/dev/null 2>&1; then
+		mitmproxyctl sync-routes 2>/dev/null
+	fi
+
+	# Open firewall if needed
+	local wan_open=$(uci_get firewall_wan network)
+	if [ "$wan_open" = "1" ]; then
+		uci add firewall rule
+		uci set firewall.@rule[-1].name='PeerTube-HTTPS'
+		uci set firewall.@rule[-1].src='wan'
+		uci set firewall.@rule[-1].dest_port='443'
+		uci set firewall.@rule[-1].proto='tcp'
+		uci set firewall.@rule[-1].target='ACCEPT'
+		uci commit firewall
+		/etc/init.d/firewall reload
+	fi
+
+	log_info ""
+	log_info "=============================================="
+	log_info "  PeerTube Emancipated!"
+	log_info "=============================================="
+	log_info ""
+	log_info "  URL:      https://$domain"
+	log_info "  SSL:      ACME certificate requested"
+	log_info ""
+	log_info "  Verify:   curl -v https://$domain"
+	log_info ""
+}
+
+# ---------- backup/restore ----------
+
+cmd_backup() {
+	local backup_path="${1:-/srv/peertube/backup}"
+
+	require_root || { log_error "Must run as root"; return 1; }
+	lxc_running || { log_error "Container must be running"; return 1; }
+
+	ensure_dir "$backup_path"
+
+	local timestamp=$(date +%Y%m%d_%H%M%S)
+	local backup_file="$backup_path/peertube_${timestamp}.tar.gz"
+
+	log_info "Creating backup..."
+
+	# Dump PostgreSQL
+	lxc_exec su - postgres -c "pg_dump peertube" > "$backup_path/peertube_db_${timestamp}.sql"
+
+	# Create tarball with config and database dump
+	defaults
+	tar -czf "$backup_file" \
+		-C "$data_path" config \
+		-C "$backup_path" "peertube_db_${timestamp}.sql"
+
+	rm -f "$backup_path/peertube_db_${timestamp}.sql"
+
+	log_info "Backup created: $backup_file"
+}
+
+cmd_restore() {
+	local backup_file="$1"
+
+	[ -z "$backup_file" ] || [ ! -f "$backup_file" ] && {
+		echo "Usage: peertubectl restore <backup.tar.gz>"
+		return 1
+	}
+
+	require_root || { log_error "Must run as root"; return 1; }
+	lxc_running || { log_error "Container must be running"; return 1; }
+
+	log_info "Restoring from $backup_file..."
+
+	local tmp_dir="/tmp/peertube_restore_$$"
+	mkdir -p "$tmp_dir"
+
+	tar -xzf "$backup_file" -C "$tmp_dir"
+
+	# Restore config
+	defaults
+	cp -a "$tmp_dir/config/"* "$data_path/config/"
+
+	# Restore database
+	local sql_file=$(ls "$tmp_dir"/peertube_db_*.sql 2>/dev/null | head -1)
+	if [ -n "$sql_file" ]; then
+		lxc_exec su - postgres -c "dropdb --if-exists peertube"
+		lxc_exec su - postgres -c "createdb -O peertube peertube"
+		cat "$sql_file" | lxc_exec su - postgres -c "psql peertube"
+	fi
+
+	rm -rf "$tmp_dir"
+
+	log_info "Restore complete. Restart PeerTube to apply changes."
+}
+
+# ---------- service management ----------
+
+cmd_service_run() {
+	require_root || exit 1
+	defaults
+
+	# Verify container exists
+	lxc_exists || { log_error "Container not found. Run: peertubectl install"; exit 1; }
+
+	log_info "Starting PeerTube container..."
+
+	# Start container in foreground
+	exec lxc-start -n "$LXC_NAME" -F -f "$LXC_CONF"
+}
+
+cmd_service_stop() {
+	log_info "Stopping PeerTube container..."
+	lxc_stop
+}
+
+# ---------- main ----------
+
+case "$1" in
+	install)            cmd_install ;;
+	uninstall)          cmd_uninstall ;;
+	update)             cmd_update ;;
+	check)              cmd_check ;;
+	start)              cmd_start ;;
+	stop)               cmd_stop ;;
+	restart)            cmd_restart ;;
+	status)             shift; cmd_status "$@" ;;
+	logs)               shift; cmd_logs "$@" ;;
+	shell)              cmd_shell ;;
+	admin)              shift; cmd_admin "$@" ;;
+	live)               shift; cmd_live "$@" ;;
+	configure-haproxy)  cmd_configure_haproxy ;;
+	emancipate)         shift; cmd_emancipate "$@" ;;
+	backup)             shift; cmd_backup "$@" ;;
+	restore)            shift; cmd_restore "$@" ;;
+	service-run)        cmd_service_run ;;
+	service-stop)       cmd_service_stop ;;
+	*)                  usage; exit 1 ;;
+esac

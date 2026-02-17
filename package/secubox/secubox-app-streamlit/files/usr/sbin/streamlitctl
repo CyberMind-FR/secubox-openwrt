@@ -1343,6 +1343,22 @@ _emancipate_ssl() {
 	fi
 }
 
+_emancipate_mitmproxy() {
+	log_info "[MITMPROXY] Syncing routes to mitmproxy WAF"
+
+	# Sync HAProxy backends to mitmproxy routes
+	if command -v mitmproxyctl >/dev/null 2>&1; then
+		if mitmproxyctl sync-routes >/dev/null 2>&1; then
+			log_info "[MITMPROXY] Routes synced successfully"
+		else
+			log_warn "[MITMPROXY] Route sync failed - manual sync may be required"
+			log_warn "[MITMPROXY] Run: mitmproxyctl sync-routes"
+		fi
+	else
+		log_warn "[MITMPROXY] mitmproxyctl not found - routes not synced"
+	fi
+}
+
 _emancipate_reload() {
 	log_info "[RELOAD] Applying HAProxy configuration"
 	# Generate fresh config
@@ -1561,7 +1577,10 @@ cmd_emancipate() {
 	# Step 6: Mesh P2P distribution to peers
 	_emancipate_mesh "$name" "$domain" "$port"
 
-	# Step 7: Reload HAProxy
+	# Step 7: Sync mitmproxy routes (WAF routing)
+	_emancipate_mitmproxy
+
+	# Step 8: Reload HAProxy
 	_emancipate_reload
 
 	# Mark app as emancipated

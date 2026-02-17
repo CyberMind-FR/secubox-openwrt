@@ -1,11 +1,11 @@
 #!/bin/sh
 # SecuBox Jellyfin Media Server manager
-# Full integration: Docker, HAProxy, Firewall, Mesh P2P, Backup/Restore
+# LXC-based deployment with HAProxy, Firewall, Mesh P2P integration
 
-VERSION="2.0.0"
+VERSION="3.0.0"
 CONFIG="jellyfin"
-CONTAINER="secbx-jellyfin"
-OPKG_UPDATED=0
+CONTAINER="jellyfin"
+LXC_PATH="/srv/lxc/jellyfin"
 
 # Colors
 RED='\033[0;31m'
@@ -29,83 +29,68 @@ require_root() {
 }
 
 defaults() {
-	image="$(uci_get main.image)"
-	[ -z "$image" ] && image="jellyfin/jellyfin:latest"
 	data_path="$(uci_get main.data_path)"
 	[ -z "$data_path" ] && data_path="/srv/jellyfin"
+	media_path="$(uci_get main.media_path)"
+	[ -z "$media_path" ] && media_path="/srv/SHARE"
 	port="$(uci_get main.port)"
 	[ -z "$port" ] && port="8096"
-	timezone="$(uci_get main.timezone)"
-	[ -z "$timezone" ] && timezone="Europe/Paris"
-	hw_accel="$(uci_get transcoding.hw_accel)"
-	[ -z "$hw_accel" ] && hw_accel="0"
-	gpu_device="$(uci_get transcoding.gpu_device)"
+	ip_address="$(uci_get main.ip_address)"
+	[ -z "$ip_address" ] && ip_address="192.168.255.31"
 	domain="$(uci_get network.domain)"
 	[ -z "$domain" ] && domain="jellyfin.secubox.local"
 }
 
 ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
 
-ensure_packages() {
-	for pkg in "$@"; do
-		if ! opkg status "$pkg" 2>/dev/null | grep -q "Status:.*installed"; then
-			if [ "$OPKG_UPDATED" -eq 0 ]; then
-				opkg update || return 1
-				OPKG_UPDATED=1
-			fi
-			opkg install "$pkg" || return 1
-		fi
-	done
+# ============================================================================
+# LXC Helpers
+# ============================================================================
+
+lxc_running() {
+	lxc-info -n "$CONTAINER" 2>/dev/null | grep -q "State:.*RUNNING"
 }
 
-# ============================================================================
-# Prerequisite Checks
-# ============================================================================
+lxc_exists() {
+	[ -d "$LXC_PATH/rootfs" ]
+}
 
-check_prereqs() {
+create_lxc_config() {
 	defaults
-	ensure_dir "$data_path"
-	[ -d /sys/fs/cgroup ] || { error "/sys/fs/cgroup missing"; return 1; }
-	ensure_packages dockerd docker containerd
-	/etc/init.d/dockerd enable >/dev/null 2>&1
-	/etc/init.d/dockerd start >/dev/null 2>&1
+	cat > "$LXC_PATH/config" << EOF
+lxc.uts.name = jellyfin
+lxc.rootfs.path = dir:${LXC_PATH}/rootfs
+lxc.net.0.type = veth
+lxc.net.0.link = br-lan
+lxc.net.0.flags = up
+lxc.net.0.ipv4.address = ${ip_address}/24
+lxc.net.0.ipv4.gateway = 192.168.255.1
+lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+lxc.mount.entry = ${media_path} srv/SHARE none bind,ro 0 0
+lxc.mount.entry = ${data_path}/config config none bind 0 0
+lxc.mount.entry = ${data_path}/cache cache none bind 0 0
+lxc.cap.drop = sys_module mac_admin mac_override sys_time
+lxc.seccomp.profile =
+lxc.tty.max = 0
+lxc.pty.max = 256
+lxc.cgroup2.memory.max = 2048000000
+lxc.init.cmd = /opt/start-jellyfin.sh
+EOF
 }
 
-# ============================================================================
-# Docker Helpers
-# ============================================================================
+create_startup_script() {
+	cat > "$LXC_PATH/rootfs/opt/start-jellyfin.sh" << 'EOF'
+#!/bin/bash
+export PATH=/usr/lib/jellyfin-ffmpeg:$PATH
+export LD_LIBRARY_PATH=/usr/lib/jellyfin-ffmpeg/lib:$LD_LIBRARY_PATH
 
-pull_image() {
-	defaults
-	docker pull "$image"
-}
-
-stop_container() {
-	docker stop "$CONTAINER" >/dev/null 2>&1 || true
-	docker rm "$CONTAINER" >/dev/null 2>&1 || true
-}
-
-build_media_mounts() {
-	local mounts=""
-	local paths
-	paths=$(uci -q get ${CONFIG}.media.media_path)
-	if [ -n "$paths" ]; then
-		for p in $paths; do
-			[ -d "$p" ] && mounts="$mounts -v ${p}:${p}:ro"
-		done
-	fi
-	echo "$mounts"
-}
-
-build_gpu_args() {
-	if [ "$hw_accel" = "1" ]; then
-		local dev="${gpu_device:-/dev/dri}"
-		if [ -e "$dev" ]; then
-			echo "--device=${dev}:${dev}"
-		else
-			echo ""
-		fi
-	fi
+echo "Starting Jellyfin..."
+exec /jellyfin/jellyfin \
+    --datadir=/config \
+    --cachedir=/cache \
+    --webdir=/jellyfin/jellyfin-web
+EOF
+	chmod +x "$LXC_PATH/rootfs/opt/start-jellyfin.sh"
 }
 
 # ============================================================================
@@ -123,155 +108,39 @@ configure_haproxy() {
 
 	defaults
 
-	local ssl=$(uci_get network.haproxy_ssl)
-	local ssl_redirect=$(uci_get network.haproxy_ssl_redirect)
-
-	# Check if vhost already exists (idempotent)
-	local existing=$(uci show haproxy 2>/dev/null | grep "\.domain='$domain'" | head -1)
-	if [ -n "$existing" ]; then
-		log "HAProxy vhost for $domain already configured"
-		return 0
-	fi
-
-	log "Configuring HAProxy for $domain..."
-
-	# Add backend
-	uci -q add haproxy backend
-	uci -q set haproxy.@backend[-1].name='jellyfin_web'
-	uci -q set haproxy.@backend[-1].mode='http'
-	uci -q add_list haproxy.@backend[-1].server="jellyfin 192.168.255.1:$port check"
-
-	# Add vhost
-	uci -q add haproxy vhost
-	uci -q set haproxy.@vhost[-1].enabled='1'
-	uci -q set haproxy.@vhost[-1].domain="$domain"
-	uci -q set haproxy.@vhost[-1].backend='jellyfin_web'
-	uci -q set haproxy.@vhost[-1].ssl="${ssl:-1}"
-	uci -q set haproxy.@vhost[-1].ssl_redirect="${ssl_redirect:-1}"
-	uci -q set haproxy.@vhost[-1].websocket='1'
-
-	uci commit haproxy
-	/etc/init.d/haproxy reload 2>/dev/null
-
-	log "HAProxy configured for $domain"
-}
-
-remove_haproxy() {
-	if ! command -v haproxyctl >/dev/null 2>&1; then
-		return 0
-	fi
-
-	defaults
-
-	log "Removing HAProxy configuration for $domain..."
-
-	# Find and remove backend
-	local idx=0
-	while uci -q get haproxy.@backend[$idx] >/dev/null 2>&1; do
-		local name=$(uci -q get haproxy.@backend[$idx].name)
-		if [ "$name" = "jellyfin_web" ]; then
-			uci delete haproxy.@backend[$idx]
-			break
-		fi
-		idx=$((idx + 1))
-	done
-
-	# Find and remove vhost
-	idx=0
-	while uci -q get haproxy.@vhost[$idx] >/dev/null 2>&1; do
-		local vdomain=$(uci -q get haproxy.@vhost[$idx].domain)
-		if [ "$vdomain" = "$domain" ]; then
-			uci delete haproxy.@vhost[$idx]
-			break
-		fi
-		idx=$((idx + 1))
-	done
-
-	uci commit haproxy
-	/etc/init.d/haproxy reload 2>/dev/null
-
-	log "HAProxy configuration removed"
-}
-
-# ============================================================================
-# Firewall
-# ============================================================================
-
-configure_firewall() {
-	local fw_wan=$(uci_get network.firewall_wan)
-	[ "$fw_wan" != "1" ] && { log "WAN firewall rule disabled in UCI"; return 0; }
-
-	defaults
-
-	# Idempotent: check if rule already exists
-	if uci show firewall 2>/dev/null | grep -q "Jellyfin-HTTP"; then
-		log "Firewall rule for Jellyfin already exists"
-		return 0
-	fi
-
-	log "Configuring firewall for port $port..."
-
-	uci add firewall rule
-	uci set firewall.@rule[-1].name='Jellyfin-HTTP'
-	uci set firewall.@rule[-1].src='wan'
-	uci set firewall.@rule[-1].dest_port="$port"
-	uci set firewall.@rule[-1].proto='tcp'
-	uci set firewall.@rule[-1].target='ACCEPT'
-	uci set firewall.@rule[-1].enabled='1'
-
-	uci commit firewall
-	/etc/init.d/firewall reload 2>/dev/null
-
-	log "Firewall configured"
-}
-
-remove_firewall() {
-	log "Removing firewall rules..."
-
-	local idx=0
-	while uci -q get firewall.@rule[$idx] >/dev/null 2>&1; do
-		local name=$(uci -q get firewall.@rule[$idx].name)
-		if [ "$name" = "Jellyfin-HTTP" ]; then
-			uci delete firewall.@rule[$idx]
-			uci commit firewall
-			/etc/init.d/firewall reload 2>/dev/null
-			log "Firewall rule removed"
-			return 0
-		fi
-		idx=$((idx + 1))
-	done
-}
-
-# ============================================================================
-# Mesh Integration
-# ============================================================================
-
-register_mesh_service() {
-	local mesh_enabled=$(uci_get mesh.enabled)
-	[ "$mesh_enabled" != "1" ] && return 0
-
-	defaults
-
-	if [ -x /usr/sbin/secubox-p2p ]; then
-		/usr/sbin/secubox-p2p register-service jellyfin "$port" 2>/dev/null
-		log "Registered Jellyfin with mesh network"
+	# Check if backend already exists
+	if uci -q get haproxy.jellyfin_web >/dev/null 2>&1; then
+		log "HAProxy backend jellyfin_web already exists, updating..."
+		uci set haproxy.jellyfin_web.server="media ${ip_address}:${port} weight 100 check"
 	else
-		warn "secubox-p2p not found, skipping mesh registration"
+		log "Creating HAProxy backend..."
+		uci set haproxy.jellyfin_web=backend
+		uci set haproxy.jellyfin_web.name='jellyfin_web'
+		uci set haproxy.jellyfin_web.mode='http'
+		uci set haproxy.jellyfin_web.balance='roundrobin'
+		uci set haproxy.jellyfin_web.enabled='1'
+		uci set haproxy.jellyfin_web.server="media ${ip_address}:${port} weight 100 check"
 	fi
 
-	local dns_enabled=$(uci -q get secubox-p2p.dns.enabled || echo "0")
-	if [ "$dns_enabled" = "1" ]; then
-		local dns_domain=$(uci -q get secubox-p2p.dns.base_domain || echo "mesh.local")
-		local hostname=$(echo "$domain" | cut -d'.' -f1)
-		log "Mesh DNS: $hostname.$dns_domain"
+	# Check if vhost already exists
+	local vhost_name=$(echo "$domain" | tr '.' '_')
+	if ! uci -q get haproxy.${vhost_name} >/dev/null 2>&1; then
+		log "Creating HAProxy vhost for $domain..."
+		uci set haproxy.${vhost_name}=vhost
+		uci set haproxy.${vhost_name}.domain="$domain"
+		uci set haproxy.${vhost_name}.backend='jellyfin_web'
+		uci set haproxy.${vhost_name}.ssl='1'
+		uci set haproxy.${vhost_name}.ssl_redirect='1'
+		uci set haproxy.${vhost_name}.acme='1'
+		uci set haproxy.${vhost_name}.waf_bypass='1'
+		uci set haproxy.${vhost_name}.enabled='1'
 	fi
-}
 
-unregister_mesh_service() {
-	if [ -x /usr/sbin/secubox-p2p ]; then
-		/usr/sbin/secubox-p2p unregister-service jellyfin 2>/dev/null
-		log "Unregistered Jellyfin from mesh network"
-	fi
+	uci commit haproxy
+	haproxyctl generate 2>/dev/null
+	haproxyctl reload 2>/dev/null
+
+	log "HAProxy configured for $domain -> ${ip_address}:${port}"
 }
 
 # ============================================================================
@@ -280,83 +149,94 @@ unregister_mesh_service() {
 
 cmd_install() {
 	require_root
-	log "Installing Jellyfin Media Server..."
+	log "Installing Jellyfin LXC container..."
 
-	check_prereqs || exit 1
 	defaults
-
+	ensure_dir "$LXC_PATH"
+	ensure_dir "$LXC_PATH/rootfs/srv/SHARE"
+	ensure_dir "$LXC_PATH/rootfs/config"
+	ensure_dir "$LXC_PATH/rootfs/cache"
+	ensure_dir "$LXC_PATH/rootfs/opt"
 	ensure_dir "$data_path/config"
 	ensure_dir "$data_path/cache"
 
-	log "Pulling Docker image..."
-	pull_image || exit 1
+	if [ ! -f "$LXC_PATH/rootfs/jellyfin/jellyfin" ]; then
+		log "Jellyfin rootfs not found. Please extract from Docker image:"
+		echo "  docker pull jellyfin/jellyfin:latest"
+		echo "  docker create --name temp-jellyfin jellyfin/jellyfin:latest"
+		echo "  docker export temp-jellyfin > /tmp/jellyfin.tar"
+		echo "  tar -xf /tmp/jellyfin.tar -C $LXC_PATH/rootfs/"
+		echo "  docker rm temp-jellyfin"
+		return 1
+	fi
+
+	create_lxc_config
+	create_startup_script
+
+	# Symlink ffmpeg if needed
+	if [ -d "$LXC_PATH/rootfs/usr/lib/jellyfin-ffmpeg" ]; then
+		ln -sf /usr/lib/jellyfin-ffmpeg/ffmpeg "$LXC_PATH/rootfs/usr/bin/ffmpeg" 2>/dev/null
+		ln -sf /usr/lib/jellyfin-ffmpeg/ffprobe "$LXC_PATH/rootfs/usr/bin/ffprobe" 2>/dev/null
+	fi
 
 	uci_set main.enabled '1'
 	uci commit ${CONFIG}
-	/etc/init.d/jellyfin enable
 
-	# Integrate with HAProxy if configured
 	configure_haproxy
 
-	# Configure firewall if WAN access requested
-	configure_firewall
-
-	# Register with mesh if enabled
-	register_mesh_service
-
-	log "Jellyfin installed successfully!"
-	echo ""
-	echo "Next steps:"
-	echo "  1. Add media: uci add_list jellyfin.media.media_path='/path/to/media'"
-	echo "  2. Set domain: uci set jellyfin.network.domain='media.example.com'"
-	echo "  3. Commit:     uci commit jellyfin"
-	echo "  4. Start:      /etc/init.d/jellyfin start"
-	echo "  Web UI: http://<device-ip>:${port}"
-	echo ""
+	log "Jellyfin LXC installed successfully!"
+	log "Start with: jellyfinctl start"
 }
 
-cmd_uninstall() {
+# ============================================================================
+# Service Control
+# ============================================================================
+
+cmd_start() {
 	require_root
-	log "Uninstalling Jellyfin..."
 
-	/etc/init.d/jellyfin stop 2>/dev/null
-	/etc/init.d/jellyfin disable 2>/dev/null
-	stop_container
+	if lxc_running; then
+		log "Jellyfin already running"
+		return 0
+	fi
 
-	# Remove integrations
-	remove_haproxy
-	remove_firewall
-	unregister_mesh_service
+	if ! lxc_exists; then
+		error "Jellyfin not installed. Run 'jellyfinctl install' first"
+		return 1
+	fi
 
-	# Remove image
 	defaults
-	docker rmi "$image" 2>/dev/null
+	create_lxc_config
 
-	uci_set main.enabled '0'
-	uci commit ${CONFIG}
+	log "Starting Jellyfin LXC..."
+	lxc-start -n "$CONTAINER" -d
+	sleep 5
 
-	log "Jellyfin uninstalled. Data preserved at $data_path"
-	log "To remove data: rm -rf $data_path"
+	if lxc_running; then
+		log "Jellyfin started at http://${ip_address}:${port}"
+	else
+		error "Failed to start Jellyfin"
+		return 1
+	fi
 }
 
-# ============================================================================
-# Check & Update
-# ============================================================================
-
-cmd_check() {
-	check_prereqs
-	echo "Prerequisite check completed."
-}
-
-cmd_update() {
+cmd_stop() {
 	require_root
-	log "Pulling latest image..."
-	pull_image || exit 1
-	log "Restarting service..."
-	/etc/init.d/jellyfin restart
-	# Prune old images
-	docker image prune -f 2>/dev/null
-	log "Update complete"
+
+	if ! lxc_running; then
+		log "Jellyfin is not running"
+		return 0
+	fi
+
+	log "Stopping Jellyfin..."
+	lxc-stop -n "$CONTAINER"
+	log "Jellyfin stopped"
+}
+
+cmd_restart() {
+	cmd_stop
+	sleep 2
+	cmd_start
 }
 
 # ============================================================================
@@ -368,86 +248,43 @@ cmd_status() {
 
 	echo ""
 	echo "========================================"
-	echo "  Jellyfin Media Server v$VERSION"
+	echo "  Jellyfin Media Server v$VERSION (LXC)"
 	echo "========================================"
 	echo ""
 
 	local enabled=$(uci_get main.enabled)
 	echo "Configuration:"
 	echo "  Enabled:    $([ "$enabled" = "1" ] && echo -e "${GREEN}Yes${NC}" || echo -e "${RED}No${NC}")"
-	echo "  Image:      $image"
+	echo "  IP Address: $ip_address"
 	echo "  Port:       $port"
 	echo "  Data:       $data_path"
+	echo "  Media:      $media_path"
 	echo "  Domain:     $domain"
 	echo ""
 
-	# Docker check
-	if ! command -v docker >/dev/null 2>&1; then
-		echo -e "Docker:       ${RED}Not installed${NC}"
-		return
-	fi
-
-	# Container status
 	echo "Container:"
-	local state=$(docker inspect -f '{{.State.Status}}' "$CONTAINER" 2>/dev/null)
-	if [ "$state" = "running" ]; then
+	if lxc_running; then
 		echo -e "  Status:     ${GREEN}Running${NC}"
-		local uptime=$(docker ps --filter "name=$CONTAINER" --format '{{.Status}}' 2>/dev/null)
-		echo "  Uptime:     $uptime"
-	elif [ -n "$state" ]; then
-		echo -e "  Status:     ${YELLOW}$state${NC}"
+		local pid=$(lxc-info -n "$CONTAINER" 2>/dev/null | grep PID | awk '{print $2}')
+		echo "  PID:        $pid"
+
+		# Health check
+		local health=$(curl -s "http://${ip_address}:${port}/health" 2>/dev/null)
+		if [ "$health" = "Healthy" ]; then
+			echo -e "  Health:     ${GREEN}Healthy${NC}"
+		else
+			echo -e "  Health:     ${YELLOW}Starting...${NC}"
+		fi
+	elif lxc_exists; then
+		echo -e "  Status:     ${YELLOW}Stopped${NC}"
 	else
 		echo -e "  Status:     ${RED}Not installed${NC}"
 	fi
 	echo ""
 
-	# Media paths
-	local paths=$(uci -q get ${CONFIG}.media.media_path)
-	if [ -n "$paths" ]; then
-		echo "Media Libraries:"
-		for p in $paths; do
-			if [ -d "$p" ]; then
-				local count=$(ls -1 "$p" 2>/dev/null | wc -l)
-				echo "  $p ($count items)"
-			else
-				echo -e "  $p ${RED}(not found)${NC}"
-			fi
-		done
-		echo ""
-	fi
-
-	# Integration status
-	echo "Integrations:"
-	local haproxy_enabled=$(uci_get network.haproxy)
-	if [ "$haproxy_enabled" = "1" ]; then
-		local vhost_exists=$(uci show haproxy 2>/dev/null | grep "\.domain='$domain'" | head -1)
-		if [ -n "$vhost_exists" ]; then
-			echo -e "  HAProxy:    ${GREEN}Configured${NC} ($domain)"
-		else
-			echo -e "  HAProxy:    ${YELLOW}Enabled but not configured${NC}"
-		fi
-	else
-		echo "  HAProxy:    Disabled"
-	fi
-
-	local mesh_enabled=$(uci_get mesh.enabled)
-	if [ "$mesh_enabled" = "1" ]; then
-		echo -e "  Mesh P2P:   ${GREEN}Enabled${NC}"
-	else
-		echo "  Mesh P2P:   Disabled"
-	fi
-
-	local fw_wan=$(uci_get network.firewall_wan)
-	if [ "$fw_wan" = "1" ]; then
-		echo -e "  Firewall:   ${GREEN}WAN access on port $port${NC}"
-	else
-		echo "  Firewall:   LAN only"
-	fi
-
-	# Disk usage
+	# Storage
 	if [ -d "$data_path" ]; then
 		local disk=$(du -sh "$data_path" 2>/dev/null | cut -f1)
-		echo ""
 		echo "Storage:"
 		echo "  Data size:  ${disk:-unknown}"
 	fi
@@ -459,84 +296,21 @@ cmd_status() {
 # Logs & Shell
 # ============================================================================
 
-cmd_logs() { docker logs "$@" "$CONTAINER" 2>&1; }
+cmd_logs() {
+	defaults
+	if [ -f "$data_path/config/log/log_$(date +%Y%m%d).log" ]; then
+		tail "${@:--100}" "$data_path/config/log/log_$(date +%Y%m%d).log"
+	else
+		ls -la "$data_path/config/log/" 2>/dev/null || echo "No logs found"
+	fi
+}
 
 cmd_shell() {
-	docker exec -it "$CONTAINER" /bin/bash 2>/dev/null || docker exec -it "$CONTAINER" /bin/sh
-}
-
-# ============================================================================
-# Backup / Restore
-# ============================================================================
-
-cmd_backup() {
-	local backup_file="${1:-/tmp/jellyfin-backup-$(date +%Y%m%d-%H%M%S).tar.gz}"
-
-	defaults
-	log "Creating backup..."
-
-	tar -czf "$backup_file" \
-		-C / \
-		etc/config/jellyfin \
-		"${data_path#/}/config" \
-		2>/dev/null
-
-	if [ -f "$backup_file" ]; then
-		local size=$(ls -lh "$backup_file" | awk '{print $5}')
-		log "Backup created: $backup_file ($size)"
-	else
-		error "Backup failed"
+	if ! lxc_running; then
+		error "Container not running"
 		return 1
 	fi
-}
-
-cmd_restore() {
-	local backup_file="$1"
-
-	if [ -z "$backup_file" ] || [ ! -f "$backup_file" ]; then
-		echo "Usage: jellyfinctl restore <backup_file>"
-		return 1
-	fi
-
-	require_root
-	log "Restoring from $backup_file..."
-
-	/etc/init.d/jellyfin stop 2>/dev/null
-	tar -xzf "$backup_file" -C /
-	/etc/init.d/jellyfin start
-
-	log "Restore complete"
-}
-
-# ============================================================================
-# Service Run (procd integration)
-# ============================================================================
-
-cmd_service_run() {
-	require_root
-	check_prereqs || exit 1
-	defaults
-	stop_container
-
-	local media_mounts
-	media_mounts=$(build_media_mounts)
-
-	local gpu_args
-	gpu_args=$(build_gpu_args)
-
-	local docker_args="--name $CONTAINER"
-	docker_args="$docker_args -p ${port}:8096"
-	docker_args="$docker_args -v ${data_path}/config:/config"
-	docker_args="$docker_args -v ${data_path}/cache:/cache"
-	docker_args="$docker_args -e TZ=${timezone}"
-
-	# shellcheck disable=SC2086
-	exec docker run --rm $docker_args $media_mounts $gpu_args "$image"
-}
-
-cmd_service_stop() {
-	require_root
-	stop_container
+	lxc-attach -n "$CONTAINER" -- /bin/bash 2>/dev/null || lxc-attach -n "$CONTAINER" -- /bin/sh
 }
 
 # ============================================================================
@@ -545,61 +319,42 @@ cmd_service_stop() {
 
 show_help() {
 	cat << EOF
-Jellyfin Media Server Control v$VERSION
+Jellyfin Media Server Control v$VERSION (LXC)
 
 Usage: jellyfinctl <command> [options]
 
 Commands:
-  install              Install prerequisites, pull image, configure integrations
-  uninstall            Stop service, remove container and integrations
-  check                Run prerequisite checks
-  update               Pull latest image and restart
-  status               Show service and integration status
+  install              Install LXC container
+  start                Start Jellyfin
+  stop                 Stop Jellyfin
+  restart              Restart Jellyfin
+  status               Show status
 
-  logs [-f] [--tail N] Show container logs
+  logs [-f] [--tail N] Show logs
   shell                Open shell inside container
 
-  configure-haproxy    Configure/update HAProxy vhost
-  remove-haproxy       Remove HAProxy configuration
-  configure-fw         Configure firewall rules
-  remove-fw            Remove firewall rules
-  register-mesh        Register with mesh P2P network
-  unregister-mesh      Unregister from mesh network
-
-  backup [file]        Create configuration backup
-  restore <file>       Restore from backup
-
-  service-run          Internal: run container via procd
-  service-stop         Internal: stop container
+  configure-haproxy    Configure HAProxy vhost
 
 Examples:
   jellyfinctl install
+  jellyfinctl start
   jellyfinctl status
-  jellyfinctl logs --tail 100
-  jellyfinctl backup /tmp/jellyfin.tar.gz
-  jellyfinctl configure-haproxy
+  jellyfinctl logs -100
 
 EOF
 }
 
 case "${1:-}" in
 	install)            shift; cmd_install "$@" ;;
-	uninstall)          shift; cmd_uninstall "$@" ;;
-	check)              shift; cmd_check "$@" ;;
-	update)             shift; cmd_update "$@" ;;
+	start)              shift; cmd_start "$@" ;;
+	stop)               shift; cmd_stop "$@" ;;
+	restart)            shift; cmd_restart "$@" ;;
 	status)             shift; cmd_status "$@" ;;
 	logs)               shift; cmd_logs "$@" ;;
 	shell)              shift; cmd_shell "$@" ;;
 	configure-haproxy)  configure_haproxy ;;
-	remove-haproxy)     remove_haproxy ;;
-	configure-fw)       configure_firewall ;;
-	remove-fw)          remove_firewall ;;
-	register-mesh)      register_mesh_service ;;
-	unregister-mesh)    unregister_mesh_service ;;
-	backup)             shift; cmd_backup "$@" ;;
-	restore)            shift; cmd_restore "$@" ;;
-	service-run)        shift; cmd_service_run "$@" ;;
-	service-stop)       shift; cmd_service_stop "$@" ;;
+	service-run)        cmd_start ;;
+	service-stop)       cmd_stop ;;
 	help|--help|-h|'')  show_help ;;
 	*)                  error "Unknown command: $1"; show_help >&2; exit 1 ;;
 esac

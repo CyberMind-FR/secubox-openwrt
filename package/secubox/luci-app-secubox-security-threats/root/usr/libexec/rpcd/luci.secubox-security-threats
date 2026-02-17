@@ -140,7 +140,9 @@ case "$1" in
 			status)
 				json_init
 				json_add_boolean "netifyd_running" $(pgrep netifyd >/dev/null 2>&1 && echo 1 || echo 0)
+				json_add_boolean "ndpid_running" $(pgrep ndpid >/dev/null 2>&1 && echo 1 || echo 0)
 				json_add_boolean "crowdsec_running" $(pgrep crowdsec >/dev/null 2>&1 && echo 1 || echo 0)
+				json_add_boolean "wazuh_running" $(pgrep wazuh >/dev/null 2>&1 && echo 1 || echo 0)
 				json_add_boolean "mitmproxy_running" $(pgrep -f mitmweb >/dev/null 2>&1 && echo 1 || echo 0)
 				json_add_boolean "cscli_available" $([ -x "$CSCLI" ] && echo 1 || echo 0)
 				json_add_boolean "threat_intel_available" $([ -x "$THREAT_INTEL" ] && echo 1 || echo 0)

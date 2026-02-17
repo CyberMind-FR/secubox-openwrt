@@ -2,8 +2,7 @@
 'require view';
 'require rpc';
 'require ui';
-'require form';
-'require uci';
+'require poll';
 'require secubox/kiss-theme';
 
 var callStatus = rpc.declare({
@@ -106,6 +105,13 @@ var callFixPorts = rpc.declare({
 	expect: {}
 });
 
+var callUserRepair = rpc.declare({
+	object: 'luci.mailserver',
+	method: 'user_repair',
+	params: ['email'],
+	expect: {}
+});
+
 return view.extend({
 	load: function() {
 		return Promise.all([
@@ -117,316 +123,421 @@ return view.extend({
 	},
 
 	render: function(data) {
+		var self = this;
 		var status = data[0] || {};
 		var users = (data[1] || {}).users || [];
 		var aliases = (data[2] || {}).aliases || [];
 		var webmail = data[3] || {};
 
-		var view = E('div', { 'class': 'cbi-map' }, [
-			E('h2', {}, 'Mail Server'),
+		// Start polling for status updates
+		poll.add(function() {
+			return callStatus().then(function(s) {
+				self.updateStats(s);
+			});
+		}, 10);
 
-			// Status Section
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, 'Server Status'),
-				E('table', { 'class': 'table' }, [
-					E('tr', { 'class': 'tr' }, [
-						E('td', { 'class': 'td', 'style': 'width:150px' }, 'Status'),
-						E('td', { 'class': 'td' }, [
-							E('span', { 'style': status.state === 'running' ? 'color:green' : 'color:red' },
-								status.state === 'running' ? '● Running' : '○ Stopped')
-						])
-					]),
-					E('tr', { 'class': 'tr' }, [
-						E('td', { 'class': 'td' }, 'Domain'),
-						E('td', { 'class': 'td' }, status.fqdn || 'Not configured')
-					]),
-					E('tr', { 'class': 'tr' }, [
-						E('td', { 'class': 'td' }, 'Users'),
-						E('td', { 'class': 'td' }, String(status.users || 0))
-					]),
-					E('tr', { 'class': 'tr' }, [
-						E('td', { 'class': 'td' }, 'Storage'),
-						E('td', { 'class': 'td' }, status.storage || '0')
-					]),
-					E('tr', { 'class': 'tr' }, [
-						E('td', { 'class': 'td' }, 'SSL'),
-						E('td', { 'class': 'td' }, status.ssl_valid ? '✓ Valid' : '✗ Not configured')
-					]),
-					E('tr', { 'class': 'tr' }, [
-						E('td', { 'class': 'td' }, 'Webmail'),
-						E('td', { 'class': 'td' }, webmail.running ? '● Running (port ' + webmail.port + ')' : '○ Stopped')
-					]),
-					E('tr', { 'class': 'tr' }, [
-						E('td', { 'class': 'td' }, 'Mesh Backup'),
-						E('td', { 'class': 'td' }, status.mesh_enabled ? '● Enabled' : '○ Disabled')
-					])
+		var isRunning = status.state === 'running';
+		var ports = status.ports || {};
+
+		var content = [
+			// Header with title
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('h2', { 'style': 'margin: 0 0 8px 0; display: flex; align-items: center; gap: 12px;' }, [
+					E('span', {}, '\u2709\ufe0f'),
+					'Mail Server'
 				]),
-
-				// Port Status
-				E('h4', { 'style': 'margin-top:15px' }, 'Ports'),
-				this.renderPortStatus(status.ports || {})
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 0;' },
+					status.fqdn || 'Postfix + Dovecot LXC Mail Server')
 			]),
 
-			// Quick Actions
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, 'Quick Actions'),
-				E('div', { 'style': 'display:flex;gap:10px;flex-wrap:wrap' }, [
-					status.state !== 'running' ?
-						E('button', {
-							'class': 'btn cbi-button-action',
-							'click': ui.createHandlerFn(this, this.doStart)
-						}, 'Start Server') :
-						E('button', {
-							'class': 'btn cbi-button-neutral',
-							'click': ui.createHandlerFn(this, this.doStop)
-						}, 'Stop Server'),
+			// Stats Grid
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'style': 'margin-bottom: 20px;' }, [
+				this.statCard('Status', isRunning ? 'Running' : 'Stopped',
+					isRunning ? 'var(--kiss-green)' : 'var(--kiss-red)', 'status'),
+				this.statCard('Users', users.length || 0, 'var(--kiss-cyan)', 'users'),
+				this.statCard('Storage', status.storage || '0', 'var(--kiss-purple)', 'storage'),
+				this.statCard('SSL', status.ssl_valid ? 'Valid' : 'Missing',
+					status.ssl_valid ? 'var(--kiss-green)' : 'var(--kiss-yellow)', 'ssl')
+			]),
+
+			// Controls Card
+			E('div', { 'class': 'kiss-card' }, [
+				E('div', { 'class': 'kiss-card-title' }, ['\u26a1 Controls']),
+				E('div', { 'style': 'display: flex; gap: 12px; flex-wrap: wrap;' }, [
 					E('button', {
-						'class': 'btn cbi-button-neutral',
+						'class': isRunning ? 'kiss-btn kiss-btn-red' : 'kiss-btn kiss-btn-green',
+						'click': ui.createHandlerFn(this, isRunning ? this.doStop : this.doStart)
+					}, isRunning ? '\u23f9 Stop' : '\u25b6 Start'),
+					E('button', {
+						'class': 'kiss-btn',
 						'click': ui.createHandlerFn(this, this.doDnsSetup)
-					}, 'Setup DNS'),
+					}, '\ud83c\udf10 DNS Setup'),
 					E('button', {
-						'class': 'btn cbi-button-neutral',
+						'class': 'kiss-btn',
 						'click': ui.createHandlerFn(this, this.doSslSetup)
-					}, 'Setup SSL'),
+					}, '\ud83d\udd12 SSL Setup'),
 					E('button', {
-						'class': 'btn cbi-button-neutral',
-						'click': ui.createHandlerFn(this, this.doWebmailConfigure)
-					}, 'Configure Webmail'),
-					E('button', {
-						'class': 'btn cbi-button-neutral',
-						'click': ui.createHandlerFn(this, this.doMeshBackup)
-					}, 'Mesh Backup'),
-					E('button', {
-						'class': 'btn cbi-button-neutral',
+						'class': 'kiss-btn',
 						'click': ui.createHandlerFn(this, this.doFixPorts)
-					}, 'Fix Ports')
+					}, '\ud83d\udd0c Fix Ports'),
+					E('button', {
+						'class': 'kiss-btn',
+						'click': ui.createHandlerFn(this, this.doMeshBackup)
+					}, '\ud83d\udcbe Backup')
 				])
 			]),
 
-			// Users Section
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, 'Mail Users'),
-				E('div', { 'style': 'margin-bottom:10px' }, [
-					E('button', {
-						'class': 'btn cbi-button-add',
-						'click': ui.createHandlerFn(this, this.showAddUserModal)
-					}, 'Add User')
-				]),
-				this.renderUserTable(users)
+			// Port Status Card
+			E('div', { 'class': 'kiss-card' }, [
+				E('div', { 'class': 'kiss-card-title' }, ['\ud83d\udce1 Ports']),
+				this.renderPortStatus(ports)
 			]),
 
-			// Aliases Section
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, 'Email Aliases'),
-				E('div', { 'style': 'margin-bottom:10px' }, [
-					E('button', {
-						'class': 'btn cbi-button-add',
-						'click': ui.createHandlerFn(this, this.showAddAliasModal)
-					}, 'Add Alias')
+			// Two Column Layout
+			E('div', { 'class': 'kiss-grid kiss-grid-2' }, [
+				// Users Card
+				E('div', { 'class': 'kiss-card' }, [
+					E('div', { 'class': 'kiss-card-title', 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+						E('span', {}, '\ud83d\udc65 Mail Users'),
+						E('button', {
+							'class': 'kiss-btn kiss-btn-green',
+							'style': 'padding: 6px 12px; font-size: 12px;',
+							'click': ui.createHandlerFn(this, this.showAddUserModal)
+						}, '+ Add')
+					]),
+					this.renderUserTable(users)
 				]),
-				this.renderAliasTable(aliases)
-			])
-		]);
 
-		return KissTheme.wrap([view], 'admin/services/mailserver');
+				// Aliases Card
+				E('div', { 'class': 'kiss-card' }, [
+					E('div', { 'class': 'kiss-card-title', 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+						E('span', {}, '\ud83d\udd00 Aliases'),
+						E('button', {
+							'class': 'kiss-btn kiss-btn-green',
+							'style': 'padding: 6px 12px; font-size: 12px;',
+							'click': ui.createHandlerFn(this, this.showAddAliasModal)
+						}, '+ Add')
+					]),
+					this.renderAliasTable(aliases)
+				])
+			]),
+
+			// Webmail Card
+			E('div', { 'class': 'kiss-card' }, [
+				E('div', { 'class': 'kiss-card-title' }, ['\ud83d\udcec Webmail (Roundcube)']),
+				E('div', { 'style': 'display: flex; gap: 16px; align-items: center;' }, [
+					E('span', {
+						'class': webmail.running ? 'kiss-badge kiss-badge-green' : 'kiss-badge kiss-badge-red'
+					}, webmail.running ? 'RUNNING' : 'STOPPED'),
+					webmail.running ? E('span', { 'style': 'color: var(--kiss-muted);' },
+						'Port ' + (webmail.port || 8026)) : null,
+					E('button', {
+						'class': 'kiss-btn',
+						'click': ui.createHandlerFn(this, this.doWebmailConfigure)
+					}, '\u2699\ufe0f Configure'),
+					webmail.running ? E('a', {
+						'href': 'http://' + window.location.hostname + ':' + (webmail.port || 8026),
+						'target': '_blank',
+						'class': 'kiss-btn kiss-btn-blue'
+					}, '\ud83d\udd17 Open Webmail') : null
+				])
+			]),
+
+			// Connection Info Card
+			E('div', { 'class': 'kiss-card kiss-panel-blue' }, [
+				E('div', { 'class': 'kiss-card-title' }, ['\ud83d\udcd6 Connection Info']),
+				E('div', { 'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;' }, [
+					E('div', {}, [
+						E('div', { 'style': 'color: var(--kiss-muted); font-size: 11px; text-transform: uppercase;' }, 'IMAP Server'),
+						E('div', { 'style': 'font-family: monospace; color: var(--kiss-cyan);' }, status.fqdn || 'mail.example.com'),
+						E('div', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Port 993 (SSL) / 143')
+					]),
+					E('div', {}, [
+						E('div', { 'style': 'color: var(--kiss-muted); font-size: 11px; text-transform: uppercase;' }, 'SMTP Server'),
+						E('div', { 'style': 'font-family: monospace; color: var(--kiss-cyan);' }, status.fqdn || 'mail.example.com'),
+						E('div', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Port 587 (STARTTLS) / 465 (SSL)')
+					]),
+					E('div', {}, [
+						E('div', { 'style': 'color: var(--kiss-muted); font-size: 11px; text-transform: uppercase;' }, 'Domain'),
+						E('div', { 'style': 'font-family: monospace; color: var(--kiss-purple);' }, status.domain || 'example.com')
+					])
+				])
+			])
+		];
+
+		return KissTheme.wrap(content, 'admin/services/mailserver');
+	},
+
+	statCard: function(label, value, color, dataAttr) {
+		return E('div', { 'class': 'kiss-stat' }, [
+			E('div', {
+				'class': 'kiss-stat-value',
+				'style': 'color: ' + color,
+				'data-stat': dataAttr
+			}, String(value)),
+			E('div', { 'class': 'kiss-stat-label' }, label)
+		]);
+	},
+
+	updateStats: function(status) {
+		var statusEl = document.querySelector('[data-stat="status"]');
+		var storageEl = document.querySelector('[data-stat="storage"]');
+		var sslEl = document.querySelector('[data-stat="ssl"]');
+
+		if (statusEl) {
+			var isRunning = status.state === 'running';
+			statusEl.textContent = isRunning ? 'Running' : 'Stopped';
+			statusEl.style.color = isRunning ? 'var(--kiss-green)' : 'var(--kiss-red)';
+		}
+		if (storageEl) {
+			storageEl.textContent = status.storage || '0';
+		}
+		if (sslEl) {
+			var valid = status.ssl_valid;
+			sslEl.textContent = valid ? 'Valid' : 'Missing';
+			sslEl.style.color = valid ? 'var(--kiss-green)' : 'var(--kiss-yellow)';
+		}
 	},
 
 	renderPortStatus: function(ports) {
 		var portList = [
-			{ port: '25', name: 'SMTP' },
-			{ port: '587', name: 'Submission' },
-			{ port: '465', name: 'SMTPS' },
-			{ port: '993', name: 'IMAPS' },
-			{ port: '995', name: 'POP3S' }
+			{ port: '25', name: 'SMTP', desc: 'Inbound mail' },
+			{ port: '587', name: 'Submission', desc: 'Authenticated send' },
+			{ port: '465', name: 'SMTPS', desc: 'SSL/TLS send' },
+			{ port: '993', name: 'IMAPS', desc: 'SSL/TLS receive' },
+			{ port: '143', name: 'IMAP', desc: 'Plain receive' }
 		];
 
-		return E('div', { 'style': 'display:flex;gap:15px;flex-wrap:wrap' },
+		return E('div', { 'style': 'display: flex; gap: 12px; flex-wrap: wrap;' },
 			portList.map(function(p) {
 				var isOpen = ports[p.port];
-				return E('span', {
-					'style': 'padding:5px 10px;border-radius:4px;background:' + (isOpen ? '#d4edda' : '#f8d7da')
-				}, p.name + ' (' + p.port + '): ' + (isOpen ? '✓' : '✗'));
+				return E('div', {
+					'style': 'padding: 8px 16px; border-radius: 8px; background: ' +
+						(isOpen ? 'rgba(0,200,83,0.1)' : 'rgba(255,23,68,0.1)') +
+						'; border: 1px solid ' +
+						(isOpen ? 'rgba(0,200,83,0.3)' : 'rgba(255,23,68,0.3)') +
+						'; min-width: 100px;'
+				}, [
+					E('div', { 'style': 'font-weight: 600; font-size: 14px; color: ' +
+						(isOpen ? 'var(--kiss-green)' : 'var(--kiss-red)') }, p.name),
+					E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted);' },
+						'Port ' + p.port + ' ' + (isOpen ? '\u2713' : '\u2717'))
+				]);
 			})
 		);
 	},
 
 	renderUserTable: function(users) {
 		if (!users || users.length === 0) {
-			return E('p', { 'class': 'cbi-value-description' }, 'No mail users configured.');
+			return E('div', { 'style': 'color: var(--kiss-muted); text-align: center; padding: 20px;' },
+				'No mail users configured');
 		}
 
-		var rows = users.map(L.bind(function(u) {
-			return E('tr', { 'class': 'tr' }, [
-				E('td', { 'class': 'td' }, u.email),
-				E('td', { 'class': 'td' }, u.size || '0'),
-				E('td', { 'class': 'td' }, String(u.messages || 0)),
-				E('td', { 'class': 'td' }, [
-					E('button', {
-						'class': 'btn cbi-button-neutral',
-						'style': 'padding:2px 8px;font-size:12px;margin-right:5px',
-						'click': ui.createHandlerFn(this, this.showResetPasswordModal, u.email)
-					}, 'Reset Password'),
-					E('button', {
-						'class': 'btn cbi-button-remove',
-						'style': 'padding:2px 8px;font-size:12px',
-						'click': ui.createHandlerFn(this, this.doDeleteUser, u.email)
-					}, 'Delete')
+		var self = this;
+		return E('table', { 'class': 'kiss-table' }, [
+			E('thead', {}, [
+				E('tr', {}, [
+					E('th', {}, 'Email'),
+					E('th', {}, 'Size'),
+					E('th', {}, 'Msgs'),
+					E('th', { 'style': 'width: 160px;' }, 'Actions')
 				])
-			]);
-		}, this));
-
-		return E('table', { 'class': 'table' }, [
-			E('tr', { 'class': 'tr table-titles' }, [
-				E('th', { 'class': 'th' }, 'Email'),
-				E('th', { 'class': 'th' }, 'Size'),
-				E('th', { 'class': 'th' }, 'Messages'),
-				E('th', { 'class': 'th' }, 'Actions')
-			])
-		].concat(rows));
+			]),
+			E('tbody', {}, users.map(function(u) {
+				return E('tr', {}, [
+					E('td', { 'style': 'font-family: monospace;' }, u.email),
+					E('td', {}, u.size || '0'),
+					E('td', {}, String(u.messages || 0)),
+					E('td', {}, [
+						E('button', {
+							'class': 'kiss-btn',
+							'style': 'padding: 4px 8px; font-size: 11px; margin-right: 4px;',
+							'title': 'Reset Password',
+							'click': ui.createHandlerFn(self, self.showResetPasswordModal, u.email)
+						}, '\ud83d\udd11'),
+						E('button', {
+							'class': 'kiss-btn',
+							'style': 'padding: 4px 8px; font-size: 11px; margin-right: 4px;',
+							'title': 'Repair Mailbox',
+							'click': ui.createHandlerFn(self, self.doRepairMailbox, u.email)
+						}, '\ud83d\udd27'),
+						E('button', {
+							'class': 'kiss-btn kiss-btn-red',
+							'style': 'padding: 4px 8px; font-size: 11px;',
+							'title': 'Delete User',
+							'click': ui.createHandlerFn(self, self.doDeleteUser, u.email)
+						}, '\ud83d\uddd1')
+					])
+				]);
+			}))
+		]);
 	},
 
 	renderAliasTable: function(aliases) {
 		if (!aliases || aliases.length === 0) {
-			return E('p', { 'class': 'cbi-value-description' }, 'No aliases configured.');
+			return E('div', { 'style': 'color: var(--kiss-muted); text-align: center; padding: 20px;' },
+				'No aliases configured');
 		}
 
-		var rows = aliases.map(function(a) {
-			return E('tr', { 'class': 'tr' }, [
-				E('td', { 'class': 'td' }, a.alias),
-				E('td', { 'class': 'td' }, '→'),
-				E('td', { 'class': 'td' }, a.target)
-			]);
-		});
-
-		return E('table', { 'class': 'table' }, [
-			E('tr', { 'class': 'tr table-titles' }, [
-				E('th', { 'class': 'th' }, 'Alias'),
-				E('th', { 'class': 'th' }, ''),
-				E('th', { 'class': 'th' }, 'Target')
-			])
-		].concat(rows));
+		return E('table', { 'class': 'kiss-table' }, [
+			E('thead', {}, [
+				E('tr', {}, [
+					E('th', {}, 'Alias'),
+					E('th', { 'style': 'width: 30px;' }, ''),
+					E('th', {}, 'Target')
+				])
+			]),
+			E('tbody', {}, aliases.map(function(a) {
+				return E('tr', {}, [
+					E('td', { 'style': 'font-family: monospace; color: var(--kiss-cyan);' }, a.alias),
+					E('td', { 'style': 'color: var(--kiss-muted);' }, '\u2192'),
+					E('td', { 'style': 'font-family: monospace;' }, a.target)
+				]);
+			}))
+		]);
 	},
 
 	showAddUserModal: function() {
+		var self = this;
 		var emailInput, passwordInput;
 
 		ui.showModal('Add Mail User', [
-			E('p', {}, 'Enter email address and password for the new user.'),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, 'Email'),
-				E('div', { 'class': 'cbi-value-field' }, [
-					emailInput = E('input', { 'type': 'email', 'class': 'cbi-input-text', 'placeholder': 'user@domain.com' })
-				])
-			]),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, 'Password'),
-				E('div', { 'class': 'cbi-value-field' }, [
-					passwordInput = E('input', { 'type': 'password', 'class': 'cbi-input-text' })
-				])
-			]),
-			E('div', { 'class': 'right' }, [
-				E('button', {
-					'class': 'btn',
-					'click': ui.hideModal
-				}, 'Cancel'),
-				' ',
-				E('button', {
-					'class': 'btn cbi-button-action',
-					'click': ui.createHandlerFn(this, function() {
-						var email = emailInput.value;
-						var password = passwordInput.value;
-						if (!email || !password) {
-							ui.addNotification(null, E('p', 'Email and password required'), 'error');
-							return;
-						}
-						ui.hideModal();
-						return this.doAddUser(email, password);
+			E('div', { 'style': 'padding: 16px;' }, [
+				E('p', { 'style': 'margin-bottom: 16px; color: var(--kiss-muted);' },
+					'Create a new mail account'),
+				E('div', { 'style': 'margin-bottom: 12px;' }, [
+					E('label', { 'style': 'display: block; font-size: 12px; color: var(--kiss-muted); margin-bottom: 4px;' }, 'Email Address'),
+					emailInput = E('input', {
+						'type': 'email',
+						'placeholder': 'user@domain.com',
+						'style': 'width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--kiss-line); background: var(--kiss-bg2); color: var(--kiss-text);'
 					})
-				}, 'Add User')
+				]),
+				E('div', { 'style': 'margin-bottom: 16px;' }, [
+					E('label', { 'style': 'display: block; font-size: 12px; color: var(--kiss-muted); margin-bottom: 4px;' }, 'Password'),
+					passwordInput = E('input', {
+						'type': 'password',
+						'placeholder': 'Secure password',
+						'style': 'width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--kiss-line); background: var(--kiss-bg2); color: var(--kiss-text);'
+					})
+				]),
+				E('div', { 'style': 'display: flex; gap: 8px; justify-content: flex-end;' }, [
+					E('button', {
+						'class': 'kiss-btn',
+						'click': ui.hideModal
+					}, 'Cancel'),
+					E('button', {
+						'class': 'kiss-btn kiss-btn-green',
+						'click': function() {
+							var email = emailInput.value.trim();
+							var password = passwordInput.value;
+							if (!email || !password) {
+								ui.addNotification(null, E('p', 'Email and password required'), 'error');
+								return;
+							}
+							ui.hideModal();
+							self.doAddUser(email, password);
+						}
+					}, 'Add User')
+				])
 			])
 		]);
 	},
 
 	showAddAliasModal: function() {
+		var self = this;
 		var aliasInput, targetInput;
 
 		ui.showModal('Add Email Alias', [
-			E('p', {}, 'Create an alias that forwards to another address.'),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, 'Alias'),
-				E('div', { 'class': 'cbi-value-field' }, [
-					aliasInput = E('input', { 'type': 'email', 'class': 'cbi-input-text', 'placeholder': 'info@domain.com' })
-				])
-			]),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, 'Forward To'),
-				E('div', { 'class': 'cbi-value-field' }, [
-					targetInput = E('input', { 'type': 'email', 'class': 'cbi-input-text', 'placeholder': 'user@domain.com' })
-				])
-			]),
-			E('div', { 'class': 'right' }, [
-				E('button', {
-					'class': 'btn',
-					'click': ui.hideModal
-				}, 'Cancel'),
-				' ',
-				E('button', {
-					'class': 'btn cbi-button-action',
-					'click': ui.createHandlerFn(this, function() {
-						var alias = aliasInput.value;
-						var target = targetInput.value;
-						if (!alias || !target) {
-							ui.addNotification(null, E('p', 'Alias and target required'), 'error');
-							return;
-						}
-						ui.hideModal();
-						return this.doAddAlias(alias, target);
+			E('div', { 'style': 'padding: 16px;' }, [
+				E('p', { 'style': 'margin-bottom: 16px; color: var(--kiss-muted);' },
+					'Forward email from one address to another'),
+				E('div', { 'style': 'margin-bottom: 12px;' }, [
+					E('label', { 'style': 'display: block; font-size: 12px; color: var(--kiss-muted); margin-bottom: 4px;' }, 'Alias Address'),
+					aliasInput = E('input', {
+						'type': 'email',
+						'placeholder': 'info@domain.com',
+						'style': 'width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--kiss-line); background: var(--kiss-bg2); color: var(--kiss-text);'
 					})
-				}, 'Add Alias')
+				]),
+				E('div', { 'style': 'margin-bottom: 16px;' }, [
+					E('label', { 'style': 'display: block; font-size: 12px; color: var(--kiss-muted); margin-bottom: 4px;' }, 'Forward To'),
+					targetInput = E('input', {
+						'type': 'email',
+						'placeholder': 'user@domain.com',
+						'style': 'width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--kiss-line); background: var(--kiss-bg2); color: var(--kiss-text);'
+					})
+				]),
+				E('div', { 'style': 'display: flex; gap: 8px; justify-content: flex-end;' }, [
+					E('button', {
+						'class': 'kiss-btn',
+						'click': ui.hideModal
+					}, 'Cancel'),
+					E('button', {
+						'class': 'kiss-btn kiss-btn-green',
+						'click': function() {
+							var alias = aliasInput.value.trim();
+							var target = targetInput.value.trim();
+							if (!alias || !target) {
+								ui.addNotification(null, E('p', 'Alias and target required'), 'error');
+								return;
+							}
+							ui.hideModal();
+							self.doAddAlias(alias, target);
+						}
+					}, 'Add Alias')
+				])
 			])
 		]);
 	},
 
 	showResetPasswordModal: function(email) {
+		var self = this;
 		var passwordInput, confirmInput;
 
 		ui.showModal('Reset Password', [
-			E('p', {}, 'Enter new password for: ' + email),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, 'New Password'),
-				E('div', { 'class': 'cbi-value-field' }, [
-					passwordInput = E('input', { 'type': 'password', 'class': 'cbi-input-text' })
-				])
-			]),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, 'Confirm'),
-				E('div', { 'class': 'cbi-value-field' }, [
-					confirmInput = E('input', { 'type': 'password', 'class': 'cbi-input-text' })
-				])
-			]),
-			E('div', { 'class': 'right' }, [
-				E('button', {
-					'class': 'btn',
-					'click': ui.hideModal
-				}, 'Cancel'),
-				' ',
-				E('button', {
-					'class': 'btn cbi-button-action',
-					'click': ui.createHandlerFn(this, function() {
-						var password = passwordInput.value;
-						var confirm = confirmInput.value;
-						if (!password) {
-							ui.addNotification(null, E('p', 'Password required'), 'error');
-							return;
-						}
-						if (password !== confirm) {
-							ui.addNotification(null, E('p', 'Passwords do not match'), 'error');
-							return;
-						}
-						ui.hideModal();
-						return this.doResetPassword(email, password);
+			E('div', { 'style': 'padding: 16px;' }, [
+				E('p', { 'style': 'margin-bottom: 16px;' }, [
+					'New password for: ',
+					E('span', { 'style': 'font-family: monospace; color: var(--kiss-cyan);' }, email)
+				]),
+				E('div', { 'style': 'margin-bottom: 12px;' }, [
+					E('label', { 'style': 'display: block; font-size: 12px; color: var(--kiss-muted); margin-bottom: 4px;' }, 'New Password'),
+					passwordInput = E('input', {
+						'type': 'password',
+						'style': 'width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--kiss-line); background: var(--kiss-bg2); color: var(--kiss-text);'
 					})
-				}, 'Reset Password')
+				]),
+				E('div', { 'style': 'margin-bottom: 16px;' }, [
+					E('label', { 'style': 'display: block; font-size: 12px; color: var(--kiss-muted); margin-bottom: 4px;' }, 'Confirm Password'),
+					confirmInput = E('input', {
+						'type': 'password',
+						'style': 'width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--kiss-line); background: var(--kiss-bg2); color: var(--kiss-text);'
+					})
+				]),
+				E('div', { 'style': 'display: flex; gap: 8px; justify-content: flex-end;' }, [
+					E('button', {
+						'class': 'kiss-btn',
+						'click': ui.hideModal
+					}, 'Cancel'),
+					E('button', {
+						'class': 'kiss-btn kiss-btn-green',
+						'click': function() {
+							var password = passwordInput.value;
+							var confirm = confirmInput.value;
+							if (!password) {
+								ui.addNotification(null, E('p', 'Password required'), 'error');
+								return;
+							}
+							if (password !== confirm) {
+								ui.addNotification(null, E('p', 'Passwords do not match'), 'error');
+								return;
+							}
+							ui.hideModal();
+							self.doResetPassword(email, password);
+						}
+					}, 'Reset Password')
+				])
 			])
 		]);
 	},
@@ -453,24 +564,24 @@ return view.extend({
 
 	doAddUser: function(email, password) {
 		ui.showModal('Adding User', [
-			E('p', { 'class': 'spinning' }, 'Adding user: ' + email)
+			E('p', { 'class': 'spinning' }, 'Creating mailbox for ' + email + '...')
 		]);
 		return callUserAdd(email, password).then(function(res) {
 			ui.hideModal();
 			if (res.code === 0) {
 				ui.addNotification(null, E('p', 'User added: ' + email), 'success');
 			} else {
-				ui.addNotification(null, E('p', 'Failed: ' + res.output), 'error');
+				ui.addNotification(null, E('p', 'Failed: ' + (res.output || res.error)), 'error');
 			}
 			window.location.reload();
 		});
 	},
 
 	doDeleteUser: function(email) {
-		if (!confirm('Delete user ' + email + '?')) return;
+		if (!confirm('Delete user ' + email + ' and all their mail?')) return;
 
 		ui.showModal('Deleting User', [
-			E('p', { 'class': 'spinning' }, 'Deleting user: ' + email)
+			E('p', { 'class': 'spinning' }, 'Removing ' + email + '...')
 		]);
 		return callUserDel(email).then(function() {
 			ui.hideModal();
@@ -480,7 +591,7 @@ return view.extend({
 
 	doAddAlias: function(alias, target) {
 		ui.showModal('Adding Alias', [
-			E('p', { 'class': 'spinning' }, 'Adding alias: ' + alias)
+			E('p', { 'class': 'spinning' }, 'Creating alias ' + alias + '...')
 		]);
 		return callAliasAdd(alias, target).then(function() {
 			ui.hideModal();
@@ -490,28 +601,43 @@ return view.extend({
 
 	doResetPassword: function(email, password) {
 		ui.showModal('Resetting Password', [
-			E('p', { 'class': 'spinning' }, 'Resetting password for: ' + email)
+			E('p', { 'class': 'spinning' }, 'Updating password for ' + email + '...')
 		]);
 		return callUserPasswd(email, password).then(function(res) {
 			ui.hideModal();
 			if (res.code === 0) {
-				ui.addNotification(null, E('p', 'Password reset for: ' + email), 'success');
+				ui.addNotification(null, E('p', 'Password updated for ' + email), 'success');
 			} else {
 				ui.addNotification(null, E('p', 'Failed: ' + (res.error || res.output)), 'error');
 			}
 		});
 	},
 
+	doRepairMailbox: function(email) {
+		ui.showModal('Repairing Mailbox', [
+			E('p', { 'class': 'spinning' }, 'Repairing mailbox for ' + email + '...')
+		]);
+		return callUserRepair(email).then(function(res) {
+			ui.hideModal();
+			if (res.code === 0) {
+				ui.addNotification(null, E('p', 'Mailbox repaired for ' + email), 'success');
+			} else {
+				ui.addNotification(null, E('p', 'Repair output: ' + (res.output || 'No issues found')), 'info');
+			}
+			window.location.reload();
+		});
+	},
+
 	doDnsSetup: function() {
 		ui.showModal('DNS Setup', [
-			E('p', { 'class': 'spinning' }, 'Creating MX, SPF, DMARC records...')
+			E('p', { 'class': 'spinning' }, 'Creating MX, SPF, DKIM, DMARC records...')
 		]);
 		return callDnsSetup().then(function(res) {
 			ui.hideModal();
 			if (res.code === 0) {
-				ui.addNotification(null, E('p', 'DNS records created'), 'success');
+				ui.addNotification(null, E('p', 'DNS records created successfully'), 'success');
 			} else {
-				ui.addNotification(null, E('p', res.output), 'warning');
+				ui.addNotification(null, E('p', res.output || 'Check dnsctl configuration'), 'warning');
 			}
 		});
 	},
@@ -525,7 +651,7 @@ return view.extend({
 			if (res.code === 0) {
 				ui.addNotification(null, E('p', 'SSL certificate installed'), 'success');
 			} else {
-				ui.addNotification(null, E('p', res.output), 'error');
+				ui.addNotification(null, E('p', res.output || 'Certificate request failed'), 'error');
 			}
 			window.location.reload();
 		});
@@ -533,7 +659,7 @@ return view.extend({
 
 	doWebmailConfigure: function() {
 		ui.showModal('Configuring Webmail', [
-			E('p', { 'class': 'spinning' }, 'Configuring Roundcube...')
+			E('p', { 'class': 'spinning' }, 'Setting up Roundcube connection...')
 		]);
 		return callWebmailConfigure().then(function(res) {
 			ui.hideModal();
@@ -548,23 +674,23 @@ return view.extend({
 		return callMeshBackup().then(function(res) {
 			ui.hideModal();
 			if (res.code === 0) {
-				ui.addNotification(null, E('p', 'Backup created'), 'success');
+				ui.addNotification(null, E('p', 'Backup created successfully'), 'success');
 			} else {
-				ui.addNotification(null, E('p', res.output), 'error');
+				ui.addNotification(null, E('p', res.output || 'Backup failed'), 'error');
 			}
 		});
 	},
 
 	doFixPorts: function() {
 		ui.showModal('Fixing Ports', [
-			E('p', { 'class': 'spinning' }, 'Enabling submission (587), smtps (465), and POP3S (995) ports...')
+			E('p', { 'class': 'spinning' }, 'Enabling submission (587), SMTPS (465), POP3S (995)...')
 		]);
 		return callFixPorts().then(function(res) {
 			ui.hideModal();
 			if (res.code === 0) {
 				ui.addNotification(null, E('p', 'Ports enabled successfully'), 'success');
 			} else {
-				ui.addNotification(null, E('p', res.output || 'Some ports may still not be listening'), 'warning');
+				ui.addNotification(null, E('p', res.output || 'Some ports may not be listening'), 'warning');
 			}
 			window.location.reload();
 		});

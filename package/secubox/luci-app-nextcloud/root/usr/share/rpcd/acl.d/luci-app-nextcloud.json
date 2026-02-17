@@ -1,15 +1,30 @@
 {
 	"luci-app-nextcloud": {
-		"description": "Grant access to Nextcloud",
+		"description": "Grant access to Nextcloud LXC app",
 		"read": {
 			"ubus": {
-				"luci.nextcloud": ["status", "get_config", "logs"]
+				"luci.nextcloud": ["status", "get_config", "list_backups", "logs", "list_users", "get_storage"]
 			},
 			"uci": ["nextcloud"]
 		},
 		"write": {
 			"ubus": {
-				"luci.nextcloud": ["install", "start", "stop", "restart", "update", "save_config", "occ"]
+				"luci.nextcloud": [
+					"install",
+					"uninstall",
+					"start",
+					"stop",
+					"restart",
+					"update",
+					"save_config",
+					"backup",
+					"restore",
+					"delete_backup",
+					"ssl_enable",
+					"ssl_disable",
+					"occ",
+					"reset_password"
+				]
 			},
 			"uci": ["nextcloud"]
 		}

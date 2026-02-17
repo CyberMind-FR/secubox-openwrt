@@ -1,0 +1,27 @@
+# CrowdSec scenario for Icecast bandwidth abuse detection
+# Detects IPs making excessive parallel connections (stream ripping)
+# Install: cp to /etc/crowdsec/scenarios/
+
+type: leaky
+name: cybermind/icecast-bandwidth-abuse
+description: "Detect bandwidth abuse on Icecast (multiple parallel streams)"
+filter: "evt.Meta.service == 'icecast' && evt.Meta.log_type == 'access'"
+
+# Trigger on 10 simultaneous stream requests in 10 seconds
+# Normal listeners connect once and maintain connection
+leakspeed: "1s"
+capacity: 10
+groupby: evt.Meta.source_ip
+
+blackhole: 10m
+reprocess: true
+
+labels:
+  service: icecast
+  type: bandwidth_abuse
+  confidence: 2
+  spoofable: 0
+  classification:
+    - attack.T1499.002
+  label: "Icecast bandwidth abuse (stream ripping)"
+  remediation: true

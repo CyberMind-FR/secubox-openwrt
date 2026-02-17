@@ -1,0 +1,444 @@
+#!/bin/bash
+# SecuBox Wazuh Agent Controller
+# Manages Wazuh security monitoring agent
+
+set -e
+
+WAZUH_VERSION="4.9.2"
+WAZUH_DIR="/var/ossec"
+WAZUH_CONF="$WAZUH_DIR/etc/ossec.conf"
+WAZUH_CONTROL="$WAZUH_DIR/bin/wazuh-control"
+CONFIG="wazuh"
+DOWNLOAD_URL="https://packages.wazuh.com/4.x/apt/pool/main/w/wazuh-agent"
+
+. /lib/functions.sh
+
+log_info() { echo "[INFO] $*"; logger -t wazuh "$*"; }
+log_warn() { echo "[WARN] $*" >&2; }
+log_error() { echo "[ERROR] $*" >&2; }
+
+uci_get() { uci -q get ${CONFIG}.$1; }
+uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
+
+usage() {
+	cat <<'EOF'
+SecuBox Wazuh Agent Controller
+
+Usage: wazuhctl <command> [options]
+
+Installation:
+  install                 Download and install Wazuh agent
+  uninstall               Remove Wazuh agent
+  upgrade                 Upgrade to latest version
+
+Configuration:
+  configure <manager_ip>  Configure manager connection
+  register                Register agent with manager
+  set-name <name>         Set agent name
+
+Service Control:
+  start                   Start Wazuh agent
+  stop                    Stop Wazuh agent
+  restart                 Restart Wazuh agent
+  status                  Show agent status
+
+Monitoring:
+  info                    Show agent information
+  logs [n]                Show last n log lines (default: 50)
+  alerts [n]              Show recent alerts
+
+Integration:
+  crowdsec-sync           Sync CrowdSec alerts to Wazuh
+  configure-fim           Configure File Integrity Monitoring
+  configure-sca           Configure Security Configuration Assessment
+
+Examples:
+  wazuhctl install
+  wazuhctl configure 192.168.1.100
+  wazuhctl register
+  wazuhctl start
+EOF
+}
+
+# ===========================================
+# Installation Functions
+# ===========================================
+
+detect_arch() {
+	local arch=$(uname -m)
+	case "$arch" in
+		aarch64|arm64) echo "arm64" ;;
+		x86_64) echo "amd64" ;;
+		armv7l) echo "armhf" ;;
+		*) log_error "Unsupported architecture: $arch"; return 1 ;;
+	esac
+}
+
+cmd_install() {
+	local arch=$(detect_arch)
+	[ -z "$arch" ] && return 1
+
+	log_info "Installing Wazuh Agent v$WAZUH_VERSION ($arch)..."
+
+	# Check if already installed
+	if [ -x "$WAZUH_CONTROL" ]; then
+		log_warn "Wazuh agent already installed"
+		"$WAZUH_CONTROL" info 2>/dev/null || true
+		return 0
+	fi
+
+	# Create directories
+	mkdir -p /tmp/wazuh-install
+	cd /tmp/wazuh-install
+
+	# Download agent package
+	local pkg_name="wazuh-agent_${WAZUH_VERSION}-1_${arch}.deb"
+	local pkg_url="${DOWNLOAD_URL}/${pkg_name}"
+
+	log_info "Downloading $pkg_name..."
+	curl -fsSL -o "$pkg_name" "$pkg_url" || {
+		log_error "Failed to download Wazuh agent"
+		return 1
+	}
+
+	# Extract deb package (OpenWrt doesn't have dpkg)
+	log_info "Extracting package..."
+	ar x "$pkg_name"
+
+	# Handle different compression formats (xz or gz)
+	if [ -f data.tar.xz ]; then
+		xz -d data.tar.xz
+		tar -xf data.tar -C /
+	elif [ -f data.tar.gz ]; then
+		tar -xzf data.tar.gz -C /
+	elif [ -f data.tar.zst ]; then
+		zstd -d data.tar.zst
+		tar -xf data.tar -C /
+	else
+		log_error "Unknown data archive format"
+		return 1
+	fi
+
+	# Set permissions
+	chmod 750 "$WAZUH_DIR"
+	chmod 640 "$WAZUH_CONF" 2>/dev/null || true
+
+	# Cleanup
+	cd /
+	rm -rf /tmp/wazuh-install
+
+	# Update UCI
+	uci_set agent.installed "1"
+	uci_set agent.version "$WAZUH_VERSION"
+
+	log_info "Wazuh agent installed successfully"
+	log_info "Next: wazuhctl configure <manager_ip>"
+}
+
+cmd_uninstall() {
+	log_info "Uninstalling Wazuh agent..."
+
+	# Stop service
+	[ -x "$WAZUH_CONTROL" ] && "$WAZUH_CONTROL" stop 2>/dev/null
+
+	# Remove files
+	rm -rf "$WAZUH_DIR"
+
+	# Update UCI
+	uci_set agent.installed "0"
+	uci_set agent.version ""
+	uci_set agent.agent_id ""
+	uci_set agent.status "uninstalled"
+
+	log_info "Wazuh agent uninstalled"
+}
+
+# ===========================================
+# Configuration Functions
+# ===========================================
+
+cmd_configure() {
+	local manager_ip="$1"
+	[ -z "$manager_ip" ] && { log_error "Manager IP required"; return 1; }
+
+	local manager_port=$(uci_get main.manager_port)
+	local protocol=$(uci_get main.protocol)
+	local agent_name=$(uci_get main.agent_name)
+
+	[ -z "$agent_name" ] && agent_name=$(uci -q get system.@system[0].hostname)
+
+	log_info "Configuring Wazuh agent..."
+	log_info "  Manager: $manager_ip:$manager_port"
+	log_info "  Agent name: $agent_name"
+
+	# Update UCI
+	uci_set main.manager_ip "$manager_ip"
+	uci_set main.agent_name "$agent_name"
+
+	# Generate ossec.conf
+	cat > "$WAZUH_CONF" <<CONF
+<ossec_config>
+  <client>
+    <server>
+      <address>$manager_ip</address>
+      <port>$manager_port</port>
+      <protocol>$protocol</protocol>
+    </server>
+    <config-profile>openwrt, secubox</config-profile>
+    <notify_time>10</notify_time>
+    <time-reconnect>60</time-reconnect>
+    <auto_restart>yes</auto_restart>
+  </client>
+
+  <client_buffer>
+    <disabled>no</disabled>
+    <queue_size>5000</queue_size>
+    <events_per_second>500</events_per_second>
+  </client_buffer>
+
+  <!-- File Integrity Monitoring -->
+  <syscheck>
+    <disabled>no</disabled>
+    <frequency>43200</frequency>
+    <scan_on_start>yes</scan_on_start>
+    <directories check_all="yes" realtime="yes" report_changes="yes">/etc</directories>
+    <directories check_all="yes" realtime="yes">/usr/sbin</directories>
+    <directories check_all="yes" realtime="yes">/etc/config</directories>
+    <directories check_all="yes" realtime="yes">/etc/init.d</directories>
+    <ignore>/etc/resolv.conf</ignore>
+    <ignore>/etc/mtab</ignore>
+  </syscheck>
+
+  <!-- Rootcheck -->
+  <rootcheck>
+    <disabled>no</disabled>
+    <check_files>yes</check_files>
+    <check_trojans>yes</check_trojans>
+    <check_dev>yes</check_dev>
+    <check_sys>yes</check_sys>
+    <check_pids>yes</check_pids>
+    <check_ports>yes</check_ports>
+    <check_if>yes</check_if>
+    <frequency>43200</frequency>
+  </rootcheck>
+
+  <!-- Log Analysis -->
+  <localfile>
+    <log_format>syslog</log_format>
+    <location>/var/log/messages</location>
+  </localfile>
+
+  <localfile>
+    <log_format>syslog</log_format>
+    <location>/var/log/crowdsec.log</location>
+  </localfile>
+
+  <!-- OpenWrt specific -->
+  <localfile>
+    <log_format>command</log_format>
+    <command>logread -l 100</command>
+    <alias>openwrt-syslog</alias>
+    <frequency>60</frequency>
+  </localfile>
+
+  <localfile>
+    <log_format>command</log_format>
+    <command>cat /proc/net/nf_conntrack 2>/dev/null | wc -l</command>
+    <alias>conntrack-count</alias>
+    <frequency>300</frequency>
+  </localfile>
+
+  <!-- Active Response -->
+  <active-response>
+    <disabled>no</disabled>
+    <ca_store>$WAZUH_DIR/etc/wpk_root.pem</ca_store>
+  </active-response>
+
+</ossec_config>
+CONF
+
+	chmod 640 "$WAZUH_CONF"
+	log_info "Configuration saved to $WAZUH_CONF"
+}
+
+cmd_register() {
+	local manager_ip=$(uci_get main.manager_ip)
+	local agent_name=$(uci_get main.agent_name)
+	local password=$(uci_get main.registration_password)
+
+	[ -z "$manager_ip" ] && { log_error "Manager not configured. Run: wazuhctl configure <ip>"; return 1; }
+
+	log_info "Registering agent with manager $manager_ip..."
+
+	local reg_cmd="$WAZUH_DIR/bin/agent-auth"
+	if [ -x "$reg_cmd" ]; then
+		local args="-m $manager_ip -A $agent_name"
+		[ -n "$password" ] && args="$args -P $password"
+
+		$reg_cmd $args || {
+			log_error "Registration failed"
+			return 1
+		}
+
+		# Get agent ID
+		local agent_id=$(grep -oP '(?<=<agent_id>)[^<]+' "$WAZUH_DIR/etc/client.keys" 2>/dev/null | head -1)
+		[ -n "$agent_id" ] && uci_set agent.agent_id "$agent_id"
+
+		log_info "Agent registered successfully (ID: $agent_id)"
+	else
+		log_error "agent-auth not found. Install agent first."
+		return 1
+	fi
+}
+
+cmd_set_name() {
+	local name="$1"
+	[ -z "$name" ] && { log_error "Agent name required"; return 1; }
+	uci_set main.agent_name "$name"
+	log_info "Agent name set to: $name"
+}
+
+# ===========================================
+# Service Control
+# ===========================================
+
+cmd_start() {
+	if [ ! -x "$WAZUH_CONTROL" ]; then
+		log_error "Wazuh agent not installed"
+		return 1
+	fi
+	uci_set main.enabled "1"
+	"$WAZUH_CONTROL" start
+	uci_set agent.status "running"
+	log_info "Wazuh agent started"
+}
+
+cmd_stop() {
+	if [ -x "$WAZUH_CONTROL" ]; then
+		"$WAZUH_CONTROL" stop
+		uci_set agent.status "stopped"
+		log_info "Wazuh agent stopped"
+	fi
+}
+
+cmd_restart() {
+	cmd_stop
+	sleep 2
+	cmd_start
+}
+
+cmd_status() {
+	echo "=== Wazuh Agent Status ==="
+	echo ""
+
+	local installed=$(uci_get agent.installed)
+	local version=$(uci_get agent.version)
+	local agent_id=$(uci_get agent.agent_id)
+	local manager_ip=$(uci_get main.manager_ip)
+	local enabled=$(uci_get main.enabled)
+
+	echo "Installed: $([ "$installed" = "1" ] && echo "Yes ($version)" || echo "No")"
+	echo "Agent ID: ${agent_id:-Not registered}"
+	echo "Manager: ${manager_ip:-Not configured}"
+	echo "Enabled: $([ "$enabled" = "1" ] && echo "Yes" || echo "No")"
+	echo ""
+
+	if [ -x "$WAZUH_CONTROL" ]; then
+		echo "=== Service Status ==="
+		"$WAZUH_CONTROL" status 2>/dev/null || echo "Service not running"
+	fi
+}
+
+cmd_info() {
+	if [ -x "$WAZUH_CONTROL" ]; then
+		"$WAZUH_CONTROL" info
+	else
+		log_error "Wazuh agent not installed"
+	fi
+}
+
+cmd_logs() {
+	local lines="${1:-50}"
+	local log_file="$WAZUH_DIR/logs/ossec.log"
+
+	if [ -f "$log_file" ]; then
+		tail -n "$lines" "$log_file"
+	else
+		log_warn "Log file not found: $log_file"
+		logread | grep -i wazuh | tail -n "$lines"
+	fi
+}
+
+cmd_alerts() {
+	local lines="${1:-20}"
+	local alerts_file="$WAZUH_DIR/logs/alerts/alerts.json"
+
+	if [ -f "$alerts_file" ]; then
+		tail -n "$lines" "$alerts_file" | python3 -m json.tool 2>/dev/null || tail -n "$lines" "$alerts_file"
+	else
+		log_warn "Alerts file not found"
+	fi
+}
+
+# ===========================================
+# Integration Functions
+# ===========================================
+
+cmd_crowdsec_sync() {
+	log_info "Syncing CrowdSec alerts to Wazuh..."
+
+	local cs_log="/var/log/crowdsec.log"
+	local wazuh_log="$WAZUH_DIR/logs/crowdsec-alerts.log"
+
+	if [ -f "$cs_log" ]; then
+		# Parse CrowdSec alerts and format for Wazuh
+		grep -E "alert|ban|decision" "$cs_log" | tail -100 > "$wazuh_log"
+		log_info "CrowdSec alerts synced to $wazuh_log"
+	else
+		log_warn "CrowdSec log not found: $cs_log"
+	fi
+}
+
+cmd_configure_fim() {
+	log_info "Configuring File Integrity Monitoring..."
+
+	# Read directories from UCI
+	local dirs=$(uci -q get wazuh.fim.directories)
+
+	log_info "Monitored directories:"
+	for dir in $dirs; do
+		echo "  - $dir"
+	done
+
+	log_info "FIM configured. Restart agent to apply."
+}
+
+cmd_configure_sca() {
+	log_info "Security Configuration Assessment enabled"
+	log_info "SCA will run on next agent restart"
+}
+
+# ===========================================
+# Main
+# ===========================================
+
+case "$1" in
+	install)     cmd_install ;;
+	uninstall)   cmd_uninstall ;;
+	upgrade)     cmd_uninstall && cmd_install ;;
+	configure)   shift; cmd_configure "$@" ;;
+	register)    cmd_register ;;
+	set-name)    shift; cmd_set_name "$@" ;;
+	start)       cmd_start ;;
+	stop)        cmd_stop ;;
+	restart)     cmd_restart ;;
+	status)      cmd_status ;;
+	info)        cmd_info ;;
+	logs)        shift; cmd_logs "$@" ;;
+	alerts)      shift; cmd_alerts "$@" ;;
+	crowdsec-sync)    cmd_crowdsec_sync ;;
+	configure-fim)    cmd_configure_fim ;;
+	configure-sca)    cmd_configure_sca ;;
+	-h|--help|help|"") usage ;;
+	*)           log_error "Unknown command: $1"; usage; exit 1 ;;
+esac

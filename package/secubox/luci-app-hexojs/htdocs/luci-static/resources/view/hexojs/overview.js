@@ -1,267 +1,184 @@
 'use strict';
 'require view';
-'require poll';
 'require ui';
+'require rpc';
 'require hexojs/api as api';
-'require secubox/kiss-theme';
 
 return view.extend({
-	title: _('Hexo CMS'),
-	pollInterval: 10,
-	pollActive: true,
-
 	load: function() {
-		return api.getDashboardData();
-	},
-
-	handleServiceToggle: function(status) {
-		var self = this;
-
-		if (status.running) {
-			ui.showModal(_('Stop Service'), [
-				E('p', { 'class': 'spinning' }, _('Stopping Hexo CMS...'))
-			]);
-
-			api.serviceStop().then(function(result) {
-				ui.hideModal();
-				if (result.success) {
-					ui.addNotification(null, E('p', _('Service stopped')), 'info');
-					self.render();
-				}
-			}).catch(function(err) {
-				ui.hideModal();
-				ui.addNotification(null, E('p', _('Error: %s').format(err.message || err)), 'error');
-			});
-		} else {
-			ui.showModal(_('Start Service'), [
-				E('p', { 'class': 'spinning' }, _('Starting Hexo CMS...'))
-			]);
-
-			api.serviceStart().then(function(result) {
-				ui.hideModal();
-				if (result.success) {
-					ui.addNotification(null, E('p', _('Service starting...')), 'info');
-				}
-			}).catch(function(err) {
-				ui.hideModal();
-				ui.addNotification(null, E('p', _('Error: %s').format(err.message || err)), 'error');
-			});
-		}
-	},
-
-	handleBuild: function() {
-		ui.showModal(_('Building Site'), [
-			E('p', { 'class': 'spinning' }, _('Generating static files...'))
-		]);
-
-		api.generate().then(function(result) {
-			ui.hideModal();
-			if (result.success) {
-				ui.addNotification(null, E('p', _('Site built successfully!')), 'info');
-			} else {
-				ui.addNotification(null, E('p', result.error || _('Build failed')), 'error');
-			}
-		}).catch(function(err) {
-			ui.hideModal();
-			ui.addNotification(null, E('p', _('Error: %s').format(err.message || err)), 'error');
+		return Promise.all([
+			L.require('secubox/kiss-theme'),
+			api.listInstances(),
+			api.getStatus(),
+			api.getSiteStats(),
+			api.listBackups()
+		]).then(function(r) {
+			return { instances: r[1] || [], status: r[2] || {}, stats: r[3] || {}, backups: r[4] || [] };
 		});
 	},
 
-	startPolling: function() {
+	render: function(d) {
 		var self = this;
-		this.pollActive = true;
+		var K = window.KissTheme;
+		K.apply();
 
-		poll.add(L.bind(function() {
-			if (!this.pollActive) return Promise.resolve();
-
-			return api.getStatus().then(L.bind(function(status) {
-				this.updateStatusDisplay(status);
-			}, this));
-		}, this), this.pollInterval);
-	},
-
-	stopPolling: function() {
-		this.pollActive = false;
-		poll.stop();
-	},
-
-	updateStatusDisplay: function(status) {
-		var badge = document.querySelector('.hexo-status-badge');
-		if (badge) {
-			badge.className = 'hexo-status-badge ' + (status.running ? 'running' : 'stopped');
-			badge.innerHTML = '<span class="hexo-status-dot"></span>' + (status.running ? _('Running') : _('Stopped'));
-		}
-
-		var toggleBtn = document.querySelector('.hexo-service-toggle');
-		if (toggleBtn) {
-			toggleBtn.textContent = status.running ? _('Stop Service') : _('Start Service');
-			toggleBtn.className = 'hexo-btn ' + (status.running ? 'hexo-btn-danger' : 'hexo-btn-success');
-		}
-	},
-
-	render: function(data) {
-		var self = this;
-		var status = data.status || {};
-		var stats = data.stats || {};
-		var posts = data.posts || [];
-		var preview = data.preview || {};
-
-		var view = E('div', { 'class': 'hexo-dashboard' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('hexojs/dashboard.css') }),
-
+		return K.wrap([
 			// Header
-			E('div', { 'class': 'hexo-header' }, [
-				E('div', { 'class': 'hexo-logo' }, [
-					E('div', { 'class': 'hexo-logo-icon' }, '\uD83D\uDCDD'),
-					E('div', { 'class': 'hexo-logo-text' }, ['Hexo ', E('span', {}, 'CMS')])
-				]),
-				E('div', { 'class': 'hexo-status-badge ' + (status.running ? 'running' : 'stopped') }, [
-					E('span', { 'class': 'hexo-status-dot' }),
-					status.running ? _('Running') : _('Stopped')
-				])
+			K.E('div', { style: 'display:flex;justify-content:space-between;align-items:center;margin-bottom:20px' }, [
+				K.E('h2', { style: 'margin:0;font-size:24px' }, '📰 HexoJS'),
+				K.badge(d.status.running ? 'RUNNING' : 'STOPPED', d.status.running ? 'green' : 'red')
 			]),
 
-			// Stats Grid
-			E('div', { 'class': 'hexo-stats-grid' }, [
-				E('div', { 'class': 'hexo-stat' }, [
-					E('div', { 'class': 'hexo-stat-icon' }, '\uD83D\uDCDD'),
-					E('div', { 'class': 'hexo-stat-value' }, stats.posts || 0),
-					E('div', { 'class': 'hexo-stat-label' }, _('Posts'))
-				]),
-				E('div', { 'class': 'hexo-stat' }, [
-					E('div', { 'class': 'hexo-stat-icon' }, '\uD83D\uDCCB'),
-					E('div', { 'class': 'hexo-stat-value' }, stats.drafts || 0),
-					E('div', { 'class': 'hexo-stat-label' }, _('Drafts'))
-				]),
-				E('div', { 'class': 'hexo-stat' }, [
-					E('div', { 'class': 'hexo-stat-icon' }, '\uD83D\uDCC1'),
-					E('div', { 'class': 'hexo-stat-value' }, stats.categories || 0),
-					E('div', { 'class': 'hexo-stat-label' }, _('Categories'))
-				]),
-				E('div', { 'class': 'hexo-stat' }, [
-					E('div', { 'class': 'hexo-stat-icon' }, '\uD83C\uDFF7'),
-					E('div', { 'class': 'hexo-stat-value' }, stats.tags || 0),
-					E('div', { 'class': 'hexo-stat-label' }, _('Tags'))
-				]),
-				E('div', { 'class': 'hexo-stat' }, [
-					E('div', { 'class': 'hexo-stat-icon' }, '\uD83D\uDDBC'),
-					E('div', { 'class': 'hexo-stat-value' }, stats.media || 0),
-					E('div', { 'class': 'hexo-stat-label' }, _('Media'))
-				])
+			// Stats
+			K.E('div', { class: 'kiss-grid kiss-grid-4' }, [
+				K.stat(d.instances.length, 'Instances', K.colors.cyan),
+				K.stat(d.stats.posts || 0, 'Posts', K.colors.green),
+				K.stat(d.stats.drafts || 0, 'Drafts', K.colors.yellow),
+				K.stat(d.backups.length, 'Backups', K.colors.purple)
 			]),
 
 			// Quick Actions
-			E('div', { 'class': 'hexo-card' }, [
-				E('div', { 'class': 'hexo-card-header' }, [
-					E('div', { 'class': 'hexo-card-title' }, [
-						E('span', { 'class': 'hexo-card-title-icon' }, '\u26A1'),
-						_('Quick Actions')
+			K.card('⚡ Actions', K.E('div', { style: 'display:flex;gap:8px;flex-wrap:wrap' }, [
+				K.btn('+ Instance', function() { self.createInstance(); }, 'green'),
+				K.btn('🐙 GitHub', function() { self.gitClone('github'); }),
+				K.btn('🍵 Gitea', function() { self.gitClone('gitea'); }),
+				K.E('a', { class: 'kiss-btn', href: L.url('admin', 'services', 'hexojs', 'editor') }, '✏ Post'),
+				K.E('a', { class: 'kiss-btn', href: L.url('admin', 'services', 'hexojs', 'settings') }, '⚙ Settings')
+			])),
+
+			// Instances
+			K.card('📦 Instances', d.instances.length ? K.E('div', {}, d.instances.map(function(i) {
+				return K.E('div', { style: 'display:flex;justify-content:space-between;align-items:center;padding:12px;background:var(--kiss-bg2);border-radius:8px;margin-bottom:8px' }, [
+					K.E('div', {}, [
+						K.E('strong', {}, i.title || i.name),
+						K.badge(i.running ? 'ON' : 'OFF', i.running ? 'green' : 'red'),
+						K.E('div', { style: 'font-size:12px;color:var(--kiss-muted);margin-top:4px' }, 'Port: ' + i.port)
+					]),
+					K.E('div', { style: 'display:flex;gap:4px' }, [
+						K.E('button', { class: 'kiss-btn', onClick: function() { self.toggle(i); } }, i.running ? '⏹' : '▶'),
+						K.E('button', { class: 'kiss-btn', onClick: function() { self.publish(i.name); } }, '🚀'),
+						K.E('button', { class: 'kiss-btn', onClick: function() { self.backup(i.name); } }, '💾'),
+						i.running ? K.E('a', { class: 'kiss-btn', href: 'http://' + location.hostname + ':' + i.port, target: '_blank' }, '👁') : null,
+						K.E('button', { class: 'kiss-btn kiss-btn-red', onClick: function() { self.deleteInst(i.name); } }, '✕')
 					])
-				]),
-				E('div', { 'class': 'hexo-actions' }, [
-					E('button', {
-						'class': 'hexo-service-toggle hexo-btn ' + (status.running ? 'hexo-btn-danger' : 'hexo-btn-success'),
-						'click': function() { self.handleServiceToggle(status); }
-					}, status.running ? _('Stop Service') : _('Start Service')),
+				]);
+			})) : K.E('div', { style: 'text-align:center;color:var(--kiss-muted);padding:20px' }, 'No instances')),
 
-					E('a', {
-						'class': 'hexo-btn hexo-btn-primary',
-						'href': L.url('admin', 'services', 'hexojs', 'editor')
-					}, ['\u270F ', _('New Post')]),
+			// Backups
+			K.card('💾 Backups', d.backups.length ? K.E('table', { class: 'kiss-table' }, [
+				K.E('thead', {}, K.E('tr', {}, [K.E('th', {}, 'Name'), K.E('th', {}, 'Size'), K.E('th', {}, 'Date'), K.E('th', {}, '')])),
+				K.E('tbody', {}, d.backups.map(function(b) {
+					return K.E('tr', {}, [
+						K.E('td', {}, b.name),
+						K.E('td', {}, b.size || '-'),
+						K.E('td', {}, b.timestamp ? new Date(b.timestamp * 1000).toLocaleDateString() : '-'),
+						K.E('td', { style: 'text-align:right' }, [
+							K.E('button', { class: 'kiss-btn', onClick: function() { self.restore(b.name); } }, '↩'),
+							K.E('button', { class: 'kiss-btn kiss-btn-red', style: 'margin-left:4px', onClick: function() { self.delBackup(b.name); } }, '✕')
+						])
+					]);
+				}))
+			]) : K.E('div', { style: 'text-align:center;color:var(--kiss-muted);padding:20px' }, 'No backups'))
+		], 'admin/services/hexojs');
+	},
 
-					E('button', {
-						'class': 'hexo-btn hexo-btn-secondary',
-						'click': function() { self.handleBuild(); },
-						'disabled': !status.running
-					}, ['\uD83D\uDD28 ', _('Build')]),
-
-					E('a', {
-						'class': 'hexo-btn hexo-btn-secondary',
-						'href': L.url('admin', 'services', 'hexojs', 'deploy')
-					}, ['\uD83D\uDE80 ', _('Deploy')]),
-
-					preview.running ? E('a', {
-						'class': 'hexo-btn hexo-btn-secondary',
-						'href': preview.url,
-						'target': '_blank'
-					}, ['\uD83D\uDC41 ', _('Preview')]) : ''
-				])
+	createInstance: function() {
+		var name, title, port;
+		ui.showModal('New Instance', [
+			E('div', { style: 'margin-bottom:12px' }, [
+				E('label', { style: 'display:block;font-size:12px;color:#94a3b8;margin-bottom:4px' }, 'Name'),
+				name = E('input', { type: 'text', style: 'width:100%;padding:8px;background:#111827;border:1px solid #1e293b;border-radius:4px;color:#e2e8f0' })
 			]),
-
-			// Site Info
-			E('div', { 'class': 'hexo-card' }, [
-				E('div', { 'class': 'hexo-card-header' }, [
-					E('div', { 'class': 'hexo-card-title' }, [
-						E('span', { 'class': 'hexo-card-title-icon' }, '\u2139'),
-						_('Site Information')
-					])
-				]),
-				E('div', { 'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;' }, [
-					E('div', {}, [
-						E('div', { 'style': 'font-size: 12px; color: var(--hexo-text-muted); text-transform: uppercase;' }, _('Title')),
-						E('div', { 'style': 'font-size: 16px; font-weight: 500;' }, status.site ? status.site.title : '-')
-					]),
-					E('div', {}, [
-						E('div', { 'style': 'font-size: 12px; color: var(--hexo-text-muted); text-transform: uppercase;' }, _('Author')),
-						E('div', { 'style': 'font-size: 16px; font-weight: 500;' }, status.site ? status.site.author : '-')
-					]),
-					E('div', {}, [
-						E('div', { 'style': 'font-size: 12px; color: var(--hexo-text-muted); text-transform: uppercase;' }, _('Theme')),
-						E('div', { 'style': 'font-size: 16px; font-weight: 500;' }, status.site ? status.site.theme : '-')
-					]),
-					E('div', {}, [
-						E('div', { 'style': 'font-size: 12px; color: var(--hexo-text-muted); text-transform: uppercase;' }, _('Port')),
-						E('div', { 'style': 'font-size: 16px; font-weight: 500;' }, status.http_port || '4000')
-					])
-				])
+			E('div', { style: 'margin-bottom:12px' }, [
+				E('label', { style: 'display:block;font-size:12px;color:#94a3b8;margin-bottom:4px' }, 'Title'),
+				title = E('input', { type: 'text', style: 'width:100%;padding:8px;background:#111827;border:1px solid #1e293b;border-radius:4px;color:#e2e8f0' })
 			]),
-
-			// Recent Posts
-			E('div', { 'class': 'hexo-card' }, [
-				E('div', { 'class': 'hexo-card-header' }, [
-					E('div', { 'class': 'hexo-card-title' }, [
-						E('span', { 'class': 'hexo-card-title-icon' }, '\uD83D\uDCDD'),
-						_('Recent Posts')
-					]),
-					E('a', {
-						'class': 'hexo-btn hexo-btn-sm hexo-btn-secondary',
-						'href': L.url('admin', 'services', 'hexojs', 'posts')
-					}, _('View All'))
-				]),
-				posts.length > 0 ?
-					E('table', { 'class': 'hexo-table' }, [
-						E('thead', {}, [
-							E('tr', {}, [
-								E('th', {}, _('Title')),
-								E('th', {}, _('Date')),
-								E('th', {}, _('Category'))
-							])
-						]),
-						E('tbody', {},
-							posts.slice(0, 5).map(function(post) {
-								return E('tr', {}, [
-									E('td', {}, [
-										E('a', {
-											'class': 'hexo-post-title',
-											'href': L.url('admin', 'services', 'hexojs', 'editor') + '?slug=' + post.slug
-										}, post.title || post.slug)
-									]),
-									E('td', { 'class': 'hexo-post-meta' }, api.formatDate(post.date)),
-									E('td', {}, post.categories ? E('span', { 'class': 'hexo-tag category' }, post.categories) : '-')
-								]);
-							})
-						)
-					])
-				: E('div', { 'class': 'hexo-empty' }, [
-					E('div', { 'class': 'hexo-empty-icon' }, '\uD83D\uDCDD'),
-					E('p', {}, _('No posts yet. Create your first post!'))
-				])
+			E('div', { style: 'margin-bottom:16px' }, [
+				E('label', { style: 'display:block;font-size:12px;color:#94a3b8;margin-bottom:4px' }, 'Port'),
+				port = E('input', { type: 'number', placeholder: '4000', style: 'width:100%;padding:8px;background:#111827;border:1px solid #1e293b;border-radius:4px;color:#e2e8f0' })
+			]),
+			E('div', { style: 'display:flex;gap:8px;justify-content:flex-end' }, [
+				E('button', { class: 'cbi-button', click: ui.hideModal }, 'Cancel'),
+				E('button', { class: 'cbi-button cbi-button-positive', click: function() {
+					if (!name.value) return;
+					ui.showModal('Creating...', [E('p', { class: 'spinning' }, 'Please wait...')]);
+					api.createInstance(name.value, title.value, port.value ? +port.value : null).then(function(r) {
+						ui.hideModal();
+						r.success ? location.reload() : ui.addNotification(null, E('p', r.error || 'Failed'));
+					});
+				}}, 'Create')
 			])
 		]);
+	},
 
-		this.startPolling();
+	gitClone: function(src) {
+		var repo, inst, branch;
+		ui.showModal('Clone from ' + src, [
+			E('div', { style: 'margin-bottom:12px' }, [
+				E('label', { style: 'display:block;font-size:12px;color:#94a3b8;margin-bottom:4px' }, 'Repository URL'),
+				repo = E('input', { type: 'text', style: 'width:100%;padding:8px;background:#111827;border:1px solid #1e293b;border-radius:4px;color:#e2e8f0' })
+			]),
+			E('div', { style: 'margin-bottom:12px' }, [
+				E('label', { style: 'display:block;font-size:12px;color:#94a3b8;margin-bottom:4px' }, 'Instance'),
+				inst = E('input', { type: 'text', value: 'default', style: 'width:100%;padding:8px;background:#111827;border:1px solid #1e293b;border-radius:4px;color:#e2e8f0' })
+			]),
+			E('div', { style: 'margin-bottom:16px' }, [
+				E('label', { style: 'display:block;font-size:12px;color:#94a3b8;margin-bottom:4px' }, 'Branch'),
+				branch = E('input', { type: 'text', value: 'main', style: 'width:100%;padding:8px;background:#111827;border:1px solid #1e293b;border-radius:4px;color:#e2e8f0' })
+			]),
+			E('div', { style: 'display:flex;gap:8px;justify-content:flex-end' }, [
+				E('button', { class: 'cbi-button', click: ui.hideModal }, 'Cancel'),
+				E('button', { class: 'cbi-button cbi-button-positive', click: function() {
+					if (!repo.value) return;
+					ui.showModal('Cloning...', [E('p', { class: 'spinning' }, 'Please wait...')]);
+					(src === 'github' ? api.gitHubClone : api.gitClone)(repo.value, inst.value, branch.value).then(function(r) {
+						ui.hideModal();
+						r.success ? location.reload() : ui.addNotification(null, E('p', r.error || 'Failed'));
+					});
+				}}, 'Clone')
+			])
+		]);
+	},
 
-		return KissTheme.wrap([view], 'admin/services/hexojs');
+	toggle: function(i) {
+		var fn = i.running ? api.stopInstance : api.startInstance;
+		ui.showModal('...', [E('p', { class: 'spinning' }, 'Please wait...')]);
+		fn(i.name).then(function() { ui.hideModal(); setTimeout(location.reload.bind(location), 1500); });
+	},
+
+	publish: function(n) {
+		ui.showModal('Publishing...', [E('p', { class: 'spinning' }, 'Building site...')]);
+		api.quickPublish(n).then(function(r) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', r.success ? 'Published!' : (r.error || 'Failed')));
+		});
+	},
+
+	backup: function(n) {
+		ui.showModal('Backup...', [E('p', { class: 'spinning' }, 'Creating backup...')]);
+		api.createBackup(n, null).then(function(r) {
+			ui.hideModal();
+			r.success ? location.reload() : ui.addNotification(null, E('p', r.error || 'Failed'));
+		});
+	},
+
+	restore: function(n) {
+		if (!confirm('Restore backup "' + n + '"? This will overwrite current data.')) return;
+		ui.showModal('Restoring...', [E('p', { class: 'spinning' }, 'Please wait...')]);
+		api.restoreBackup(n, 'default').then(function(r) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', r.success ? 'Restored' : (r.error || 'Failed')));
+		});
+	},
+
+	delBackup: function(n) {
+		if (!confirm('Delete backup "' + n + '"?')) return;
+		api.deleteBackup(n).then(function() { location.reload(); });
+	},
+
+	deleteInst: function(n) {
+		if (!confirm('Delete instance "' + n + '"?')) return;
+		api.deleteInstance(n, false).then(function() { location.reload(); });
 	},
 
 	handleSaveApply: null,

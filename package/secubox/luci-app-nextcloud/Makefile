@@ -3,8 +3,8 @@
 
 include $(TOPDIR)/rules.mk
 
-LUCI_TITLE:=LuCI support for Nextcloud
-LUCI_DEPENDS:=+luci-base
+LUCI_TITLE:=LuCI support for Nextcloud LXC
+LUCI_DEPENDS:=+luci-base +luci-lib-secubox +secubox-app-nextcloud
 LUCI_PKGARCH:=all
 
 PKG_NAME:=luci-app-nextcloud

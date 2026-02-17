@@ -371,6 +371,24 @@ log() { logger -t secubox-clone "\$*"; echo "\$*"; }
 log "SecuBox clone provisioning starting..."
 log "Master: \$MASTER_IP"
 
+# Step 0: Disable I2C LEDs (prevents bus lockup on MochaBin)
+log "Disabling I2C LEDs..."
+# Method 1: Add kernel boot parameter via U-Boot env
+if command -v fw_setenv >/dev/null 2>&1; then
+    current_args=\$(fw_printenv -n bootargs 2>/dev/null || echo "")
+    if ! echo "\$current_args" | grep -q "initcall_blacklist"; then
+        fw_setenv bootargs "\$current_args initcall_blacklist=leds_pca955x_init" 2>/dev/null
+        log "Added LED blacklist to bootargs"
+    fi
+fi
+# Method 2: Remove module if it exists as loadable module
+rm -f /lib/modules/*/leds-pca955x.ko 2>/dev/null
+rm -f /lib/modules/*/leds_pca955x.ko 2>/dev/null
+# Method 3: Disable LED triggers to stop activity
+for led in /sys/class/leds/*/trigger; do
+    [ -f "\$led" ] && echo "none" > "\$led" 2>/dev/null
+done
+
 # Step 1: Resize root partition to full disk
 log "Resizing root partition..."
 ROOT_DEV=\$(awk '\$2=="/" {print \$1}' /proc/mounts)

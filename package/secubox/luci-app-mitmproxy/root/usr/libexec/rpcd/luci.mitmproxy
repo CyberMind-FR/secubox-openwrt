@@ -8,6 +8,8 @@ LXC_NAME="mitmproxy"
 LXC_PATH="/srv/lxc"
 LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
 MITMPROXY_CACHE="/tmp/secubox/mitmproxy.json"
+# WAF input instance data path (for threat stats)
+WAF_DATA_PATH="/srv/mitmproxy-in"
 
 # Read cached status for fast API responses
 get_cached_status() {
@@ -40,10 +42,12 @@ get_status() {
 	local lxc_available=0
 	command -v lxc-start >/dev/null 2>&1 && lxc_available=1
 
-	# Check if container is running
+	# Check if container is running (check both mitmproxy-in and mitmproxy-out)
 	local running=0
 	if [ "$lxc_available" = "1" ]; then
-		lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING" && running=1
+		(lxc-info -n mitmproxy-in -s 2>/dev/null | grep -q "RUNNING" || \
+		 lxc-info -n mitmproxy-out -s 2>/dev/null | grep -q "RUNNING" || \
+		 lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING") && running=1
 	fi
 
 	# Check if installed (rootfs exists)
@@ -72,19 +76,19 @@ get_status() {
 	local autoban_sensitivity=$(uci_get autoban.sensitivity)
 	local autoban_duration=$(uci_get autoban.ban_duration)
 
-	# Count threats today
+	# Count threats today - use WAF input instance data
 	local threats_today=0
-	local threats_log="${data_path:-/srv/mitmproxy}/threats.log"
+	local threats_log="${WAF_DATA_PATH}/threats.log"
 	if [ -f "$threats_log" ]; then
 		local today=$(date -u +%Y-%m-%d)
 		threats_today=$(grep -c "\"timestamp\": \"$today" "$threats_log" 2>/dev/null)
 		: ${threats_today:=0}
 	fi
 
-	# Count processed autobans
+	# Count processed autobans - use WAF input instance data
 	local autobans_total=0
 	local autobans_today=0
-	local autoban_log="${data_path:-/srv/mitmproxy}/autoban-processed.log"
+	local autoban_log="${WAF_DATA_PATH}/autoban-processed.log"
 	if [ -f "$autoban_log" ]; then
 		autobans_total=$(wc -l < "$autoban_log" 2>/dev/null || echo 0)
 		local today=$(date +%Y-%m-%d)
@@ -92,9 +96,9 @@ get_status() {
 		: ${autobans_today:=0}
 	fi
 
-	# Pending autoban requests
+	# Pending autoban requests - use WAF input instance data
 	local autobans_pending=0
-	local autoban_requests="${data_path:-/srv/mitmproxy}/autoban-requests.log"
+	local autoban_requests="${WAF_DATA_PATH}/autoban-requests.log"
 	if [ -f "$autoban_requests" ] && [ -s "$autoban_requests" ]; then
 		autobans_pending=$(wc -l < "$autoban_requests" 2>/dev/null || echo 0)
 	fi
@@ -472,8 +476,8 @@ do_restart() { [ -x /etc/init.d/mitmproxy ] && /etc/init.d/mitmproxy restart >/d
 get_alerts() {
 	# Read alerts from host-visible JSONL log file
 	# The analytics addon writes to /data/threats.log inside container
-	# which is bind-mounted to /srv/mitmproxy/threats.log on host
-	local log_file="/srv/mitmproxy/threats.log"
+	# which is bind-mounted to /srv/mitmproxy-in/threats.log on host (WAF input)
+	local log_file="${WAF_DATA_PATH}/threats.log"
 	local max_alerts=50
 	local alerts_json="[]"
 
@@ -509,9 +513,9 @@ get_threat_stats() {
 	local stats_file="/tmp/secubox-mitm-stats.json"
 	local container_stats=""
 
-	# Try to get stats from LXC container
+	# Try to get stats from WAF input LXC container
 	if command -v lxc-attach >/dev/null 2>&1; then
-		container_stats=$(lxc-attach -n "$LXC_NAME" -- cat /tmp/secubox-mitm-stats.json 2>/dev/null)
+		container_stats=$(lxc-attach -n mitmproxy-in -- cat /tmp/secubox-mitm-stats.json 2>/dev/null)
 	fi
 
 	# Fall back to host path
@@ -535,9 +539,9 @@ get_subdomain_metrics() {
 	local metrics_file="/tmp/secubox-subdomain-metrics.json"
 	local subdomain_metrics=""
 
-	# Try to get metrics from LXC container
+	# Try to get metrics from WAF input LXC container
 	if command -v lxc-attach >/dev/null 2>&1; then
-		subdomain_metrics=$(lxc-attach -n "$LXC_NAME" -- cat /tmp/secubox-subdomain-metrics.json 2>/dev/null)
+		subdomain_metrics=$(lxc-attach -n mitmproxy-in -- cat /tmp/secubox-subdomain-metrics.json 2>/dev/null)
 	fi
 
 	# Fall back to host path
@@ -560,8 +564,8 @@ EOFJ
 }
 
 clear_alerts() {
-	# Clear the host-visible threats log file
-	local log_file="/srv/mitmproxy/threats.log"
+	# Clear the host-visible threats log file (WAF input)
+	local log_file="${WAF_DATA_PATH}/threats.log"
 	> "$log_file" 2>/dev/null
 
 	# Also clear the legacy alerts file

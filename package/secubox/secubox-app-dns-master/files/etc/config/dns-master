@@ -1,0 +1,6 @@
+config dns-master 'main'
+	option enabled '1'
+	option bind_dir '/etc/bind'
+	option zones_dir '/etc/bind/zones'
+	option named_conf '/etc/bind/named.conf'
+	option default_ttl '300'
