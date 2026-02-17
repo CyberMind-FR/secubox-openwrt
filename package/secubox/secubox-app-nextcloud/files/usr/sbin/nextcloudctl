@@ -6,7 +6,7 @@
 
 CONFIG="nextcloud"
 LXC_NAME="nextcloud"
-NEXTCLOUD_VERSION="30.0.4"
+NEXTCLOUD_VERSION="31.0.5"
 
 # Paths
 LXC_PATH="/srv/lxc"
@@ -397,8 +397,15 @@ server {
         return 301 /index.php$request_uri;
     }
 
-    location ~ ^/(?:build|tests|config|lib|3rdparty|templates|data)(?:$|/) { return 404; }
+    location ~ ^/(?:build|tests|config|lib|3rdparty|templates|data)(?:$|/)(?!.*\.(css|js|svg|png|gif|ico|woff2?)$) { return 404; }
     location ~ ^/(?:\.|autotest|occ|issue|indie|db_|console) { return 404; }
+
+    # Serve app static files correctly
+    location ~ ^/apps/[^/]+/(?:css|js|img|l10n)/.+$ {
+        try_files \$uri /index.php\$request_uri;
+        add_header Cache-Control "public, max-age=15778463, immutable";
+        access_log off;
+    }
 
     location ~ \.php(?:$|/) {
         rewrite ^/(?!index|remote|public|cron|core\/ajax\/update|status|ocs\/v[12]|updater\/.+|ocs-provider\/.+|.+\/richdocumentscode(_arm64)?\/proxy) /index.php$request_uri;
@@ -543,6 +550,10 @@ lxc.uts.name = $LXC_NAME
 lxc.rootfs.path = dir:$LXC_ROOTFS
 lxc.arch = $(uname -m)
 
+# Auto-start on boot
+lxc.start.auto = 1
+lxc.start.delay = 5
+
 # Network: use host network
 lxc.net.0.type = none
 
@@ -556,6 +567,9 @@ lxc.environment = NEXTCLOUD_DOMAIN=$domain
 lxc.environment = NEXTCLOUD_HTTP_PORT=$http_port
 lxc.environment = NEXTCLOUD_UPLOAD_MAX=$upload_max
 lxc.environment = NEXTCLOUD_TRUSTED_PROXIES=$trusted_proxies
+
+# Memory limit
+lxc.cgroup2.memory.max = $mem_bytes
 
 # Security
 lxc.cap.drop = sys_admin sys_module mac_admin mac_override sys_time sys_rawio

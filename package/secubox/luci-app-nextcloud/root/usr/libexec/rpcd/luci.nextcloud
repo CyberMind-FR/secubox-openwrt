@@ -370,6 +370,74 @@ reset_password() {
 	fi
 }
 
+# Uninstall Nextcloud
+do_uninstall() {
+	if command -v nextcloudctl >/dev/null 2>&1; then
+		nextcloudctl uninstall >/tmp/nextcloud-uninstall.log 2>&1
+		echo '{"success": true, "message": "Nextcloud uninstalled (data preserved)"}'
+	else
+		echo '{"success": false, "error": "nextcloudctl not found"}'
+	fi
+}
+
+# Get storage stats
+get_storage() {
+	local data_path=$(uci_get main.data_path)
+	data_path="${data_path:-/srv/nextcloud}"
+
+	local total_size="0"
+	local data_size="0"
+	local backup_size="0"
+
+	if [ -d "$data_path" ]; then
+		total_size=$(du -sh "$data_path" 2>/dev/null | awk '{print $1}' || echo "0")
+	fi
+	if [ -d "$data_path/data" ]; then
+		data_size=$(du -sh "$data_path/data" 2>/dev/null | awk '{print $1}' || echo "0")
+	fi
+	if [ -d "$data_path/backups" ]; then
+		backup_size=$(du -sh "$data_path/backups" 2>/dev/null | awk '{print $1}' || echo "0")
+	fi
+
+	# Get disk free space
+	local disk_free=$(df -h "$data_path" 2>/dev/null | tail -1 | awk '{print $4}' || echo "0")
+	local disk_total=$(df -h "$data_path" 2>/dev/null | tail -1 | awk '{print $2}' || echo "0")
+	local disk_used_pct=$(df "$data_path" 2>/dev/null | tail -1 | awk '{print $5}' | tr -d '%' || echo "0")
+
+	cat <<EOF
+{
+	"total_size": "$total_size",
+	"data_size": "$data_size",
+	"backup_size": "$backup_size",
+	"disk_free": "$disk_free",
+	"disk_total": "$disk_total",
+	"disk_used_percent": $disk_used_pct
+}
+EOF
+}
+
+# Delete a backup
+delete_backup() {
+	local input
+	read -r input
+	local name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+
+	if [ -z "$name" ]; then
+		echo '{"success": false, "error": "No backup name specified"}'
+		return
+	fi
+
+	local data_path=$(uci_get main.data_path)
+	local backup_dir="${data_path:-/srv/nextcloud}/backups"
+
+	if [ -f "$backup_dir/$name-db.sql" ]; then
+		rm -f "$backup_dir/$name-db.sql" "$backup_dir/$name-data.tar.gz"
+		echo '{"success": true, "message": "Backup deleted: '"$name"'"}'
+	else
+		echo '{"success": false, "error": "Backup not found"}'
+	fi
+}
+
 # RPCD list method
 list_methods() {
 	cat <<'EOF'
@@ -378,6 +446,7 @@ list_methods() {
 	"get_config": {},
 	"save_config": {"http_port": "string", "data_path": "string", "domain": "string", "admin_user": "string", "memory_limit": "string", "upload_max": "string"},
 	"install": {},
+	"uninstall": {},
 	"start": {},
 	"stop": {},
 	"restart": {},
@@ -385,12 +454,14 @@ list_methods() {
 	"backup": {"name": "string"},
 	"restore": {"name": "string"},
 	"list_backups": {},
+	"delete_backup": {"name": "string"},
 	"ssl_enable": {"domain": "string"},
 	"ssl_disable": {},
 	"occ": {"command": "string"},
 	"logs": {},
 	"list_users": {},
-	"reset_password": {"uid": "string", "password": "string"}
+	"reset_password": {"uid": "string", "password": "string"},
+	"get_storage": {}
 }
 EOF
 }
@@ -406,6 +477,7 @@ case "$1" in
 			get_config)   get_config ;;
 			save_config)  save_config ;;
 			install)      do_install ;;
+			uninstall)    do_uninstall ;;
 			start)        do_start ;;
 			stop)         do_stop ;;
 			restart)      do_restart ;;
@@ -413,12 +485,14 @@ case "$1" in
 			backup)       do_backup ;;
 			restore)      do_restore ;;
 			list_backups) list_backups ;;
+			delete_backup) delete_backup ;;
 			ssl_enable)   do_ssl_enable ;;
 			ssl_disable)  do_ssl_disable ;;
 			occ)          do_occ ;;
 			logs)         get_logs ;;
 			list_users)   list_users ;;
 			reset_password) reset_password ;;
+			get_storage)  get_storage ;;
 			*)            echo '{"error": "Unknown method"}' ;;
 		esac
 		;;

@@ -91,6 +91,25 @@ var callLogs = rpc.declare({
 	expect: {}
 });
 
+var callGetStorage = rpc.declare({
+	object: 'luci.nextcloud',
+	method: 'get_storage',
+	expect: {}
+});
+
+var callDeleteBackup = rpc.declare({
+	object: 'luci.nextcloud',
+	method: 'delete_backup',
+	params: ['name'],
+	expect: {}
+});
+
+var callUninstall = rpc.declare({
+	object: 'luci.nextcloud',
+	method: 'uninstall',
+	expect: {}
+});
+
 var callListUsers = rpc.declare({
 	object: 'luci.nextcloud',
 	method: 'list_users',
@@ -134,6 +153,7 @@ return view.extend({
 	config: {},
 	backups: [],
 	users: [],
+	storage: {},
 	currentTab: 'overview',
 
 	load: function() {
@@ -141,7 +161,8 @@ return view.extend({
 			callStatus(),
 			callGetConfig(),
 			callListBackups().catch(function() { return { backups: [] }; }),
-			callListUsers().catch(function() { return { users: [] }; })
+			callListUsers().catch(function() { return { users: [] }; }),
+			callGetStorage().catch(function() { return {}; })
 		]);
 	},
 
@@ -151,6 +172,7 @@ return view.extend({
 		this.config = data[1] || {};
 		this.backups = (data[2] || {}).backups || [];
 		this.users = (data[3] || {}).users || [];
+		this.storage = data[4] || {};
 
 		// Not installed - show install view
 		if (!this.status.installed) {
@@ -161,6 +183,7 @@ return view.extend({
 		var tabs = [
 			{ id: 'overview', label: 'Overview', icon: '🎛️' },
 			{ id: 'users', label: 'Users', icon: '👥' },
+			{ id: 'storage', label: 'Storage', icon: '💿' },
 			{ id: 'backups', label: 'Backups', icon: '💾' },
 			{ id: 'ssl', label: 'SSL', icon: '🔒' },
 			{ id: 'logs', label: 'Logs', icon: '📜' }
@@ -215,6 +238,7 @@ return view.extend({
 	renderTabContent: function() {
 		switch (this.currentTab) {
 			case 'users': return this.renderUsersTab();
+			case 'storage': return this.renderStorageTab();
 			case 'backups': return this.renderBackupsTab();
 			case 'ssl': return this.renderSSLTab();
 			case 'logs': return this.renderLogsTab();
@@ -481,6 +505,63 @@ return view.extend({
 	},
 
 	// ========================================================================
+	// Storage Tab
+	// ========================================================================
+
+	renderStorageTab: function() {
+		var self = this;
+		var st = this.storage;
+
+		return E('div', {}, [
+			// Storage Stats
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'style': 'margin-bottom:24px;' }, [
+				KissTheme.stat(st.data_size || '0', 'User Data', 'var(--kiss-cyan)'),
+				KissTheme.stat(st.backup_size || '0', 'Backups', 'var(--kiss-purple)'),
+				KissTheme.stat(st.disk_free || '0', 'Disk Free', 'var(--kiss-green)'),
+				KissTheme.stat((st.disk_used_percent || 0) + '%', 'Disk Used', st.disk_used_percent > 80 ? 'var(--kiss-red)' : 'var(--kiss-blue)')
+			]),
+
+			// Disk Usage Bar
+			KissTheme.card([
+				E('span', {}, '💿 Disk Usage')
+			], E('div', {}, [
+				E('div', { 'style': 'display:flex;justify-content:space-between;margin-bottom:8px;font-size:13px;' }, [
+					E('span', {}, 'Used: ' + (st.disk_used_percent || 0) + '%'),
+					E('span', { 'style': 'color:var(--kiss-muted);' }, st.disk_free + ' free of ' + st.disk_total)
+				]),
+				E('div', { 'style': 'height:24px;background:var(--kiss-bg2);border-radius:12px;overflow:hidden;' }, [
+					E('div', {
+						'style': 'height:100%;width:' + (st.disk_used_percent || 0) + '%;background:linear-gradient(90deg, var(--kiss-cyan), var(--kiss-blue));transition:width 0.3s;'
+					})
+				])
+			])),
+
+			// Storage Details
+			KissTheme.card([
+				E('span', {}, '📊 Storage Breakdown')
+			], E('div', { 'style': 'display:flex;flex-direction:column;gap:12px;' }, [
+				this.storageRow('📁 User Data', st.data_size || '0', 'var(--kiss-cyan)'),
+				this.storageRow('💾 Backups', st.backup_size || '0', 'var(--kiss-purple)'),
+				this.storageRow('📦 Total Nextcloud', st.total_size || '0', 'var(--kiss-blue)')
+			])),
+
+			// Data Path Info
+			KissTheme.card([
+				E('span', {}, 'ℹ️ Data Location')
+			], E('div', { 'style': 'font-family:monospace;padding:12px;background:var(--kiss-bg2);border-radius:6px;' },
+				this.status.data_path || '/srv/nextcloud'
+			))
+		]);
+	},
+
+	storageRow: function(label, size, color) {
+		return E('div', { 'style': 'display:flex;justify-content:space-between;align-items:center;padding:10px;background:var(--kiss-bg2);border-radius:6px;' }, [
+			E('span', { 'style': 'display:flex;align-items:center;gap:8px;' }, label),
+			E('span', { 'style': 'font-weight:600;color:' + color + ';' }, size)
+		]);
+	},
+
+	// ========================================================================
 	// Backups Tab
 	// ========================================================================
 
@@ -531,19 +612,27 @@ return view.extend({
 				E('th', {}, 'Name'),
 				E('th', {}, 'Size'),
 				E('th', {}, 'Date'),
-				E('th', {}, 'Actions')
+				E('th', { 'style': 'width:150px;' }, 'Actions')
 			])),
 			E('tbody', {}, this.backups.map(function(b) {
 				return E('tr', {}, [
 					E('td', { 'style': 'font-family:monospace;' }, b.name),
 					E('td', {}, b.size || '-'),
 					E('td', {}, fmtRelative(b.timestamp)),
-					E('td', {}, E('button', {
-						'class': 'kiss-btn kiss-btn-blue',
-						'style': 'padding:4px 10px;font-size:11px;',
-						'data-name': b.name,
-						'click': function(ev) { self.handleRestore(ev.currentTarget.dataset.name); }
-					}, '⬇️ Restore'))
+					E('td', { 'style': 'display:flex;gap:6px;' }, [
+						E('button', {
+							'class': 'kiss-btn kiss-btn-blue',
+							'style': 'padding:4px 10px;font-size:11px;',
+							'data-name': b.name,
+							'click': function(ev) { self.handleRestore(ev.currentTarget.dataset.name); }
+						}, '⬇️ Restore'),
+						E('button', {
+							'class': 'kiss-btn kiss-btn-red',
+							'style': 'padding:4px 10px;font-size:11px;',
+							'data-name': b.name,
+							'click': function(ev) { self.handleDeleteBackup(ev.currentTarget.dataset.name); }
+						}, '🗑️')
+					])
 				]);
 			}))
 		]);
@@ -810,6 +899,30 @@ return view.extend({
 		});
 	},
 
+	handleDeleteBackup: function(name) {
+		var self = this;
+		if (!confirm('Delete backup "' + name + '"? This cannot be undone.')) {
+			return;
+		}
+
+		ui.showModal('Deleting Backup', [
+			E('p', { 'class': 'spinning' }, 'Deleting ' + name + '...')
+		]);
+
+		callDeleteBackup(name).then(function(r) {
+			ui.hideModal();
+			if (r.success) {
+				ui.addNotification(null, E('p', 'Backup deleted: ' + name), 'info');
+				self.refreshBackups();
+			} else {
+				ui.addNotification(null, E('p', 'Failed: ' + (r.error || 'Unknown')), 'error');
+			}
+		}).catch(function(e) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', 'Error: ' + e.message), 'error');
+		});
+	},
+
 	refreshBackups: function() {
 		var self = this;
 		callListBackups().then(function(data) {
@@ -839,11 +952,13 @@ return view.extend({
 		return Promise.all([
 			callStatus(),
 			callListBackups().catch(function() { return { backups: [] }; }),
-			callListUsers().catch(function() { return { users: [] }; })
+			callListUsers().catch(function() { return { users: [] }; }),
+			callGetStorage().catch(function() { return {}; })
 		]).then(function(data) {
 			self.status = data[0] || {};
 			self.backups = (data[1] || {}).backups || [];
 			self.users = (data[2] || {}).users || [];
+			self.storage = data[3] || {};
 
 			// Update tab content
 			var tabContent = document.getElementById('tab-content');

@@ -3,7 +3,7 @@
 		"description": "Grant access to Nextcloud LXC app",
 		"read": {
 			"ubus": {
-				"luci.nextcloud": ["status", "get_config", "list_backups", "logs", "list_users"]
+				"luci.nextcloud": ["status", "get_config", "list_backups", "logs", "list_users", "get_storage"]
 			},
 			"uci": ["nextcloud"]
 		},
@@ -11,6 +11,7 @@
 			"ubus": {
 				"luci.nextcloud": [
 					"install",
+					"uninstall",
 					"start",
 					"stop",
 					"restart",
@@ -18,6 +19,7 @@
 					"save_config",
 					"backup",
 					"restore",
+					"delete_backup",
 					"ssl_enable",
 					"ssl_disable",
 					"occ",
