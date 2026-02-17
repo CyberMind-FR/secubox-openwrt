@@ -1,0 +1,69 @@
+{
+	"admin/services/webradio": {
+		"title": "WebRadio",
+		"order": 50,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-webradio"],
+			"uci": {"icecast": true}
+		}
+	},
+	"admin/services/webradio/overview": {
+		"title": "Overview",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "webradio/overview"
+		}
+	},
+	"admin/services/webradio/server": {
+		"title": "Server",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "webradio/server"
+		}
+	},
+	"admin/services/webradio/playlist": {
+		"title": "Playlist",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "webradio/playlist"
+		}
+	},
+	"admin/services/webradio/schedule": {
+		"title": "Schedule",
+		"order": 40,
+		"action": {
+			"type": "view",
+			"path": "webradio/schedule"
+		}
+	},
+	"admin/services/webradio/jingles": {
+		"title": "Jingles",
+		"order": 50,
+		"action": {
+			"type": "view",
+			"path": "webradio/jingles"
+		}
+	},
+	"admin/services/webradio/live": {
+		"title": "Live Input",
+		"order": 60,
+		"action": {
+			"type": "view",
+			"path": "webradio/live"
+		}
+	},
+	"admin/services/webradio/security": {
+		"title": "Security",
+		"order": 70,
+		"action": {
+			"type": "view",
+			"path": "webradio/security"
+		}
+	}
+}

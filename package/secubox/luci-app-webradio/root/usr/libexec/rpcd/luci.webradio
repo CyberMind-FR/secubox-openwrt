@@ -1,0 +1,668 @@
+#!/bin/sh
+# RPCD backend for WebRadio LuCI app
+# Copyright (C) 2024 CyberMind.FR
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+ICECAST_INIT="/etc/init.d/icecast"
+EZSTREAM_INIT="/etc/init.d/ezstream"
+DARKICE_INIT="/etc/init.d/darkice"
+PLAYLIST_MGR="/usr/lib/ezstream/playlist-manager.sh"
+SCHEDULER="/usr/lib/webradio/scheduler.sh"
+CROWDSEC_INSTALL="/usr/lib/webradio/crowdsec-install.sh"
+ICECAST_URL="http://127.0.0.1:8000"
+CONFIG_WEBRADIO="webradio"
+CONFIG_DARKICE="darkice"
+CONFIG_ICECAST="icecast"
+
+case "$1" in
+	list)
+		cat << 'EOF'
+{
+	"status": {},
+	"listeners": {},
+	"playlist": {},
+	"logs": {"lines": 50},
+	"start": {"service": "all"},
+	"stop": {"service": "all"},
+	"restart": {"service": "all"},
+	"skip": {},
+	"reload": {},
+	"generate_playlist": {"shuffle": true},
+	"upload": {"filename": "", "data": ""},
+	"schedules": {},
+	"current_show": {},
+	"add_schedule": {"name": "", "start_time": "", "end_time": "", "days": "", "playlist": ""},
+	"update_schedule": {"slot": "", "enabled": true},
+	"delete_schedule": {"slot": ""},
+	"generate_cron": {},
+	"play_jingle": {"filename": ""},
+	"list_jingles": {},
+	"live_status": {},
+	"live_start": {},
+	"live_stop": {},
+	"list_audio_devices": {},
+	"security_status": {},
+	"install_crowdsec": {},
+	"generate_ssl_cert": {"hostname": ""}
+}
+EOF
+		;;
+
+	call)
+		case "$2" in
+			status)
+				# Get Icecast status
+				local icecast_running=0
+				local ezstream_running=0
+				local icecast_pid=""
+				local ezstream_pid=""
+				local listeners=0
+				local current_song=""
+				local bitrate=""
+				local uptime=""
+
+				# Check Icecast
+				icecast_pid=$(pgrep -x icecast 2>/dev/null | head -1)
+				[ -n "$icecast_pid" ] && icecast_running=1
+
+				# Check ezstream
+				ezstream_pid=$(pgrep -x ezstream 2>/dev/null | head -1)
+				[ -n "$ezstream_pid" ] && ezstream_running=1
+
+				# Get Icecast stats if running
+				if [ "$icecast_running" = "1" ]; then
+					local stats=$(curl -s "${ICECAST_URL}/status-json.xsl" 2>/dev/null)
+					if [ -n "$stats" ]; then
+						listeners=$(echo "$stats" | jsonfilter -e '@.icestats.source.listeners' 2>/dev/null || echo "0")
+						current_song=$(echo "$stats" | jsonfilter -e '@.icestats.source.title' 2>/dev/null || echo "")
+						bitrate=$(echo "$stats" | jsonfilter -e '@.icestats.source.audio_bitrate' 2>/dev/null || echo "")
+					fi
+				fi
+
+				# Get config values
+				config_load icecast
+				local port hostname
+				config_get port server port "8000"
+				config_get hostname server hostname "localhost"
+
+				config_load ezstream
+				local shuffle
+				config_get shuffle playlist shuffle "1"
+
+				# Playlist info
+				local playlist_count=0
+				local music_dir="/srv/webradio/music"
+				config_get music_dir playlist directory "$music_dir"
+				[ -f "/srv/webradio/playlists/current.m3u" ] && \
+					playlist_count=$(wc -l < /srv/webradio/playlists/current.m3u 2>/dev/null || echo 0)
+
+				cat << EOF
+{
+	"icecast": {
+		"running": $([ "$icecast_running" = "1" ] && echo "true" || echo "false"),
+		"pid": "$icecast_pid",
+		"port": $port,
+		"hostname": "$hostname"
+	},
+	"ezstream": {
+		"running": $([ "$ezstream_running" = "1" ] && echo "true" || echo "false"),
+		"pid": "$ezstream_pid"
+	},
+	"stream": {
+		"listeners": ${listeners:-0},
+		"current_song": "$current_song",
+		"bitrate": "$bitrate"
+	},
+	"playlist": {
+		"tracks": $playlist_count,
+		"shuffle": $([ "$shuffle" = "1" ] && echo "true" || echo "false"),
+		"directory": "$music_dir"
+	},
+	"url": "http://$hostname:$port/live"
+}
+EOF
+				;;
+
+			listeners)
+				local stats=$(curl -s "${ICECAST_URL}/status-json.xsl" 2>/dev/null)
+				if [ -n "$stats" ]; then
+					local listeners=$(echo "$stats" | jsonfilter -e '@.icestats.source.listeners' 2>/dev/null || echo "0")
+					local peak=$(echo "$stats" | jsonfilter -e '@.icestats.source.listener_peak' 2>/dev/null || echo "0")
+					echo "{\"current\": $listeners, \"peak\": $peak}"
+				else
+					echo '{"current": 0, "peak": 0, "error": "Icecast not responding"}'
+				fi
+				;;
+
+			playlist)
+				local playlist_file="/srv/webradio/playlists/current.m3u"
+				local tracks="[]"
+
+				if [ -f "$playlist_file" ]; then
+					# Get first 50 tracks
+					tracks=$(head -50 "$playlist_file" | while read -r track; do
+						local name=$(basename "$track")
+						echo "{\"path\": \"$track\", \"name\": \"$name\"}"
+					done | paste -sd, | sed 's/^/[/;s/$/]/')
+				fi
+
+				local total=$(wc -l < "$playlist_file" 2>/dev/null || echo 0)
+				echo "{\"total\": $total, \"tracks\": $tracks}"
+				;;
+
+			logs)
+				read -r input
+				local lines=$(echo "$input" | jsonfilter -e '@.lines' 2>/dev/null)
+				lines=${lines:-50}
+
+				local log_content=""
+				if [ -f "/var/log/icecast/error.log" ]; then
+					log_content=$(tail -n "$lines" /var/log/icecast/error.log 2>/dev/null | \
+						sed 's/"/\\"/g' | paste -sd'\n')
+				fi
+
+				echo "{\"lines\": $lines, \"content\": \"$log_content\"}"
+				;;
+
+			start)
+				read -r input
+				local service=$(echo "$input" | jsonfilter -e '@.service' 2>/dev/null)
+				service=${service:-all}
+
+				local result="ok"
+				case "$service" in
+					icecast)
+						$ICECAST_INIT start 2>&1 || result="failed"
+						;;
+					ezstream)
+						$EZSTREAM_INIT start 2>&1 || result="failed"
+						;;
+					all|*)
+						$ICECAST_INIT start 2>&1 || result="failed"
+						sleep 2
+						$EZSTREAM_INIT start 2>&1 || result="failed"
+						;;
+				esac
+
+				echo "{\"result\": \"$result\", \"service\": \"$service\"}"
+				;;
+
+			stop)
+				read -r input
+				local service=$(echo "$input" | jsonfilter -e '@.service' 2>/dev/null)
+				service=${service:-all}
+
+				local result="ok"
+				case "$service" in
+					icecast)
+						$ICECAST_INIT stop 2>&1 || result="failed"
+						;;
+					ezstream)
+						$EZSTREAM_INIT stop 2>&1 || result="failed"
+						;;
+					all|*)
+						$EZSTREAM_INIT stop 2>&1
+						$ICECAST_INIT stop 2>&1 || result="failed"
+						;;
+				esac
+
+				echo "{\"result\": \"$result\", \"service\": \"$service\"}"
+				;;
+
+			restart)
+				read -r input
+				local service=$(echo "$input" | jsonfilter -e '@.service' 2>/dev/null)
+				service=${service:-all}
+
+				local result="ok"
+				case "$service" in
+					icecast)
+						$ICECAST_INIT restart 2>&1 || result="failed"
+						;;
+					ezstream)
+						$EZSTREAM_INIT restart 2>&1 || result="failed"
+						;;
+					all|*)
+						$EZSTREAM_INIT stop 2>&1
+						$ICECAST_INIT restart 2>&1 || result="failed"
+						sleep 2
+						$EZSTREAM_INIT start 2>&1 || result="failed"
+						;;
+				esac
+
+				echo "{\"result\": \"$result\", \"service\": \"$service\"}"
+				;;
+
+			skip)
+				local pid=$(cat /var/run/ezstream.pid 2>/dev/null)
+				if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+					kill -USR1 "$pid"
+					echo '{"result": "ok", "action": "skip"}'
+				else
+					echo '{"result": "failed", "error": "ezstream not running"}'
+				fi
+				;;
+
+			reload)
+				$ICECAST_INIT reload 2>&1
+				$EZSTREAM_INIT reload 2>&1
+				echo '{"result": "ok", "action": "reload"}'
+				;;
+
+			generate_playlist)
+				read -r input
+				local shuffle=$(echo "$input" | jsonfilter -e '@.shuffle' 2>/dev/null)
+
+				if [ "$shuffle" = "false" ]; then
+					uci set ezstream.playlist.shuffle='0'
+				else
+					uci set ezstream.playlist.shuffle='1'
+				fi
+				uci commit ezstream
+
+				if [ -x "$PLAYLIST_MGR" ]; then
+					local output=$($PLAYLIST_MGR generate 2>&1)
+					local count=$(wc -l < /srv/webradio/playlists/current.m3u 2>/dev/null || echo 0)
+					echo "{\"result\": \"ok\", \"tracks\": $count, \"message\": \"$output\"}"
+				else
+					echo '{"result": "failed", "error": "playlist manager not found"}'
+				fi
+				;;
+
+			upload)
+				read -r input
+				local filename=$(echo "$input" | jsonfilter -e '@.filename' 2>/dev/null)
+				local data=$(echo "$input" | jsonfilter -e '@.data' 2>/dev/null)
+
+				if [ -n "$filename" ] && [ -n "$data" ]; then
+					local dest="/srv/webradio/music/$filename"
+					echo "$data" | base64 -d > "$dest" 2>/dev/null
+					if [ -f "$dest" ]; then
+						echo "{\"result\": \"ok\", \"filename\": \"$filename\", \"path\": \"$dest\"}"
+					else
+						echo '{"result": "failed", "error": "write failed"}'
+					fi
+				else
+					echo '{"result": "failed", "error": "missing filename or data"}'
+				fi
+				;;
+
+			schedules)
+				config_load "$CONFIG_WEBRADIO"
+
+				local scheduling_enabled timezone
+				config_get scheduling_enabled scheduling enabled "0"
+				config_get timezone scheduling timezone "UTC"
+
+				# Build schedules array
+				local schedules="["
+				local first=1
+
+				list_schedule_cb() {
+					local slot="$1"
+					local slot_name enabled start_time end_time days playlist jingle_before jingle_after crossfade
+
+					config_get slot_name "$slot" name "$slot"
+					config_get enabled "$slot" enabled "0"
+					config_get start_time "$slot" start_time ""
+					config_get end_time "$slot" end_time ""
+					config_get days "$slot" days "0123456"
+					config_get playlist "$slot" playlist ""
+					config_get jingle_before "$slot" jingle_before ""
+					config_get jingle_after "$slot" jingle_after ""
+					config_get crossfade "$slot" crossfade "0"
+
+					[ "$first" = "1" ] || schedules="$schedules,"
+					first=0
+
+					schedules="$schedules{\"slot\":\"$slot\",\"name\":\"$slot_name\",\"enabled\":$([ "$enabled" = "1" ] && echo true || echo false),\"start_time\":\"$start_time\",\"end_time\":\"$end_time\",\"days\":\"$days\",\"playlist\":\"$playlist\",\"jingle_before\":\"$jingle_before\",\"jingle_after\":\"$jingle_after\",\"crossfade\":$crossfade}"
+				}
+
+				config_foreach list_schedule_cb schedule
+				schedules="$schedules]"
+
+				cat << EOF
+{
+	"scheduling_enabled": $([ "$scheduling_enabled" = "1" ] && echo true || echo false),
+	"timezone": "$timezone",
+	"schedules": $schedules
+}
+EOF
+				;;
+
+			current_show)
+				if [ -x "$SCHEDULER" ]; then
+					$SCHEDULER current
+				else
+					echo '{"name": "Default", "slot": "", "start": "", "playlist": "current"}'
+				fi
+				;;
+
+			add_schedule)
+				read -r input
+				local name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+				local start_time=$(echo "$input" | jsonfilter -e '@.start_time' 2>/dev/null)
+				local end_time=$(echo "$input" | jsonfilter -e '@.end_time' 2>/dev/null)
+				local days=$(echo "$input" | jsonfilter -e '@.days' 2>/dev/null)
+				local playlist=$(echo "$input" | jsonfilter -e '@.playlist' 2>/dev/null)
+				local jingle_before=$(echo "$input" | jsonfilter -e '@.jingle_before' 2>/dev/null)
+
+				if [ -z "$name" ] || [ -z "$start_time" ]; then
+					echo '{"result": "failed", "error": "name and start_time required"}'
+					exit 0
+				fi
+
+				# Generate slot ID from name
+				local slot=$(echo "$name" | tr '[:upper:] ' '[:lower:]_' | tr -cd 'a-z0-9_')
+
+				uci set "$CONFIG_WEBRADIO.$slot=schedule"
+				uci set "$CONFIG_WEBRADIO.$slot.name=$name"
+				uci set "$CONFIG_WEBRADIO.$slot.enabled=0"
+				uci set "$CONFIG_WEBRADIO.$slot.start_time=$start_time"
+				[ -n "$end_time" ] && uci set "$CONFIG_WEBRADIO.$slot.end_time=$end_time"
+				[ -n "$days" ] && uci set "$CONFIG_WEBRADIO.$slot.days=$days" || uci set "$CONFIG_WEBRADIO.$slot.days=0123456"
+				[ -n "$playlist" ] && uci set "$CONFIG_WEBRADIO.$slot.playlist=$playlist"
+				[ -n "$jingle_before" ] && uci set "$CONFIG_WEBRADIO.$slot.jingle_before=$jingle_before"
+				uci commit "$CONFIG_WEBRADIO"
+
+				echo "{\"result\": \"ok\", \"slot\": \"$slot\"}"
+				;;
+
+			update_schedule)
+				read -r input
+				local slot=$(echo "$input" | jsonfilter -e '@.slot' 2>/dev/null)
+				local enabled=$(echo "$input" | jsonfilter -e '@.enabled' 2>/dev/null)
+				local name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+				local start_time=$(echo "$input" | jsonfilter -e '@.start_time' 2>/dev/null)
+				local end_time=$(echo "$input" | jsonfilter -e '@.end_time' 2>/dev/null)
+				local days=$(echo "$input" | jsonfilter -e '@.days' 2>/dev/null)
+				local playlist=$(echo "$input" | jsonfilter -e '@.playlist' 2>/dev/null)
+				local jingle_before=$(echo "$input" | jsonfilter -e '@.jingle_before' 2>/dev/null)
+
+				if [ -z "$slot" ]; then
+					echo '{"result": "failed", "error": "slot required"}'
+					exit 0
+				fi
+
+				# Check if slot exists
+				local existing=$(uci -q get "$CONFIG_WEBRADIO.$slot" 2>/dev/null)
+				if [ -z "$existing" ]; then
+					echo '{"result": "failed", "error": "slot not found"}'
+					exit 0
+				fi
+
+				# Update fields
+				[ "$enabled" = "true" ] && uci set "$CONFIG_WEBRADIO.$slot.enabled=1"
+				[ "$enabled" = "false" ] && uci set "$CONFIG_WEBRADIO.$slot.enabled=0"
+				[ -n "$name" ] && uci set "$CONFIG_WEBRADIO.$slot.name=$name"
+				[ -n "$start_time" ] && uci set "$CONFIG_WEBRADIO.$slot.start_time=$start_time"
+				[ -n "$end_time" ] && uci set "$CONFIG_WEBRADIO.$slot.end_time=$end_time"
+				[ -n "$days" ] && uci set "$CONFIG_WEBRADIO.$slot.days=$days"
+				[ -n "$playlist" ] && uci set "$CONFIG_WEBRADIO.$slot.playlist=$playlist"
+				[ -n "$jingle_before" ] && uci set "$CONFIG_WEBRADIO.$slot.jingle_before=$jingle_before"
+				uci commit "$CONFIG_WEBRADIO"
+
+				# Regenerate cron if scheduling enabled
+				local sched_enabled=$(uci -q get "$CONFIG_WEBRADIO.scheduling.enabled")
+				[ "$sched_enabled" = "1" ] && [ -x "$SCHEDULER" ] && $SCHEDULER generate >/dev/null 2>&1
+
+				echo '{"result": "ok"}'
+				;;
+
+			delete_schedule)
+				read -r input
+				local slot=$(echo "$input" | jsonfilter -e '@.slot' 2>/dev/null)
+
+				if [ -z "$slot" ]; then
+					echo '{"result": "failed", "error": "slot required"}'
+					exit 0
+				fi
+
+				uci delete "$CONFIG_WEBRADIO.$slot" 2>/dev/null
+				uci commit "$CONFIG_WEBRADIO"
+
+				# Regenerate cron
+				[ -x "$SCHEDULER" ] && $SCHEDULER generate >/dev/null 2>&1
+
+				echo '{"result": "ok"}'
+				;;
+
+			generate_cron)
+				if [ -x "$SCHEDULER" ]; then
+					$SCHEDULER generate 2>&1
+					echo '{"result": "ok"}'
+				else
+					echo '{"result": "failed", "error": "scheduler not found"}'
+				fi
+				;;
+
+			play_jingle)
+				read -r input
+				local filename=$(echo "$input" | jsonfilter -e '@.filename' 2>/dev/null)
+
+				if [ -z "$filename" ]; then
+					echo '{"result": "failed", "error": "filename required"}'
+					exit 0
+				fi
+
+				if [ -x "$SCHEDULER" ]; then
+					$SCHEDULER jingle "$filename" 2>&1
+					echo '{"result": "ok", "filename": "'"$filename"'"}'
+				else
+					echo '{"result": "failed", "error": "scheduler not found"}'
+				fi
+				;;
+
+			list_jingles)
+				local jingle_dir="/srv/webradio/jingles"
+				config_load "$CONFIG_WEBRADIO"
+				config_get jingle_dir jingles directory "$jingle_dir"
+
+				local jingles="[]"
+				if [ -d "$jingle_dir" ]; then
+					jingles=$(find "$jingle_dir" -type f \( -name "*.mp3" -o -name "*.ogg" -o -name "*.wav" \) 2>/dev/null | while read -r f; do
+						local name=$(basename "$f")
+						local size=$(ls -lh "$f" 2>/dev/null | awk '{print $5}')
+						echo "{\"name\":\"$name\",\"path\":\"$f\",\"size\":\"$size\"}"
+					done | paste -sd, | sed 's/^/[/;s/$/]/')
+					[ -z "$jingles" ] || [ "$jingles" = "[]" ] && jingles="[]"
+				fi
+
+				echo "{\"directory\": \"$jingle_dir\", \"jingles\": $jingles}"
+				;;
+
+			live_status)
+				local darkice_running=0
+				local darkice_pid=""
+				local device=""
+				local enabled=""
+
+				# Check DarkIce process
+				darkice_pid=$(pgrep darkice 2>/dev/null | head -1)
+				[ -n "$darkice_pid" ] && darkice_running=1
+
+				# Get config values
+				config_load "$CONFIG_DARKICE"
+				config_get device input device "hw:0,0"
+				config_get enabled main enabled "0"
+
+				cat << EOF
+{
+	"running": $([ "$darkice_running" = "1" ] && echo "true" || echo "false"),
+	"pid": "$darkice_pid",
+	"enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
+	"device": "$device"
+}
+EOF
+				;;
+
+			live_start)
+				local result="ok"
+				local error=""
+
+				# Check if DarkIce init exists
+				if [ -x "$DARKICE_INIT" ]; then
+					# Enable and start DarkIce
+					uci set "$CONFIG_DARKICE.main.enabled=1"
+					uci commit "$CONFIG_DARKICE"
+
+					$DARKICE_INIT start 2>&1 || {
+						result="failed"
+						error="failed to start darkice"
+					}
+				else
+					result="failed"
+					error="darkice not installed"
+				fi
+
+				if [ "$result" = "ok" ]; then
+					echo '{"result": "ok"}'
+				else
+					echo "{\"result\": \"failed\", \"error\": \"$error\"}"
+				fi
+				;;
+
+			live_stop)
+				local result="ok"
+
+				if [ -x "$DARKICE_INIT" ]; then
+					$DARKICE_INIT stop 2>&1
+				fi
+
+				# Also try to kill any running darkice process
+				pkill darkice 2>/dev/null
+
+				echo '{"result": "ok"}'
+				;;
+
+			list_audio_devices)
+				local devices="[]"
+
+				# Parse ALSA devices from /proc/asound/cards
+				if [ -f /proc/asound/cards ]; then
+					devices=$(cat /proc/asound/cards 2>/dev/null | grep -E '^\s*[0-9]+' | while read -r line; do
+						local card_num=$(echo "$line" | awk '{print $1}')
+						local card_name=$(echo "$line" | sed 's/^[[:space:]]*[0-9]*[[:space:]]*\[[^]]*\]:[[:space:]]*//')
+						# Check if card has capture capability
+						if [ -d "/proc/asound/card$card_num" ]; then
+							echo "{\"device\":\"hw:$card_num,0\",\"name\":\"$card_name\",\"type\":\"capture\"}"
+						fi
+					done | paste -sd, | sed 's/^/[/;s/$/]/')
+				fi
+
+				# Fallback if no devices found
+				[ -z "$devices" ] || [ "$devices" = "[]" ] && devices="[]"
+
+				echo "{\"devices\": $devices}"
+				;;
+
+			security_status)
+				local ssl_enabled ssl_cert ssl_key ssl_port
+				local crowdsec_installed=false
+				local crowdsec_parsers=false
+				local crowdsec_scenarios=false
+				local crowdsec_decisions=0
+				local ssl_cert_exists=false
+				local ssl_cert_expiry=""
+
+				# Load SSL config
+				config_load "$CONFIG_ICECAST"
+				config_get ssl_enabled ssl enabled "0"
+				config_get ssl_cert ssl certificate "/etc/ssl/certs/icecast.pem"
+				config_get ssl_key ssl key "/etc/ssl/private/icecast.key"
+				config_get ssl_port ssl port "8443"
+
+				# Check if cert exists
+				[ -f "$ssl_cert" ] && ssl_cert_exists=true
+
+				# Get cert expiry if exists
+				if [ "$ssl_cert_exists" = "true" ] && command -v openssl >/dev/null 2>&1; then
+					ssl_cert_expiry=$(openssl x509 -in "$ssl_cert" -noout -enddate 2>/dev/null | cut -d= -f2)
+				fi
+
+				# Check CrowdSec
+				command -v crowdsec >/dev/null 2>&1 && crowdsec_installed=true
+
+				# Check for Icecast parsers
+				[ -f /etc/crowdsec/parsers/s01-parse/icecast-logs.yaml ] && crowdsec_parsers=true
+
+				# Check for Icecast scenarios
+				[ -f /etc/crowdsec/scenarios/icecast-flood.yaml ] && crowdsec_scenarios=true
+
+				# Get active decisions count
+				if [ "$crowdsec_installed" = "true" ] && command -v cscli >/dev/null 2>&1; then
+					crowdsec_decisions=$(cscli decisions list -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l || echo 0)
+				fi
+
+				cat << EOF
+{
+	"ssl_enabled": $([ "$ssl_enabled" = "1" ] && echo "true" || echo "false"),
+	"ssl_port": $ssl_port,
+	"ssl_cert_path": "$ssl_cert",
+	"ssl_key_path": "$ssl_key",
+	"ssl_cert_exists": $ssl_cert_exists,
+	"ssl_cert_expiry": "$ssl_cert_expiry",
+	"crowdsec_installed": $crowdsec_installed,
+	"crowdsec_parsers": $crowdsec_parsers,
+	"crowdsec_scenarios": $crowdsec_scenarios,
+	"crowdsec_decisions": $crowdsec_decisions
+}
+EOF
+				;;
+
+			install_crowdsec)
+				if [ -x "$CROWDSEC_INSTALL" ]; then
+					local output=$($CROWDSEC_INSTALL install 2>&1)
+					echo '{"result": "ok", "output": "'"$(echo "$output" | tr '\n' ' ')"'"}'
+				else
+					echo '{"result": "failed", "error": "crowdsec-install.sh not found"}'
+				fi
+				;;
+
+			generate_ssl_cert)
+				read -r input
+				local hostname=$(echo "$input" | jsonfilter -e '@.hostname' 2>/dev/null)
+				hostname=${hostname:-localhost}
+
+				local cert_dir="/etc/ssl/certs"
+				local key_dir="/etc/ssl/private"
+				local cert_file="$cert_dir/icecast.pem"
+				local key_file="$key_dir/icecast.key"
+
+				mkdir -p "$cert_dir" "$key_dir"
+
+				# Generate self-signed certificate
+				if command -v openssl >/dev/null 2>&1; then
+					openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+						-keyout "$key_file" \
+						-out "$cert_file" \
+						-subj "/CN=$hostname/O=WebRadio/C=FR" 2>&1
+
+					if [ -f "$cert_file" ] && [ -f "$key_file" ]; then
+						chmod 644 "$cert_file"
+						chmod 600 "$key_file"
+						chown root:icecast "$key_file" 2>/dev/null
+
+						# Update UCI config
+						uci set "$CONFIG_ICECAST.ssl=ssl"
+						uci set "$CONFIG_ICECAST.ssl.certificate=$cert_file"
+						uci set "$CONFIG_ICECAST.ssl.key=$key_file"
+						uci commit "$CONFIG_ICECAST"
+
+						echo '{"result": "ok", "cert": "'"$cert_file"'", "key": "'"$key_file"'"}'
+					else
+						echo '{"result": "failed", "error": "certificate generation failed"}'
+					fi
+				else
+					echo '{"result": "failed", "error": "openssl not installed"}'
+				fi
+				;;
+
+			*)
+				echo '{"error": "unknown method"}'
+				;;
+		esac
+		;;
+esac

@@ -1,0 +1,73 @@
+# WebRadio unified configuration
+# /etc/config/webradio
+
+# Global settings
+config webradio 'main'
+	option enabled '0'
+	option name 'CyberMind WebRadio'
+
+# Scheduling settings
+config scheduling 'scheduling'
+	option enabled '0'
+	option timezone 'Europe/Paris'
+
+# Example schedule slots (disabled by default)
+# Days: 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday, 6=Saturday
+
+config schedule 'morning'
+	option enabled '0'
+	option name 'Morning Show'
+	option start_time '06:00'
+	option end_time '09:00'
+	option days '12345'
+	option playlist 'morning'
+	option jingle_before 'morning_intro.mp3'
+	option jingle_after ''
+	option crossfade '3'
+
+config schedule 'daytime'
+	option enabled '0'
+	option name 'Daytime Mix'
+	option start_time '09:00'
+	option end_time '18:00'
+	option days '12345'
+	option playlist 'daytime'
+	option jingle_before ''
+	option jingle_after ''
+
+config schedule 'evening'
+	option enabled '0'
+	option name 'Evening Chill'
+	option start_time '18:00'
+	option end_time '22:00'
+	option days '12345'
+	option playlist 'evening'
+	option jingle_before 'evening_intro.mp3'
+	option jingle_after ''
+
+config schedule 'night'
+	option enabled '0'
+	option name 'Night Vibes'
+	option start_time '22:00'
+	option end_time '06:00'
+	option days '0123456'
+	option playlist 'night'
+	option jingle_before ''
+	option jingle_after ''
+
+config schedule 'weekend'
+	option enabled '0'
+	option name 'Weekend Party'
+	option start_time '10:00'
+	option end_time '22:00'
+	option days '06'
+	option playlist 'weekend'
+	option jingle_before 'weekend_intro.mp3'
+	option jingle_after ''
+
+# Jingle rotation settings
+config jingles 'jingles'
+	option enabled '0'
+	option directory '/srv/webradio/jingles'
+	option interval '30'
+	option between_tracks '0'

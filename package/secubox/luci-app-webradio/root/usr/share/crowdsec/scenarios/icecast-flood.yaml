@@ -1,0 +1,26 @@
+# CrowdSec scenario for Icecast connection flood detection
+# Detects rapid connection attempts from same IP
+# Install: cp to /etc/crowdsec/scenarios/
+
+type: leaky
+name: cybermind/icecast-flood
+description: "Detect connection flood attempts on Icecast streaming server"
+filter: "evt.Meta.service == 'icecast'"
+
+# Trigger on 20 connections in 30 seconds from same IP
+leakspeed: "1s"
+capacity: 20
+groupby: evt.Meta.source_ip
+
+blackhole: 5m
+reprocess: true
+
+labels:
+  service: icecast
+  type: connection_flood
+  confidence: 3
+  spoofable: 0
+  classification:
+    - attack.T1498
+  label: "Icecast connection flood"
+  remediation: true
