@@ -64,7 +64,7 @@ user_add() {
 
 	# Copy to container and merge with existing users file
 	lxc-attach -n "$container" -- sh -c "grep -v '^$email:' /etc/dovecot/users > /tmp/users.tmp 2>/dev/null || true"
-	cat "$tmpfile" | lxc-attach -n "$container" -- sh -c "cat >> /tmp/users.tmp && mv /tmp/users.tmp /etc/dovecot/users"
+	cat "$tmpfile" | lxc-attach -n "$container" -- sh -c "cat >> /tmp/users.tmp && mv /tmp/users.tmp /etc/dovecot/users && chmod 644 /etc/dovecot/users && chown root:dovecot /etc/dovecot/users"
 	rm -f "$tmpfile"
 
 	# Postmap
@@ -154,7 +154,7 @@ user_passwd() {
 
 	# Copy to container and merge with existing users file
 	lxc-attach -n "$container" -- sh -c "grep -v '^$email:' /etc/dovecot/users > /tmp/users.tmp 2>/dev/null || true"
-	cat "$tmpfile" | lxc-attach -n "$container" -- sh -c "cat >> /tmp/users.tmp && mv /tmp/users.tmp /etc/dovecot/users"
+	cat "$tmpfile" | lxc-attach -n "$container" -- sh -c "cat >> /tmp/users.tmp && mv /tmp/users.tmp /etc/dovecot/users && chmod 644 /etc/dovecot/users && chown root:dovecot /etc/dovecot/users"
 	rm -f "$tmpfile"
 
 	echo "Password changed for: $email"
