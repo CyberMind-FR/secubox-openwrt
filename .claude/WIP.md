@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-17 (v0.20.7 - Nextcloud LXC + WebRadio)_
+_Last updated: 2026-02-17 (v0.21.0 - Nextcloud LXC + WebRadio)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
