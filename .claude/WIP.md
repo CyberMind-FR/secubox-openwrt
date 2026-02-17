@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-17 (v0.20.6 - Mailserver/Nextcloud/DNS fixes)_
+_Last updated: 2026-02-17 (v0.20.6 - Mailserver/Nextcloud/DNS fixes + WebRadio)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -63,6 +63,22 @@ _Last updated: 2026-02-17 (v0.20.6 - Mailserver/Nextcloud/DNS fixes)_
   - Created `luci-app-vortex-dns` dashboard
 
 ### Just Completed (2026-02-17)
+
+- **WebRadio LuCI App** — DONE (2026-02-17)
+  - Added `luci-app-webradio` package from webradio-openwrt project
+  - 7 LuCI JS views: overview, server, playlist, schedule, jingles, live, security
+  - RPCD backend with 15+ methods
+  - CrowdSec integration for Icecast abuse detection
+  - Programming grid scheduler with jingle support
+  - Live audio input via DarkIce (ALSA)
+  - Source: https://github.com/gkerma/webradio-openwrt
+
+- **SecuBox Cloner MochaBin LED Fix** — DONE (2026-02-17)
+  - Added i2c LED blacklist to clone provision scripts
+  - Prevents PCA955x I2C bus lockup on MochaBin devices
+  - Three-method fix: kernel bootarg, module removal, LED trigger disable
+  - Clone backup generator includes 00-disable-i2c-leds firstboot script
+  - Successfully cloned moka1 from c3box with sysupgrade method
 
 - **Mailserver Dovecot Permissions Fix** — DONE (2026-02-17)
   - Fixed startup permissions: login/token-login directories owned by root:dovenull

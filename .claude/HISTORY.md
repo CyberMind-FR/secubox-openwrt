@@ -2172,3 +2172,27 @@ git checkout HEAD -- index.html
 - `secubox-app-dns-master/files/usr/sbin/dnsmaster`
 
 **Release:** v0.20.6
+
+### 2026-02-17: WebRadio LuCI App
+
+**luci-app-webradio Package:**
+- Added complete WebRadio management interface for OpenWrt
+- Dashboard with server status, listeners, now playing info
+- Icecast/Ezstream server configuration
+- Playlist management with shuffle and upload
+- Programming grid scheduler with jingle support
+- Live audio input via DarkIce (ALSA)
+- Security: SSL/TLS configuration, rate limiting, CrowdSec integration
+
+**Components:**
+- 7 LuCI JS views: overview, server, playlist, schedule, jingles, live, security
+- RPCD backend (luci.webradio) with 15+ methods
+- Scheduler script for cron-based programming grid
+- CrowdSec parser and scenarios for Icecast abuse detection
+- UCI config for webradio scheduling
+
+**Files Added:**
+- `package/secubox/luci-app-webradio/` (17 files, 3337 lines)
+
+**Source Repository:**
+- https://github.com/gkerma/webradio-openwrt
