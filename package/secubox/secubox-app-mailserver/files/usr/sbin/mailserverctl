@@ -384,6 +384,9 @@ cmd_add_user() {
 	if lxc_running; then
 		local pass_hash=$(lxc-attach -n "$CONTAINER" -- doveadm pw -s SHA512-CRYPT -p "$password")
 		echo "${email}:${pass_hash}:102:105::/var/mail/${domain}/${user}::" >> "$rootfs/etc/dovecot/users"
+		# Fix permissions (dovecot needs read access)
+		chmod 644 "$rootfs/etc/dovecot/users"
+		chown root:102 "$rootfs/etc/dovecot/users"
 	else
 		error "Container not running. Start it first."
 		return 1
