@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-16 (DNS Master app, Mailserver KISS)_
+_Last updated: 2026-02-17 (v0.20.6 - Mailserver/Nextcloud/DNS fixes)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -61,6 +61,35 @@ _Last updated: 2026-02-16 (DNS Master app, Mailserver KISS)_
   - First Peek auto-registration of services
   - Gossip-based exposure config sync via secubox-p2p
   - Created `luci-app-vortex-dns` dashboard
+
+### Just Completed (2026-02-17)
+
+- **Mailserver Dovecot Permissions Fix** — DONE (2026-02-17)
+  - Fixed startup permissions: login/token-login directories owned by root:dovenull
+  - Remove stale auth-token-secret.dat on startup (prevents "compromised token" errors)
+  - Fixed users file permissions in user_add/user_passwd functions (644 root:dovecot)
+  - Password reset no longer breaks authentication
+  - Released in v0.20.6
+
+- **Nextcloud 31.0.14 Upgrade & Fixes** — DONE (2026-02-17)
+  - Upgraded from 30.0.17 to 31.0.14
+  - Fixed nginx 403 on /apps/* paths (removed overly aggressive location block)
+  - Added cron job setup for background tasks (every 5 minutes)
+  - All apps updated: mail, tasks, external, spreed/Talk
+
+- **DNS Master POSIX Fix** — DONE (2026-02-17)
+  - Fixed bump_serial() bash-specific syntax for busybox ash compatibility
+  - del_record now works via RPCD (was failing with "arithmetic syntax error")
+  - All DNS Master LuCI buttons tested and working
+
+- **LXC Container Auto-Start** — DONE (2026-02-17)
+  - Enabled lxc.start.auto for mailserver, roundcube, nextcloud
+  - Containers now survive reboots
+
+- **Mailctl Firewall Rules** — DONE (2026-02-17)
+  - Updated cmd_firewall_setup() with UCI firewall rules
+  - Input rules for WAN (ports 25, 143, 465, 587, 993)
+  - Forward rules for WAN-to-LAN mailserver
 
 ### Just Completed (2026-02-16)
 
