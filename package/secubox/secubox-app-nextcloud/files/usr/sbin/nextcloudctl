@@ -446,6 +446,11 @@ NGINX
 rm -f /etc/nginx/sites-enabled/default
 ln -sf /etc/nginx/sites-available/nextcloud /etc/nginx/sites-enabled/nextcloud
 
+# Configure cron for background jobs
+echo "*/5 * * * * www-data php -f /var/www/nextcloud/cron.php" > /etc/cron.d/nextcloud
+chmod 644 /etc/cron.d/nextcloud
+service cron start
+
 # Start Nginx (foreground for procd)
 echo "Starting Nginx..."
 exec nginx -g 'daemon off;'
