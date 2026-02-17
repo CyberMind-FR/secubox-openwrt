@@ -45,6 +45,7 @@ return L.view.extend({
 			{ name: 'CrowdSec', ok: status.crowdsec_running },
 			{ name: 'Wazuh', ok: status.wazuh_running },
 			{ name: 'netifyd', ok: status.netifyd_running },
+			{ name: 'ndpid', ok: status.ndpid_running },
 			{ name: 'mitmproxy', ok: status.mitmproxy_running },
 			{ name: 'Threat Intel', ok: status.threat_intel_available }
 		];

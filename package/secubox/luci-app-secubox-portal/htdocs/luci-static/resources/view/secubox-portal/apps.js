@@ -30,6 +30,8 @@ var appCategories = [
 		icon: '\ud83d\udd27',
 		description: 'Server and service management',
 		apps: [
+			{ id: 'streamlit', name: 'Streamlit', icon: '\ud83d\udcca', path: 'admin/secubox/services/streamlit', desc: 'Python data apps and dashboards' },
+			{ id: 'metablogizer', name: 'MetaBlogizer', icon: '\ud83d\udcdd', path: 'admin/secubox/services/metablogizer', desc: 'AI-powered blog generation' },
 			{ id: 'vhost-manager', name: 'Virtual Hosts', icon: '\ud83c\udf10', path: 'admin/secubox/services/vhosts', desc: 'Web server virtual hosts and SSL certificates' }
 		]
 	},

@@ -64,6 +64,24 @@ _Last updated: 2026-02-17 (v0.20.7 - Nextcloud LXC + WebRadio)_
 
 ### Just Completed (2026-02-17)
 
+- **Security KISS Dashboard Enhancements** — DONE (2026-02-17)
+  - Added ndpid (nDPI daemon) to service status monitoring
+  - Added Wazuh SIEM to security services list (earlier today)
+  - 6 services now monitored: CrowdSec, Wazuh, netifyd, ndpid, mitmproxy, Threat Intel
+
+- **APPS Portal Extensions** — DONE (2026-02-17)
+  - Added Streamlit and MetaBlogizer to Services category in KISS portal
+  - Apps now accessible via Extended Apps view
+
+- **Jellyfin Container Restore** — DONE (2026-02-17)
+  - Started stopped jellyfin container
+  - Enabled auto-start (lxc.start.auto = 1)
+  - Verified port 8096 accessible
+
+- **Webmail PHP-FPM Fix** — DONE (2026-02-17)
+  - Fixed 504 timeout by restarting dead PHP-FPM process in roundcube container
+  - Login/authentication working again
+
 - **WebRadio LuCI App** — DONE (2026-02-17)
   - Added `luci-app-webradio` package from webradio-openwrt project
   - 7 LuCI JS views: overview, server, playlist, schedule, jingles, live, security

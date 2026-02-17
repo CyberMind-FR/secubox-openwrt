@@ -348,7 +348,12 @@
       "WebFetch(domain:documentation.wazuh.com)",
       "WebFetch(domain:syswarden.io)",
       "Bash({)",
-      "Bash(})"
+      "Bash(})",
+      "Bash(git init:*)",
+      "Bash(gh repo view:*)",
+      "Bash(gh repo edit:*)",
+      "Bash(gh auth:*)",
+      "WebFetch(domain:cloud.gk2.secubox.in)"
     ]
   }
 }

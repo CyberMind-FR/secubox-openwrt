@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-02-16_
+_Last updated: 2026-02-17_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -2224,3 +2224,30 @@ git checkout HEAD -- index.html
 - `luci-app-nextcloud/htdocs/.../overview.js`
 - `luci-app-nextcloud/root/usr/share/rpcd/acl.d/luci-app-nextcloud.json`
 - `secubox-app-nextcloud/README.md` (full rewrite)
+
+### 2026-02-17: Security KISS Dashboard Enhancements
+
+**Service Monitoring Extensions:**
+- Added ndpid (nDPI daemon) to security-threats RPCD status method
+- Added Wazuh SIEM to security services monitoring
+- Dashboard now shows 6 services: CrowdSec, Wazuh, netifyd, ndpid, mitmproxy, Threat Intel
+
+**Files Modified:**
+- `luci-app-secubox-security-threats/root/usr/libexec/rpcd/luci.secubox-security-threats`
+- `luci-app-secubox-security-threats/htdocs/.../dashboard.js`
+
+### 2026-02-17: APPS Portal Extensions
+
+**Services Category:**
+- Added Streamlit to portal apps (Python data apps and dashboards)
+- Added MetaBlogizer to portal apps (AI-powered blog generation)
+
+**Files Modified:**
+- `luci-app-secubox-portal/htdocs/.../apps.js`
+
+### 2026-02-17: Container Maintenance
+
+**Fixes:**
+- Jellyfin: Started stopped container, enabled auto-start
+- Webmail: Restarted dead PHP-FPM process in roundcube container
+- Both services now operational
