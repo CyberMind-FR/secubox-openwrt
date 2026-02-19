@@ -1,0 +1,36 @@
+config jabber 'main'
+	option enabled '0'
+	option data_path '/srv/jabber'
+	option memory_limit '512'
+
+config jabber 'server'
+	option hostname 'jabber.local'
+	option c2s_port '5222'
+	option s2s_port '5269'
+	option http_port '5280'
+	option https_port '5281'
+
+config jabber 'admin'
+	option email 'admin@localhost'
+	option initial_user 'admin'
+	option initial_password ''
+
+config jabber 'muc'
+	option enabled '1'
+	option host 'conference'
+	option default_room_logging '0'
+
+config jabber 'http_upload'
+	option enabled '1'
+	option max_size '10485760'
+	option host 'upload'
+
+config jabber 'network'
+	option domain ''
+	option haproxy '0'
+	option haproxy_ssl '1'
+	option firewall_wan '0'
+
+config jabber 's2s'
+	option enabled '0'
+	option require_encryption '1'
