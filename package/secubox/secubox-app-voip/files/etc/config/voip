@@ -1,3 +1,5 @@
+# SecuBox VoIP Configuration
+
 config voip 'main'
 	option enabled '0'
 	option data_path '/srv/voip'
@@ -11,10 +13,6 @@ config asterisk 'asterisk'
 	option ari_port '8089'
 	option ari_user 'admin'
 	option ari_password ''
-	option ami_enabled '1'
-	option ami_port '5038'
-	option ami_user 'admin'
-	option ami_secret ''
 
 config ovh 'ovh_telephony'
 	option enabled '0'
@@ -34,7 +32,13 @@ config trunk 'sip_trunk'
 	option outbound_proxy ''
 	option codecs 'ulaw,alaw,g729'
 	option dtmf_mode 'rfc4733'
-	option context 'from-trunk'
+
+config extension 'ext_100'
+	option name 'Admin'
+	option secret ''
+	option context 'internal'
+	option voicemail '1'
+	option vm_email ''
 
 config ivr 'ivr'
 	option enabled '0'

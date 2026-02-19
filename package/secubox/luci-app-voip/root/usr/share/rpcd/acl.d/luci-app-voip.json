@@ -1,32 +1,19 @@
 {
 	"luci-app-voip": {
-		"description": "Grant access to VoIP (Asterisk) management",
+		"description": "Grant access to VoIP PBX configuration",
 		"read": {
 			"ubus": {
-				"luci.voip": [
-					"status",
-					"logs",
-					"ext_list",
-					"calls_list",
-					"trunk_status"
-				]
+				"luci.voip": ["status", "extensions", "calls", "voicemails", "trunk_status"]
 			},
 			"uci": ["voip"]
 		},
 		"write": {
 			"ubus": {
-				"luci.voip": [
-					"start",
-					"stop",
-					"install",
-					"uninstall",
-					"ext_add",
-					"ext_del",
-					"call_originate",
-					"trunk_add_ovh",
-					"configure_haproxy",
-					"emancipate"
-				]
+				"luci.voip": ["install", "start", "stop", "restart", "reload",
+				              "ext_add", "ext_del", "ext_passwd",
+				              "call_originate", "call_hangup",
+				              "trunk_add", "trunk_test",
+				              "vm_delete"]
 			},
 			"uci": ["voip"]
 		}

@@ -1,13 +1,13 @@
 {
 	"admin/services/voip": {
-		"title": "VoIP (Asterisk)",
-		"order": 50,
+		"title": "VoIP PBX",
+		"order": 60,
 		"action": {
 			"type": "firstchild"
 		},
 		"depends": {
 			"acl": ["luci-app-voip"],
-			"uci": { "voip": true }
+			"uci": {"voip": true}
 		}
 	},
 	"admin/services/voip/overview": {
@@ -27,19 +27,19 @@
 		}
 	},
 	"admin/services/voip/trunks": {
-		"title": "Trunks",
+		"title": "SIP Trunks",
 		"order": 30,
 		"action": {
 			"type": "view",
 			"path": "voip/trunks"
 		}
 	},
-	"admin/services/voip/click-to-call": {
+	"admin/services/voip/dialer": {
 		"title": "Click to Call",
 		"order": 40,
 		"action": {
 			"type": "view",
-			"path": "voip/click-to-call"
+			"path": "voip/dialer"
 		}
 	}
 }

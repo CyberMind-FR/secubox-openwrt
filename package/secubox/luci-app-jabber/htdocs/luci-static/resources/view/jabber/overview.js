@@ -62,6 +62,39 @@ return view.extend({
 					return ui.hideModal();
 				promise = api.userDel(args);
 				break;
+			case 'jingle_enable':
+				var stunServer = args || 'stun.l.google.com:19302';
+				promise = api.jingleEnable(stunServer);
+				break;
+			case 'jingle_disable':
+				promise = api.jingleDisable();
+				break;
+			case 'sms_config':
+				var sender = args;
+				if (!sender) {
+					ui.hideModal();
+					ui.addNotification(null, E('p', _('Sender name is required')), 'error');
+					return;
+				}
+				promise = api.smsConfig(sender);
+				break;
+			case 'sms_send':
+				if (!args.to || !args.message) {
+					ui.hideModal();
+					ui.addNotification(null, E('p', _('Phone number and message are required')), 'error');
+					return;
+				}
+				promise = api.smsSend(args.to, args.message);
+				break;
+			case 'voicemail_config':
+				var notifyJid = args;
+				if (!notifyJid) {
+					ui.hideModal();
+					ui.addNotification(null, E('p', _('Notification JID is required')), 'error');
+					return;
+				}
+				promise = api.voicemailConfig(notifyJid);
+				break;
 			default:
 				ui.hideModal();
 				return;
@@ -91,7 +124,10 @@ return view.extend({
 		return Promise.all([
 			api.status(),
 			api.userList(),
-			uci.load('jabber')
+			uci.load('jabber'),
+			api.jingleStatus(),
+			api.smsStatus(),
+			api.voicemailStatus()
 		]);
 	},
 
@@ -143,6 +179,9 @@ return view.extend({
 		var self = this;
 		var status = data[0] || {};
 		var userListData = data[1] || {};
+		var jingleStatus = data[3] || {};
+		var smsStatus = data[4] || {};
+		var voicemailStatus = data[5] || {};
 
 		if (status.container_state === 'not_installed') {
 			return this.renderInstallWizard();
@@ -366,6 +405,173 @@ return view.extend({
 					(status.admin_user || 'admin') + '@' + hostname
 				])
 			]),
+
+			E('hr'),
+
+			// VoIP Integration - Jingle
+			E('h4', {}, _('VoIP Integration - Jingle')),
+			E('p', {}, _('Enable Jingle for voice/video calls between XMPP clients (Conversations, Dino, etc.)')),
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, _('Status')),
+				E('div', { 'class': 'cbi-value-field' }, [
+					E('span', {
+						'style': 'display:inline-block;padding:3px 10px;border-radius:3px;color:#fff;background:' + (jingleStatus.enabled === '1' ? '#4CAF50' : '#9e9e9e')
+					}, jingleStatus.enabled === '1' ? _('Enabled') : _('Disabled')),
+					' ',
+					jingleStatus.enabled === '1' ?
+						E('button', {
+							'class': 'btn cbi-button cbi-button-negative',
+							'click': function() { self.handleAction('jingle_disable'); }
+						}, _('Disable')) :
+						E('button', {
+							'class': 'btn cbi-button cbi-button-positive',
+							'click': function() {
+								var stunServer = document.getElementById('jingle-stun').value || 'stun.l.google.com:19302';
+								self.handleAction('jingle_enable', stunServer);
+							}
+						}, _('Enable'))
+				])
+			]),
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, _('STUN Server')),
+				E('div', { 'class': 'cbi-value-field' }, [
+					E('input', {
+						'type': 'text',
+						'id': 'jingle-stun',
+						'class': 'cbi-input-text',
+						'placeholder': 'stun.l.google.com:19302',
+						'value': jingleStatus.stun_server || 'stun.l.google.com:19302',
+						'style': 'width: 250px;'
+					})
+				])
+			]),
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, _('TURN Server')),
+				E('div', { 'class': 'cbi-value-field' }, [
+					jingleStatus.turn_server || E('em', {}, _('Not configured')),
+					E('p', { 'style': 'font-size: 12px; color: #666; margin: 5px 0 0;' },
+						_('TURN server for NAT traversal. Configure in /etc/config/jabber'))
+				])
+			]),
+
+			E('hr'),
+
+			// VoIP Integration - SMS Relay
+			E('h4', {}, _('VoIP Integration - SMS Relay')),
+			E('p', {}, _('Send SMS messages via OVH API through XMPP. Requires OVH API credentials in VoIP settings.')),
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, _('Status')),
+				E('div', { 'class': 'cbi-value-field' }, [
+					E('span', {
+						'style': 'display:inline-block;padding:3px 10px;border-radius:3px;color:#fff;background:' + (smsStatus.enabled === '1' ? '#4CAF50' : '#9e9e9e')
+					}, smsStatus.enabled === '1' ? _('Enabled') : _('Disabled')),
+					' ',
+					smsStatus.ovh_configured === '1' ?
+						E('span', {
+							'style': 'display:inline-block;padding:3px 10px;border-radius:3px;color:#fff;background:#2196F3'
+						}, _('OVH API Configured')) :
+						E('span', {
+							'style': 'display:inline-block;padding:3px 10px;border-radius:3px;color:#fff;background:#ff9800'
+						}, _('OVH API Not Configured'))
+				])
+			]),
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, _('Sender Name')),
+				E('div', { 'class': 'cbi-value-field' }, [
+					E('input', {
+						'type': 'text',
+						'id': 'sms-sender',
+						'class': 'cbi-input-text',
+						'placeholder': 'SecuBox',
+						'value': smsStatus.sender || 'SecuBox',
+						'style': 'width: 200px;'
+					}),
+					' ',
+					E('button', {
+						'class': 'btn cbi-button',
+						'click': function() {
+							var sender = document.getElementById('sms-sender').value;
+							self.handleAction('sms_config', sender);
+						}
+					}, _('Save'))
+				])
+			]),
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, _('Test SMS')),
+				E('div', { 'class': 'cbi-value-field' }, [
+					E('input', {
+						'type': 'tel',
+						'id': 'sms-test-to',
+						'class': 'cbi-input-text',
+						'placeholder': '+33612345678',
+						'style': 'width: 150px;'
+					}),
+					' ',
+					E('input', {
+						'type': 'text',
+						'id': 'sms-test-msg',
+						'class': 'cbi-input-text',
+						'placeholder': _('Test message'),
+						'style': 'width: 200px;'
+					}),
+					' ',
+					E('button', {
+						'class': 'btn cbi-button cbi-button-action',
+						'click': function() {
+							var to = document.getElementById('sms-test-to').value;
+							var message = document.getElementById('sms-test-msg').value;
+							self.handleAction('sms_send', { to: to, message: message });
+						}
+					}, _('Send Test SMS'))
+				])
+			]),
+			E('p', { 'style': 'font-size: 12px; color: #666;' },
+				_('To send SMS via XMPP, message sms@[domain] with format: +33612345678 Your message')),
+
+			E('hr'),
+
+			// VoIP Integration - Voicemail Notifications
+			E('h4', {}, _('VoIP Integration - Voicemail Notifications')),
+			E('p', {}, _('Receive XMPP notifications when new voicemails arrive in Asterisk PBX.')),
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, _('Status')),
+				E('div', { 'class': 'cbi-value-field' }, [
+					E('span', {
+						'style': 'display:inline-block;padding:3px 10px;border-radius:3px;color:#fff;background:' + (voicemailStatus.enabled === '1' ? '#4CAF50' : '#9e9e9e')
+					}, voicemailStatus.enabled === '1' ? _('Enabled') : _('Disabled'))
+				])
+			]),
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, _('AMI Host')),
+				E('div', { 'class': 'cbi-value-field' }, voicemailStatus.ami_host || '127.0.0.1')
+			]),
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, _('AMI Port')),
+				E('div', { 'class': 'cbi-value-field' }, voicemailStatus.ami_port || '5038')
+			]),
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, _('Notification JID')),
+				E('div', { 'class': 'cbi-value-field' }, [
+					E('input', {
+						'type': 'text',
+						'id': 'voicemail-jid',
+						'class': 'cbi-input-text',
+						'placeholder': 'admin@' + hostname,
+						'value': voicemailStatus.notify_jid || '',
+						'style': 'width: 250px;'
+					}),
+					' ',
+					E('button', {
+						'class': 'btn cbi-button cbi-button-action',
+						'click': function() {
+							var notifyJid = document.getElementById('voicemail-jid').value;
+							self.handleAction('voicemail_config', notifyJid);
+						}
+					}, _('Configure'))
+				])
+			]),
+			E('p', { 'style': 'font-size: 12px; color: #666;' },
+				_('Requires VoIP container running with Asterisk AMI enabled.')),
 
 			E('hr'),
 

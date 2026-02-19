@@ -103,5 +103,60 @@ return L.Class.extend({
 		object: 'luci.jabber',
 		method: 'room_list',
 		expect: { }
+	}),
+
+	// VoIP Integration - Jingle
+	jingleStatus: rpc.declare({
+		object: 'luci.jabber',
+		method: 'jingle_status',
+		expect: { }
+	}),
+
+	jingleEnable: rpc.declare({
+		object: 'luci.jabber',
+		method: 'jingle_enable',
+		params: ['stun_server'],
+		expect: { }
+	}),
+
+	jingleDisable: rpc.declare({
+		object: 'luci.jabber',
+		method: 'jingle_disable',
+		expect: { }
+	}),
+
+	// VoIP Integration - SMS Relay
+	smsStatus: rpc.declare({
+		object: 'luci.jabber',
+		method: 'sms_status',
+		expect: { }
+	}),
+
+	smsConfig: rpc.declare({
+		object: 'luci.jabber',
+		method: 'sms_config',
+		params: ['sender'],
+		expect: { }
+	}),
+
+	smsSend: rpc.declare({
+		object: 'luci.jabber',
+		method: 'sms_send',
+		params: ['to', 'message'],
+		expect: { }
+	}),
+
+	// VoIP Integration - Voicemail Notifications
+	voicemailStatus: rpc.declare({
+		object: 'luci.jabber',
+		method: 'voicemail_status',
+		expect: { }
+	}),
+
+	voicemailConfig: rpc.declare({
+		object: 'luci.jabber',
+		method: 'voicemail_config',
+		params: ['notify_jid'],
+		expect: { }
 	})
 });

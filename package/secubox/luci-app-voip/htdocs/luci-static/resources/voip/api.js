@@ -2,158 +2,129 @@
 'require rpc';
 
 var callStatus = rpc.declare({
-	object: 'luci.voip',
-	method: 'status',
-	expect: {}
+    object: 'luci.voip',
+    method: 'status',
+    expect: {}
 });
 
-var callStart = rpc.declare({
-	object: 'luci.voip',
-	method: 'start',
-	expect: {}
+var callExtensions = rpc.declare({
+    object: 'luci.voip',
+    method: 'extensions',
+    expect: { extensions: [] }
 });
 
-var callStop = rpc.declare({
-	object: 'luci.voip',
-	method: 'stop',
-	expect: {}
+var callCalls = rpc.declare({
+    object: 'luci.voip',
+    method: 'calls',
+    expect: { calls: [] }
 });
 
-var callInstall = rpc.declare({
-	object: 'luci.voip',
-	method: 'install',
-	expect: {}
-});
-
-var callUninstall = rpc.declare({
-	object: 'luci.voip',
-	method: 'uninstall',
-	expect: {}
-});
-
-var callLogs = rpc.declare({
-	object: 'luci.voip',
-	method: 'logs',
-	params: ['lines'],
-	expect: {}
-});
-
-var callExtAdd = rpc.declare({
-	object: 'luci.voip',
-	method: 'ext_add',
-	params: ['ext', 'name', 'password'],
-	expect: {}
-});
-
-var callExtDel = rpc.declare({
-	object: 'luci.voip',
-	method: 'ext_del',
-	params: ['ext'],
-	expect: {}
-});
-
-var callExtList = rpc.declare({
-	object: 'luci.voip',
-	method: 'ext_list',
-	expect: {}
-});
-
-var callOriginate = rpc.declare({
-	object: 'luci.voip',
-	method: 'call_originate',
-	params: ['from_ext', 'to_number'],
-	expect: {}
-});
-
-var callCallsList = rpc.declare({
-	object: 'luci.voip',
-	method: 'calls_list',
-	expect: {}
+var callVoicemails = rpc.declare({
+    object: 'luci.voip',
+    method: 'voicemails',
+    expect: { voicemails: [] }
 });
 
 var callTrunkStatus = rpc.declare({
-	object: 'luci.voip',
-	method: 'trunk_status',
-	expect: {}
+    object: 'luci.voip',
+    method: 'trunk_status',
+    expect: {}
 });
 
-var callTrunkAddOvh = rpc.declare({
-	object: 'luci.voip',
-	method: 'trunk_add_ovh',
-	expect: {}
+var callInstall = rpc.declare({
+    object: 'luci.voip',
+    method: 'install',
+    expect: {}
 });
 
-var callConfigureHaproxy = rpc.declare({
-	object: 'luci.voip',
-	method: 'configure_haproxy',
-	expect: {}
+var callStart = rpc.declare({
+    object: 'luci.voip',
+    method: 'start',
+    expect: {}
 });
 
-var callEmancipate = rpc.declare({
-	object: 'luci.voip',
-	method: 'emancipate',
-	params: ['domain'],
-	expect: {}
+var callStop = rpc.declare({
+    object: 'luci.voip',
+    method: 'stop',
+    expect: {}
 });
 
-return {
-	getStatus: function() {
-		return callStatus();
-	},
+var callRestart = rpc.declare({
+    object: 'luci.voip',
+    method: 'restart',
+    expect: {}
+});
 
-	start: function() {
-		return callStart();
-	},
+var callReload = rpc.declare({
+    object: 'luci.voip',
+    method: 'reload',
+    expect: {}
+});
 
-	stop: function() {
-		return callStop();
-	},
+var callExtAdd = rpc.declare({
+    object: 'luci.voip',
+    method: 'ext_add',
+    params: ['number', 'name', 'password'],
+    expect: {}
+});
 
-	install: function() {
-		return callInstall();
-	},
+var callExtDel = rpc.declare({
+    object: 'luci.voip',
+    method: 'ext_del',
+    params: ['number'],
+    expect: {}
+});
 
-	uninstall: function() {
-		return callUninstall();
-	},
+var callExtPasswd = rpc.declare({
+    object: 'luci.voip',
+    method: 'ext_passwd',
+    params: ['number', 'password'],
+    expect: {}
+});
 
-	getLogs: function(lines) {
-		return callLogs(lines || 50);
-	},
+var callOriginate = rpc.declare({
+    object: 'luci.voip',
+    method: 'call_originate',
+    params: ['from_ext', 'to_number'],
+    expect: {}
+});
 
-	addExtension: function(ext, name, password) {
-		return callExtAdd(ext, name, password || '');
-	},
+var callHangup = rpc.declare({
+    object: 'luci.voip',
+    method: 'call_hangup',
+    params: ['channel'],
+    expect: {}
+});
 
-	deleteExtension: function(ext) {
-		return callExtDel(ext);
-	},
+var callTrunkTest = rpc.declare({
+    object: 'luci.voip',
+    method: 'trunk_test',
+    expect: {}
+});
 
-	listExtensions: function() {
-		return callExtList();
-	},
+var callVmDelete = rpc.declare({
+    object: 'luci.voip',
+    method: 'vm_delete',
+    params: ['extension', 'msg_id'],
+    expect: {}
+});
 
-	originateCall: function(fromExt, toNumber) {
-		return callOriginate(fromExt, toNumber);
-	},
-
-	listCalls: function() {
-		return callCallsList();
-	},
-
-	getTrunkStatus: function() {
-		return callTrunkStatus();
-	},
-
-	addOvhTrunk: function() {
-		return callTrunkAddOvh();
-	},
-
-	configureHaproxy: function() {
-		return callConfigureHaproxy();
-	},
-
-	emancipate: function(domain) {
-		return callEmancipate(domain);
-	}
-};
+return L.Class.extend({
+    getStatus: function() { return callStatus(); },
+    getExtensions: function() { return callExtensions(); },
+    getCalls: function() { return callCalls(); },
+    getVoicemails: function() { return callVoicemails(); },
+    getTrunkStatus: function() { return callTrunkStatus(); },
+    install: function() { return callInstall(); },
+    start: function() { return callStart(); },
+    stop: function() { return callStop(); },
+    restart: function() { return callRestart(); },
+    reload: function() { return callReload(); },
+    addExtension: function(num, name, pwd) { return callExtAdd(num, name, pwd); },
+    delExtension: function(num) { return callExtDel(num); },
+    setExtPassword: function(num, pwd) { return callExtPasswd(num, pwd); },
+    originateCall: function(from, to) { return callOriginate(from, to); },
+    hangupCall: function(ch) { return callHangup(ch); },
+    testTrunk: function() { return callTrunkTest(); },
+    deleteVoicemail: function(ext, id) { return callVmDelete(ext, id); }
+});

@@ -2427,3 +2427,39 @@ git checkout HEAD -- index.html
       - WAF bypass enabled for WebRTC compatibility
       - Webchat updated to use self-hosted Jitsi instead of meet.jit.si
       - Full video conferencing capability without external dependencies
+
+38. **VoIP PBX Package (2026-02-19)**
+    - Created `secubox-app-voip` package for Asterisk PBX in LXC container
+      - OVH SIP trunk auto-provisioning via Telephony API
+      - Extension management with voicemail support
+      - Click-to-call functionality
+      - WebRTC support via PJSIP
+    - Created `luci-app-voip` LuCI interface
+      - Overview dashboard with status cards
+      - Extension management view
+      - SIP trunk configuration
+      - Click-to-call dialer with dialpad
+    - Key files:
+      - `/usr/sbin/voipctl` - Main control script
+      - `/usr/lib/secubox/voip/ovh-telephony.sh` - OVH API helper
+      - `/usr/lib/secubox/voip/asterisk-config.sh` - Config generator
+    - Fixed Jitsi Meet ThreadPoolExecutor crash by changing Jicofo REST port (8888→8878)
+
+39. **Jabber VoIP LuCI Integration (2026-02-19)**
+    - Updated `luci-app-jabber` with full VoIP integration sections in overview.js:
+      - **Jingle VoIP**: Enable/Disable toggle, STUN server config, TURN status display
+      - **SMS Relay**: OVH API status indicator, sender name config, test SMS send form
+      - **Voicemail Notifications**: AMI connection info, notification JID configuration
+    - Added 9 new RPC methods to `jabber/api.js`:
+      - `jingleStatus`, `jingleEnable`, `jingleDisable`
+      - `smsStatus`, `smsConfig`, `smsSend`
+      - `voicemailStatus`, `voicemailConfig`
+    - Updated `overview.js` with VoIP sections after Connection Info:
+      - Status badges for enabled/disabled states
+      - STUN/TURN server configuration inputs
+      - SMS test form with phone number and message fields
+      - Voicemail JID configuration with Configure button
+    - ACL already configured in previous RPCD backend update
+    - Key files modified:
+      - `package/secubox/luci-app-jabber/htdocs/luci-static/resources/jabber/api.js`
+      - `package/secubox/luci-app-jabber/htdocs/luci-static/resources/view/jabber/overview.js`
