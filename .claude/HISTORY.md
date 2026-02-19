@@ -2290,3 +2290,33 @@ git checkout HEAD -- index.html
 - `luci-app-mitmproxy/root/usr/libexec/rpcd/luci.mitmproxy` (added methods)
 - `luci-app-mitmproxy/root/usr/share/luci/menu.d/luci-app-mitmproxy.json` (menu entry)
 - `luci-app-mitmproxy/root/usr/share/rpcd/acl.d/luci-app-mitmproxy.json` (ACL permissions)
+
+### 2026-02-19: Jabber/XMPP Server Packages (Prosody)
+
+**New Packages:**
+- `secubox-app-jabber` - LXC-based Prosody XMPP server
+- `luci-app-jabber` - LuCI dashboard for Jabber management
+
+**Features:**
+- Debian 12 (Bookworm) LXC container with Prosody XMPP server
+- Full XMPP support: C2S (5222), S2S (5269), HTTP/BOSH (5280)
+- Multi-User Chat (MUC) rooms with message archiving
+- HTTP upload for file sharing (10MB default)
+- BOSH and WebSocket support for web clients
+- SSL/TLS encryption with auto-generated certificates
+- Server-to-server federation capability
+
+**CLI Commands (jabberctl):**
+- `install/uninstall` - Container lifecycle
+- `start/stop/restart/status` - Service control
+- `user add/del/passwd/list` - User management
+- `room create/delete/list` - MUC room management
+- `emancipate <domain>` - Public exposure with HAProxy + SSL + DNS
+
+**LuCI Dashboard:**
+- Status overview with service state and user count
+- Service controls (start/stop/update/uninstall)
+- User management (add/delete users)
+- Emancipate workflow for public exposure
+- Connection info display (XMPP, BOSH, WebSocket URLs)
+- Log viewer with refresh
