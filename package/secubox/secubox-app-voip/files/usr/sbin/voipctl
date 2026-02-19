@@ -199,12 +199,25 @@ lxc_create_rootfs() {
 	[ -c "$LXC_ROOTFS/dev/random" ] || mknod -m 666 "$LXC_ROOTFS/dev/random" c 1 8 2>/dev/null
 	[ -c "$LXC_ROOTFS/dev/urandom" ] || mknod -m 666 "$LXC_ROOTFS/dev/urandom" c 1 9 2>/dev/null
 
-	# Configure apt sources
+	# Configure apt sources (include bullseye for asterisk)
 	cat > "$LXC_ROOTFS/etc/apt/sources.list" <<'SOURCES'
 deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
 deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
 deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
+# Bullseye for Asterisk (not in Bookworm)
+deb http://deb.debian.org/debian bullseye main
 SOURCES
+
+	# Pin bullseye packages to lower priority (only use for asterisk)
+	cat > "$LXC_ROOTFS/etc/apt/preferences.d/bullseye-asterisk" <<'PINS'
+Package: *
+Pin: release n=bullseye
+Pin-Priority: 100
+
+Package: asterisk*
+Pin: release n=bullseye
+Pin-Priority: 500
+PINS
 
 	# Install Asterisk PBX
 	log_info "Installing Asterisk PBX..."
