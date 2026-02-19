@@ -2407,3 +2407,23 @@ git checkout HEAD -- index.html
 - `package/secubox/secubox-app-jabber/files/etc/config/jabber` (jingle/sms/voicemail sections)
 - `package/secubox/luci-app-jabber/root/usr/libexec/rpcd/luci.jabber` (VoIP methods)
 - `package/secubox/luci-app-jabber/root/usr/share/rpcd/acl.d/luci-app-jabber.json` (VoIP ACL)
+
+37. **WAF VoIP/XMPP Protection & Jitsi Meet (2026-02-19)**
+    - Added 4 new WAF categories to mitmproxy for VoIP/Jabber protection:
+      - `voip`: 12 SIP/VoIP security patterns (header injection, ARI abuse, AMI injection)
+      - `xmpp`: 10 XMPP/Jabber patterns (XSS, XXE, BOSH hijack, OOB file access)
+      - `cve_voip`: 9 CVE patterns for Asterisk/FreePBX/Kamailio/OpenSIPS
+      - `cve_xmpp`: 8 CVE patterns for Prosody/ejabberd/Tigase/Strophe
+    - Updated `waf-rules.json` to version 1.1.0 with comprehensive attack detection
+    - Added autoban options `ban_voip` and `ban_xmpp` for automatic IP blocking
+    - Updated `mitmproxy-waf-sync` to include new categories in JSON sync
+
+    - **Self-Hosted Jitsi Meet**: Full deployment in LXC container
+      - Prosody XMPP server on port 5380 (internal only)
+      - Jicofo conference focus component
+      - JVB (Jitsi Videobridge) for WebRTC media
+      - Nginx reverse proxy on port 9088
+      - HAProxy vhost at `meet.gk2.secubox.in` with Let's Encrypt SSL
+      - WAF bypass enabled for WebRTC compatibility
+      - Webchat updated to use self-hosted Jitsi instead of meet.jit.si
+      - Full video conferencing capability without external dependencies

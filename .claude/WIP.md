@@ -64,6 +64,22 @@ _Last updated: 2026-02-19 (v0.22.0 - VoIP + Jabber Integration)_
 
 ### Just Completed (2026-02-19)
 
+- **WAF VoIP/XMPP Security Filters** — DONE (2026-02-19)
+  - Added 4 new WAF categories to mitmproxy:
+    - `voip`: 12 SIP/VoIP patterns (header injection, ARI/AMI abuse)
+    - `xmpp`: 10 XMPP patterns (XSS, XXE, BOSH hijack)
+    - `cve_voip`: 9 CVEs for Asterisk/FreePBX/Kamailio/OpenSIPS
+    - `cve_xmpp`: 8 CVEs for Prosody/ejabberd/Tigase
+  - Autoban options for voip/xmpp attacks
+  - Total: 40+ new detection patterns, 17+ CVEs
+
+- **Self-Hosted Jitsi Meet** — DONE (2026-02-19)
+  - Full LXC deployment: Prosody (5380), Jicofo, JVB, Nginx (9088)
+  - HAProxy vhost at `meet.gk2.secubox.in` with Let's Encrypt SSL
+  - WAF bypass for WebRTC compatibility
+  - Webchat integrated with self-hosted Jitsi
+  - Complete video conferencing without external dependencies
+
 - **VoIP (Asterisk PBX) + Jabber Integration** — DONE (2026-02-19)
   - Created `secubox-app-voip` package with Asterisk PBX in LXC container
   - OVH Telephony API integration for SIP trunk auto-provisioning
