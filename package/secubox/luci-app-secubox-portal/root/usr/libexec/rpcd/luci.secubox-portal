@@ -185,7 +185,7 @@ build_tree() {
 	json_add_array "items"
 	for app in $apps; do
 		case "$app" in
-			luci-app-localai*|luci-app-ollama*|luci-app-simplex*|luci-app-gotosocial*|luci-app-ai-*)
+			luci-app-localai*|luci-app-ollama*|luci-app-simplex*|luci-app-gotosocial*|luci-app-ai-*|luci-app-voip*|luci-app-jabber*|luci-app-jitsi*|luci-app-mail*|luci-app-nextcloud*|luci-app-webradio*)
 				local name=$(echo "$app" | sed 's/luci-app-//' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++)$i=toupper(substr($i,1,1))tolower(substr($i,2))}1')
 				json_add_object ""
 				json_add_string "name" "$name"
@@ -228,7 +228,7 @@ build_tree() {
 			luci-app-haproxy*|luci-app-wireguard*|luci-app-tor*|luci-app-cdn*|luci-app-exposure*|luci-app-dns-provider*) continue ;;
 			luci-app-gitea*|luci-app-hexo*|luci-app-metablog*|luci-app-metabol*) continue ;;
 			luci-app-domoticz*|luci-app-zigbee*|luci-app-iot*|luci-app-mqtt*) continue ;;
-			luci-app-localai*|luci-app-ollama*|luci-app-simplex*|luci-app-gotosocial*|luci-app-ai-*) continue ;;
+			luci-app-localai*|luci-app-ollama*|luci-app-simplex*|luci-app-gotosocial*|luci-app-ai-*|luci-app-voip*|luci-app-jabber*|luci-app-jitsi*|luci-app-mail*|luci-app-nextcloud*|luci-app-webradio*) continue ;;
 			luci-app-cloner*|luci-app-backup*|luci-app-system*|luci-app-config-advisor*|luci-app-service-registry*) continue ;;
 			luci-app-secubox*|luci-app-*secubox*)
 				local name=$(echo "$app" | sed 's/luci-app-//' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++)$i=toupper(substr($i,1,1))tolower(substr($i,2))}1')
