@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-02-17_
+_Last updated: 2026-02-19_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -2334,3 +2334,76 @@ git checkout HEAD -- index.html
 - Fixed SSL certificate generation (openssl instead of prosodyctl)
 - Added xchat.gk2.secubox.in route to mitmproxy-in haproxy-routes.json
 - Fixed route IP from 127.0.0.1 to 192.168.255.1 for container accessibility
+
+### 2026-02-19: VoIP + Jabber Integration (Asterisk PBX)
+
+**New Packages:**
+- `secubox-app-voip` - LXC-based Asterisk PBX server
+- `luci-app-voip` - LuCI dashboard for VoIP management
+
+**Features:**
+- Debian 12 (Bookworm) LXC container with Asterisk PBX
+- OVH Telephony API integration for SIP trunk auto-provisioning
+- SIP extension management with PJSIP
+- Asterisk ARI/AMI support for call control
+- Click-to-call web interface
+- HAProxy integration with WebRTC support
+- Procd service management
+
+**CLI Commands (voipctl):**
+- `install/uninstall` - Container lifecycle
+- `start/stop/restart/status` - Service control
+- `ext add/del/passwd/list` - Extension management
+- `trunk add ovh/manual` - SIP trunk configuration
+- `trunk test/status` - Trunk connectivity testing
+- `call/hangup/calls` - Call origination and control
+- `vm list/play/delete` - Voicemail management
+- `configure-haproxy` - WebRTC proxy setup
+- `emancipate <domain>` - Public exposure
+
+**OVH Telephony Integration (ovh-telephony.sh):**
+- API signature generation (HMAC-SHA1)
+- Billing accounts and SIP lines discovery
+- SIP credentials retrieval and password reset
+- SMS sending via OVH SMS API
+- Auto-provisioning flow for trunk configuration
+
+**LuCI Dashboard (luci-app-voip):**
+- Overview with container/Asterisk/trunk status
+- Extensions management (add/delete)
+- Trunks configuration (OVH auto-provision, manual)
+- Click-to-call dialer with extension selector
+- Active calls display with live polling
+- Quick dial buttons for extensions
+- Logs viewer
+
+**Jabber VoIP Integration (Phase 3):**
+- Jingle VoIP support via mod_external_services
+- STUN/TURN server configuration
+- SMS relay via OVH (messages to sms@domain)
+- Voicemail notifications via Asterisk AMI → XMPP
+- New jabberctl commands: jingle enable/disable/status, sms config/send, voicemail-notify
+- New RPCD methods: jingle_status/enable/disable, sms_status/config/send, voicemail_status/config
+- Updated UCI config with jingle, sms, and voicemail sections
+
+**Files Created:**
+- `package/secubox/secubox-app-voip/Makefile`
+- `package/secubox/secubox-app-voip/files/etc/config/voip`
+- `package/secubox/secubox-app-voip/files/etc/init.d/voip`
+- `package/secubox/secubox-app-voip/files/usr/sbin/voipctl`
+- `package/secubox/secubox-app-voip/files/usr/lib/secubox/voip/ovh-telephony.sh`
+- `package/secubox/luci-app-voip/Makefile`
+- `package/secubox/luci-app-voip/root/usr/libexec/rpcd/luci.voip`
+- `package/secubox/luci-app-voip/root/usr/share/luci/menu.d/luci-app-voip.json`
+- `package/secubox/luci-app-voip/root/usr/share/rpcd/acl.d/luci-app-voip.json`
+- `package/secubox/luci-app-voip/htdocs/.../voip/api.js`
+- `package/secubox/luci-app-voip/htdocs/.../view/voip/overview.js`
+- `package/secubox/luci-app-voip/htdocs/.../view/voip/extensions.js`
+- `package/secubox/luci-app-voip/htdocs/.../view/voip/trunks.js`
+- `package/secubox/luci-app-voip/htdocs/.../view/voip/click-to-call.js`
+
+**Files Modified:**
+- `package/secubox/secubox-app-jabber/files/usr/sbin/jabberctl` (added VoIP integration)
+- `package/secubox/secubox-app-jabber/files/etc/config/jabber` (jingle/sms/voicemail sections)
+- `package/secubox/luci-app-jabber/root/usr/libexec/rpcd/luci.jabber` (VoIP methods)
+- `package/secubox/luci-app-jabber/root/usr/share/rpcd/acl.d/luci-app-jabber.json` (VoIP ACL)

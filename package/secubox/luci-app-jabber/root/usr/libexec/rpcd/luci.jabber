@@ -420,6 +420,188 @@ method_room_list() {
 	json_dump
 }
 
+# ---------- VoIP Integration Methods ----------
+
+# Method: jingle_status
+method_jingle_status() {
+	local enabled stun_server turn_server
+
+	enabled=$(uci_get jingle enabled 0)
+	stun_server=$(uci_get jingle stun_server "stun.l.google.com:19302")
+	turn_server=$(uci_get jingle turn_server "")
+
+	json_init
+	json_add_string "enabled" "$enabled"
+	json_add_string "stun_server" "$stun_server"
+	json_add_string "turn_server" "$turn_server"
+	json_dump
+}
+
+# Method: jingle_enable
+method_jingle_enable() {
+	read -r input
+	json_load "$input"
+	json_get_var stun_server stun_server
+
+	local output
+	if [ -n "$stun_server" ]; then
+		output=$($JABBERCTL jingle enable "$stun_server" 2>&1)
+	else
+		output=$($JABBERCTL jingle enable 2>&1)
+	fi
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Jingle VoIP enabled"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: jingle_disable
+method_jingle_disable() {
+	local output
+	output=$($JABBERCTL jingle disable 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Jingle VoIP disabled"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: sms_status
+method_sms_status() {
+	local enabled sender provider
+
+	enabled=$(uci_get sms enabled 0)
+	sender=$(uci_get sms sender "SecuBox")
+	provider=$(uci_get sms provider "ovh")
+
+	# Check OVH API configured
+	local ovh_configured="0"
+	local ovh_key=$(uci -q get voip.ovh_telephony.app_key 2>/dev/null)
+	[ -n "$ovh_key" ] && ovh_configured="1"
+
+	json_init
+	json_add_string "enabled" "$enabled"
+	json_add_string "sender" "$sender"
+	json_add_string "provider" "$provider"
+	json_add_string "ovh_configured" "$ovh_configured"
+	json_dump
+}
+
+# Method: sms_config
+method_sms_config() {
+	read -r input
+	json_load "$input"
+	json_get_var sender sender
+
+	local output
+	output=$($JABBERCTL sms config "$sender" 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "SMS relay configured"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: sms_send
+method_sms_send() {
+	read -r input
+	json_load "$input"
+	json_get_var to to
+	json_get_var message message
+
+	if [ -z "$to" ] || [ -z "$message" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Phone number and message are required"
+		json_dump
+		return
+	fi
+
+	local output
+	output=$($JABBERCTL sms send "$to" "$message" 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "SMS sent to $to"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: voicemail_status
+method_voicemail_status() {
+	local enabled ami_host ami_port notify_jid
+
+	enabled=$(uci_get voicemail enabled 0)
+	ami_host=$(uci_get voicemail ami_host "127.0.0.1")
+	ami_port=$(uci_get voicemail ami_port "5038")
+	notify_jid=$(uci_get voicemail notify_jid "")
+
+	json_init
+	json_add_string "enabled" "$enabled"
+	json_add_string "ami_host" "$ami_host"
+	json_add_string "ami_port" "$ami_port"
+	json_add_string "notify_jid" "$notify_jid"
+	json_dump
+}
+
+# Method: voicemail_config
+method_voicemail_config() {
+	read -r input
+	json_load "$input"
+	json_get_var notify_jid notify_jid
+
+	if [ -z "$notify_jid" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Notification JID is required"
+		json_dump
+		return
+	fi
+
+	# Save to UCI first
+	uci set jabber.voicemail=voicemail_notify
+	uci set jabber.voicemail.notify_jid="$notify_jid"
+	uci commit jabber
+
+	local output
+	output=$($JABBERCTL voicemail-notify 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Voicemail notifications configured"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
 # List available methods
 list_methods() {
 	json_init
@@ -463,6 +645,27 @@ list_methods() {
 	json_add_string "name" ""
 	json_close_object
 	json_add_object "room_list"
+	json_close_object
+	json_add_object "jingle_status"
+	json_close_object
+	json_add_object "jingle_enable"
+	json_add_string "stun_server" ""
+	json_close_object
+	json_add_object "jingle_disable"
+	json_close_object
+	json_add_object "sms_status"
+	json_close_object
+	json_add_object "sms_config"
+	json_add_string "sender" ""
+	json_close_object
+	json_add_object "sms_send"
+	json_add_string "to" ""
+	json_add_string "message" ""
+	json_close_object
+	json_add_object "voicemail_status"
+	json_close_object
+	json_add_object "voicemail_config"
+	json_add_string "notify_jid" ""
 	json_close_object
 	json_dump
 }
@@ -524,6 +727,30 @@ case "$1" in
 				;;
 			room_list)
 				method_room_list
+				;;
+			jingle_status)
+				method_jingle_status
+				;;
+			jingle_enable)
+				method_jingle_enable
+				;;
+			jingle_disable)
+				method_jingle_disable
+				;;
+			sms_status)
+				method_sms_status
+				;;
+			sms_config)
+				method_sms_config
+				;;
+			sms_send)
+				method_sms_send
+				;;
+			voicemail_status)
+				method_voicemail_status
+				;;
+			voicemail_config)
+				method_voicemail_config
 				;;
 			*)
 				echo '{"error":"Method not found"}'

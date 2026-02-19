@@ -1,0 +1,45 @@
+{
+	"admin/services/voip": {
+		"title": "VoIP (Asterisk)",
+		"order": 50,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-voip"],
+			"uci": { "voip": true }
+		}
+	},
+	"admin/services/voip/overview": {
+		"title": "Overview",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "voip/overview"
+		}
+	},
+	"admin/services/voip/extensions": {
+		"title": "Extensions",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "voip/extensions"
+		}
+	},
+	"admin/services/voip/trunks": {
+		"title": "Trunks",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "voip/trunks"
+		}
+	},
+	"admin/services/voip/click-to-call": {
+		"title": "Click to Call",
+		"order": 40,
+		"action": {
+			"type": "view",
+			"path": "voip/click-to-call"
+		}
+	}
+}

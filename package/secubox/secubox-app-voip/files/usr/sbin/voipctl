@@ -1,0 +1,1263 @@
+#!/bin/sh
+# SecuBox VoIP Manager - LXC Debian container with Asterisk PBX
+
+CONFIG="voip"
+LXC_NAME="voip"
+LXC_PATH="/srv/lxc"
+LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
+LXC_CONF="$LXC_PATH/$LXC_NAME/config"
+DATA_PATH_DEFAULT="/srv/voip"
+OPKG_UPDATED=0
+
+# Load OVH telephony API
+OVH_API_LIB="/usr/lib/secubox/voip/ovh-telephony.sh"
+[ -f "$OVH_API_LIB" ] && . "$OVH_API_LIB"
+
+usage() {
+	cat <<'USAGE'
+Usage: voipctl <command>
+
+Installation:
+  install              Create LXC container with Asterisk PBX
+  uninstall            Remove container (preserves data)
+  update               Update Asterisk packages
+  check                Run prerequisite checks
+
+Service:
+  start                Start VoIP server (via init)
+  stop                 Stop VoIP server
+  restart              Restart VoIP server
+  status               Show container and service status
+  logs [N]             Show last N lines of logs (default: 50)
+  shell                Open interactive shell in container
+  cli                  Open Asterisk CLI
+
+Extensions:
+  ext add <num> <name> [password]   Create SIP extension
+  ext del <num>                     Delete extension
+  ext list                          List all extensions
+  ext passwd <num> [password]       Change password
+
+Trunks:
+  trunk add ovh        Auto-provision OVH SIP trunk
+  trunk add manual     Add manual SIP trunk
+  trunk del            Remove trunk
+  trunk test           Test trunk registration
+  trunk status         Show registration status
+
+Calls:
+  call <from> <to>     Originate call (click-to-call)
+  hangup <channel>     Hang up active call
+  calls                List active calls
+
+Voicemail:
+  vm list [ext]        List voicemails
+  vm play <ext> <id>   Play voicemail (outputs path)
+  vm delete <ext> <id> Delete voicemail
+
+Exposure:
+  configure-haproxy    Setup HAProxy for WebRTC
+  emancipate <domain>  Full exposure (HAProxy + SSL)
+
+Internal:
+  service-run          Run container via procd
+  service-stop         Stop container
+USAGE
+}
+
+# ---------- helpers ----------
+
+require_root() { [ "$(id -u)" -eq 0 ]; }
+
+uci_get() {
+	local key="$1"
+	local section="${2:-main}"
+	uci -q get ${CONFIG}.${section}.$key
+}
+
+uci_set() {
+	local key="$1"
+	local value="$2"
+	local section="${3:-main}"
+	uci set ${CONFIG}.${section}.$key="$value"
+}
+
+log_info()  { echo "[INFO] $*"; logger -t voipctl "$*"; }
+log_warn()  { echo "[WARN] $*"; logger -t voipctl -p warning "$*"; }
+log_error() { echo "[ERROR] $*" >&2; logger -t voipctl -p err "$*"; }
+
+ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
+
+ensure_packages() {
+	for pkg in "$@"; do
+		if ! opkg status "$pkg" 2>/dev/null | grep -q "Status:.*installed"; then
+			if [ "$OPKG_UPDATED" -eq 0 ]; then
+				opkg update || return 1
+				OPKG_UPDATED=1
+			fi
+			opkg install "$pkg" || return 1
+		fi
+	done
+}
+
+defaults() {
+	data_path="$(uci_get data_path || echo $DATA_PATH_DEFAULT)"
+	memory_limit="$(uci_get memory_limit || echo 512)"
+	sip_port="$(uci_get sip_port asterisk || echo 5060)"
+	rtp_start="$(uci_get rtp_start asterisk || echo 10000)"
+	rtp_end="$(uci_get rtp_end asterisk || echo 20000)"
+	ari_port="$(uci_get ari_port asterisk || echo 8089)"
+	ami_port="$(uci_get ami_port asterisk || echo 5038)"
+}
+
+detect_arch() {
+	case "$(uname -m)" in
+		aarch64) echo "aarch64" ;;
+		armv7l)  echo "armv7" ;;
+		x86_64)  echo "x86_64" ;;
+		*)       echo "x86_64" ;;
+	esac
+}
+
+generate_password() {
+	head -c 32 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 16
+}
+
+# ---------- LXC helpers ----------
+
+lxc_running() {
+	lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"
+}
+
+lxc_exists() {
+	[ -f "$LXC_CONF" ] && [ -d "$LXC_ROOTFS" ]
+}
+
+lxc_exec() {
+	lxc-attach -n "$LXC_NAME" -- "$@"
+}
+
+lxc_stop() {
+	if lxc_running; then
+		lxc-stop -n "$LXC_NAME" -k 2>/dev/null || true
+		sleep 2
+	fi
+}
+
+# ---------- Asterisk helpers ----------
+
+asterisk_cli() {
+	lxc_exec asterisk -rx "$*"
+}
+
+# ---------- rootfs creation ----------
+
+lxc_create_rootfs() {
+	local arch=$(detect_arch)
+
+	local debian_arch
+	case "$arch" in
+		aarch64) debian_arch="arm64" ;;
+		armv7)   debian_arch="armhf" ;;
+		x86_64)  debian_arch="amd64" ;;
+		*)       debian_arch="amd64" ;;
+	esac
+
+	ensure_dir "$LXC_ROOTFS"
+
+	local rootfs_url="https://images.linuxcontainers.org/images/debian/bookworm/${debian_arch}/default/"
+	log_info "Downloading Debian bookworm rootfs for ${debian_arch}..."
+
+	local latest_path
+	latest_path=$(wget -q -O - "$rootfs_url" 2>/dev/null | grep -oE '[0-9]{8}_[0-9]{2}:[0-9]{2}' | tail -1)
+	if [ -z "$latest_path" ]; then
+		log_error "Failed to find latest Debian rootfs build"
+		return 1
+	fi
+
+	local tarball="/tmp/debian-voip.tar.xz"
+	local tarball_url="${rootfs_url}${latest_path}/rootfs.tar.xz"
+	wget -q -O "$tarball" "$tarball_url" || {
+		log_error "Failed to download Debian rootfs from $tarball_url"
+		return 1
+	}
+
+	tar -xJf "$tarball" -C "$LXC_ROOTFS" || {
+		log_error "Failed to extract Debian rootfs"
+		return 1
+	}
+	rm -f "$tarball"
+
+	# DNS
+	cp /etc/resolv.conf "$LXC_ROOTFS/etc/resolv.conf" 2>/dev/null || \
+		echo "nameserver 8.8.8.8" > "$LXC_ROOTFS/etc/resolv.conf"
+
+	# Create minimal /dev for chroot operations
+	mkdir -p "$LXC_ROOTFS/dev"
+	[ -c "$LXC_ROOTFS/dev/null" ] || mknod -m 666 "$LXC_ROOTFS/dev/null" c 1 3 2>/dev/null
+	[ -c "$LXC_ROOTFS/dev/zero" ] || mknod -m 666 "$LXC_ROOTFS/dev/zero" c 1 5 2>/dev/null
+	[ -c "$LXC_ROOTFS/dev/random" ] || mknod -m 666 "$LXC_ROOTFS/dev/random" c 1 8 2>/dev/null
+	[ -c "$LXC_ROOTFS/dev/urandom" ] || mknod -m 666 "$LXC_ROOTFS/dev/urandom" c 1 9 2>/dev/null
+
+	# Configure apt sources
+	cat > "$LXC_ROOTFS/etc/apt/sources.list" <<'SOURCES'
+deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
+deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
+deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
+SOURCES
+
+	# Install Asterisk PBX
+	log_info "Installing Asterisk PBX..."
+	chroot "$LXC_ROOTFS" /bin/sh -c "
+		export DEBIAN_FRONTEND=noninteractive
+		apt-get update && \
+		apt-get install -y --no-install-recommends \
+			asterisk \
+			asterisk-core-sounds-en \
+			asterisk-core-sounds-fr \
+			asterisk-moh-opsound-wav \
+			asterisk-modules \
+			ca-certificates \
+			curl \
+			procps
+	" || {
+		log_error "Failed to install Asterisk"
+		return 1
+	}
+
+	# Create directories
+	mkdir -p "$LXC_ROOTFS/var/spool/asterisk/voicemail"
+	mkdir -p "$LXC_ROOTFS/var/log/asterisk"
+	mkdir -p "$LXC_ROOTFS/etc/asterisk"
+	mkdir -p "$LXC_ROOTFS/srv/voip/sounds"
+
+	# Create startup script
+	create_startup_script
+
+	# Clean up apt cache
+	chroot "$LXC_ROOTFS" /bin/sh -c "
+		apt-get clean
+		rm -rf /var/lib/apt/lists/*
+	"
+
+	log_info "Rootfs created successfully"
+}
+
+create_startup_script() {
+	cat > "$LXC_ROOTFS/opt/start-voip.sh" <<'STARTUP'
+#!/bin/bash
+
+export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+
+# Get config from environment
+SIP_PORT="${VOIP_SIP_PORT:-5060}"
+RTP_START="${VOIP_RTP_START:-10000}"
+RTP_END="${VOIP_RTP_END:-20000}"
+ARI_PORT="${VOIP_ARI_PORT:-8089}"
+ARI_USER="${VOIP_ARI_USER:-admin}"
+ARI_PASSWORD="${VOIP_ARI_PASSWORD:-}"
+AMI_PORT="${VOIP_AMI_PORT:-5038}"
+AMI_USER="${VOIP_AMI_USER:-admin}"
+AMI_SECRET="${VOIP_AMI_SECRET:-}"
+
+# Generate Asterisk config if not exists
+if [ ! -f /etc/asterisk/.configured ]; then
+    echo "[VOIP] Generating Asterisk configuration..."
+
+    # pjsip.conf - SIP stack
+    cat > /etc/asterisk/pjsip.conf <<PJSIP
+[global]
+type=global
+endpoint_identifier_order=ip,username
+max_forwards=70
+user_agent=SecuBox-VoIP
+
+[transport-udp]
+type=transport
+protocol=udp
+bind=0.0.0.0:${SIP_PORT}
+
+[transport-tcp]
+type=transport
+protocol=tcp
+bind=0.0.0.0:${SIP_PORT}
+
+; Extensions template
+[endpoint-template](!)
+type=endpoint
+context=internal
+disallow=all
+allow=ulaw,alaw,g722,opus
+direct_media=no
+rtp_symmetric=yes
+force_rport=yes
+rewrite_contact=yes
+ice_support=yes
+
+[auth-template](!)
+type=auth
+auth_type=userpass
+
+[aor-template](!)
+type=aor
+max_contacts=5
+qualify_frequency=60
+PJSIP
+
+    # extensions.conf - Dialplan
+    cat > /etc/asterisk/extensions.conf <<DIALPLAN
+[general]
+static=yes
+writeprotect=no
+
+[globals]
+
+[internal]
+; Internal extension dialing
+exten => _1XX,1,NoOp(Dialing extension \${EXTEN})
+ same => n,Dial(PJSIP/\${EXTEN},30,tT)
+ same => n,VoiceMail(\${EXTEN}@default,u)
+ same => n,Hangup()
+
+; Voicemail access
+exten => *98,1,VoiceMailMain(\${CALLERID(num)}@default)
+ same => n,Hangup()
+
+exten => *97,1,VoiceMailMain(@default)
+ same => n,Hangup()
+
+[from-trunk]
+; Incoming calls from trunk
+exten => _X.,1,NoOp(Incoming call to \${EXTEN})
+ same => n,Goto(internal,100,1)  ; Ring extension 100 by default
+ same => n,Hangup()
+
+[outbound]
+; Outbound calls via trunk
+exten => _0X.,1,NoOp(Outbound call to \${EXTEN:1})
+ same => n,Set(CALLERID(num)=\${TRUNK_CALLER_ID})
+ same => n,Dial(PJSIP/\${EXTEN:1}@ovh-endpoint,60,tT)
+ same => n,Hangup()
+
+exten => _+X.,1,NoOp(Outbound call to \${EXTEN})
+ same => n,Set(CALLERID(num)=\${TRUNK_CALLER_ID})
+ same => n,Dial(PJSIP/\${EXTEN}@ovh-endpoint,60,tT)
+ same => n,Hangup()
+DIALPLAN
+
+    # voicemail.conf
+    cat > /etc/asterisk/voicemail.conf <<VOICEMAIL
+[general]
+format=wav49|gsm|wav
+serveremail=asterisk@localhost
+attach=yes
+maxmsg=100
+maxsecs=300
+minsecs=3
+maxgreet=60
+skipms=3000
+maxsilence=10
+silencethreshold=128
+maxlogins=3
+
+[zonemessages]
+eastern=America/New_York|'vm-received' Q 'digits/at' IMp
+central=America/Chicago|'vm-received' Q 'digits/at' IMp
+european=Europe/Paris|'vm-received' q 'digits/at' H 'digits/hours' M 'digits/minutes'
+
+[default]
+; Voicemail boxes defined dynamically
+VOICEMAIL
+
+    # rtp.conf
+    cat > /etc/asterisk/rtp.conf <<RTP
+[general]
+rtpstart=${RTP_START}
+rtpend=${RTP_END}
+strictrtp=yes
+icesupport=yes
+stunaddr=stun.l.google.com:19302
+RTP
+
+    # http.conf (for ARI)
+    cat > /etc/asterisk/http.conf <<HTTP
+[general]
+enabled=yes
+bindaddr=0.0.0.0
+bindport=${ARI_PORT}
+HTTP
+
+    # ari.conf
+    cat > /etc/asterisk/ari.conf <<ARI
+[general]
+enabled=yes
+pretty=yes
+
+[${ARI_USER}]
+type=user
+read_only=no
+password=${ARI_PASSWORD}
+ARI
+
+    # manager.conf (AMI)
+    cat > /etc/asterisk/manager.conf <<AMI
+[general]
+enabled=yes
+port=${AMI_PORT}
+bindaddr=0.0.0.0
+
+[${AMI_USER}]
+secret=${AMI_SECRET}
+deny=0.0.0.0/0.0.0.0
+permit=127.0.0.1/255.255.255.255
+permit=192.168.255.0/255.255.255.0
+read=all
+write=all
+AMI
+
+    # modules.conf
+    cat > /etc/asterisk/modules.conf <<MODULES
+[modules]
+autoload=yes
+
+noload => chan_sip.so
+noload => res_hep.so
+noload => res_hep_pjsip.so
+noload => res_hep_rtcp.so
+load => res_pjsip.so
+load => res_pjsip_session.so
+MODULES
+
+    touch /etc/asterisk/.configured
+    echo "[VOIP] Configuration generated"
+fi
+
+# Ensure proper permissions
+chown -R asterisk:asterisk /var/spool/asterisk
+chown -R asterisk:asterisk /var/log/asterisk
+chown -R asterisk:asterisk /etc/asterisk
+chown -R asterisk:asterisk /srv/voip 2>/dev/null
+
+echo "[VOIP] Starting Asterisk PBX..."
+
+# Run Asterisk in foreground
+exec /usr/sbin/asterisk -f -U asterisk -G asterisk
+STARTUP
+
+	chmod +x "$LXC_ROOTFS/opt/start-voip.sh"
+}
+
+lxc_create_config() {
+	defaults
+	local mem_bytes=$((memory_limit * 1024 * 1024))
+
+	ensure_dir "$LXC_PATH/$LXC_NAME"
+	ensure_dir "$data_path"
+	ensure_dir "$data_path/sounds"
+	ensure_dir "$data_path/voicemail"
+	ensure_dir "$data_path/config"
+
+	# Generate passwords if not set
+	local ari_pass=$(uci_get ari_password asterisk)
+	[ -z "$ari_pass" ] && {
+		ari_pass=$(generate_password)
+		uci_set ari_password "$ari_pass" asterisk
+	}
+
+	local ami_secret=$(uci_get ami_secret asterisk)
+	[ -z "$ami_secret" ] && {
+		ami_secret=$(generate_password)
+		uci_set ami_secret "$ami_secret" asterisk
+	}
+	uci commit "$CONFIG"
+
+	cat > "$LXC_CONF" <<EOF
+# VoIP LXC Container (Asterisk PBX)
+lxc.uts.name = $LXC_NAME
+lxc.rootfs.path = dir:$LXC_ROOTFS
+lxc.arch = $(detect_arch)
+
+# Network: share host network
+lxc.net.0.type = none
+
+# Auto-mounts
+lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+
+# Bind mounts for persistent data
+lxc.mount.entry = $data_path/voicemail var/spool/asterisk/voicemail none bind,create=dir 0 0
+lxc.mount.entry = $data_path/sounds srv/voip/sounds none bind,create=dir 0 0
+lxc.mount.entry = $data_path/config etc/asterisk/custom none bind,create=dir 0 0
+
+# Environment
+lxc.environment = VOIP_SIP_PORT=$sip_port
+lxc.environment = VOIP_RTP_START=$rtp_start
+lxc.environment = VOIP_RTP_END=$rtp_end
+lxc.environment = VOIP_ARI_PORT=$ari_port
+lxc.environment = VOIP_ARI_USER=$(uci_get ari_user asterisk || echo admin)
+lxc.environment = VOIP_ARI_PASSWORD=$ari_pass
+lxc.environment = VOIP_AMI_PORT=$ami_port
+lxc.environment = VOIP_AMI_USER=$(uci_get ami_user asterisk || echo admin)
+lxc.environment = VOIP_AMI_SECRET=$ami_secret
+
+# Resource limits
+lxc.cgroup2.memory.max = $mem_bytes
+
+# Security
+lxc.cap.drop = sys_module mac_admin mac_override sys_time
+
+# TTY/PTY for cgroup2
+lxc.tty.max = 4
+lxc.pty.max = 16
+lxc.cgroup2.devices.allow = c 1:3 rwm
+lxc.cgroup2.devices.allow = c 1:5 rwm
+lxc.cgroup2.devices.allow = c 1:7 rwm
+lxc.cgroup2.devices.allow = c 1:8 rwm
+lxc.cgroup2.devices.allow = c 1:9 rwm
+lxc.cgroup2.devices.allow = c 5:0 rwm
+lxc.cgroup2.devices.allow = c 5:1 rwm
+lxc.cgroup2.devices.allow = c 5:2 rwm
+lxc.cgroup2.devices.allow = c 136:* rwm
+
+# Startup command
+lxc.init.cmd = /opt/start-voip.sh
+EOF
+
+	log_info "LXC config created"
+}
+
+# ---------- commands ----------
+
+cmd_install() {
+	require_root || { log_error "Must run as root"; return 1; }
+
+	log_info "Installing VoIP server (Asterisk PBX)..."
+
+	ensure_packages lxc lxc-common wget tar curl || return 1
+
+	if ! lxc_exists; then
+		lxc_create_rootfs || return 1
+	else
+		log_info "Container already exists, skipping rootfs creation"
+	fi
+
+	lxc_create_config
+
+	uci_set enabled '1'
+	uci commit "$CONFIG"
+	/etc/init.d/voip enable
+	/etc/init.d/voip start
+
+	sleep 5
+
+	defaults
+	local lan_ip=$(uci -q get network.lan.ipaddr || echo '192.168.255.1')
+
+	log_info ""
+	log_info "=============================================="
+	log_info "  VoIP Server installed!"
+	log_info "=============================================="
+	log_info ""
+	log_info "  SIP Port:      $sip_port"
+	log_info "  RTP Range:     $rtp_start-$rtp_end"
+	log_info "  ARI Port:      $ari_port"
+	log_info "  AMI Port:      $ami_port"
+	log_info ""
+	log_info "  Next steps:"
+	log_info "    1. Add extension: voipctl ext add 100 \"Admin\""
+	log_info "    2. Add trunk:     voipctl trunk add ovh"
+	log_info "    3. Test call:     voipctl call 100 +33612345678"
+	log_info ""
+}
+
+cmd_uninstall() {
+	require_root || { log_error "Must run as root"; return 1; }
+
+	log_info "Uninstalling VoIP server..."
+
+	/etc/init.d/voip stop 2>/dev/null
+	/etc/init.d/voip disable 2>/dev/null
+	lxc_stop
+
+	rm -rf "$LXC_ROOTFS" "$LXC_CONF"
+
+	uci_set enabled '0'
+	uci commit "$CONFIG"
+
+	defaults
+	log_info "Container removed. Data preserved in $data_path"
+}
+
+cmd_update() {
+	require_root || { log_error "Must run as root"; return 1; }
+
+	log_info "Updating Asterisk..."
+
+	if lxc_running; then
+		lxc_exec apt-get update
+		lxc_exec apt-get upgrade -y asterisk asterisk-modules
+		lxc_exec asterisk -rx "core restart now"
+		log_info "Asterisk updated successfully"
+	else
+		log_error "Container not running"
+		return 1
+	fi
+}
+
+cmd_check() {
+	echo "VoIP Prerequisites Check"
+	echo "========================="
+
+	if command -v lxc-start >/dev/null 2>&1; then
+		echo "[OK] LXC installed"
+	else
+		echo "[FAIL] LXC not installed"
+	fi
+
+	if lxc_exists; then
+		echo "[OK] Container exists"
+	else
+		echo "[--] Container not created"
+	fi
+
+	if lxc_running; then
+		echo "[OK] Container running"
+	else
+		echo "[--] Container not running"
+	fi
+
+	defaults
+	for port in $sip_port $ari_port $ami_port; do
+		if netstat -tln 2>/dev/null | grep -q ":${port} " || \
+		   grep -q ":$(printf '%04X' $port) " /proc/net/tcp 2>/dev/null; then
+			echo "[OK] Port $port listening"
+		else
+			echo "[--] Port $port not listening"
+		fi
+	done
+
+	if lxc_running; then
+		if lxc_exec pgrep asterisk >/dev/null 2>&1; then
+			echo "[OK] Asterisk process running"
+		else
+			echo "[FAIL] Asterisk process not running"
+		fi
+	fi
+}
+
+cmd_status() {
+	defaults
+
+	if [ "$1" = "--json" ]; then
+		local running=0
+		local asterisk_proc=0
+		local trunk_registered=0
+		local active_calls=0
+		local extensions=0
+
+		lxc_running && running=1
+		if [ "$running" = "1" ]; then
+			lxc_exec pgrep asterisk >/dev/null 2>&1 && asterisk_proc=1
+			asterisk_cli "pjsip show registrations" 2>/dev/null | grep -q "Registered" && trunk_registered=1
+			active_calls=$(asterisk_cli "core show channels" 2>/dev/null | grep -oE "^[0-9]+ active" | cut -d' ' -f1 || echo 0)
+			extensions=$(asterisk_cli "pjsip show endpoints" 2>/dev/null | grep -c "^[0-9]" || echo 0)
+		fi
+
+		cat <<EOF
+{
+  "enabled": $(uci_get enabled || echo 0),
+  "running": $running,
+  "asterisk": $asterisk_proc,
+  "trunk_registered": $trunk_registered,
+  "active_calls": ${active_calls:-0},
+  "extensions": ${extensions:-0},
+  "sip_port": $sip_port,
+  "data_path": "$data_path"
+}
+EOF
+		return
+	fi
+
+	echo "VoIP Status"
+	echo "==========="
+	echo ""
+	echo "Configuration:"
+	echo "  Enabled:      $(uci_get enabled || echo '0')"
+	echo "  SIP Port:     $sip_port"
+	echo "  RTP Range:    $rtp_start-$rtp_end"
+	echo "  Memory:       ${memory_limit}M"
+	echo "  Data Path:    $data_path"
+	echo ""
+
+	if lxc_exists; then
+		echo "Container:      EXISTS"
+	else
+		echo "Container:      NOT CREATED (run: voipctl install)"
+		return 0
+	fi
+
+	if lxc_running; then
+		echo "State:          RUNNING"
+		lxc-info -n "$LXC_NAME" | grep -E "PID|Memory" | sed 's/^/  /'
+		echo ""
+		echo "Services:"
+		lxc_exec pgrep asterisk >/dev/null 2>&1 && echo "  Asterisk:     UP" || echo "  Asterisk:     DOWN"
+
+		echo ""
+		echo "Trunk Status:"
+		asterisk_cli "pjsip show registrations" 2>/dev/null | grep -E "State|Contact" | head -5 | sed 's/^/  /'
+
+		echo ""
+		echo "Active Calls:"
+		asterisk_cli "core show channels concise" 2>/dev/null | head -5 | sed 's/^/  /'
+	else
+		echo "State:          STOPPED"
+	fi
+}
+
+cmd_logs() {
+	local lines="${1:-50}"
+
+	if lxc_running; then
+		echo "=== Asterisk logs ==="
+		lxc_exec tail -n "$lines" /var/log/asterisk/messages 2>/dev/null || \
+			echo "No Asterisk logs found"
+	else
+		echo "Container not running"
+	fi
+}
+
+cmd_shell() {
+	if lxc_running; then
+		lxc_exec /bin/bash || lxc_exec /bin/sh
+	else
+		log_error "Container not running"
+		return 1
+	fi
+}
+
+cmd_cli() {
+	if lxc_running; then
+		lxc_exec asterisk -rvvv
+	else
+		log_error "Container not running"
+		return 1
+	fi
+}
+
+cmd_start() {
+	require_root || { log_error "Must run as root"; return 1; }
+	/etc/init.d/voip start
+}
+
+cmd_stop() {
+	require_root || { log_error "Must run as root"; return 1; }
+	/etc/init.d/voip stop
+}
+
+cmd_restart() {
+	require_root || { log_error "Must run as root"; return 1; }
+	/etc/init.d/voip restart
+}
+
+# ---------- extension management ----------
+
+cmd_ext() {
+	local subcmd="$1"
+	shift
+
+	case "$subcmd" in
+		add)
+			cmd_ext_add "$@"
+			;;
+		del|delete)
+			cmd_ext_del "$@"
+			;;
+		passwd|password)
+			cmd_ext_passwd "$@"
+			;;
+		list)
+			cmd_ext_list
+			;;
+		*)
+			echo "Usage: voipctl ext <add|del|passwd|list>"
+			return 1
+			;;
+	esac
+}
+
+cmd_ext_add() {
+	local ext="$1"
+	local name="$2"
+	local password="$3"
+
+	[ -z "$ext" ] || [ -z "$name" ] && {
+		echo "Usage: voipctl ext add <extension> <name> [password]"
+		return 1
+	}
+
+	lxc_running || { log_error "Container not running"; return 1; }
+
+	[ -z "$password" ] && password=$(generate_password)
+
+	# Add to pjsip.conf
+	cat >> "$LXC_ROOTFS/etc/asterisk/pjsip.conf" <<EOF
+
+; Extension $ext - $name
+[$ext](endpoint-template)
+auth=$ext-auth
+aors=$ext
+callerid="$name" <$ext>
+
+[$ext-auth](auth-template)
+username=$ext
+password=$password
+
+[$ext](aor-template)
+EOF
+
+	# Add voicemail
+	echo "$ext => $password,$name,," >> "$LXC_ROOTFS/etc/asterisk/voicemail.conf"
+
+	# Save to UCI
+	uci set voip.ext_${ext}=extension
+	uci set voip.ext_${ext}.name="$name"
+	uci set voip.ext_${ext}.secret="$password"
+	uci set voip.ext_${ext}.voicemail='1'
+	uci commit voip
+
+	# Reload Asterisk
+	asterisk_cli "pjsip reload"
+	asterisk_cli "voicemail reload"
+
+	log_info "Extension created: $ext ($name)"
+	log_info "Password: $password"
+	log_info ""
+	log_info "SIP Settings:"
+	log_info "  Server:   $(uci -q get network.lan.ipaddr || echo '192.168.255.1')"
+	log_info "  Username: $ext"
+	log_info "  Password: $password"
+}
+
+cmd_ext_del() {
+	local ext="$1"
+
+	[ -z "$ext" ] && {
+		echo "Usage: voipctl ext del <extension>"
+		return 1
+	}
+
+	lxc_running || { log_error "Container not running"; return 1; }
+
+	# Remove from pjsip.conf (simplified - removes the section)
+	sed -i "/^\[$ext\]/,/^$/d" "$LXC_ROOTFS/etc/asterisk/pjsip.conf"
+	sed -i "/^\[$ext-auth\]/,/^$/d" "$LXC_ROOTFS/etc/asterisk/pjsip.conf"
+
+	# Remove from voicemail.conf
+	sed -i "/^$ext =>/d" "$LXC_ROOTFS/etc/asterisk/voicemail.conf"
+
+	# Remove UCI
+	uci delete voip.ext_${ext} 2>/dev/null
+	uci commit voip
+
+	asterisk_cli "pjsip reload"
+
+	log_info "Extension deleted: $ext"
+}
+
+cmd_ext_passwd() {
+	local ext="$1"
+	local password="$2"
+
+	[ -z "$ext" ] && {
+		echo "Usage: voipctl ext passwd <extension> [password]"
+		return 1
+	}
+
+	lxc_running || { log_error "Container not running"; return 1; }
+
+	[ -z "$password" ] && password=$(generate_password)
+
+	# Update in pjsip.conf
+	sed -i "/^\[$ext-auth\]/,/^$/{s/password=.*/password=$password/}" "$LXC_ROOTFS/etc/asterisk/pjsip.conf"
+
+	# Update UCI
+	uci set voip.ext_${ext}.secret="$password"
+	uci commit voip
+
+	asterisk_cli "pjsip reload"
+
+	log_info "Password changed for extension $ext"
+	log_info "New password: $password"
+}
+
+cmd_ext_list() {
+	lxc_running || { log_error "Container not running"; return 1; }
+
+	echo "Extensions:"
+	echo "==========="
+	asterisk_cli "pjsip show endpoints" 2>/dev/null | grep -E "^[0-9]|Endpoint:" | head -20
+}
+
+# ---------- trunk management ----------
+
+cmd_trunk() {
+	local subcmd="$1"
+	shift
+
+	case "$subcmd" in
+		add)
+			cmd_trunk_add "$@"
+			;;
+		del|delete)
+			cmd_trunk_del
+			;;
+		test)
+			cmd_trunk_test
+			;;
+		status)
+			cmd_trunk_status
+			;;
+		*)
+			echo "Usage: voipctl trunk <add|del|test|status>"
+			return 1
+			;;
+	esac
+}
+
+cmd_trunk_add() {
+	local provider="$1"
+
+	case "$provider" in
+		ovh)
+			cmd_trunk_add_ovh
+			;;
+		manual)
+			cmd_trunk_add_manual
+			;;
+		*)
+			echo "Usage: voipctl trunk add <ovh|manual>"
+			return 1
+			;;
+	esac
+}
+
+cmd_trunk_add_ovh() {
+	log_info "Adding OVH SIP trunk..."
+
+	# Check OVH credentials
+	local app_key=$(uci_get app_key ovh_telephony)
+	local app_secret=$(uci_get app_secret ovh_telephony)
+	local consumer_key=$(uci_get consumer_key ovh_telephony)
+
+	if [ -z "$app_key" ] || [ -z "$app_secret" ] || [ -z "$consumer_key" ]; then
+		log_error "OVH API credentials not configured"
+		log_info "Configure via: uci set voip.ovh_telephony.app_key=..."
+		log_info "Generate at: https://eu.api.ovh.com/createToken/"
+		return 1
+	fi
+
+	# Use OVH API to get SIP credentials
+	if [ -f "$OVH_API_LIB" ]; then
+		ovh_init
+		local accounts=$(ovh_get_billing_accounts)
+		log_info "Available billing accounts: $accounts"
+
+		# For now, use first account (interactive selection can be added)
+		local billing_account=$(echo "$accounts" | jsonfilter -e '@[0]' 2>/dev/null)
+		[ -z "$billing_account" ] && {
+			log_error "No billing accounts found"
+			return 1
+		}
+
+		local lines=$(ovh_get_lines "$billing_account")
+		log_info "Available SIP lines: $lines"
+
+		local service_name=$(echo "$lines" | jsonfilter -e '@[0]' 2>/dev/null)
+		[ -z "$service_name" ] && {
+			log_error "No SIP lines found"
+			return 1
+		}
+
+		local sip_info=$(ovh_get_sip_info "$billing_account" "$service_name")
+		log_info "SIP Info: $sip_info"
+
+		# Extract credentials and configure
+		# (Implementation depends on OVH API response format)
+	else
+		log_warn "OVH API library not found, using manual configuration"
+		cmd_trunk_add_manual
+	fi
+}
+
+cmd_trunk_add_manual() {
+	log_info "Manual SIP trunk configuration"
+	log_info "Set trunk parameters via UCI:"
+	log_info "  uci set voip.sip_trunk.host='sip.provider.com'"
+	log_info "  uci set voip.sip_trunk.username='your_username'"
+	log_info "  uci set voip.sip_trunk.password='your_password'"
+	log_info "  uci commit voip"
+	log_info "  voipctl restart"
+}
+
+cmd_trunk_del() {
+	log_info "Removing SIP trunk..."
+
+	uci set voip.sip_trunk.enabled='0'
+	uci set voip.sip_trunk.username=''
+	uci set voip.sip_trunk.password=''
+	uci commit voip
+
+	# Remove from pjsip.conf
+	sed -i '/\[ovh-/,/^$/d' "$LXC_ROOTFS/etc/asterisk/pjsip.conf"
+
+	asterisk_cli "pjsip reload"
+
+	log_info "Trunk removed"
+}
+
+cmd_trunk_test() {
+	lxc_running || { log_error "Container not running"; return 1; }
+
+	log_info "Testing trunk registration..."
+	asterisk_cli "pjsip show registrations"
+	asterisk_cli "pjsip qualify ovh-endpoint"
+}
+
+cmd_trunk_status() {
+	lxc_running || { log_error "Container not running"; return 1; }
+
+	echo "Trunk Registration Status:"
+	echo "=========================="
+	asterisk_cli "pjsip show registrations"
+}
+
+# ---------- call management ----------
+
+cmd_call() {
+	local from="$1"
+	local to="$2"
+
+	[ -z "$from" ] || [ -z "$to" ] && {
+		echo "Usage: voipctl call <from_ext> <to_number>"
+		return 1
+	}
+
+	lxc_running || { log_error "Container not running"; return 1; }
+
+	log_info "Originating call: $from -> $to"
+
+	# Originate call via AMI
+	local result=$(asterisk_cli "channel originate PJSIP/$from extension $to@outbound")
+	echo "$result"
+}
+
+cmd_hangup() {
+	local channel="$1"
+
+	[ -z "$channel" ] && {
+		echo "Usage: voipctl hangup <channel>"
+		return 1
+	}
+
+	lxc_running || { log_error "Container not running"; return 1; }
+
+	asterisk_cli "channel hangup $channel"
+}
+
+cmd_calls() {
+	lxc_running || { log_error "Container not running"; return 1; }
+
+	echo "Active Calls:"
+	echo "============="
+	asterisk_cli "core show channels"
+}
+
+# ---------- voicemail management ----------
+
+cmd_vm() {
+	local subcmd="$1"
+	shift
+
+	case "$subcmd" in
+		list)
+			cmd_vm_list "$@"
+			;;
+		play)
+			cmd_vm_play "$@"
+			;;
+		delete)
+			cmd_vm_delete "$@"
+			;;
+		*)
+			echo "Usage: voipctl vm <list|play|delete>"
+			return 1
+			;;
+	esac
+}
+
+cmd_vm_list() {
+	local ext="$1"
+
+	lxc_running || { log_error "Container not running"; return 1; }
+
+	if [ -n "$ext" ]; then
+		echo "Voicemails for extension $ext:"
+		lxc_exec ls -la /var/spool/asterisk/voicemail/default/$ext/INBOX/ 2>/dev/null || echo "  None"
+	else
+		echo "All voicemails:"
+		lxc_exec find /var/spool/asterisk/voicemail -name "*.wav" 2>/dev/null | head -20
+	fi
+}
+
+cmd_vm_play() {
+	local ext="$1"
+	local id="$2"
+
+	[ -z "$ext" ] || [ -z "$id" ] && {
+		echo "Usage: voipctl vm play <extension> <id>"
+		return 1
+	}
+
+	local path="/var/spool/asterisk/voicemail/default/$ext/INBOX/msg${id}.wav"
+	echo "$path"
+}
+
+cmd_vm_delete() {
+	local ext="$1"
+	local id="$2"
+
+	[ -z "$ext" ] || [ -z "$id" ] && {
+		echo "Usage: voipctl vm delete <extension> <id>"
+		return 1
+	}
+
+	lxc_running || { log_error "Container not running"; return 1; }
+
+	local path="/var/spool/asterisk/voicemail/default/$ext/INBOX/msg${id}.*"
+	lxc_exec rm -f $path
+
+	log_info "Voicemail deleted: $ext/$id"
+}
+
+# ---------- HAProxy integration ----------
+
+cmd_configure_haproxy() {
+	require_root || { log_error "Must run as root"; return 1; }
+	defaults
+
+	local domain=$(uci_get domain ssl)
+	[ -z "$domain" ] && {
+		log_error "Domain not configured. Set: uci set voip.ssl.domain=voip.example.com"
+		return 1
+	}
+
+	log_info "Configuring HAProxy for WebRTC..."
+
+	# Create backend for WebRTC/WSS
+	local backend_name="voip_wss"
+
+	uci set haproxy.${backend_name}=backend
+	uci set haproxy.${backend_name}.name="$backend_name"
+	uci set haproxy.${backend_name}.mode='http'
+	uci set haproxy.${backend_name}.enabled='1'
+	uci set haproxy.${backend_name}.timeout_server='3600s'
+	uci set haproxy.${backend_name}.timeout_tunnel='3600s'
+	uci set haproxy.${backend_name}.server="voip 127.0.0.1:${ari_port} check"
+
+	# Create vhost
+	local vhost_name=$(echo "$domain" | tr '.-' '_')
+	uci set haproxy.${vhost_name}=vhost
+	uci set haproxy.${vhost_name}.domain="$domain"
+	uci set haproxy.${vhost_name}.backend="$backend_name"
+	uci set haproxy.${vhost_name}.ssl='1'
+	uci set haproxy.${vhost_name}.ssl_redirect='1'
+	uci set haproxy.${vhost_name}.acme='1'
+	uci set haproxy.${vhost_name}.enabled='1'
+
+	uci commit haproxy
+
+	uci_set enabled '1' ssl
+	uci_set domain "$domain" ssl
+	uci commit "$CONFIG"
+
+	if command -v haproxyctl >/dev/null 2>&1; then
+		haproxyctl generate
+		/etc/init.d/haproxy reload
+	fi
+
+	log_info "HAProxy configured for $domain"
+	log_info "WebRTC WSS: wss://$domain/ws"
+}
+
+cmd_emancipate() {
+	local domain="$1"
+
+	[ -z "$domain" ] && {
+		echo "Usage: voipctl emancipate <domain>"
+		return 1
+	}
+
+	require_root || { log_error "Must run as root"; return 1; }
+
+	log_info "Emancipating VoIP at $domain..."
+
+	uci_set domain "$domain" ssl
+	uci commit "$CONFIG"
+
+	cmd_configure_haproxy
+
+	log_info ""
+	log_info "=============================================="
+	log_info "  VoIP Emancipated!"
+	log_info "=============================================="
+	log_info ""
+	log_info "  Domain:     $domain"
+	log_info "  SIP:        $domain:$sip_port"
+	log_info "  WebRTC:     wss://$domain/ws"
+	log_info ""
+}
+
+# ---------- service management ----------
+
+cmd_service_run() {
+	require_root || exit 1
+	defaults
+
+	lxc_exists || { log_error "Container not found. Run: voipctl install"; exit 1; }
+
+	log_info "Starting VoIP container..."
+
+	exec lxc-start -n "$LXC_NAME" -F -f "$LXC_CONF"
+}
+
+cmd_service_stop() {
+	log_info "Stopping VoIP container..."
+	lxc_stop
+}
+
+# ---------- main ----------
+
+case "$1" in
+	install)            cmd_install ;;
+	uninstall)          cmd_uninstall ;;
+	update)             cmd_update ;;
+	check)              cmd_check ;;
+	start)              cmd_start ;;
+	stop)               cmd_stop ;;
+	restart)            cmd_restart ;;
+	status)             shift; cmd_status "$@" ;;
+	logs)               shift; cmd_logs "$@" ;;
+	shell)              cmd_shell ;;
+	cli)                cmd_cli ;;
+	ext)                shift; cmd_ext "$@" ;;
+	trunk)              shift; cmd_trunk "$@" ;;
+	call)               shift; cmd_call "$@" ;;
+	hangup)             shift; cmd_hangup "$@" ;;
+	calls)              cmd_calls ;;
+	vm)                 shift; cmd_vm "$@" ;;
+	configure-haproxy)  cmd_configure_haproxy ;;
+	emancipate)         shift; cmd_emancipate "$@" ;;
+	service-run)        cmd_service_run ;;
+	service-stop)       cmd_service_stop ;;
+	*)                  usage; exit 1 ;;
+esac

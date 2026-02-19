@@ -1,0 +1,477 @@
+#!/bin/sh
+
+# RPCD backend for VoIP LuCI app
+
+. /usr/share/libubox/jshn.sh
+
+VOIPCTL="/usr/sbin/voipctl"
+
+# Helper to get UCI value
+uci_get() {
+	local section="$1"
+	local option="$2"
+	local default="$3"
+	local val
+	val=$(uci -q get "voip.${section}.${option}")
+	echo "${val:-$default}"
+}
+
+# Get container status
+get_container_status() {
+	local state="not_installed"
+	local running="false"
+	local lxc_info=""
+
+	if [ -d "/srv/lxc/voip" ]; then
+		state="installed"
+		lxc_info=$(lxc-info -n voip 2>/dev/null)
+		if echo "$lxc_info" | grep -q "State:.*RUNNING"; then
+			running="true"
+		fi
+	fi
+
+	echo "$state $running"
+}
+
+# Method: status
+method_status() {
+	local enabled sip_port
+	local container_state running
+	local info asterisk_up trunk_registered active_calls extensions
+
+	enabled=$(uci_get main enabled 0)
+	sip_port=$(uci_get asterisk sip_port 5060)
+
+	info=$(get_container_status)
+	container_state=$(echo "$info" | awk '{print $1}')
+	running=$(echo "$info" | awk '{print $2}')
+
+	asterisk_up="false"
+	trunk_registered="false"
+	active_calls=0
+	extensions=0
+
+	if [ "$running" = "true" ]; then
+		lxc-attach -n voip -- pgrep asterisk >/dev/null 2>&1 && asterisk_up="true"
+		lxc-attach -n voip -- asterisk -rx "pjsip show registrations" 2>/dev/null | grep -q "Registered" && trunk_registered="true"
+		active_calls=$(lxc-attach -n voip -- asterisk -rx "core show channels" 2>/dev/null | grep -oE "^[0-9]+ active" | cut -d' ' -f1 || echo 0)
+		extensions=$(lxc-attach -n voip -- asterisk -rx "pjsip show endpoints" 2>/dev/null | grep -c "^[0-9]" || echo 0)
+	fi
+
+	local domain haproxy_enabled
+	domain=$(uci_get ssl domain "")
+	haproxy_enabled=$(uci_get ssl enabled "0")
+
+	json_init
+	json_add_string "enabled" "$enabled"
+	json_add_string "container_state" "$container_state"
+	json_add_string "running" "$running"
+	json_add_string "asterisk" "$asterisk_up"
+	json_add_string "trunk_registered" "$trunk_registered"
+	json_add_int "active_calls" "${active_calls:-0}"
+	json_add_int "extensions" "${extensions:-0}"
+	json_add_string "sip_port" "$sip_port"
+	json_add_string "domain" "$domain"
+	json_add_string "haproxy" "$haproxy_enabled"
+	json_dump
+}
+
+# Method: start
+method_start() {
+	local output
+	output=$($VOIPCTL start 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "VoIP started successfully"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: stop
+method_stop() {
+	local output
+	output=$($VOIPCTL stop 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "VoIP stopped successfully"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: install
+method_install() {
+	local output
+	output=$($VOIPCTL install 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "VoIP installed successfully"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: uninstall
+method_uninstall() {
+	local output
+	output=$($VOIPCTL uninstall 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "VoIP uninstalled successfully"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: logs
+method_logs() {
+	local lines="${1:-50}"
+	local output
+
+	if [ -d "/srv/lxc/voip" ]; then
+		output=$($VOIPCTL logs "$lines" 2>&1 | tail -n "$lines")
+	else
+		output="Container not installed"
+	fi
+
+	json_init
+	json_add_string "logs" "$output"
+	json_dump
+}
+
+# Method: ext_add
+method_ext_add() {
+	read -r input
+	json_load "$input"
+	json_get_var ext ext
+	json_get_var name name
+	json_get_var password password
+
+	if [ -z "$ext" ] || [ -z "$name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Extension and name are required"
+		json_dump
+		return
+	fi
+
+	local output
+	if [ -n "$password" ]; then
+		output=$($VOIPCTL ext add "$ext" "$name" "$password" 2>&1)
+	else
+		output=$($VOIPCTL ext add "$ext" "$name" 2>&1)
+	fi
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Extension $ext created"
+		local new_pass=$(echo "$output" | grep -oE 'Password: [^ ]+' | cut -d: -f2 | tr -d ' ')
+		json_add_string "password" "$new_pass"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: ext_del
+method_ext_del() {
+	read -r input
+	json_load "$input"
+	json_get_var ext ext
+
+	if [ -z "$ext" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Extension is required"
+		json_dump
+		return
+	fi
+
+	local output
+	output=$($VOIPCTL ext del "$ext" 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Extension $ext deleted"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: ext_list
+method_ext_list() {
+	local extensions=""
+
+	if lxc-info -n voip 2>/dev/null | grep -q "RUNNING"; then
+		# Get extensions from UCI
+		extensions=$(uci show voip 2>/dev/null | grep "^voip\.ext_" | grep "\.name=" | while read line; do
+			ext=$(echo "$line" | sed "s/voip\.ext_//" | cut -d. -f1)
+			name=$(echo "$line" | cut -d= -f2 | tr -d "'")
+			echo "${ext}:${name}"
+		done | paste -sd,)
+	fi
+
+	json_init
+	json_add_string "extensions" "$extensions"
+	json_dump
+}
+
+# Method: call_originate
+method_call_originate() {
+	read -r input
+	json_load "$input"
+	json_get_var from_ext from_ext
+	json_get_var to_number to_number
+
+	if [ -z "$from_ext" ] || [ -z "$to_number" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "From extension and to number are required"
+		json_dump
+		return
+	fi
+
+	local output
+	output=$($VOIPCTL call "$from_ext" "$to_number" 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Call initiated"
+		json_add_string "channel" "$output"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: calls_list
+method_calls_list() {
+	local calls=""
+
+	if lxc-info -n voip 2>/dev/null | grep -q "RUNNING"; then
+		calls=$(lxc-attach -n voip -- asterisk -rx "core show channels concise" 2>/dev/null | head -10)
+	fi
+
+	json_init
+	json_add_string "calls" "$calls"
+	json_dump
+}
+
+# Method: trunk_status
+method_trunk_status() {
+	local registered="false"
+	local status=""
+
+	if lxc-info -n voip 2>/dev/null | grep -q "RUNNING"; then
+		status=$(lxc-attach -n voip -- asterisk -rx "pjsip show registrations" 2>/dev/null)
+		echo "$status" | grep -q "Registered" && registered="true"
+	fi
+
+	json_init
+	json_add_string "registered" "$registered"
+	json_add_string "status" "$status"
+	json_dump
+}
+
+# Method: trunk_add_ovh
+method_trunk_add_ovh() {
+	local output
+	output=$($VOIPCTL trunk add ovh 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "OVH trunk configured"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: configure_haproxy
+method_configure_haproxy() {
+	local output
+	output=$($VOIPCTL configure-haproxy 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "HAProxy configured for VoIP"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: emancipate
+method_emancipate() {
+	read -r input
+	json_load "$input"
+	json_get_var domain domain
+
+	if [ -z "$domain" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Domain is required"
+		json_dump
+		return
+	fi
+
+	local output
+	output=$($VOIPCTL emancipate "$domain" 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "VoIP emancipated to $domain"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# List available methods
+list_methods() {
+	json_init
+	json_add_object "status"
+	json_close_object
+	json_add_object "start"
+	json_close_object
+	json_add_object "stop"
+	json_close_object
+	json_add_object "install"
+	json_close_object
+	json_add_object "uninstall"
+	json_close_object
+	json_add_object "logs"
+	json_add_int "lines" 50
+	json_close_object
+	json_add_object "ext_add"
+	json_add_string "ext" ""
+	json_add_string "name" ""
+	json_add_string "password" ""
+	json_close_object
+	json_add_object "ext_del"
+	json_add_string "ext" ""
+	json_close_object
+	json_add_object "ext_list"
+	json_close_object
+	json_add_object "call_originate"
+	json_add_string "from_ext" ""
+	json_add_string "to_number" ""
+	json_close_object
+	json_add_object "calls_list"
+	json_close_object
+	json_add_object "trunk_status"
+	json_close_object
+	json_add_object "trunk_add_ovh"
+	json_close_object
+	json_add_object "configure_haproxy"
+	json_close_object
+	json_add_object "emancipate"
+	json_add_string "domain" ""
+	json_close_object
+	json_dump
+}
+
+# Main dispatcher
+case "$1" in
+	list)
+		list_methods
+		;;
+	call)
+		case "$2" in
+			status)
+				method_status
+				;;
+			start)
+				method_start
+				;;
+			stop)
+				method_stop
+				;;
+			install)
+				method_install
+				;;
+			uninstall)
+				method_uninstall
+				;;
+			logs)
+				read -r input
+				json_load "$input"
+				json_get_var lines lines
+				method_logs "${lines:-50}"
+				;;
+			ext_add)
+				method_ext_add
+				;;
+			ext_del)
+				method_ext_del
+				;;
+			ext_list)
+				method_ext_list
+				;;
+			call_originate)
+				method_call_originate
+				;;
+			calls_list)
+				method_calls_list
+				;;
+			trunk_status)
+				method_trunk_status
+				;;
+			trunk_add_ovh)
+				method_trunk_add_ovh
+				;;
+			configure_haproxy)
+				method_configure_haproxy
+				;;
+			emancipate)
+				method_emancipate
+				;;
+			*)
+				echo '{"error":"Method not found"}'
+				;;
+		esac
+		;;
+	*)
+		echo '{"error":"Invalid action"}'
+		;;
+esac

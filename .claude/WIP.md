@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-17 (v0.21.0 - Nextcloud LXC + WebRadio)_
+_Last updated: 2026-02-19 (v0.22.0 - VoIP + Jabber Integration)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -61,6 +61,22 @@ _Last updated: 2026-02-17 (v0.21.0 - Nextcloud LXC + WebRadio)_
   - First Peek auto-registration of services
   - Gossip-based exposure config sync via secubox-p2p
   - Created `luci-app-vortex-dns` dashboard
+
+### Just Completed (2026-02-19)
+
+- **VoIP (Asterisk PBX) + Jabber Integration** — DONE (2026-02-19)
+  - Created `secubox-app-voip` package with Asterisk PBX in LXC container
+  - OVH Telephony API integration for SIP trunk auto-provisioning
+  - `voipctl` CLI: install/uninstall, ext add/del, trunk add ovh, call, vm list
+  - Created `luci-app-voip` with 4 views: Overview, Extensions, Trunks, Click-to-Call
+  - RPCD backend with 15 methods for VoIP management
+  - Jabber VoIP integration:
+    - Jingle VoIP support (STUN/TURN via mod_external_services)
+    - SMS relay via OVH (messages to sms@domain)
+    - Voicemail notifications via Asterisk AMI → XMPP
+  - Updated jabberctl with `jingle enable/disable`, `sms config/send`, `voicemail-notify`
+  - Updated luci.jabber RPCD with 9 new VoIP methods
+  - UCI config sections: jingle, sms, voicemail
 
 ### Just Completed (2026-02-17)
 

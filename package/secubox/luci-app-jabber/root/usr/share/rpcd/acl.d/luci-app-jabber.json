@@ -3,13 +3,39 @@
 		"description": "Grant access to Jabber/XMPP management",
 		"read": {
 			"ubus": {
-				"luci.jabber": ["status", "logs", "user_list", "room_list"]
+				"luci.jabber": [
+					"status",
+					"logs",
+					"user_list",
+					"room_list",
+					"jingle_status",
+					"sms_status",
+					"voicemail_status"
+				]
 			},
 			"uci": ["jabber"]
 		},
 		"write": {
 			"ubus": {
-				"luci.jabber": ["start", "stop", "install", "uninstall", "update", "emancipate", "configure_haproxy", "user_add", "user_del", "user_passwd", "room_create", "room_delete"]
+				"luci.jabber": [
+					"start",
+					"stop",
+					"install",
+					"uninstall",
+					"update",
+					"emancipate",
+					"configure_haproxy",
+					"user_add",
+					"user_del",
+					"user_passwd",
+					"room_create",
+					"room_delete",
+					"jingle_enable",
+					"jingle_disable",
+					"sms_config",
+					"sms_send",
+					"voicemail_config"
+				]
 			},
 			"uci": ["jabber"]
 		}
