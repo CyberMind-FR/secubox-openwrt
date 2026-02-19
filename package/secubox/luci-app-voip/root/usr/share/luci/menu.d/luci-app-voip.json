@@ -41,5 +41,13 @@
 			"type": "view",
 			"path": "voip/dialer"
 		}
+	},
+	"admin/services/voip/recordings": {
+		"title": "Recordings",
+		"order": 50,
+		"action": {
+			"type": "view",
+			"path": "voip/recordings"
+		}
 	}
 }

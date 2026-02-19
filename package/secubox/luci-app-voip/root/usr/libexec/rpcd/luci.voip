@@ -26,7 +26,14 @@ case "$1" in
     "call_hangup": {"channel": "str"},
     "trunk_add": {"provider": "str"},
     "trunk_test": {},
-    "vm_delete": {"extension": "str", "msg_id": "str"}
+    "vm_delete": {"extension": "str", "msg_id": "str"},
+    "rec_status": {},
+    "rec_enable": {},
+    "rec_disable": {},
+    "rec_list": {"date": "str"},
+    "rec_delete": {"filename": "str"},
+    "rec_download": {"filename": "str"},
+    "rec_cleanup": {"days": "int"}
 }
 JSON
         ;;
@@ -240,10 +247,90 @@ JSON
                 json_load "$input"
                 json_get_var extension extension
                 json_get_var msg_id msg_id
-                
+
                 local output=$($VOIPCTL vm delete "$extension" "$msg_id" 2>&1)
                 local rc=$?
-                
+
+                json_init
+                json_add_boolean "success" "$((rc == 0))"
+                json_add_string "output" "$output"
+                json_dump
+                ;;
+            rec_status)
+                $VOIPCTL rec status
+                ;;
+            rec_enable)
+                local output=$($VOIPCTL rec enable 2>&1)
+                local rc=$?
+
+                json_init
+                json_add_boolean "success" "$((rc == 0))"
+                json_add_string "output" "$output"
+                json_dump
+                ;;
+            rec_disable)
+                local output=$($VOIPCTL rec disable 2>&1)
+                local rc=$?
+
+                json_init
+                json_add_boolean "success" "$((rc == 0))"
+                json_add_string "output" "$output"
+                json_dump
+                ;;
+            rec_list)
+                read -r input
+                json_load "$input"
+                json_get_var date date
+
+                $VOIPCTL rec list-json "$date"
+                ;;
+            rec_delete)
+                read -r input
+                json_load "$input"
+                json_get_var filename filename
+
+                local output=$($VOIPCTL rec delete "$filename" 2>&1)
+                local rc=$?
+
+                json_init
+                json_add_boolean "success" "$((rc == 0))"
+                json_add_string "output" "$output"
+                json_dump
+                ;;
+            rec_download)
+                read -r input
+                json_load "$input"
+                json_get_var filename filename
+
+                local path=$($VOIPCTL rec download "$filename" 2>&1)
+                local rc=$?
+
+                json_init
+                if [ $rc -eq 0 ]; then
+                    json_add_boolean "success" 1
+                    json_add_string "path" "$path"
+                    # Also provide base64 content for small files
+                    local size=$(stat -c%s "$path" 2>/dev/null || echo 0)
+                    if [ "$size" -lt 5000000 ]; then
+                        # Base64 encode files under 5MB
+                        local b64=$(base64 -w 0 "$path" 2>/dev/null)
+                        json_add_string "content" "$b64"
+                    fi
+                else
+                    json_add_boolean "success" 0
+                    json_add_string "error" "$path"
+                fi
+                json_dump
+                ;;
+            rec_cleanup)
+                read -r input
+                json_load "$input"
+                json_get_var days days
+
+                [ -z "$days" ] && days=30
+                local output=$($VOIPCTL rec cleanup "$days" 2>&1)
+                local rc=$?
+
                 json_init
                 json_add_boolean "success" "$((rc == 0))"
                 json_add_string "output" "$output"

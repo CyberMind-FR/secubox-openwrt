@@ -21,12 +21,14 @@ ovh_sign() {
     local url="$2"
     local body="$3"
     local timestamp="$4"
-    
+
     local app_secret=$(uci -q get voip.ovh_telephony.app_secret)
     local consumer_key=$(uci -q get voip.ovh_telephony.consumer_key)
-    
+
     local to_sign="${app_secret}+${consumer_key}+${method}+${url}+${body}+${timestamp}"
-    echo -n "$to_sign" | sha1sum | cut -d' ' -f1 | sed 's/^/\$1\$/'
+    # Use openssl for SHA1 (sha1sum not available on OpenWrt)
+    local hash=$(echo -n "$to_sign" | openssl dgst -sha1 2>/dev/null | sed 's/.*= //')
+    echo "\$1\$${hash}"
 }
 
 # Make OVH API GET request

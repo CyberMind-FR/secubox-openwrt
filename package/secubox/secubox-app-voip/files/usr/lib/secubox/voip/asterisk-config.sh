@@ -72,16 +72,20 @@ client_uri=sip:$username@$host
 retry_interval=60
 expiration=3600
 contact_user=$username
+line=yes
+endpoint=ovh-trunk
 
 [ovh-trunk-auth]
 type=auth
 auth_type=userpass
 username=$username
 password=$password
+realm=$host
 
 [ovh-trunk-aor]
 type=aor
 contact=sip:$host
+qualify_frequency=60
 
 [ovh-trunk]
 type=endpoint
@@ -98,6 +102,8 @@ rtp_symmetric=yes
 force_rport=yes
 rewrite_contact=yes
 ice_support=no
+send_pai=yes
+trust_id_outbound=yes
 
 [ovh-trunk-identify]
 type=identify
@@ -159,6 +165,24 @@ ENDPOINT
 
 # Generate dialplan
 generate_dialplan() {
+    local record_enabled=$(uci -q get voip.recording.enabled)
+    local record_format=$(uci -q get voip.recording.format || echo "wav")
+    local record_path="/srv/voip/recordings"
+
+    # Recording macro - used by all contexts when recording is enabled
+    local record_macro=""
+    if [ "$record_enabled" = "1" ]; then
+        record_macro="; Call Recording Macro
+[macro-record]
+exten => s,1,NoOp(Starting call recording)
+ same => n,Set(RECORD_FILE=${record_path}/\${STRFTIME(\${EPOCH},,%Y%m%d)}/\${STRFTIME(\${EPOCH},,%H%M%S)}-\${CALLERID(num)}-\${ARG1}.${record_format})
+ same => n,System(mkdir -p ${record_path}/\${STRFTIME(\${EPOCH},,%Y%m%d)})
+ same => n,MixMonitor(\${RECORD_FILE},ab)
+ same => n,MacroExit()
+
+"
+    fi
+
     cat > "$AST_CONF/extensions.conf" <<DIALPLAN
 [general]
 static=yes
@@ -167,16 +191,23 @@ clearglobalvars=no
 
 [globals]
 TRUNK=ovh-trunk
+RECORD_ENABLED=${record_enabled:-0}
+RECORD_PATH=${record_path}
+RECORD_FORMAT=${record_format}
 
-; Internal calls between extensions
+${record_macro}; Internal calls between extensions
 [internal]
 exten => _XXX,1,NoOp(Internal call to \${EXTEN})
- same => n,Dial(PJSIP/\${EXTEN},30)
+ same => n,GotoIf(\$[\${RECORD_ENABLED}=1]?record:dial)
+ same => n(record),Macro(record,\${EXTEN})
+ same => n(dial),Dial(PJSIP/\${EXTEN},30)
  same => n,VoiceMail(\${EXTEN}@default,u)
  same => n,Hangup()
 
 exten => _XXXX,1,NoOp(Internal call to \${EXTEN})
- same => n,Dial(PJSIP/\${EXTEN},30)
+ same => n,GotoIf(\$[\${RECORD_ENABLED}=1]?record:dial)
+ same => n(record),Macro(record,\${EXTEN})
+ same => n(dial),Dial(PJSIP/\${EXTEN},30)
  same => n,VoiceMail(\${EXTEN}@default,u)
  same => n,Hangup()
 
@@ -188,18 +219,24 @@ exten => *98,1,NoOp(Voicemail access)
 ; Outbound calls via trunk
 exten => _0XXXXXXXXX,1,NoOp(Outbound call to \${EXTEN})
  same => n,Set(CALLERID(num)=\${CALLERID(num)})
- same => n,Dial(PJSIP/\${EXTEN}@\${TRUNK},120)
+ same => n,GotoIf(\$[\${RECORD_ENABLED}=1]?record:dial)
+ same => n(record),Macro(record,\${EXTEN})
+ same => n(dial),Dial(PJSIP/\${EXTEN}@\${TRUNK},120)
  same => n,Hangup()
 
 exten => _+XXXXXXXXXXX,1,NoOp(International call to \${EXTEN})
- same => n,Dial(PJSIP/\${EXTEN}@\${TRUNK},120)
+ same => n,GotoIf(\$[\${RECORD_ENABLED}=1]?record:dial)
+ same => n(record),Macro(record,\${EXTEN})
+ same => n(dial),Dial(PJSIP/\${EXTEN}@\${TRUNK},120)
  same => n,Hangup()
 
 ; Incoming calls from trunk
 [from-trunk]
 exten => _X.,1,NoOp(Incoming call from \${CALLERID(num)})
  same => n,Set(INCOMING_EXT=100)
- same => n,Dial(PJSIP/\${INCOMING_EXT},30)
+ same => n,GotoIf(\$[\${RECORD_ENABLED}=1]?record:dial)
+ same => n(record),Macro(record,\${INCOMING_EXT})
+ same => n(dial),Dial(PJSIP/\${INCOMING_EXT},30)
  same => n,VoiceMail(\${INCOMING_EXT}@default,u)
  same => n,Hangup()
 

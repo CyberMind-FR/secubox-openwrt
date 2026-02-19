@@ -109,6 +109,53 @@ var callVmDelete = rpc.declare({
     expect: {}
 });
 
+// Recording methods
+var callRecStatus = rpc.declare({
+    object: 'luci.voip',
+    method: 'rec_status',
+    expect: {}
+});
+
+var callRecEnable = rpc.declare({
+    object: 'luci.voip',
+    method: 'rec_enable',
+    expect: {}
+});
+
+var callRecDisable = rpc.declare({
+    object: 'luci.voip',
+    method: 'rec_disable',
+    expect: {}
+});
+
+var callRecList = rpc.declare({
+    object: 'luci.voip',
+    method: 'rec_list',
+    params: ['date'],
+    expect: {}
+});
+
+var callRecDelete = rpc.declare({
+    object: 'luci.voip',
+    method: 'rec_delete',
+    params: ['filename'],
+    expect: {}
+});
+
+var callRecDownload = rpc.declare({
+    object: 'luci.voip',
+    method: 'rec_download',
+    params: ['filename'],
+    expect: {}
+});
+
+var callRecCleanup = rpc.declare({
+    object: 'luci.voip',
+    method: 'rec_cleanup',
+    params: ['days'],
+    expect: {}
+});
+
 return L.Class.extend({
     getStatus: function() { return callStatus(); },
     getExtensions: function() { return callExtensions(); },
@@ -126,5 +173,14 @@ return L.Class.extend({
     originateCall: function(from, to) { return callOriginate(from, to); },
     hangupCall: function(ch) { return callHangup(ch); },
     testTrunk: function() { return callTrunkTest(); },
-    deleteVoicemail: function(ext, id) { return callVmDelete(ext, id); }
+    deleteVoicemail: function(ext, id) { return callVmDelete(ext, id); },
+
+    // Recording methods
+    getRecordingStatus: function() { return callRecStatus(); },
+    enableRecording: function() { return callRecEnable(); },
+    disableRecording: function() { return callRecDisable(); },
+    listRecordings: function(date) { return callRecList(date || ''); },
+    deleteRecording: function(filename) { return callRecDelete(filename); },
+    downloadRecording: function(filename) { return callRecDownload(filename); },
+    cleanupRecordings: function(days) { return callRecCleanup(days || 30); }
 });

@@ -2463,3 +2463,30 @@ git checkout HEAD -- index.html
     - Key files modified:
       - `package/secubox/luci-app-jabber/htdocs/luci-static/resources/jabber/api.js`
       - `package/secubox/luci-app-jabber/htdocs/luci-static/resources/view/jabber/overview.js`
+
+40. **VoIP Call Recording Feature (2026-02-19)**
+    - Added comprehensive call recording system to `secubox-app-voip`:
+      - Asterisk MixMonitor integration for automatic call recording
+      - Configurable recording format (wav) and retention policy
+      - Daily directory organization (YYYYMMDD/HHMMSS-caller-dest.wav)
+    - New `voipctl rec` commands:
+      - `rec enable` / `rec disable` - Toggle call recording
+      - `rec status` - JSON status with statistics
+      - `rec list [date]` - List recordings by date
+      - `rec play <file>` - Play recording
+      - `rec download <file>` - Get file path/content
+      - `rec delete <file>` - Delete recording
+      - `rec cleanup [days]` - Remove old recordings
+    - New LuCI recordings view (`voip/recordings.js`):
+      - Status dashboard with total/today counts and storage used
+      - Enable/Disable toggle buttons
+      - Cleanup old recordings button
+      - Date filter for browsing recordings
+      - Play, Download, Delete actions for each recording
+      - In-browser audio player with base64 content support
+    - RPCD methods added to `luci.voip`:
+      - `rec_status`, `rec_enable`, `rec_disable`
+      - `rec_list`, `rec_delete`, `rec_download`, `rec_cleanup`
+    - UCI config section: `config recording 'recording'` with enabled/format/retention_days
+    - Menu entry: Services → VoIP PBX → Recordings
+    - Note: OVH SIP trunk registration requires correct password from OVH Manager

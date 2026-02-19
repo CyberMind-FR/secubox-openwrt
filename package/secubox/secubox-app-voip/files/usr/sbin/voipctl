@@ -61,6 +61,16 @@ Voicemail:
   vm play <ext> <id>   Play voicemail
   vm delete <ext> <id> Delete voicemail
 
+Call Recording:
+  rec enable           Enable call recording
+  rec disable          Disable call recording
+  rec status           Show recording status
+  rec list [date]      List recordings (YYYYMMDD)
+  rec play <file>      Play recording
+  rec download <file>  Get download path
+  rec delete <file>    Delete recording
+  rec cleanup [days]   Delete recordings older than N days
+
 Configuration:
   configure-haproxy    Setup WebRTC proxy in HAProxy
   emancipate <domain>  Full exposure with SSL
@@ -596,6 +606,287 @@ cmd_vm_delete() {
 }
 
 #
+# Call Recording
+#
+RECORDINGS_PATH="$DATA_PATH/recordings"
+
+cmd_rec_enable() {
+	log_info "Enabling call recording..."
+	uci set voip.recording=recording
+	uci set voip.recording.enabled="1"
+	uci set voip.recording.format="wav"
+	uci set voip.recording.retention_days="30"
+	uci commit voip
+
+	# Create recordings directory
+	mkdir -p "$RECORDINGS_PATH"
+
+	# Regenerate dialplan with recording enabled
+	generate_dialplan
+
+	if container_running; then
+		container_exec asterisk -rx "dialplan reload"
+	fi
+
+	log_ok "Call recording enabled"
+	log_info "Recordings will be saved to: $RECORDINGS_PATH"
+}
+
+cmd_rec_disable() {
+	log_info "Disabling call recording..."
+	uci set voip.recording.enabled="0"
+	uci commit voip
+
+	generate_dialplan
+
+	if container_running; then
+		container_exec asterisk -rx "dialplan reload"
+	fi
+
+	log_ok "Call recording disabled"
+}
+
+cmd_rec_status() {
+	local enabled=$(uci -q get voip.recording.enabled)
+	local format=$(uci -q get voip.recording.format || echo "wav")
+	local retention=$(uci -q get voip.recording.retention_days || echo "30")
+	local total_count=0
+	local total_size=0
+	local today_count=0
+
+	if [ -d "$RECORDINGS_PATH" ]; then
+		total_count=$(find "$RECORDINGS_PATH" -type f -name "*.$format" 2>/dev/null | wc -l)
+		total_size=$(du -sh "$RECORDINGS_PATH" 2>/dev/null | cut -f1 || echo "0")
+
+		local today=$(date +%Y%m%d)
+		if [ -d "$RECORDINGS_PATH/$today" ]; then
+			today_count=$(find "$RECORDINGS_PATH/$today" -type f -name "*.$format" 2>/dev/null | wc -l)
+		fi
+	fi
+
+	cat <<EOF
+{
+  "enabled": ${enabled:-0},
+  "format": "$format",
+  "retention_days": $retention,
+  "path": "$RECORDINGS_PATH",
+  "total_recordings": $total_count,
+  "total_size": "$total_size",
+  "today_recordings": $today_count
+}
+EOF
+}
+
+cmd_rec_list() {
+	local date_filter="$1"
+	local format=$(uci -q get voip.recording.format || echo "wav")
+
+	if [ -n "$date_filter" ]; then
+		# List recordings for specific date
+		local dir="$RECORDINGS_PATH/$date_filter"
+		if [ -d "$dir" ]; then
+			echo "Recordings for $date_filter:"
+			echo "-------------------------"
+			find "$dir" -type f -name "*.$format" 2>/dev/null | while read -r file; do
+				local name=$(basename "$file")
+				local size=$(du -h "$file" 2>/dev/null | cut -f1)
+				local time=$(echo "$name" | cut -d'-' -f1)
+				local caller=$(echo "$name" | cut -d'-' -f2)
+				local dest=$(echo "$name" | cut -d'-' -f3 | sed "s/\.$format//")
+				printf "  %s  %s -> %s  (%s)\n" "$time" "$caller" "$dest" "$size"
+			done
+		else
+			log_warn "No recordings found for $date_filter"
+		fi
+	else
+		# List all recording dates with counts
+		echo "Recording dates:"
+		echo "---------------"
+		find "$RECORDINGS_PATH" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -r | while read -r dir; do
+			local date=$(basename "$dir")
+			local count=$(find "$dir" -type f -name "*.$format" 2>/dev/null | wc -l)
+			local size=$(du -sh "$dir" 2>/dev/null | cut -f1)
+			printf "  %s: %d recordings (%s)\n" "$date" "$count" "$size"
+		done
+	fi
+}
+
+cmd_rec_play() {
+	local file="$1"
+	[ -z "$file" ] && {
+		log_err "Usage: voipctl rec play <filename>"
+		return 1
+	}
+
+	# Find the file (could be full path or just filename)
+	local fullpath
+	if [ -f "$file" ]; then
+		fullpath="$file"
+	else
+		fullpath=$(find "$RECORDINGS_PATH" -name "$file" -type f 2>/dev/null | head -1)
+	fi
+
+	if [ -z "$fullpath" ] || [ ! -f "$fullpath" ]; then
+		log_err "Recording not found: $file"
+		return 1
+	fi
+
+	# Try to play the file
+	if command -v aplay >/dev/null 2>&1; then
+		log_info "Playing: $fullpath"
+		aplay "$fullpath"
+	elif command -v ffplay >/dev/null 2>&1; then
+		ffplay -nodisp -autoexit "$fullpath"
+	else
+		echo "File: $fullpath"
+		log_info "No audio player available. Download the file to play."
+	fi
+}
+
+cmd_rec_download() {
+	local file="$1"
+	[ -z "$file" ] && {
+		log_err "Usage: voipctl rec download <filename>"
+		return 1
+	}
+
+	local fullpath
+	if [ -f "$file" ]; then
+		fullpath="$file"
+	else
+		fullpath=$(find "$RECORDINGS_PATH" -name "$file" -type f 2>/dev/null | head -1)
+	fi
+
+	if [ -z "$fullpath" ] || [ ! -f "$fullpath" ]; then
+		log_err "Recording not found: $file"
+		return 1
+	fi
+
+	echo "$fullpath"
+}
+
+cmd_rec_delete() {
+	local file="$1"
+	[ -z "$file" ] && {
+		log_err "Usage: voipctl rec delete <filename>"
+		return 1
+	}
+
+	local fullpath
+	if [ -f "$file" ]; then
+		fullpath="$file"
+	else
+		fullpath=$(find "$RECORDINGS_PATH" -name "$file" -type f 2>/dev/null | head -1)
+	fi
+
+	if [ -z "$fullpath" ] || [ ! -f "$fullpath" ]; then
+		log_err "Recording not found: $file"
+		return 1
+	fi
+
+	rm -f "$fullpath"
+	log_ok "Deleted: $(basename "$fullpath")"
+
+	# Clean up empty directories
+	find "$RECORDINGS_PATH" -type d -empty -delete 2>/dev/null
+}
+
+cmd_rec_cleanup() {
+	local days="${1:-30}"
+
+	log_info "Cleaning up recordings older than $days days..."
+
+	local count=0
+	local freed=0
+
+	if [ -d "$RECORDINGS_PATH" ]; then
+		# Calculate size before
+		local before=$(du -s "$RECORDINGS_PATH" 2>/dev/null | cut -f1 || echo 0)
+
+		# Delete old recordings
+		count=$(find "$RECORDINGS_PATH" -type f -mtime +$days 2>/dev/null | wc -l)
+		find "$RECORDINGS_PATH" -type f -mtime +$days -delete 2>/dev/null
+
+		# Remove empty directories
+		find "$RECORDINGS_PATH" -type d -empty -delete 2>/dev/null
+
+		# Calculate freed space
+		local after=$(du -s "$RECORDINGS_PATH" 2>/dev/null | cut -f1 || echo 0)
+		freed=$(( (before - after) / 1024 ))
+	fi
+
+	log_ok "Deleted $count recordings, freed ${freed}MB"
+}
+
+cmd_rec_list_json() {
+	local date_filter="$1"
+	local format=$(uci -q get voip.recording.format || echo "wav")
+
+	echo "["
+	local first=1
+
+	if [ -n "$date_filter" ]; then
+		local dir="$RECORDINGS_PATH/$date_filter"
+		if [ -d "$dir" ]; then
+			find "$dir" -type f -name "*.$format" 2>/dev/null | sort -r | while read -r file; do
+				local name=$(basename "$file")
+				local size=$(stat -c%s "$file" 2>/dev/null || echo 0)
+				local mtime=$(stat -c%Y "$file" 2>/dev/null || echo 0)
+				local time=$(echo "$name" | cut -d'-' -f1)
+				local caller=$(echo "$name" | cut -d'-' -f2)
+				local dest=$(echo "$name" | cut -d'-' -f3 | sed "s/\.$format//")
+
+				[ $first -eq 0 ] && echo ","
+				first=0
+
+				cat <<ENTRY
+  {
+    "filename": "$name",
+    "path": "$file",
+    "date": "$date_filter",
+    "time": "$time",
+    "caller": "$caller",
+    "destination": "$dest",
+    "size": $size,
+    "timestamp": $mtime
+  }
+ENTRY
+			done
+		fi
+	else
+		# List recent recordings (last 7 days)
+		find "$RECORDINGS_PATH" -type f -name "*.$format" -mtime -7 2>/dev/null | sort -r | head -50 | while read -r file; do
+			local name=$(basename "$file")
+			local dir=$(dirname "$file")
+			local date=$(basename "$dir")
+			local size=$(stat -c%s "$file" 2>/dev/null || echo 0)
+			local mtime=$(stat -c%Y "$file" 2>/dev/null || echo 0)
+			local time=$(echo "$name" | cut -d'-' -f1)
+			local caller=$(echo "$name" | cut -d'-' -f2)
+			local dest=$(echo "$name" | cut -d'-' -f3 | sed "s/\.$format//")
+
+			[ $first -eq 0 ] && echo ","
+			first=0
+
+			cat <<ENTRY
+  {
+    "filename": "$name",
+    "path": "$file",
+    "date": "$date",
+    "time": "$time",
+    "caller": "$caller",
+    "destination": "$dest",
+    "size": $size,
+    "timestamp": $mtime
+  }
+ENTRY
+		done
+	fi
+
+	echo "]"
+}
+
+#
 # Configuration
 #
 cmd_configure_haproxy() {
@@ -735,6 +1026,20 @@ case "$1" in
 			list) shift 2; cmd_vm_list "$@" ;;
 			play) shift 2; cmd_vm_play "$@" ;;
 			delete) shift 2; cmd_vm_delete "$@" ;;
+			*) usage ;;
+		esac
+		;;
+	rec)
+		case "$2" in
+			enable) cmd_rec_enable ;;
+			disable) cmd_rec_disable ;;
+			status) cmd_rec_status ;;
+			list) shift 2; cmd_rec_list "$@" ;;
+			list-json) shift 2; cmd_rec_list_json "$@" ;;
+			play) shift 2; cmd_rec_play "$@" ;;
+			download) shift 2; cmd_rec_download "$@" ;;
+			delete) shift 2; cmd_rec_delete "$@" ;;
+			cleanup) shift 2; cmd_rec_cleanup "$@" ;;
 			*) usage ;;
 		esac
 		;;

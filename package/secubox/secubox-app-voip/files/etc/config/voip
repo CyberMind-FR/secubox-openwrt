@@ -49,3 +49,8 @@ config haproxy 'ssl'
 	option enabled '0'
 	option domain ''
 	option webrtc '1'
+
+config recording 'recording'
+	option enabled '0'
+	option format 'wav'
+	option retention_days '30'
