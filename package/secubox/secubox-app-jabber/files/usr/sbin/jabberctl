@@ -226,6 +226,9 @@ SOURCES
 	# Create startup script
 	create_startup_script
 
+	# Create webchat interface
+	create_webchat
+
 	# Clean up apt cache
 	chroot "$LXC_ROOTFS" /bin/sh -c "
 		apt-get clean
@@ -257,12 +260,14 @@ if [ ! -f /etc/prosody/prosody.cfg.lua.configured ]; then
 -- Global settings
 admins = { "${ADMIN_USER}@${XMPP_DOMAIN}" }
 
--- Network settings
+-- Network settings - bind to all interfaces
 interfaces = { "*" }
 c2s_ports = { 5222 }
 s2s_ports = { 5269 }
 http_ports = { 5280 }
 https_ports = { 5281 }
+http_interfaces = { "*" }
+https_interfaces = { "*" }
 
 -- Modules enabled globally
 modules_enabled = {
@@ -311,8 +316,6 @@ authentication = "internal_hashed"
 
 -- Storage
 storage = "internal"
--- storage = "sql"
--- sql = { driver = "SQLite3", database = "/var/lib/prosody/prosody.sqlite" }
 
 -- Archiving (MAM)
 archive_expires_after = "1w"
@@ -328,9 +331,15 @@ log = {
 -- HTTP server
 http_default_host = "${XMPP_DOMAIN}"
 http_external_url = "https://${XMPP_DOMAIN}/"
-trusted_proxies = { "127.0.0.1", "::1" }
+trusted_proxies = { "127.0.0.1", "::1", "192.168.255.1" }
 
--- BOSH/Websocket
+-- Static files (webchat)
+http_files_dir = "/var/www/prosody"
+http_paths = {
+    files = "/chat";
+}
+
+-- BOSH/Websocket CORS
 cross_domain_bosh = true
 consider_bosh_secure = true
 cross_domain_websocket = true
@@ -382,14 +391,73 @@ fi
 # Ensure proper permissions
 chown -R prosody:prosody /var/lib/prosody
 chown -R prosody:prosody /var/log/prosody
+chown -R prosody:prosody /var/www/prosody 2>/dev/null
 
 echo "[JABBER] Starting Prosody XMPP server..."
 
-# Run Prosody in foreground
-exec /usr/bin/prosody --no-daemonize
+# Run Prosody as prosody user in foreground
+exec su -s /bin/sh prosody -c "/usr/bin/prosody"
 STARTUP
 
 	chmod +x "$LXC_ROOTFS/opt/start-jabber.sh"
+}
+
+create_webchat() {
+	# Create webchat directory and Converse.js files
+	mkdir -p "$LXC_ROOTFS/var/www/prosody"
+
+	# Download Converse.js if not exists
+	if [ ! -f "$LXC_ROOTFS/var/www/prosody/converse.min.js" ]; then
+		log_info "Downloading Converse.js web client..."
+		local converse_version="10.1.6"
+		local cdn_base="https://cdn.conversejs.org/10.1.6/dist"
+
+		wget -q -O "$LXC_ROOTFS/var/www/prosody/converse.min.js" \
+			"${cdn_base}/converse.min.js" || true
+		wget -q -O "$LXC_ROOTFS/var/www/prosody/converse.min.css" \
+			"${cdn_base}/converse.min.css" || true
+	fi
+
+	# Create index.html
+	defaults
+	cat > "$LXC_ROOTFS/var/www/prosody/index.html" <<WEBCHAT
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecuBox Chat - XMPP Web Client</title>
+    <link rel="stylesheet" href="converse.min.css">
+    <style>
+        body { margin: 0; padding: 0; height: 100vh; }
+        #conversejs { height: 100%; }
+    </style>
+</head>
+<body>
+    <script src="converse.min.js"></script>
+    <script>
+        converse.initialize({
+            bosh_service_url: "https://${hostname}/http-bind",
+            websocket_url: "wss://${hostname}/xmpp-websocket",
+            view_mode: "fullscreen",
+            theme: "concord",
+            auto_login: false,
+            authentication: "login",
+            allow_registration: false,
+            muc_domain: "conference.${hostname}",
+            locked_muc_domain: "conference.${hostname}",
+            muc_show_logs_before_join: true,
+            discover_connection_methods: false,
+            keepalive: true,
+            message_archiving: "always",
+            i18n: "fr"
+        });
+    </script>
+</body>
+</html>
+WEBCHAT
+
+	log_info "Webchat interface created at /chat/"
 }
 
 lxc_create_config() {
@@ -400,6 +468,7 @@ lxc_create_config() {
 	ensure_dir "$data_path"
 	ensure_dir "$data_path/data"
 	ensure_dir "$data_path/certs"
+	ensure_dir "$data_path/webchat"
 
 	cat > "$LXC_CONF" <<EOF
 # Jabber/XMPP LXC Container (Prosody)
@@ -416,6 +485,7 @@ lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
 # Bind mounts for persistent data
 lxc.mount.entry = $data_path/data var/lib/prosody none bind,create=dir 0 0
 lxc.mount.entry = $data_path/certs etc/prosody/certs none bind,create=dir 0 0
+lxc.mount.entry = $data_path/webchat var/www/prosody none bind,create=dir 0 0
 
 # Environment
 lxc.environment = XMPP_HOSTNAME=$hostname
@@ -504,12 +574,14 @@ cmd_install() {
 	log_info "  S2S Port:   $s2s_port (server federation)"
 	log_info "  HTTP/BOSH:  http://${lan_ip}:$http_port/http-bind"
 	log_info "  WebSocket:  ws://${lan_ip}:$http_port/xmpp-websocket"
+	log_info "  Webchat:    http://${lan_ip}:$http_port/chat/"
 	log_info ""
 	log_info "  Admin JID:  ${admin_user}@${hostname}"
 	log_info "  Password:   $admin_pass"
 	log_info ""
 	log_info "  Clients:    Conversations (Android), Monal (iOS),"
-	log_info "              Gajim (Desktop), Dino (Linux)"
+	log_info "              Gajim (Desktop), Dino (Linux),"
+	log_info "              Web: http://${lan_ip}:$http_port/chat/"
 	log_info ""
 	log_info "  Expose externally:"
 	log_info "    jabberctl emancipate xmpp.example.com"
@@ -1029,6 +1101,7 @@ cmd_emancipate() {
 	log_info "  XMPP S2S:   ${domain}:${s2s_port}"
 	log_info "  BOSH:       https://$domain/http-bind"
 	log_info "  WebSocket:  wss://$domain/xmpp-websocket"
+	log_info "  Webchat:    https://$domain/chat/"
 	log_info ""
 	log_info "  DNS Records needed:"
 	log_info "    A     $domain -> your-ip"
