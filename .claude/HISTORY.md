@@ -2320,3 +2320,17 @@ git checkout HEAD -- index.html
 - Emancipate workflow for public exposure
 - Connection info display (XMPP, BOSH, WebSocket URLs)
 - Log viewer with refresh
+
+### 2026-02-19: Jabber/XMPP Deployment and Fixes
+
+**Deployment:**
+- Installed Jabber at xchat.gk2.secubox.in
+- Created admin user: admin@xchat.gk2.secubox.in
+- Fixed pf.gk2.secubox.in routing (was pointing to jabber, now streamlit_prompt)
+
+**Fixes Applied:**
+- Fixed Prosody process detection (lua.*prosody pattern instead of prosody)
+- Fixed startup script to run Prosody as prosody user (not root)
+- Fixed SSL certificate generation (openssl instead of prosodyctl)
+- Added xchat.gk2.secubox.in route to mitmproxy-in haproxy-routes.json
+- Fixed route IP from 127.0.0.1 to 192.168.255.1 for container accessibility
