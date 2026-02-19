@@ -1,0 +1,37 @@
+{
+	"luci-app-matrix": {
+		"description": "Grant access to Matrix homeserver management",
+		"read": {
+			"ubus": {
+				"luci.matrix": [
+					"status",
+					"logs",
+					"federation_status",
+					"identity_status",
+					"mesh_status"
+				]
+			},
+			"uci": ["matrix"]
+		},
+		"write": {
+			"ubus": {
+				"luci.matrix": [
+					"start",
+					"stop",
+					"install",
+					"uninstall",
+					"update",
+					"emancipate",
+					"configure_haproxy",
+					"user_add",
+					"user_del",
+					"identity_link",
+					"identity_unlink",
+					"mesh_publish",
+					"mesh_unpublish"
+				]
+			},
+			"uci": ["matrix"]
+		}
+	}
+}

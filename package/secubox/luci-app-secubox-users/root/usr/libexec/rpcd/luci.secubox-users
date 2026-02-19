@@ -1,0 +1,190 @@
+#!/bin/sh
+# RPCD handler for SecuBox User Management
+
+. /usr/share/libubox/jshn.sh
+
+CONFIG="secubox-users"
+
+uci_get() { uci -q get ${CONFIG}.$1; }
+
+# Check if service is running
+check_service() {
+	local service="$1"
+	case "$service" in
+		nextcloud) [ -x /usr/sbin/nextcloudctl ] && lxc-info -n nextcloud 2>/dev/null | grep -q "RUNNING" && echo "1" || echo "0" ;;
+		peertube)  [ -x /usr/sbin/peertubectl ] && lxc-info -n peertube 2>/dev/null | grep -q "RUNNING" && echo "1" || echo "0" ;;
+		matrix)    [ -x /usr/sbin/matrixctl ] && lxc-info -n matrix 2>/dev/null | grep -q "RUNNING" && echo "1" || echo "0" ;;
+		jabber)    [ -x /usr/sbin/jabberctl ] && lxc-info -n jabber 2>/dev/null | grep -q "RUNNING" && echo "1" || echo "0" ;;
+		email)     [ -x /usr/sbin/mailserverctl ] && lxc-info -n mailserver 2>/dev/null | grep -q "RUNNING" && echo "1" || echo "0" ;;
+		*) echo "0" ;;
+	esac
+}
+
+get_status() {
+	local domain=$(uci_get main.domain || echo "secubox.in")
+	local matrix_server=$(uci_get main.matrix_server || echo "matrix.local")
+	local user_count=$(uci show ${CONFIG} 2>/dev/null | grep -c "=user$" || echo 0)
+
+	local nc_running=$(check_service nextcloud)
+	local pt_running=$(check_service peertube)
+	local mx_running=$(check_service matrix)
+	local jb_running=$(check_service jabber)
+	local em_running=$(check_service email)
+
+	cat <<EOFJ
+{
+	"domain": "$domain",
+	"matrix_server": "$matrix_server",
+	"user_count": $user_count,
+	"services": {
+		"nextcloud": $nc_running,
+		"peertube": $pt_running,
+		"matrix": $mx_running,
+		"jabber": $jb_running,
+		"email": $em_running
+	}
+}
+EOFJ
+}
+
+get_users() {
+	local users=$(uci show ${CONFIG} 2>/dev/null | grep "=user$" | cut -d'.' -f2 | cut -d'=' -f1)
+
+	json_init
+	json_add_array "users"
+
+	for user in $users; do
+		json_add_object
+		json_add_string "username" "$user"
+		json_add_string "email" "$(uci_get ${user}.email)"
+		json_add_string "enabled" "$(uci_get ${user}.enabled)"
+		json_add_string "created" "$(uci_get ${user}.created)"
+
+		# Get services as array
+		local services=$(uci -q get ${CONFIG}.${user}.services 2>/dev/null)
+		json_add_array "services"
+		for svc in $services; do
+			json_add_string "" "$svc"
+		done
+		json_close_array
+
+		json_close_object
+	done
+
+	json_close_array
+	json_dump
+}
+
+add_user() {
+	read -r input
+	local username=$(echo "$input" | jsonfilter -e '@.username' 2>/dev/null)
+	local password=$(echo "$input" | jsonfilter -e '@.password' 2>/dev/null)
+	local services=$(echo "$input" | jsonfilter -e '@.services' 2>/dev/null)
+
+	if [ -z "$username" ]; then
+		echo '{"success":false,"error":"Username required"}'
+		return
+	fi
+
+	# Generate password if not provided
+	if [ -z "$password" ]; then
+		password=$(head -c 12 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 16)
+	fi
+
+	# Run secubox-users add
+	local output
+	if [ -n "$services" ]; then
+		output=$(secubox-users add "$username" "$password" "$services" 2>&1)
+	else
+		output=$(secubox-users add "$username" "$password" 2>&1)
+	fi
+
+	if echo "$output" | grep -q "USER CREDENTIALS"; then
+		json_init
+		json_add_boolean "success" 1
+		json_add_string "username" "$username"
+		json_add_string "password" "$password"
+		json_add_string "email" "${username}@$(uci_get main.domain)"
+		json_dump
+	else
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Failed to create user"
+		json_add_string "output" "$output"
+		json_dump
+	fi
+}
+
+delete_user() {
+	read -r input
+	local username=$(echo "$input" | jsonfilter -e '@.username' 2>/dev/null)
+
+	if [ -z "$username" ]; then
+		echo '{"success":false,"error":"Username required"}'
+		return
+	fi
+
+	local output=$(secubox-users del "$username" 2>&1)
+
+	if echo "$output" | grep -q "deleted"; then
+		echo '{"success":true}'
+	else
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Failed to delete user"
+		json_add_string "output" "$output"
+		json_dump
+	fi
+}
+
+update_password() {
+	read -r input
+	local username=$(echo "$input" | jsonfilter -e '@.username' 2>/dev/null)
+	local password=$(echo "$input" | jsonfilter -e '@.password' 2>/dev/null)
+
+	if [ -z "$username" ]; then
+		echo '{"success":false,"error":"Username required"}'
+		return
+	fi
+
+	local output
+	if [ -n "$password" ]; then
+		output=$(secubox-users passwd "$username" "$password" 2>&1)
+	else
+		output=$(secubox-users passwd "$username" 2>&1)
+		password=$(echo "$output" | grep "Generated password:" | cut -d: -f2 | xargs)
+	fi
+
+	if echo "$output" | grep -q "Password updated"; then
+		json_init
+		json_add_boolean "success" 1
+		json_add_string "password" "$password"
+		json_dump
+	else
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Failed to update password"
+		json_dump
+	fi
+}
+
+list_methods() {
+	cat <<'EOFM'
+{"status":{},"users":{},"add":{"username":"str","password":"str","services":"str"},"delete":{"username":"str"},"passwd":{"username":"str","password":"str"}}
+EOFM
+}
+
+case "$1" in
+	list) list_methods ;;
+	call)
+		case "$2" in
+			status) get_status ;;
+			users) get_users ;;
+			add) add_user ;;
+			delete) delete_user ;;
+			passwd) update_password ;;
+			*) echo '{"error":"Unknown method"}' ;;
+		esac
+		;;
+	*) echo '{"error":"Unknown command"}' ;;
+esac

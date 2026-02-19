@@ -1,0 +1,14 @@
+{
+	"admin/services/matrix": {
+		"title": "Matrix",
+		"order": 65,
+		"action": {
+			"type": "view",
+			"path": "matrix/overview"
+		},
+		"depends": {
+			"acl": ["luci-app-matrix"],
+			"uci": {"matrix": true}
+		}
+	}
+}

@@ -1,0 +1,17 @@
+config settings 'main'
+	option domain 'secubox.in'
+	option matrix_server 'matrix.local'
+	option sync_passwords '1'
+	option default_services 'nextcloud peertube jabber matrix email'
+
+# User entries are added dynamically:
+# config user 'username'
+#     option password_hash 'sha256hash'
+#     option email 'user@domain'
+#     option display_name 'Display Name'
+#     option enabled '1'
+#     list services 'nextcloud'
+#     list services 'peertube'
+#     list services 'jabber'
+#     list services 'matrix'
+#     list services 'email'

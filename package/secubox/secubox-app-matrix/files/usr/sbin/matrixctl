@@ -1,0 +1,1278 @@
+#!/bin/sh
+# SecuBox Matrix Manager - LXC Debian container with Conduit Matrix Server
+
+CONFIG="matrix"
+LXC_NAME="matrix"
+LXC_PATH="/srv/lxc"
+LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
+LXC_CONF="$LXC_PATH/$LXC_NAME/config"
+DATA_PATH_DEFAULT="/srv/matrix"
+CONDUIT_VERSION="0.8.0"
+OPKG_UPDATED=0
+
+usage() {
+	cat <<'USAGE'
+Usage: matrixctl <command>
+
+Installation:
+  install              Create LXC container with Conduit Matrix server
+  uninstall            Remove container (preserves data)
+  update               Update Conduit to latest version
+  check                Run prerequisite checks
+
+Service:
+  start                Start Matrix server (via init)
+  stop                 Stop Matrix server
+  restart              Restart Matrix server
+  status               Show container and service status
+  logs [N]             Show last N lines of logs (default: 50)
+  shell                Open interactive shell in container
+
+Users:
+  user add <mxid> [password]     Create user (e.g. @user:server)
+  user del <mxid>                Delete/deactivate user
+  user passwd <mxid> [password]  Change password
+  user list                      List all users
+
+Rooms:
+  room list                      List all rooms
+  room create <alias>            Create room (via admin API)
+  room delete <room_id>          Delete room
+
+Federation:
+  federation test <server>       Test federation with server
+  federation status              Show federation status
+
+Exposure:
+  configure-haproxy    Setup HAProxy vhost for HTTPS
+  emancipate <domain>  Full exposure (HAProxy + ACME + .well-known)
+
+Identity:
+  identity link <mxid>    Link Matrix user to node DID
+  identity unlink <mxid>  Unlink Matrix user from DID
+  identity status         Show identity linkage
+
+Mesh:
+  mesh publish           Publish to P2P service registry
+  mesh unpublish         Remove from P2P service registry
+
+Backup:
+  backup [path]          Backup database and config
+  restore <path>         Restore from backup
+
+Internal:
+  service-run            Run container via procd
+  service-stop           Stop container
+USAGE
+}
+
+# ---------- helpers ----------
+
+require_root() { [ "$(id -u)" -eq 0 ]; }
+
+uci_get() {
+	local key="$1"
+	local section="${2:-main}"
+	uci -q get ${CONFIG}.${section}.$key
+}
+
+uci_set() {
+	local key="$1"
+	local value="$2"
+	local section="${3:-main}"
+	uci set ${CONFIG}.${section}.$key="$value"
+}
+
+log_info()  { echo "[INFO] $*"; logger -t matrixctl "$*"; }
+log_warn()  { echo "[WARN] $*"; logger -t matrixctl -p warning "$*"; }
+log_error() { echo "[ERROR] $*" >&2; logger -t matrixctl -p err "$*"; }
+
+ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
+
+ensure_packages() {
+	for pkg in "$@"; do
+		if ! opkg status "$pkg" 2>/dev/null | grep -q "Status:.*installed"; then
+			if [ "$OPKG_UPDATED" -eq 0 ]; then
+				opkg update || return 1
+				OPKG_UPDATED=1
+			fi
+			opkg install "$pkg" || return 1
+		fi
+	done
+}
+
+defaults() {
+	data_path="$(uci_get data_path || echo $DATA_PATH_DEFAULT)"
+	memory_limit="$(uci_get memory_limit || echo 512)"
+	hostname="$(uci_get hostname server || echo matrix.local)"
+	port="$(uci_get port server || echo 8448)"
+	http_port="$(uci_get http_port server || echo 8008)"
+	registration_enabled="$(uci_get registration_enabled server || echo 0)"
+	federation_enabled="$(uci_get enabled federation || echo 1)"
+}
+
+detect_arch() {
+	case "$(uname -m)" in
+		aarch64) echo "aarch64" ;;
+		armv7l)  echo "armv7" ;;
+		x86_64)  echo "x86_64" ;;
+		*)       echo "x86_64" ;;
+	esac
+}
+
+generate_password() {
+	head -c 32 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 16
+}
+
+# ---------- LXC helpers ----------
+
+lxc_running() {
+	lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"
+}
+
+lxc_exists() {
+	[ -f "$LXC_CONF" ] && [ -d "$LXC_ROOTFS" ]
+}
+
+lxc_exec() {
+	lxc-attach -n "$LXC_NAME" -- "$@"
+}
+
+lxc_stop() {
+	if lxc_running; then
+		lxc-stop -n "$LXC_NAME" -k 2>/dev/null || true
+		sleep 2
+	fi
+}
+
+# ---------- Conduit admin API ----------
+
+conduit_api() {
+	local endpoint="$1"
+	local method="${2:-GET}"
+	local data="$3"
+
+	local url="http://127.0.0.1:${http_port}/_matrix/client/v3${endpoint}"
+
+	if [ -n "$data" ]; then
+		wget -q -O - --method="$method" \
+			--header="Content-Type: application/json" \
+			--body-data="$data" "$url" 2>/dev/null
+	else
+		wget -q -O - "$url" 2>/dev/null
+	fi
+}
+
+# ---------- rootfs creation ----------
+
+lxc_create_rootfs() {
+	local arch=$(detect_arch)
+
+	# Map to Debian architecture names
+	local debian_arch
+	case "$arch" in
+		aarch64) debian_arch="arm64" ;;
+		armv7)   debian_arch="armhf" ;;
+		x86_64)  debian_arch="amd64" ;;
+		*)       debian_arch="amd64" ;;
+	esac
+
+	ensure_dir "$LXC_ROOTFS"
+
+	# Minimal Debian rootfs via tarball from LXC image server
+	local rootfs_url="https://images.linuxcontainers.org/images/debian/bookworm/${debian_arch}/default/"
+	log_info "Downloading Debian bookworm rootfs for ${debian_arch}..."
+
+	# Get latest build directory
+	local latest_path
+	latest_path=$(wget -q -O - "$rootfs_url" 2>/dev/null | grep -oE '[0-9]{8}_[0-9]{2}:[0-9]{2}' | tail -1)
+	if [ -z "$latest_path" ]; then
+		log_error "Failed to find latest Debian rootfs build"
+		return 1
+	fi
+
+	local tarball="/tmp/debian-matrix.tar.xz"
+	local tarball_url="${rootfs_url}${latest_path}/rootfs.tar.xz"
+	wget -q -O "$tarball" "$tarball_url" || {
+		log_error "Failed to download Debian rootfs from $tarball_url"
+		return 1
+	}
+
+	tar -xJf "$tarball" -C "$LXC_ROOTFS" || {
+		log_error "Failed to extract Debian rootfs"
+		return 1
+	}
+	rm -f "$tarball"
+
+	# DNS
+	cp /etc/resolv.conf "$LXC_ROOTFS/etc/resolv.conf" 2>/dev/null || \
+		echo "nameserver 8.8.8.8" > "$LXC_ROOTFS/etc/resolv.conf"
+
+	# Create minimal /dev for chroot operations
+	mkdir -p "$LXC_ROOTFS/dev"
+	[ -c "$LXC_ROOTFS/dev/null" ] || mknod -m 666 "$LXC_ROOTFS/dev/null" c 1 3 2>/dev/null
+	[ -c "$LXC_ROOTFS/dev/zero" ] || mknod -m 666 "$LXC_ROOTFS/dev/zero" c 1 5 2>/dev/null
+	[ -c "$LXC_ROOTFS/dev/random" ] || mknod -m 666 "$LXC_ROOTFS/dev/random" c 1 8 2>/dev/null
+	[ -c "$LXC_ROOTFS/dev/urandom" ] || mknod -m 666 "$LXC_ROOTFS/dev/urandom" c 1 9 2>/dev/null
+
+	# Configure apt sources
+	cat > "$LXC_ROOTFS/etc/apt/sources.list" <<'SOURCES'
+deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
+deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
+deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
+SOURCES
+
+	# Install minimal packages
+	log_info "Installing base packages..."
+	chroot "$LXC_ROOTFS" /bin/sh -c "
+		export DEBIAN_FRONTEND=noninteractive
+		apt-get update && \
+		apt-get install -y --no-install-recommends \
+			ca-certificates \
+			openssl \
+			procps \
+			curl
+	" || {
+		log_error "Failed to install base packages"
+		return 1
+	}
+
+	# Download Conduit binary
+	download_conduit_binary || return 1
+
+	# Create directories
+	mkdir -p "$LXC_ROOTFS/var/lib/conduit"
+	mkdir -p "$LXC_ROOTFS/etc/conduit"
+
+	# Create startup script
+	create_startup_script
+
+	# Clean up apt cache
+	chroot "$LXC_ROOTFS" /bin/sh -c "
+		apt-get clean
+		rm -rf /var/lib/apt/lists/*
+	"
+
+	log_info "Rootfs created successfully"
+}
+
+download_conduit_binary() {
+	local arch=$(detect_arch)
+	local conduit_arch
+
+	case "$arch" in
+		aarch64) conduit_arch="aarch64-unknown-linux-musl" ;;
+		x86_64)  conduit_arch="x86_64-unknown-linux-musl" ;;
+		*)
+			log_error "Unsupported architecture: $arch"
+			return 1
+			;;
+	esac
+
+	log_info "Downloading Conduit Matrix server for ${arch}..."
+
+	# Try GitLab CI artifacts first (static binary)
+	local artifact_url="https://gitlab.com/api/v4/projects/famedly%2Fconduit/jobs/artifacts/master/raw/${conduit_arch}?job=artifacts"
+
+	wget -q -O "$LXC_ROOTFS/usr/local/bin/conduit" "$artifact_url" || {
+		# Fallback: try GitHub releases
+		log_warn "GitLab artifact not available, trying GitHub..."
+		local github_url="https://github.com/famedly/conduit/releases/latest/download/conduit-${conduit_arch}"
+		wget -q -O "$LXC_ROOTFS/usr/local/bin/conduit" "$github_url" || {
+			log_error "Failed to download Conduit binary"
+			return 1
+		}
+	}
+
+	chmod +x "$LXC_ROOTFS/usr/local/bin/conduit"
+
+	# Verify binary works
+	if ! chroot "$LXC_ROOTFS" /usr/local/bin/conduit --version >/dev/null 2>&1; then
+		log_warn "Binary verification failed, might need different build"
+	fi
+
+	log_info "Conduit binary installed"
+}
+
+create_startup_script() {
+	defaults
+	cat > "$LXC_ROOTFS/opt/start-matrix.sh" <<'STARTUP'
+#!/bin/bash
+
+export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+
+# Get config from environment
+MATRIX_SERVER_NAME="${MATRIX_SERVER_NAME:-matrix.local}"
+MATRIX_PORT="${MATRIX_PORT:-8008}"
+MATRIX_FEDERATION_PORT="${MATRIX_FEDERATION_PORT:-8448}"
+MATRIX_REGISTRATION="${MATRIX_REGISTRATION:-false}"
+MATRIX_FEDERATION="${MATRIX_FEDERATION:-true}"
+MATRIX_DB_CACHE="${MATRIX_DB_CACHE:-300}"
+
+CONDUIT_CONFIG="/etc/conduit/conduit.toml"
+DATA_DIR="/var/lib/conduit"
+
+# Generate conduit.toml if not exists or server_name changed
+generate_config() {
+    cat > "$CONDUIT_CONFIG" << EOF
+[global]
+# Server name (domain)
+server_name = "${MATRIX_SERVER_NAME}"
+
+# Database
+database_backend = "rocksdb"
+database_path = "/var/lib/conduit"
+
+# Network - listen on all interfaces
+port = ${MATRIX_PORT}
+address = "0.0.0.0"
+
+# Limits
+max_request_size = 20_000_000
+max_concurrent_requests = 100
+db_cache_capacity_mb = ${MATRIX_DB_CACHE}
+
+# Registration
+allow_registration = ${MATRIX_REGISTRATION}
+registration_token = "${MATRIX_REGISTRATION_TOKEN:-}"
+
+# Federation
+allow_federation = ${MATRIX_FEDERATION}
+trusted_servers = ["matrix.org"]
+
+# Logging
+log = "info"
+
+# .well-known (Conduit can serve these)
+[global.well_known]
+client = "https://${MATRIX_SERVER_NAME}/"
+server = "${MATRIX_SERVER_NAME}:443"
+EOF
+}
+
+# Check if config needs regeneration
+if [ ! -f "$CONDUIT_CONFIG" ]; then
+    echo "[MATRIX] Generating initial configuration..."
+    generate_config
+elif [ -f "/tmp/matrix_regenerate_config" ]; then
+    echo "[MATRIX] Regenerating configuration..."
+    generate_config
+    rm -f /tmp/matrix_regenerate_config
+fi
+
+# Ensure data directory exists and has correct permissions
+mkdir -p "$DATA_DIR"
+chmod 700 "$DATA_DIR"
+
+echo "[MATRIX] Starting Conduit server..."
+echo "[MATRIX] Server name: ${MATRIX_SERVER_NAME}"
+echo "[MATRIX] Client port: ${MATRIX_PORT}"
+echo "[MATRIX] Federation: ${MATRIX_FEDERATION}"
+
+# Run Conduit
+export CONDUIT_CONFIG
+exec /usr/local/bin/conduit
+STARTUP
+
+	chmod +x "$LXC_ROOTFS/opt/start-matrix.sh"
+}
+
+lxc_create_config() {
+	defaults
+	local mem_bytes=$((memory_limit * 1024 * 1024))
+
+	ensure_dir "$LXC_PATH/$LXC_NAME"
+	ensure_dir "$data_path"
+	ensure_dir "$data_path/data"
+	ensure_dir "$data_path/config"
+
+	cat > "$LXC_CONF" <<EOF
+# Matrix LXC Container (Conduit)
+lxc.uts.name = $LXC_NAME
+lxc.rootfs.path = dir:$LXC_ROOTFS
+lxc.arch = $(detect_arch)
+
+# Network: share host network
+lxc.net.0.type = none
+
+# Auto-mounts
+lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+
+# Bind mounts for persistent data
+lxc.mount.entry = $data_path/data var/lib/conduit none bind,create=dir 0 0
+lxc.mount.entry = $data_path/config etc/conduit none bind,create=dir 0 0
+
+# Environment
+lxc.environment = MATRIX_SERVER_NAME=$hostname
+lxc.environment = MATRIX_PORT=$http_port
+lxc.environment = MATRIX_FEDERATION_PORT=$port
+lxc.environment = MATRIX_REGISTRATION=$([ "$registration_enabled" = "1" ] && echo "true" || echo "false")
+lxc.environment = MATRIX_FEDERATION=$([ "$federation_enabled" = "1" ] && echo "true" || echo "false")
+lxc.environment = MATRIX_DB_CACHE=$(uci_get cache_capacity database || echo 300)
+
+# Resource limits
+lxc.cgroup2.memory.max = $mem_bytes
+
+# Security
+lxc.cap.drop = sys_module mac_admin mac_override sys_time
+
+# TTY/PTY for cgroup2
+lxc.tty.max = 4
+lxc.pty.max = 16
+lxc.cgroup2.devices.allow = c 1:3 rwm
+lxc.cgroup2.devices.allow = c 1:5 rwm
+lxc.cgroup2.devices.allow = c 1:7 rwm
+lxc.cgroup2.devices.allow = c 1:8 rwm
+lxc.cgroup2.devices.allow = c 1:9 rwm
+lxc.cgroup2.devices.allow = c 5:0 rwm
+lxc.cgroup2.devices.allow = c 5:1 rwm
+lxc.cgroup2.devices.allow = c 5:2 rwm
+lxc.cgroup2.devices.allow = c 136:* rwm
+
+# Startup command
+lxc.init.cmd = /opt/start-matrix.sh
+EOF
+
+	log_info "LXC config created"
+}
+
+# ---------- commands ----------
+
+cmd_install() {
+	require_root || { log_error "Must run as root"; return 1; }
+
+	log_info "Installing Matrix homeserver (Conduit)..."
+
+	# Check prerequisites
+	ensure_packages lxc lxc-common wget tar || return 1
+
+	# Create LXC rootfs
+	if ! lxc_exists; then
+		lxc_create_rootfs || return 1
+	else
+		log_info "Container already exists, skipping rootfs creation"
+	fi
+
+	# Create LXC config
+	lxc_create_config
+
+	# Generate initial admin password if not set
+	local admin_pass=$(uci_get initial_password admin)
+	if [ -z "$admin_pass" ]; then
+		admin_pass=$(generate_password)
+		uci_set initial_password "$admin_pass" admin
+		uci commit "$CONFIG"
+	fi
+
+	# Enable and start
+	uci_set enabled '1'
+	uci commit "$CONFIG"
+	/etc/init.d/matrix enable
+	/etc/init.d/matrix start
+
+	# Wait for container to start
+	log_info "Waiting for Conduit to start..."
+	sleep 8
+
+	# Create admin user
+	defaults
+	local admin_user=$(uci_get initial_user admin || echo admin)
+	if lxc_running; then
+		log_info "Creating admin user: @${admin_user}:${hostname}"
+		cmd_user_add "@${admin_user}:${hostname}" "$admin_pass" 2>/dev/null || true
+	fi
+
+	local lan_ip=$(uci -q get network.lan.ipaddr || echo '192.168.255.1')
+
+	log_info ""
+	log_info "=============================================="
+	log_info "  Matrix Homeserver installed!"
+	log_info "=============================================="
+	log_info ""
+	log_info "  Server:     $hostname"
+	log_info "  Client API: http://${lan_ip}:$http_port"
+	log_info "  Fed Port:   $port"
+	log_info ""
+	log_info "  Admin User: @${admin_user}:${hostname}"
+	log_info "  Password:   $admin_pass"
+	log_info ""
+	log_info "  Clients:    Element (Web/Desktop/Mobile)"
+	log_info "              FluffyChat, Nheko, SchildiChat"
+	log_info ""
+	log_info "  Homeserver URL: http://${lan_ip}:$http_port"
+	log_info ""
+	log_info "  Expose externally:"
+	log_info "    matrixctl emancipate matrix.example.com"
+	log_info ""
+}
+
+cmd_uninstall() {
+	require_root || { log_error "Must run as root"; return 1; }
+
+	log_info "Uninstalling Matrix homeserver..."
+
+	# Stop and disable
+	/etc/init.d/matrix stop 2>/dev/null
+	/etc/init.d/matrix disable 2>/dev/null
+	lxc_stop
+
+	# Remove container but keep data
+	rm -rf "$LXC_ROOTFS" "$LXC_CONF"
+
+	uci_set enabled '0'
+	uci commit "$CONFIG"
+
+	defaults
+	log_info "Container removed. Data preserved in $data_path"
+}
+
+cmd_update() {
+	require_root || { log_error "Must run as root"; return 1; }
+
+	log_info "Updating Conduit..."
+
+	if lxc_running; then
+		lxc_stop
+	fi
+
+	# Re-download Conduit binary
+	download_conduit_binary || return 1
+
+	# Restart
+	cmd_start
+	log_info "Conduit updated successfully"
+}
+
+cmd_check() {
+	echo "Matrix Homeserver Prerequisites Check"
+	echo "======================================"
+
+	# LXC
+	if command -v lxc-start >/dev/null 2>&1; then
+		echo "[OK] LXC installed"
+	else
+		echo "[FAIL] LXC not installed"
+	fi
+
+	# Container exists
+	if lxc_exists; then
+		echo "[OK] Container exists"
+	else
+		echo "[--] Container not created"
+	fi
+
+	# Container running
+	if lxc_running; then
+		echo "[OK] Container running"
+	else
+		echo "[--] Container not running"
+	fi
+
+	# Matrix ports
+	defaults
+	for p in $http_port; do
+		if netstat -tln 2>/dev/null | grep -q ":${p} " || \
+		   grep -q ":$(printf '%04X' $p) " /proc/net/tcp 2>/dev/null; then
+			echo "[OK] Port $p listening"
+		else
+			echo "[--] Port $p not listening"
+		fi
+	done
+
+	# Conduit process
+	if lxc_running; then
+		if lxc_exec pgrep conduit >/dev/null 2>&1; then
+			echo "[OK] Conduit process running"
+		else
+			echo "[FAIL] Conduit process not running"
+		fi
+	fi
+
+	# API check
+	if wget -q -O /dev/null "http://127.0.0.1:${http_port}/_matrix/client/versions" 2>/dev/null; then
+		echo "[OK] Matrix API responding"
+	else
+		echo "[--] Matrix API not responding"
+	fi
+}
+
+cmd_status() {
+	defaults
+
+	# JSON output for RPCD
+	if [ "$1" = "--json" ]; then
+		local running=0
+		local conduit_proc=0
+		local container_state="not_installed"
+		local user_count=0
+		local version=""
+
+		if lxc_exists; then
+			container_state="stopped"
+			if lxc_running; then
+				container_state="running"
+				running=1
+				lxc_exec pgrep conduit >/dev/null 2>&1 && conduit_proc=1
+				version=$(lxc_exec /usr/local/bin/conduit --version 2>/dev/null | head -1)
+			fi
+		fi
+
+		cat <<EOF
+{
+  "enabled": $(uci_get enabled || echo 0),
+  "running": $running,
+  "container_state": "$container_state",
+  "hostname": "$hostname",
+  "http_port": $http_port,
+  "port": $port,
+  "data_path": "$data_path",
+  "memory_limit": $memory_limit,
+  "conduit": $conduit_proc,
+  "federation_enabled": $(uci_get enabled federation || echo 1),
+  "registration_enabled": $(uci_get registration_enabled server || echo 0),
+  "haproxy": $(uci_get haproxy network || echo 0),
+  "domain": "$(uci_get domain network)",
+  "did_linked": $(uci_get did_linked identity || echo 0),
+  "mesh_published": $(uci_get published mesh || echo 0),
+  "version": "$version"
+}
+EOF
+		return
+	fi
+
+	echo "Matrix Homeserver Status"
+	echo "========================"
+	echo ""
+	echo "Configuration:"
+	echo "  Enabled:      $(uci_get enabled || echo '0')"
+	echo "  Hostname:     $hostname"
+	echo "  Client Port:  $http_port"
+	echo "  Fed Port:     $port"
+	echo "  Memory:       ${memory_limit}M"
+	echo "  Data Path:    $data_path"
+	echo "  Federation:   $([ "$(uci_get enabled federation)" = "1" ] && echo "enabled" || echo "disabled")"
+	echo ""
+
+	if lxc_exists; then
+		echo "Container:      EXISTS"
+	else
+		echo "Container:      NOT CREATED (run: matrixctl install)"
+		return 0
+	fi
+
+	if lxc_running; then
+		echo "State:          RUNNING"
+		lxc-info -n "$LXC_NAME" | grep -E "PID|Memory" | sed 's/^/  /'
+		echo ""
+		echo "Services:"
+		lxc_exec pgrep conduit >/dev/null 2>&1 && echo "  Conduit:      UP" || echo "  Conduit:      DOWN"
+
+		# Version
+		local version=$(lxc_exec /usr/local/bin/conduit --version 2>/dev/null | head -1)
+		[ -n "$version" ] && echo "  Version:      $version"
+	else
+		echo "State:          STOPPED"
+	fi
+
+	echo ""
+	local lan_ip=$(uci -q get network.lan.ipaddr || echo '192.168.255.1')
+	echo "Connection:"
+	echo "  Homeserver:   http://${lan_ip}:${http_port}"
+	echo "  Client API:   http://${lan_ip}:${http_port}/_matrix/client/"
+	echo "  Admin Room:   #admins:${hostname}"
+}
+
+cmd_logs() {
+	local lines="${1:-50}"
+
+	if lxc_running; then
+		echo "=== Conduit logs ==="
+		lxc_exec journalctl -n "$lines" 2>/dev/null || \
+			lxc_exec tail -n "$lines" /var/log/conduit.log 2>/dev/null || \
+			echo "No logs found (Conduit logs to stdout)"
+	else
+		echo "Container not running"
+	fi
+}
+
+cmd_shell() {
+	if lxc_running; then
+		lxc_exec /bin/bash || lxc_exec /bin/sh
+	else
+		log_error "Container not running"
+		return 1
+	fi
+}
+
+cmd_start() {
+	require_root || { log_error "Must run as root"; return 1; }
+	/etc/init.d/matrix start
+}
+
+cmd_stop() {
+	require_root || { log_error "Must run as root"; return 1; }
+	/etc/init.d/matrix stop
+}
+
+cmd_restart() {
+	require_root || { log_error "Must run as root"; return 1; }
+	/etc/init.d/matrix restart
+}
+
+# ---------- user management ----------
+
+cmd_user() {
+	local subcmd="$1"
+	shift
+
+	case "$subcmd" in
+		add)
+			cmd_user_add "$@"
+			;;
+		del|delete)
+			cmd_user_del "$@"
+			;;
+		passwd|password)
+			cmd_user_passwd "$@"
+			;;
+		list)
+			cmd_user_list
+			;;
+		*)
+			echo "Usage: matrixctl user <add|del|passwd|list>"
+			return 1
+			;;
+	esac
+}
+
+cmd_user_add() {
+	local mxid="$1"
+	local password="$2"
+
+	[ -z "$mxid" ] && {
+		echo "Usage: matrixctl user add <@user:server> [password]"
+		return 1
+	}
+
+	lxc_running || { log_error "Container not running"; return 1; }
+	defaults
+
+	# Parse Matrix ID
+	local user=$(echo "$mxid" | sed 's/^@//' | cut -d: -f1)
+	local server=$(echo "$mxid" | cut -d: -f2)
+
+	[ -z "$server" ] && server="$hostname"
+	[ -z "$password" ] && password=$(generate_password)
+
+	# Register user via Matrix client API
+	local reg_data="{\"username\":\"$user\",\"password\":\"$password\",\"auth\":{\"type\":\"m.login.dummy\"}}"
+
+	local result=$(wget -q -O - --post-data="$reg_data" \
+		--header="Content-Type: application/json" \
+		"http://127.0.0.1:${http_port}/_matrix/client/v3/register" 2>/dev/null)
+
+	if echo "$result" | grep -q "user_id"; then
+		log_info "User created: @${user}:${server}"
+		log_info "Password: $password"
+	else
+		# Try with registration token if needed
+		local reg_token=$(uci_get registration_token server)
+		if [ -n "$reg_token" ]; then
+			reg_data="{\"username\":\"$user\",\"password\":\"$password\",\"auth\":{\"type\":\"m.login.registration_token\",\"token\":\"$reg_token\"}}"
+			result=$(wget -q -O - --post-data="$reg_data" \
+				--header="Content-Type: application/json" \
+				"http://127.0.0.1:${http_port}/_matrix/client/v3/register" 2>/dev/null)
+		fi
+
+		if echo "$result" | grep -q "user_id"; then
+			log_info "User created: @${user}:${server}"
+			log_info "Password: $password"
+		else
+			log_error "Failed to create user. Error: $result"
+			log_info "Try enabling registration: uci set matrix.server.registration_enabled=1"
+			return 1
+		fi
+	fi
+}
+
+cmd_user_del() {
+	local mxid="$1"
+
+	[ -z "$mxid" ] && {
+		echo "Usage: matrixctl user del <@user:server>"
+		return 1
+	}
+
+	lxc_running || { log_error "Container not running"; return 1; }
+
+	log_info "User deactivation requires admin API"
+	log_info "Join #admins:$hostname and use: !admin users deactivate $mxid"
+}
+
+cmd_user_passwd() {
+	local mxid="$1"
+	local password="$2"
+
+	[ -z "$mxid" ] && {
+		echo "Usage: matrixctl user passwd <@user:server> [password]"
+		return 1
+	}
+
+	lxc_running || { log_error "Container not running"; return 1; }
+
+	log_info "Password change requires login as user"
+	log_info "Use Matrix client to change password via account settings"
+}
+
+cmd_user_list() {
+	lxc_running || { log_error "Container not running"; return 1; }
+	defaults
+
+	echo "Matrix Users on $hostname"
+	echo "========================="
+	log_info "User listing requires admin room access"
+	log_info "Join #admins:$hostname and use: !admin users list"
+}
+
+# ---------- room management ----------
+
+cmd_room() {
+	local subcmd="$1"
+	shift
+
+	case "$subcmd" in
+		list)
+			cmd_room_list
+			;;
+		create)
+			cmd_room_create "$@"
+			;;
+		delete)
+			cmd_room_delete "$@"
+			;;
+		*)
+			echo "Usage: matrixctl room <list|create|delete>"
+			return 1
+			;;
+	esac
+}
+
+cmd_room_list() {
+	lxc_running || { log_error "Container not running"; return 1; }
+	defaults
+
+	log_info "Room listing requires admin room access"
+	log_info "Join #admins:$hostname and use: !admin rooms list"
+}
+
+cmd_room_create() {
+	local alias="$1"
+
+	[ -z "$alias" ] && {
+		echo "Usage: matrixctl room create <alias>"
+		return 1
+	}
+
+	lxc_running || { log_error "Container not running"; return 1; }
+	defaults
+
+	log_info "Create room via Matrix client or admin room"
+	log_info "Admin room: #admins:$hostname"
+}
+
+cmd_room_delete() {
+	local room_id="$1"
+
+	[ -z "$room_id" ] && {
+		echo "Usage: matrixctl room delete <room_id>"
+		return 1
+	}
+
+	lxc_running || { log_error "Container not running"; return 1; }
+	defaults
+
+	log_info "Join #admins:$hostname and use: !admin rooms delete $room_id"
+}
+
+# ---------- federation ----------
+
+cmd_federation() {
+	local subcmd="$1"
+	shift
+
+	case "$subcmd" in
+		test)
+			cmd_federation_test "$@"
+			;;
+		status)
+			cmd_federation_status
+			;;
+		*)
+			echo "Usage: matrixctl federation <test|status>"
+			return 1
+			;;
+	esac
+}
+
+cmd_federation_test() {
+	local server="$1"
+
+	[ -z "$server" ] && {
+		echo "Usage: matrixctl federation test <server>"
+		return 1
+	}
+
+	# Test .well-known lookup
+	log_info "Testing federation with $server..."
+
+	local well_known=$(wget -q -O - "https://$server/.well-known/matrix/server" 2>/dev/null)
+	if [ -n "$well_known" ]; then
+		log_info ".well-known/matrix/server: $well_known"
+	else
+		log_warn "No .well-known delegation found for $server"
+	fi
+
+	log_info ""
+	log_info "For comprehensive testing, use:"
+	log_info "  https://federationtester.matrix.org/?server=$server"
+}
+
+cmd_federation_status() {
+	defaults
+
+	echo "Federation Status"
+	echo "================="
+	echo "  Enabled:         $([ "$(uci_get enabled federation)" = "1" ] && echo "yes" || echo "no")"
+	echo "  Public rooms:    $([ "$(uci_get allow_public_rooms federation)" = "1" ] && echo "allowed" || echo "denied")"
+	echo "  Trusted servers: $(uci_get trusted_servers federation || echo "matrix.org")"
+	echo ""
+
+	if lxc_running; then
+		# Test our own .well-known
+		local our_server=$(wget -q -O - "http://127.0.0.1:${http_port}/.well-known/matrix/server" 2>/dev/null)
+		if [ -n "$our_server" ]; then
+			log_info "Our .well-known/matrix/server: $our_server"
+		fi
+	fi
+}
+
+# ---------- HAProxy integration ----------
+
+cmd_configure_haproxy() {
+	require_root || { log_error "Must run as root"; return 1; }
+	defaults
+
+	local domain=$(uci_get domain network)
+	[ -z "$domain" ] && domain="$hostname"
+
+	# Create backend for Matrix client API
+	local backend_name="matrix_client"
+
+	uci set haproxy.${backend_name}=backend
+	uci set haproxy.${backend_name}.name="$backend_name"
+	uci set haproxy.${backend_name}.mode='http'
+	uci set haproxy.${backend_name}.balance='roundrobin'
+	uci set haproxy.${backend_name}.enabled='1'
+	uci set haproxy.${backend_name}.timeout_server='3600s'
+	uci set haproxy.${backend_name}.timeout_tunnel='3600s'
+	uci set haproxy.${backend_name}.server="matrix 127.0.0.1:${http_port} check"
+
+	# Create vhost
+	local vhost_name=$(echo "$domain" | tr '.-' '_')
+	uci set haproxy.${vhost_name}=vhost
+	uci set haproxy.${vhost_name}.domain="$domain"
+	uci set haproxy.${vhost_name}.backend="$backend_name"
+	uci set haproxy.${vhost_name}.ssl='1'
+	uci set haproxy.${vhost_name}.ssl_redirect='1'
+	uci set haproxy.${vhost_name}.acme='1'
+	uci set haproxy.${vhost_name}.enabled='1'
+
+	uci commit haproxy
+
+	# Update network config
+	uci_set haproxy '1' network
+	uci_set domain "$domain" network
+	uci commit "$CONFIG"
+
+	# Regenerate and reload
+	if command -v haproxyctl >/dev/null 2>&1; then
+		haproxyctl generate
+		/etc/init.d/haproxy reload
+	fi
+
+	log_info "HAProxy configured for $domain"
+	log_info "Matrix Client API: https://$domain/_matrix/client/"
+	log_info ".well-known: https://$domain/.well-known/matrix/"
+}
+
+cmd_emancipate() {
+	local domain="$1"
+
+	[ -z "$domain" ] && {
+		echo "Usage: matrixctl emancipate <domain>"
+		return 1
+	}
+
+	require_root || { log_error "Must run as root"; return 1; }
+
+	log_info "Emancipating Matrix at $domain..."
+
+	# Update hostname
+	uci_set hostname "$domain" server
+	uci_set domain "$domain" network
+	uci commit "$CONFIG"
+
+	# Update container environment and trigger config regeneration
+	if lxc_running; then
+		lxc_exec touch /tmp/matrix_regenerate_config
+		cmd_restart
+	fi
+
+	# Configure HAProxy
+	cmd_configure_haproxy
+
+	log_info ""
+	log_info "=============================================="
+	log_info "  Matrix Homeserver Emancipated!"
+	log_info "=============================================="
+	log_info ""
+	log_info "  Domain:       $domain"
+	log_info "  Client API:   https://$domain/_matrix/client/"
+	log_info "  Federation:   https://$domain:443"
+	log_info ""
+	log_info "  DNS Records needed:"
+	log_info "    A     $domain -> your-ip"
+	log_info "    SRV   _matrix._tcp.$domain -> $domain:443"
+	log_info ""
+	log_info "  .well-known served automatically by Conduit"
+	log_info ""
+}
+
+# ---------- identity integration ----------
+
+cmd_identity() {
+	local subcmd="$1"
+	shift
+
+	case "$subcmd" in
+		link)
+			cmd_identity_link "$@"
+			;;
+		unlink)
+			cmd_identity_unlink "$@"
+			;;
+		status)
+			cmd_identity_status
+			;;
+		*)
+			echo "Usage: matrixctl identity <link|unlink|status>"
+			return 1
+			;;
+	esac
+}
+
+cmd_identity_link() {
+	local mxid="$1"
+
+	[ -z "$mxid" ] && {
+		echo "Usage: matrixctl identity link <@user:server>"
+		return 1
+	}
+
+	require_root || { log_error "Must run as root"; return 1; }
+
+	# Get node DID
+	local did=""
+	if command -v identityctl >/dev/null 2>&1; then
+		did=$(identityctl did 2>/dev/null)
+	fi
+
+	[ -z "$did" ] && {
+		log_error "Node DID not configured. Run: identityctl keygen"
+		return 1
+	}
+
+	# Store DID-MXID mapping
+	uci_set did_linked '1' identity
+	uci_set did_user "$mxid" identity
+	uci set ${CONFIG}.identity._did="$did"
+	uci commit "$CONFIG"
+
+	log_info "Matrix user $mxid linked to DID: $did"
+}
+
+cmd_identity_unlink() {
+	local mxid="$1"
+
+	require_root || { log_error "Must run as root"; return 1; }
+
+	uci_set did_linked '0' identity
+	uci_set did_user '' identity
+	uci commit "$CONFIG"
+
+	log_info "Matrix identity unlinked"
+}
+
+cmd_identity_status() {
+	local linked=$(uci_get did_linked identity || echo '0')
+	local mxid=$(uci_get did_user identity)
+	local did=$(uci -q get ${CONFIG}.identity._did)
+
+	echo "Identity Status"
+	echo "==============="
+	echo "  Linked:     $([ "$linked" = "1" ] && echo "yes" || echo "no")"
+	[ -n "$mxid" ] && echo "  Matrix ID:  $mxid"
+	[ -n "$did" ] && echo "  Node DID:   $did"
+}
+
+# ---------- mesh integration ----------
+
+cmd_mesh() {
+	local subcmd="$1"
+	shift
+
+	case "$subcmd" in
+		publish)
+			cmd_mesh_publish
+			;;
+		unpublish)
+			cmd_mesh_unpublish
+			;;
+		*)
+			echo "Usage: matrixctl mesh <publish|unpublish>"
+			return 1
+			;;
+	esac
+}
+
+cmd_mesh_publish() {
+	require_root || { log_error "Must run as root"; return 1; }
+	defaults
+
+	# Use secubox-p2p to publish service
+	if command -v secubox-p2p >/dev/null 2>&1; then
+		secubox-p2p publish matrix "$http_port" "Matrix Homeserver"
+		log_info "Matrix published to P2P mesh"
+	else
+		log_warn "secubox-p2p not installed, skipping mesh publication"
+	fi
+
+	uci_set published '1' mesh
+	uci commit "$CONFIG"
+}
+
+cmd_mesh_unpublish() {
+	require_root || { log_error "Must run as root"; return 1; }
+
+	if command -v secubox-p2p >/dev/null 2>&1; then
+		secubox-p2p unpublish matrix 2>/dev/null || true
+		log_info "Matrix removed from P2P mesh"
+	fi
+
+	uci_set published '0' mesh
+	uci commit "$CONFIG"
+}
+
+# ---------- backup/restore ----------
+
+cmd_backup() {
+	local backup_path="${1:-/srv/matrix/backup}"
+
+	require_root || { log_error "Must run as root"; return 1; }
+
+	ensure_dir "$backup_path"
+
+	local timestamp=$(date +%Y%m%d_%H%M%S)
+	local backup_file="$backup_path/matrix_${timestamp}.tar.gz"
+
+	log_info "Creating backup..."
+
+	# Stop container for consistent backup
+	local was_running=0
+	if lxc_running; then
+		was_running=1
+		lxc_stop
+	fi
+
+	# Create tarball with data
+	defaults
+	tar -czf "$backup_file" \
+		-C "$data_path" data config
+
+	# Restart if was running
+	[ "$was_running" = "1" ] && cmd_start
+
+	log_info "Backup created: $backup_file"
+}
+
+cmd_restore() {
+	local backup_file="$1"
+
+	[ -z "$backup_file" ] || [ ! -f "$backup_file" ] && {
+		echo "Usage: matrixctl restore <backup.tar.gz>"
+		return 1
+	}
+
+	require_root || { log_error "Must run as root"; return 1; }
+
+	log_info "Restoring from $backup_file..."
+
+	# Stop container
+	lxc_stop
+
+	# Restore data
+	defaults
+	tar -xzf "$backup_file" -C "$data_path"
+
+	# Start container
+	cmd_start
+
+	log_info "Restore complete."
+}
+
+# ---------- service management ----------
+
+cmd_service_run() {
+	require_root || exit 1
+	defaults
+
+	# Verify container exists
+	lxc_exists || { log_error "Container not found. Run: matrixctl install"; exit 1; }
+
+	log_info "Starting Matrix container..."
+
+	# Start container in foreground
+	exec lxc-start -n "$LXC_NAME" -F -f "$LXC_CONF"
+}
+
+cmd_service_stop() {
+	log_info "Stopping Matrix container..."
+	lxc_stop
+}
+
+# ---------- main ----------
+
+case "$1" in
+	install)            cmd_install ;;
+	uninstall)          cmd_uninstall ;;
+	update)             cmd_update ;;
+	check)              cmd_check ;;
+	start)              cmd_start ;;
+	stop)               cmd_stop ;;
+	restart)            cmd_restart ;;
+	status)             shift; cmd_status "$@" ;;
+	logs)               shift; cmd_logs "$@" ;;
+	shell)              cmd_shell ;;
+	user)               shift; cmd_user "$@" ;;
+	room)               shift; cmd_room "$@" ;;
+	federation)         shift; cmd_federation "$@" ;;
+	configure-haproxy)  cmd_configure_haproxy ;;
+	emancipate)         shift; cmd_emancipate "$@" ;;
+	identity)           shift; cmd_identity "$@" ;;
+	mesh)               shift; cmd_mesh "$@" ;;
+	backup)             shift; cmd_backup "$@" ;;
+	restore)            shift; cmd_restore "$@" ;;
+	service-run)        cmd_service_run ;;
+	service-stop)       cmd_service_stop ;;
+	*)                  usage; exit 1 ;;
+esac
