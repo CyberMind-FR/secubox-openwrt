@@ -1,0 +1,33 @@
+{
+	"luci-app-saas-relay": {
+		"description": "Grant access to SaaS Relay",
+		"read": {
+			"ubus": {
+				"luci.saas-relay": [
+					"status",
+					"list_services",
+					"list_cookies",
+					"get_log"
+				]
+			},
+			"uci": ["saas-relay"]
+		},
+		"write": {
+			"ubus": {
+				"luci.saas-relay": [
+					"service_enable",
+					"service_disable",
+					"service_add",
+					"service_delete",
+					"import_cookies",
+					"clear_cookies",
+					"start",
+					"stop",
+					"setup",
+					"clear_log"
+				]
+			},
+			"uci": ["saas-relay"]
+		}
+	}
+}

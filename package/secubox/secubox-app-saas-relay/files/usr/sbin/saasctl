@@ -1,0 +1,1513 @@
+#!/bin/sh
+# SecuBox SaaS Relay Controller
+# Shared browser session proxy with cookie injection
+# Uses dedicated mitmproxy-saas LXC container
+
+# Don't use set -e as it causes issues with config_foreach
+# set -e
+
+CONFIG="saas-relay"
+DATA_PATH="/srv/saas-relay"
+COOKIES_PATH="$DATA_PATH/cookies"
+LOG_PATH="$DATA_PATH/logs"
+MITMPROXY_ADDON="$DATA_PATH/saas_relay_addon.py"
+
+# LXC Container settings
+LXC_NAME="mitmproxy-saas"
+LXC_PATH="/srv/lxc"
+LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
+PROXY_PORT="8890"
+WEB_PORT="8891"
+
+# Emoji status indicators
+E_OK="✅"
+E_WARN="⚠️"
+E_ERR="❌"
+E_WAIT="⏳"
+E_LOCK="🔐"
+E_UNLOCK="🔓"
+E_COOKIE="🍪"
+E_USER="👤"
+E_LOG="📋"
+E_RELAY="🔄"
+E_CONNECT="🔗"
+E_DISCONNECT="🔌"
+E_CONTAINER="📦"
+
+. /lib/functions.sh
+
+log_info()  { logger -t saas-relay -p daemon.info  "$E_RELAY $*"; echo "$E_OK $*"; }
+log_warn()  { logger -t saas-relay -p daemon.warn  "$E_WARN $*"; echo "$E_WARN $*"; }
+log_error() { logger -t saas-relay -p daemon.err   "$E_ERR $*"; echo "$E_ERR $*" >&2; }
+log_auth()  { logger -t saas-relay -p auth.info    "$E_LOCK $*"; }
+
+uci_get() { uci -q get ${CONFIG}.$1; }
+uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
+
+ensure_dir() {
+	[ -d "$1" ] || mkdir -p "$1"
+}
+
+require_root() {
+	[ "$(id -u)" = "0" ] || { log_error "Root required"; exit 1; }
+}
+
+has_lxc() {
+	command -v lxc-start >/dev/null 2>&1
+}
+
+container_running() {
+	lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"
+}
+
+container_exists() {
+	[ -d "$LXC_PATH/$LXC_NAME" ]
+}
+
+# ===========================================
+# Container Management
+# ===========================================
+
+cmd_install() {
+	require_root
+
+	if ! has_lxc; then
+		log_error "LXC not available. Install lxc packages first."
+		return 1
+	fi
+
+	if container_exists; then
+		log_warn "$E_CONTAINER Container $LXC_NAME already exists"
+		return 0
+	fi
+
+	log_info "$E_CONTAINER Installing SaaS Relay container..."
+
+	# Create directories
+	ensure_dir "$DATA_PATH"
+	ensure_dir "$COOKIES_PATH"
+	ensure_dir "$LOG_PATH"
+	ensure_dir "$LXC_PATH/$LXC_NAME"
+
+	# Create rootfs from mitmproxy Docker image
+	_create_container_rootfs || { log_error "Failed to create rootfs"; return 1; }
+
+	# Create container config
+	_create_container_config || { log_error "Failed to create config"; return 1; }
+
+	# Create mitmproxy addon
+	_generate_mitmproxy_addon
+
+	# Create activity log
+	touch "$LOG_PATH/activity.log"
+	chmod 600 "$LOG_PATH/activity.log"
+
+	uci_set "main.enabled" "1"
+	log_info "$E_OK SaaS Relay container installed"
+	log_info "   Start with: saasctl start"
+	log_info "   Web interface: http://<router-ip>:$WEB_PORT"
+	log_info "   Proxy port: $PROXY_PORT"
+}
+
+_create_container_rootfs() {
+	local rootfs="$LXC_ROOTFS"
+	local image="mitmproxy/mitmproxy"
+	local tag="latest"
+	local registry="registry-1.docker.io"
+	local arch
+
+	# Detect architecture
+	case "$(uname -m)" in
+		x86_64) arch="amd64" ;;
+		aarch64) arch="arm64" ;;
+		armv7l) arch="arm" ;;
+		*) arch="amd64" ;;
+	esac
+
+	log_info "$E_WAIT Extracting mitmproxy Docker image ($arch)..."
+	ensure_dir "$rootfs"
+
+	# Get Docker Hub token
+	local token=$(wget -q -O - "https://auth.docker.io/token?service=registry.docker.io&scope=repository:$image:pull" 2>/dev/null | jsonfilter -e '@.token')
+	[ -z "$token" ] && { log_error "Failed to get Docker Hub token"; return 1; }
+
+	# Get manifest list
+	local manifest=$(wget -q -O - --header="Authorization: Bearer $token" \
+		--header="Accept: application/vnd.docker.distribution.manifest.list.v2+json" \
+		"https://$registry/v2/$image/manifests/$tag" 2>/dev/null)
+
+	# Find digest for our architecture
+	local digest=$(echo "$manifest" | jsonfilter -e "@.manifests[@.platform.architecture='$arch'].digest")
+	[ -z "$digest" ] && { log_error "No manifest found for $arch"; return 1; }
+
+	# Get image manifest
+	local img_manifest=$(wget -q -O - --header="Authorization: Bearer $token" \
+		--header="Accept: application/vnd.docker.distribution.manifest.v2+json" \
+		"https://$registry/v2/$image/manifests/$digest" 2>/dev/null)
+
+	# Extract all layers
+	local layers=$(echo "$img_manifest" | jsonfilter -e '@.layers[*].digest')
+	for layer in $layers; do
+		log_info "   Downloading layer ${layer:7:12}..."
+		wget -q -O - --header="Authorization: Bearer $token" \
+			"https://$registry/v2/$image/blobs/$layer" 2>/dev/null | tar -xzf - -C "$rootfs" 2>/dev/null || true
+	done
+
+	# Verify mitmproxy is installed
+	[ -x "$rootfs/usr/bin/mitmproxy" ] || [ -x "$rootfs/usr/local/bin/mitmweb" ] || {
+		log_error "mitmproxy not found in extracted image"
+		return 1
+	}
+
+	log_info "$E_OK Container rootfs created"
+}
+
+_create_container_config() {
+	cat > "$LXC_PATH/$LXC_NAME/config" << EOF
+# SaaS Relay mitmproxy container
+lxc.uts.name = $LXC_NAME
+
+# Rootfs
+lxc.rootfs.path = dir:$LXC_ROOTFS
+
+# Host networking (shares host network namespace)
+lxc.net.0.type = none
+
+# Mounts - minimal, no cgroup auto-mount (causes issues on some systems)
+lxc.mount.auto = proc:rw sys:rw
+lxc.mount.entry = /dev dev none bind,create=dir 0 0
+lxc.mount.entry = /srv/saas-relay srv/saas-relay none bind,create=dir 0 0
+lxc.mount.entry = /etc/resolv.conf etc/resolv.conf none bind,create=file 0 0
+
+# Capabilities
+lxc.cap.drop = sys_admin
+
+# Console
+lxc.console.path = none
+lxc.tty.max = 0
+
+# Logging
+lxc.log.file = /var/log/lxc/$LXC_NAME.log
+lxc.log.level = WARN
+
+# Environment
+lxc.environment = PATH=/usr/local/bin:/usr/bin:/bin
+lxc.environment = HOME=/root
+EOF
+
+	# Create mount point in rootfs
+	ensure_dir "$LXC_ROOTFS/srv/saas-relay"
+	ensure_dir "/var/log/lxc"
+	log_info "$E_OK Container config created"
+}
+
+cmd_uninstall() {
+	require_root
+
+	if container_running; then
+		log_info "$E_DISCONNECT Stopping container..."
+		lxc-stop -n "$LXC_NAME" -k 2>/dev/null || true
+	fi
+
+	if container_exists; then
+		log_info "$E_CONTAINER Removing container..."
+		rm -rf "$LXC_PATH/$LXC_NAME"
+	fi
+
+	uci_set "main.enabled" "0"
+	uci_set "main.status" "stopped"
+	log_info "$E_OK SaaS Relay container removed"
+}
+
+# ===========================================
+# Setup & Installation
+# ===========================================
+
+cmd_setup() {
+	require_root
+	log_info "Setting up SaaS Relay..."
+
+	ensure_dir "$DATA_PATH"
+	ensure_dir "$COOKIES_PATH"
+	ensure_dir "$LOG_PATH"
+
+	# Create mitmproxy addon for cookie injection
+	_generate_mitmproxy_addon
+
+	# Create activity log
+	touch "$LOG_PATH/activity.log"
+	chmod 600 "$LOG_PATH/activity.log"
+
+	log_info "Setup complete: $DATA_PATH"
+}
+
+_generate_services_json() {
+	# Generate services.json from UCI config for the container
+	local json_file="$DATA_PATH/services.json"
+	local entries=""
+
+	config_load "$CONFIG"
+
+	_export_service() {
+		local section="$1"
+		local enabled domain
+
+		config_get enabled "$section" enabled "0"
+		[ "$enabled" = "1" ] || return
+
+		config_get domain "$section" domain
+		[ -n "$domain" ] || return
+
+		# Append entry with comma separator
+		if [ -n "$entries" ]; then
+			entries="${entries},"
+		fi
+		entries="${entries}
+  \"$domain\": \"$section\""
+	}
+
+	config_foreach _export_service service
+
+	# Write final JSON
+	cat > "$json_file" << EOF
+{${entries}
+}
+EOF
+
+	log_info "$E_COOKIE Generated services.json"
+}
+
+_generate_config_json() {
+	# Generate config.json from UCI config for cache and session settings
+	local json_file="$DATA_PATH/config.json"
+
+	config_load "$CONFIG"
+
+	# Cache settings
+	local cache_enabled cache_profile cache_max_size
+	config_get cache_enabled cache enabled "1"
+	config_get cache_profile cache profile "gandalf"
+	config_get cache_max_size cache max_size_mb "500"
+
+	# Session replay settings
+	local session_enabled session_mode master_user
+	config_get session_enabled session_replay enabled "1"
+	config_get session_mode session_replay default_mode "shared"
+	config_get master_user session_replay master_user "admin"
+
+	# Write config JSON
+	cat > "$json_file" << EOF
+{
+  "cache": {
+    "enabled": $([ "$cache_enabled" = "1" ] && echo "true" || echo "false"),
+    "profile": "$cache_profile",
+    "max_size_mb": $cache_max_size,
+    "storage_path": "$DATA_PATH/cache"
+  },
+  "session_replay": {
+    "enabled": $([ "$session_enabled" = "1" ] && echo "true" || echo "false"),
+    "mode": "$session_mode",
+    "master_user": "$master_user"
+  }
+}
+EOF
+
+	log_info "⚙️ Generated config.json"
+}
+
+_generate_mitmproxy_addon() {
+	cat > "$MITMPROXY_ADDON" << 'PYTHON'
+"""
+SecuBox SaaS Relay - MITMProxy Addon
+Cookie injection, CDN caching, and session replay for shared team access
+"""
+
+import json
+import os
+import time
+import hashlib
+import re
+from pathlib import Path
+from mitmproxy import http, ctx
+from typing import Optional, Dict, Any
+
+DATA_PATH = "/srv/saas-relay"
+COOKIES_PATH = f"{DATA_PATH}/cookies"
+CACHE_PATH = f"{DATA_PATH}/cache"
+SESSIONS_PATH = f"{DATA_PATH}/sessions"
+LOG_PATH = f"{DATA_PATH}/logs/activity.log"
+SERVICES_FILE = f"{DATA_PATH}/services.json"
+CONFIG_FILE = f"{DATA_PATH}/config.json"
+
+# Service domain mappings (loaded from JSON file)
+SERVICES: Dict[str, str] = {}
+CONFIG: Dict[str, Any] = {}
+
+# Cache profiles
+CACHE_PROFILES = {
+    "minimal": {
+        "ttl": 300,
+        "max_file_size_kb": 100,
+        "content_types": ["text/css", "application/javascript", "image/svg+xml"],
+        "exclude_patterns": []
+    },
+    "gandalf": {
+        "ttl": 3600,
+        "max_file_size_kb": 5000,
+        "content_types": [
+            "text/css", "application/javascript",
+            "image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml",
+            "font/woff", "font/woff2", "application/font-woff", "application/font-woff2"
+        ],
+        "exclude_patterns": []
+    },
+    "aggressive": {
+        "ttl": 86400,
+        "max_file_size_kb": 20000,
+        "content_types": ["*"],
+        "exclude_patterns": ["/api/", "/auth/", "/login", "/logout", "/session"]
+    }
+}
+
+def load_config():
+    """Load addon configuration from JSON file"""
+    global CONFIG
+    try:
+        if os.path.exists(CONFIG_FILE):
+            with open(CONFIG_FILE) as f:
+                CONFIG = json.load(f)
+            ctx.log.info(f"⚙️ Loaded config from {CONFIG_FILE}")
+        else:
+            # Default config
+            CONFIG = {
+                "cache": {"enabled": True, "profile": "gandalf", "max_size_mb": 500},
+                "session_replay": {"enabled": True, "mode": "shared", "master_user": "admin"}
+            }
+    except Exception as e:
+        ctx.log.error(f"Failed to load config: {e}")
+        CONFIG = {}
+
+def load_services():
+    """Load service configurations from JSON file"""
+    global SERVICES
+    try:
+        if os.path.exists(SERVICES_FILE):
+            with open(SERVICES_FILE) as f:
+                SERVICES = json.load(f)
+            ctx.log.info(f"🔄 Loaded {len(SERVICES)} services from {SERVICES_FILE}")
+        else:
+            ctx.log.warn(f"Services file not found: {SERVICES_FILE}")
+    except Exception as e:
+        ctx.log.error(f"Failed to load services: {e}")
+
+def log_activity(emoji: str, user: str, service: str, action: str, details: str = ""):
+    """Log activity with emoji"""
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    entry = f"{timestamp} {emoji} [{user}] {service}: {action}"
+    if details:
+        entry += f" - {details}"
+
+    try:
+        with open(LOG_PATH, "a") as f:
+            f.write(entry + "\n")
+    except:
+        pass
+
+def get_cookies_file(service: str, user: str = None) -> Path:
+    """Get cookie file path for service, optionally per-user"""
+    session_mode = CONFIG.get("session_replay", {}).get("mode", "shared")
+
+    if session_mode == "per_user" and user:
+        return Path(SESSIONS_PATH) / user / f"{service}.json"
+    else:
+        return Path(COOKIES_PATH) / f"{service}.json"
+
+def load_cookies(service: str, user: str = None) -> dict:
+    """Load stored cookies for service"""
+    cookie_file = get_cookies_file(service, user)
+    if cookie_file.exists():
+        try:
+            with open(cookie_file) as f:
+                return json.load(f)
+        except:
+            return {}
+
+    # Fallback to master session in replay mode
+    session_cfg = CONFIG.get("session_replay", {})
+    if session_cfg.get("mode") == "master" and user != session_cfg.get("master_user"):
+        master_file = get_cookies_file(service, session_cfg.get("master_user"))
+        if master_file.exists():
+            try:
+                with open(master_file) as f:
+                    return json.load(f)
+            except:
+                pass
+
+    return {}
+
+def save_cookies(service: str, cookies: dict, user: str = None):
+    """Save cookies for service"""
+    cookie_file = get_cookies_file(service, user)
+    cookie_file.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with open(cookie_file, "w") as f:
+            json.dump(cookies, f, indent=2)
+    except Exception as e:
+        ctx.log.error(f"Failed to save cookies: {e}")
+
+# ===========================================
+# CDN Cache Management
+# ===========================================
+
+def get_cache_key(url: str, method: str = "GET") -> str:
+    """Generate cache key from URL"""
+    return hashlib.sha256(f"{method}:{url}".encode()).hexdigest()[:32]
+
+def get_cache_file(cache_key: str) -> Path:
+    """Get cache file path"""
+    # Distribute across subdirs for performance
+    subdir = cache_key[:2]
+    return Path(CACHE_PATH) / subdir / f"{cache_key}.cache"
+
+def get_cache_meta_file(cache_key: str) -> Path:
+    """Get cache metadata file path"""
+    subdir = cache_key[:2]
+    return Path(CACHE_PATH) / subdir / f"{cache_key}.meta"
+
+def is_cacheable(flow: http.HTTPFlow) -> bool:
+    """Check if response is cacheable based on profile"""
+    cache_cfg = CONFIG.get("cache", {})
+    if not cache_cfg.get("enabled", True):
+        return False
+
+    profile_name = cache_cfg.get("profile", "gandalf")
+    profile = CACHE_PROFILES.get(profile_name, CACHE_PROFILES["gandalf"])
+
+    # Check method
+    if flow.request.method not in ["GET", "HEAD"]:
+        return False
+
+    # Check response code
+    if flow.response.status_code not in [200, 301, 302, 304]:
+        return False
+
+    # Check URL exclusions
+    url = flow.request.pretty_url
+    for pattern in profile.get("exclude_patterns", []):
+        if pattern in url:
+            return False
+
+    # Check content type
+    content_type = flow.response.headers.get("Content-Type", "")
+    allowed_types = profile.get("content_types", [])
+
+    if "*" not in allowed_types:
+        type_match = any(ct in content_type for ct in allowed_types)
+        if not type_match:
+            return False
+
+    # Check size
+    content_length = flow.response.headers.get("Content-Length", "0")
+    try:
+        size_kb = int(content_length) / 1024
+        if size_kb > profile.get("max_file_size_kb", 5000):
+            return False
+    except:
+        pass
+
+    # Check Cache-Control
+    cache_control = flow.response.headers.get("Cache-Control", "")
+    if "no-store" in cache_control or "private" in cache_control:
+        return False
+
+    return True
+
+def get_cached_response(url: str) -> Optional[tuple]:
+    """Get cached response if valid, returns (content, headers, status)"""
+    cache_key = get_cache_key(url)
+    cache_file = get_cache_file(cache_key)
+    meta_file = get_cache_meta_file(cache_key)
+
+    if not cache_file.exists() or not meta_file.exists():
+        return None
+
+    try:
+        with open(meta_file) as f:
+            meta = json.load(f)
+
+        # Check expiry
+        if time.time() > meta.get("expires", 0):
+            cache_file.unlink(missing_ok=True)
+            meta_file.unlink(missing_ok=True)
+            return None
+
+        with open(cache_file, "rb") as f:
+            content = f.read()
+
+        return (content, meta.get("headers", {}), meta.get("status", 200))
+    except:
+        return None
+
+def cache_response(flow: http.HTTPFlow):
+    """Store response in cache"""
+    cache_cfg = CONFIG.get("cache", {})
+    profile_name = cache_cfg.get("profile", "gandalf")
+    profile = CACHE_PROFILES.get(profile_name, CACHE_PROFILES["gandalf"])
+
+    url = flow.request.pretty_url
+    cache_key = get_cache_key(url)
+    cache_file = get_cache_file(cache_key)
+    meta_file = get_cache_meta_file(cache_key)
+
+    # Ensure directory exists
+    cache_file.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        # Store content
+        with open(cache_file, "wb") as f:
+            f.write(flow.response.content or b"")
+
+        # Store metadata
+        ttl = profile.get("ttl", 3600)
+
+        # Respect Cache-Control max-age if present
+        cache_control = flow.response.headers.get("Cache-Control", "")
+        max_age_match = re.search(r"max-age=(\d+)", cache_control)
+        if max_age_match:
+            ttl = min(ttl, int(max_age_match.group(1)))
+
+        meta = {
+            "url": url,
+            "status": flow.response.status_code,
+            "headers": dict(flow.response.headers),
+            "cached_at": time.time(),
+            "expires": time.time() + ttl,
+            "ttl": ttl,
+            "size": len(flow.response.content or b"")
+        }
+
+        with open(meta_file, "w") as f:
+            json.dump(meta, f, indent=2)
+
+        ctx.log.info(f"📦 Cached: {url[:60]}... (TTL: {ttl}s)")
+    except Exception as e:
+        ctx.log.error(f"Cache write failed: {e}")
+
+def get_cache_stats() -> dict:
+    """Get cache statistics"""
+    cache_dir = Path(CACHE_PATH)
+    if not cache_dir.exists():
+        return {"files": 0, "size_mb": 0}
+
+    total_size = 0
+    file_count = 0
+
+    for f in cache_dir.rglob("*.cache"):
+        total_size += f.stat().st_size
+        file_count += 1
+
+    return {
+        "files": file_count,
+        "size_mb": round(total_size / (1024 * 1024), 2)
+    }
+
+# ===========================================
+# Main Addon Class
+# ===========================================
+
+class SaaSRelay:
+    def __init__(self):
+        load_config()
+        load_services()
+
+        # Ensure directories exist
+        Path(CACHE_PATH).mkdir(parents=True, exist_ok=True)
+        Path(SESSIONS_PATH).mkdir(parents=True, exist_ok=True)
+        Path(COOKIES_PATH).mkdir(parents=True, exist_ok=True)
+
+        stats = get_cache_stats()
+        ctx.log.info(f"🔄 SaaS Relay addon loaded")
+        ctx.log.info(f"📦 Cache: {stats['files']} files, {stats['size_mb']} MB")
+        ctx.log.info(f"🔐 Session mode: {CONFIG.get('session_replay', {}).get('mode', 'shared')}")
+
+    def request(self, flow: http.HTTPFlow):
+        """Handle incoming requests - check cache, inject cookies"""
+        host = flow.request.host
+        url = flow.request.pretty_url
+
+        # Check cache first (before any network request)
+        cache_cfg = CONFIG.get("cache", {})
+        if cache_cfg.get("enabled", True) and flow.request.method == "GET":
+            cached = get_cached_response(url)
+            if cached:
+                content, headers, status = cached
+                flow.response = http.Response.make(
+                    status,
+                    content,
+                    headers
+                )
+                flow.response.headers["X-SaaSRelay-Cache"] = "HIT"
+                ctx.log.info(f"⚡ Cache HIT: {url[:60]}...")
+                return
+
+        # Find matching service for cookie injection
+        service = None
+        for domain, svc in SERVICES.items():
+            if host.endswith(domain) or host == domain:
+                service = svc
+                break
+
+        if not service:
+            return
+
+        # Get authenticated user from header (set by HAProxy)
+        user = flow.request.headers.get("X-Auth-User", "anonymous")
+
+        # Load and inject cookies (respecting session mode)
+        cookies = load_cookies(service, user)
+        if cookies:
+            existing = flow.request.cookies
+            for name, value in cookies.items():
+                if name not in existing:
+                    flow.request.cookies[name] = value
+
+            log_activity("🍪", user, service, "inject", f"{len(cookies)} cookies")
+            ctx.log.info(f"🍪 Injected {len(cookies)} cookies for {service}")
+
+    def response(self, flow: http.HTTPFlow):
+        """Handle responses - cache content, capture cookies"""
+        host = flow.request.host
+        url = flow.request.pretty_url
+
+        # Skip if response came from cache
+        if flow.response.headers.get("X-SaaSRelay-Cache") == "HIT":
+            return
+
+        # Cache response if eligible
+        if is_cacheable(flow):
+            cache_response(flow)
+            flow.response.headers["X-SaaSRelay-Cache"] = "MISS"
+
+        # Find matching service for cookie capture
+        service = None
+        for domain, svc in SERVICES.items():
+            if host.endswith(domain) or host == domain:
+                service = svc
+                break
+
+        if not service:
+            return
+
+        # Get authenticated user
+        user = flow.request.headers.get("X-Auth-User", "anonymous")
+
+        # Capture Set-Cookie headers
+        set_cookies = flow.response.headers.get_all("Set-Cookie")
+        if set_cookies:
+            # In master mode, only master user can update cookies
+            session_cfg = CONFIG.get("session_replay", {})
+            if session_cfg.get("mode") == "master":
+                if user != session_cfg.get("master_user", "admin"):
+                    ctx.log.info(f"🔒 Session replay: {user} using master's session")
+                    return
+
+            cookies = load_cookies(service, user)
+            new_count = 0
+
+            for cookie_header in set_cookies:
+                # Parse cookie name=value
+                if '=' in cookie_header:
+                    parts = cookie_header.split(';')[0]
+                    name, _, value = parts.partition('=')
+                    name = name.strip()
+                    value = value.strip()
+
+                    if name and value and not value.startswith('deleted'):
+                        cookies[name] = value
+                        new_count += 1
+
+            if new_count > 0:
+                save_cookies(service, cookies, user)
+                log_activity("📥", user, service, "capture", f"{new_count} new cookies")
+                ctx.log.info(f"📥 Captured {new_count} cookies for {service}")
+
+addons = [SaaSRelay()]
+PYTHON
+
+	chmod 644 "$MITMPROXY_ADDON"
+	log_info "$E_COOKIE MITMProxy addon created (with caching & session replay)"
+}
+
+# ===========================================
+# Service Management
+# ===========================================
+
+cmd_service_list() {
+	echo "$E_RELAY SaaS Services"
+	echo "=================="
+	echo ""
+
+	config_load "$CONFIG"
+
+	_print_service() {
+		local section="$1"
+		local enabled name emoji domain status
+
+		config_get enabled "$section" enabled "0"
+		config_get name "$section" name "$section"
+		config_get emoji "$section" emoji "🔗"
+		config_get domain "$section" domain
+		config_get status "$section" status "unknown"
+
+		[ -n "$domain" ] || return
+
+		local status_emoji
+		case "$status" in
+			connected)    status_emoji="$E_OK" ;;
+			disconnected) status_emoji="$E_DISCONNECT" ;;
+			error)        status_emoji="$E_ERR" ;;
+			*)            status_emoji="$E_WAIT" ;;
+		esac
+
+		local enabled_mark
+		[ "$enabled" = "1" ] && enabled_mark="$E_UNLOCK" || enabled_mark="$E_LOCK"
+
+		# Check cookie count
+		local cookie_file="$COOKIES_PATH/${section}.json"
+		local cookie_count=0
+		[ -f "$cookie_file" ] && cookie_count=$(grep -c '"' "$cookie_file" 2>/dev/null | awk '{print int($1/2)}')
+
+		printf "  %s %s %-15s %-25s %s %s cookies\n" \
+			"$enabled_mark" "$emoji" "$name" "$domain" "$status_emoji" "$cookie_count"
+	}
+
+	config_foreach _print_service service
+}
+
+cmd_service_enable() {
+	local service="$1"
+	[ -z "$service" ] && { echo "Usage: saasctl service enable <service>"; return 1; }
+
+	uci_set "${service}.enabled" "1"
+	log_info "$E_UNLOCK Enabled service: $service"
+}
+
+cmd_service_disable() {
+	local service="$1"
+	[ -z "$service" ] && { echo "Usage: saasctl service disable <service>"; return 1; }
+
+	uci_set "${service}.enabled" "0"
+	log_info "$E_LOCK Disabled service: $service"
+}
+
+cmd_service_add() {
+	local id="$1"
+	local name="$2"
+	local domain="$3"
+	local emoji="${4:-🔗}"
+
+	[ -z "$id" ] || [ -z "$name" ] || [ -z "$domain" ] && {
+		echo "Usage: saasctl service add <id> <name> <domain> [emoji]"
+		return 1
+	}
+
+	uci set ${CONFIG}.${id}=service
+	uci set ${CONFIG}.${id}.enabled='1'
+	uci set ${CONFIG}.${id}.name="$name"
+	uci set ${CONFIG}.${id}.emoji="$emoji"
+	uci set ${CONFIG}.${id}.domain="$domain"
+	uci set ${CONFIG}.${id}.cookie_domains="$domain,.$domain"
+	uci set ${CONFIG}.${id}.auth_required='1'
+	uci set ${CONFIG}.${id}.status='disconnected'
+	uci commit ${CONFIG}
+
+	log_info "$emoji Added service: $name ($domain)"
+}
+
+# ===========================================
+# Cookie Management
+# ===========================================
+
+cmd_cookie_list() {
+	local service="$1"
+
+	echo "$E_COOKIE Cookie Store"
+	echo "=============="
+	echo ""
+
+	if [ -n "$service" ]; then
+		local cookie_file="$COOKIES_PATH/${service}.json"
+		if [ -f "$cookie_file" ]; then
+			echo "Service: $service"
+			cat "$cookie_file" | head -50
+		else
+			echo "No cookies for $service"
+		fi
+	else
+		for f in "$COOKIES_PATH"/*.json; do
+			[ -f "$f" ] || continue
+			local svc=$(basename "$f" .json)
+			local count=$(grep -c '"' "$f" 2>/dev/null | awk '{print int($1/2)}')
+			local size=$(stat -c%s "$f" 2>/dev/null || echo 0)
+			printf "  %-20s %3d cookies  %s bytes\n" "$svc" "$count" "$size"
+		done
+	fi
+}
+
+cmd_cookie_import() {
+	local service="$1"
+	local file="$2"
+
+	[ -z "$service" ] || [ -z "$file" ] && {
+		echo "Usage: saasctl cookie import <service> <json_file>"
+		echo "       saasctl cookie import <service> -  (read from stdin)"
+		return 1
+	}
+
+	ensure_dir "$COOKIES_PATH"
+
+	if [ "$file" = "-" ]; then
+		cat > "$COOKIES_PATH/${service}.json"
+	else
+		cp "$file" "$COOKIES_PATH/${service}.json"
+	fi
+
+	chmod 600 "$COOKIES_PATH/${service}.json"
+	log_info "$E_COOKIE Imported cookies for $service"
+}
+
+cmd_cookie_export() {
+	local service="$1"
+	[ -z "$service" ] && { echo "Usage: saasctl cookie export <service>"; return 1; }
+
+	local cookie_file="$COOKIES_PATH/${service}.json"
+	[ -f "$cookie_file" ] || { log_error "No cookies for $service"; return 1; }
+
+	cat "$cookie_file"
+}
+
+cmd_cookie_clear() {
+	local service="$1"
+
+	if [ -n "$service" ]; then
+		rm -f "$COOKIES_PATH/${service}.json"
+		log_info "$E_COOKIE Cleared cookies for $service"
+	else
+		rm -f "$COOKIES_PATH"/*.json
+		log_info "$E_COOKIE Cleared all cookies"
+	fi
+}
+
+# ===========================================
+# Cache Management
+# ===========================================
+
+E_CACHE="📦"
+
+cmd_cache_status() {
+	echo "$E_CACHE CDN Cache Status"
+	echo "==================="
+	echo ""
+
+	local enabled=$(uci_get cache.enabled)
+	local profile=$(uci_get cache.profile)
+	local max_size=$(uci_get cache.max_size_mb)
+
+	echo "Enabled:    $([ "$enabled" = "1" ] && echo "$E_OK Yes" || echo "$E_ERR No")"
+	echo "Profile:    $profile"
+	echo "Max Size:   ${max_size:-500} MB"
+	echo ""
+
+	# Calculate cache stats
+	local cache_dir="$DATA_PATH/cache"
+	if [ -d "$cache_dir" ]; then
+		local file_count=$(find "$cache_dir" -name "*.cache" 2>/dev/null | wc -l)
+		local total_size=$(du -sh "$cache_dir" 2>/dev/null | awk '{print $1}')
+		echo "Files:      $file_count"
+		echo "Size:       $total_size"
+
+		# Show oldest and newest cache entries
+		local oldest=$(find "$cache_dir" -name "*.meta" -exec stat -c '%Y %n' {} \; 2>/dev/null | sort -n | head -1)
+		local newest=$(find "$cache_dir" -name "*.meta" -exec stat -c '%Y %n' {} \; 2>/dev/null | sort -rn | head -1)
+
+		if [ -n "$oldest" ]; then
+			local oldest_time=$(echo "$oldest" | awk '{print $1}')
+			local oldest_age=$(( ($(date +%s) - oldest_time) / 3600 ))
+			echo "Oldest:     ${oldest_age}h ago"
+		fi
+	else
+		echo "Cache directory not initialized"
+	fi
+}
+
+cmd_cache_clear() {
+	require_root
+	local cache_dir="$DATA_PATH/cache"
+
+	if [ -d "$cache_dir" ]; then
+		local file_count=$(find "$cache_dir" -name "*.cache" 2>/dev/null | wc -l)
+		rm -rf "$cache_dir"/*
+		log_info "$E_CACHE Cleared cache ($file_count files)"
+	else
+		log_warn "Cache directory not found"
+	fi
+}
+
+cmd_cache_profile() {
+	local profile="$1"
+
+	if [ -z "$profile" ]; then
+		echo "$E_CACHE Available Cache Profiles"
+		echo "==========================="
+		echo ""
+		echo "  minimal    - Small files only (CSS, JS, SVG), 5min TTL"
+		echo "  gandalf    - Standard caching (CSS, JS, images, fonts), 1h TTL"
+		echo "  aggressive - Cache everything except API/auth paths, 24h TTL"
+		echo ""
+		echo "Current: $(uci_get cache.profile)"
+		return
+	fi
+
+	case "$profile" in
+		minimal|gandalf|aggressive)
+			uci_set "cache.profile" "$profile"
+			log_info "$E_CACHE Cache profile set to: $profile"
+			log_info "   Restart relay to apply: saasctl restart"
+			;;
+		*)
+			log_error "Unknown profile: $profile"
+			log_error "Available: minimal, gandalf, aggressive"
+			return 1
+			;;
+	esac
+}
+
+cmd_cache_enable() {
+	uci_set "cache.enabled" "1"
+	log_info "$E_CACHE CDN caching enabled"
+}
+
+cmd_cache_disable() {
+	uci_set "cache.enabled" "0"
+	log_info "$E_CACHE CDN caching disabled"
+}
+
+# ===========================================
+# Session Replay Management
+# ===========================================
+
+E_SESSION="🎭"
+
+cmd_session_status() {
+	echo "$E_SESSION Session Replay Status"
+	echo "========================"
+	echo ""
+
+	local enabled=$(uci_get session_replay.enabled)
+	local mode=$(uci_get session_replay.default_mode)
+	local master=$(uci_get session_replay.master_user)
+
+	echo "Enabled:    $([ "$enabled" = "1" ] && echo "$E_OK Yes" || echo "$E_ERR No")"
+	echo "Mode:       $mode"
+	[ "$mode" = "master" ] && echo "Master:     $master"
+	echo ""
+
+	# Show per-user sessions if in per_user mode
+	local sessions_dir="$DATA_PATH/sessions"
+	if [ -d "$sessions_dir" ]; then
+		echo "User Sessions:"
+		for user_dir in "$sessions_dir"/*/; do
+			[ -d "$user_dir" ] || continue
+			local user=$(basename "$user_dir")
+			local session_count=$(ls "$user_dir"/*.json 2>/dev/null | wc -l)
+			echo "  $E_USER $user: $session_count services"
+		done
+	fi
+}
+
+cmd_session_mode() {
+	local mode="$1"
+
+	if [ -z "$mode" ]; then
+		echo "$E_SESSION Session Replay Modes"
+		echo "======================="
+		echo ""
+		echo "  shared   - All users share the same session cookies"
+		echo "  per_user - Each user gets their own session copy"
+		echo "  master   - One user authenticates, others replay their session"
+		echo ""
+		echo "Current: $(uci_get session_replay.default_mode)"
+		return
+	fi
+
+	case "$mode" in
+		shared|per_user|master)
+			uci_set "session_replay.default_mode" "$mode"
+			log_info "$E_SESSION Session mode set to: $mode"
+			log_info "   Restart relay to apply: saasctl restart"
+			;;
+		*)
+			log_error "Unknown mode: $mode"
+			log_error "Available: shared, per_user, master"
+			return 1
+			;;
+	esac
+}
+
+cmd_session_master() {
+	local user="$1"
+	[ -z "$user" ] && { echo "Usage: saasctl session master <username>"; return 1; }
+
+	uci_set "session_replay.master_user" "$user"
+	log_info "$E_SESSION Master user set to: $user"
+}
+
+cmd_session_enable() {
+	uci_set "session_replay.enabled" "1"
+	log_info "$E_SESSION Session replay enabled"
+}
+
+cmd_session_disable() {
+	uci_set "session_replay.enabled" "0"
+	log_info "$E_SESSION Session replay disabled"
+}
+
+# ===========================================
+# Relay Control
+# ===========================================
+
+cmd_start() {
+	require_root
+
+	local enabled=$(uci_get main.enabled)
+	[ "$enabled" = "1" ] || { log_warn "SaaS Relay is disabled"; return 1; }
+
+	if ! container_exists; then
+		log_error "$E_CONTAINER Container not installed. Run: saasctl install"
+		return 1
+	fi
+
+	if container_running; then
+		log_warn "$E_CONTAINER Container already running"
+		return 0
+	fi
+
+	# Ensure addon exists
+	[ -f "$MITMPROXY_ADDON" ] || _generate_mitmproxy_addon
+
+	# Generate config files from UCI
+	_generate_services_json
+	_generate_config_json
+
+	# Ensure cache directory exists
+	ensure_dir "$DATA_PATH/cache"
+	ensure_dir "$DATA_PATH/sessions"
+
+	log_info "$E_RELAY Starting SaaS Relay container..."
+
+	# Create startup script in container
+	cat > "$LXC_ROOTFS/start-saas-relay.sh" << 'STARTSCRIPT'
+#!/bin/sh
+cd /srv/saas-relay
+
+# Wait for network
+sleep 2
+
+# Start mitmweb
+# HAProxy handles user auth, mitmproxy uses fixed password "saas"
+# Using regular mode (not transparent)
+ADDON_ARG=""
+[ -f /srv/saas-relay/saas_relay_addon.py ] && ADDON_ARG="-s /srv/saas-relay/saas_relay_addon.py"
+
+exec /usr/local/bin/mitmweb \
+    --mode regular \
+    --listen-host 0.0.0.0 \
+    --listen-port 8890 \
+    --web-host 0.0.0.0 \
+    --web-port 8891 \
+    --no-web-open-browser \
+    --set confdir=/srv/saas-relay/.mitmproxy \
+    --set block_global=false \
+    --set web_password="saas" \
+    $ADDON_ARG \
+    2>&1 | tee /srv/saas-relay/logs/mitmproxy.log
+STARTSCRIPT
+	chmod +x "$LXC_ROOTFS/start-saas-relay.sh"
+
+	# Ensure mitmproxy config dir exists
+	ensure_dir "$DATA_PATH/.mitmproxy"
+
+	# Start container
+	lxc-start -n "$LXC_NAME" -d -- /start-saas-relay.sh
+
+	# Wait for startup
+	sleep 3
+
+	if container_running; then
+		uci_set "main.status" "running"
+		log_info "$E_OK SaaS Relay started"
+		log_info "   Web interface: http://$(uci -q get network.lan.ipaddr || echo 192.168.255.1):$WEB_PORT"
+		log_info "   Proxy port: $PROXY_PORT"
+	else
+		log_error "Container failed to start. Check logs: tail /var/log/lxc/$LXC_NAME.log"
+		return 1
+	fi
+}
+
+cmd_stop() {
+	require_root
+	log_info "$E_DISCONNECT Stopping SaaS Relay..."
+
+	if container_running; then
+		lxc-stop -n "$LXC_NAME" -k 2>/dev/null || true
+	fi
+
+	uci_set "main.status" "stopped"
+	log_info "$E_OK SaaS Relay stopped"
+}
+
+cmd_restart() {
+	cmd_stop
+	sleep 2
+	cmd_start
+}
+
+cmd_status() {
+	echo "$E_RELAY SaaS Relay Status"
+	echo "====================="
+	echo ""
+
+	local enabled=$(uci_get main.enabled)
+	local status=$(uci_get main.status)
+
+	echo "Enabled:    $([ "$enabled" = "1" ] && echo "$E_OK Yes" || echo "$E_ERR No")"
+
+	# Check actual container status
+	if container_running; then
+		echo "Container:  $E_OK Running ($LXC_NAME)"
+		uci_set "main.status" "running" 2>/dev/null
+	elif container_exists; then
+		echo "Container:  $E_WARN Stopped ($LXC_NAME)"
+		uci_set "main.status" "stopped" 2>/dev/null
+	else
+		echo "Container:  $E_ERR Not installed"
+	fi
+
+	echo "Proxy Port: $PROXY_PORT"
+	echo "Web Port:   $WEB_PORT"
+	echo "Data Path:  $DATA_PATH"
+	echo ""
+
+	# Check if ports are listening
+	if container_running; then
+		echo "$E_CONNECT Port Status:"
+		if netstat -tln 2>/dev/null | grep -q ":$PROXY_PORT "; then
+			echo "  Proxy ($PROXY_PORT): $E_OK Listening"
+		else
+			echo "  Proxy ($PROXY_PORT): $E_WARN Not listening"
+		fi
+		if netstat -tln 2>/dev/null | grep -q ":$WEB_PORT "; then
+			echo "  Web ($WEB_PORT): $E_OK Listening"
+		else
+			echo "  Web ($WEB_PORT): $E_WARN Not listening"
+		fi
+		echo ""
+	fi
+
+	# CDN Cache summary
+	echo "$E_CACHE CDN Cache:"
+	local cache_enabled=$(uci_get cache.enabled)
+	local cache_profile=$(uci_get cache.profile)
+	echo "  Enabled: $([ "$cache_enabled" = "1" ] && echo "Yes" || echo "No") | Profile: ${cache_profile:-gandalf}"
+	if [ -d "$DATA_PATH/cache" ]; then
+		local cache_files=$(find "$DATA_PATH/cache" -name "*.cache" 2>/dev/null | wc -l)
+		local cache_size=$(du -sh "$DATA_PATH/cache" 2>/dev/null | awk '{print $1}')
+		echo "  Files: $cache_files | Size: ${cache_size:-0}"
+	fi
+	echo ""
+
+	# Session Replay summary
+	echo "$E_SESSION Session Replay:"
+	local session_enabled=$(uci_get session_replay.enabled)
+	local session_mode=$(uci_get session_replay.default_mode)
+	local master_user=$(uci_get session_replay.master_user)
+	echo "  Enabled: $([ "$session_enabled" = "1" ] && echo "Yes" || echo "No") | Mode: ${session_mode:-shared}"
+	[ "$session_mode" = "master" ] && echo "  Master User: $master_user"
+	echo ""
+
+	# Cookie summary
+	echo "$E_COOKIE Cookie Summary:"
+	local total_cookies=0
+	for f in "$COOKIES_PATH"/*.json; do
+		[ -f "$f" ] || continue
+		local count=$(grep -c '"' "$f" 2>/dev/null | awk '{print int($1/2)}')
+		total_cookies=$((total_cookies + count))
+	done
+	echo "  Total cookies stored: $total_cookies"
+	echo ""
+
+	# Recent activity
+	echo "$E_LOG Recent Activity:"
+	if [ -f "$LOG_PATH/activity.log" ]; then
+		tail -5 "$LOG_PATH/activity.log" | sed 's/^/  /'
+	else
+		echo "  No activity logged"
+	fi
+}
+
+cmd_logs() {
+	local lines="${1:-50}"
+
+	if [ -f "$LOG_PATH/mitmproxy.log" ]; then
+		tail -n "$lines" "$LOG_PATH/mitmproxy.log"
+	else
+		echo "No mitmproxy logs available"
+	fi
+}
+
+cmd_shell() {
+	if ! container_running; then
+		log_error "$E_CONTAINER Container not running"
+		return 1
+	fi
+
+	lxc-attach -n "$LXC_NAME" -- /bin/sh
+}
+
+# ===========================================
+# Activity Log
+# ===========================================
+
+cmd_log() {
+	local lines="${1:-20}"
+
+	echo "$E_LOG Activity Log (last $lines)"
+	echo "=========================="
+	echo ""
+
+	if [ -f "$LOG_PATH/activity.log" ]; then
+		tail -n "$lines" "$LOG_PATH/activity.log"
+	else
+		echo "No activity logged"
+	fi
+}
+
+cmd_log_clear() {
+	require_root
+	> "$LOG_PATH/activity.log"
+	log_info "$E_LOG Activity log cleared"
+}
+
+# ===========================================
+# HAProxy Integration
+# ===========================================
+
+cmd_configure_haproxy() {
+	require_root
+	log_info "$E_CONNECT Configuring HAProxy backend..."
+
+	# SaaS relay uses the web interface port for HAProxy access
+	# Users access the mitmproxy web UI which shows flows and allows configuration
+	local web_port="$WEB_PORT"
+	local lan_ip=$(uci -q get network.lan.ipaddr || echo "192.168.255.1")
+
+	# Create backend for SaaS relay
+	if command -v haproxyctl >/dev/null 2>&1; then
+		# Remove old backend if exists
+		uci -q delete haproxy.backend_saas_relay 2>/dev/null || true
+		uci -q delete haproxy.saas_relay_server 2>/dev/null || true
+
+		# Create new backend
+		uci set haproxy.backend_saas_relay=backend
+		uci set haproxy.backend_saas_relay.name='saas_relay'
+		uci set haproxy.backend_saas_relay.mode='http'
+		uci set haproxy.backend_saas_relay.balance='roundrobin'
+		uci set haproxy.backend_saas_relay.enabled='1'
+
+		# Add server
+		uci set haproxy.saas_relay_server=server
+		uci set haproxy.saas_relay_server.backend='saas_relay'
+		uci set haproxy.saas_relay_server.name='mitmproxy-saas'
+		uci set haproxy.saas_relay_server.address="$lan_ip"
+		uci set haproxy.saas_relay_server.port="$web_port"
+		uci set haproxy.saas_relay_server.weight='100'
+		uci set haproxy.saas_relay_server.check='1'
+		uci set haproxy.saas_relay_server.enabled='1'
+
+		uci commit haproxy
+
+		log_info "$E_OK HAProxy backend configured: saas_relay -> $lan_ip:$web_port"
+	else
+		log_warn "haproxyctl not found"
+	fi
+}
+
+cmd_emancipate() {
+	local domain="$1"
+	[ -z "$domain" ] && { echo "Usage: saasctl emancipate <domain>"; return 1; }
+
+	require_root
+	log_info "$E_CONNECT Emancipating SaaS Relay at $domain..."
+
+	# Create HAProxy vhost with auth
+	if command -v haproxyctl >/dev/null 2>&1; then
+		haproxyctl vhost add "$domain" saas_relay
+		haproxyctl auth enable "$domain"
+		haproxyctl cert add "$domain"
+
+		log_info "$E_OK SaaS Relay exposed at https://$domain (auth required)"
+	else
+		log_error "haproxyctl not found"
+		return 1
+	fi
+}
+
+# ===========================================
+# Usage
+# ===========================================
+
+usage() {
+	cat << EOF
+$E_RELAY SecuBox SaaS Relay - Shared Session Proxy with CDN Cache
+
+Usage: saasctl <command> [options]
+
+Container:
+  install                  Install mitmproxy-saas container
+  uninstall                Remove container and data
+  shell                    Open shell in container
+
+Setup:
+  setup                    Initialize data directories
+  configure-haproxy        Setup HAProxy backend
+  emancipate <domain>      Expose relay with SSL + auth
+
+Control:
+  start                    Start relay container
+  stop                     Stop relay container
+  restart                  Restart relay container
+  status                   Show relay status
+  logs [lines]             Show mitmproxy logs
+
+Services:
+  service list             List configured services
+  service enable <id>      Enable a service
+  service disable <id>     Disable a service
+  service add <id> <name> <domain> [emoji]
+
+Cookies:
+  cookie list [service]    List stored cookies
+  cookie import <service> <file>   Import cookies
+  cookie export <service>  Export cookies as JSON
+  cookie clear [service]   Clear cookies
+
+CDN Cache:
+  cache status             Show cache statistics
+  cache clear              Clear all cached content
+  cache profile [name]     Set cache profile (minimal/gandalf/aggressive)
+  cache enable             Enable CDN caching
+  cache disable            Disable CDN caching
+
+Session Replay:
+  session status           Show session replay status
+  session mode [mode]      Set mode (shared/per_user/master)
+  session master <user>    Set master user for replay mode
+  session enable           Enable session replay
+  session disable          Disable session replay
+
+Logging:
+  log [lines]              Show activity log
+  log clear                Clear activity log
+
+Cache Profiles:
+  minimal    - CSS, JS, SVG only - 5min TTL - safe for most sites
+  gandalf    - CSS, JS, images, fonts - 1h TTL - balanced caching
+  aggressive - Everything except /api/ /auth/ - 24h TTL - max savings
+
+Examples:
+  saasctl install
+  saasctl cache profile gandalf
+  saasctl session mode master
+  saasctl session master admin
+  saasctl service add anthropic "Anthropic" "console.anthropic.com" "🧠"
+  saasctl cookie import claude_ai cookies.json
+  saasctl emancipate relay.secubox.in
+  saasctl start
+
+EOF
+}
+
+# ===========================================
+# Main
+# ===========================================
+
+case "${1:-}" in
+	install)   shift; cmd_install "$@" ;;
+	uninstall) shift; cmd_uninstall "$@" ;;
+	setup)     shift; cmd_setup "$@" ;;
+	start)     shift; cmd_start "$@" ;;
+	stop)      shift; cmd_stop "$@" ;;
+	restart)   shift; cmd_restart "$@" ;;
+	status)    shift; cmd_status "$@" ;;
+	logs)      shift; cmd_logs "$@" ;;
+	shell)     shift; cmd_shell "$@" ;;
+
+	service)
+		shift
+		case "${1:-}" in
+			list)    shift; cmd_service_list "$@" ;;
+			enable)  shift; cmd_service_enable "$@" ;;
+			disable) shift; cmd_service_disable "$@" ;;
+			add)     shift; cmd_service_add "$@" ;;
+			*)       echo "Usage: saasctl service {list|enable|disable|add}" ;;
+		esac
+		;;
+
+	cookie)
+		shift
+		case "${1:-}" in
+			list)    shift; cmd_cookie_list "$@" ;;
+			import)  shift; cmd_cookie_import "$@" ;;
+			export)  shift; cmd_cookie_export "$@" ;;
+			clear)   shift; cmd_cookie_clear "$@" ;;
+			*)       echo "Usage: saasctl cookie {list|import|export|clear}" ;;
+		esac
+		;;
+
+	cache)
+		shift
+		case "${1:-}" in
+			status)  shift; cmd_cache_status "$@" ;;
+			clear)   shift; cmd_cache_clear "$@" ;;
+			profile) shift; cmd_cache_profile "$@" ;;
+			enable)  shift; cmd_cache_enable "$@" ;;
+			disable) shift; cmd_cache_disable "$@" ;;
+			*)       echo "Usage: saasctl cache {status|clear|profile|enable|disable}" ;;
+		esac
+		;;
+
+	session)
+		shift
+		case "${1:-}" in
+			status)  shift; cmd_session_status "$@" ;;
+			mode)    shift; cmd_session_mode "$@" ;;
+			master)  shift; cmd_session_master "$@" ;;
+			enable)  shift; cmd_session_enable "$@" ;;
+			disable) shift; cmd_session_disable "$@" ;;
+			*)       echo "Usage: saasctl session {status|mode|master|enable|disable}" ;;
+		esac
+		;;
+
+	log)
+		shift
+		case "${1:-}" in
+			clear)   shift; cmd_log_clear "$@" ;;
+			*)       cmd_log "$@" ;;
+		esac
+		;;
+
+	configure-haproxy) shift; cmd_configure_haproxy "$@" ;;
+	emancipate)        shift; cmd_emancipate "$@" ;;
+
+	*)  usage ;;
+esac

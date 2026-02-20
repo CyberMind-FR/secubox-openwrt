@@ -13,6 +13,24 @@
 
 **When the user says "continue" or "next"**, consult WIP.md "Next Up" and TODO.md "Open" to pick the next task. When completing work, update these files to keep them current. New features and fixes must be appended to HISTORY.md with the date.
 
+## Security Policies
+
+### WAF Bypass Prohibition
+- **NEVER set `waf_bypass='1'` on any HAProxy vhost** — All traffic MUST pass through the mitmproxy WAF for inspection
+- When adding new services/domains to HAProxy, route through `mitmproxy_inspector` backend and add the upstream route to `/srv/mitmproxy/haproxy-routes.json`
+- If a service needs special handling (WebSocket, long connections), configure mitmproxy to properly forward the traffic rather than bypassing WAF
+- Use `mitmproxyctl sync-routes` to regenerate routes from HAProxy backends, then manually add any missing routes for backends that don't have standard server entries
+
+### Mitmproxy Route Configuration
+When adding a new service that routes through HAProxy → mitmproxy:
+1. Add vhost: `haproxyctl vhost add <domain>`
+2. Backend will default to `mitmproxy_inspector` (correct)
+3. Add route to mitmproxy: Edit `/srv/mitmproxy/haproxy-routes.json` and `/srv/mitmproxy-in/haproxy-routes.json`:
+   ```json
+   "domain.example.com": ["127.0.0.1", PORT]
+   ```
+4. Restart mitmproxy: `/etc/init.d/mitmproxy restart`
+
 ## OpenWrt Shell Scripting Guidelines
 
 ### Process Detection

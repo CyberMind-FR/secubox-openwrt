@@ -18,8 +18,9 @@ log_warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 log_title() { echo -e "\n${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"; echo -e "${BLUE}$1${NC}"; echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"; }
 
-# Load library
+# Load libraries
 . /usr/lib/secubox/users-lib.sh 2>/dev/null || true
+. /usr/lib/secubox/users-login-stats.sh 2>/dev/null || true
 
 # UCI helpers
 uci_get() { uci -q get ${CONFIG}.$1; }
@@ -310,22 +311,103 @@ cmd_list() {
 	log_title "SecuBox Users"
 
 	local users=$(uci show ${CONFIG} 2>/dev/null | grep "=user$" | cut -d'.' -f2 | cut -d'=' -f1)
+	local domain=$(get_domain)
 
 	if [ -z "$users" ]; then
 		echo "No users configured."
 		return
 	fi
 
-	printf "%-15s %-25s %-8s %s\n" "USERNAME" "EMAIL" "ENABLED" "SERVICES"
-	echo "─────────────────────────────────────────────────────────────────────────"
+	printf "%-12s %-22s %-18s %6s %6s\n" "USERNAME" "EMAIL" "LAST LOGIN" "OK" "FAIL"
+	echo "────────────────────────────────────────────────────────────────────────────"
 
 	for user in $users; do
 		local email=$(uci_get ${user}.email)
-		local enabled=$(uci_get ${user}.enabled)
-		local services=$(uci -q get ${CONFIG}.${user}.services 2>/dev/null | tr ' ' ',')
-		[ "$enabled" = "1" ] && enabled="yes" || enabled="no"
-		printf "%-15s %-25s %-8s %s\n" "$user" "$email" "$enabled" "$services"
+
+		# Get login stats if library loaded
+		local last_login="n/a"
+		local ok_count="0"
+		local fail_count="0"
+
+		if type get_user_stats_summary >/dev/null 2>&1; then
+			local stats=$(get_user_stats_summary "$user" "$domain" 2>/dev/null)
+			last_login=$(echo "$stats" | cut -d'|' -f1)
+			ok_count=$(echo "$stats" | cut -d'|' -f2)
+			fail_count=$(echo "$stats" | cut -d'|' -f3)
+			[ -z "$last_login" ] && last_login="never"
+		fi
+
+		printf "%-12s %-22s %-18s %6s %6s\n" "$user" "${email:-$user@$domain}" "${last_login:0:18}" "${ok_count:-0}" "${fail_count:-0}"
 	done
+
+	echo ""
+	echo "Use 'secubox-users stats <user>' for detailed login statistics"
+}
+
+# Show login stats for a user
+cmd_stats() {
+	local username="$1"
+
+	if [ -z "$username" ]; then
+		log_error "Usage: secubox-users stats <username>"
+		return 1
+	fi
+
+	# Check user exists
+	if ! uci -q get ${CONFIG}.${username} >/dev/null 2>&1; then
+		log_error "User not found: $username"
+		return 1
+	fi
+
+	local domain=$(get_domain)
+	log_title "Login Statistics: $username"
+
+	echo ""
+	printf "%-12s %-24s %8s %8s\n" "SERVICE" "LAST LOGIN" "SUCCESS" "FAILURE"
+	echo "────────────────────────────────────────────────────────────────"
+
+	# Nextcloud
+	local nc_stats=$(get_nextcloud_stats "$username" 2>/dev/null || echo "||")
+	local nc_last=$(echo "$nc_stats" | cut -d'|' -f1)
+	local nc_ok=$(echo "$nc_stats" | cut -d'|' -f2)
+	local nc_fail=$(echo "$nc_stats" | cut -d'|' -f3)
+	printf "%-12s %-24s %8s %8s\n" "Nextcloud" "${nc_last:-never}" "${nc_ok:-0}" "${nc_fail:-0}"
+
+	# PeerTube
+	local pt_stats=$(get_peertube_stats "$username" 2>/dev/null || echo "||")
+	local pt_last=$(echo "$pt_stats" | cut -d'|' -f1)
+	local pt_ok=$(echo "$pt_stats" | cut -d'|' -f2)
+	local pt_fail=$(echo "$pt_stats" | cut -d'|' -f3)
+	printf "%-12s %-24s %8s %8s\n" "PeerTube" "${pt_last:-never}" "${pt_ok:-0}" "${pt_fail:-0}"
+
+	# Jabber
+	local jb_stats=$(get_jabber_stats "$username" "$domain" 2>/dev/null || echo "||")
+	local jb_last=$(echo "$jb_stats" | cut -d'|' -f1)
+	local jb_ok=$(echo "$jb_stats" | cut -d'|' -f2)
+	local jb_fail=$(echo "$jb_stats" | cut -d'|' -f3)
+	printf "%-12s %-24s %8s %8s\n" "Jabber" "${jb_last:-never}" "${jb_ok:-0}" "${jb_fail:-0}"
+
+	# Matrix
+	local mx_stats=$(get_matrix_stats "$username" 2>/dev/null || echo "||")
+	local mx_last=$(echo "$mx_stats" | cut -d'|' -f1)
+	local mx_ok=$(echo "$mx_stats" | cut -d'|' -f2)
+	local mx_fail=$(echo "$mx_stats" | cut -d'|' -f3)
+	printf "%-12s %-24s %8s %8s\n" "Matrix" "${mx_last:-never}" "${mx_ok:-0}" "${mx_fail:-0}"
+
+	# Email
+	local em_stats=$(get_email_stats "$username" "$domain" 2>/dev/null || echo "||")
+	local em_last=$(echo "$em_stats" | cut -d'|' -f1)
+	local em_ok=$(echo "$em_stats" | cut -d'|' -f2)
+	local em_fail=$(echo "$em_stats" | cut -d'|' -f3)
+	printf "%-12s %-24s %8s %8s\n" "Email" "${em_last:-never}" "${em_ok:-0}" "${em_fail:-0}"
+
+	echo "────────────────────────────────────────────────────────────────"
+
+	# Totals
+	local total_ok=$((${nc_ok:-0} + ${pt_ok:-0} + ${jb_ok:-0} + ${mx_ok:-0} + ${em_ok:-0}))
+	local total_fail=$((${nc_fail:-0} + ${pt_fail:-0} + ${jb_fail:-0} + ${mx_fail:-0} + ${em_fail:-0}))
+	printf "%-12s %-24s %8s %8s\n" "TOTAL" "" "$total_ok" "$total_fail"
+	echo ""
 }
 
 # Sync user to services (re-create if missing)
@@ -382,7 +464,8 @@ Commands:
   add <user> [pass] [services]  Create user on all/specified services
   del <user>                    Delete user from all services
   passwd <user> [new_pass]      Update password on all services
-  list                          List all SecuBox users
+  list                          List all users with login stats
+  stats <user>                  Show detailed login statistics
   sync [user]                   Sync user(s) to services
   status                        Show status and available services
 
@@ -407,6 +490,7 @@ case "$1" in
 	list|ls) cmd_list ;;
 	sync)    shift; cmd_sync "$@" ;;
 	status)  cmd_status ;;
+	stats)   shift; cmd_stats "$@" ;;
 	help|--help|-h|'') show_help ;;
 	*)       log_error "Unknown command: $1"; show_help; exit 1 ;;
 esac

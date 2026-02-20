@@ -1,0 +1,23 @@
+{
+	"luci-app-media-hub": {
+		"description": "Grant access to Media Hub dashboard",
+		"read": {
+			"ubus": {
+				"luci.media-hub": [
+					"status",
+					"services",
+					"service_status"
+				]
+			}
+		},
+		"write": {
+			"ubus": {
+				"luci.media-hub": [
+					"service_start",
+					"service_stop",
+					"service_restart"
+				]
+			}
+		}
+	}
+}

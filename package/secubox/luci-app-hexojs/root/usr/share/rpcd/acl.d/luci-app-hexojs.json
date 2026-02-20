@@ -31,7 +31,8 @@
 					"get_tor_status",
 					"get_instance_endpoints",
 					"get_instance_health",
-					"get_pipeline_status"
+					"get_pipeline_status",
+					"static_list"
 				]
 			},
 			"uci": ["hexojs"]
@@ -84,7 +85,13 @@
 					"unpublish_from_tor",
 					"full_publish",
 					"handle_webhook",
-					"setup_webhook"
+					"setup_webhook",
+					"static_upload",
+					"static_create",
+					"static_delete",
+					"static_publish",
+					"static_delete_file",
+					"static_configure_auth"
 				]
 			},
 			"uci": ["hexojs"]

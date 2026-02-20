@@ -60,11 +60,24 @@ return view.extend({
 			}, s);
 		});
 
+		// Login stats
+		var lastLogin = user.last_login || 'never';
+		var loginSuccess = user.login_success || 0;
+		var loginFailure = user.login_failure || 0;
+
+		// Color code failures
+		var failColor = loginFailure > 10 ? '#f44336' : (loginFailure > 0 ? '#ff9800' : '#4caf50');
+
 		return E('tr', {}, [
 			E('td', {}, user.username),
 			E('td', {}, user.email),
+			E('td', {}, lastLogin),
+			E('td', { 'style': 'text-align:center;' }, [
+				E('span', { 'style': 'color:#4caf50;font-weight:bold;' }, String(loginSuccess)),
+				E('span', {}, ' / '),
+				E('span', { 'style': 'color:' + failColor + ';font-weight:bold;' }, String(loginFailure))
+			]),
 			E('td', {}, services),
-			E('td', {}, user.enabled === '1' ? 'Yes' : 'No'),
 			E('td', {}, [
 				E('button', {
 					'class': 'btn cbi-button',
@@ -271,8 +284,9 @@ return view.extend({
 					E('tr', { 'class': 'tr table-titles' }, [
 						E('th', { 'class': 'th' }, _('Username')),
 						E('th', { 'class': 'th' }, _('Email')),
+						E('th', { 'class': 'th' }, _('Last Login')),
+						E('th', { 'class': 'th', 'style': 'text-align:center;' }, _('OK / Fail')),
 						E('th', { 'class': 'th' }, _('Services')),
-						E('th', { 'class': 'th' }, _('Enabled')),
 						E('th', { 'class': 'th' }, _('Actions'))
 					])
 				].concat(userRows)) :

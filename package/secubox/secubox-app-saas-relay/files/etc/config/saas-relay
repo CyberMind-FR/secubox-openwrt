@@ -1,0 +1,137 @@
+# SecuBox SaaS Relay Configuration
+# Shared browser session proxy for team access to external services
+
+config main 'main'
+	option enabled '0'
+	option data_path '/srv/saas-relay'
+	option proxy_port '8890'
+	option intercept_mode 'inject'
+	# inject = inject stored cookies, capture = capture new cookies, both = full relay
+
+# Service definitions - external SaaS to relay
+config service 'claude_ai'
+	option enabled '1'
+	option name 'Claude AI'
+	option emoji '🤖'
+	option domain 'claude.ai'
+	option cookie_domains 'claude.ai,.claude.ai'
+	option auth_required '1'
+	option status 'disconnected'
+	option last_check '0'
+
+config service 'chatgpt'
+	option enabled '1'
+	option name 'ChatGPT'
+	option emoji '💬'
+	option domain 'chat.openai.com'
+	option cookie_domains 'openai.com,.openai.com,chat.openai.com'
+	option auth_required '1'
+	option status 'disconnected'
+	option last_check '0'
+
+config service 'google'
+	option enabled '1'
+	option name 'Google'
+	option emoji '🔍'
+	option domain 'google.com'
+	option cookie_domains 'google.com,.google.com,accounts.google.com'
+	option auth_required '1'
+	option status 'disconnected'
+	option last_check '0'
+
+config service 'github'
+	option enabled '1'
+	option name 'GitHub'
+	option emoji '🐙'
+	option domain 'github.com'
+	option cookie_domains 'github.com,.github.com'
+	option auth_required '1'
+	option status 'disconnected'
+	option last_check '0'
+
+config service 'notion'
+	option enabled '0'
+	option name 'Notion'
+	option emoji '📝'
+	option domain 'notion.so'
+	option cookie_domains 'notion.so,.notion.so'
+	option auth_required '1'
+	option status 'disconnected'
+	option last_check '0'
+
+config service 'slack'
+	option enabled '0'
+	option name 'Slack'
+	option emoji '💼'
+	option domain 'slack.com'
+	option cookie_domains 'slack.com,.slack.com'
+	option auth_required '1'
+	option status 'disconnected'
+	option last_check '0'
+
+# Access control - which SecuBox users can use which services
+config access 'default_access'
+	option user '*'
+	list services 'claude_ai'
+	list services 'chatgpt'
+	list services 'google'
+	list services 'github'
+
+# Logging configuration
+config logging 'logging'
+	option enabled '1'
+	option emoji_mode '1'
+	option log_requests '1'
+	option log_auth '1'
+	option max_entries '1000'
+
+# CDN Cache configuration
+config cache 'cache'
+	option enabled '1'
+	option storage_path '/srv/saas-relay/cache'
+	option max_size_mb '500'
+	option default_ttl '3600'
+	option profile 'gandalf'
+
+# Cache profiles - configurable caching strategies
+config cache_profile 'minimal'
+	option ttl '300'
+	option max_file_size_kb '100'
+	list content_types 'text/css'
+	list content_types 'application/javascript'
+	list content_types 'image/svg+xml'
+
+config cache_profile 'gandalf'
+	option ttl '3600'
+	option max_file_size_kb '5000'
+	list content_types 'text/css'
+	list content_types 'application/javascript'
+	list content_types 'image/png'
+	list content_types 'image/jpeg'
+	list content_types 'image/gif'
+	list content_types 'image/webp'
+	list content_types 'image/svg+xml'
+	list content_types 'font/woff'
+	list content_types 'font/woff2'
+	list content_types 'application/font-woff'
+	list content_types 'application/font-woff2'
+
+config cache_profile 'aggressive'
+	option ttl '86400'
+	option max_file_size_kb '20000'
+	list content_types '*'
+	list exclude_patterns '/api/'
+	list exclude_patterns '/auth/'
+	list exclude_patterns '/login'
+	list exclude_patterns '/logout'
+
+# Session replay - share sessions across SecuBox users
+config session_replay 'session_replay'
+	option enabled '1'
+	option default_mode 'shared'
+	# shared = all users share the same session
+	# per_user = each SecuBox user gets their own session copy
+	# master = one user authenticates, others replay
+	option master_user 'admin'
+	option session_storage '/srv/saas-relay/sessions'
+	option sync_interval '60'

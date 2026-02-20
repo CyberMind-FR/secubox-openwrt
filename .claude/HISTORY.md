@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-02-19_
+_Last updated: 2026-02-20_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -2490,3 +2490,110 @@ git checkout HEAD -- index.html
     - UCI config section: `config recording 'recording'` with enabled/format/retention_days
     - Menu entry: Services → VoIP PBX → Recordings
     - Note: OVH SIP trunk registration requires correct password from OVH Manager
+
+41. **Matrix Homeserver Integration (2026-02-19)**
+    - Created `secubox-app-matrix` package for Conduit Matrix server:
+      - Lightweight Rust-based homeserver (~15MB binary, ~500MB RAM)
+      - LXC Debian Bookworm container with pre-built ARM64/x86_64 binaries
+      - E2EE messaging with federation support
+      - RocksDB database for performance
+    - New `matrixctl` CLI commands:
+      - `install`, `uninstall`, `update` - Container lifecycle
+      - `start`, `stop`, `restart`, `status` - Service control
+      - `user add/del/passwd/list` - User management
+      - `room list/create/delete` - Room management
+      - `federation test/status` - Federation testing
+      - `configure-haproxy`, `emancipate <domain>` - Punk Exposure
+      - `identity link/unlink` - DID integration
+      - `mesh publish/unpublish` - P2P service registry
+      - `backup`, `restore` - Data persistence
+    - Created `luci-app-matrix` LuCI dashboard:
+      - Install wizard for new deployments
+      - Status card with running state, version, features
+      - Service controls (Start/Stop/Update/Uninstall)
+      - User management form
+      - Emancipate form for public exposure
+      - Identity integration section (DID linking)
+      - Mesh publication toggle
+      - Logs viewer with refresh
+    - RPCD methods (18 total): status, logs, start, stop, install, uninstall, update,
+      emancipate, configure_haproxy, user_add, user_del, federation_status,
+      identity_status, identity_link, identity_unlink, mesh_status, mesh_publish, mesh_unpublish
+    - UCI config sections: main, server, federation, admin, database, network, identity, mesh
+    - v1.0.0 roadmap: Matrix integration complements VoIP/Jabber for full mesh communication stack
+    - Files created:
+      - `package/secubox/secubox-app-matrix/` (Makefile, UCI, init.d, matrixctl)
+      - `package/secubox/luci-app-matrix/` (RPCD, ACL, menu, overview.js, api.js)
+
+25. **HexoJS KISS Static Upload & Multi-User Authentication (2026-02-20)**
+    - Added multi-user/multi-instance authentication:
+      - HAProxy Basic Auth integration with apr1 password hashing
+      - `hexoctl user add/del/passwd/list/grant/revoke` commands
+      - `hexoctl auth enable/disable/status/haproxy` commands
+      - UCI config sections for users and per-instance auth
+    - KISS Static Upload workflow (no Hexo build process):
+      - `hexoctl static create <name>` - Create static-only site
+      - `hexoctl static upload <file> [inst]` - Upload HTML/CSS/JS directly
+      - `hexoctl static publish [inst]` - Copy to /www/ for uhttpd serving
+      - `hexoctl static quick <file> [inst]` - One-command upload + publish
+      - `hexoctl static list [inst]` - List static files
+      - `hexoctl static serve [inst]` - Python/busybox httpd server
+      - `hexoctl static delete <name>` - Delete static instance
+    - Goal: Fast publishing experiment (KISSS) for HTML files without Node.js/Hexo build
+    - Tested and verified on router with immediate uhttpd serving
+
+26. **SaaS Relay CDN Caching & Session Replay (2026-02-20)**
+    - Enhanced `secubox-app-saas-relay` with CDN caching layer and multi-user session replay
+    - CDN Cache features:
+      - Configurable cache profiles: minimal, gandalf (default), aggressive
+      - Profile-based caching rules (content types, TTL, max size, exclude patterns)
+      - File-based cache storage with metadata for expiry tracking
+      - Cache-Control header respect (max-age, no-store, private)
+      - `X-SaaSRelay-Cache: HIT/MISS` header for debugging
+    - Session Replay features:
+      - Three modes: shared (default), per_user, master
+      - Shared mode: All SecuBox users share same session cookies
+      - Per-user mode: Each user gets their own session storage
+      - Master mode: One user (admin) authenticates, others replay their session
+    - New CLI commands:
+      - `saasctl cache {status|clear|profile|enable|disable}` - Cache management
+      - `saasctl session {status|mode|master|enable|disable}` - Session management
+    - Enhanced mitmproxy addon (415 lines) with:
+      - Response caching before network request
+      - Cache key generation with SHA-256 URL hashing
+      - Per-user session file storage with fallback to master
+      - Activity logging with emoji indicators
+    - UCI config sections added: cache, cache_profile (3), session_replay
+    - Config JSON export for container: config.json + services.json
+
+27. **Matrix Homeserver (Conduit) Integration (2026-02-20)**
+    - E2EE mesh messaging using Conduit Matrix homeserver (v0.10.12)
+    - `secubox-app-matrix` package with LXC container management:
+      - Pre-built ARM64 Conduit binary from GitLab artifacts
+      - Debian Bookworm base, RocksDB backend
+      - 512MB RAM limit, persistent data in /srv/matrix
+    - `matrixctl` CLI tool (1279 lines):
+      - Container: install, uninstall, update, check, shell
+      - Service: start, stop, restart, status, logs
+      - Users: add, del, passwd, list
+      - Rooms: list, create, delete
+      - Federation: test, status
+      - Exposure: configure-haproxy, emancipate
+      - Identity: link, unlink, status (DID integration)
+      - Mesh: publish, unpublish
+      - Backup: backup, restore
+    - `luci-app-matrix` dashboard:
+      - Install wizard for first-time setup
+      - Status cards with feature badges
+      - Service controls
+      - User management form
+      - Emancipate (public exposure) form
+      - Identity/DID linking section
+      - P2P mesh publication toggle
+      - Logs viewer with refresh
+    - RPCD methods (17 total): status, logs, start, stop, install, uninstall, update,
+      emancipate, configure_haproxy, user_add, user_del, federation_status,
+      identity_status, identity_link, identity_unlink, mesh_status, mesh_publish, mesh_unpublish
+    - UCI config sections: main, server, federation, admin, database, network, identity, mesh
+    - Matrix API responding with v1.1-v1.12 support
+    - Files: `package/secubox/secubox-app-matrix/`, `package/secubox/luci-app-matrix/`

@@ -105,5 +105,13 @@
 			"type": "view",
 			"path": "hexojs/settings"
 		}
+	},
+	"admin/services/hexojs/static": {
+		"title": "Static Sites",
+		"order": 115,
+		"action": {
+			"type": "view",
+			"path": "hexojs/static"
+		}
 	}
 }

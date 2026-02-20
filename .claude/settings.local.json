@@ -353,7 +353,29 @@
       "Bash(gh repo view:*)",
       "Bash(gh repo edit:*)",
       "Bash(gh auth:*)",
-      "WebFetch(domain:cloud.gk2.secubox.in)"
+      "WebFetch(domain:cloud.gk2.secubox.in)",
+      "WebFetch(domain:docs.conduit.rs)",
+      "Bash(' -f1\\)\n    local nc_ok=$\\(echo \"\"$nc_stats\"\" | cut -d')",
+      "Bash(' -f2\\)\n    local nc_fail=$\\(echo \"\"$nc_stats\"\" | cut -d')",
+      "Bash(' -f3\\)\n    \n    local pt_last=$\\(echo \"\"$pt_stats\"\" | cut -d')",
+      "Bash(' -f1\\)\n    local pt_ok=$\\(echo \"\"$pt_stats\"\" | cut -d')",
+      "Bash(' -f2\\)\n    local pt_fail=$\\(echo \"\"$pt_stats\"\" | cut -d')",
+      "Bash(' -f3\\)\n    \n    local jb_last=$\\(echo \"\"$jb_stats\"\" | cut -d')",
+      "Bash(' -f1\\)\n    local jb_ok=$\\(echo \"\"$jb_stats\"\" | cut -d')",
+      "Bash(' -f2\\)\n    local jb_fail=$\\(echo \"\"$jb_stats\"\" | cut -d')",
+      "Bash(' -f3\\)\n    \n    local mx_last=$\\(echo \"\"$mx_stats\"\" | cut -d')",
+      "Bash(' -f1\\)\n    local mx_ok=$\\(echo \"\"$mx_stats\"\" | cut -d')",
+      "Bash(' -f2\\)\n    local mx_fail=$\\(echo \"\"$mx_stats\"\" | cut -d')",
+      "Bash(' -f3\\)\n    \n    local em_last=$\\(echo \"\"$em_stats\"\" | cut -d')",
+      "Bash(' -f1\\)\n    local em_ok=$\\(echo \"\"$em_stats\"\" | cut -d')",
+      "Bash(' -f2\\)\n    local em_fail=$\\(echo \"\"$em_stats\"\" | cut -d')",
+      "Bash(' -f3\\)\n    \n    # Calculate totals\n    local total_success=$\\(\\(${nc_ok:-0} + ${pt_ok:-0} + ${jb_ok:-0} + ${mx_ok:-0} + ${em_ok:-0}\\)\\)\n    local total_failure=$\\(\\(${nc_fail:-0} + ${pt_fail:-0} + ${jb_fail:-0} + ${mx_fail:-0} + ${em_fail:-0}\\)\\)\n    \n    # Find most recent login\n    local last_login=\"\"\"\"\n    for ts in \"\"$nc_last\"\" \"\"$pt_last\"\" \"\"$jb_last\"\" \"\"$mx_last\"\" \"\"$em_last\"\"; do\n        [ -n \"\"$ts\"\" ] && last_login=\"\"$ts\"\"\n    done\n    \n    # Output JSON\n    cat << EOFSTATS\n{\n    \"\"last_login\"\": \"\"${last_login:-never}\"\",\n    \"\"total_success\"\": $total_success,\n    \"\"total_failure\"\": $total_failure,\n    \"\"services\"\": {\n        \"\"nextcloud\"\": {\"\"last\"\": \"\"${nc_last:-}\"\", \"\"success\"\": ${nc_ok:-0}, \"\"failure\"\": ${nc_fail:-0}},\n        \"\"peertube\"\": {\"\"last\"\": \"\"${pt_last:-}\"\", \"\"success\"\": ${pt_ok:-0}, \"\"failure\"\": ${pt_fail:-0}},\n        \"\"jabber\"\": {\"\"last\"\": \"\"${jb_last:-}\"\", \"\"success\"\": ${jb_ok:-0}, \"\"failure\"\": ${jb_fail:-0}},\n        \"\"matrix\"\": {\"\"last\"\": \"\"${mx_last:-}\"\", \"\"success\"\": ${mx_ok:-0}, \"\"failure\"\": ${mx_fail:-0}},\n        \"\"email\"\": {\"\"last\"\": \"\"${em_last:-}\"\", \"\"success\"\": ${em_ok:-0}, \"\"failure\"\": ${em_fail:-0}}\n    }\n}\nEOFSTATS\n}\nEOF\nchmod +x /usr/lib/secubox/users-login-stats.sh\necho \"\"Login stats library created\"\"')",
+      "WebFetch(domain:cdnjs.com)",
+      "Bash(npm install:*)",
+      "Bash(npm run build:*)",
+      "Bash(npx gulp browserify:*)",
+      "Bash(npx terser:*)",
+      "Bash(read)"
     ]
   }
 }

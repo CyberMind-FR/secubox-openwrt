@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-19 (v0.22.0 - VoIP + Jabber Integration)_
+_Last updated: 2026-02-20 (v0.23.0 - Matrix + SaaS Relay + Media Hub)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -62,6 +62,52 @@ _Last updated: 2026-02-19 (v0.22.0 - VoIP + Jabber Integration)_
   - Gossip-based exposure config sync via secubox-p2p
   - Created `luci-app-vortex-dns` dashboard
 
+### Just Completed (2026-02-20)
+
+- **Matrix Homeserver (Conduit)** — DONE (2026-02-20)
+  - E2EE mesh messaging server using Conduit Matrix homeserver
+  - LXC container with pre-built ARM64 Conduit binary (0.10.12)
+  - `matrixctl` CLI (1279 lines): install/uninstall/update, user management, rooms, federation
+  - `luci-app-matrix` dashboard with:
+    - Install wizard, status cards, feature badges
+    - Service controls (Start/Stop/Update/Uninstall)
+    - User management form
+    - Emancipate (public exposure) with HAProxy + SSL
+    - Identity (DID) integration section
+    - P2P mesh publication toggle
+    - Logs viewer
+  - RPCD backend with 17 methods
+  - UCI config: main, server, federation, admin, database, network, identity, mesh
+  - Tested and verified on router (all checks pass, API responding)
+
+- **SaaS Relay CDN Caching & Session Replay** — DONE (2026-02-20)
+  - CDN cache with configurable profiles: minimal, gandalf, aggressive
+  - Session replay modes: shared (default), per_user, master
+  - New CLI commands: `saasctl cache {status|clear|profile|enable|disable}`
+  - New CLI commands: `saasctl session {status|mode|master|enable|disable}`
+  - Enhanced mitmproxy addon (415 lines) with response caching
+  - UCI config sections: cache, cache_profile (3), session_replay
+  - Config JSON export: config.json + services.json
+
+- **Media Services Hub Dashboard** — DONE (2026-02-20)
+  - Unified dashboard for all SecuBox media services at `/admin/services/media-hub`
+  - Category-organized cards: streaming, conferencing, apps, display, social, monitoring
+  - Service cards with status indicators, start/stop/restart controls
+  - RPCD backend querying 8 media services (Jellyfin, Lyrion, Jitsi, PeerTube, etc.)
+  - Files: `luci-app-media-hub` package
+
+- **HexoJS KISS Static Upload** — DONE (2026-02-20)
+  - Multi-user/multi-instance authentication with HAProxy Basic Auth
+  - UCI config for users, auth, and instances
+  - `hexoctl user add/del/passwd/grant/revoke` commands
+  - `hexoctl auth enable/disable/status/haproxy` commands
+  - KISS static upload workflow (no Hexo build required):
+    - `hexoctl static create <name>` - Create static-only site
+    - `hexoctl static upload <file>` - Upload HTML/CSS/JS directly
+    - `hexoctl static publish` - Copy to /www/ for immediate serving
+    - `hexoctl static quick <file>` - One-command upload + publish
+  - Tested and verified on router
+
 ### Just Completed (2026-02-19)
 
 - **WAF VoIP/XMPP Security Filters** — DONE (2026-02-19)
@@ -93,6 +139,16 @@ _Last updated: 2026-02-19 (v0.22.0 - VoIP + Jabber Integration)_
   - Updated jabberctl with `jingle enable/disable`, `sms config/send`, `voicemail-notify`
   - Updated luci.jabber RPCD with 9 new VoIP methods
   - UCI config sections: jingle, sms, voicemail
+
+- **Matrix Homeserver Integration** — DONE (2026-02-19)
+  - Created `secubox-app-matrix` package with Conduit Matrix server in LXC
+  - Pre-built ARM64/x86_64 binaries (~15MB), ~500MB RAM footprint
+  - `matrixctl` CLI: install/start/stop, user management, federation, emancipate
+  - HAProxy integration, identity linking (DID), P2P mesh publication
+  - Created `luci-app-matrix` dashboard with KISS theme
+  - Install wizard, status cards, user form, emancipate form, logs viewer
+  - RPCD backend with 18 methods
+  - Completes v1.0.0 roadmap: Matrix + VoIP + Jabber = full mesh communication stack
 
 ### Just Completed (2026-02-17)
 

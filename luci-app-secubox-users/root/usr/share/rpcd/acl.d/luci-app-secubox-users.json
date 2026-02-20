@@ -1,0 +1,17 @@
+{
+	"luci-app-secubox-users": {
+		"description": "Grant access to SecuBox User Management",
+		"read": {
+			"ubus": {
+				"luci.secubox-users": ["status", "users"]
+			},
+			"uci": ["secubox-users"]
+		},
+		"write": {
+			"ubus": {
+				"luci.secubox-users": ["add", "delete", "passwd"]
+			},
+			"uci": ["secubox-users"]
+		}
+	}
+}

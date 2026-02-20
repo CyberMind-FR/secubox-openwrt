@@ -1,0 +1,14 @@
+{
+	"admin/services/saas-relay": {
+		"title": "SaaS Relay",
+		"order": 85,
+		"action": {
+			"type": "view",
+			"path": "saas-relay/overview"
+		},
+		"depends": {
+			"acl": ["luci-app-saas-relay"],
+			"uci": { "saas-relay": true }
+		}
+	}
+}

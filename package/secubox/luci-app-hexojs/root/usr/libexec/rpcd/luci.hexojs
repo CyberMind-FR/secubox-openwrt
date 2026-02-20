@@ -3164,6 +3164,295 @@ delete_backup() {
 }
 
 # ============================================
+# Static Site Methods (KISS Upload)
+# ============================================
+
+# List static sites or files in a site
+static_list() {
+	read input
+	json_load "$input"
+	json_get_var instance instance
+
+	local data_path=$(uci_get main.data_path) || data_path="$DATA_PATH"
+
+	json_init
+	json_add_boolean "success" 1
+
+	if [ -n "$instance" ]; then
+		# List files in specific instance
+		local static_dir="$data_path/static/$instance"
+		if [ ! -d "$static_dir" ]; then
+			json_add_boolean "success" 0
+			json_add_string "error" "Static instance '$instance' not found"
+			json_dump
+			return
+		fi
+
+		json_add_string "instance" "$instance"
+		json_add_array "files"
+
+		for f in "$static_dir"/*; do
+			[ -f "$f" ] || continue
+			local filename=$(basename "$f")
+			local size=$(stat -c%s "$f" 2>/dev/null || echo 0)
+			local modified=$(stat -c%Y "$f" 2>/dev/null || echo 0)
+
+			json_add_object
+			json_add_string "name" "$filename"
+			json_add_int "size" "$size"
+			json_add_int "modified" "$modified"
+			json_close_object
+		done
+
+		json_close_array
+	else
+		# List all static instances
+		json_add_array "instances"
+
+		for dir in "$data_path/static"/*; do
+			[ -d "$dir" ] || continue
+			local name=$(basename "$dir")
+			local count=$(find "$dir" -type f 2>/dev/null | wc -l)
+			local port=$(uci -q get hexojs.${name}.port)
+			local domain=$(uci -q get hexojs.${name}.domain)
+			local auth=$(uci -q get hexojs.${name}.auth_enabled)
+
+			json_add_object
+			json_add_string "name" "$name"
+			json_add_int "file_count" "$count"
+			json_add_int "port" "${port:-0}"
+			json_add_string "domain" "$domain"
+			json_add_boolean "auth_enabled" "${auth:-0}"
+			json_close_object
+		done
+
+		json_close_array
+	fi
+
+	json_dump
+}
+
+# Upload file to static site (base64 encoded)
+static_upload() {
+	read input
+	json_load "$input"
+	json_get_var instance instance
+	json_get_var filename filename
+	json_get_var content content
+
+	json_init
+
+	if [ -z "$filename" ] || [ -z "$content" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Filename and content required"
+		json_dump
+		return
+	fi
+
+	[ -z "$instance" ] && instance="default"
+
+	local data_path=$(uci_get main.data_path) || data_path="$DATA_PATH"
+	local static_dir="$data_path/static/$instance"
+
+	# Auto-create instance if needed
+	if [ ! -d "$static_dir" ]; then
+		"$HEXOCTL" static create "$instance" >/dev/null 2>&1
+	fi
+
+	# Sanitize filename (prevent path traversal)
+	local safe_filename=$(basename "$filename" | tr -cd 'a-zA-Z0-9._-')
+	local target_path="$static_dir/$safe_filename"
+
+	# Decode base64 content and save
+	echo "$content" | base64 -d > "$target_path" 2>/dev/null
+	local result=$?
+
+	if [ "$result" -eq 0 ] && [ -f "$target_path" ]; then
+		local size=$(stat -c%s "$target_path" 2>/dev/null || echo 0)
+		json_add_boolean "success" 1
+		json_add_string "message" "File uploaded"
+		json_add_string "filename" "$safe_filename"
+		json_add_string "path" "$target_path"
+		json_add_int "size" "$size"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Failed to save file"
+	fi
+
+	json_dump
+}
+
+# Create static site instance
+static_create() {
+	read input
+	json_load "$input"
+	json_get_var name name
+	json_get_var domain domain
+
+	json_init
+
+	if [ -z "$name" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Instance name required"
+		json_dump
+		return
+	fi
+
+	local output=$("$HEXOCTL" static create "$name" 2>&1)
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		# Set domain if provided
+		[ -n "$domain" ] && uci set hexojs.${name}.domain="$domain" && uci commit hexojs
+
+		local port=$(uci -q get hexojs.${name}.port)
+		json_add_boolean "success" 1
+		json_add_string "message" "Static instance created"
+		json_add_string "name" "$name"
+		json_add_int "port" "$port"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+
+	json_dump
+}
+
+# Delete static site instance
+static_delete() {
+	read input
+	json_load "$input"
+	json_get_var name name
+
+	json_init
+
+	if [ -z "$name" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Instance name required"
+		json_dump
+		return
+	fi
+
+	local output=$("$HEXOCTL" static delete "$name" 2>&1)
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Static instance deleted"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+
+	json_dump
+}
+
+# Publish static site to /www/static/
+static_publish() {
+	read input
+	json_load "$input"
+	json_get_var instance instance
+
+	json_init
+
+	[ -z "$instance" ] && instance="default"
+
+	local output=$("$HEXOCTL" static publish "$instance" 2>&1)
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Published to /www/static/$instance"
+		json_add_string "url" "/static/$instance/"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+
+	json_dump
+}
+
+# Delete file from static site
+static_delete_file() {
+	read input
+	json_load "$input"
+	json_get_var instance instance
+	json_get_var filename filename
+
+	json_init
+
+	if [ -z "$instance" ] || [ -z "$filename" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Instance and filename required"
+		json_dump
+		return
+	fi
+
+	local data_path=$(uci_get main.data_path) || data_path="$DATA_PATH"
+	local static_dir="$data_path/static/$instance"
+	local safe_filename=$(basename "$filename")
+	local target="$static_dir/$safe_filename"
+
+	if [ -f "$target" ]; then
+		rm -f "$target"
+		json_add_boolean "success" 1
+		json_add_string "message" "File deleted"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "File not found"
+	fi
+
+	json_dump
+}
+
+# Configure HAProxy auth for static site
+static_configure_auth() {
+	read input
+	json_load "$input"
+	json_get_var instance instance
+	json_get_var enabled enabled
+	json_get_var domain domain
+
+	json_init
+
+	if [ -z "$instance" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Instance required"
+		json_dump
+		return
+	fi
+
+	[ -z "$domain" ] && domain=$(uci -q get hexojs.${instance}.domain)
+
+	if [ -z "$domain" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Domain required for HAProxy auth"
+		json_dump
+		return
+	fi
+
+	# Update UCI config
+	uci set hexojs.${instance}.auth_enabled="${enabled:-1}"
+	uci set hexojs.${instance}.domain="$domain"
+	uci commit hexojs
+
+	# Apply auth via hexoctl
+	local output=$("$HEXOCTL" auth apply "$instance" 2>&1)
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Auth configured for $domain"
+		json_add_string "domain" "$domain"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+
+	json_dump
+}
+
+# ============================================
 # GitHub Integration Methods
 # ============================================
 
@@ -3379,7 +3668,14 @@ case "$1" in
   "handle_webhook": {"event": "str", "repository": "str", "ref": "str", "secret": "str"},
   "setup_webhook": {"auto_build": "bool", "webhook_secret": "str"},
   "get_instance_health": {"instance": "str"},
-  "get_pipeline_status": {}
+  "get_pipeline_status": {},
+  "static_list": {"instance": "str"},
+  "static_upload": {"instance": "str", "filename": "str", "content": "str"},
+  "static_create": {"name": "str", "domain": "str"},
+  "static_delete": {"name": "str"},
+  "static_publish": {"instance": "str"},
+  "static_delete_file": {"instance": "str", "filename": "str"},
+  "static_configure_auth": {"instance": "str", "enabled": "bool", "domain": "str"}
 }
 EOF
 		;;
@@ -3459,6 +3755,13 @@ EOF
 			setup_webhook) setup_webhook ;;
 			get_instance_health) get_instance_health ;;
 			get_pipeline_status) get_pipeline_status ;;
+			static_list) static_list ;;
+			static_upload) static_upload ;;
+			static_create) static_create ;;
+			static_delete) static_delete ;;
+			static_publish) static_publish ;;
+			static_delete_file) static_delete_file ;;
+			static_configure_auth) static_configure_auth ;;
 			*) echo '{"error": "Unknown method"}' ;;
 		esac
 		;;
