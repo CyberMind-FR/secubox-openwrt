@@ -8,8 +8,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-crowdsec-dashboard
-PKG_VERSION:=0.7.0
-PKG_RELEASE:=32
+PKG_VERSION:=0.8.0
+PKG_RELEASE:=1
 PKG_ARCH:=all
 
 PKG_LICENSE:=Apache-2.0
@@ -26,16 +26,27 @@ include $(TOPDIR)/feeds/luci/luci.mk
 
 define Package/luci-app-crowdsec-dashboard/conffiles
 /etc/config/crowdsec-dashboard
+/etc/config/crowdsec_abuseipdb
 endef
 
 define Package/luci-app-crowdsec-dashboard/install
-	# UCI config file
+	# UCI config files
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./root/etc/config/crowdsec-dashboard $(1)/etc/config/
+	$(INSTALL_CONF) ./root/etc/config/crowdsec_abuseipdb $(1)/etc/config/
 
-	# RPCD backend (MUST be 755 for ubus calls)
+	# Cron job for AbuseIPDB reporter
+	$(INSTALL_DIR) $(1)/etc/cron.d
+	$(INSTALL_DATA) ./root/etc/cron.d/crowdsec-reporter $(1)/etc/cron.d/
+
+	# Reporter script
+	$(INSTALL_DIR) $(1)/usr/sbin
+	$(INSTALL_BIN) ./root/usr/sbin/crowdsec-reporter.sh $(1)/usr/sbin/
+
+	# RPCD backends (MUST be 755 for ubus calls)
 	$(INSTALL_DIR) $(1)/usr/libexec/rpcd
 	$(INSTALL_BIN) ./root/usr/libexec/rpcd/luci.crowdsec-dashboard $(1)/usr/libexec/rpcd/
+	$(INSTALL_BIN) ./root/usr/libexec/rpcd/luci.crowdsec-abuseipdb $(1)/usr/libexec/rpcd/
 
 	# ACL permissions
 	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d

@@ -41,6 +41,14 @@
 			"path": "crowdsec-dashboard/bouncers"
 		}
 	},
+	"admin/secubox/security/crowdsec/reporter": {
+		"title": "AbuseIPDB",
+		"order": 50,
+		"action": {
+			"type": "view",
+			"path": "crowdsec-dashboard/reporter"
+		}
+	},
 	"admin/secubox/security/crowdsec/setup": {
 		"title": "Setup",
 		"order": 90,

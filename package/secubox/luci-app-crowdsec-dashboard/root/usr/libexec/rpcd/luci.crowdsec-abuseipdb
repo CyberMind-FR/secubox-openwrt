@@ -1,0 +1,236 @@
+#!/bin/sh
+# RPCD handler for CrowdSec AbuseIPDB Reporter
+# Provides API for LuCI dashboard integration
+
+. /usr/share/libubox/jshn.sh
+
+UCI_CONFIG="crowdsec_abuseipdb"
+REPORTER_SCRIPT="/usr/sbin/crowdsec-reporter.sh"
+
+# Get reporter status
+get_status() {
+    if [ -x "$REPORTER_SCRIPT" ]; then
+        "$REPORTER_SCRIPT" status
+    else
+        echo '{"error":"Reporter script not found"}'
+    fi
+}
+
+# Get report history
+get_history() {
+    read -r input
+    json_load "$input"
+    json_get_var lines lines
+
+    [ -z "$lines" ] && lines=20
+
+    if [ -x "$REPORTER_SCRIPT" ]; then
+        "$REPORTER_SCRIPT" history "$lines"
+    else
+        echo '{"history":[]}'
+    fi
+}
+
+# Check IP reputation
+check_ip() {
+    read -r input
+    json_load "$input"
+    json_get_var ip ip
+
+    json_init
+
+    if [ -z "$ip" ]; then
+        json_add_boolean "success" 0
+        json_add_string "error" "No IP provided"
+        json_dump
+        return
+    fi
+
+    if [ -x "$REPORTER_SCRIPT" ]; then
+        local result
+        result=$("$REPORTER_SCRIPT" check "$ip" 2>/dev/null)
+
+        if echo "$result" | grep -q '"abuseConfidenceScore"'; then
+            # Parse and return relevant fields
+            local score=$(echo "$result" | jsonfilter -e '@.data.abuseConfidenceScore' 2>/dev/null || echo "0")
+            local reports=$(echo "$result" | jsonfilter -e '@.data.totalReports' 2>/dev/null || echo "0")
+            local country=$(echo "$result" | jsonfilter -e '@.data.countryCode' 2>/dev/null || echo "?")
+            local isp=$(echo "$result" | jsonfilter -e '@.data.isp' 2>/dev/null || echo "Unknown")
+            local domain=$(echo "$result" | jsonfilter -e '@.data.domain' 2>/dev/null || echo "")
+            local is_public=$(echo "$result" | jsonfilter -e '@.data.isPublic' 2>/dev/null || echo "true")
+            local last_reported=$(echo "$result" | jsonfilter -e '@.data.lastReportedAt' 2>/dev/null || echo "")
+
+            json_add_boolean "success" 1
+            json_add_string "ip" "$ip"
+            json_add_int "confidence_score" "$score"
+            json_add_int "total_reports" "$reports"
+            json_add_string "country" "$country"
+            json_add_string "isp" "$isp"
+            json_add_string "domain" "$domain"
+            json_add_boolean "is_public" "$is_public"
+            json_add_string "last_reported" "$last_reported"
+        else
+            json_add_boolean "success" 0
+            json_add_string "error" "Failed to check IP"
+        fi
+    else
+        json_add_boolean "success" 0
+        json_add_string "error" "Reporter script not found"
+    fi
+
+    json_dump
+}
+
+# Trigger manual report run
+do_report() {
+    json_init
+
+    if [ -x "$REPORTER_SCRIPT" ]; then
+        "$REPORTER_SCRIPT" report >/dev/null 2>&1 &
+        json_add_boolean "success" 1
+        json_add_string "message" "Report run started in background"
+    else
+        json_add_boolean "success" 0
+        json_add_string "error" "Reporter script not found"
+    fi
+
+    json_dump
+}
+
+# Enable/disable reporter
+set_enabled() {
+    read -r input
+    json_load "$input"
+    json_get_var enabled enabled
+
+    json_init
+
+    if [ "$enabled" = "1" ] || [ "$enabled" = "true" ]; then
+        uci set "${UCI_CONFIG}.global.enabled=1"
+        uci commit "$UCI_CONFIG"
+        json_add_boolean "success" 1
+        json_add_string "message" "AbuseIPDB reporter enabled"
+    else
+        uci set "${UCI_CONFIG}.global.enabled=0"
+        uci commit "$UCI_CONFIG"
+        json_add_boolean "success" 1
+        json_add_string "message" "AbuseIPDB reporter disabled"
+    fi
+
+    json_dump
+}
+
+# Set API key
+set_api_key() {
+    read -r input
+    json_load "$input"
+    json_get_var api_key api_key
+
+    json_init
+
+    if [ -z "$api_key" ]; then
+        json_add_boolean "success" 0
+        json_add_string "error" "No API key provided"
+        json_dump
+        return
+    fi
+
+    uci set "${UCI_CONFIG}.global.api_key=$api_key"
+    uci commit "$UCI_CONFIG"
+
+    json_add_boolean "success" 1
+    json_add_string "message" "API key configured"
+    json_dump
+}
+
+# Get configuration
+get_config() {
+    local enabled=$(uci -q get "${UCI_CONFIG}.global.enabled" || echo "0")
+    local api_key=$(uci -q get "${UCI_CONFIG}.global.api_key" || echo "")
+    local confidence=$(uci -q get "${UCI_CONFIG}.global.confidence_threshold" || echo "80")
+    local categories=$(uci -q get "${UCI_CONFIG}.global.categories" || echo "18,21")
+    local interval=$(uci -q get "${UCI_CONFIG}.global.report_interval" || echo "15")
+    local max_reports=$(uci -q get "${UCI_CONFIG}.global.max_reports_per_run" || echo "50")
+    local cooldown=$(uci -q get "${UCI_CONFIG}.global.cooldown_minutes" || echo "15")
+    local comment=$(uci -q get "${UCI_CONFIG}.global.comment_prefix" || echo "Blocked by SecuBox CrowdSec")
+
+    json_init
+    json_add_boolean "enabled" "$enabled"
+    json_add_boolean "api_key_set" "$( [ -n "$api_key" ] && echo 1 || echo 0 )"
+    json_add_int "confidence_threshold" "$confidence"
+    json_add_string "categories" "$categories"
+    json_add_int "report_interval" "$interval"
+    json_add_int "max_reports_per_run" "$max_reports"
+    json_add_int "cooldown_minutes" "$cooldown"
+    json_add_string "comment_prefix" "$comment"
+    json_dump
+}
+
+# Save configuration
+save_config() {
+    read -r input
+    json_load "$input"
+
+    json_get_var confidence confidence_threshold
+    json_get_var categories categories
+    json_get_var interval report_interval
+    json_get_var max_reports max_reports_per_run
+    json_get_var cooldown cooldown_minutes
+    json_get_var comment comment_prefix
+
+    [ -n "$confidence" ] && uci set "${UCI_CONFIG}.global.confidence_threshold=$confidence"
+    [ -n "$categories" ] && uci set "${UCI_CONFIG}.global.categories=$categories"
+    [ -n "$interval" ] && uci set "${UCI_CONFIG}.global.report_interval=$interval"
+    [ -n "$max_reports" ] && uci set "${UCI_CONFIG}.global.max_reports_per_run=$max_reports"
+    [ -n "$cooldown" ] && uci set "${UCI_CONFIG}.global.cooldown_minutes=$cooldown"
+    [ -n "$comment" ] && uci set "${UCI_CONFIG}.global.comment_prefix=$comment"
+
+    uci commit "$UCI_CONFIG"
+
+    json_init
+    json_add_boolean "success" 1
+    json_add_string "message" "Configuration saved"
+    json_dump
+}
+
+# Get logs
+get_logs() {
+    read -r input
+    json_load "$input"
+    json_get_var lines lines
+
+    [ -z "$lines" ] && lines=50
+
+    json_init
+    json_add_array "logs"
+
+    if [ -f /var/log/crowdsec-reporter.log ]; then
+        tail -n "$lines" /var/log/crowdsec-reporter.log 2>/dev/null | while IFS= read -r line; do
+            json_add_string "" "$line"
+        done
+    fi
+
+    json_close_array
+    json_dump
+}
+
+# RPCD list method
+case "$1" in
+    list)
+        echo '{"status":{},"history":{"lines":"int"},"check_ip":{"ip":"str"},"report":{},"set_enabled":{"enabled":"bool"},"set_api_key":{"api_key":"str"},"get_config":{},"save_config":{"confidence_threshold":"int","categories":"str","report_interval":"int","max_reports_per_run":"int","cooldown_minutes":"int","comment_prefix":"str"},"logs":{"lines":"int"}}'
+        ;;
+    call)
+        case "$2" in
+            status) get_status ;;
+            history) get_history ;;
+            check_ip) check_ip ;;
+            report) do_report ;;
+            set_enabled) set_enabled ;;
+            set_api_key) set_api_key ;;
+            get_config) get_config ;;
+            save_config) save_config ;;
+            logs) get_logs ;;
+            *) echo '{"error":"Unknown method"}' ;;
+        esac
+        ;;
+esac

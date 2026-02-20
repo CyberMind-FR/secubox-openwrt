@@ -1,0 +1,8 @@
+# CrowdSec AbuseIPDB Reporter - Run every 15 minutes
+*/15 * * * * root [ "$(uci -q get crowdsec_abuseipdb.global.enabled)" = "1" ] && /usr/sbin/crowdsec-reporter.sh report >/dev/null 2>&1
+
+# Reset daily stats at midnight
+0 0 * * * root /usr/sbin/crowdsec-reporter.sh reset-daily >/dev/null 2>&1
+
+# Reset weekly stats on Monday at midnight
+0 0 * * 1 root /usr/sbin/crowdsec-reporter.sh reset-weekly >/dev/null 2>&1

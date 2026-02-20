@@ -1,0 +1,24 @@
+{
+    "luci-app-ipblocklist": {
+        "description": "Grant access to SecuBox IP Blocklist management",
+        "read": {
+            "ubus": {
+                "luci.ipblocklist": ["status", "logs", "sources", "whitelist"]
+            },
+            "uci": ["ipblocklist"],
+            "file": {
+                "/var/log/ipblocklist.log": ["read"],
+                "/etc/ipblocklist/whitelist.txt": ["read"]
+            }
+        },
+        "write": {
+            "ubus": {
+                "luci.ipblocklist": ["update", "flush", "test_ip", "set_enabled", "add_source", "remove_source", "add_whitelist", "remove_whitelist"]
+            },
+            "uci": ["ipblocklist"],
+            "file": {
+                "/etc/ipblocklist/whitelist.txt": ["write"]
+            }
+        }
+    }
+}

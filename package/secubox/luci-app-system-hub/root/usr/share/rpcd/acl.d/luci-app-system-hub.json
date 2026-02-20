@@ -11,6 +11,8 @@
 					"get_components_by_category",
 					"list_services",
 					"get_logs",
+					"get_denoised_logs",
+					"get_denoise_stats",
 					"get_storage",
 					"get_settings",
 					"get_backup_schedule",

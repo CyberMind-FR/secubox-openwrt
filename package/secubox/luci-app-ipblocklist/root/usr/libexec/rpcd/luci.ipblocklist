@@ -1,0 +1,336 @@
+#!/bin/sh
+# RPCD handler for SecuBox IP Blocklist
+# Provides API for LuCI dashboard
+
+. /usr/share/libubox/jshn.sh
+
+UCI_CONFIG="ipblocklist"
+LOG_FILE="/var/log/ipblocklist.log"
+WHITELIST_FILE="/etc/ipblocklist/whitelist.txt"
+UPDATE_SCRIPT="/usr/sbin/ipblocklist-update.sh"
+
+# Get status information
+get_status() {
+    local enabled=$(uci -q get "${UCI_CONFIG}.global.enabled" || echo "0")
+    local ipset_name=$(uci -q get "${UCI_CONFIG}.global.ipset_name" || echo "secubox_blocklist")
+    local max_entries=$(uci -q get "${UCI_CONFIG}.global.max_entries" || echo "200000")
+
+    # Get ipset statistics
+    local entry_count=0
+    local memory_bytes=0
+
+    if command -v ipset >/dev/null 2>&1 && ipset list "$ipset_name" >/dev/null 2>&1; then
+        entry_count=$(ipset list "$ipset_name" 2>/dev/null | grep -c '^[0-9]' || echo "0")
+        memory_bytes=$(ipset list "$ipset_name" 2>/dev/null | grep "memsize" | awk '{print $2}' || echo "0")
+    fi
+
+    # Get last update timestamp
+    local last_update=0
+    if [ -f "$LOG_FILE" ]; then
+        last_update=$(stat -c %Y "$LOG_FILE" 2>/dev/null || echo "0")
+    fi
+
+    # Detect firewall backend
+    local fw_backend="unknown"
+    if command -v nft >/dev/null 2>&1 && nft list tables 2>/dev/null | grep -q "fw4"; then
+        fw_backend="nftables"
+    elif command -v iptables >/dev/null 2>&1; then
+        fw_backend="iptables"
+    fi
+
+    # Count sources
+    local source_count=$(uci -q get "${UCI_CONFIG}.global.sources" 2>/dev/null | wc -w || echo "0")
+
+    # Count whitelist entries
+    local whitelist_count=0
+    if [ -f "$WHITELIST_FILE" ]; then
+        whitelist_count=$(grep -v '^#' "$WHITELIST_FILE" 2>/dev/null | grep -v '^$' | wc -l || echo "0")
+    fi
+
+    json_init
+    json_add_boolean "enabled" "$enabled"
+    json_add_string "ipset_name" "$ipset_name"
+    json_add_int "entry_count" "$entry_count"
+    json_add_int "max_entries" "$max_entries"
+    json_add_int "memory_bytes" "${memory_bytes:-0}"
+    json_add_string "firewall_backend" "$fw_backend"
+    json_add_int "last_update" "$last_update"
+    json_add_int "source_count" "$source_count"
+    json_add_int "whitelist_count" "$whitelist_count"
+    json_dump
+}
+
+# Get log entries
+get_logs() {
+    read -r input
+    json_load "$input"
+    json_get_var lines lines
+
+    [ -z "$lines" ] && lines=50
+
+    json_init
+    json_add_array "logs"
+
+    if [ -f "$LOG_FILE" ]; then
+        tail -n "$lines" "$LOG_FILE" 2>/dev/null | while IFS= read -r line; do
+            json_add_string "" "$line"
+        done
+    fi
+
+    json_close_array
+    json_dump
+}
+
+# Get configured sources
+get_sources() {
+    json_init
+    json_add_array "sources"
+
+    # Get sources from UCI
+    local idx=0
+    while true; do
+        local src=$(uci -q get "${UCI_CONFIG}.global.sources" 2>/dev/null | awk -v n=$((idx+1)) '{print $n}')
+        [ -z "$src" ] && break
+        json_add_string "" "$src"
+        idx=$((idx + 1))
+    done
+
+    # Alternative: iterate UCI list
+    if [ $idx -eq 0 ]; then
+        for src in $(uci -q get "${UCI_CONFIG}.global.sources" 2>/dev/null); do
+            json_add_string "" "$src"
+        done
+    fi
+
+    json_close_array
+    json_dump
+}
+
+# Get whitelist entries
+get_whitelist() {
+    json_init
+    json_add_array "entries"
+
+    if [ -f "$WHITELIST_FILE" ]; then
+        grep -v '^#' "$WHITELIST_FILE" 2>/dev/null | grep -v '^$' | while IFS= read -r line; do
+            json_add_string "" "$line"
+        done
+    fi
+
+    json_close_array
+    json_dump
+}
+
+# Trigger blocklist update
+do_update() {
+    json_init
+
+    if [ -x "$UPDATE_SCRIPT" ]; then
+        "$UPDATE_SCRIPT" update >/dev/null 2>&1 &
+        json_add_boolean "success" 1
+        json_add_string "message" "Update started in background"
+    else
+        json_add_boolean "success" 0
+        json_add_string "error" "Update script not found"
+    fi
+
+    json_dump
+}
+
+# Flush blocklist
+do_flush() {
+    json_init
+
+    if [ -x "$UPDATE_SCRIPT" ]; then
+        "$UPDATE_SCRIPT" flush >/dev/null 2>&1
+        json_add_boolean "success" 1
+        json_add_string "message" "Blocklist flushed"
+    else
+        json_add_boolean "success" 0
+        json_add_string "error" "Update script not found"
+    fi
+
+    json_dump
+}
+
+# Test if IP is blocked
+do_test_ip() {
+    read -r input
+    json_load "$input"
+    json_get_var ip ip
+
+    json_init
+
+    if [ -z "$ip" ]; then
+        json_add_boolean "success" 0
+        json_add_string "error" "No IP provided"
+        json_dump
+        return
+    fi
+
+    local ipset_name=$(uci -q get "${UCI_CONFIG}.global.ipset_name" || echo "secubox_blocklist")
+
+    if ipset test "$ipset_name" "$ip" 2>/dev/null; then
+        json_add_boolean "success" 1
+        json_add_boolean "blocked" 1
+        json_add_string "message" "IP $ip is in blocklist"
+    else
+        json_add_boolean "success" 1
+        json_add_boolean "blocked" 0
+        json_add_string "message" "IP $ip is not blocked"
+    fi
+
+    json_dump
+}
+
+# Set enabled state
+do_set_enabled() {
+    read -r input
+    json_load "$input"
+    json_get_var enabled enabled
+
+    json_init
+
+    if [ "$enabled" = "1" ] || [ "$enabled" = "true" ]; then
+        uci set "${UCI_CONFIG}.global.enabled=1"
+        uci commit "$UCI_CONFIG"
+        # Start blocklist
+        [ -x "$UPDATE_SCRIPT" ] && "$UPDATE_SCRIPT" start >/dev/null 2>&1 &
+        json_add_boolean "success" 1
+        json_add_string "message" "IP Blocklist enabled"
+    else
+        uci set "${UCI_CONFIG}.global.enabled=0"
+        uci commit "$UCI_CONFIG"
+        # Stop blocklist
+        [ -x "$UPDATE_SCRIPT" ] && "$UPDATE_SCRIPT" stop >/dev/null 2>&1
+        json_add_boolean "success" 1
+        json_add_string "message" "IP Blocklist disabled"
+    fi
+
+    json_dump
+}
+
+# Add a source URL
+do_add_source() {
+    read -r input
+    json_load "$input"
+    json_get_var url url
+
+    json_init
+
+    if [ -z "$url" ]; then
+        json_add_boolean "success" 0
+        json_add_string "error" "No URL provided"
+        json_dump
+        return
+    fi
+
+    uci add_list "${UCI_CONFIG}.global.sources=$url"
+    uci commit "$UCI_CONFIG"
+
+    json_add_boolean "success" 1
+    json_add_string "message" "Source added: $url"
+    json_dump
+}
+
+# Remove a source URL
+do_remove_source() {
+    read -r input
+    json_load "$input"
+    json_get_var url url
+
+    json_init
+
+    if [ -z "$url" ]; then
+        json_add_boolean "success" 0
+        json_add_string "error" "No URL provided"
+        json_dump
+        return
+    fi
+
+    uci del_list "${UCI_CONFIG}.global.sources=$url"
+    uci commit "$UCI_CONFIG"
+
+    json_add_boolean "success" 1
+    json_add_string "message" "Source removed: $url"
+    json_dump
+}
+
+# Add whitelist entry
+do_add_whitelist() {
+    read -r input
+    json_load "$input"
+    json_get_var entry entry
+
+    json_init
+
+    if [ -z "$entry" ]; then
+        json_add_boolean "success" 0
+        json_add_string "error" "No entry provided"
+        json_dump
+        return
+    fi
+
+    # Check if already in whitelist
+    if grep -qF "$entry" "$WHITELIST_FILE" 2>/dev/null; then
+        json_add_boolean "success" 0
+        json_add_string "error" "Entry already in whitelist"
+        json_dump
+        return
+    fi
+
+    echo "$entry" >> "$WHITELIST_FILE"
+
+    json_add_boolean "success" 1
+    json_add_string "message" "Added to whitelist: $entry"
+    json_dump
+}
+
+# Remove whitelist entry
+do_remove_whitelist() {
+    read -r input
+    json_load "$input"
+    json_get_var entry entry
+
+    json_init
+
+    if [ -z "$entry" ]; then
+        json_add_boolean "success" 0
+        json_add_string "error" "No entry provided"
+        json_dump
+        return
+    fi
+
+    # Create temp file without the entry
+    local tmp=$(mktemp)
+    grep -vF "$entry" "$WHITELIST_FILE" > "$tmp" 2>/dev/null || true
+    mv "$tmp" "$WHITELIST_FILE"
+
+    json_add_boolean "success" 1
+    json_add_string "message" "Removed from whitelist: $entry"
+    json_dump
+}
+
+# RPCD list method
+case "$1" in
+    list)
+        echo '{"status":{},"logs":{"lines":"int"},"sources":{},"whitelist":{},"update":{},"flush":{},"test_ip":{"ip":"str"},"set_enabled":{"enabled":"bool"},"add_source":{"url":"str"},"remove_source":{"url":"str"},"add_whitelist":{"entry":"str"},"remove_whitelist":{"entry":"str"}}'
+        ;;
+    call)
+        case "$2" in
+            status) get_status ;;
+            logs) get_logs ;;
+            sources) get_sources ;;
+            whitelist) get_whitelist ;;
+            update) do_update ;;
+            flush) do_flush ;;
+            test_ip) do_test_ip ;;
+            set_enabled) do_set_enabled ;;
+            add_source) do_add_source ;;
+            remove_source) do_remove_source ;;
+            add_whitelist) do_add_whitelist ;;
+            remove_whitelist) do_remove_whitelist ;;
+            *) echo '{"error":"Unknown method"}' ;;
+        esac
+        ;;
+esac

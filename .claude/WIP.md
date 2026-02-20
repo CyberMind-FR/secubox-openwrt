@@ -864,13 +864,59 @@ _Last updated: 2026-02-20 (v0.24.0 - Matrix + SaaS Relay + Media Hub)_
   - 4 views: Overview, Devices, Policies, Settings
   - RPCD handler with 11 methods + public ACL for unauthenticated access
 
+### Just Completed (2026-02-20 PM)
+
+- **IP Blocklist - Evolution #1** — DONE (2026-02-20)
+  - Created `secubox-app-ipblocklist` backend package
+  - `ipblocklist-update.sh` CLI with ipset management
+  - Supports nftables (fw4) and iptables backends
+  - Default sources: Data-Shield (~100k IPs), Firehol Level 1
+  - Created `luci-app-ipblocklist` KISS dashboard
+  - RPCD handler with 12 methods
+  - Layer 1 pre-emptive defense before CrowdSec Layer 2
+
+- **AbuseIPDB Reporter - Evolution #2** — DONE (2026-02-20)
+  - Added to `luci-app-crowdsec-dashboard` (v0.8.0)
+  - New "AbuseIPDB" tab in CrowdSec Dashboard
+  - `crowdsec-reporter.sh` CLI for reporting blocked IPs
+  - RPCD handler `luci.crowdsec-abuseipdb` with 9 methods
+  - UCI config for API key, categories, cooldown settings
+  - Cron job for automatic reporting every 15 minutes
+  - IP reputation checker in dashboard
+
+- **Log Denoising - Evolution #3** — DONE (2026-02-20)
+  - Added smart log denoising to `luci-app-system-hub` (v0.5.2)
+  - Three modes: RAW (all logs), SMART (filter known IPs), SIGNAL_ONLY (new threats only)
+  - Integrates with IP Blocklist ipset + CrowdSec decisions
+  - RPCD methods: `get_denoised_logs`, `get_denoise_stats`
+  - LuCI dashboard additions:
+    - Denoise mode selector panel
+    - Noise ratio indicator with color coding
+    - Known threats counter
+    - Blocklist status warning
+  - Filters private IPs (10.*, 172.16-31.*, 192.168.*, 127.*)
+  - Supports both nftables and iptables backends
+
+### SysWarden Evolution Plan (2026-02-20)
+
+Implementing 4 evolutions inspired by SysWarden patterns:
+
+| # | Module | Priority | Status |
+|---|--------|----------|--------|
+| 1 | `luci-app-ipblocklist` | HIGH | DONE |
+| 2 | AbuseIPDB Reporter | HIGH | DONE |
+| 3 | Log Denoising (System Hub) | MEDIUM | DONE |
+| 4 | SIEM Connector (x86 only) | LOW | TODO |
+
+**Next**: Evolution #4 - SIEM Connector (optional, x86 only)
+
 ### Next Up — Couche 1
 
 1. **Guacamole Pre-built Binaries**
    - Current LXC build-from-source approach is too slow
    - Need to find/create pre-built ARM64 binaries for guacd + Tomcat
 
-2. **Multi-Node Mesh Testing**
+3. **Multi-Node Mesh Testing**
    - Deploy second SecuBox node to test real peer-to-peer sync
    - Validate bidirectional threat intelligence sharing
 

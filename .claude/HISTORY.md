@@ -2597,3 +2597,83 @@ git checkout HEAD -- index.html
     - UCI config sections: main, server, federation, admin, database, network, identity, mesh
     - Matrix API responding with v1.1-v1.12 support
     - Files: `package/secubox/secubox-app-matrix/`, `package/secubox/luci-app-matrix/`
+
+28. **Log Denoising for System Hub (2026-02-20)**
+    - Added smart log denoising to System Hub inspired by SysWarden patterns (Evolution #3)
+    - Three denoising modes:
+      - **RAW**: All logs displayed without filtering (default)
+      - **SMART**: Known threat IPs highlighted, all logs visible, noise ratio computed
+      - **SIGNAL_ONLY**: Only new/unknown threats shown, known IPs filtered out
+    - Noise filtering integrates with:
+      - IP Blocklist (Evolution #1): ipset with 100k+ blocked IPs
+      - CrowdSec decisions: Active bans from threat detection
+    - RPCD methods added to `luci.system-hub`:
+      - `get_denoised_logs(lines, filter, mode)`: Returns logs with noise ratio stats
+      - `get_denoise_stats()`: Returns known threat counts and blocklist status
+    - LuCI dashboard enhancements:
+      - Denoise mode selector panel (RAW/SMART/SIGNAL ONLY)
+      - Mode description tooltip
+      - Noise ratio percentage indicator with color coding
+      - Known threats counter from ipblocklist + CrowdSec
+      - Warning badge when IP Blocklist disabled
+      - Side panel metrics include noise stats when filtering active
+    - Implementation:
+      - Extracts IPs from log lines using regex
+      - Skips private/local IP ranges (10.*, 172.16-31.*, 192.168.*, 127.*)
+      - Checks both nftables sets and iptables ipsets for compatibility
+      - Queries CrowdSec decisions via `cscli decisions list`
+    - Part of SysWarden Evolution plan (Evolution #3 of 4)
+    - Files modified:
+      - `luci-app-system-hub/root/usr/libexec/rpcd/luci.system-hub`
+      - `luci-app-system-hub/root/usr/share/rpcd/acl.d/luci-app-system-hub.json`
+      - `luci-app-system-hub/htdocs/luci-static/resources/system-hub/api.js`
+      - `luci-app-system-hub/htdocs/luci-static/resources/view/system-hub/logs.js`
+      - `luci-app-system-hub/Makefile` (version bumped to 0.5.2-r1)
+
+28. **IP Blocklist - Static Threat Defense Layer (2026-02-20)**
+    - Evolution #1 from SysWarden-inspired EVOLUTION-PLAN.md
+    - Created `secubox-app-ipblocklist` backend package:
+      - `ipblocklist-update.sh` - Main update script with ipset management
+      - UCI config: sources (blocklist URLs), whitelist, update interval
+      - Cron hourly update job
+      - Supports nftables (fw4) and legacy iptables backends
+      - Default sources: Data-Shield (~100k IPs), Firehol Level 1
+      - CLI: start, stop, update, flush, status, test, logs
+    - Created `luci-app-ipblocklist` dashboard:
+      - Status card: entry count, memory usage, last update
+      - Enable/Disable toggle, Update Now, Flush buttons
+      - Test IP form with blocked/allowed result
+      - Sources manager with add/remove URLs
+      - Whitelist manager with add/remove entries
+      - Logs viewer with monospace output
+    - RPCD methods (12 total): status, logs, sources, whitelist, update, flush,
+      test_ip, set_enabled, add_source, remove_source, add_whitelist, remove_whitelist
+    - Architecture: Layer 1 pre-emptive blocking before CrowdSec Layer 2 reactive
+    - Files: `package/secubox/secubox-app-ipblocklist/`, `package/secubox/luci-app-ipblocklist/`
+
+29. **AbuseIPDB Reporter - Evolution #2 (2026-02-20)**
+    - Evolution #2 from SysWarden-inspired EVOLUTION-PLAN.md
+    - Added AbuseIPDB reporting to CrowdSec Dashboard (v0.8.0):
+      - New "AbuseIPDB" tab in CrowdSec Dashboard navigation
+      - UCI config `/etc/config/crowdsec_abuseipdb` for API key and settings
+      - `crowdsec-reporter.sh` CLI tool for IP reporting
+      - Cron job for automatic reporting every 15 minutes
+    - Reporter features:
+      - Report CrowdSec blocked IPs to AbuseIPDB community database
+      - Check IP reputation with confidence score
+      - Cooldown to prevent duplicate reports (15 min default)
+      - Daily/weekly/total stats tracking
+      - Rate limiting with 1-second delay between reports
+    - RPCD handler `luci.crowdsec-abuseipdb` with 9 methods:
+      - status, history, check_ip, report, set_enabled
+      - set_api_key, get_config, save_config, logs
+    - Dashboard features:
+      - Status card with reported counts
+      - Enable/Disable and Report Now buttons
+      - API key configuration form
+      - IP reputation checker
+      - Recent reports history table
+      - Logs viewer
+    - Attack categories: 18 (Brute-Force), 21 (Web App Attack)
+    - Files: `luci-app-crowdsec-dashboard/root/usr/sbin/crowdsec-reporter.sh`,
+      `luci-app-crowdsec-dashboard/htdocs/luci-static/resources/view/crowdsec-dashboard/reporter.js`
