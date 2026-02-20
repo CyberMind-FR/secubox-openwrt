@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-20 (v0.23.0 - Matrix + SaaS Relay + Media Hub)_
+_Last updated: 2026-02-20 (v0.24.0 - Matrix + SaaS Relay + Media Hub)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
