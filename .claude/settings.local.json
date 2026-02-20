@@ -376,7 +376,8 @@
       "Bash(npx gulp browserify:*)",
       "Bash(npx terser:*)",
       "Bash(read)",
-      "Bash(/home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/c3box-vm-builder.sh:*)"
+      "Bash(/home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/c3box-vm-builder.sh:*)",
+      "Bash(__NEW_LINE_ba6f66f0b013f58d__ echo \"\")"
     ]
   }
 }
