@@ -26,16 +26,19 @@ do_status() {
     fi
     json_add_int "domain_count" "$domain_count"
 
-    # Hit count
+    # Hit count (from RPZ log stats)
     local hit_count=0
-    if [ -f "$BLOCKLIST_DB" ]; then
-        hit_count=$(sqlite3 "$BLOCKLIST_DB" "SELECT COALESCE(SUM(hit_count),0) FROM domains;" 2>/dev/null || echo 0)
+    if [ -f "$STATS_FILE" ]; then
+        hit_count=$(jsonfilter -i "$STATS_FILE" -e '@.blocks' 2>/dev/null || echo 0)
     fi
     json_add_int "hit_count" "$hit_count"
 
-    # x47 impact
-    local x47_impact=$((hit_count * 47))
-    json_add_int "x47_impact" "$x47_impact"
+    # Unique IPs protected
+    local unique_ips=0
+    if [ -f "$STATS_FILE" ]; then
+        unique_ips=$(jsonfilter -i "$STATS_FILE" -e '@.unique_ips' 2>/dev/null || echo 0)
+    fi
+    json_add_int "unique_ips" "$unique_ips"
 
     # Last update
     if [ -f "$STATS_FILE" ]; then
@@ -60,12 +63,16 @@ do_get_stats() {
     fi
 
     local domains=$(sqlite3 "$BLOCKLIST_DB" "SELECT COUNT(*) FROM domains WHERE blocked=1;" 2>/dev/null || echo 0)
-    local hits=$(sqlite3 "$BLOCKLIST_DB" "SELECT COALESCE(SUM(hit_count),0) FROM domains;" 2>/dev/null || echo 0)
-    local x47=$((hits * 47))
+    local hits=0
+    local unique_ips=0
+    if [ -f "$STATS_FILE" ]; then
+        hits=$(jsonfilter -i "$STATS_FILE" -e '@.blocks' 2>/dev/null || echo 0)
+        unique_ips=$(jsonfilter -i "$STATS_FILE" -e '@.unique_ips' 2>/dev/null || echo 0)
+    fi
 
     json_add_int "domains" "$domains"
     json_add_int "hits" "$hits"
-    json_add_int "x47_impact" "$x47"
+    json_add_int "unique_ips" "$unique_ips"
 
     # Threat distribution
     json_add_object "threats"

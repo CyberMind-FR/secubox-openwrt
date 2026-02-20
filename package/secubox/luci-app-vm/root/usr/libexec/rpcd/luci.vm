@@ -1,0 +1,402 @@
+#!/bin/sh
+# SecuBox VM Manager RPCD Handler
+# Manages LXC containers and VM exports
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+LXC_PATH="/srv/lxc"
+
+# Get list of all containers
+get_containers() {
+    local containers=""
+    for dir in "$LXC_PATH"/*/; do
+        [ -d "$dir" ] || continue
+        local name=$(basename "$dir")
+        [ -f "$dir/config" ] || continue
+        containers="$containers $name"
+    done
+    echo "$containers"
+}
+
+# Get container state
+get_container_state() {
+    local name="$1"
+    lxc-info -n "$name" -s 2>/dev/null | awk '{print $2}'
+}
+
+# Get container info
+get_container_info() {
+    local name="$1"
+    local state=$(get_container_state "$name")
+    local config="$LXC_PATH/$name/config"
+    local rootfs_size="0"
+    local memory="0"
+    local arch=""
+    local init_cmd=""
+
+    if [ -f "$config" ]; then
+        arch=$(grep "lxc.arch" "$config" | cut -d= -f2 | tr -d ' ')
+        init_cmd=$(grep "lxc.init.cmd" "$config" | cut -d= -f2 | tr -d ' ')
+        memory=$(grep "lxc.cgroup2.memory.max" "$config" | cut -d= -f2 | tr -d ' ')
+        [ -z "$memory" ] && memory=$(grep "lxc.cgroup.memory.limit_in_bytes" "$config" | cut -d= -f2 | tr -d ' ')
+    fi
+
+    if [ -d "$LXC_PATH/$name/rootfs" ]; then
+        rootfs_size=$(du -sm "$LXC_PATH/$name/rootfs" 2>/dev/null | cut -f1)
+    fi
+
+    json_add_object "$name"
+    json_add_string "name" "$name"
+    json_add_string "state" "${state:-stopped}"
+    json_add_string "arch" "${arch:-aarch64}"
+    json_add_int "rootfs_mb" "${rootfs_size:-0}"
+    json_add_string "memory" "${memory:-unlimited}"
+    json_add_string "init_cmd" "$init_cmd"
+    json_close_object
+}
+
+# List all containers
+method_list() {
+    json_init
+    json_add_array "containers"
+
+    for name in $(get_containers); do
+        local state=$(get_container_state "$name")
+        local rootfs_size=$(du -sm "$LXC_PATH/$name/rootfs" 2>/dev/null | cut -f1)
+
+        json_add_object
+        json_add_string "name" "$name"
+        json_add_string "state" "${state:-stopped}"
+        json_add_int "rootfs_mb" "${rootfs_size:-0}"
+        json_close_object
+    done
+
+    json_close_array
+    json_dump
+}
+
+# Get status summary
+method_status() {
+    local total=0
+    local running=0
+    local stopped=0
+
+    for name in $(get_containers); do
+        total=$((total + 1))
+        local state=$(get_container_state "$name")
+        if [ "$state" = "RUNNING" ]; then
+            running=$((running + 1))
+        else
+            stopped=$((stopped + 1))
+        fi
+    done
+
+    # Get disk usage
+    local disk_used=$(du -sm "$LXC_PATH" 2>/dev/null | cut -f1)
+    local disk_free=$(df -m /srv 2>/dev/null | tail -1 | awk '{print $4}')
+
+    json_init
+    json_add_int "total" "$total"
+    json_add_int "running" "$running"
+    json_add_int "stopped" "$stopped"
+    json_add_int "disk_used_mb" "${disk_used:-0}"
+    json_add_int "disk_free_mb" "${disk_free:-0}"
+    json_add_string "lxc_path" "$LXC_PATH"
+    json_dump
+}
+
+# Get detailed container info
+method_info() {
+    local name="$1"
+
+    [ -d "$LXC_PATH/$name" ] || {
+        json_init
+        json_add_string "error" "Container not found"
+        json_dump
+        return
+    }
+
+    json_init
+    get_container_info "$name"
+
+    # Add extra details for single container
+    local pid=""
+    local ips=""
+
+    if [ "$(get_container_state "$name")" = "RUNNING" ]; then
+        pid=$(lxc-info -n "$name" -p 2>/dev/null | awk '{print $2}')
+        ips=$(lxc-info -n "$name" -i 2>/dev/null | awk '{print $2}' | tr '\n' ',')
+    fi
+
+    json_add_string "pid" "$pid"
+    json_add_string "ips" "$ips"
+
+    # Config file contents
+    if [ -f "$LXC_PATH/$name/config" ]; then
+        local config=$(cat "$LXC_PATH/$name/config" | head -50)
+        json_add_string "config" "$config"
+    fi
+
+    json_dump
+}
+
+# Get container logs
+method_logs() {
+    local name="$1"
+    local lines="${2:-50}"
+
+    json_init
+
+    # Try various log sources
+    local log=""
+    if [ -f "/var/log/lxc/$name.log" ]; then
+        log=$(tail -n "$lines" "/var/log/lxc/$name.log" 2>/dev/null)
+    elif [ -f "/tmp/$name.log" ]; then
+        log=$(tail -n "$lines" "/tmp/$name.log" 2>/dev/null)
+    else
+        log="No logs available for container: $name"
+    fi
+
+    json_add_string "name" "$name"
+    json_add_string "logs" "$log"
+    json_dump
+}
+
+# Start container
+method_start() {
+    local name="$1"
+
+    json_init
+
+    if [ ! -d "$LXC_PATH/$name" ]; then
+        json_add_boolean "success" 0
+        json_add_string "error" "Container not found"
+        json_dump
+        return
+    fi
+
+    lxc-start -n "$name" 2>/tmp/lxc-start-$name.log
+    local rc=$?
+
+    if [ $rc -eq 0 ]; then
+        json_add_boolean "success" 1
+        json_add_string "message" "Container $name started"
+    else
+        json_add_boolean "success" 0
+        json_add_string "error" "$(cat /tmp/lxc-start-$name.log 2>/dev/null || echo 'Start failed')"
+    fi
+
+    json_dump
+}
+
+# Stop container
+method_stop() {
+    local name="$1"
+
+    json_init
+
+    if [ ! -d "$LXC_PATH/$name" ]; then
+        json_add_boolean "success" 0
+        json_add_string "error" "Container not found"
+        json_dump
+        return
+    fi
+
+    lxc-stop -n "$name" 2>&1
+    local rc=$?
+
+    if [ $rc -eq 0 ]; then
+        json_add_boolean "success" 1
+        json_add_string "message" "Container $name stopped"
+    else
+        json_add_boolean "success" 0
+        json_add_string "error" "Stop failed"
+    fi
+
+    json_dump
+}
+
+# Restart container
+method_restart() {
+    local name="$1"
+
+    lxc-stop -n "$name" 2>/dev/null
+    sleep 1
+    method_start "$name"
+}
+
+# Create snapshot
+method_snapshot() {
+    local name="$1"
+    local snap_name="${2:-snapshot-$(date +%Y%m%d-%H%M%S)}"
+    local snap_dir="$LXC_PATH/$name/snapshots"
+
+    json_init
+
+    mkdir -p "$snap_dir"
+
+    # Stop if running
+    local was_running=0
+    if [ "$(get_container_state "$name")" = "RUNNING" ]; then
+        was_running=1
+        lxc-stop -n "$name" 2>/dev/null
+        sleep 1
+    fi
+
+    # Create snapshot
+    tar -czf "$snap_dir/$snap_name.tar.gz" -C "$LXC_PATH/$name" rootfs config 2>/dev/null
+    local rc=$?
+
+    # Restart if was running
+    [ $was_running -eq 1 ] && lxc-start -n "$name" 2>/dev/null
+
+    if [ $rc -eq 0 ]; then
+        json_add_boolean "success" 1
+        json_add_string "snapshot" "$snap_name"
+        json_add_string "path" "$snap_dir/$snap_name.tar.gz"
+    else
+        json_add_boolean "success" 0
+        json_add_string "error" "Snapshot failed"
+    fi
+
+    json_dump
+}
+
+# Export container to VMDK/OVA (for VM builder)
+method_export() {
+    local name="$1"
+    local format="${2:-tar}"
+    local output_dir="${3:-/tmp/vm-export}"
+
+    json_init
+
+    mkdir -p "$output_dir"
+
+    # For now, just create a tar archive
+    # Full VMDK/OVA conversion would require qemu-img on the host
+    local output="$output_dir/$name-export.tar.gz"
+
+    tar -czf "$output" -C "$LXC_PATH" "$name" 2>/dev/null
+
+    if [ -f "$output" ]; then
+        local size=$(ls -lh "$output" | awk '{print $5}')
+        json_add_boolean "success" 1
+        json_add_string "format" "tar.gz"
+        json_add_string "path" "$output"
+        json_add_string "size" "$size"
+    else
+        json_add_boolean "success" 0
+        json_add_string "error" "Export failed"
+    fi
+
+    json_dump
+}
+
+# Main dispatcher
+case "$1" in
+    list)
+        case "$2" in
+            status)
+                method_status
+                ;;
+            list)
+                method_list
+                ;;
+            info)
+                read -r input
+                json_load "$input"
+                json_get_var name name
+                method_info "$name"
+                ;;
+            logs)
+                read -r input
+                json_load "$input"
+                json_get_var name name
+                json_get_var lines lines
+                method_logs "$name" "$lines"
+                ;;
+            start|stop|restart|snapshot|export)
+                read -r input
+                json_load "$input"
+                json_get_var name name
+                case "$2" in
+                    start) method_start "$name" ;;
+                    stop) method_stop "$name" ;;
+                    restart) method_restart "$name" ;;
+                    snapshot)
+                        json_get_var snap_name snap_name
+                        method_snapshot "$name" "$snap_name"
+                        ;;
+                    export)
+                        json_get_var format format
+                        method_export "$name" "$format"
+                        ;;
+                esac
+                ;;
+            *)
+                echo '{"status":"invalid_method"}'
+                ;;
+        esac
+        ;;
+    call)
+        case "$2" in
+            status)
+                method_status
+                ;;
+            list)
+                method_list
+                ;;
+            info)
+                read -r input
+                json_load "$input"
+                json_get_var name name
+                method_info "$name"
+                ;;
+            logs)
+                read -r input
+                json_load "$input"
+                json_get_var name name
+                json_get_var lines lines
+                method_logs "$name" "$lines"
+                ;;
+            start)
+                read -r input
+                json_load "$input"
+                json_get_var name name
+                method_start "$name"
+                ;;
+            stop)
+                read -r input
+                json_load "$input"
+                json_get_var name name
+                method_stop "$name"
+                ;;
+            restart)
+                read -r input
+                json_load "$input"
+                json_get_var name name
+                method_restart "$name"
+                ;;
+            snapshot)
+                read -r input
+                json_load "$input"
+                json_get_var name name
+                json_get_var snap_name snap_name
+                method_snapshot "$name" "$snap_name"
+                ;;
+            export)
+                read -r input
+                json_load "$input"
+                json_get_var name name
+                json_get_var format format
+                method_export "$name" "$format"
+                ;;
+            *)
+                echo '{"error":"unknown_method"}'
+                ;;
+        esac
+        ;;
+esac
+
+exit 0

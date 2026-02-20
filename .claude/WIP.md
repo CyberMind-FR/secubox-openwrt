@@ -64,6 +64,25 @@ _Last updated: 2026-02-20 (v0.24.0 - Matrix + SaaS Relay + Media Hub)_
 
 ### Just Completed (2026-02-20)
 
+- **LuCI VM Manager** — DONE (2026-02-20)
+  - `luci-app-vm` package for LXC container management dashboard
+  - Status bar: total/running/stopped containers, disk usage
+  - Container cards with Start/Stop/Restart, Snapshot, Export controls
+  - RPCD handler with 10 methods: status, list, info, logs, start, stop, restart, snapshot, export
+  - Polling for live status updates
+
+- **Vortex Firewall Stats Fix** — DONE (2026-02-20)
+  - Enabled BIND RPZ logging for blocked queries
+  - Created `/usr/sbin/vortex-firewall-stats` script to parse logs
+  - Fixed RPCD handler to read hit_count from stats file
+  - Added cron job for automatic stats updates every 5 minutes
+  - Verified: 12,370 domains blocked, RPZ NXDOMAIN working
+
+- **SaaS Relay HAProxy Integration** — DONE (2026-02-20)
+  - Fixed relay.gk2.secubox.in routing to mitmproxy on port 8891
+  - Created SaaS relay dashboard HTML at /srv/saas-relay/web/
+  - HexoJS fallback via uhttpd on port 4000
+
 - **Matrix Homeserver (Conduit)** — DONE (2026-02-20)
   - E2EE mesh messaging server using Conduit Matrix homeserver
   - LXC container with pre-built ARM64 Conduit binary (0.10.12)

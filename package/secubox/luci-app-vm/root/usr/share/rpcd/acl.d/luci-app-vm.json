@@ -1,0 +1,29 @@
+{
+	"luci-app-vm": {
+		"description": "Grant access to LuCI app vm",
+		"read": {
+			"ubus": {
+				"luci.vm": [
+					"status",
+					"list",
+					"info",
+					"logs"
+				]
+			}
+		},
+		"write": {
+			"ubus": {
+				"luci.vm": [
+					"start",
+					"stop",
+					"restart",
+					"create",
+					"destroy",
+					"snapshot",
+					"restore",
+					"export"
+				]
+			}
+		}
+	}
+}
