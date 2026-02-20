@@ -127,6 +127,16 @@ _Last updated: 2026-02-20 (v0.24.0 - Matrix + SaaS Relay + Media Hub)_
     - `hexoctl static quick <file>` - One-command upload + publish
   - Tested and verified on router
 
+- **HexoJS Content Upload Wizard** — DONE (2026-02-20)
+  - 3-step wizard UI at `/admin/services/hexojs/upload`
+  - File upload: HTML, PDF, Markdown (.md) support
+  - Metadata: Title, Category, Tags, Public/Private visibility
+  - Multi-target publishing: HexoJS Blog, Gitea, Streamlit, MetaBlogizer
+  - Base64 encoding for binary file transfer
+  - RPCD methods: upload_article, upload_pdf, upload_html, publish_draft, unpublish_post, get_uploads
+  - Gitea integration with repo/path selection
+  - SecuBox Welcome Guide deployed at /guide/, /connexion.html, /accueil.html
+
 ### Just Completed (2026-02-19)
 
 - **WAF VoIP/XMPP Security Filters** — DONE (2026-02-19)

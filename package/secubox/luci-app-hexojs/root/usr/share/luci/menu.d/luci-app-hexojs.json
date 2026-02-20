@@ -113,5 +113,21 @@
 			"type": "view",
 			"path": "hexojs/static"
 		}
+	},
+	"admin/services/hexojs/upload": {
+		"title": "Upload",
+		"order": 25,
+		"action": {
+			"type": "view",
+			"path": "hexojs/upload"
+		}
+	},
+	"admin/services/hexojs/submit": {
+		"title": "Submit & Moderate",
+		"order": 26,
+		"action": {
+			"type": "view",
+			"path": "hexojs/submit"
+		}
 	}
 }

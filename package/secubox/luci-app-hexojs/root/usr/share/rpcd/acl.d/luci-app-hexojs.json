@@ -32,7 +32,10 @@
 					"get_instance_endpoints",
 					"get_instance_health",
 					"get_pipeline_status",
-					"static_list"
+					"static_list",
+					"get_uploads",
+					"list_pending",
+					"get_submission"
 				]
 			},
 			"uci": ["hexojs"]
@@ -91,7 +94,15 @@
 					"static_delete",
 					"static_publish",
 					"static_delete_file",
-					"static_configure_auth"
+					"static_configure_auth",
+					"upload_article",
+					"upload_pdf",
+					"upload_html",
+					"publish_draft",
+					"unpublish_post",
+					"submit_for_review",
+					"approve_submission",
+					"reject_submission"
 				]
 			},
 			"uci": ["hexojs"]
