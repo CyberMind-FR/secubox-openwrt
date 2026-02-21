@@ -1,0 +1,164 @@
+#!/bin/sh
+# CGI endpoint for PeerTube video import
+# Returns JSON response
+
+# Set headers
+printf "Content-Type: application/json\r\n"
+printf "Access-Control-Allow-Origin: *\r\n"
+printf "Access-Control-Allow-Methods: POST, OPTIONS\r\n"
+printf "Access-Control-Allow-Headers: Content-Type\r\n"
+printf "\r\n"
+
+# Handle OPTIONS (CORS preflight)
+if [ "$REQUEST_METHOD" = "OPTIONS" ]; then
+    exit 0
+fi
+
+# Only allow POST
+if [ "$REQUEST_METHOD" != "POST" ]; then
+    echo '{"error": "Method not allowed"}'
+    exit 0
+fi
+
+# Read input
+INPUT=$(cat)
+
+# Parse JSON (use jq if available, else jsonfilter)
+if command -v jq >/dev/null 2>&1; then
+    URL=$(echo "$INPUT" | jq -r '.url // empty')
+    LANGUAGES=$(echo "$INPUT" | jq -r '.languages // "fr,en"')
+    CHANNEL_ID=$(echo "$INPUT" | jq -r '.channel_id // "1"')
+    PRIVACY=$(echo "$INPUT" | jq -r '.privacy // "1"')
+else
+    URL=$(echo "$INPUT" | jsonfilter -e '@.url' 2>/dev/null)
+    LANGUAGES=$(echo "$INPUT" | jsonfilter -e '@.languages' 2>/dev/null)
+    CHANNEL_ID=$(echo "$INPUT" | jsonfilter -e '@.channel_id' 2>/dev/null)
+    PRIVACY=$(echo "$INPUT" | jsonfilter -e '@.privacy' 2>/dev/null)
+fi
+
+# Handle array of languages
+if echo "$LANGUAGES" | grep -q '^\['; then
+    if command -v jq >/dev/null 2>&1; then
+        LANGUAGES=$(echo "$INPUT" | jq -r '.languages | if type == "array" then join(",") else . end')
+    else
+        LANGUAGES="fr,en"
+    fi
+fi
+
+# Validate URL
+if [ -z "$URL" ]; then
+    echo '{"error": "URL is required"}'
+    exit 0
+fi
+
+# Sanitize URL (basic security check)
+case "$URL" in
+    http://*|https://*)
+        # Valid URL prefix
+        ;;
+    *)
+        echo '{"error": "Invalid URL format"}'
+        exit 0
+        ;;
+esac
+
+# Set defaults
+[ -z "$LANGUAGES" ] && LANGUAGES="fr,en"
+[ -z "$CHANNEL_ID" ] && CHANNEL_ID="1"
+[ -z "$PRIVACY" ] && PRIVACY="1"
+
+# Generate job ID
+JOB_ID="import_$(date +%s)_$$"
+STATUS_FILE="/tmp/peertube-import-${JOB_ID}.status"
+RESULT_FILE="/tmp/peertube-import-${JOB_ID}.json"
+LOG_FILE="/tmp/peertube-import-${JOB_ID}.log"
+PROGRESS_FILE="/tmp/peertube-import-${JOB_ID}.progress"
+
+# Check for import script
+if [ ! -x "/usr/sbin/peertube-import" ]; then
+    echo '{"error": "peertube-import not installed"}'
+    exit 0
+fi
+
+# Initialize status
+echo "starting" > "$STATUS_FILE"
+echo "0" > "$PROGRESS_FILE"
+
+# Start import in background
+(
+    echo "downloading" > "$STATUS_FILE"
+    echo "10" > "$PROGRESS_FILE"
+
+    # Run the import
+    OUTPUT=$(/usr/sbin/peertube-import \
+        --lang "$LANGUAGES" \
+        --channel "$CHANNEL_ID" \
+        --privacy "$PRIVACY" \
+        "$URL" 2>&1)
+    RC=$?
+
+    echo "$OUTPUT" >> "$LOG_FILE"
+
+    if [ $RC -eq 0 ]; then
+        echo "completed" > "$STATUS_FILE"
+        echo "100" > "$PROGRESS_FILE"
+
+        # Extract JSON result from output (last JSON block)
+        local result_json
+        result_json=$(echo "$OUTPUT" | grep -E '^\{' | tail -1)
+
+        if [ -n "$result_json" ]; then
+            # Parse and rebuild result
+            if command -v jq >/dev/null 2>&1; then
+                VIDEO_ID=$(echo "$result_json" | jq -r '.video_id // empty')
+                VIDEO_UUID=$(echo "$result_json" | jq -r '.video_uuid // empty')
+                VIDEO_URL=$(echo "$result_json" | jq -r '.video_url // empty')
+                TITLE=$(echo "$result_json" | jq -r '.title // "Imported Video"')
+            else
+                VIDEO_ID=$(echo "$result_json" | jsonfilter -e '@.video_id' 2>/dev/null)
+                VIDEO_UUID=$(echo "$result_json" | jsonfilter -e '@.video_uuid' 2>/dev/null)
+                VIDEO_URL=$(echo "$result_json" | jsonfilter -e '@.video_url' 2>/dev/null)
+                TITLE="Imported Video"
+            fi
+
+            cat > "$RESULT_FILE" << EOF
+{
+    "success": true,
+    "job_id": "$JOB_ID",
+    "video_id": $VIDEO_ID,
+    "video_uuid": "$VIDEO_UUID",
+    "video_url": "$VIDEO_URL",
+    "title": "$TITLE",
+    "status": "completed"
+}
+EOF
+        else
+            cat > "$RESULT_FILE" << EOF
+{
+    "success": true,
+    "job_id": "$JOB_ID",
+    "status": "completed",
+    "message": "Import completed but no result JSON found"
+}
+EOF
+        fi
+    else
+        echo "failed" > "$STATUS_FILE"
+        echo "0" > "$PROGRESS_FILE"
+
+        # Get last error from log
+        ERROR_MSG=$(tail -5 "$LOG_FILE" 2>/dev/null | tr '\n' ' ' | sed 's/"/\\"/g' | head -c 500)
+
+        cat > "$RESULT_FILE" << EOF
+{
+    "success": false,
+    "job_id": "$JOB_ID",
+    "status": "failed",
+    "error": "$ERROR_MSG"
+}
+EOF
+    fi
+) &
+
+# Return job ID for polling
+echo "{\"success\": true, \"message\": \"Import started\", \"job_id\": \"$JOB_ID\"}"

@@ -1,0 +1,586 @@
+#!/bin/sh
+# PeerTube Video Import with Multi-Track Subtitle Sync
+# SecuBox Intelligence Module
+# Compatible: OpenWrt
+
+set -e
+
+#=============================================================================
+# CONFIGURATION
+#=============================================================================
+
+SCRIPT_VERSION="1.0.0"
+PEERTUBE_URL="${PEERTUBE_URL:-https://tube.gk2.secubox.in}"
+PEERTUBE_TOKEN="${PEERTUBE_TOKEN:-}"
+OUTPUT_BASE="${OUTPUT_BASE:-/tmp/peertube-import}"
+DEFAULT_CHANNEL_ID=1
+DEFAULT_PRIVACY=1  # 1=public, 2=unlisted, 3=private
+
+#=============================================================================
+# LOGGING
+#=============================================================================
+
+log_info()  { echo >&2 "[INFO] $*"; }
+log_ok()    { echo >&2 "[OK] $*"; }
+log_warn()  { echo >&2 "[WARN] $*"; }
+log_error() { echo >&2 "[ERROR] $*"; }
+log_step()  { echo >&2 ""; echo >&2 "==> $*"; }
+log_progress() { echo >&2 "[PROGRESS] $*"; }
+
+#=============================================================================
+# UTILITY FUNCTIONS
+#=============================================================================
+
+# Generate slug from title
+generate_slug() {
+    echo "$1" | tr '[:upper:]' '[:lower:]' | \
+        sed -E 's/[àáâãäå]/a/g; s/[èéêë]/e/g; s/[ìíîï]/i/g; s/[òóôõö]/o/g; s/[ùúûü]/u/g; s/[ç]/c/g' | \
+        sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g' | \
+        cut -c1-50
+}
+
+# Get PeerTube authentication token
+get_peertube_token() {
+    local username="$1"
+    local password="$2"
+
+    if [ -n "$PEERTUBE_TOKEN" ]; then
+        echo "$PEERTUBE_TOKEN"
+        return 0
+    fi
+
+    # Read credentials from UCI config (admin section)
+    if [ -z "$username" ]; then
+        username=$(uci -q get peertube.admin.username)
+        password=$(uci -q get peertube.admin.password)
+    fi
+
+    # Try to get OAuth client credentials
+    local client_id client_secret
+    local oauth_clients
+    oauth_clients=$(curl -s "${PEERTUBE_URL}/api/v1/oauth-clients/local")
+
+    if command -v jq >/dev/null 2>&1; then
+        client_id=$(echo "$oauth_clients" | jq -r '.client_id // empty')
+        client_secret=$(echo "$oauth_clients" | jq -r '.client_secret // empty')
+    else
+        client_id=$(echo "$oauth_clients" | jsonfilter -e '@.client_id' 2>/dev/null)
+        client_secret=$(echo "$oauth_clients" | jsonfilter -e '@.client_secret' 2>/dev/null)
+    fi
+
+    if [ -z "$client_id" ] || [ -z "$username" ]; then
+        log_error "Cannot get PeerTube token. Set PEERTUBE_TOKEN or configure api credentials."
+        return 1
+    fi
+
+    # Get access token
+    local token_response
+    token_response=$(curl -s -X POST "${PEERTUBE_URL}/api/v1/users/token" \
+        -H "Content-Type: application/x-www-form-urlencoded" \
+        -d "client_id=${client_id}" \
+        -d "client_secret=${client_secret}" \
+        -d "grant_type=password" \
+        -d "response_type=code" \
+        -d "username=${username}" \
+        -d "password=${password}")
+
+    local token
+    if command -v jq >/dev/null 2>&1; then
+        token=$(echo "$token_response" | jq -r '.access_token // empty')
+    else
+        token=$(echo "$token_response" | jsonfilter -e '@.access_token' 2>/dev/null)
+    fi
+
+    if [ -z "$token" ]; then
+        log_error "Failed to get access token"
+        return 1
+    fi
+
+    echo "$token"
+}
+
+#=============================================================================
+# VIDEO DOWNLOAD
+#=============================================================================
+
+download_video() {
+    local url="$1"
+    local output_dir="$2"
+    local slug="$3"
+
+    log_step "Downloading video"
+
+    local video_file="$output_dir/${slug}.%(ext)s"
+
+    # Download best quality video - redirect output to stderr to keep stdout clean
+    if yt-dlp -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" \
+              --merge-output-format mp4 \
+              -o "$output_dir/${slug}.%(ext)s" \
+              --no-playlist \
+              "$url" >&2 2>&1; then
+
+        # Find downloaded file
+        local found_video
+        found_video=$(find "$output_dir" -name "${slug}.*" -type f | grep -E '\.(mp4|webm|mkv)$' | head -1)
+
+        if [ -n "$found_video" ] && [ -f "$found_video" ]; then
+            log_ok "Video downloaded: $found_video"
+            echo "$found_video"
+            return 0
+        fi
+    fi
+
+    log_error "Failed to download video"
+    return 1
+}
+
+#=============================================================================
+# METADATA EXTRACTION
+#=============================================================================
+
+extract_metadata() {
+    local url="$1"
+    local output_dir="$2"
+    local slug="$3"
+
+    log_step "Extracting metadata"
+
+    local meta_file="$output_dir/${slug}.meta.json"
+
+    if yt-dlp --dump-json --no-warnings "$url" 2>/dev/null > "$meta_file.tmp"; then
+        if command -v jq >/dev/null 2>&1; then
+            jq '{
+                id: .id,
+                title: .title,
+                description: .description,
+                duration: .duration,
+                upload_date: .upload_date,
+                uploader: .uploader,
+                channel: .channel,
+                tags: .tags,
+                webpage_url: .webpage_url,
+                thumbnail: .thumbnail,
+                subtitles: ((.subtitles // {}) | keys),
+                automatic_captions: ((.automatic_captions // {}) | keys)
+            }' "$meta_file.tmp" > "$meta_file"
+        else
+            mv "$meta_file.tmp" "$meta_file"
+        fi
+        rm -f "$meta_file.tmp"
+        log_ok "Metadata saved: $meta_file"
+        echo "$meta_file"
+        return 0
+    fi
+
+    log_error "Failed to extract metadata"
+    return 1
+}
+
+#=============================================================================
+# SUBTITLE DOWNLOAD
+#=============================================================================
+
+download_subtitles() {
+    local url="$1"
+    local output_dir="$2"
+    local slug="$3"
+    local languages="$4"  # Comma-separated: fr,en,de
+
+    log_step "Downloading subtitles"
+
+    [ -z "$languages" ] && languages="fr,en"
+
+    log_info "Requested languages: $languages"
+
+    # Download subtitles with yt-dlp
+    yt-dlp --write-sub --write-auto-sub \
+           --sub-lang "$languages" \
+           --sub-format vtt \
+           --convert-subs vtt \
+           --skip-download \
+           -o "$output_dir/${slug}" \
+           "$url" 2>&1 || true
+
+    # List downloaded subtitle files
+    local count=0
+    for vtt in "$output_dir"/${slug}*.vtt; do
+        [ -f "$vtt" ] || continue
+        count=$((count + 1))
+        log_ok "Downloaded: $(basename "$vtt")"
+    done
+
+    if [ "$count" -eq 0 ]; then
+        log_warn "No subtitles found for requested languages"
+        return 1
+    fi
+
+    log_ok "Downloaded $count subtitle file(s)"
+    return 0
+}
+
+#=============================================================================
+# PEERTUBE UPLOAD
+#=============================================================================
+
+upload_video_to_peertube() {
+    local video_file="$1"
+    local meta_file="$2"
+    local channel_id="$3"
+    local privacy="$4"
+    local token="$5"
+
+    log_step "Uploading video to PeerTube"
+
+    [ -z "$channel_id" ] && channel_id=$DEFAULT_CHANNEL_ID
+    [ -z "$privacy" ] && privacy=$DEFAULT_PRIVACY
+
+    # Get title and description from metadata
+    local title description
+    if command -v jq >/dev/null 2>&1 && [ -f "$meta_file" ]; then
+        title=$(jq -r '.title // "Imported Video"' "$meta_file")
+        description=$(jq -r '.description // ""' "$meta_file" | head -c 10000)
+    else
+        title="Imported Video"
+        description=""
+    fi
+
+    log_info "Title: $title"
+    log_info "Channel ID: $channel_id"
+    log_info "Privacy: $privacy"
+
+    # Sanitize description (escape newlines and quotes)
+    description=$(echo "$description" | tr '\n' ' ' | sed 's/"/\\"/g' | head -c 5000)
+
+    # Upload video - use temp file to avoid mixing stderr with response
+    local tmpfile="/tmp/peertube_upload_$$.json"
+    local http_code
+
+    http_code=$(curl -s -w "%{http_code}" -o "$tmpfile" -X POST "${PEERTUBE_URL}/api/v1/videos/upload" \
+        -H "Authorization: Bearer ${token}" \
+        -F "videofile=@${video_file}" \
+        -F "channelId=${channel_id}" \
+        -F "name=${title}" \
+        -F "privacy=${privacy}" \
+        -F "description=${description}" \
+        2>/dev/null)
+
+    local body=""
+    [ -f "$tmpfile" ] && body=$(cat "$tmpfile")
+    rm -f "$tmpfile"
+
+    if [ "$http_code" = "200" ] || [ "$http_code" = "201" ]; then
+        local video_id video_uuid
+        if command -v jq >/dev/null 2>&1; then
+            video_id=$(echo "$body" | jq -r '.video.id // empty')
+            video_uuid=$(echo "$body" | jq -r '.video.uuid // empty')
+        else
+            video_id=$(echo "$body" | jsonfilter -e '@.video.id' 2>/dev/null)
+            video_uuid=$(echo "$body" | jsonfilter -e '@.video.uuid' 2>/dev/null)
+        fi
+
+        if [ -n "$video_id" ]; then
+            log_ok "Video uploaded: ID=$video_id, UUID=$video_uuid"
+            echo "${video_id}|${video_uuid}"
+            return 0
+        fi
+    fi
+
+    log_error "Upload failed (HTTP $http_code)"
+    log_error "$body"
+    return 1
+}
+
+upload_subtitles_to_peertube() {
+    local video_id="$1"
+    local output_dir="$2"
+    local slug="$3"
+    local token="$4"
+
+    log_step "Uploading subtitles to PeerTube"
+
+    local uploaded=0
+
+    for vtt in "$output_dir"/${slug}*.vtt; do
+        [ -f "$vtt" ] || continue
+
+        # Extract language code from filename
+        # Format: slug.fr.vtt or slug.en-US.vtt
+        local filename
+        filename=$(basename "$vtt")
+        local lang
+        lang=$(echo "$filename" | sed -E "s/${slug}\.([a-zA-Z-]+)\.vtt/\1/")
+
+        # Normalize language code (en-US -> en)
+        lang=$(echo "$lang" | cut -d'-' -f1)
+
+        log_info "Uploading subtitle: $lang ($filename)"
+
+        local http_code
+        http_code=$(curl -s -w "%{http_code}" -o /dev/null -X PUT \
+            "${PEERTUBE_URL}/api/v1/videos/${video_id}/captions/${lang}" \
+            -H "Authorization: Bearer ${token}" \
+            -F "captionfile=@${vtt}" \
+            2>/dev/null)
+
+        if [ "$http_code" = "200" ] || [ "$http_code" = "204" ] || [ "$http_code" = "201" ]; then
+            log_ok "Uploaded: $lang"
+            uploaded=$((uploaded + 1))
+        else
+            log_warn "Failed to upload $lang (HTTP $http_code)"
+        fi
+    done
+
+    log_ok "Uploaded $uploaded subtitle(s)"
+    return 0
+}
+
+#=============================================================================
+# MAIN IMPORT FUNCTION
+#=============================================================================
+
+import_video() {
+    local url="$1"
+    local languages="$2"
+    local channel_id="$3"
+    local privacy="$4"
+    local username="$5"
+    local password="$6"
+
+    log_step "Starting video import"
+    log_info "URL: $url"
+
+    # Create output directory
+    # If OUTPUT_BASE already contains import_ (called from CGI), use it as-is
+    local output_dir
+    if echo "$OUTPUT_BASE" | grep -q "/import_"; then
+        output_dir="$OUTPUT_BASE"
+    else
+        output_dir="$OUTPUT_BASE/import_$(date +%s)_$$"
+    fi
+    mkdir -p "$output_dir"
+
+    # Extract metadata first to get title
+    local meta_file
+    meta_file=$(extract_metadata "$url" "$output_dir" "video") || {
+        log_error "Metadata extraction failed"
+        return 1
+    }
+
+    # Generate slug from title
+    local title slug
+    if command -v jq >/dev/null 2>&1; then
+        title=$(jq -r '.title // "video"' "$meta_file")
+    else
+        title=$(jsonfilter -i "$meta_file" -e '@.title' 2>/dev/null || echo "video")
+    fi
+    slug=$(generate_slug "$title")
+    [ -z "$slug" ] && slug="video_$$"
+
+    # Rename metadata file
+    mv "$meta_file" "$output_dir/${slug}.meta.json"
+    meta_file="$output_dir/${slug}.meta.json"
+
+    log_progress "downloading"
+
+    # Download video
+    local video_file
+    video_file=$(download_video "$url" "$output_dir" "$slug") || {
+        log_error "Video download failed"
+        return 1
+    }
+
+    # Download subtitles
+    download_subtitles "$url" "$output_dir" "$slug" "$languages" || {
+        log_warn "Subtitle download failed (continuing without subtitles)"
+    }
+
+    log_progress "uploading"
+
+    # Get PeerTube token
+    local token
+    token=$(get_peertube_token "$username" "$password") || {
+        log_error "Authentication failed"
+        return 1
+    }
+
+    # Upload video
+    local upload_result
+    upload_result=$(upload_video_to_peertube "$video_file" "$meta_file" "$channel_id" "$privacy" "$token") || {
+        log_error "Video upload failed"
+        return 1
+    }
+
+    local video_id video_uuid
+    video_id=$(echo "$upload_result" | cut -d'|' -f1)
+    video_uuid=$(echo "$upload_result" | cut -d'|' -f2)
+
+    # Upload subtitles
+    upload_subtitles_to_peertube "$video_id" "$output_dir" "$slug" "$token" || {
+        log_warn "Subtitle upload failed"
+    }
+
+    log_progress "completed"
+
+    # Output result
+    log_step "Import complete"
+    log_ok "Video ID: $video_id"
+    log_ok "Video UUID: $video_uuid"
+    log_ok "URL: ${PEERTUBE_URL}/w/${video_uuid}"
+
+    # Output JSON result
+    cat << EOF
+{
+    "success": true,
+    "video_id": $video_id,
+    "video_uuid": "$video_uuid",
+    "video_url": "${PEERTUBE_URL}/w/${video_uuid}",
+    "title": $(echo "$title" | jq -Rs . 2>/dev/null || echo "\"$title\""),
+    "output_dir": "$output_dir"
+}
+EOF
+
+    return 0
+}
+
+#=============================================================================
+# CLI PARSING
+#=============================================================================
+
+show_help() {
+    cat << EOF
+PeerTube Video Import with Subtitle Sync
+SecuBox Intelligence Module v${SCRIPT_VERSION}
+
+Usage:
+  $(basename "$0") [OPTIONS] <url>
+
+Options:
+  --url <url>         Video URL (YouTube, Vimeo, etc.)
+  --lang <codes>      Subtitle languages (comma-separated: fr,en,de)
+                      Default: fr,en
+  --channel <id>      PeerTube channel ID (default: 1)
+  --privacy <level>   1=public, 2=unlisted, 3=private (default: 1)
+  --username <user>   PeerTube username (or set via UCI)
+  --password <pass>   PeerTube password (or set via UCI)
+  --output <dir>      Output directory (default: /tmp/peertube-import)
+  --peertube <url>    PeerTube instance URL
+  -h, --help          Show this help message
+
+Environment Variables:
+  PEERTUBE_URL        PeerTube instance URL
+  PEERTUBE_TOKEN      OAuth access token (skip authentication)
+
+Examples:
+  # Basic import
+  $(basename "$0") https://youtube.com/watch?v=xxx
+
+  # Import with multiple subtitle languages
+  $(basename "$0") --lang fr,en,de,es https://youtube.com/watch?v=xxx
+
+  # Import as unlisted video
+  $(basename "$0") --privacy 2 https://youtube.com/watch?v=xxx
+
+EOF
+}
+
+parse_args() {
+    VIDEO_URL=""
+    LANGUAGES="fr,en"
+    CHANNEL_ID=""
+    PRIVACY=""
+    USERNAME=""
+    PASSWORD=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --url)
+                VIDEO_URL="$2"
+                shift 2
+                ;;
+            --lang|--languages)
+                LANGUAGES="$2"
+                shift 2
+                ;;
+            --channel)
+                CHANNEL_ID="$2"
+                shift 2
+                ;;
+            --privacy)
+                PRIVACY="$2"
+                shift 2
+                ;;
+            --username)
+                USERNAME="$2"
+                shift 2
+                ;;
+            --password)
+                PASSWORD="$2"
+                shift 2
+                ;;
+            --output)
+                OUTPUT_BASE="$2"
+                shift 2
+                ;;
+            --peertube)
+                PEERTUBE_URL="$2"
+                shift 2
+                ;;
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            -*)
+                log_error "Unknown option: $1"
+                show_help
+                exit 1
+                ;;
+            *)
+                # Positional argument = URL
+                if [ -z "$VIDEO_URL" ]; then
+                    VIDEO_URL="$1"
+                else
+                    log_error "Multiple URLs not supported"
+                    exit 1
+                fi
+                shift
+                ;;
+        esac
+    done
+
+    if [ -z "$VIDEO_URL" ]; then
+        log_error "No video URL provided"
+        show_help
+        exit 1
+    fi
+}
+
+#=============================================================================
+# ENTRY POINT
+#=============================================================================
+
+main() {
+    parse_args "$@"
+
+    echo >&2 ""
+    echo >&2 "╔══════════════════════════════════════════════════════╗"
+    echo >&2 "║  PeerTube Video Import v${SCRIPT_VERSION}                        ║"
+    echo >&2 "║  SecuBox Intelligence Module                         ║"
+    echo >&2 "╚══════════════════════════════════════════════════════╝"
+    echo >&2 ""
+
+    # Check dependencies
+    for dep in yt-dlp curl; do
+        if ! command -v "$dep" >/dev/null 2>&1; then
+            log_error "Required dependency not found: $dep"
+            exit 1
+        fi
+    done
+
+    import_video "$VIDEO_URL" "$LANGUAGES" "$CHANNEL_ID" "$PRIVACY" "$USERNAME" "$PASSWORD"
+    exit $?
+}
+
+# Run if not sourced
+if [ "${0##*/}" = "peertube-import" ] || [ "${0##*/}" = "sh" ]; then
+    main "$@"
+fi

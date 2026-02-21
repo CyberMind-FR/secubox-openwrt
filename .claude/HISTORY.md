@@ -3045,3 +3045,46 @@ git checkout HEAD -- index.html
     - YouTube videos blocked by PO token requirement for subtitle access
     - PeerTube videos on tube.gk2 have no captions uploaded
     - Metadata extraction works; transcript step fails without subtitles/Whisper
+
+31. **PeerTube Video Import with Multi-Track Subtitles (2026-02-21)**
+    - New `peertube-import` CLI tool for importing videos from YouTube, Vimeo, and 1000+ sites.
+    - **Features:**
+      - Download video via yt-dlp (best quality MP4)
+      - Extract metadata (title, description, tags)
+      - Download subtitles in multiple languages (configurable)
+      - Upload video to PeerTube via API
+      - Upload each subtitle track via `/api/v1/videos/{id}/captions/{lang}`
+    - **CLI Interface:**
+      ```bash
+      peertube-import --lang fr,en,de,es https://youtube.com/watch?v=xxx
+      peertube-import --privacy 2 --channel 1 https://vimeo.com/xxx
+      ```
+    - **Portal Integration:**
+      - New "Video Import" card in Intelligence & Analyse section
+      - Modal dialog with URL input, language selection, privacy options
+      - Progress bar with live status updates
+      - Direct link to imported video on completion
+    - **CGI Endpoints:**
+      - `POST /cgi-bin/peertube-import` — Start import job
+      - `GET /cgi-bin/peertube-import-status?job_id=xxx` — Poll status
+    - **Authentication:**
+      - Supports PEERTUBE_TOKEN env var
+      - UCI config: `peertube.api.username` / `peertube.api.password`
+      - OAuth client credential flow for token acquisition
+    - Package version bumped to 1.2.0
+    - **Files:**
+      - `secubox-app-peertube/files/usr/sbin/peertube-import` (new)
+      - `secubox-app-peertube/files/www/cgi-bin/peertube-import` (new)
+      - `secubox-app-peertube/files/www/cgi-bin/peertube-import-status` (new)
+      - `luci-app-secubox-portal/root/www/gk2-hub/portal.html` (updated)
+      - `secubox-app-peertube/Makefile` (updated)
+
+31. **PeerTube Import Fixes (2026-02-21)**
+    - Fixed stdout/stderr separation in `peertube-import` script
+    - Changed UCI config path from `peertube.api.*` to `peertube.admin.*`
+    - Fixed yt-dlp output redirection to prevent mixing with function return values
+    - Fixed curl response handling in upload functions (use temp file, not 2>&1)
+    - Upgraded yt-dlp to 2026.2.4 for YouTube compatibility
+    - Installed Node.js (20.20.0) for yt-dlp JavaScript runtime support
+    - Verified end-to-end import flow: YouTube → download → subtitles → PeerTube upload
+

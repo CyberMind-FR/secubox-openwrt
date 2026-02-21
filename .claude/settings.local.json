@@ -389,7 +389,12 @@
       "Bash(__NEW_LINE_02bd2dd51e90cbf8__ echo \"\")",
       "Bash(__NEW_LINE_70eb6f3ae1c26753__ echo \"\")",
       "WebFetch(domain:radio.gk2.secubox.in)",
-      "WebFetch(domain:nextcloud-talk.readthedocs.io)"
+      "WebFetch(domain:nextcloud-talk.readthedocs.io)",
+      "Bash(__NEW_LINE_0334b7e65952251f__ rm -f \"$COOKIES\")",
+      "Bash(__NEW_LINE_d0f84baac9f3813d__ rm -f \"$COOKIES\")",
+      "Bash(__NEW_LINE_722c25da6bf58fe1__ rm -f \"$COOKIES\" /tmp/login.html)",
+      "WebFetch(domain:portal.nextcloud.com)",
+      "WebFetch(domain:arnowelzel.de)"
     ]
   }
 }
