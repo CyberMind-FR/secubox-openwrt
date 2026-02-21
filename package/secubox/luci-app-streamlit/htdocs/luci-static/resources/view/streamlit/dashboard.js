@@ -9,8 +9,6 @@ return view.extend({
 	status: {},
 	apps: [],
 	instances: [],
-	activeApp: '',
-	giteaConfig: {},
 
 	load: function() {
 		return this.refresh();
@@ -21,14 +19,11 @@ return view.extend({
 		return Promise.all([
 			api.getStatus(),
 			api.listApps(),
-			api.listInstances(),
-			api.getGiteaConfig().catch(function() { return {}; })
+			api.listInstances()
 		]).then(function(r) {
 			self.status = r[0] || {};
 			self.apps = (r[1] && r[1].apps) || [];
-			self.activeApp = (r[1] && r[1].active_app) || '';
 			self.instances = r[2] || [];
-			self.giteaConfig = r[3] || {};
 		});
 	},
 
@@ -40,71 +35,49 @@ return view.extend({
 
 		var view = E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, _('Streamlit Platform')),
-			E('div', { 'class': 'cbi-map-descr' }, _('Python data app hosting with multi-instance support')),
+			E('div', { 'class': 'cbi-map-descr' }, _('Python data app hosting')),
 
 			// Status Section
-			E('div', { 'class': 'cbi-section', 'id': 'status-section' }, [
-				E('h3', {}, _('Service Status')),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Status')),
-					E('div', { 'class': 'cbi-value-field', 'id': 'svc-status' },
-						!installed ? E('em', { 'style': 'color:#999' }, _('Not installed')) :
-						running ? E('span', { 'style': 'color:#0a0' }, _('Running')) :
-						E('span', { 'style': 'color:#a00' }, _('Stopped'))
-					)
+			E('div', { 'class': 'cbi-section' }, [
+				E('h3', {}, _('Status')),
+				E('table', { 'class': 'table', 'id': 'status-table' }, [
+					E('tr', {}, [
+						E('td', { 'style': 'width:120px' }, _('Service')),
+						E('td', { 'id': 'svc-status' },
+							!installed ? E('em', { 'style': 'color:#999' }, _('Not installed')) :
+							running ? E('span', { 'style': 'color:#0a0' }, '\u25CF ' + _('Running')) :
+							E('span', { 'style': 'color:#a00' }, '\u25CB ' + _('Stopped'))
+						)
+					]),
+					E('tr', {}, [
+						E('td', {}, _('Apps')),
+						E('td', {}, this.apps.length.toString())
+					]),
+					E('tr', {}, [
+						E('td', {}, _('Instances')),
+						E('td', {}, this.instances.length.toString())
+					]),
+					E('tr', {}, [
+						E('td', {}, _('Web URL')),
+						E('td', {},
+							s.web_url ? E('a', { 'href': s.web_url, 'target': '_blank' }, s.web_url) : '-')
+					])
 				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Active App')),
-					E('div', { 'class': 'cbi-value-field', 'id': 'active-app' },
-						this.activeApp || E('em', {}, '-'))
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Web URL')),
-					E('div', { 'class': 'cbi-value-field' },
-						s.web_url ? E('a', { 'href': s.web_url, 'target': '_blank' }, s.web_url) : '-')
-				]),
-				E('div', { 'class': 'cbi-page-actions' }, this.renderControls(installed, running))
+				E('div', { 'style': 'margin-top:12px' }, this.renderControls(installed, running))
 			]),
 
 			// Instances Section
-			E('div', { 'class': 'cbi-section', 'id': 'instances-section' }, [
-				E('h3', {}, _('Running Instances')),
-				E('div', { 'id': 'instances-table' }, this.renderInstancesTable())
-			]),
-
-			// Add Instance Section
 			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Add Instance')),
-				this.renderAddInstanceForm()
+				E('h3', {}, _('Instances')),
+				E('div', { 'id': 'instances-table' }, this.renderInstancesTable()),
+				E('div', { 'style': 'margin-top:12px' }, this.renderAddInstanceForm())
 			]),
 
 			// Apps Section
-			E('div', { 'class': 'cbi-section', 'id': 'apps-section' }, [
-				E('h3', {}, _('Applications')),
-				E('div', { 'id': 'apps-table' }, this.renderAppsTable())
-			]),
-
-			// Upload Section
 			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Upload App')),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('File')),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', { 'type': 'file', 'id': 'upload-file', 'accept': '.py,.zip' }),
-						E('button', {
-							'class': 'cbi-button cbi-button-action',
-							'style': 'margin-left: 8px',
-							'click': function() { self.uploadApp(); }
-						}, _('Upload'))
-					]),
-					E('div', { 'class': 'cbi-value-description' }, _('Accepts .py files or .zip archives'))
-				])
-			]),
-
-			// Gitea Section
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Clone from Gitea')),
-				this.renderGiteaSection()
+				E('h3', {}, _('Apps')),
+				E('div', { 'id': 'apps-table' }, this.renderAppsTable()),
+				E('div', { 'style': 'margin-top:12px' }, this.renderUploadForm())
 			])
 		]);
 
@@ -133,8 +106,8 @@ return view.extend({
 					'click': function() { self.doStop(); }
 				}, _('Stop')));
 				btns.push(E('button', {
-					'class': 'cbi-button cbi-button-action',
-					'style': 'margin-left: 8px',
+					'class': 'cbi-button',
+					'style': 'margin-left:8px',
 					'click': function() { self.doRestart(); }
 				}, _('Restart')));
 			} else {
@@ -144,8 +117,8 @@ return view.extend({
 				}, _('Start')));
 			}
 			btns.push(E('button', {
-				'class': 'cbi-button',
-				'style': 'margin-left: 8px',
+				'class': 'cbi-button cbi-button-remove',
+				'style': 'margin-left:8px',
 				'click': function() { self.doUninstall(); }
 			}, _('Uninstall')));
 		}
@@ -158,45 +131,36 @@ return view.extend({
 		var instances = this.instances;
 
 		if (!instances.length) {
-			return E('em', {}, _('No instances configured. Add one below.'));
+			return E('em', {}, _('No instances. Add one below.'));
 		}
 
 		var rows = instances.map(function(inst) {
-			var statusIcon = inst.enabled ?
+			var status = inst.enabled ?
 				E('span', { 'style': 'color:#0a0' }, '\u25CF') :
 				E('span', { 'style': 'color:#999' }, '\u25CB');
 
 			return E('tr', {}, [
-				E('td', {}, [
-					E('strong', {}, inst.id),
-					inst.name && inst.name !== inst.id ?
-						E('span', { 'style': 'color:#666; margin-left:4px' }, '(' + inst.name + ')') : ''
-				]),
+				E('td', {}, [status, ' ', E('strong', {}, inst.id)]),
 				E('td', {}, inst.app || '-'),
 				E('td', {}, ':' + inst.port),
-				E('td', { 'style': 'text-align:center' }, [
-					statusIcon,
-					E('span', { 'style': 'margin-left:4px' }, inst.enabled ? _('Enabled') : _('Disabled'))
-				]),
 				E('td', {}, [
-					E('button', {
-						'class': 'cbi-button',
-						'click': function() { self.renameInstance(inst.id, inst.name); }
-					}, _('Rename')),
 					inst.enabled ?
 						E('button', {
 							'class': 'cbi-button',
-							'style': 'margin-left: 4px',
 							'click': function() { self.disableInstance(inst.id); }
 						}, _('Disable')) :
 						E('button', {
 							'class': 'cbi-button cbi-button-positive',
-							'style': 'margin-left: 4px',
 							'click': function() { self.enableInstance(inst.id); }
 						}, _('Enable')),
 					E('button', {
+						'class': 'cbi-button cbi-button-positive',
+						'style': 'margin-left:4px',
+						'click': function() { self.emancipateInstance(inst.id, inst.app, inst.port); }
+					}, _('Expose')),
+					E('button', {
 						'class': 'cbi-button cbi-button-remove',
-						'style': 'margin-left: 4px',
+						'style': 'margin-left:4px',
 						'click': function() { self.deleteInstance(inst.id); }
 					}, _('Delete'))
 				])
@@ -205,10 +169,9 @@ return view.extend({
 
 		return E('table', { 'class': 'table cbi-section-table' }, [
 			E('tr', { 'class': 'tr table-titles' }, [
-				E('th', { 'class': 'th' }, _('ID')),
+				E('th', { 'class': 'th' }, _('Instance')),
 				E('th', { 'class': 'th' }, _('App')),
 				E('th', { 'class': 'th' }, _('Port')),
-				E('th', { 'class': 'th', 'style': 'text-align:center' }, _('Status')),
 				E('th', { 'class': 'th' }, _('Actions'))
 			])
 		].concat(rows));
@@ -219,44 +182,25 @@ return view.extend({
 		var appOptions = [E('option', { 'value': '' }, _('-- Select App --'))];
 
 		this.apps.forEach(function(app) {
-			var appId = app.id || app.name;
-			var label = app.name !== appId ? app.name + ' (' + appId + ')' : app.name;
-			appOptions.push(E('option', { 'value': appId }, label));
+			var id = app.id || app.name;
+			appOptions.push(E('option', { 'value': id }, app.name));
 		});
 
-		// Calculate next available port
+		// Next available port
 		var usedPorts = this.instances.map(function(i) { return i.port; });
 		var nextPort = 8501;
-		while (usedPorts.indexOf(nextPort) !== -1) {
-			nextPort++;
-		}
+		while (usedPorts.indexOf(nextPort) !== -1) nextPort++;
 
-		return E('div', {}, [
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Instance ID')),
-				E('div', { 'class': 'cbi-value-field' },
-					E('input', { 'type': 'text', 'id': 'new-inst-id', 'class': 'cbi-input-text', 'placeholder': _('myapp') })
-				)
-			]),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('App')),
-				E('div', { 'class': 'cbi-value-field' },
-					E('select', { 'id': 'new-inst-app', 'class': 'cbi-input-select' }, appOptions)
-				)
-			]),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Port')),
-				E('div', { 'class': 'cbi-value-field' },
-					E('input', { 'type': 'number', 'id': 'new-inst-port', 'class': 'cbi-input-text',
-						'value': nextPort, 'min': '1024', 'max': '65535' })
-				)
-			]),
-			E('div', { 'class': 'cbi-page-actions' }, [
-				E('button', {
-					'class': 'cbi-button cbi-button-positive',
-					'click': function() { self.addInstance(); }
-				}, _('Add Instance'))
-			])
+		return E('div', { 'style': 'display:flex; gap:8px; align-items:center; flex-wrap:wrap' }, [
+			E('input', { 'type': 'text', 'id': 'new-inst-id', 'class': 'cbi-input-text',
+				'placeholder': _('ID'), 'style': 'width:100px' }),
+			E('select', { 'id': 'new-inst-app', 'class': 'cbi-input-select' }, appOptions),
+			E('input', { 'type': 'number', 'id': 'new-inst-port', 'class': 'cbi-input-text',
+				'value': nextPort, 'min': '1024', 'max': '65535', 'style': 'width:80px' }),
+			E('button', {
+				'class': 'cbi-button cbi-button-positive',
+				'click': function() { self.addInstance(); }
+			}, _('Add'))
 		]);
 	},
 
@@ -265,49 +209,23 @@ return view.extend({
 		var apps = this.apps;
 
 		if (!apps.length) {
-			return E('em', {}, _('No apps found'));
+			return E('em', {}, _('No apps. Upload one below.'));
 		}
 
 		var rows = apps.map(function(app) {
-			var appId = app.id || app.name;
-			var isActive = appId === self.activeApp;
-			return E('tr', { 'class': isActive ? 'cbi-rowstyle-2' : '' }, [
-				E('td', {}, [
-					E('strong', {}, app.name),
-					app.id && app.id !== app.name ?
-						E('span', { 'style': 'color:#666; margin-left:4px' }, '(' + app.id + ')') : '',
-					isActive ? E('span', { 'style': 'color:#0a0; margin-left:8px' }, _('(active)')) : ''
-				]),
+			var id = app.id || app.name;
+			return E('tr', {}, [
+				E('td', {}, E('strong', {}, app.name)),
 				E('td', {}, app.path ? app.path.split('/').pop() : '-'),
 				E('td', {}, [
 					E('button', {
 						'class': 'cbi-button',
-						'click': function() { self.editApp(appId); }
+						'click': function() { self.editApp(id); }
 					}, _('Edit')),
 					E('button', {
-						'class': 'cbi-button cbi-button-action',
-						'style': 'margin-left: 4px',
-						'click': function() { self.reuploadApp(appId); }
-					}, _('Reupload')),
-					E('button', {
-						'class': 'cbi-button cbi-button-positive',
-						'style': 'margin-left: 4px',
-						'click': function() { self.emancipateApp(appId); }
-					}, _('Emancipate')),
-					E('button', {
-						'class': 'cbi-button',
-						'style': 'margin-left: 4px',
-						'click': function() { self.renameApp(appId, app.name); }
-					}, _('Rename')),
-					!isActive ? E('button', {
-						'class': 'cbi-button cbi-button-action',
-						'style': 'margin-left: 4px',
-						'click': function() { self.activateApp(appId); }
-					}, _('Activate')) : '',
-					E('button', {
 						'class': 'cbi-button cbi-button-remove',
-						'style': 'margin-left: 4px',
-						'click': function() { self.deleteApp(appId); }
+						'style': 'margin-left:4px',
+						'click': function() { self.deleteApp(id); }
 					}, _('Delete'))
 				])
 			]);
@@ -322,50 +240,20 @@ return view.extend({
 		].concat(rows));
 	},
 
-	renderGiteaSection: function() {
+	renderUploadForm: function() {
 		var self = this;
-		var cfg = this.giteaConfig;
-		var enabled = cfg.enabled;
-
-		return E('div', {}, [
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Status')),
-				E('div', { 'class': 'cbi-value-field' },
-					enabled ?
-						E('span', { 'style': 'color:#0a0' }, _('Configured')) :
-						E('span', { 'style': 'color:#999' }, _('Not configured'))
-				)
-			]),
-			enabled ? E('div', {}, [
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Repository')),
-					E('div', { 'class': 'cbi-value-field' },
-						E('input', { 'type': 'text', 'id': 'gitea-repo', 'class': 'cbi-input-text',
-							'placeholder': _('owner/repo or full URL') })
-					)
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('App Name')),
-					E('div', { 'class': 'cbi-value-field' },
-						E('input', { 'type': 'text', 'id': 'gitea-name', 'class': 'cbi-input-text',
-							'placeholder': _('myapp') })
-					)
-				]),
-				E('div', { 'class': 'cbi-page-actions' }, [
-					E('button', {
-						'class': 'cbi-button cbi-button-positive',
-						'click': function() { self.giteaClone(); }
-					}, _('Clone'))
-				])
-			]) : E('div', { 'class': 'cbi-value-description' },
-				_('Configure Gitea in Settings to enable cloning'))
+		return E('div', { 'style': 'display:flex; gap:8px; align-items:center' }, [
+			E('input', { 'type': 'file', 'id': 'upload-file', 'accept': '.py,.zip' }),
+			E('button', {
+				'class': 'cbi-button cbi-button-action',
+				'click': function() { self.uploadApp(); }
+			}, _('Upload'))
 		]);
 	},
 
 	updateStatus: function() {
 		var s = this.status;
 		var statusEl = document.getElementById('svc-status');
-		var activeEl = document.getElementById('active-app');
 		var appsEl = document.getElementById('apps-table');
 		var instancesEl = document.getElementById('instances-table');
 
@@ -374,14 +262,10 @@ return view.extend({
 			if (!s.installed) {
 				statusEl.appendChild(E('em', { 'style': 'color:#999' }, _('Not installed')));
 			} else if (s.running) {
-				statusEl.appendChild(E('span', { 'style': 'color:#0a0' }, _('Running')));
+				statusEl.appendChild(E('span', { 'style': 'color:#0a0' }, '\u25CF ' + _('Running')));
 			} else {
-				statusEl.appendChild(E('span', { 'style': 'color:#a00' }, _('Stopped')));
+				statusEl.appendChild(E('span', { 'style': 'color:#a00' }, '\u25CB ' + _('Stopped')));
 			}
-		}
-
-		if (activeEl) {
-			activeEl.textContent = this.activeApp || '-';
 		}
 
 		if (appsEl) {
@@ -395,12 +279,12 @@ return view.extend({
 		}
 	},
 
+	// Actions
 	doStart: function() {
 		var self = this;
 		api.start().then(function(r) {
-			if (r && r.success) {
+			if (r && r.success)
 				ui.addNotification(null, E('p', {}, _('Service started')), 'info');
-			}
 			self.refresh();
 		});
 	},
@@ -408,9 +292,8 @@ return view.extend({
 	doStop: function() {
 		var self = this;
 		api.stop().then(function(r) {
-			if (r && r.success) {
+			if (r && r.success)
 				ui.addNotification(null, E('p', {}, _('Service stopped')), 'info');
-			}
 			self.refresh();
 		});
 	},
@@ -418,9 +301,8 @@ return view.extend({
 	doRestart: function() {
 		var self = this;
 		api.restart().then(function(r) {
-			if (r && r.success) {
+			if (r && r.success)
 				ui.addNotification(null, E('p', {}, _('Service restarted')), 'info');
-			}
 			self.refresh();
 		});
 	},
@@ -428,7 +310,7 @@ return view.extend({
 	doInstall: function() {
 		var self = this;
 		ui.showModal(_('Installing'), [
-			E('p', { 'class': 'spinning' }, _('Installing Streamlit platform...'))
+			E('p', { 'class': 'spinning' }, _('Installing Streamlit...'))
 		]);
 		api.install().then(function(r) {
 			if (r && r.started) {
@@ -446,12 +328,12 @@ return view.extend({
 			api.getInstallProgress().then(function(r) {
 				if (r.status === 'completed') {
 					ui.hideModal();
-					ui.addNotification(null, E('p', {}, _('Installation complete')), 'success');
+					ui.addNotification(null, E('p', {}, _('Installed')), 'success');
 					self.refresh();
 					location.reload();
 				} else if (r.status === 'error') {
 					ui.hideModal();
-					ui.addNotification(null, E('p', {}, r.message || _('Install failed')), 'error');
+					ui.addNotification(null, E('p', {}, r.message || _('Failed')), 'error');
 				} else {
 					setTimeout(check, 3000);
 				}
@@ -463,12 +345,12 @@ return view.extend({
 	doUninstall: function() {
 		var self = this;
 		ui.showModal(_('Confirm'), [
-			E('p', {}, _('Uninstall Streamlit platform?')),
+			E('p', {}, _('Uninstall Streamlit?')),
 			E('div', { 'class': 'right' }, [
 				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
 				E('button', {
 					'class': 'cbi-button cbi-button-negative',
-					'style': 'margin-left: 8px',
+					'style': 'margin-left:8px',
 					'click': function() {
 						ui.hideModal();
 						api.uninstall().then(function() {
@@ -488,34 +370,19 @@ return view.extend({
 		var app = document.getElementById('new-inst-app').value;
 		var port = parseInt(document.getElementById('new-inst-port').value, 10);
 
-		if (!id) {
-			ui.addNotification(null, E('p', {}, _('Please enter an instance ID')), 'error');
-			return;
-		}
-
-		if (!/^[a-zA-Z0-9_]+$/.test(id)) {
-			ui.addNotification(null, E('p', {}, _('ID can only contain letters, numbers, and underscores')), 'error');
-			return;
-		}
-
-		if (!app) {
-			ui.addNotification(null, E('p', {}, _('Please select an app')), 'error');
-			return;
-		}
-
-		if (!port || port < 1024 || port > 65535) {
-			ui.addNotification(null, E('p', {}, _('Please enter a valid port (1024-65535)')), 'error');
+		if (!id || !app || !port) {
+			ui.addNotification(null, E('p', {}, _('Fill all fields')), 'error');
 			return;
 		}
 
 		api.addInstance(id, id, app, port).then(function(r) {
 			if (r && r.success) {
-				ui.addNotification(null, E('p', {}, _('Instance added: ') + id), 'success');
+				ui.addNotification(null, E('p', {}, _('Instance added')), 'success');
 				document.getElementById('new-inst-id').value = '';
 				document.getElementById('new-inst-app').value = '';
 				self.refresh().then(function() { self.updateStatus(); });
 			} else {
-				ui.addNotification(null, E('p', {}, r.message || _('Failed to add instance')), 'error');
+				ui.addNotification(null, E('p', {}, r.message || _('Failed')), 'error');
 			}
 		});
 	},
@@ -524,10 +391,8 @@ return view.extend({
 		var self = this;
 		api.enableInstance(id).then(function(r) {
 			if (r && r.success) {
-				ui.addNotification(null, E('p', {}, _('Instance enabled: ') + id), 'success');
+				ui.addNotification(null, E('p', {}, _('Enabled')), 'success');
 				self.refresh().then(function() { self.updateStatus(); });
-			} else {
-				ui.addNotification(null, E('p', {}, r.message || _('Failed')), 'error');
 			}
 		});
 	},
@@ -536,10 +401,8 @@ return view.extend({
 		var self = this;
 		api.disableInstance(id).then(function(r) {
 			if (r && r.success) {
-				ui.addNotification(null, E('p', {}, _('Instance disabled: ') + id), 'success');
+				ui.addNotification(null, E('p', {}, _('Disabled')), 'success');
 				self.refresh().then(function() { self.updateStatus(); });
-			} else {
-				ui.addNotification(null, E('p', {}, r.message || _('Failed')), 'error');
 			}
 		});
 	},
@@ -552,13 +415,12 @@ return view.extend({
 				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
 				E('button', {
 					'class': 'cbi-button cbi-button-negative',
-					'style': 'margin-left: 8px',
+					'style': 'margin-left:8px',
 					'click': function() {
 						ui.hideModal();
 						api.removeInstance(id).then(function(r) {
-							if (r && r.success) {
-								ui.addNotification(null, E('p', {}, _('Instance deleted')), 'info');
-							}
+							if (r && r.success)
+								ui.addNotification(null, E('p', {}, _('Deleted')), 'info');
 							self.refresh().then(function() { self.updateStatus(); });
 						});
 					}
@@ -567,29 +429,41 @@ return view.extend({
 		]);
 	},
 
-	activateApp: function(name) {
+	emancipateInstance: function(id, app, port) {
 		var self = this;
-		var hasInstance = this.instances.some(function(inst) { return inst.app === name; });
-
-		api.setActiveApp(name).then(function(r) {
-			if (r && r.success) {
-				if (!hasInstance) {
-					// Auto-create instance with next available port
-					var usedPorts = self.instances.map(function(i) { return i.port; });
-					var port = 8501;
-					while (usedPorts.indexOf(port) !== -1) { port++; }
-					return api.addInstance(name, name, name, port).then(function() {
-						ui.addNotification(null, E('p', {}, _('App activated with new instance on port ') + port), 'info');
-						return api.restart();
-					});
-				} else {
-					ui.addNotification(null, E('p', {}, _('App activated: ') + name), 'info');
-					return api.restart();
-				}
-			}
-		}).then(function() {
-			self.refresh().then(function() { self.updateStatus(); });
-		});
+		ui.showModal(_('Expose: ') + id, [
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, _('Domain')),
+				E('div', { 'class': 'cbi-value-field' },
+					E('input', { 'type': 'text', 'id': 'expose-domain', 'class': 'cbi-input-text',
+						'placeholder': id + '.gk2.secubox.in' }))
+			]),
+			E('div', { 'style': 'margin:12px 0; padding:8px; background:#f5f5f5; border-radius:4px' }, [
+				E('small', {}, _('Creates DNS + HAProxy vhost + SSL certificate'))
+			]),
+			E('div', { 'class': 'right' }, [
+				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
+				E('button', {
+					'class': 'cbi-button cbi-button-positive',
+					'style': 'margin-left:8px',
+					'click': function() {
+						var domain = document.getElementById('expose-domain').value.trim();
+						ui.hideModal();
+						ui.showModal(_('Exposing...'), [
+							E('p', { 'class': 'spinning' }, _('Setting up exposure...'))
+						]);
+						api.emancipate(app, domain).then(function(r) {
+							ui.hideModal();
+							if (r && r.success) {
+								ui.addNotification(null, E('p', {}, _('Exposed at: ') + (r.domain || domain)), 'success');
+							} else {
+								ui.addNotification(null, E('p', {}, r.message || _('Failed')), 'error');
+							}
+						});
+					}
+				}, _('Expose'))
+			])
+		]);
 	},
 
 	deleteApp: function(name) {
@@ -600,15 +474,12 @@ return view.extend({
 				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
 				E('button', {
 					'class': 'cbi-button cbi-button-negative',
-					'style': 'margin-left: 8px',
+					'style': 'margin-left:8px',
 					'click': function() {
 						ui.hideModal();
 						api.removeApp(name).then(function(r) {
-							if (r && r.success) {
-								ui.addNotification(null, E('p', {}, _('App deleted')), 'info');
-							} else {
-								ui.addNotification(null, E('p', {}, (r && r.message) || _('Delete failed')), 'error');
-							}
+							if (r && r.success)
+								ui.addNotification(null, E('p', {}, _('Deleted')), 'info');
 							self.refresh().then(function() { self.updateStatus(); });
 						});
 					}
@@ -621,18 +492,13 @@ return view.extend({
 		var self = this;
 		var fileInput = document.getElementById('upload-file');
 		if (!fileInput || !fileInput.files.length) {
-			ui.addNotification(null, E('p', {}, _('Select a file first')), 'error');
+			ui.addNotification(null, E('p', {}, _('Select a file')), 'error');
 			return;
 		}
 
 		var file = fileInput.files[0];
-		var name = file.name.replace(/\.(py|zip)$/, '').replace(/[^a-zA-Z0-9_]/g, '_').replace(/^_+|_+$/g, '');
-		var isZip = file.name.endsWith('.zip');
+		var name = file.name.replace(/\.(py|zip)$/, '').replace(/[^a-zA-Z0-9_]/g, '_');
 		var reader = new FileReader();
-
-		reader.onerror = function() {
-			ui.addNotification(null, E('p', {}, _('Failed to read file')), 'error');
-		};
 
 		reader.onload = function(e) {
 			var bytes = new Uint8Array(e.target.result);
@@ -642,391 +508,82 @@ return view.extend({
 			}
 			var content = btoa(chunks.join(''));
 
-			// Stop polling to prevent RPC batch conflicts
 			poll.stop();
+			ui.showModal(_('Uploading'), [
+				E('p', { 'class': 'spinning' }, _('Uploading ') + file.name + '...')
+			]);
 
-			// Use chunked upload for files > 40KB (uhttpd has 64KB JSON body limit)
-			var useChunked = content.length > 40000;
+			var uploadFn = content.length > 40000 ?
+				api.chunkedUpload(name, content, file.name.endsWith('.zip')) :
+				api.uploadApp(name, content);
 
-			setTimeout(function() {
-				var uploadPromise;
-
-				if (useChunked && !isZip) {
-					// For chunked .py files: upload chunks, test, then finalize
-					var CHUNK_SIZE = 40000;
-					var chunkList = [];
-					for (var i = 0; i < content.length; i += CHUNK_SIZE) {
-						chunkList.push(content.substring(i, i + CHUNK_SIZE));
-					}
-
-					// Upload all chunks first
-					var chunkPromise = Promise.resolve();
-					chunkList.forEach(function(chunk, idx) {
-						chunkPromise = chunkPromise.then(function() {
-							return api.uploadChunk(name, chunk, idx);
-						});
-					});
-
-					uploadPromise = chunkPromise.then(function() {
-						// After chunks uploaded, test the pending upload
-						return api.testUpload(name);
-					}).then(function(testResult) {
-						if (testResult && !testResult.valid) {
-							// Test failed - show errors and don't finalize
-							poll.start();
-							var errMsg = testResult.errors || _('Invalid Python file');
-							ui.addNotification(null, E('p', {}, _('Validation failed: ') + errMsg), 'error');
-							if (testResult.warnings) {
-								ui.addNotification(null, E('p', {}, _('Warnings: ') + testResult.warnings), 'warning');
-							}
-							return { success: false, message: errMsg };
-						}
-						// Test passed or container not running - show warnings and proceed
-						if (testResult && testResult.warnings) {
-							ui.addNotification(null, E('p', {}, _('Warnings: ') + testResult.warnings), 'warning');
-						}
-						// Finalize upload
-						return api.uploadFinalize(name, '0');
-					});
-				} else if (useChunked && isZip) {
-					// ZIP files don't get syntax tested
-					uploadPromise = api.chunkedUpload(name, content, true);
-				} else if (isZip) {
-					uploadPromise = api.uploadZip(name, content, null);
+			uploadFn.then(function(r) {
+				poll.start();
+				ui.hideModal();
+				if (r && r.success) {
+					ui.addNotification(null, E('p', {}, _('Uploaded: ') + name), 'success');
+					fileInput.value = '';
+					self.refresh().then(function() { self.updateStatus(); });
 				} else {
-					// Small .py file - direct upload (no pre-test for non-chunked)
-					uploadPromise = api.uploadApp(name, content);
+					ui.addNotification(null, E('p', {}, r.message || _('Failed')), 'error');
 				}
-
-				uploadPromise.then(function(r) {
-					poll.start();
-					if (r && r.success) {
-						ui.addNotification(null, E('p', {}, _('App uploaded: ') + name), 'success');
-						fileInput.value = '';
-						self.refresh().then(function() { self.updateStatus(); });
-					} else {
-						var msg = (r && r.message) ? r.message : _('Upload failed');
-						ui.addNotification(null, E('p', {}, msg), 'error');
-					}
-				}).catch(function(err) {
-					poll.start();
-					ui.addNotification(null, E('p', {},
-						_('Upload error: ') + (err.message || err)), 'error');
-				});
-			}, 10);
+			}).catch(function(err) {
+				poll.start();
+				ui.hideModal();
+				ui.addNotification(null, E('p', {}, _('Error: ') + (err.message || err)), 'error');
+			});
 		};
 
 		reader.readAsArrayBuffer(file);
 	},
 
-	reuploadApp: function(id) {
-		var self = this;
-
-		// Create hidden file input
-		var fileInput = document.createElement('input');
-		fileInput.type = 'file';
-		fileInput.accept = '.py,.zip';
-		fileInput.style.display = 'none';
-		document.body.appendChild(fileInput);
-
-		fileInput.onchange = function() {
-			if (!fileInput.files.length) {
-				document.body.removeChild(fileInput);
-				return;
-			}
-
-			var file = fileInput.files[0];
-			var isZip = file.name.endsWith('.zip');
-			var reader = new FileReader();
-
-			reader.onerror = function() {
-				document.body.removeChild(fileInput);
-				ui.addNotification(null, E('p', {}, _('Failed to read file')), 'error');
-			};
-
-			reader.onload = function(e) {
-				document.body.removeChild(fileInput);
-
-				var bytes = new Uint8Array(e.target.result);
-				var chunks = [];
-				for (var i = 0; i < bytes.length; i += 8192) {
-					chunks.push(String.fromCharCode.apply(null, bytes.slice(i, i + 8192)));
-				}
-				var content = btoa(chunks.join(''));
-
-				ui.showModal(_('Reuploading...'), [
-					E('p', { 'class': 'spinning' }, _('Uploading ') + file.name + ' to ' + id + '...')
-				]);
-
-				poll.stop();
-
-				var useChunked = content.length > 40000;
-				var uploadPromise;
-
-				if (useChunked) {
-					uploadPromise = api.chunkedUpload(id, content, isZip);
-				} else if (isZip) {
-					uploadPromise = api.uploadZip(id, content, null);
-				} else {
-					uploadPromise = api.uploadApp(id, content);
-				}
-
-				uploadPromise.then(function(r) {
-					poll.start();
-					if (r && r.success) {
-						// Restart service to reload the updated file
-						ui.showModal(_('Restarting...'), [
-							E('p', { 'class': 'spinning' }, _('Restarting Streamlit to apply changes...'))
-						]);
-						return api.restart().then(function() {
-							ui.hideModal();
-							ui.addNotification(null, E('p', {}, _('App reuploaded and service restarted: ') + id), 'success');
-							self.refresh().then(function() { self.updateStatus(); });
-						});
-					} else {
-						ui.hideModal();
-						ui.addNotification(null, E('p', {}, (r && r.message) || _('Reupload failed')), 'error');
-					}
-				}).catch(function(err) {
-					poll.start();
-					ui.hideModal();
-					ui.addNotification(null, E('p', {}, _('Reupload error: ') + (err.message || err)), 'error');
-				});
-			};
-
-			reader.readAsArrayBuffer(file);
-		};
-
-		// Trigger file selection
-		fileInput.click();
-	},
-
 	editApp: function(id) {
 		var self = this;
-
 		ui.showModal(_('Loading...'), [
-			E('p', { 'class': 'spinning' }, _('Loading source code...'))
+			E('p', { 'class': 'spinning' }, _('Loading source...'))
 		]);
 
 		api.getSource(id).then(function(r) {
 			if (!r || !r.content) {
 				ui.hideModal();
-				ui.addNotification(null, E('p', {}, r.message || _('Failed to load source')), 'error');
+				ui.addNotification(null, E('p', {}, r.message || _('Failed')), 'error');
 				return;
 			}
 
-			// Decode base64 content
 			var source;
-			try {
-				source = atob(r.content);
-			} catch (e) {
+			try { source = atob(r.content); }
+			catch (e) {
 				ui.hideModal();
-				ui.addNotification(null, E('p', {}, _('Failed to decode source')), 'error');
+				ui.addNotification(null, E('p', {}, _('Decode error')), 'error');
 				return;
 			}
 
 			ui.hideModal();
-			ui.showModal(_('Edit App: ') + id, [
-				E('div', { 'style': 'margin-bottom: 8px' }, [
-					E('small', { 'style': 'color:#666' }, r.path)
-				]),
+			ui.showModal(_('Edit: ') + id, [
 				E('textarea', {
 					'id': 'edit-source',
-					'style': 'width:100%; height:400px; font-family:monospace; font-size:12px; tab-size:4;',
+					'style': 'width:100%; height:300px; font-family:monospace; font-size:12px;',
 					'spellcheck': 'false'
 				}, source),
-				E('div', { 'class': 'right', 'style': 'margin-top: 12px' }, [
+				E('div', { 'class': 'right', 'style': 'margin-top:12px' }, [
 					E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
 					E('button', {
 						'class': 'cbi-button cbi-button-positive',
-						'style': 'margin-left: 8px',
+						'style': 'margin-left:8px',
 						'click': function() {
 							var newSource = document.getElementById('edit-source').value;
 							var encoded = btoa(newSource);
 							ui.hideModal();
-							ui.showModal(_('Saving...'), [
-								E('p', { 'class': 'spinning' }, _('Saving source code...'))
-							]);
 							api.saveSource(id, encoded).then(function(sr) {
-								ui.hideModal();
-								if (sr && sr.success) {
-									ui.addNotification(null, E('p', {}, _('Source saved')), 'success');
-								} else {
-									ui.addNotification(null, E('p', {}, sr.message || _('Save failed')), 'error');
-								}
+								if (sr && sr.success)
+									ui.addNotification(null, E('p', {}, _('Saved')), 'success');
+								else
+									ui.addNotification(null, E('p', {}, sr.message || _('Failed')), 'error');
 							});
 						}
 					}, _('Save'))
 				])
 			]);
-		});
-	},
-
-	emancipateApp: function(id) {
-		var self = this;
-
-		// First check if app has an instance
-		var hasInstance = this.instances.some(function(inst) { return inst.app === id; });
-		if (!hasInstance) {
-			ui.addNotification(null, E('p', {},
-				_('Create an instance first before emancipating. The instance port is needed for exposure.')), 'warning');
-			return;
-		}
-
-		// Get current emancipation status
-		api.getEmancipation(id).then(function(r) {
-			var currentDomain = (r && r.domain) || '';
-			var isEmancipated = r && r.emancipated;
-
-			ui.showModal(_('Emancipate App: ') + id, [
-				isEmancipated ? E('div', { 'style': 'margin-bottom: 12px; padding: 8px; background: #e8f5e9; border-radius: 4px' }, [
-					E('strong', { 'style': 'color: #2e7d32' }, _('Already emancipated')),
-					E('br'),
-					E('span', {}, _('Domain: ') + currentDomain)
-				]) : '',
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Domain')),
-					E('div', { 'class': 'cbi-value-field' },
-						E('input', {
-							'type': 'text',
-							'id': 'emancipate-domain',
-							'class': 'cbi-input-text',
-							'value': currentDomain,
-							'placeholder': _('app.gk2.secubox.in')
-						})
-					),
-					E('div', { 'class': 'cbi-value-description' },
-						_('Leave empty for auto-detection from Vortex wildcard domain'))
-				]),
-				E('div', { 'style': 'margin: 12px 0; padding: 12px; background: #f5f5f5; border-radius: 4px' }, [
-					E('strong', {}, _('KISS ULTIME MODE will:')),
-					E('ul', { 'style': 'margin: 8px 0 0 20px' }, [
-						E('li', {}, _('Register DNS A record')),
-						E('li', {}, _('Publish to Vortex mesh')),
-						E('li', {}, _('Create HAProxy vhost + backend')),
-						E('li', {}, _('Issue SSL certificate via ACME')),
-						E('li', {}, _('Reload HAProxy with zero downtime'))
-					])
-				]),
-				E('div', { 'class': 'right' }, [
-					E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
-					E('button', {
-						'class': 'cbi-button cbi-button-positive',
-						'style': 'margin-left: 8px',
-						'click': function() {
-							var domain = document.getElementById('emancipate-domain').value.trim();
-							ui.hideModal();
-							ui.showModal(_('Emancipating...'), [
-								E('p', { 'class': 'spinning' }, _('Running KISS ULTIME MODE workflow...'))
-							]);
-							api.emancipate(id, domain).then(function(er) {
-								ui.hideModal();
-								if (er && er.success) {
-									var msg = _('Emancipation started for ') + id;
-									if (er.domain) msg += ' at ' + er.domain;
-									ui.addNotification(null, E('p', {}, msg), 'success');
-									self.refresh().then(function() { self.updateStatus(); });
-								} else {
-									ui.addNotification(null, E('p', {}, er.message || _('Emancipation failed')), 'error');
-								}
-							});
-						}
-					}, _('Emancipate'))
-				])
-			]);
-		});
-	},
-
-	renameApp: function(id, currentName) {
-		var self = this;
-		if (!currentName) currentName = id;
-
-		ui.showModal(_('Rename App'), [
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Name')),
-				E('div', { 'class': 'cbi-value-field' },
-					E('input', { 'type': 'text', 'id': 'rename-input', 'class': 'cbi-input-text', 'value': currentName }))
-			]),
-			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
-				E('button', {
-					'class': 'cbi-button cbi-button-positive',
-					'style': 'margin-left: 8px',
-					'click': function() {
-						var newName = document.getElementById('rename-input').value.trim();
-						if (!newName) return;
-						ui.hideModal();
-						api.renameApp(id, newName).then(function(r) {
-							if (r && r.success)
-								ui.addNotification(null, E('p', {}, _('App renamed')), 'info');
-							self.refresh().then(function() { self.updateStatus(); });
-						});
-					}
-				}, _('Save'))
-			])
-		]);
-	},
-
-	renameInstance: function(id, currentName) {
-		var self = this;
-
-		ui.showModal(_('Rename Instance'), [
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Name')),
-				E('div', { 'class': 'cbi-value-field' },
-					E('input', { 'type': 'text', 'id': 'rename-input', 'class': 'cbi-input-text', 'value': currentName || id }))
-			]),
-			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
-				E('button', {
-					'class': 'cbi-button cbi-button-positive',
-					'style': 'margin-left: 8px',
-					'click': function() {
-						var newName = document.getElementById('rename-input').value.trim();
-						if (!newName) return;
-						ui.hideModal();
-						api.renameInstance(id, newName).then(function(r) {
-							if (r && r.success)
-								ui.addNotification(null, E('p', {}, _('Instance renamed')), 'info');
-							self.refresh().then(function() { self.updateStatus(); });
-						});
-					}
-				}, _('Save'))
-			])
-		]);
-	},
-
-	giteaClone: function() {
-		var self = this;
-		var repo = document.getElementById('gitea-repo').value.trim();
-		var name = document.getElementById('gitea-name').value.trim();
-
-		if (!repo) {
-			ui.addNotification(null, E('p', {}, _('Please enter a repository')), 'error');
-			return;
-		}
-
-		if (!name) {
-			// Extract name from repo
-			name = repo.split('/').pop().replace(/\.git$/, '');
-		}
-
-		ui.showModal(_('Cloning'), [
-			E('p', { 'class': 'spinning' }, _('Cloning ') + repo + '...')
-		]);
-
-		api.giteaClone(name, repo).then(function(r) {
-			ui.hideModal();
-			if (r && r.success) {
-				ui.addNotification(null, E('p', {}, _('Clone started: ') + name), 'success');
-				document.getElementById('gitea-repo').value = '';
-				document.getElementById('gitea-name').value = '';
-				setTimeout(function() {
-					self.refresh().then(function() { self.updateStatus(); });
-				}, 3000);
-			} else {
-				ui.addNotification(null, E('p', {}, r.message || _('Clone failed')), 'error');
-			}
 		});
 	}
 });
