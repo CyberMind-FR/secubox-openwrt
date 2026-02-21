@@ -2677,3 +2677,12 @@ git checkout HEAD -- index.html
     - Attack categories: 18 (Brute-Force), 21 (Web App Attack)
     - Files: `luci-app-crowdsec-dashboard/root/usr/sbin/crowdsec-reporter.sh`,
       `luci-app-crowdsec-dashboard/htdocs/luci-static/resources/view/crowdsec-dashboard/reporter.js`
+
+30. **Log Denoising RPCD Fix (2026-02-21)**
+    - Fixed `get_denoise_stats` RPCD method returning "No response" (exit code 251)
+    - Root cause: `jsonfilter -e '@[*]'` doesn't work with CrowdSec JSON output
+    - Solution: Use `grep -c '"id":'` to count CrowdSec decisions instead
+    - Added fallback safety checks for empty/invalid counts
+    - Added missing ipset existence check before trying to list IPs
+    - Version bumped to 0.5.2-r2
+    - Files modified: `luci-app-system-hub/root/usr/libexec/rpcd/luci.system-hub`

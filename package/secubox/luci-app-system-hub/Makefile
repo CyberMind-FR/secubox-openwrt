@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-system-hub
 PKG_VERSION:=0.5.2
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 PKG_ARCH:=all
 PKG_LICENSE:=Apache-2.0
 PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>

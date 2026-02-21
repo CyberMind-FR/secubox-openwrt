@@ -377,7 +377,9 @@
       "Bash(npx terser:*)",
       "Bash(read)",
       "Bash(/home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/c3box-vm-builder.sh:*)",
-      "Bash(__NEW_LINE_ba6f66f0b013f58d__ echo \"\")"
+      "Bash(__NEW_LINE_ba6f66f0b013f58d__ echo \"\")",
+      "WebFetch(domain:cf.gk2.secubox.in)",
+      "WebFetch(domain:streamlit.gk2.secubox.in)"
     ]
   }
 }
