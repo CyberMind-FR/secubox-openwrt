@@ -530,6 +530,151 @@ method_import_job_status() {
 	json_dump
 }
 
+# Method: analyse - Start video transcript analysis
+method_analyse() {
+	read -r input
+	json_load "$input"
+	json_get_var url url ""
+	json_get_var force_whisper force_whisper "0"
+	json_get_var no_analyse no_analyse "0"
+	json_get_var model model "medium"
+	json_get_var lang lang "fr"
+
+	if [ -z "$url" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "URL is required"
+		json_dump
+		return
+	fi
+
+	# Check if peertube-analyse exists
+	if [ ! -x "/usr/sbin/peertube-analyse" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "peertube-analyse not installed"
+		json_dump
+		return
+	fi
+
+	# Generate job ID
+	local job_id="analyse_$(date +%s)_$$"
+	local output_dir="/tmp/peertube-analyse/${job_id}"
+	local statusfile="/tmp/peertube-analyse-${job_id}.status"
+	local resultfile="/tmp/peertube-analyse-${job_id}.json"
+
+	mkdir -p "$output_dir"
+	echo "starting" > "$statusfile"
+
+	# Build command args
+	local args=""
+	[ "$force_whisper" = "1" ] && args="$args --force-whisper"
+	[ "$no_analyse" = "1" ] && args="$args --no-analyse"
+	[ -n "$model" ] && args="$args --model $model"
+	[ -n "$lang" ] && args="$args --lang $lang"
+	args="$args --output $output_dir"
+
+	# Run in background
+	(
+		echo "extracting" > "$statusfile"
+
+		# Run the analysis
+		OUTPUT_BASE="$output_dir" /usr/sbin/peertube-analyse $args "$url" > "/tmp/peertube-analyse-${job_id}.log" 2>&1
+		local rc=$?
+
+		if [ $rc -eq 0 ]; then
+			echo "completed" > "$statusfile"
+
+			# Build result JSON
+			local meta_file=$(find "$output_dir" -name "*.meta.json" -type f 2>/dev/null | head -1)
+			local transcript_file=$(find "$output_dir" -name "*.transcript.txt" -type f 2>/dev/null | head -1)
+			local analysis_file=$(find "$output_dir" -name "*.analyse.md" -type f 2>/dev/null | head -1)
+
+			# Create result JSON manually (avoid jshn for large content)
+			{
+				echo '{'
+				echo '"success": true,'
+				echo '"job_id": "'"$job_id"'",'
+
+				# Metadata (use jq if available, otherwise jsonfilter)
+				if [ -f "$meta_file" ]; then
+					echo '"metadata": '
+					cat "$meta_file"
+					echo ','
+				else
+					echo '"metadata": null,'
+				fi
+
+				# Transcript
+				if [ -f "$transcript_file" ]; then
+					printf '"transcript": '
+					cat "$transcript_file" | jq -Rs '.'
+					echo ','
+				else
+					echo '"transcript": null,'
+				fi
+
+				# Analysis
+				if [ -f "$analysis_file" ]; then
+					printf '"analysis": '
+					cat "$analysis_file" | jq -Rs '.'
+				else
+					echo '"analysis": null'
+				fi
+
+				echo '}'
+			} > "$resultfile"
+		else
+			echo "failed" > "$statusfile"
+			echo '{"success": false, "error": "Analysis failed", "job_id": "'"$job_id"'"}' > "$resultfile"
+		fi
+	) &
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Analysis started"
+	json_add_string "job_id" "$job_id"
+	json_dump
+}
+
+# Method: analyse_status - Get analysis job status/results
+method_analyse_status() {
+	read -r input
+	json_load "$input"
+	json_get_var job_id job_id ""
+
+	if [ -z "$job_id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "job_id is required"
+		json_dump
+		return
+	fi
+
+	local statusfile="/tmp/peertube-analyse-${job_id}.status"
+	local resultfile="/tmp/peertube-analyse-${job_id}.json"
+	local logfile="/tmp/peertube-analyse-${job_id}.log"
+
+	local status="unknown"
+	[ -f "$statusfile" ] && status=$(cat "$statusfile")
+
+	# If completed, return the full result
+	if [ "$status" = "completed" ] && [ -f "$resultfile" ]; then
+		cat "$resultfile"
+		return
+	fi
+
+	# Otherwise return status
+	local logs=""
+	[ -f "$logfile" ] && logs=$(tail -10 "$logfile")
+
+	json_init
+	json_add_string "status" "$status"
+	json_add_string "job_id" "$job_id"
+	json_add_string "logs" "$logs"
+	json_dump
+}
+
 # Method: import_status - Check import progress
 method_import_status() {
 	local import_dir="/var/lib/peertube/storage/tmp/import"
@@ -589,6 +734,16 @@ list_methods() {
 	json_add_object "import_job_status"
 	json_add_string "job_id" ""
 	json_close_object
+	json_add_object "analyse"
+	json_add_string "url" ""
+	json_add_string "force_whisper" "0"
+	json_add_string "no_analyse" "0"
+	json_add_string "model" "medium"
+	json_add_string "lang" "fr"
+	json_close_object
+	json_add_object "analyse_status"
+	json_add_string "job_id" ""
+	json_close_object
 	json_dump
 }
 
@@ -643,6 +798,12 @@ case "$1" in
 				;;
 			import_job_status)
 				method_import_job_status
+				;;
+			analyse)
+				method_analyse
+				;;
+			analyse_status)
+				method_analyse_status
 				;;
 			*)
 				echo '{"error":"Method not found"}'

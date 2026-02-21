@@ -3,13 +3,13 @@
 		"description": "Grant access to PeerTube management",
 		"read": {
 			"ubus": {
-				"luci.peertube": ["status", "logs", "import_status", "import_job_status"]
+				"luci.peertube": ["status", "logs", "import_status", "import_job_status", "analyse_status"]
 			},
 			"uci": ["peertube"]
 		},
 		"write": {
 			"ubus": {
-				"luci.peertube": ["start", "stop", "install", "uninstall", "update", "emancipate", "live_enable", "live_disable", "configure_haproxy", "import_video"]
+				"luci.peertube": ["start", "stop", "install", "uninstall", "update", "emancipate", "live_enable", "live_disable", "configure_haproxy", "import_video", "analyse"]
 			},
 			"uci": ["peertube"]
 		}

@@ -42,6 +42,13 @@ define Package/secubox-app-peertube/install
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_BIN) ./files/usr/sbin/peertubectl $(1)/usr/sbin/peertubectl
 	$(INSTALL_BIN) ./files/usr/sbin/peertube-analyse $(1)/usr/sbin/peertube-analyse
+
+	$(INSTALL_DIR) $(1)/www/peertube-analyse
+	$(INSTALL_DATA) ./files/www/peertube-analyse/index.html $(1)/www/peertube-analyse/
+
+	$(INSTALL_DIR) $(1)/www/cgi-bin
+	$(INSTALL_BIN) ./files/www/cgi-bin/peertube-analyse $(1)/www/cgi-bin/
+	$(INSTALL_BIN) ./files/www/cgi-bin/peertube-analyse-status $(1)/www/cgi-bin/
 endef
 
 $(eval $(call BuildPackage,secubox-app-peertube))

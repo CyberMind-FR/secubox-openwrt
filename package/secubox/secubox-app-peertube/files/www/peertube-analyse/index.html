@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PeerTube Analyse — SecuBox Intelligence</title>
+<style>
+:root {
+  --bg: #0a0a0f;
+  --surface: #12121a;
+  --surface2: #1a1a2e;
+  --border: #252535;
+  --accent: #6366f1;
+  --accent2: #8b5cf6;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --error: #ef4444;
+  --text: #e0e0e0;
+  --muted: #888;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Segoe UI", system-ui, sans-serif;
+  min-height: 100vh;
+  line-height: 1.6;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(99,102,241,0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(99,102,241,0.02) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+}
+
+.container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 20px;
+  position: relative;
+  z-index: 1;
+}
+
+.header {
+  text-align: center;
+  padding: 40px 0 30px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 30px;
+}
+
+.header-icon {
+  font-size: 4rem;
+  margin-bottom: 15px;
+  display: block;
+}
+
+.header h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #fff, var(--accent2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 8px;
+}
+
+.header p {
+  color: var(--muted);
+  font-size: 1rem;
+}
+
+.input-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 25px;
+  margin-bottom: 25px;
+}
+
+.input-group {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 15px;
+}
+
+.url-input {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 18px;
+  color: var(--text);
+  font-size: 1rem;
+  font-family: monospace;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.url-input:focus {
+  border-color: var(--accent);
+}
+
+.url-input::placeholder {
+  color: var(--muted);
+}
+
+.analyse-btn {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  border: none;
+  border-radius: 10px;
+  padding: 14px 28px;
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.analyse-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(99,102,241,0.4);
+}
+
+.analyse-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.options {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.option input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+.option select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.status-bar {
+  display: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 25px;
+}
+
+.status-bar.active { display: block; }
+
+.status-bar.loading { border-color: var(--accent); }
+.status-bar.success { border-color: var(--success); }
+.status-bar.error { border-color: var(--error); }
+
+.status-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.status-icon {
+  font-size: 1.5rem;
+}
+
+.status-title {
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+.status-message {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.progress-bar {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  margin-top: 15px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  border-radius: 2px;
+  width: 0%;
+  transition: width 0.3s;
+}
+
+.results {
+  display: none;
+}
+
+.results.active { display: block; }
+
+.result-tabs {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 5px;
+}
+
+.tab-btn {
+  background: transparent;
+  border: none;
+  padding: 12px 20px;
+  color: var(--muted);
+  font-size: 0.95rem;
+  cursor: pointer;
+  border-radius: 8px 8px 0 0;
+  transition: all 0.2s;
+}
+
+.tab-btn:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+
+.tab-btn.active {
+  color: var(--accent);
+  background: var(--surface);
+  border-bottom: 2px solid var(--accent);
+}
+
+.tab-content {
+  display: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 25px;
+  min-height: 400px;
+}
+
+.tab-content.active { display: block; }
+
+.metadata-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 15px;
+}
+
+.meta-card {
+  background: var(--bg);
+  border-radius: 10px;
+  padding: 15px;
+}
+
+.meta-label {
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 5px;
+}
+
+.meta-value {
+  font-size: 1rem;
+  font-weight: 500;
+  word-break: break-word;
+}
+
+.transcript-box {
+  background: var(--bg);
+  border-radius: 10px;
+  padding: 20px;
+  max-height: 500px;
+  overflow-y: auto;
+  font-size: 0.95rem;
+  line-height: 1.8;
+  white-space: pre-wrap;
+}
+
+.analysis-content {
+  line-height: 1.8;
+}
+
+.analysis-content h1, .analysis-content h2, .analysis-content h3 {
+  color: var(--accent);
+  margin: 20px 0 10px;
+}
+
+.analysis-content h1 { font-size: 1.5rem; }
+.analysis-content h2 { font-size: 1.25rem; }
+.analysis-content h3 { font-size: 1.1rem; }
+
+.analysis-content p { margin-bottom: 15px; }
+
+.analysis-content ul, .analysis-content ol {
+  margin: 10px 0 15px 25px;
+}
+
+.analysis-content li { margin-bottom: 8px; }
+
+.analysis-content strong { color: #fff; }
+
+.analysis-content blockquote {
+  border-left: 3px solid var(--accent);
+  padding-left: 15px;
+  color: var(--muted);
+  margin: 15px 0;
+}
+
+.copy-btn {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.copy-btn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.tab-panel {
+  position: relative;
+}
+
+.footer {
+  text-align: center;
+  padding: 40px 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.footer a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.examples {
+  margin-top: 15px;
+  padding-top: 15px;
+  border-top: 1px solid var(--border);
+}
+
+.examples-title {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.example-link {
+  display: inline-block;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  margin: 3px;
+  font-size: 0.8rem;
+  color: var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.example-link:hover {
+  border-color: var(--accent);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid transparent;
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@media (max-width: 600px) {
+  .input-group { flex-direction: column; }
+  .analyse-btn { width: 100%; justify-content: center; }
+  .options { flex-direction: column; gap: 12px; }
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header class="header">
+    <span class="header-icon">🎬</span>
+    <h1>PeerTube Analyse</h1>
+    <p>Extraction de transcript et analyse IA — SecuBox Intelligence</p>
+  </header>
+
+  <section class="input-section">
+    <div class="input-group">
+      <input type="text" id="videoUrl" class="url-input"
+             placeholder="https://tube.gk2.secubox.in/w/..."
+             autocomplete="off">
+      <button id="analyseBtn" class="analyse-btn">
+        <span>Analyser</span>
+      </button>
+    </div>
+
+    <div class="options">
+      <label class="option">
+        <input type="checkbox" id="forceWhisper">
+        <span>Forcer Whisper</span>
+      </label>
+      <label class="option">
+        <input type="checkbox" id="noAnalyse">
+        <span>Sans analyse IA</span>
+      </label>
+      <label class="option">
+        <span>Modele:</span>
+        <select id="whisperModel">
+          <option value="tiny">tiny (rapide)</option>
+          <option value="base">base</option>
+          <option value="small">small</option>
+          <option value="medium" selected>medium</option>
+          <option value="large-v3">large-v3 (precis)</option>
+        </select>
+      </label>
+      <label class="option">
+        <span>Langue:</span>
+        <select id="whisperLang">
+          <option value="fr" selected>Francais</option>
+          <option value="en">English</option>
+          <option value="de">Deutsch</option>
+          <option value="es">Espanol</option>
+          <option value="auto">Auto</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="examples">
+      <div class="examples-title">Exemples:</div>
+      <span class="example-link" data-url="https://tube.gk2.secubox.in/w/">Derniere video</span>
+    </div>
+  </section>
+
+  <section id="statusBar" class="status-bar">
+    <div class="status-header">
+      <span id="statusIcon" class="status-icon"></span>
+      <span id="statusTitle" class="status-title"></span>
+    </div>
+    <div id="statusMessage" class="status-message"></div>
+    <div class="progress-bar">
+      <div id="progressFill" class="progress-fill"></div>
+    </div>
+  </section>
+
+  <section id="results" class="results">
+    <div class="result-tabs">
+      <button class="tab-btn active" data-tab="analysis">Analyse</button>
+      <button class="tab-btn" data-tab="transcript">Transcript</button>
+      <button class="tab-btn" data-tab="metadata">Metadonnees</button>
+    </div>
+
+    <div id="tab-analysis" class="tab-content active tab-panel">
+      <button class="copy-btn" onclick="copyContent('analysis')">Copier</button>
+      <div id="analysisContent" class="analysis-content"></div>
+    </div>
+
+    <div id="tab-transcript" class="tab-content tab-panel">
+      <button class="copy-btn" onclick="copyContent('transcript')">Copier</button>
+      <div id="transcriptContent" class="transcript-box"></div>
+    </div>
+
+    <div id="tab-metadata" class="tab-content tab-panel">
+      <button class="copy-btn" onclick="copyContent('metadata')">Copier JSON</button>
+      <div id="metadataContent" class="metadata-grid"></div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <p>SecuBox Intelligence Module &mdash; <a href="/admin/secubox/dashboard">Dashboard</a></p>
+  </footer>
+</div>
+
+<script>
+let currentData = {};
+
+// DOM elements
+const videoUrl = document.getElementById('videoUrl');
+const analyseBtn = document.getElementById('analyseBtn');
+const statusBar = document.getElementById('statusBar');
+const statusIcon = document.getElementById('statusIcon');
+const statusTitle = document.getElementById('statusTitle');
+const statusMessage = document.getElementById('statusMessage');
+const progressFill = document.getElementById('progressFill');
+const results = document.getElementById('results');
+
+// Tab handling
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// Example links
+document.querySelectorAll('.example-link').forEach(link => {
+  link.addEventListener('click', () => {
+    videoUrl.value = link.dataset.url;
+    videoUrl.focus();
+  });
+});
+
+// Status updates
+function setStatus(type, icon, title, message, progress = 0) {
+  statusBar.className = 'status-bar active ' + type;
+  statusIcon.textContent = icon;
+  statusTitle.textContent = title;
+  statusMessage.textContent = message;
+  progressFill.style.width = progress + '%';
+}
+
+// API base path (same origin CGI)
+const API_BASE = '/cgi-bin';
+
+// Markdown to HTML (simple)
+function markdownToHtml(md) {
+  return md
+    .replace(/^### (.*$)/gm, '<h3>$1</h3>')
+    .replace(/^## (.*$)/gm, '<h2>$1</h2>')
+    .replace(/^# (.*$)/gm, '<h1>$1</h1>')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/^\- (.*$)/gm, '<li>$1</li>')
+    .replace(/^\d+\. (.*$)/gm, '<li>$1</li>')
+    .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/^(?!<[hulo])/gm, '<p>')
+    .replace(/(?<![>])$/gm, '</p>')
+    .replace(/<p><\/p>/g, '')
+    .replace(/---/g, '<hr>');
+}
+
+// Copy to clipboard
+function copyContent(type) {
+  let text = '';
+  if (type === 'analysis') {
+    text = currentData.analysis || '';
+  } else if (type === 'transcript') {
+    text = currentData.transcript || '';
+  } else if (type === 'metadata') {
+    text = JSON.stringify(currentData.metadata, null, 2);
+  }
+  navigator.clipboard.writeText(text).then(() => {
+    alert('Copie dans le presse-papiers!');
+  });
+}
+
+// Display results
+function displayResults(data) {
+  currentData = data;
+  results.classList.add('active');
+
+  // Analysis
+  if (data.analysis) {
+    document.getElementById('analysisContent').innerHTML = markdownToHtml(data.analysis);
+  } else {
+    document.getElementById('analysisContent').innerHTML = '<p style="color:var(--muted)">Analyse non disponible</p>';
+  }
+
+  // Transcript
+  if (data.transcript) {
+    document.getElementById('transcriptContent').textContent = data.transcript;
+  } else {
+    document.getElementById('transcriptContent').textContent = 'Transcript non disponible';
+  }
+
+  // Metadata
+  if (data.metadata) {
+    const meta = data.metadata;
+    const grid = document.getElementById('metadataContent');
+    grid.innerHTML = `
+      <div class="meta-card">
+        <div class="meta-label">Titre</div>
+        <div class="meta-value">${meta.title || 'N/A'}</div>
+      </div>
+      <div class="meta-card">
+        <div class="meta-label">Duree</div>
+        <div class="meta-value">${meta.duration_string || meta.duration || 'N/A'}</div>
+      </div>
+      <div class="meta-card">
+        <div class="meta-label">Auteur</div>
+        <div class="meta-value">${meta.uploader || meta.channel || 'N/A'}</div>
+      </div>
+      <div class="meta-card">
+        <div class="meta-label">Date</div>
+        <div class="meta-value">${meta.upload_date || 'N/A'}</div>
+      </div>
+      <div class="meta-card">
+        <div class="meta-label">Vues</div>
+        <div class="meta-value">${meta.view_count || 'N/A'}</div>
+      </div>
+      <div class="meta-card">
+        <div class="meta-label">Tags</div>
+        <div class="meta-value">${(meta.tags || []).join(', ') || 'Aucun'}</div>
+      </div>
+    `;
+  }
+}
+
+// Poll for analysis completion
+async function pollAnalysisStatus(jobId, maxAttempts = 180) {
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise(r => setTimeout(r, 2000)); // Poll every 2 seconds
+
+    const progress = Math.min(20 + (i * 60 / maxAttempts), 90);
+
+    if (i < 5) {
+      setStatus('loading', '🔍', 'Extraction des metadonnees...', 'Connexion a PeerTube', progress);
+    } else if (i < 30) {
+      setStatus('loading', '📝', 'Transcription...', 'Whisper traite l\'audio', progress);
+    } else {
+      setStatus('loading', '🤖', 'Analyse IA...', 'Claude analyse le contenu', progress);
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/peertube-analyse-status?job_id=${encodeURIComponent(jobId)}`);
+      const result = await response.json();
+
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      if (result.status === 'completed' && result.success) {
+        return result;
+      } else if (result.status === 'failed') {
+        throw new Error(result.error || 'Analyse echouee');
+      }
+      // Continue polling for 'starting', 'extracting', etc.
+    } catch (e) {
+      if (e.message.includes('not found')) throw e;
+      // Ignore transient network errors
+      console.log('Poll error (retrying):', e.message);
+    }
+  }
+
+  throw new Error('Timeout: analyse trop longue (6 minutes max)');
+}
+
+// Main analyse function
+async function analyse() {
+  const url = videoUrl.value.trim();
+  if (!url) {
+    alert('Veuillez entrer une URL PeerTube');
+    return;
+  }
+
+  const params = {
+    url: url,
+    force_whisper: document.getElementById('forceWhisper').checked,
+    no_analyse: document.getElementById('noAnalyse').checked,
+    model: document.getElementById('whisperModel').value,
+    lang: document.getElementById('whisperLang').value
+  };
+
+  analyseBtn.disabled = true;
+  analyseBtn.innerHTML = '<span class="spinner"></span> Analyse...';
+  results.classList.remove('active');
+
+  try {
+    // Step 1: Start analysis
+    setStatus('loading', '🚀', 'Demarrage...', 'Initialisation de l\'analyse', 5);
+
+    const response = await fetch(`${API_BASE}/peertube-analyse`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params)
+    });
+
+    const startResult = await response.json();
+
+    if (!startResult.success) {
+      throw new Error(startResult.error || 'Erreur au demarrage');
+    }
+
+    const jobId = startResult.job_id;
+    setStatus('loading', '🔍', 'Extraction...', 'Job ID: ' + jobId, 10);
+
+    // Step 2: Poll for completion
+    const data = await pollAnalysisStatus(jobId);
+
+    setStatus('success', '✅', 'Analyse terminee!', 'Resultats disponibles', 100);
+    displayResults(data);
+
+  } catch (error) {
+    setStatus('error', '❌', 'Erreur', error.message, 0);
+    console.error(error);
+  } finally {
+    analyseBtn.disabled = false;
+    analyseBtn.innerHTML = '<span>Analyser</span>';
+  }
+}
+
+// Event listeners
+analyseBtn.addEventListener('click', analyse);
+videoUrl.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') analyse();
+});
+
+// Demo mode for testing without backend
+function demoMode() {
+  const demoData = {
+    metadata: {
+      title: "Demo: Analyse de securite reseau",
+      duration_string: "15:42",
+      uploader: "SecuBox",
+      upload_date: "2026-02-21",
+      view_count: 1234,
+      tags: ["securite", "reseau", "cybersecurite"]
+    },
+    transcript: "Ceci est un exemple de transcript. Dans cette video, nous allons analyser les differentes techniques de securite reseau...",
+    analysis: "# Analyse: Demo securite reseau\n\n## Resume executif\nCette video presente une introduction aux concepts de securite reseau.\n\n## Themes principaux\n- Securite perimetre\n- Detection d'intrusion\n- Analyse de trafic\n\n## Points cles\n1. Importance du monitoring continu\n2. Configuration des firewalls\n3. Segmentation reseau"
+  };
+  displayResults(demoData);
+  setStatus('success', '✅', 'Mode demo', 'Donnees de demonstration', 100);
+}
+
+// Ready
+console.log('PeerTube Analyse ready');
+</script>
+
+</body>
+</html>

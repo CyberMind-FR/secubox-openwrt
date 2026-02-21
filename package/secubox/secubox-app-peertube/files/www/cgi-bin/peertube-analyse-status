@@ -1,0 +1,64 @@
+#!/bin/sh
+# CGI endpoint for checking PeerTube analysis status
+# Returns JSON response
+
+# Set headers
+printf "Content-Type: application/json\r\n"
+printf "Access-Control-Allow-Origin: *\r\n"
+printf "\r\n"
+
+# Get job_id from query string or POST body
+JOB_ID=""
+
+if [ -n "$QUERY_STRING" ]; then
+    JOB_ID=$(echo "$QUERY_STRING" | sed -n 's/.*job_id=\([^&]*\).*/\1/p')
+fi
+
+if [ -z "$JOB_ID" ] && [ "$REQUEST_METHOD" = "POST" ]; then
+    INPUT=$(cat)
+    if command -v jq >/dev/null 2>&1; then
+        JOB_ID=$(echo "$INPUT" | jq -r '.job_id // empty')
+    else
+        JOB_ID=$(echo "$INPUT" | jsonfilter -e '@.job_id' 2>/dev/null)
+    fi
+fi
+
+if [ -z "$JOB_ID" ]; then
+    echo '{"error": "job_id is required"}'
+    exit 0
+fi
+
+# Sanitize job_id (only allow alphanumeric and underscore)
+JOB_ID=$(echo "$JOB_ID" | tr -cd 'a-zA-Z0-9_')
+
+STATUS_FILE="/tmp/peertube-analyse-${JOB_ID}.status"
+RESULT_FILE="/tmp/peertube-analyse-${JOB_ID}.json"
+LOG_FILE="/tmp/peertube-analyse-${JOB_ID}.log"
+
+# Check if job exists
+if [ ! -f "$STATUS_FILE" ]; then
+    echo '{"error": "Job not found", "job_id": "'"$JOB_ID"'"}'
+    exit 0
+fi
+
+STATUS=$(cat "$STATUS_FILE" 2>/dev/null || echo "unknown")
+
+# If completed, return full result
+if [ "$STATUS" = "completed" ] && [ -f "$RESULT_FILE" ]; then
+    cat "$RESULT_FILE"
+    exit 0
+fi
+
+# Otherwise return status with logs
+LOGS=""
+if [ -f "$LOG_FILE" ]; then
+    LOGS=$(tail -5 "$LOG_FILE" 2>/dev/null | tr '\n' ' ' | sed 's/"/\\"/g')
+fi
+
+cat << EOF
+{
+    "status": "$STATUS",
+    "job_id": "$JOB_ID",
+    "logs": "$LOGS"
+}
+EOF

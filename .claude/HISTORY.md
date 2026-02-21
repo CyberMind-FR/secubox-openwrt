@@ -2992,3 +2992,35 @@ git checkout HEAD -- index.html
     - Files:
       - `secubox-app-peertube/files/usr/sbin/peertube-analyse` (778 lines)
       - `secubox-app-peertube/Makefile` (updated)
+
+64. **PeerTube Analyse Web Interface & Portal (2026-02-21)**
+    - Created standalone web interface for PeerTube video analysis.
+    - **URL**: https://analyse.gk2.secubox.in/peertube-analyse/
+    - **Web Interface Features**:
+      - Cyberpunk-themed design matching SecuBox portal
+      - Video URL input with example presets
+      - Options: Force Whisper, No AI Analysis, Model/Language selection
+      - Progress status bar with live polling
+      - Tabbed results: Analysis (Markdown), Transcript, Metadata
+      - Copy to clipboard functionality
+    - **CGI Backend**:
+      - `/cgi-bin/peertube-analyse` — Start analysis (POST)
+      - `/cgi-bin/peertube-analyse-status` — Poll job status (GET)
+      - Async job system with background processing
+      - JSON API with job_id for polling
+    - **RPCD Integration**:
+      - Added `analyse` and `analyse_status` methods to `luci.peertube`
+      - ACL permissions updated for read/write access
+    - **Portal Integration**:
+      - New "Intelligence & Analyse" section in SecuBox portal
+      - Added PeerTube Analyse and Radio Stream services
+    - **HAProxy/SSL**:
+      - Domain: analyse.gk2.secubox.in
+      - Let's Encrypt certificate auto-provisioned
+      - Routing via uhttpd backend (static content)
+    - Files:
+      - `secubox-app-peertube/files/www/peertube-analyse/index.html`
+      - `secubox-app-peertube/files/www/cgi-bin/peertube-analyse`
+      - `secubox-app-peertube/files/www/cgi-bin/peertube-analyse-status`
+      - `luci-app-peertube/root/usr/libexec/rpcd/luci.peertube` (updated)
+      - `luci-app-secubox-portal/root/www/gk2-hub/portal.html` (updated)
