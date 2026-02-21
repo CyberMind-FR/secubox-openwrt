@@ -2928,3 +2928,67 @@ git checkout HEAD -- index.html
       - CrowdSec security integration
       - Time-limited TURN credentials for WebRTC
     - 31 files changed, 3542 insertions
+
+62. **TURN Server Nextcloud Talk Integration (2026-02-21)**
+    - New `turnctl setup-nextcloud [turn-domain] [use-port-443]` command.
+    - Configures coturn for Nextcloud Talk compatibility:
+      - Uses port 443 by default (best firewall traversal)
+      - Generates static-auth-secret if not exists
+      - Auto-detects external IP
+      - Sets up SSL certificate
+    - Outputs ready-to-paste settings for Nextcloud Talk admin:
+      - STUN server: `turn.domain:3478`
+      - TURN server: `turn.domain:443`
+      - TURN secret + protocol settings
+    - LuCI integration:
+      - New "Nextcloud Talk" section in TURN overview
+      - One-click setup with settings display
+      - RPC method: `setup_nextcloud`
+    - ACL updated with `setup_nextcloud` permission
+    - Files modified:
+      - `secubox-app-turn/files/usr/sbin/turnctl` (+70 lines)
+      - `luci-app-turn/htdocs/luci-static/resources/view/turn/overview.js`
+      - `luci-app-turn/root/usr/libexec/rpcd/luci.turn`
+      - `luci-app-turn/root/usr/share/rpcd/acl.d/luci-app-turn.json`
+
+63. **PeerTube Transcript & AI Analysis Tool (2026-02-21)**
+    - New `peertube-analyse` CLI tool (778 lines, POSIX-compatible).
+    - **Pipeline Architecture**:
+      1. **Metadata**: yt-dlp --dump-json → `<slug>.meta.json`
+      2. **Subtitles**: PeerTube API check + yt-dlp download → VTT → TXT
+      3. **Whisper**: ffmpeg audio extraction → local transcription (fallback)
+      4. **Claude AI**: Structured intelligence analysis → Markdown report
+    - **CLI Flags**:
+      - `--url <url>` — PeerTube video URL
+      - `--no-whisper` — Subtitles only, disable Whisper
+      - `--force-whisper` — Force transcription even with subtitles
+      - `--no-analyse` — Skip Claude AI analysis
+      - `--model <name>` — Whisper model (tiny/base/small/medium/large-v3)
+      - `--lang <code>` — Language code (default: fr)
+    - **Output Structure**:
+      ```
+      ./output/<slug>/
+      ├── <slug>.meta.json      # Video metadata
+      ├── <slug>.fr.vtt         # Original subtitles (if available)
+      ├── <slug>.transcript.txt # Plain text transcript
+      └── <slug>.analyse.md     # Claude AI analysis
+      ```
+    - **Claude Analysis Structure**:
+      1. Résumé exécutif (5 lignes max)
+      2. Thèmes principaux et sous-thèmes
+      3. Acteurs/entités mentionnés
+      4. Points factuels clés et révélations
+      5. Angle narratif et biais éventuels
+      6. Pertinence cybersécurité/renseignement
+      7. Questions ouvertes
+    - **Technical Features**:
+      - POSIX-compatible (OpenWrt, Alpine, Debian)
+      - Colored terminal output (ANSI)
+      - Graceful degradation (works without Whisper/Claude)
+      - VTT → TXT conversion with deduplication
+      - Transcript truncation at 12k chars for API limits
+      - Supports whisper, whisper-cpp, and whisper.cpp (main)
+    - Package version bumped to 1.1.0
+    - Files:
+      - `secubox-app-peertube/files/usr/sbin/peertube-analyse` (778 lines)
+      - `secubox-app-peertube/Makefile` (updated)
