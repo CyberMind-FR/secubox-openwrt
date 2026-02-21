@@ -3024,3 +3024,10 @@ git checkout HEAD -- index.html
       - `secubox-app-peertube/files/www/cgi-bin/peertube-analyse-status`
       - `luci-app-peertube/root/usr/libexec/rpcd/luci.peertube` (updated)
       - `luci-app-secubox-portal/root/www/gk2-hub/portal.html` (updated)
+
+28. **PeerTube Analyse Bug Fix (2026-02-21)**
+    - Fixed jq error "null (null) has no keys" in metadata extraction.
+    - Root cause: PeerTube yt-dlp output doesn't include `automatic_captions` field.
+    - Fix: Added null-coalescing in jq filter: `((.automatic_captions // {}) | keys)`
+    - Also fixed `subtitles` field for consistency.
+    - Cleaned up duplicate HAProxy vhost entry for cloud.gk2.secubox.in.
