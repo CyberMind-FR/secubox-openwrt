@@ -192,18 +192,18 @@ download_subtitles() {
 
     log_info "Requested languages: $languages"
 
-    # Download subtitles with yt-dlp
+    # Download subtitles with yt-dlp (both manual and auto-generated)
     yt-dlp --write-sub --write-auto-sub \
            --sub-lang "$languages" \
            --sub-format vtt \
            --convert-subs vtt \
            --skip-download \
            -o "$output_dir/${slug}" \
-           "$url" 2>&1 || true
+           "$url" >&2 2>&1 || true
 
-    # List downloaded subtitle files
+    # List downloaded subtitle files (catch all .vtt files in case filename differs)
     local count=0
-    for vtt in "$output_dir"/${slug}*.vtt; do
+    for vtt in "$output_dir"/*.vtt; do
         [ -f "$vtt" ] || continue
         count=$((count + 1))
         log_ok "Downloaded: $(basename "$vtt")"
@@ -300,15 +300,16 @@ upload_subtitles_to_peertube() {
 
     local uploaded=0
 
-    for vtt in "$output_dir"/${slug}*.vtt; do
+    for vtt in "$output_dir"/*.vtt; do
         [ -f "$vtt" ] || continue
 
         # Extract language code from filename
-        # Format: slug.fr.vtt or slug.en-US.vtt
+        # Format: name.fr.vtt or name.en-US.vtt or name.en.vtt
         local filename
         filename=$(basename "$vtt")
         local lang
-        lang=$(echo "$filename" | sed -E "s/${slug}\.([a-zA-Z-]+)\.vtt/\1/")
+        # Extract language code before .vtt extension
+        lang=$(echo "$filename" | sed -E 's/.*\.([a-zA-Z]{2}(-[a-zA-Z]+)?)\.vtt$/\1/')
 
         # Normalize language code (en-US -> en)
         lang=$(echo "$lang" | cut -d'-' -f1)
