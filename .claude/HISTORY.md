@@ -2706,3 +2706,39 @@ git checkout HEAD -- index.html
       - `luci-app-peertube/htdocs/luci-static/resources/view/peertube/overview.js`
       - `luci-app-peertube/htdocs/luci-static/resources/peertube/api.js`
       - `luci-app-peertube/root/usr/share/rpcd/acl.d/luci-app-peertube.json`
+
+32. **Streamlit KISS One-Click Features (2026-02-21)**
+    - Simplified dashboard to KISS UI pattern with status badges
+    - New RPCD methods:
+      - `upload_and_deploy`: One-click upload creates app + instance + starts
+      - `emancipate_instance`: Create HAProxy vhost with SSL for instance
+      - `unpublish`: Remove HAProxy vhost while preserving instance
+      - `set_auth_required`: Toggle authentication requirement
+      - `get_exposure_status`: Get all instances with cert validity/expiry
+    - Dashboard features:
+      - One-click deploy form (name + domain + file upload)
+      - Instances table with status badges (Running/Stopped, SSL valid/missing)
+      - Action buttons: Start/Stop, Expose/Unpublish, Auth toggle
+    - Version bumped to 1.0.0-r11
+    - Files modified:
+      - `luci-app-streamlit/root/usr/libexec/rpcd/luci.streamlit`
+      - `luci-app-streamlit/htdocs/luci-static/resources/view/streamlit/dashboard.js`
+      - `luci-app-streamlit/htdocs/luci-static/resources/streamlit/api.js`
+      - `luci-app-streamlit/root/usr/share/rpcd/acl.d/luci-app-streamlit.json`
+
+33. **MetaBlogizer KISS One-Click Features (2026-02-21)**
+    - Applied same KISS UI pattern from Streamlit to MetaBlogizer
+    - New RPCD methods:
+      - `upload_and_create_site`: One-click deploy with auto HAProxy setup
+      - `unpublish_site`: Remove HAProxy vhost while preserving content
+      - `set_auth_required`: Toggle authentication requirement per site
+      - `get_sites_exposure_status`: Exposure/cert status for all sites
+    - Dashboard features:
+      - One-click deploy form (name + domain + file upload)
+      - Sites table with status badges (Running, SSL OK/missing, Auth)
+      - Action buttons: Share, Upload, Expose/Unpublish, Lock/Unlock, Delete
+    - Files modified:
+      - `luci-app-metablogizer/root/usr/libexec/rpcd/luci.metablogizer`
+      - `luci-app-metablogizer/htdocs/luci-static/resources/view/metablogizer/dashboard.js`
+      - `luci-app-metablogizer/htdocs/luci-static/resources/metablogizer/api.js`
+      - `luci-app-metablogizer/root/usr/share/rpcd/acl.d/luci-app-metablogizer.json`
