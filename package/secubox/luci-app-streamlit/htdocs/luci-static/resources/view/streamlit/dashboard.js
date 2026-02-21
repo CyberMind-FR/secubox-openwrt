@@ -9,6 +9,7 @@ return view.extend({
 	status: {},
 	apps: [],
 	instances: [],
+	exposure: [],
 
 	load: function() {
 		return this.refresh();
@@ -19,11 +20,13 @@ return view.extend({
 		return Promise.all([
 			api.getStatus(),
 			api.listApps(),
-			api.listInstances()
+			api.listInstances(),
+			api.getExposureStatus().catch(function() { return []; })
 		]).then(function(r) {
 			self.status = r[0] || {};
 			self.apps = (r[1] && r[1].apps) || [];
 			self.instances = r[2] || [];
+			self.exposure = r[3] || [];
 		});
 	},
 
@@ -35,7 +38,7 @@ return view.extend({
 
 		var view = E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, _('Streamlit Platform')),
-			E('div', { 'class': 'cbi-map-descr' }, _('Python data app hosting')),
+			E('div', { 'class': 'cbi-map-descr' }, _('Python data apps - One-click deploy & expose')),
 
 			// Status Section
 			E('div', { 'class': 'cbi-section' }, [
@@ -56,28 +59,29 @@ return view.extend({
 					E('tr', {}, [
 						E('td', {}, _('Instances')),
 						E('td', {}, this.instances.length.toString())
-					]),
-					E('tr', {}, [
-						E('td', {}, _('Web URL')),
-						E('td', {},
-							s.web_url ? E('a', { 'href': s.web_url, 'target': '_blank' }, s.web_url) : '-')
 					])
 				]),
 				E('div', { 'style': 'margin-top:12px' }, this.renderControls(installed, running))
 			]),
 
-			// Instances Section
+			// Instances Section - Main focus
 			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Instances')),
-				E('div', { 'id': 'instances-table' }, this.renderInstancesTable()),
-				E('div', { 'style': 'margin-top:12px' }, this.renderAddInstanceForm())
+				E('h3', {}, _('Instances & Exposure')),
+				E('div', { 'id': 'instances-table' }, this.renderInstancesTable())
 			]),
 
-			// Apps Section
+			// One-Click Deploy Section
 			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Apps')),
-				E('div', { 'id': 'apps-table' }, this.renderAppsTable()),
-				E('div', { 'style': 'margin-top:12px' }, this.renderUploadForm())
+				E('h3', {}, _('One-Click Deploy')),
+				E('p', { 'style': 'color:#666; margin-bottom:12px' },
+					_('Upload a .py file to auto-create app + instance + start')),
+				this.renderDeployForm()
+			]),
+
+			// Apps Section (compact)
+			E('div', { 'class': 'cbi-section' }, [
+				E('h3', {}, _('Apps Library')),
+				E('div', { 'id': 'apps-table' }, this.renderAppsTable())
 			])
 		]);
 
@@ -116,14 +120,17 @@ return view.extend({
 					'click': function() { self.doStart(); }
 				}, _('Start')));
 			}
-			btns.push(E('button', {
-				'class': 'cbi-button cbi-button-remove',
-				'style': 'margin-left:8px',
-				'click': function() { self.doUninstall(); }
-			}, _('Uninstall')));
 		}
 
 		return btns;
+	},
+
+	getExposureInfo: function(id) {
+		for (var i = 0; i < this.exposure.length; i++) {
+			if (this.exposure[i].id === id)
+				return this.exposure[i];
+		}
+		return null;
 	},
 
 	renderInstancesTable: function() {
@@ -131,39 +138,91 @@ return view.extend({
 		var instances = this.instances;
 
 		if (!instances.length) {
-			return E('em', {}, _('No instances. Add one below.'));
+			return E('em', {}, _('No instances. Use One-Click Deploy below.'));
 		}
 
 		var rows = instances.map(function(inst) {
-			var status = inst.enabled ?
+			var exp = self.getExposureInfo(inst.id) || {};
+			var isExposed = exp.emancipated;
+			var certValid = exp.cert_valid;
+			var authRequired = exp.auth_required;
+
+			// Status indicator
+			var statusBadge;
+			if (isExposed && certValid) {
+				statusBadge = E('span', { 'style': 'background:#0a0; color:#fff; padding:2px 6px; border-radius:3px; font-size:11px' },
+					'\u2713 ' + (exp.domain || 'Exposed'));
+			} else if (isExposed) {
+				statusBadge = E('span', { 'style': 'background:#f90; color:#fff; padding:2px 6px; border-radius:3px; font-size:11px' },
+					'\u26A0 Cert pending');
+			} else {
+				statusBadge = E('span', { 'style': 'color:#999' }, _('Local only'));
+			}
+
+			// Running indicator
+			var runStatus = inst.enabled ?
 				E('span', { 'style': 'color:#0a0' }, '\u25CF') :
 				E('span', { 'style': 'color:#999' }, '\u25CB');
 
+			// Action buttons
+			var actions = [];
+
+			// Enable/Disable
+			if (inst.enabled) {
+				actions.push(E('button', {
+					'class': 'cbi-button',
+					'title': _('Disable'),
+					'click': function() { self.disableInstance(inst.id); }
+				}, '\u23F8'));
+			} else {
+				actions.push(E('button', {
+					'class': 'cbi-button cbi-button-positive',
+					'title': _('Enable'),
+					'click': function() { self.enableInstance(inst.id); }
+				}, '\u25B6'));
+			}
+
+			// Expose / Unpublish
+			if (isExposed) {
+				actions.push(E('button', {
+					'class': 'cbi-button cbi-button-negative',
+					'style': 'margin-left:4px',
+					'title': _('Unpublish'),
+					'click': function() { self.unpublishInstance(inst.id, exp.domain); }
+				}, '\u2715'));
+			} else {
+				actions.push(E('button', {
+					'class': 'cbi-button cbi-button-positive',
+					'style': 'margin-left:4px',
+					'title': _('Expose (one-click)'),
+					'click': function() { self.exposeInstance(inst.id); }
+				}, '\u2197'));
+			}
+
+			// Auth toggle
+			if (isExposed) {
+				actions.push(E('button', {
+					'class': authRequired ? 'cbi-button cbi-button-action' : 'cbi-button',
+					'style': 'margin-left:4px',
+					'title': authRequired ? _('Auth required - click to disable') : _('Public - click to require auth'),
+					'click': function() { self.toggleAuth(inst.id, !authRequired); }
+				}, authRequired ? '\uD83D\uDD12' : '\uD83D\uDD13'));
+			}
+
+			// Delete
+			actions.push(E('button', {
+				'class': 'cbi-button cbi-button-remove',
+				'style': 'margin-left:4px',
+				'title': _('Delete'),
+				'click': function() { self.deleteInstance(inst.id); }
+			}, '\u2212'));
+
 			return E('tr', {}, [
-				E('td', {}, [status, ' ', E('strong', {}, inst.id)]),
+				E('td', {}, [runStatus, ' ', E('strong', {}, inst.id)]),
 				E('td', {}, inst.app || '-'),
 				E('td', {}, ':' + inst.port),
-				E('td', {}, [
-					inst.enabled ?
-						E('button', {
-							'class': 'cbi-button',
-							'click': function() { self.disableInstance(inst.id); }
-						}, _('Disable')) :
-						E('button', {
-							'class': 'cbi-button cbi-button-positive',
-							'click': function() { self.enableInstance(inst.id); }
-						}, _('Enable')),
-					E('button', {
-						'class': 'cbi-button cbi-button-positive',
-						'style': 'margin-left:4px',
-						'click': function() { self.emancipateInstance(inst.id, inst.app, inst.port); }
-					}, _('Expose')),
-					E('button', {
-						'class': 'cbi-button cbi-button-remove',
-						'style': 'margin-left:4px',
-						'click': function() { self.deleteInstance(inst.id); }
-					}, _('Delete'))
-				])
+				E('td', {}, statusBadge),
+				E('td', {}, actions)
 			]);
 		});
 
@@ -172,35 +231,20 @@ return view.extend({
 				E('th', { 'class': 'th' }, _('Instance')),
 				E('th', { 'class': 'th' }, _('App')),
 				E('th', { 'class': 'th' }, _('Port')),
+				E('th', { 'class': 'th' }, _('Exposure')),
 				E('th', { 'class': 'th' }, _('Actions'))
 			])
 		].concat(rows));
 	},
 
-	renderAddInstanceForm: function() {
+	renderDeployForm: function() {
 		var self = this;
-		var appOptions = [E('option', { 'value': '' }, _('-- Select App --'))];
-
-		this.apps.forEach(function(app) {
-			var id = app.id || app.name;
-			appOptions.push(E('option', { 'value': id }, app.name));
-		});
-
-		// Next available port
-		var usedPorts = this.instances.map(function(i) { return i.port; });
-		var nextPort = 8501;
-		while (usedPorts.indexOf(nextPort) !== -1) nextPort++;
-
 		return E('div', { 'style': 'display:flex; gap:8px; align-items:center; flex-wrap:wrap' }, [
-			E('input', { 'type': 'text', 'id': 'new-inst-id', 'class': 'cbi-input-text',
-				'placeholder': _('ID'), 'style': 'width:100px' }),
-			E('select', { 'id': 'new-inst-app', 'class': 'cbi-input-select' }, appOptions),
-			E('input', { 'type': 'number', 'id': 'new-inst-port', 'class': 'cbi-input-text',
-				'value': nextPort, 'min': '1024', 'max': '65535', 'style': 'width:80px' }),
+			E('input', { 'type': 'file', 'id': 'deploy-file', 'accept': '.py,.zip' }),
 			E('button', {
 				'class': 'cbi-button cbi-button-positive',
-				'click': function() { self.addInstance(); }
-			}, _('Add'))
+				'click': function() { self.oneClickDeploy(); }
+			}, _('Deploy & Create Instance'))
 		]);
 	},
 
@@ -209,7 +253,7 @@ return view.extend({
 		var apps = this.apps;
 
 		if (!apps.length) {
-			return E('em', {}, _('No apps. Upload one below.'));
+			return E('em', {}, _('No apps.'));
 		}
 
 		var rows = apps.map(function(app) {
@@ -220,8 +264,8 @@ return view.extend({
 				E('td', {}, [
 					E('button', {
 						'class': 'cbi-button',
-						'click': function() { self.editApp(id); }
-					}, _('Edit')),
+						'click': function() { self.createInstanceFromApp(id); }
+					}, _('+ Instance')),
 					E('button', {
 						'class': 'cbi-button cbi-button-remove',
 						'style': 'margin-left:4px',
@@ -238,17 +282,6 @@ return view.extend({
 				E('th', { 'class': 'th' }, _('Actions'))
 			])
 		].concat(rows));
-	},
-
-	renderUploadForm: function() {
-		var self = this;
-		return E('div', { 'style': 'display:flex; gap:8px; align-items:center' }, [
-			E('input', { 'type': 'file', 'id': 'upload-file', 'accept': '.py,.zip' }),
-			E('button', {
-				'class': 'cbi-button cbi-button-action',
-				'click': function() { self.uploadApp(); }
-			}, _('Upload'))
-		]);
 	},
 
 	updateStatus: function() {
@@ -284,7 +317,7 @@ return view.extend({
 		var self = this;
 		api.start().then(function(r) {
 			if (r && r.success)
-				ui.addNotification(null, E('p', {}, _('Service started')), 'info');
+				ui.addNotification(null, E('p', {}, _('Started')), 'info');
 			self.refresh();
 		});
 	},
@@ -293,7 +326,7 @@ return view.extend({
 		var self = this;
 		api.stop().then(function(r) {
 			if (r && r.success)
-				ui.addNotification(null, E('p', {}, _('Service stopped')), 'info');
+				ui.addNotification(null, E('p', {}, _('Stopped')), 'info');
 			self.refresh();
 		});
 	},
@@ -302,7 +335,7 @@ return view.extend({
 		var self = this;
 		api.restart().then(function(r) {
 			if (r && r.success)
-				ui.addNotification(null, E('p', {}, _('Service restarted')), 'info');
+				ui.addNotification(null, E('p', {}, _('Restarted')), 'info');
 			self.refresh();
 		});
 	},
@@ -317,7 +350,7 @@ return view.extend({
 				self.pollInstall();
 			} else {
 				ui.hideModal();
-				ui.addNotification(null, E('p', {}, r.message || _('Install failed')), 'error');
+				ui.addNotification(null, E('p', {}, r.message || _('Failed')), 'error');
 			}
 		});
 	},
@@ -342,68 +375,69 @@ return view.extend({
 		setTimeout(check, 2000);
 	},
 
-	doUninstall: function() {
+	// One-click deploy
+	oneClickDeploy: function() {
 		var self = this;
-		ui.showModal(_('Confirm'), [
-			E('p', {}, _('Uninstall Streamlit?')),
-			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
-				E('button', {
-					'class': 'cbi-button cbi-button-negative',
-					'style': 'margin-left:8px',
-					'click': function() {
-						ui.hideModal();
-						api.uninstall().then(function() {
-							ui.addNotification(null, E('p', {}, _('Uninstalled')), 'info');
-							self.refresh();
-							location.reload();
-						});
-					}
-				}, _('Uninstall'))
-			])
-		]);
-	},
-
-	addInstance: function() {
-		var self = this;
-		var id = document.getElementById('new-inst-id').value.trim();
-		var app = document.getElementById('new-inst-app').value;
-		var port = parseInt(document.getElementById('new-inst-port').value, 10);
-
-		if (!id || !app || !port) {
-			ui.addNotification(null, E('p', {}, _('Fill all fields')), 'error');
+		var fileInput = document.getElementById('deploy-file');
+		if (!fileInput || !fileInput.files.length) {
+			ui.addNotification(null, E('p', {}, _('Select a file')), 'error');
 			return;
 		}
 
-		api.addInstance(id, id, app, port).then(function(r) {
-			if (r && r.success) {
-				ui.addNotification(null, E('p', {}, _('Instance added')), 'success');
-				document.getElementById('new-inst-id').value = '';
-				document.getElementById('new-inst-app').value = '';
-				self.refresh().then(function() { self.updateStatus(); });
-			} else {
-				ui.addNotification(null, E('p', {}, r.message || _('Failed')), 'error');
+		var file = fileInput.files[0];
+		var name = file.name.replace(/\.(py|zip)$/, '').replace(/[^a-zA-Z0-9_]/g, '_');
+		var isZip = file.name.endsWith('.zip');
+		var reader = new FileReader();
+
+		reader.onload = function(e) {
+			var bytes = new Uint8Array(e.target.result);
+			var chunks = [];
+			for (var i = 0; i < bytes.length; i += 8192) {
+				chunks.push(String.fromCharCode.apply(null, bytes.slice(i, i + 8192)));
 			}
-		});
+			var content = btoa(chunks.join(''));
+
+			poll.stop();
+			ui.showModal(_('Deploying'), [
+				E('p', { 'class': 'spinning' }, _('Creating app + instance...'))
+			]);
+
+			api.uploadAndDeploy(name, content, isZip).then(function(r) {
+				poll.start();
+				ui.hideModal();
+				if (r && r.success) {
+					ui.addNotification(null, E('p', {}, _('Deployed: ') + name + ' on port ' + r.port), 'success');
+					fileInput.value = '';
+					self.refresh().then(function() { self.updateStatus(); });
+				} else {
+					ui.addNotification(null, E('p', {}, r.message || _('Failed')), 'error');
+				}
+			}).catch(function(err) {
+				poll.start();
+				ui.hideModal();
+				ui.addNotification(null, E('p', {}, _('Error: ') + (err.message || err)), 'error');
+			});
+		};
+
+		reader.readAsArrayBuffer(file);
 	},
 
+	// Instance actions
 	enableInstance: function(id) {
 		var self = this;
 		api.enableInstance(id).then(function(r) {
-			if (r && r.success) {
+			if (r && r.success)
 				ui.addNotification(null, E('p', {}, _('Enabled')), 'success');
-				self.refresh().then(function() { self.updateStatus(); });
-			}
+			self.refresh().then(function() { self.updateStatus(); });
 		});
 	},
 
 	disableInstance: function(id) {
 		var self = this;
 		api.disableInstance(id).then(function(r) {
-			if (r && r.success) {
+			if (r && r.success)
 				ui.addNotification(null, E('p', {}, _('Disabled')), 'success');
-				self.refresh().then(function() { self.updateStatus(); });
-			}
+			self.refresh().then(function() { self.updateStatus(); });
 		});
 	},
 
@@ -429,41 +463,75 @@ return view.extend({
 		]);
 	},
 
-	emancipateInstance: function(id, app, port) {
+	// One-click expose
+	exposeInstance: function(id) {
 		var self = this;
-		ui.showModal(_('Expose: ') + id, [
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Domain')),
-				E('div', { 'class': 'cbi-value-field' },
-					E('input', { 'type': 'text', 'id': 'expose-domain', 'class': 'cbi-input-text',
-						'placeholder': id + '.gk2.secubox.in' }))
-			]),
-			E('div', { 'style': 'margin:12px 0; padding:8px; background:#f5f5f5; border-radius:4px' }, [
-				E('small', {}, _('Creates DNS + HAProxy vhost + SSL certificate'))
-			]),
+		ui.showModal(_('Exposing...'), [
+			E('p', { 'class': 'spinning' }, _('Creating vhost + SSL certificate...'))
+		]);
+
+		api.emancipateInstance(id, '').then(function(r) {
+			ui.hideModal();
+			if (r && r.success) {
+				ui.addNotification(null, E('p', {}, _('Exposed at: ') + r.url), 'success');
+				self.refresh().then(function() { self.updateStatus(); });
+			} else {
+				ui.addNotification(null, E('p', {}, r.message || _('Failed')), 'error');
+			}
+		});
+	},
+
+	// Unpublish
+	unpublishInstance: function(id, domain) {
+		var self = this;
+		ui.showModal(_('Confirm'), [
+			E('p', {}, _('Unpublish ') + domain + '?'),
+			E('p', { 'style': 'color:#666' }, _('This removes the public URL and SSL certificate.')),
 			E('div', { 'class': 'right' }, [
 				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
 				E('button', {
-					'class': 'cbi-button cbi-button-positive',
+					'class': 'cbi-button cbi-button-negative',
 					'style': 'margin-left:8px',
 					'click': function() {
-						var domain = document.getElementById('expose-domain').value.trim();
 						ui.hideModal();
-						ui.showModal(_('Exposing...'), [
-							E('p', { 'class': 'spinning' }, _('Setting up exposure...'))
-						]);
-						api.emancipate(app, domain).then(function(r) {
-							ui.hideModal();
-							if (r && r.success) {
-								ui.addNotification(null, E('p', {}, _('Exposed at: ') + (r.domain || domain)), 'success');
-							} else {
-								ui.addNotification(null, E('p', {}, r.message || _('Failed')), 'error');
-							}
+						api.unpublish(id).then(function(r) {
+							if (r && r.success)
+								ui.addNotification(null, E('p', {}, _('Unpublished')), 'info');
+							self.refresh().then(function() { self.updateStatus(); });
 						});
 					}
-				}, _('Expose'))
+				}, _('Unpublish'))
 			])
 		]);
+	},
+
+	// Auth toggle
+	toggleAuth: function(id, authRequired) {
+		var self = this;
+		api.setAuthRequired(id, authRequired).then(function(r) {
+			if (r && r.success) {
+				ui.addNotification(null, E('p', {},
+					authRequired ? _('Auth required') : _('Public access')), 'info');
+				self.refresh().then(function() { self.updateStatus(); });
+			}
+		});
+	},
+
+	// Create instance from app
+	createInstanceFromApp: function(appId) {
+		var self = this;
+		var usedPorts = this.instances.map(function(i) { return i.port; });
+		var nextPort = 8501;
+		while (usedPorts.indexOf(nextPort) !== -1) nextPort++;
+
+		api.addInstance(appId, appId, appId, nextPort).then(function(r) {
+			if (r && r.success) {
+				ui.addNotification(null, E('p', {}, _('Instance created on port ') + nextPort), 'success');
+				self.refresh().then(function() { self.updateStatus(); });
+			} else {
+				ui.addNotification(null, E('p', {}, r.message || _('Failed')), 'error');
+			}
+		});
 	},
 
 	deleteApp: function(name) {
@@ -486,104 +554,5 @@ return view.extend({
 				}, _('Delete'))
 			])
 		]);
-	},
-
-	uploadApp: function() {
-		var self = this;
-		var fileInput = document.getElementById('upload-file');
-		if (!fileInput || !fileInput.files.length) {
-			ui.addNotification(null, E('p', {}, _('Select a file')), 'error');
-			return;
-		}
-
-		var file = fileInput.files[0];
-		var name = file.name.replace(/\.(py|zip)$/, '').replace(/[^a-zA-Z0-9_]/g, '_');
-		var reader = new FileReader();
-
-		reader.onload = function(e) {
-			var bytes = new Uint8Array(e.target.result);
-			var chunks = [];
-			for (var i = 0; i < bytes.length; i += 8192) {
-				chunks.push(String.fromCharCode.apply(null, bytes.slice(i, i + 8192)));
-			}
-			var content = btoa(chunks.join(''));
-
-			poll.stop();
-			ui.showModal(_('Uploading'), [
-				E('p', { 'class': 'spinning' }, _('Uploading ') + file.name + '...')
-			]);
-
-			var uploadFn = content.length > 40000 ?
-				api.chunkedUpload(name, content, file.name.endsWith('.zip')) :
-				api.uploadApp(name, content);
-
-			uploadFn.then(function(r) {
-				poll.start();
-				ui.hideModal();
-				if (r && r.success) {
-					ui.addNotification(null, E('p', {}, _('Uploaded: ') + name), 'success');
-					fileInput.value = '';
-					self.refresh().then(function() { self.updateStatus(); });
-				} else {
-					ui.addNotification(null, E('p', {}, r.message || _('Failed')), 'error');
-				}
-			}).catch(function(err) {
-				poll.start();
-				ui.hideModal();
-				ui.addNotification(null, E('p', {}, _('Error: ') + (err.message || err)), 'error');
-			});
-		};
-
-		reader.readAsArrayBuffer(file);
-	},
-
-	editApp: function(id) {
-		var self = this;
-		ui.showModal(_('Loading...'), [
-			E('p', { 'class': 'spinning' }, _('Loading source...'))
-		]);
-
-		api.getSource(id).then(function(r) {
-			if (!r || !r.content) {
-				ui.hideModal();
-				ui.addNotification(null, E('p', {}, r.message || _('Failed')), 'error');
-				return;
-			}
-
-			var source;
-			try { source = atob(r.content); }
-			catch (e) {
-				ui.hideModal();
-				ui.addNotification(null, E('p', {}, _('Decode error')), 'error');
-				return;
-			}
-
-			ui.hideModal();
-			ui.showModal(_('Edit: ') + id, [
-				E('textarea', {
-					'id': 'edit-source',
-					'style': 'width:100%; height:300px; font-family:monospace; font-size:12px;',
-					'spellcheck': 'false'
-				}, source),
-				E('div', { 'class': 'right', 'style': 'margin-top:12px' }, [
-					E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
-					E('button', {
-						'class': 'cbi-button cbi-button-positive',
-						'style': 'margin-left:8px',
-						'click': function() {
-							var newSource = document.getElementById('edit-source').value;
-							var encoded = btoa(newSource);
-							ui.hideModal();
-							api.saveSource(id, encoded).then(function(sr) {
-								if (sr && sr.success)
-									ui.addNotification(null, E('p', {}, _('Saved')), 'success');
-								else
-									ui.addNotification(null, E('p', {}, sr.message || _('Failed')), 'error');
-							});
-						}
-					}, _('Save'))
-				])
-			]);
-		});
 	}
 });

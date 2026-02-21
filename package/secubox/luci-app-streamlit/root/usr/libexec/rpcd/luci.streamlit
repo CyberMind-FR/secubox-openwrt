@@ -1383,18 +1383,33 @@ get_emancipation() {
 	fi
 
 	config_load "$CONFIG"
-	local emancipated emancipated_at domain port
+	local emancipated emancipated_at domain port auth_required
 	emancipated=$(uci -q get "${CONFIG}.${name}.emancipated")
 	emancipated_at=$(uci -q get "${CONFIG}.${name}.emancipated_at")
-	domain=$(uci -q get "${CONFIG}.${name}.emancipated_domain")
+	domain=$(uci -q get "${CONFIG}.${name}.domain")
 	port=$(uci -q get "${CONFIG}.${name}.port")
+	auth_required=$(uci -q get "${CONFIG}.${name}.auth_required")
 
 	# Also check instances
-	if [ -z "$port" ]; then
+	if [ -z "$port" ] || [ -z "$domain" ]; then
 		for section in $(uci -q show "$CONFIG" | grep "\.app=" | grep "='${name}'" | cut -d. -f2); do
-			port=$(uci -q get "${CONFIG}.${section}.port")
-			[ -n "$port" ] && break
+			[ -z "$port" ] && port=$(uci -q get "${CONFIG}.${section}.port")
+			[ -z "$domain" ] && domain=$(uci -q get "${CONFIG}.${section}.domain")
+			[ -z "$emancipated" ] && emancipated=$(uci -q get "${CONFIG}.${section}.emancipated")
+			[ -z "$auth_required" ] && auth_required=$(uci -q get "${CONFIG}.${section}.auth_required")
+			[ -n "$port" ] && [ -n "$domain" ] && break
 		done
+	fi
+
+	# Check certificate status if emancipated
+	local cert_valid=0
+	local cert_expires=""
+	if [ "$emancipated" = "1" ] && [ -n "$domain" ]; then
+		local cert_file="/srv/haproxy/certs/${domain}.pem"
+		if [ -f "$cert_file" ]; then
+			cert_valid=1
+			cert_expires=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
+		fi
 	fi
 
 	json_init_obj
@@ -1402,6 +1417,310 @@ get_emancipation() {
 	json_add_string "emancipated_at" "$emancipated_at"
 	json_add_string "domain" "$domain"
 	json_add_int "port" "${port:-0}"
+	json_add_boolean "auth_required" "$( [ "$auth_required" = "1" ] && echo 1 || echo 0 )"
+	json_add_boolean "cert_valid" "$cert_valid"
+	json_add_string "cert_expires" "$cert_expires"
+	json_close_obj
+}
+
+# One-click upload with auto instance creation
+upload_and_deploy() {
+	local tmpinput="/tmp/rpcd_deploy_$$.json"
+	cat > "$tmpinput"
+
+	local name content is_zip
+	name=$(jsonfilter -i "$tmpinput" -e '@.name' 2>/dev/null)
+	is_zip=$(jsonfilter -i "$tmpinput" -e '@.is_zip' 2>/dev/null)
+	name=$(echo "$name" | sed 's/[^a-zA-Z0-9_]/_/g; s/^_*//; s/_*$//')
+
+	if [ -z "$name" ]; then
+		rm -f "$tmpinput"
+		json_error "Missing name"
+		return
+	fi
+
+	local b64file="/tmp/rpcd_b64_$$.txt"
+	jsonfilter -i "$tmpinput" -e '@.content' > "$b64file" 2>/dev/null
+	rm -f "$tmpinput"
+
+	if [ ! -s "$b64file" ]; then
+		rm -f "$b64file"
+		json_error "Missing content"
+		return
+	fi
+
+	local data_path
+	config_load "$CONFIG"
+	config_get data_path main data_path "/srv/streamlit"
+	mkdir -p "$data_path/apps"
+
+	local app_file="$data_path/apps/${name}.py"
+	base64 -d < "$b64file" > "$app_file" 2>/dev/null
+	local rc=$?
+	rm -f "$b64file"
+
+	if [ $rc -ne 0 ] || [ ! -s "$app_file" ]; then
+		rm -f "$app_file"
+		json_error "Failed to decode content"
+		return
+	fi
+
+	# Register app in UCI
+	uci set "${CONFIG}.${name}=app"
+	uci set "${CONFIG}.${name}.name=$name"
+	uci set "${CONFIG}.${name}.path=${name}.py"
+	uci set "${CONFIG}.${name}.enabled=1"
+
+	# Find next available port
+	local next_port=8501
+	local used_ports=$(uci -q show "$CONFIG" | grep "\.port=" | cut -d= -f2 | tr -d "'" | sort -n)
+	while echo "$used_ports" | grep -qw "$next_port"; do
+		next_port=$((next_port + 1))
+	done
+
+	# Create instance automatically
+	uci set "${CONFIG}.${name}=instance"
+	uci set "${CONFIG}.${name}.name=$name"
+	uci set "${CONFIG}.${name}.app=$name"
+	uci set "${CONFIG}.${name}.port=$next_port"
+	uci set "${CONFIG}.${name}.enabled=1"
+	uci set "${CONFIG}.${name}.autostart=1"
+	uci commit "$CONFIG"
+
+	# Start the instance
+	if lxc_running; then
+		streamlitctl instance start "$name" >/dev/null 2>&1 &
+	fi
+
+	json_init_obj
+	json_add_boolean "success" 1
+	json_add_string "message" "App deployed with instance on port $next_port"
+	json_add_string "name" "$name"
+	json_add_int "port" "$next_port"
+	json_close_obj
+}
+
+# Unpublish/revoke emancipation
+unpublish() {
+	read -r input
+	local id
+	id=$(echo "$input" | jsonfilter -e '@.id' 2>/dev/null)
+
+	if [ -z "$id" ]; then
+		json_error "Missing instance id"
+		return
+	fi
+
+	config_load "$CONFIG"
+	local domain
+	domain=$(uci -q get "${CONFIG}.${id}.domain")
+
+	if [ -z "$domain" ]; then
+		json_error "Instance not emancipated"
+		return
+	fi
+
+	# Remove HAProxy vhost
+	local vhost_section=$(echo "$domain" | sed 's/\./_/g')
+	uci -q delete "haproxy.${vhost_section}" 2>/dev/null
+
+	# Remove certificate entry
+	uci -q delete "haproxy.cert_${vhost_section}" 2>/dev/null
+	uci commit haproxy
+
+	# Regenerate and reload HAProxy
+	haproxyctl generate >/dev/null 2>&1
+	haproxyctl reload >/dev/null 2>&1
+
+	# Update instance UCI
+	uci delete "${CONFIG}.${id}.emancipated" 2>/dev/null
+	uci delete "${CONFIG}.${id}.emancipated_at" 2>/dev/null
+	uci delete "${CONFIG}.${id}.domain" 2>/dev/null
+	uci commit "$CONFIG"
+
+	json_init_obj
+	json_add_boolean "success" 1
+	json_add_string "message" "Exposure revoked for $id"
+	json_add_string "domain" "$domain"
+	json_close_obj
+}
+
+# Set authentication requirement
+set_auth_required() {
+	read -r input
+	local id auth_required
+	id=$(echo "$input" | jsonfilter -e '@.id' 2>/dev/null)
+	auth_required=$(echo "$input" | jsonfilter -e '@.auth_required' 2>/dev/null)
+
+	if [ -z "$id" ]; then
+		json_error "Missing instance id"
+		return
+	fi
+
+	config_load "$CONFIG"
+	local domain
+	domain=$(uci -q get "${CONFIG}.${id}.domain")
+
+	# Update UCI
+	uci set "${CONFIG}.${id}.auth_required=$auth_required"
+	uci commit "$CONFIG"
+
+	# Update HAProxy vhost if emancipated
+	if [ -n "$domain" ]; then
+		local vhost_section=$(echo "$domain" | sed 's/\./_/g')
+		if [ "$auth_required" = "1" ]; then
+			uci set "haproxy.${vhost_section}.auth_required=1"
+		else
+			uci -q delete "haproxy.${vhost_section}.auth_required"
+		fi
+		uci commit haproxy
+		haproxyctl generate >/dev/null 2>&1
+		haproxyctl reload >/dev/null 2>&1
+	fi
+
+	json_init_obj
+	json_add_boolean "success" 1
+	json_add_string "message" "Auth requirement updated"
+	json_add_boolean "auth_required" "$( [ "$auth_required" = "1" ] && echo 1 || echo 0 )"
+	json_close_obj
+}
+
+# One-click emancipate for instance
+emancipate_instance() {
+	read -r input
+	local id domain
+	id=$(echo "$input" | jsonfilter -e '@.id' 2>/dev/null)
+	domain=$(echo "$input" | jsonfilter -e '@.domain' 2>/dev/null)
+
+	if [ -z "$id" ]; then
+		json_error "Missing instance id"
+		return
+	fi
+
+	config_load "$CONFIG"
+	local app port
+	app=$(uci -q get "${CONFIG}.${id}.app")
+	port=$(uci -q get "${CONFIG}.${id}.port")
+
+	if [ -z "$port" ]; then
+		json_error "Instance has no port configured"
+		return
+	fi
+
+	# Auto-generate domain if not provided
+	if [ -z "$domain" ]; then
+		local wildcard_domain=$(uci -q get vortex.main.wildcard_domain)
+		[ -z "$wildcard_domain" ] && wildcard_domain="gk2.secubox.in"
+		domain="${id}.${wildcard_domain}"
+	fi
+
+	# Create HAProxy vhost
+	local vhost_section=$(echo "$domain" | sed 's/\./_/g')
+	local backend_name="streamlit_${id}"
+
+	# Create backend
+	uci set "haproxy.${backend_name}=backend"
+	uci set "haproxy.${backend_name}.name=${backend_name}"
+	uci set "haproxy.${backend_name}.mode=http"
+	uci set "haproxy.${backend_name}.balance=roundrobin"
+	uci set "haproxy.${backend_name}.enabled=1"
+
+	# Add server
+	uci set "haproxy.${backend_name}_srv=server"
+	uci set "haproxy.${backend_name}_srv.backend=${backend_name}"
+	uci set "haproxy.${backend_name}_srv.name=streamlit"
+	uci set "haproxy.${backend_name}_srv.address=127.0.0.1"
+	uci set "haproxy.${backend_name}_srv.port=${port}"
+	uci set "haproxy.${backend_name}_srv.weight=100"
+	uci set "haproxy.${backend_name}_srv.check=1"
+	uci set "haproxy.${backend_name}_srv.enabled=1"
+
+	# Create vhost
+	uci set "haproxy.${vhost_section}=vhost"
+	uci set "haproxy.${vhost_section}.domain=${domain}"
+	uci set "haproxy.${vhost_section}.backend=${backend_name}"
+	uci set "haproxy.${vhost_section}.ssl=1"
+	uci set "haproxy.${vhost_section}.ssl_redirect=1"
+	uci set "haproxy.${vhost_section}.acme=1"
+	uci set "haproxy.${vhost_section}.waf_bypass=1"
+	uci set "haproxy.${vhost_section}.enabled=1"
+
+	# Create certificate entry
+	uci set "haproxy.cert_${vhost_section}=certificate"
+	uci set "haproxy.cert_${vhost_section}.domain=${domain}"
+	uci set "haproxy.cert_${vhost_section}.type=acme"
+	uci set "haproxy.cert_${vhost_section}.enabled=1"
+
+	uci commit haproxy
+
+	# Regenerate and reload HAProxy
+	haproxyctl generate >/dev/null 2>&1
+	haproxyctl reload >/dev/null 2>&1
+
+	# Request certificate via ACME
+	acmectl issue "$domain" >/dev/null 2>&1 &
+
+	# Update instance UCI
+	uci set "${CONFIG}.${id}.emancipated=1"
+	uci set "${CONFIG}.${id}.emancipated_at=$(date -Iseconds)"
+	uci set "${CONFIG}.${id}.domain=${domain}"
+	uci commit "$CONFIG"
+
+	json_init_obj
+	json_add_boolean "success" 1
+	json_add_string "message" "Instance exposed at https://${domain}"
+	json_add_string "domain" "$domain"
+	json_add_string "url" "https://${domain}"
+	json_add_int "port" "$port"
+	json_close_obj
+}
+
+# Get exposure status for all instances
+get_exposure_status() {
+	json_init_obj
+	json_add_array "instances"
+
+	config_load "$CONFIG"
+
+	_add_exposure_json() {
+		local section="$1"
+		local app port enabled domain emancipated auth_required
+
+		config_get app "$section" app ""
+		config_get port "$section" port ""
+		config_get enabled "$section" enabled "0"
+		config_get domain "$section" domain ""
+		config_get emancipated "$section" emancipated "0"
+		config_get auth_required "$section" auth_required "0"
+
+		[ -z "$app" ] && return
+
+		local cert_valid=0
+		local cert_expires=""
+		if [ "$emancipated" = "1" ] && [ -n "$domain" ]; then
+			local cert_file="/srv/haproxy/certs/${domain}.pem"
+			if [ -f "$cert_file" ]; then
+				cert_valid=1
+				cert_expires=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
+			fi
+		fi
+
+		json_add_object ""
+		json_add_string "id" "$section"
+		json_add_string "app" "$app"
+		json_add_int "port" "$port"
+		json_add_boolean "enabled" "$( [ "$enabled" = "1" ] && echo 1 || echo 0 )"
+		json_add_boolean "emancipated" "$( [ "$emancipated" = "1" ] && echo 1 || echo 0 )"
+		json_add_string "domain" "$domain"
+		json_add_boolean "auth_required" "$( [ "$auth_required" = "1" ] && echo 1 || echo 0 )"
+		json_add_boolean "cert_valid" "$cert_valid"
+		json_add_string "cert_expires" "$cert_expires"
+		json_close_object
+	}
+
+	config_foreach _add_exposure_json instance
+
+	json_close_array
 	json_close_obj
 }
 
@@ -1500,7 +1819,12 @@ case "$1" in
 			"get_source": {"name": "str"},
 			"save_source": {"name": "str", "content": "str"},
 			"emancipate": {"name": "str", "domain": "str"},
-			"get_emancipation": {"name": "str"}
+			"get_emancipation": {"name": "str"},
+			"upload_and_deploy": {"name": "str", "content": "str", "is_zip": "str"},
+			"emancipate_instance": {"id": "str", "domain": "str"},
+			"unpublish": {"id": "str"},
+			"set_auth_required": {"id": "str", "auth_required": "str"},
+			"get_exposure_status": {}
 		}
 		EOF
 		;;
@@ -1619,6 +1943,21 @@ case "$1" in
 				;;
 			get_emancipation)
 				get_emancipation
+				;;
+			upload_and_deploy)
+				upload_and_deploy
+				;;
+			emancipate_instance)
+				emancipate_instance
+				;;
+			unpublish)
+				unpublish
+				;;
+			set_auth_required)
+				set_auth_required
+				;;
+			get_exposure_status)
+				get_exposure_status
 				;;
 			*)
 				json_error "Unknown method: $2"

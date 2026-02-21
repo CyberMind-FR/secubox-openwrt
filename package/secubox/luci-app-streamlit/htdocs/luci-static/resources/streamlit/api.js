@@ -260,6 +260,40 @@ var callGetEmancipation = rpc.declare({
 	expect: { result: {} }
 });
 
+var callUploadAndDeploy = rpc.declare({
+	object: 'luci.streamlit',
+	method: 'upload_and_deploy',
+	params: ['name', 'content', 'is_zip'],
+	expect: { result: {} }
+});
+
+var callEmancipateInstance = rpc.declare({
+	object: 'luci.streamlit',
+	method: 'emancipate_instance',
+	params: ['id', 'domain'],
+	expect: { result: {} }
+});
+
+var callUnpublish = rpc.declare({
+	object: 'luci.streamlit',
+	method: 'unpublish',
+	params: ['id'],
+	expect: { result: {} }
+});
+
+var callSetAuthRequired = rpc.declare({
+	object: 'luci.streamlit',
+	method: 'set_auth_required',
+	params: ['id', 'auth_required'],
+	expect: { result: {} }
+});
+
+var callGetExposureStatus = rpc.declare({
+	object: 'luci.streamlit',
+	method: 'get_exposure_status',
+	expect: { result: {} }
+});
+
 return baseclass.extend({
 	getStatus: function() {
 		return callGetStatus();
@@ -461,6 +495,28 @@ return baseclass.extend({
 
 	getEmancipation: function(name) {
 		return callGetEmancipation(name);
+	},
+
+	uploadAndDeploy: function(name, content, isZip) {
+		return callUploadAndDeploy(name, content, isZip ? '1' : '0');
+	},
+
+	emancipateInstance: function(id, domain) {
+		return callEmancipateInstance(id, domain || '');
+	},
+
+	unpublish: function(id) {
+		return callUnpublish(id);
+	},
+
+	setAuthRequired: function(id, authRequired) {
+		return callSetAuthRequired(id, authRequired ? '1' : '0');
+	},
+
+	getExposureStatus: function() {
+		return callGetExposureStatus().then(function(res) {
+			return res.instances || [];
+		});
 	},
 
 	getDashboardData: function() {
