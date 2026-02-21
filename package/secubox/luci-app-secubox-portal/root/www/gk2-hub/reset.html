@@ -167,7 +167,7 @@ function handleReset(e) {
       jsonrpc: "2.0",
       id: 1,
       method: "call",
-      params: ["00000000000000000000000000000000", "luci.secubox-users", "reset_password", { token: token, password: password }]
+      params: ["00000000000000000000000000000000", "luci.portal-auth", "reset_password", { token: token, password: password }]
     })
   })
   .then(function(r) { return r.json(); })

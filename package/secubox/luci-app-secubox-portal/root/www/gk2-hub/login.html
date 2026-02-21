@@ -196,7 +196,7 @@ function rpcCall(method, params) {
       jsonrpc: "2.0",
       id: 1,
       method: "call",
-      params: ["00000000000000000000000000000000", "luci.secubox-users", method, params]
+      params: ["00000000000000000000000000000000", "luci.portal-auth", method, params]
     })
   }).then(function(r) { return r.json(); });
 }

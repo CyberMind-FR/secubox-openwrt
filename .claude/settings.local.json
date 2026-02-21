@@ -380,7 +380,8 @@
       "Bash(__NEW_LINE_ba6f66f0b013f58d__ echo \"\")",
       "WebFetch(domain:cf.gk2.secubox.in)",
       "WebFetch(domain:streamlit.gk2.secubox.in)",
-      "Bash(# Use SDK''s package tools cd /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/sdk # Copy the manually created IPK to SDK''s output cp /home/reepost/CyberMindStudio/secubox-openwrt/package/secubox/secubox-app-bonus/root/www/secubox-feed/secubox-app-ipblocklist_1.0.0-r1_all.ipk bin/packages/aarch64_cortex-a72/secubox/ # Regenerate index for that feed cd bin/packages/aarch64_cortex-a72/secubox ../../../../scripts/ipkg-make-index.sh . gzip -k -f Packages # Now rebuild the bonus package which will include everything cd /home/reepost/CyberMindStudio/secubox-openwrt ./secubox-tools/local-build.sh build secubox-app-bonus 2>&1)"
+      "Bash(# Use SDK''s package tools cd /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/sdk # Copy the manually created IPK to SDK''s output cp /home/reepost/CyberMindStudio/secubox-openwrt/package/secubox/secubox-app-bonus/root/www/secubox-feed/secubox-app-ipblocklist_1.0.0-r1_all.ipk bin/packages/aarch64_cortex-a72/secubox/ # Regenerate index for that feed cd bin/packages/aarch64_cortex-a72/secubox ../../../../scripts/ipkg-make-index.sh . gzip -k -f Packages # Now rebuild the bonus package which will include everything cd /home/reepost/CyberMindStudio/secubox-openwrt ./secubox-tools/local-build.sh build secubox-app-bonus 2>&1)",
+      "WebFetch(domain:portal.secubox.in)"
     ]
   }
 }
