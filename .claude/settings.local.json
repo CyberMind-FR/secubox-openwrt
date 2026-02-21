@@ -388,7 +388,8 @@
       "Bash(__NEW_LINE_755a36c329effceb__ echo \"\")",
       "Bash(__NEW_LINE_02bd2dd51e90cbf8__ echo \"\")",
       "Bash(__NEW_LINE_70eb6f3ae1c26753__ echo \"\")",
-      "WebFetch(domain:radio.gk2.secubox.in)"
+      "WebFetch(domain:radio.gk2.secubox.in)",
+      "WebFetch(domain:nextcloud-talk.readthedocs.io)"
     ]
   }
 }

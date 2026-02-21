@@ -10,6 +10,7 @@ var callStop = rpc.declare({ object: 'luci.turn', method: 'stop', expect: {} });
 var callEnable = rpc.declare({ object: 'luci.turn', method: 'enable', expect: {} });
 var callDisable = rpc.declare({ object: 'luci.turn', method: 'disable', expect: {} });
 var callSetupJitsi = rpc.declare({ object: 'luci.turn', method: 'setup_jitsi', params: ['jitsi_domain', 'turn_domain'], expect: {} });
+var callSetupNextcloud = rpc.declare({ object: 'luci.turn', method: 'setup_nextcloud', params: ['turn_domain', 'use_port_443'], expect: {} });
 var callSSL = rpc.declare({ object: 'luci.turn', method: 'ssl', params: ['domain'], expect: {} });
 var callExpose = rpc.declare({ object: 'luci.turn', method: 'expose', params: ['domain'], expect: {} });
 var callCredentials = rpc.declare({ object: 'luci.turn', method: 'credentials', params: ['username', 'ttl'], expect: {} });
@@ -74,6 +75,16 @@ return view.extend({
 					E('input', { 'type': 'text', 'id': 'turn-domain', 'placeholder': 'turn.secubox.in', 'class': 'sb-input' }),
 					E('button', { 'class': 'sb-btn sb-btn-primary', 'click': ui.createHandlerFn(this, 'handleSetupJitsi') }, 'Setup for Jitsi')
 				])
+			]),
+
+			E('div', { 'class': 'sb-section' }, [
+				E('h3', {}, 'Nextcloud Talk'),
+				E('p', {}, 'Configure TURN for Nextcloud Talk (uses port 443 for firewall compatibility)'),
+				E('div', { 'class': 'form-row' }, [
+					E('input', { 'type': 'text', 'id': 'nc-turn-domain', 'placeholder': 'turn.secubox.in', 'class': 'sb-input' }),
+					E('button', { 'class': 'sb-btn sb-btn-primary', 'click': ui.createHandlerFn(this, 'handleSetupNextcloud') }, 'Setup for Nextcloud')
+				]),
+				E('pre', { 'id': 'nextcloud-output', 'class': 'sb-output', 'style': 'display:none;' }, '')
 			]),
 
 			E('div', { 'class': 'sb-section' }, [
@@ -150,6 +161,22 @@ return view.extend({
 
 		return callSetupJitsi(jitsiDomain, turnDomain).then(function(res) {
 			ui.addNotification(null, E('p', 'TURN configured for Jitsi. Auth secret: ' + (res.auth_secret || 'generated')));
+		});
+	},
+
+	handleSetupNextcloud: function() {
+		var turnDomain = document.getElementById('nc-turn-domain').value || 'turn.secubox.in';
+
+		return callSetupNextcloud(turnDomain, 'yes').then(function(res) {
+			var output = document.getElementById('nextcloud-output');
+			output.style.display = 'block';
+			output.textContent = 'Nextcloud Talk Admin Settings:\n\n' +
+				'STUN servers: ' + turnDomain + ':' + (res.stun_port || 3478) + '\n' +
+				'TURN server: ' + turnDomain + ':' + (res.tls_port || 443) + '\n' +
+				'TURN secret: ' + (res.auth_secret || '') + '\n' +
+				'Protocol: UDP and TCP\n\n' +
+				'Note: Do NOT add turn:// or turns:// prefix';
+			ui.addNotification(null, E('p', 'TURN configured for Nextcloud Talk on port ' + (res.tls_port || 443)));
 		});
 	},
 

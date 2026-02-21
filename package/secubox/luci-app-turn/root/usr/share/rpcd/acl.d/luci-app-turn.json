@@ -9,7 +9,7 @@
 		},
 		"write": {
 			"ubus": {
-				"luci.turn": ["start", "stop", "restart", "enable", "disable", "setup_jitsi", "ssl", "expose", "credentials"]
+				"luci.turn": ["start", "stop", "restart", "enable", "disable", "setup_jitsi", "setup_nextcloud", "ssl", "expose", "credentials"]
 			},
 			"uci": ["turn"]
 		}

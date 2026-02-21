@@ -118,6 +118,93 @@ cmd_setup_jitsi() {
 	echo ""
 }
 
+#--- Setup TURN for Nextcloud Talk ---
+cmd_setup_nextcloud() {
+	local turn_domain="${1:-turn.secubox.in}"
+	local use_port_443="${2:-yes}"
+
+	log "Setting up TURN for Nextcloud Talk..."
+
+	# Enable TURN
+	uci set turn.main.enabled='1'
+	uci set turn.main.realm="$turn_domain"
+
+	# Nextcloud recommends port 443 for maximum firewall compatibility
+	if [ "$use_port_443" = "yes" ] || [ "$use_port_443" = "443" ]; then
+		uci set turn.main.tls_port='443'
+		log "Using port 443 for TURN TLS (recommended for Nextcloud)"
+	fi
+
+	# Auto-detect external IP
+	local external_ip=$(curl -s -4 https://ifconfig.me 2>/dev/null)
+	if [ -n "$external_ip" ]; then
+		uci set turn.main.external_ip="$external_ip"
+		log "Detected external IP: $external_ip"
+	fi
+
+	# Generate auth secret if not exists
+	local auth_secret=$(uci_get main.static_auth_secret "")
+	if [ -z "$auth_secret" ]; then
+		auth_secret=$(head -c 32 /dev/urandom | base64 | tr -d '/+=' | head -c 32)
+		uci set turn.main.static_auth_secret="$auth_secret"
+		log "Generated new auth secret"
+	fi
+
+	uci commit turn
+
+	# Setup SSL if using port 443
+	if [ "$use_port_443" = "yes" ] || [ "$use_port_443" = "443" ]; then
+		cmd_ssl "$turn_domain"
+	fi
+
+	# Start TURN server
+	/etc/init.d/turn restart
+	sleep 2
+
+	# Get configured ports
+	local stun_port=$(uci_get main.listening_port "3478")
+	local tls_port=$(uci_get main.tls_port "443")
+
+	log "TURN server configured for Nextcloud Talk!"
+	echo ""
+	echo -e "${CYAN}=== Nextcloud Talk Admin Settings ===${NC}"
+	echo ""
+	echo "Go to: Settings → Administration → Talk"
+	echo ""
+	echo -e "${YELLOW}STUN servers:${NC}"
+	echo "  ${turn_domain}:${stun_port}"
+	echo ""
+	echo -e "${YELLOW}TURN server:${NC}"
+	echo "  ${turn_domain}:${tls_port}"
+	echo ""
+	echo -e "${YELLOW}TURN secret:${NC}"
+	echo "  ${auth_secret}"
+	echo ""
+	echo -e "${YELLOW}Protocol:${NC}"
+	echo "  UDP and TCP"
+	echo ""
+	echo -e "${CYAN}=== Important Notes ===${NC}"
+	echo ""
+	echo "1. Do NOT add 'turn://' or 'turns://' prefix - just domain:port"
+	echo "2. Port 443 is recommended for firewall traversal"
+	echo "3. Both UDP and TCP should be enabled for maximum compatibility"
+	echo ""
+	echo -e "${CYAN}=== ICE Server Config (for testing) ===${NC}"
+	echo ""
+	echo "{"
+	echo "  \"iceServers\": ["
+	echo "    { \"urls\": \"stun:${turn_domain}:${stun_port}\" },"
+	echo "    {"
+	echo "      \"urls\": [\"turn:${turn_domain}:${tls_port}?transport=tcp\", \"turns:${turn_domain}:${tls_port}?transport=tcp\"],"
+	echo "      \"username\": \"<time-limited-username>\","
+	echo "      \"credential\": \"<hmac-credential>\""
+	echo "    }"
+	echo "  ]"
+	echo "}"
+	echo ""
+	echo -e "${GREEN}Use 'turnctl credentials [user] [ttl]' to generate time-limited credentials${NC}"
+}
+
 #--- Generate Credentials ---
 cmd_credentials() {
 	local username="${1:-$(date +%s)}"
@@ -343,6 +430,8 @@ ${GREEN}Service Commands:${NC}
 ${GREEN}Setup:${NC}
   setup-jitsi [domain] [turn-domain]
                       Configure TURN for Jitsi Meet
+  setup-nextcloud [turn-domain] [port-443]
+                      Configure TURN for Nextcloud Talk
   ssl [domain]        Setup SSL certificate
   expose [domain]     Configure DNS and firewall
 
@@ -354,6 +443,7 @@ ${GREEN}Operations:${NC}
 
 ${GREEN}Examples:${NC}
   turnctl setup-jitsi jitsi.secubox.in turn.secubox.in
+  turnctl setup-nextcloud turn.secubox.in
   turnctl ssl turn.secubox.in
   turnctl credentials webrtc-user 3600
   turnctl expose turn.secubox.in
@@ -375,6 +465,7 @@ case "$1" in
 	enable)       cmd_enable ;;
 	disable)      cmd_disable ;;
 	setup-jitsi)  shift; cmd_setup_jitsi "$@" ;;
+	setup-nextcloud) shift; cmd_setup_nextcloud "$@" ;;
 	ssl)          shift; cmd_ssl "$@" ;;
 	expose)       shift; cmd_expose "$@" ;;
 	credentials)  shift; cmd_credentials "$@" ;;

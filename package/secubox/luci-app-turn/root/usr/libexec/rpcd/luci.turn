@@ -7,7 +7,7 @@ uci_get() { uci -q get "turn.$1" 2>/dev/null || echo "$2"; }
 
 case "$1" in
 	list)
-		echo '{"status":{},"logs":{"lines":50},"test":{"host":""},"start":{},"stop":{},"restart":{},"enable":{},"disable":{},"setup_jitsi":{"jitsi_domain":"","turn_domain":""},"ssl":{"domain":""},"expose":{"domain":""},"credentials":{"username":"","ttl":86400}}'
+		echo '{"status":{},"logs":{"lines":50},"test":{"host":""},"start":{},"stop":{},"restart":{},"enable":{},"disable":{},"setup_jitsi":{"jitsi_domain":"","turn_domain":""},"setup_nextcloud":{"turn_domain":"","use_port_443":"yes"},"ssl":{"domain":""},"expose":{"domain":""},"credentials":{"username":"","ttl":86400}}'
 		;;
 	call)
 		case "$2" in
@@ -155,6 +155,27 @@ case "$1" in
 				json_add_string result "ok"
 				json_add_string turn_domain "$turn_domain"
 				json_add_string auth_secret "$auth_secret"
+				json_add_string output "$output"
+				json_dump
+				;;
+
+			setup_nextcloud)
+				read -r input
+				json_load "$input"
+				json_get_var turn_domain turn_domain "turn.secubox.in"
+				json_get_var use_port_443 use_port_443 "yes"
+
+				output=$(turnctl setup-nextcloud "$turn_domain" "$use_port_443" 2>&1)
+				local auth_secret=$(uci_get main.static_auth_secret "")
+				local tls_port=$(uci_get main.tls_port "443")
+				local stun_port=$(uci_get main.listening_port "3478")
+
+				json_init
+				json_add_string result "ok"
+				json_add_string turn_domain "$turn_domain"
+				json_add_string auth_secret "$auth_secret"
+				json_add_int stun_port "$stun_port"
+				json_add_int tls_port "$tls_port"
 				json_add_string output "$output"
 				json_dump
 				;;
