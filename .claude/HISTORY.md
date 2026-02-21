@@ -2773,3 +2773,23 @@ git checkout HEAD -- index.html
     - Files:
       - `secubox-app-matrix/`: Makefile, UCI config, init script, matrixctl (1279 lines)
       - `luci-app-matrix/`: RPCD handler (461 lines), ACL, menu, overview.js (377 lines), api.js (137 lines)
+
+55. **SecuBox KISS UI Full Regeneration (2026-02-21)**
+    - Complete KISS pattern rewrite of all core SecuBox LuCI views.
+    - Removed legacy dependencies: SecuNav, Theme, Cascade, SbHeader.
+    - All views now use inline CSS with dark mode support via `prefers-color-scheme`.
+    - Unified styling across all SecuBox views with KissTheme.wrap().
+    - **Files rewritten**:
+      - `modules.js`: 565→280 lines — Module grid with filter tabs, install/enable actions
+      - `monitoring.js`: 442→245 lines — Live SVG charts, system stats, 5s polling
+      - `alerts.js`: 451→255 lines — Alert timeline, severity filters, dismiss actions
+      - `settings.js`: 540→220 lines — UCI form with header chips
+      - `services.js`: 1334→410 lines — Services registry, provider status, health checks
+    - **Total reduction**: 3,332→1,410 lines (~58% less code)
+    - **CSS optimization**: services.js reduced from 680 to 170 lines of inline CSS
+    - All views share consistent styling patterns:
+      - `.sb-header` with chips for stats
+      - `.sb-grid` responsive card layouts
+      - `.sb-btn` action buttons with hover states
+      - Dark mode via CSS media queries
+    - No external CSS file dependencies — fully self-contained views

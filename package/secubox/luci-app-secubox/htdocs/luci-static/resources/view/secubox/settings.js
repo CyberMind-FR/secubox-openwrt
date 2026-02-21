@@ -3,538 +3,250 @@
 'require form';
 'require uci';
 'require ui';
-'require secubox/api as API';
-'require secubox-theme/theme as Theme';
-'require secubox/nav as SecuNav';
-'require secubox-portal/header as SbHeader';
+'require rpc';
 'require secubox/kiss-theme';
 
-// Load theme resources
-document.head.appendChild(E('link', {
-	'rel': 'stylesheet',
-	'type': 'text/css',
-	'href': L.resource('secubox-theme/secubox-theme.css')
-}));
-document.head.appendChild(E('link', {
-	'rel': 'stylesheet',
-	'type': 'text/css',
-	'href': L.resource('secubox-theme/themes/cyberpunk.css')
-}));
+/**
+ * SecuBox Settings - KISS Edition
+ * Configuration management with inline CSS
+ */
 
-var secuLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
-	(document.documentElement && document.documentElement.getAttribute('lang')) ||
-	(navigator.language ? navigator.language.split('-')[0] : 'en');
-Theme.init({ language: secuLang });
+var callGetStatus = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_status',
+	expect: {}
+});
 
-var THEME_CHOICES = ['dark', 'light', 'system', 'cyberpunk'];
-
-function sanitizeTheme(theme) {
-	return THEME_CHOICES.indexOf(theme) > -1 ? theme : 'dark';
-}
-
-function getMainValue(option, fallback) {
-	var val = uci.get('secubox', 'main', option);
-	return (val != null && val !== '') ? val : fallback;
-}
-
-function getMainBool(option, fallback) {
-	var defaultValue = fallback ? '1' : '0';
-	return getMainValue(option, defaultValue) !== '0';
-}
+var THEMES = ['dark', 'light', 'system', 'cyberpunk'];
 
 function getThemeLabel(theme) {
-	switch (theme) {
-		case 'light':
-			return _('Light');
-		case 'system':
-			return _('System Preference');
-		case 'cyberpunk':
-			return _('Cyberpunk');
-		default:
-			return _('Dark (Default)');
-	}
-}
-
-function getThemeDescription(theme) {
-	switch (theme) {
-		case 'light':
-			return _('Bright and clean layout for well-lit spaces.');
-		case 'system':
-			return _('Follows your OS or browser preference automatically.');
-		case 'cyberpunk':
-			return _('Neon purples, synth glow effects, and extra contrast.');
-		default:
-			return _('Modern neon-friendly dark interface (default).');
-	}
-}
-
-function describeThemeChoice(theme) {
-	var label = getThemeLabel(theme);
-	var desc = getThemeDescription(theme);
-	return desc ? label + ' - ' + desc : label;
-}
-
-function formatRefreshLabel(interval) {
-	switch (interval) {
-		case '15':
-			return _('Every 15 seconds');
-		case '30':
-			return _('Every 30 seconds');
-		case '60':
-			return _('Every minute');
-		case '0':
-			return _('Manual refresh only');
-		default:
-			return _('Every %s seconds').format(interval || '30');
-	}
-}
-
-function describeAutomation(autoDiscovery, autoStart) {
-	if (autoDiscovery && autoStart)
-		return _('New modules are discovered and auto-started.');
-	if (autoDiscovery && !autoStart)
-		return _('Discovery is on, but modules require manual start.');
-	if (!autoDiscovery && autoStart)
-		return _('Manual discovery, but auto-start once registered.');
-	return _('Fully manual provisioning workflow.');
+	var labels = { 'dark': 'Dark', 'light': 'Light', 'system': 'System', 'cyberpunk': 'Cyberpunk' };
+	return labels[theme] || 'Dark';
 }
 
 return view.extend({
 	load: function() {
 		return Promise.all([
 			uci.load('secubox'),
-			API.getStatus()
+			callGetStatus().catch(function() { return {}; })
 		]);
 	},
 
 	render: function(data) {
 		var status = data[1] || {};
-		var theme = sanitizeTheme(getMainValue('theme', 'dark'));
-		var versionPref = getMainValue('version', '0.1.2');
-		var refreshPref = getMainValue('refresh_interval', '30');
-		var notificationsPref = getMainBool('notifications', true);
-		var autoDiscoveryPref = getMainBool('auto_discovery', true);
-		var autoStartPref = getMainBool('auto_start', false);
-		var secuboxEnabled = (typeof status.enabled !== 'undefined') ? !!status.enabled : getMainBool('enabled', true);
-		var versionDisplay = (status.version && status.version !== 'unknown') ? status.version : versionPref;
-		var moduleCount = (status.modules_total || status.modules_total === 0) ? status.modules_total : '—';
+		var theme = uci.get('secubox', 'main', 'theme') || 'dark';
+		var version = status.version || uci.get('secubox', 'main', 'version') || '0.1.0';
+		var enabled = status.enabled !== undefined ? status.enabled : (uci.get('secubox', 'main', 'enabled') !== '0');
+		var modules = status.modules_total || 0;
+
 		var m, s, o;
 
-		// Create wrapper container with modern header
-		var versionChip = this.renderHeaderChip('🏷️', _('Version'), versionDisplay || '—', 'neutral');
-		var statusChip = this.renderHeaderChip('⚡', _('Status'), secuboxEnabled ? _('On') : _('Off'),
-			secuboxEnabled ? 'success' : 'danger');
-		var modulesChip = this.renderHeaderChip('🧩', _('Modules'), moduleCount);
-
-		var container = E('div', { 'class': 'secubox-settings-page' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/core/variables.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/secubox.css') }),
-
-			SecuNav.renderTabs('settings'),
-
-			E('div', { 'class': 'sh-page-header sh-page-header-lite' }, [
-				E('div', {}, [
-					E('h2', { 'class': 'sh-page-title' }, [
-						E('span', { 'class': 'sh-page-title-icon' }, '⚙️'),
-						'SecuBox Settings'
-					]),
-					E('p', { 'class': 'sh-page-subtitle' },
-						'Configure global settings for the SecuBox security suite')
-				]),
-				E('div', { 'class': 'sh-header-meta' }, [
-					versionChip,
-					statusChip,
-					modulesChip
-				])
-			]),
-			this.renderPreferenceShowcase({
-				theme: theme,
-				refresh: refreshPref,
-				notifications: notificationsPref,
-				autoDiscovery: autoDiscoveryPref,
-				autoStart: autoStartPref
-			})
-		]);
-
-		// Create form
 		m = new form.Map('secubox', null, null);
 
-		// General Settings Section
+		// General Settings
 		s = m.section(form.TypedSection, 'core', '🔧 General Settings');
 		s.anonymous = true;
 		s.addremove = false;
 
-		o = s.option(form.Flag, 'enabled', '🔌 Enable SecuBox',
-			'Master switch for all SecuBox modules. When disabled, all module services will be stopped.');
+		o = s.option(form.Flag, 'enabled', '🔌 Enable SecuBox', 'Master switch for all modules');
 		o.rmempty = false;
 		o.default = '1';
 
-		o = s.option(form.Value, 'version', '📦 Version',
-			'Current SecuBox version (read-only)');
+		o = s.option(form.Value, 'version', '📦 Version', 'Current version (read-only)');
 		o.readonly = true;
-		o.default = versionPref;
-		o.cfgvalue = function() {
-			return versionDisplay;
-		};
+		o.default = version;
+		o.cfgvalue = function() { return version; };
 
-		// Dashboard Settings Section
+		// Dashboard Settings
 		s = m.section(form.TypedSection, 'core', '📊 Dashboard Settings');
 		s.anonymous = true;
 		s.addremove = false;
 
-		o = s.option(form.ListValue, 'theme', '🎨 Dashboard Theme',
-			'Choose the visual theme for the SecuBox dashboard');
-		THEME_CHOICES.forEach(function(choice) {
-			o.value(choice, describeThemeChoice(choice));
-		});
+		o = s.option(form.ListValue, 'theme', '🎨 Theme', 'Visual theme for the dashboard');
+		THEMES.forEach(function(t) { o.value(t, getThemeLabel(t)); });
 		o.default = 'dark';
-		o.currentThemePref = theme;
-		o.renderWidget = function(section_id, option_index, cfgvalue) {
-			var widget = form.ListValue.prototype.renderWidget.apply(this, [section_id, option_index, cfgvalue]);
-			var select = widget.querySelector('select');
-			if (!select)
-				return widget;
 
-			var initialSelection = sanitizeTheme(this.currentThemePref || cfgvalue);
-			var lastPersisted = initialSelection;
-			var previewLabel = E('strong', { 'class': 'theme-preview-label' }, getThemeLabel(initialSelection));
-			var previewHint = E('p', {
-				'class': 'theme-preview-hint',
-				'style': 'margin: 4px 0; font-size: 0.9em;'
-			}, getThemeDescription(initialSelection));
-			var statusLine = E('p', {
-				'class': 'theme-preview-status',
-				'style': 'margin: 0; font-size: 0.85em; color: var(--sh-muted, #94a3b8);'
-			}, _('Synced with router preferences.'));
-
-			var previewPanel = E('div', {
-				'class': 'theme-preview-panel',
-				'style': 'margin-top: 10px; padding: 10px; border: 1px dashed var(--sh-border, #475569); border-radius: 10px;'
-			}, [
-				E('div', {
-					'class': 'theme-preview-title',
-					'style': 'font-weight: 600; font-size: 0.95em;'
-				}, _('Live preview & instant save')),
-				E('div', {
-					'class': 'theme-preview-current',
-					'style': 'margin-top: 6px; font-size: 0.95em;'
-				}, [
-					E('span', { 'style': 'color: var(--sh-muted, #94a3b8);' }, _('Current choice: ')),
-					previewLabel
-				]),
-				previewHint,
-				statusLine
-			]);
-
-			widget.appendChild(previewPanel);
-
-			function updatePreview(choice) {
-				previewLabel.textContent = getThemeLabel(choice);
-				previewHint.textContent = getThemeDescription(choice);
-			}
-
-			function setStatus(message) {
-				statusLine.textContent = message;
-			}
-
-			function persistTheme(choice) {
-				var targetTheme = sanitizeTheme(choice);
-				if (targetTheme === lastPersisted) {
-					Theme.applyTheme(targetTheme);
-					setStatus(_('Theme already active.'));
-					return Promise.resolve();
-				}
-
-				select.disabled = true;
-				setStatus(_('Saving theme preference...'));
-				return Theme.setTheme(targetTheme).then(function() {
-					lastPersisted = targetTheme;
-					setStatus(_('Theme updated and saved via RPC.'));
-				}).catch(function(err) {
-					console.error('Failed to save SecuBox theme via RPC', err);
-					ui.addNotification(null, E('p', _('Unable to update theme preference. Please try again.')), 'error');
-					select.value = lastPersisted;
-					updatePreview(lastPersisted);
-					Theme.applyTheme(lastPersisted);
-					setStatus(_('Reverted to previous theme.'));
-				}).finally(function() {
-					select.disabled = false;
-				});
-			}
-
-			select.addEventListener('change', function(ev) {
-				var nextTheme = sanitizeTheme(ev.target.value);
-				updatePreview(nextTheme);
-				persistTheme(nextTheme);
-			});
-
-			// Ensure preview reflects initial value from backend
-			updatePreview(initialSelection);
-			return widget;
-		};
-
-		o = s.option(form.ListValue, 'refresh_interval', '🔄 Auto-Refresh Interval',
-			'How often to refresh dashboard data automatically');
-		o.value('15', 'Every 15 seconds - High frequency');
-		o.value('30', 'Every 30 seconds - Default');
-		o.value('60', 'Every minute - Low frequency');
-		o.value('0', 'Disabled - Manual refresh only');
+		o = s.option(form.ListValue, 'refresh_interval', '🔄 Auto-Refresh', 'Dashboard refresh interval');
+		o.value('15', 'Every 15 seconds');
+		o.value('30', 'Every 30 seconds (default)');
+		o.value('60', 'Every minute');
+		o.value('0', 'Manual only');
 		o.default = '30';
 
-		o = s.option(form.Flag, 'show_system_stats', '📈 Show System Statistics',
-			'Display CPU, memory, disk usage on dashboard');
+		o = s.option(form.Flag, 'show_system_stats', '📈 System Statistics', 'Show CPU/Memory/Disk on dashboard');
 		o.default = '1';
 
-		o = s.option(form.Flag, 'show_module_grid', '🎯 Show Module Grid',
-			'Display installed modules grid on dashboard');
+		o = s.option(form.Flag, 'show_module_grid', '🎯 Module Grid', 'Show modules grid on dashboard');
 		o.default = '1';
 
-		// Module Management Section
+		// Module Management
 		s = m.section(form.TypedSection, 'core', '📦 Module Management');
 		s.anonymous = true;
 		s.addremove = false;
 
-		o = s.option(form.Flag, 'auto_discovery', '🔍 Auto Discovery',
-			'Automatically detect and register newly installed modules');
+		o = s.option(form.Flag, 'auto_discovery', '🔍 Auto Discovery', 'Detect new modules automatically');
 		o.default = '1';
 
-		o = s.option(form.Flag, 'auto_start', '▶️ Auto Start Modules',
-			'Automatically start module services when they are installed');
+		o = s.option(form.Flag, 'auto_start', '▶️ Auto Start', 'Start modules on install');
 		o.default = '0';
 
-		o = s.option(form.MultiValue, 'startup_modules', '🚀 Startup Modules',
-			'Modules to start automatically on system boot');
-		o.value('crowdsec', 'CrowdSec Dashboard');
-		o.value('netdata', 'Netdata Dashboard');
-		o.value('netifyd', 'Netifyd Dashboard');
-		o.value('wireguard', 'WireGuard Dashboard');
-		o.value('network_modes', 'Network Modes');
-		o.value('client_guardian', 'Client Guardian');
-		o.value('system_hub', 'System Hub');
-		o.value('bandwidth_manager', 'Bandwidth Manager');
-		o.value('auth_guardian', 'Auth Guardian');
-		o.value('media_flow', 'Media Flow');
-		o.value('vhost_manager', 'Virtual Host Manager');
-		o.value('traffic_shaper', 'Traffic Shaper');
-		o.value('cdn_cache', 'CDN Cache');
-		o.value('ksm_manager', 'KSM Manager');
-		o.optional = true;
-
-		// Notification Settings Section
-		s = m.section(form.TypedSection, 'core', '🔔 Notification Settings');
+		// Notification Settings
+		s = m.section(form.TypedSection, 'core', '🔔 Notifications');
 		s.anonymous = true;
 		s.addremove = false;
 
-		o = s.option(form.Flag, 'notifications', '🔔 Enable Notifications',
-			'Show browser notifications for important events');
+		o = s.option(form.Flag, 'notifications', '🔔 Enable Notifications', 'Browser notifications for events');
 		o.default = '1';
 
-		o = s.option(form.Flag, 'notify_module_start', '▶️ Module Start',
-			'Notify when a module service starts');
+		o = s.option(form.Flag, 'notify_module_start', '▶️ Module Start', 'Notify on module start');
 		o.default = '1';
 		o.depends('notifications', '1');
 
-		o = s.option(form.Flag, 'notify_module_stop', '⏹️ Module Stop',
-			'Notify when a module service stops');
+		o = s.option(form.Flag, 'notify_module_stop', '⏹️ Module Stop', 'Notify on module stop');
 		o.default = '1';
 		o.depends('notifications', '1');
 
-		o = s.option(form.Flag, 'notify_alerts', '⚠️ System Alerts',
-			'Notify when system alerts are generated');
+		o = s.option(form.Flag, 'notify_alerts', '⚠️ System Alerts', 'Notify on system alerts');
 		o.default = '1';
 		o.depends('notifications', '1');
 
-		o = s.option(form.Flag, 'notify_health_issues', '🏥 Health Issues',
-			'Notify when system health metrics exceed thresholds');
-		o.default = '1';
-		o.depends('notifications', '1');
-
-		// Alert Thresholds Section
+		// Alert Thresholds
 		s = m.section(form.TypedSection, 'diagnostics', '⚠️ Alert Thresholds');
 		s.anonymous = true;
 		s.addremove = false;
 
-		o = s.option(form.Value, 'cpu_warning', '⚡ CPU Warning Level (%)',
-			'Generate warning when CPU usage exceeds this threshold');
+		o = s.option(form.Value, 'cpu_warning', '⚡ CPU Warning (%)', 'CPU usage warning threshold');
 		o.datatype = 'range(1,100)';
 		o.default = '70';
 		o.placeholder = '70';
 
-		o = s.option(form.Value, 'cpu_critical', '🔥 CPU Critical Level (%)',
-			'Generate critical alert when CPU usage exceeds this threshold');
+		o = s.option(form.Value, 'cpu_critical', '🔥 CPU Critical (%)', 'CPU usage critical threshold');
 		o.datatype = 'range(1,100)';
 		o.default = '85';
 		o.placeholder = '85';
 
-		o = s.option(form.Value, 'memory_warning', '💾 Memory Warning Level (%)',
-			'Generate warning when memory usage exceeds this threshold');
+		o = s.option(form.Value, 'memory_warning', '💾 Memory Warning (%)', 'Memory usage warning threshold');
 		o.datatype = 'range(1,100)';
 		o.default = '70';
 		o.placeholder = '70';
 
-		o = s.option(form.Value, 'memory_critical', '🔴 Memory Critical Level (%)',
-			'Generate critical alert when memory usage exceeds this threshold');
+		o = s.option(form.Value, 'memory_critical', '🔴 Memory Critical (%)', 'Memory usage critical threshold');
 		o.datatype = 'range(1,100)';
 		o.default = '85';
 		o.placeholder = '85';
 
-		o = s.option(form.Value, 'disk_warning', '💿 Disk Warning Level (%)',
-			'Generate warning when disk usage exceeds this threshold');
+		o = s.option(form.Value, 'disk_warning', '💿 Disk Warning (%)', 'Disk usage warning threshold');
 		o.datatype = 'range(1,100)';
 		o.default = '70';
 		o.placeholder = '70';
 
-		o = s.option(form.Value, 'disk_critical', '⛔ Disk Critical Level (%)',
-			'Generate critical alert when disk usage exceeds this threshold');
+		o = s.option(form.Value, 'disk_critical', '⛔ Disk Critical (%)', 'Disk usage critical threshold');
 		o.datatype = 'range(1,100)';
 		o.default = '85';
 		o.placeholder = '85';
 
-		// Security Settings Section
-		s = m.section(form.TypedSection, 'security', '🔒 Security Settings');
+		// Security Settings
+		s = m.section(form.TypedSection, 'security', '🔒 Security');
 		s.anonymous = true;
 		s.addremove = false;
 
-		o = s.option(form.Flag, 'require_auth', '🔐 Require Authentication',
-			'Require authentication to access SecuBox dashboard');
+		o = s.option(form.Flag, 'require_auth', '🔐 Require Auth', 'Require authentication for dashboard');
 		o.default = '1';
 
-		o = s.option(form.Flag, 'audit_logging', '📝 Audit Logging',
-			'Log all configuration changes and module actions');
+		o = s.option(form.Flag, 'audit_logging', '📝 Audit Logging', 'Log configuration changes');
 		o.default = '1';
 
-		o = s.option(form.Value, 'audit_retention', '📅 Audit Log Retention (days)',
-			'Number of days to keep audit logs');
+		o = s.option(form.Value, 'audit_retention', '📅 Log Retention (days)', 'Days to keep audit logs');
 		o.datatype = 'uinteger';
 		o.default = '30';
 		o.depends('audit_logging', '1');
 
-		// Advanced Settings Section
-		s = m.section(form.TypedSection, 'core', '🛠️ Advanced Settings');
+		// Advanced Settings
+		s = m.section(form.TypedSection, 'core', '🛠️ Advanced');
 		s.anonymous = true;
 		s.addremove = false;
 
-		o = s.option(form.Flag, 'debug_mode', '🐛 Debug Mode',
-			'Enable debug logging (may impact performance)');
+		o = s.option(form.Flag, 'debug_mode', '🐛 Debug Mode', 'Enable debug logging');
 		o.default = '0';
 
-		o = s.option(form.Value, 'api_timeout', '⏱️ API Timeout (seconds)',
-			'Timeout for API requests to module backends');
+		o = s.option(form.Value, 'api_timeout', '⏱️ API Timeout (s)', 'Timeout for API requests');
 		o.datatype = 'range(5,300)';
 		o.default = '30';
 		o.placeholder = '30';
 
-		o = s.option(form.Value, 'max_modules', '📊 Maximum Modules',
-			'Maximum number of modules that can be installed');
-		o.datatype = 'range(1,50)';
-		o.default = '20';
-		o.placeholder = '20';
-
-		// Render form and append to container
-		return m.render().then(L.bind(function(formElement) {
-			var formWrapper = E('div', { 'class': 'secubox-settings-form' }, formElement);
-			container.appendChild(formWrapper);
-			this.bindStatusChip(formElement, statusChip);
-
-			// Add cyber-checkbox class to all checkboxes for proper styling
-			var checkboxes = formWrapper.querySelectorAll('input[type="checkbox"]');
-			checkboxes.forEach(function(checkbox) {
-				var wrapper = checkbox.parentNode;
-				if (wrapper && wrapper.classList) {
-					wrapper.classList.add('cyber-checkbox');
-				}
-			});
-
-			var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
-			wrapper.appendChild(SbHeader.render());
-			wrapper.appendChild(container);
-			return KissTheme.wrap(wrapper, 'admin/secubox/settings');
-		}, this));
-	},
-
-	renderHeaderChip: function(icon, label, value, tone) {
-		var display = (value == null ? '—' : value).toString();
-		return E('div', { 'class': 'sh-header-chip' + (tone ? ' ' + tone : '') }, [
-			E('span', { 'class': 'sh-chip-icon' }, icon),
-			E('div', { 'class': 'sh-chip-text' }, [
-				E('span', { 'class': 'sh-chip-label' }, label),
-				E('strong', {}, display)
-			])
-		]);
-	},
-
-	renderPreferenceShowcase: function(prefs) {
-		var cards = [
-			this.renderPreferenceCard('🎨', _('Theme Preference'),
-				getThemeLabel(prefs.theme),
-				getThemeDescription(prefs.theme)),
-			this.renderPreferenceCard('🔄', _('Auto Refresh'),
-				formatRefreshLabel(prefs.refresh),
-				_('Controls dashboard polling cadence.')),
-			this.renderPreferenceCard('🔔', _('Notifications'),
-				prefs.notifications ? _('Enabled') : _('Disabled'),
-				prefs.notifications ? _('Browser alerts will be shown for module events.') :
-					_('Silences browser alerts but logging continues.'),
-				prefs.notifications ? 'success' : 'danger'),
-			this.renderPreferenceCard('🤖', _('Automation'),
-				prefs.autoStart ? _('Auto-start On') : _('Manual start'),
-				describeAutomation(prefs.autoDiscovery, prefs.autoStart),
-				prefs.autoStart ? 'info' : '')
-		];
-
-		return E('div', { 'class': 'secubox-pref-wrapper' }, [
-			E('div', { 'class': 'secubox-pref-header' }, [
-				E('div', { 'class': 'secubox-pref-title-block' }, [
-					E('p', { 'class': 'secubox-pref-kicker' }, _('Configuration Snapshot')),
-					E('h3', { 'class': 'secubox-pref-title' }, _('Current Preferences')),
-					E('p', { 'class': 'secubox-pref-subtitle' },
-						_('Key SecuBox preferences at a glance.'))
-				])
-			]),
-			E('div', { 'class': 'secubox-pref-grid' },
-				cards.filter(function(card) { return !!card; }))
-		]);
-	},
-
-	renderPreferenceCard: function(icon, label, value, detail, tone) {
-		return E('div', { 'class': 'secubox-pref-card sh-card' + (tone ? ' ' + tone : '') }, [
-			E('div', { 'class': 'secubox-pref-icon' }, icon),
-			E('div', { 'class': 'secubox-pref-body' }, [
-				E('p', { 'class': 'secubox-pref-label' }, label),
-				E('p', { 'class': 'secubox-pref-value' }, value),
-				detail ? E('p', { 'class': 'secubox-pref-detail' }, detail) : null
-			])
-		]);
-	},
-
-	updateHeaderChip: function(chip, value, tone) {
-		if (!chip)
-			return;
-
-		var valueEl = chip.querySelector('strong');
-		if (valueEl)
-			valueEl.textContent = value;
-
-		chip.classList.remove('success', 'danger', 'warning', 'info', 'neutral');
-		if (tone)
-			chip.classList.add(tone);
-	},
-
-	bindStatusChip: function(formElement, chip) {
-		if (!formElement || !chip)
-			return;
-		var toggle = formElement.querySelector('input[name="cbid.secubox.secubox.enabled"]');
-		if (!toggle)
-			return;
-
 		var self = this;
-		var sync = function() {
-			var isOn = toggle.checked;
-			self.updateHeaderChip(chip, isOn ? _('On') : _('Off'), isOn ? 'success' : 'danger');
-		};
+		return m.render().then(function(formEl) {
+			var chips = [
+				{ icon: '🏷️', label: 'Version', value: version },
+				{ icon: '⚡', label: 'Status', value: enabled ? 'On' : 'Off', color: enabled ? '#22c55e' : '#ef4444' },
+				{ icon: '🧩', label: 'Modules', value: modules }
+			];
 
-		toggle.addEventListener('change', sync);
-		sync();
+			var header = E('div', { 'class': 'sb-header' }, [
+				E('div', {}, [
+					E('h2', { 'class': 'sb-title' }, '⚙️ SecuBox Settings'),
+					E('p', { 'class': 'sb-subtitle' }, 'Configure global settings')
+				]),
+				E('div', { 'class': 'sb-chips' }, chips.map(function(c) {
+					return E('div', { 'class': 'sb-chip' }, [
+						E('span', { 'class': 'sb-chip-icon' }, c.icon),
+						E('div', {}, [
+							E('span', { 'class': 'sb-chip-label' }, c.label),
+							E('strong', { 'style': c.color ? 'color:' + c.color : '' }, String(c.value))
+						])
+					]);
+				}))
+			]);
+
+			var content = E('div', { 'class': 'sb-settings' }, [
+				E('style', {}, self.getStyles()),
+				header,
+				E('div', { 'class': 'sb-form-wrapper' }, [formEl])
+			]);
+
+			return KissTheme.wrap(content, 'admin/secubox/settings');
+		});
+	},
+
+	getStyles: function() {
+		return `
+.sb-settings { max-width: 1000px; margin: 0 auto; padding: 20px; }
+.sb-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; padding: 20px; background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.sb-title { margin: 0; font-size: 24px; font-weight: 700; }
+.sb-subtitle { margin: 4px 0 0; color: #666; font-size: 14px; }
+.sb-chips { display: flex; gap: 12px; flex-wrap: wrap; }
+.sb-chip { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #f8f9fa; border: 1px solid #e5e7eb; border-radius: 8px; }
+.sb-chip-icon { font-size: 16px; }
+.sb-chip-label { font-size: 11px; color: #666; display: block; }
+.sb-form-wrapper { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.sb-form-wrapper .cbi-section { margin: 0 0 24px; padding: 0 0 24px; border-bottom: 1px solid #f0f0f0; }
+.sb-form-wrapper .cbi-section:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+.sb-form-wrapper .cbi-section-descr { display: none; }
+.sb-form-wrapper .cbi-section h3 { font-size: 16px; font-weight: 600; margin: 0 0 16px; padding: 0; }
+.sb-form-wrapper .cbi-value { display: flex; align-items: flex-start; gap: 12px; margin: 12px 0; padding: 0; }
+.sb-form-wrapper .cbi-value-title { flex: 0 0 200px; font-size: 13px; font-weight: 500; padding-top: 8px; }
+.sb-form-wrapper .cbi-value-field { flex: 1; }
+.sb-form-wrapper .cbi-value-description { font-size: 12px; color: #888; margin-top: 4px; }
+.sb-form-wrapper input[type="text"], .sb-form-wrapper select { padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px; width: 100%; max-width: 300px; }
+.sb-form-wrapper input[type="checkbox"] { width: 18px; height: 18px; }
+.sb-form-wrapper .cbi-button-save, .sb-form-wrapper .cbi-button-apply { background: #3b82f6; color: #fff; border: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+.sb-form-wrapper .cbi-button-save:hover, .sb-form-wrapper .cbi-button-apply:hover { background: #2563eb; }
+.sb-form-wrapper .cbi-button-reset { background: #f8f9fa; border: 1px solid #e5e7eb; padding: 10px 20px; border-radius: 6px; cursor: pointer; }
+@media (prefers-color-scheme: dark) {
+  .sb-settings { color: #e5e7eb; }
+  .sb-header, .sb-form-wrapper { background: #1f2937; }
+  .sb-chip { background: #374151; border-color: #4b5563; }
+  .sb-chip-label, .sb-subtitle { color: #9ca3af; }
+  .sb-form-wrapper .cbi-section { border-color: #374151; }
+  .sb-form-wrapper .cbi-value-title { color: #e5e7eb; }
+  .sb-form-wrapper .cbi-value-description { color: #9ca3af; }
+  .sb-form-wrapper input[type="text"], .sb-form-wrapper select { background: #374151; border-color: #4b5563; color: #e5e7eb; }
+  .sb-form-wrapper .cbi-button-reset { background: #374151; border-color: #4b5563; color: #e5e7eb; }
+}
+@media (max-width: 768px) {
+  .sb-form-wrapper .cbi-value { flex-direction: column; gap: 4px; }
+  .sb-form-wrapper .cbi-value-title { flex: none; padding-top: 0; }
+}
+`;
 	}
 });

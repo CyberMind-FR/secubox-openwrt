@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-20 (v0.24.0 - Matrix + SaaS Relay + Media Hub)_
+_Last updated: 2026-02-21 (v0.24.1 - KISS UI Regeneration)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -863,6 +863,20 @@ _Last updated: 2026-02-20 (v0.24.0 - Matrix + SaaS Relay + Media Hub)_
   - Created `luci-app-iot-guard` with KISS-style dashboard
   - 4 views: Overview, Devices, Policies, Settings
   - RPCD handler with 11 methods + public ACL for unauthenticated access
+
+### Just Completed (2026-02-21)
+
+- **SecuBox KISS UI Full Regeneration** — DONE (2026-02-21)
+  - Complete KISS pattern rewrite of 5 core LuCI views
+  - Removed legacy deps: SecuNav, Theme, Cascade, SbHeader
+  - All views now use inline CSS with dark mode support
+  - Files rewritten:
+    - `modules.js`: 565→280 lines — Module grid with filters
+    - `monitoring.js`: 442→245 lines — Live SVG charts
+    - `alerts.js`: 451→255 lines — Alert timeline with dismiss
+    - `settings.js`: 540→220 lines — UCI form with chips
+    - `services.js`: 1334→410 lines — Services registry
+  - Total reduction: 3,332→1,410 lines (~58% less code)
 
 ### Just Completed (2026-02-20 PM)
 
