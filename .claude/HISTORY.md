@@ -2793,3 +2793,57 @@ git checkout HEAD -- index.html
       - `.sb-btn` action buttons with hover states
       - Dark mode via CSS media queries
     - No external CSS file dependencies — fully self-contained views
+
+56. **Lyrion Stream Integration (2026-02-21)**
+    - New `secubox-app-squeezelite` package — Virtual Squeezebox player for Lyrion Music Server.
+    - New `secubox-app-lyrion-bridge` package — Audio bridge from Squeezelite to WebRadio/Icecast.
+    - **Squeezelite CLI (squeezelitectl)**:
+      - Service control: `start`, `stop`, `restart`, `enable`, `disable`, `status`
+      - Connection: `discover` (auto-find Lyrion), `connect [server]`, `disconnect`
+      - Audio: `devices` (list outputs), `output [device]` (set output)
+      - Streaming: `fifo enable [path]`, `fifo disable`, `fifo status`
+    - **Lyrion Bridge CLI (lyrionstreamctl)**:
+      - Setup: `setup [lyrion-ip]` — Full pipeline configuration
+      - Service: `start`, `stop`, `restart`, `enable`, `disable`, `status`
+      - Config: `config mount|bitrate|name|server [value]`
+      - Operations: `expose <domain>` (HAProxy+SSL), `logs [lines]`
+    - **Pipeline Architecture**:
+      - Lyrion Server → Squeezelite (FIFO output /tmp/squeezelite.pcm)
+      - Squeezelite → FFmpeg (PCM to MP3 encoding)
+      - FFmpeg → Icecast (HTTP streaming)
+    - **FFmpeg Bridge (ffmpeg-bridge.sh)**:
+      - Reads PCM from FIFO (s16le, 44100Hz, stereo)
+      - Encodes to MP3 (configurable bitrate, default 192kbps)
+      - Streams to Icecast mount point
+      - Auto-syncs metadata from Lyrion (artist/title)
+      - Auto-reconnect on stream errors
+    - UCI configs: `/etc/config/squeezelite`, `/etc/config/lyrion-bridge`
+    - Files:
+      - `secubox-app-squeezelite/`: Makefile, UCI config, init script, squeezelitectl
+      - `secubox-app-lyrion-bridge/`: Makefile, UCI config, init script, lyrionstreamctl, ffmpeg-bridge.sh
+
+57. **TURN Server for WebRTC (2026-02-21)**
+    - New `secubox-app-turn` package — coturn-based TURN/STUN server for NAT traversal.
+    - Required for Jitsi Meet when direct P2P connections fail (symmetric NAT, firewalls).
+    - **TURN CLI (turnctl)**:
+      - Service: `start`, `stop`, `restart`, `enable`, `disable`, `status`
+      - Setup: `setup-jitsi [jitsi-domain] [turn-domain]` — Configure for Jitsi Meet
+      - SSL: `ssl [domain]` — Generate/install SSL certificates
+      - Network: `expose [domain]` — Configure DNS and firewall rules
+      - Auth: `credentials [user] [ttl]` — Generate time-limited WebRTC credentials
+      - Testing: `test [host]` — Test TURN connectivity
+      - Logs: `logs [lines]` — View server logs
+    - **Ports**: 3478 (STUN/TURN), 5349 (TURN over TLS), 49152-65535 (media relay)
+    - **Security**: 
+      - HMAC-SHA1 time-limited credentials (REST API compatible)
+      - Blocked peer IPs: RFC1918, localhost, link-local
+      - Auto-generated static auth secret
+    - **Jitsi Integration**: Added `jitsctl setup-turn [domain]` command
+    - UCI config: `/etc/config/turn` (sections: main, ssl, limits, log)
+    - Files:
+      - `secubox-app-turn/Makefile`
+      - `secubox-app-turn/files/etc/config/turn`
+      - `secubox-app-turn/files/etc/init.d/turn`
+      - `secubox-app-turn/files/usr/sbin/turnctl`
+    - Modified:
+      - `secubox-app-jitsi/files/usr/sbin/jitsctl` — Added `setup-turn` command

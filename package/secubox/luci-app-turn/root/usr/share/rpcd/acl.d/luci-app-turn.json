@@ -1,0 +1,17 @@
+{
+	"luci-app-turn": {
+		"description": "Grant access to TURN server management",
+		"read": {
+			"ubus": {
+				"luci.turn": ["status", "logs", "test"]
+			},
+			"uci": ["turn"]
+		},
+		"write": {
+			"ubus": {
+				"luci.turn": ["start", "stop", "restart", "enable", "disable", "setup_jitsi", "ssl", "expose", "credentials"]
+			},
+			"uci": ["turn"]
+		}
+	}
+}

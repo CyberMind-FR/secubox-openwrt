@@ -1,0 +1,281 @@
+#!/bin/sh
+# Squeezelite Controller - SecuBox Virtual Player CLI
+
+set -e
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+log() { echo -e "${GREEN}[Squeezelite]${NC} $1"; }
+warn() { echo -e "${YELLOW}[Squeezelite]${NC} $1"; }
+error() { echo -e "${RED}[Squeezelite]${NC} $1" >&2; }
+
+uci_get() { uci -q get "squeezelite.$1" 2>/dev/null || echo "$2"; }
+
+#--- Status ---
+cmd_status() {
+	echo -e "${CYAN}=== Squeezelite Player Status ===${NC}"
+
+	local enabled=$(uci_get main.enabled 0)
+	local name=$(uci_get main.name "SecuBox-Player")
+	local server=$(uci_get main.server "")
+	local auto_discover=$(uci_get main.auto_discover 1)
+
+	echo "Player Name: $name"
+	echo "Enabled: $([ "$enabled" = "1" ] && echo "Yes" || echo "No")"
+
+	if pgrep -f "squeezelite" >/dev/null 2>&1; then
+		echo -e "Process: ${GREEN}Running${NC}"
+		local pid=$(pgrep -f "squeezelite" | head -1)
+		echo "PID: $pid"
+	else
+		echo -e "Process: ${RED}Stopped${NC}"
+	fi
+
+	echo ""
+	if [ -n "$server" ]; then
+		echo "Server: $server"
+	elif [ "$auto_discover" = "1" ]; then
+		echo "Server: Auto-discover (Lyrion on network)"
+	else
+		echo "Server: Not configured"
+	fi
+
+	# Check Lyrion availability
+	local lyrion_host=$(uci_get main.server "127.0.0.1")
+	if curl -s "http://${lyrion_host}:9000/status.html" >/dev/null 2>&1; then
+		echo -e "Lyrion Server: ${GREEN}Available${NC}"
+	else
+		echo -e "Lyrion Server: ${YELLOW}Not detected${NC}"
+	fi
+}
+
+#--- Discover Lyrion ---
+cmd_discover() {
+	log "Searching for Lyrion Music Server..."
+
+	# Check localhost first
+	if curl -s "http://127.0.0.1:9000/status.html" >/dev/null 2>&1; then
+		log "Found Lyrion at 127.0.0.1:9000"
+		echo "127.0.0.1"
+		return 0
+	fi
+
+	# Check LXC container
+	local lxc_ip=$(lxc-info -n lyrion 2>/dev/null | grep "IP:" | awk '{print $2}' | head -1)
+	if [ -n "$lxc_ip" ] && curl -s "http://${lxc_ip}:9000/status.html" >/dev/null 2>&1; then
+		log "Found Lyrion in LXC at $lxc_ip:9000"
+		echo "$lxc_ip"
+		return 0
+	fi
+
+	# Network scan for Slim Protocol (port 3483)
+	for ip in $(ip route | grep -oE "192\.168\.[0-9]+\.[0-9]+" | head -1 | sed 's/\.[0-9]*$/.1/'); do
+		local subnet=$(echo $ip | sed 's/\.[0-9]*$//')
+		for host in $(seq 1 254); do
+			local target="${subnet}.${host}"
+			if nc -z -w 1 "$target" 3483 2>/dev/null; then
+				log "Found Lyrion at $target"
+				echo "$target"
+				return 0
+			fi
+		done &
+	done
+	wait
+
+	error "No Lyrion server found"
+	return 1
+}
+
+#--- Connect to Server ---
+cmd_connect() {
+	local server="$1"
+
+	if [ -z "$server" ]; then
+		# Auto-discover
+		server=$(cmd_discover 2>/dev/null)
+		if [ -z "$server" ]; then
+			error "No server specified and auto-discover failed"
+			return 1
+		fi
+	fi
+
+	log "Connecting to Lyrion at $server..."
+
+	uci set squeezelite.main.server="$server"
+	uci set squeezelite.main.enabled='1'
+	uci commit squeezelite
+
+	/etc/init.d/squeezelite restart
+
+	sleep 2
+	if pgrep -f "squeezelite" >/dev/null 2>&1; then
+		log "Connected to $server"
+	else
+		error "Failed to connect"
+		return 1
+	fi
+}
+
+#--- Disconnect ---
+cmd_disconnect() {
+	log "Disconnecting..."
+	/etc/init.d/squeezelite stop
+	uci set squeezelite.main.enabled='0'
+	uci commit squeezelite
+	log "Disconnected"
+}
+
+#--- Enable FIFO Output (for streaming) ---
+cmd_fifo() {
+	case "$1" in
+		enable)
+			local path="${2:-/tmp/squeezelite.pcm}"
+			log "Enabling FIFO output to $path..."
+			uci set squeezelite.streaming.fifo_output='1'
+			uci set squeezelite.streaming.fifo_path="$path"
+			uci commit squeezelite
+
+			# Create FIFO
+			[ -p "$path" ] || mkfifo "$path"
+
+			log "FIFO enabled. Restart player to apply."
+			;;
+		disable)
+			log "Disabling FIFO output..."
+			uci set squeezelite.streaming.fifo_output='0'
+			uci commit squeezelite
+			log "FIFO disabled. Restart player to apply."
+			;;
+		status)
+			local enabled=$(uci_get streaming.fifo_output 0)
+			local path=$(uci_get streaming.fifo_path "/tmp/squeezelite.pcm")
+			echo "FIFO Output: $([ "$enabled" = "1" ] && echo "Enabled" || echo "Disabled")"
+			echo "FIFO Path: $path"
+			[ -p "$path" ] && echo "FIFO exists: Yes" || echo "FIFO exists: No"
+			;;
+		*)
+			echo "Usage: squeezelitectl fifo {enable|disable|status} [path]"
+			;;
+	esac
+}
+
+#--- List Audio Devices ---
+cmd_devices() {
+	echo -e "${CYAN}=== Audio Output Devices ===${NC}"
+	if command -v aplay >/dev/null 2>&1; then
+		aplay -L 2>/dev/null | grep -E "^(default|hw:|plughw:|sysdefault)" | head -20
+	else
+		echo "alsa-utils not installed"
+	fi
+}
+
+#--- Set Output Device ---
+cmd_output() {
+	local device="$1"
+
+	if [ -z "$device" ]; then
+		echo "Current output: $(uci_get main.output 'default')"
+		echo ""
+		echo "Available devices:"
+		cmd_devices
+		return
+	fi
+
+	log "Setting output to: $device"
+	uci set squeezelite.main.output="$device"
+	uci commit squeezelite
+	log "Output set. Restart player to apply."
+}
+
+#--- Service Control ---
+cmd_start() {
+	/etc/init.d/squeezelite start
+}
+
+cmd_stop() {
+	/etc/init.d/squeezelite stop
+}
+
+cmd_restart() {
+	/etc/init.d/squeezelite restart
+}
+
+cmd_enable() {
+	uci set squeezelite.main.enabled='1'
+	uci commit squeezelite
+	/etc/init.d/squeezelite enable
+	log "Squeezelite enabled"
+}
+
+cmd_disable() {
+	uci set squeezelite.main.enabled='0'
+	uci commit squeezelite
+	/etc/init.d/squeezelite disable
+	log "Squeezelite disabled"
+}
+
+#--- Help ---
+cmd_help() {
+	cat <<EOF
+${CYAN}Squeezelite Controller - SecuBox Virtual Player CLI${NC}
+
+Usage: squeezelitectl <command> [options]
+
+${GREEN}Service Commands:${NC}
+  status              Show player status
+  start               Start player
+  stop                Stop player
+  restart             Restart player
+  enable              Enable autostart
+  disable             Disable autostart
+
+${GREEN}Connection:${NC}
+  discover            Find Lyrion servers on network
+  connect [server]    Connect to Lyrion (auto-discover if no server)
+  disconnect          Disconnect from server
+
+${GREEN}Audio:${NC}
+  devices             List audio output devices
+  output [device]     Set/show output device
+
+${GREEN}Streaming:${NC}
+  fifo enable [path]  Enable FIFO output for streaming bridge
+  fifo disable        Disable FIFO output
+  fifo status         Show FIFO status
+
+${GREEN}Examples:${NC}
+  squeezelitectl connect 192.168.1.100
+  squeezelitectl fifo enable /tmp/lyrion.pcm
+  squeezelitectl output hw:0,0
+
+EOF
+}
+
+#--- Main ---
+case "$1" in
+	status)     cmd_status ;;
+	start)      cmd_start ;;
+	stop)       cmd_stop ;;
+	restart)    cmd_restart ;;
+	enable)     cmd_enable ;;
+	disable)    cmd_disable ;;
+	discover)   cmd_discover ;;
+	connect)    shift; cmd_connect "$@" ;;
+	disconnect) cmd_disconnect ;;
+	devices)    cmd_devices ;;
+	output)     shift; cmd_output "$@" ;;
+	fifo)       shift; cmd_fifo "$@" ;;
+	help|--help|-h|"")
+		cmd_help
+		;;
+	*)
+		error "Unknown command: $1"
+		cmd_help
+		exit 1
+		;;
+esac

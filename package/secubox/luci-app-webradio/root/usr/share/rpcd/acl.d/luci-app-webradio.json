@@ -3,13 +3,13 @@
 		"description": "Grant access to WebRadio configuration",
 		"read": {
 			"ubus": {
-				"luci.webradio": ["status", "listeners", "playlist", "logs", "schedules", "current_show", "list_jingles", "live_status", "list_audio_devices", "security_status"]
+				"luci.webradio": ["status", "listeners", "playlist", "logs", "schedules", "current_show", "list_jingles", "live_status", "list_audio_devices", "security_status", "bridge_status"]
 			},
 			"uci": ["icecast", "ezstream", "webradio", "darkice"]
 		},
 		"write": {
 			"ubus": {
-				"luci.webradio": ["start", "stop", "restart", "skip", "reload", "generate_playlist", "upload", "add_schedule", "update_schedule", "delete_schedule", "generate_cron", "play_jingle", "live_start", "live_stop", "install_crowdsec", "generate_ssl_cert"]
+				"luci.webradio": ["start", "stop", "restart", "skip", "reload", "generate_playlist", "upload", "add_schedule", "update_schedule", "delete_schedule", "generate_cron", "play_jingle", "live_start", "live_stop", "install_crowdsec", "generate_ssl_cert", "bridge_start", "bridge_stop", "bridge_setup"]
 			},
 			"uci": ["icecast", "ezstream", "webradio", "darkice"]
 		}

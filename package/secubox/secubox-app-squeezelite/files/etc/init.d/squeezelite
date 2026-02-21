@@ -1,0 +1,80 @@
+#!/bin/sh /etc/rc.common
+
+START=95
+STOP=10
+USE_PROCD=1
+
+PROG=/usr/bin/squeezelite
+
+start_service() {
+	local enabled name server server_port auto_discover output mac model
+	local sample_rate buffer_size codec_buffer alsa_buffer alsa_period
+	local fifo_output fifo_path
+
+	config_load squeezelite
+
+	config_get enabled main enabled '0'
+	[ "$enabled" != "1" ] && return 0
+
+	config_get name main name 'SecuBox-Player'
+	config_get server main server ''
+	config_get server_port main server_port '3483'
+	config_get auto_discover main auto_discover '1'
+	config_get output main output 'default'
+	config_get mac main mac ''
+	config_get model main model 'squeezelite'
+
+	config_get sample_rate audio sample_rate '44100'
+	config_get buffer_size audio buffer_size '2000'
+	config_get codec_buffer audio codec_buffer '2000'
+	config_get alsa_buffer audio alsa_buffer '80'
+	config_get alsa_period audio alsa_period '4'
+
+	config_get fifo_output streaming fifo_output '0'
+	config_get fifo_path streaming fifo_path '/tmp/squeezelite.pcm'
+
+	# Build command line
+	local cmd_args="-n $name -o $output"
+
+	# Server connection
+	if [ -n "$server" ]; then
+		cmd_args="$cmd_args -s $server:$server_port"
+	fi
+
+	# MAC address (auto-generate if not set)
+	if [ -n "$mac" ]; then
+		cmd_args="$cmd_args -m $mac"
+	fi
+
+	# Model name
+	cmd_args="$cmd_args -M $model"
+
+	# Audio settings
+	cmd_args="$cmd_args -r $sample_rate"
+	cmd_args="$cmd_args -b ${buffer_size}:${codec_buffer}"
+	cmd_args="$cmd_args -a ${alsa_buffer}:${alsa_period}"
+
+	# FIFO output for streaming bridge
+	if [ "$fifo_output" = "1" ]; then
+		# Create FIFO if not exists
+		[ -p "$fifo_path" ] || mkfifo "$fifo_path"
+		cmd_args="$cmd_args -o $fifo_path"
+	fi
+
+	procd_open_instance
+	procd_set_param command $PROG $cmd_args
+	procd_set_param respawn
+	procd_set_param stderr 1
+	procd_set_param pidfile /var/run/squeezelite.pid
+	procd_close_instance
+
+	logger -t squeezelite "Started: $name"
+}
+
+stop_service() {
+	logger -t squeezelite "Stopped"
+}
+
+service_triggers() {
+	procd_add_reload_trigger "squeezelite"
+}

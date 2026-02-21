@@ -45,7 +45,11 @@ case "$1" in
 	"list_audio_devices": {},
 	"security_status": {},
 	"install_crowdsec": {},
-	"generate_ssl_cert": {"hostname": ""}
+	"generate_ssl_cert": {"hostname": ""},
+	"bridge_status": {},
+	"bridge_start": {},
+	"bridge_stop": {},
+	"bridge_setup": {"lyrion_server": "127.0.0.1"}
 }
 EOF
 		;;
@@ -657,6 +661,101 @@ EOF
 					fi
 				else
 					echo '{"result": "failed", "error": "openssl not installed"}'
+				fi
+				;;
+
+			bridge_status)
+				json_init
+
+				# Check Lyrion server
+				local lyrion_server=$(uci -q get lyrion-bridge.main.lyrion_server 2>/dev/null || echo "127.0.0.1")
+				local lyrion_port=$(uci -q get lyrion-bridge.main.lyrion_port 2>/dev/null || echo "9000")
+				local lyrion_online=0
+				if curl -s "http://${lyrion_server}:${lyrion_port}/status.html" >/dev/null 2>&1; then
+					lyrion_online=1
+				fi
+
+				# Check Squeezelite
+				local squeezelite_running=0
+				pgrep -f "squeezelite" >/dev/null 2>&1 && squeezelite_running=1
+
+				# Check FFmpeg bridge
+				local ffmpeg_running=0
+				pgrep -f "ffmpeg-bridge.sh" >/dev/null 2>&1 && ffmpeg_running=1
+				pgrep -f "ffmpeg.*lyrion" >/dev/null 2>&1 && ffmpeg_running=1
+
+				# Check Icecast mount
+				local icecast_host=$(uci -q get lyrion-bridge.icecast.host 2>/dev/null || echo "127.0.0.1")
+				local icecast_port=$(uci -q get lyrion-bridge.icecast.port 2>/dev/null || echo "8000")
+				local icecast_mount=$(uci -q get lyrion-bridge.icecast.mount 2>/dev/null || echo "/lyrion")
+				local mount_active=0
+				local listeners=0
+				local title=""
+				local artist=""
+
+				local mount_status=$(curl -s "http://${icecast_host}:${icecast_port}/status-json.xsl" 2>/dev/null)
+				if [ -n "$mount_status" ]; then
+					local sources=$(echo "$mount_status" | jsonfilter -e '@.icestats.source' 2>/dev/null)
+					if echo "$sources" | grep -q "lyrion"; then
+						mount_active=1
+						listeners=$(echo "$mount_status" | jsonfilter -e '@.icestats.source[@.listenurl="*lyrion*"].listeners' 2>/dev/null || echo "0")
+					fi
+				fi
+
+				# Get now playing from Lyrion
+				if [ "$lyrion_online" = "1" ]; then
+					local np=$(curl -s "http://${lyrion_server}:${lyrion_port}/jsonrpc.js" \
+						-d '{"id":1,"method":"slim.request","params":["",[\"status\",\"-\",1,\"tags:adl\"]]}' 2>/dev/null)
+					if [ -n "$np" ]; then
+						title=$(echo "$np" | jsonfilter -e '@.result.playlist_loop[0].title' 2>/dev/null || echo "")
+						artist=$(echo "$np" | jsonfilter -e '@.result.playlist_loop[0].artist' 2>/dev/null || echo "")
+					fi
+				fi
+
+				json_add_boolean lyrion_online "$lyrion_online"
+				json_add_string lyrion_server "$lyrion_server"
+				json_add_boolean squeezelite_running "$squeezelite_running"
+				json_add_boolean ffmpeg_running "$ffmpeg_running"
+				json_add_boolean bridge_running "$ffmpeg_running"
+				json_add_boolean mount_active "$mount_active"
+				json_add_int listeners "$listeners"
+				json_add_string title "$title"
+				json_add_string artist "$artist"
+				json_add_string stream_url "http://${icecast_host}:${icecast_port}${icecast_mount}"
+
+				json_dump
+				;;
+
+			bridge_start)
+				if [ -x /usr/sbin/lyrionstreamctl ]; then
+					/usr/sbin/lyrionstreamctl start >/dev/null 2>&1
+					echo '{"result": "ok"}'
+				else
+					echo '{"result": "error", "error": "lyrionstreamctl not found"}'
+				fi
+				;;
+
+			bridge_stop)
+				if [ -x /usr/sbin/lyrionstreamctl ]; then
+					/usr/sbin/lyrionstreamctl stop >/dev/null 2>&1
+					echo '{"result": "ok"}'
+				else
+					echo '{"result": "error", "error": "lyrionstreamctl not found"}'
+				fi
+				;;
+
+			bridge_setup)
+				read -r input
+				local lyrion_server=$(echo "$input" | jsonfilter -e '@.lyrion_server' 2>/dev/null)
+				lyrion_server=${lyrion_server:-127.0.0.1}
+
+				if [ -x /usr/sbin/lyrionstreamctl ]; then
+					output=$(/usr/sbin/lyrionstreamctl setup "$lyrion_server" 2>&1)
+					local icecast_port=$(uci -q get lyrion-bridge.icecast.port 2>/dev/null || echo "8000")
+					local icecast_mount=$(uci -q get lyrion-bridge.icecast.mount 2>/dev/null || echo "/lyrion")
+					echo '{"result": "ok", "stream_url": "http://127.0.0.1:'"$icecast_port$icecast_mount"'"}'
+				else
+					echo '{"result": "error", "error": "lyrionstreamctl not found"}'
 				fi
 				;;
 

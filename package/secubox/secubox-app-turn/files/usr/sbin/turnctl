@@ -1,0 +1,391 @@
+#!/bin/sh
+# TURN Server Controller - SecuBox WebRTC NAT Traversal
+
+set -e
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+log() { echo -e "${GREEN}[TURN]${NC} $1"; }
+warn() { echo -e "${YELLOW}[TURN]${NC} $1"; }
+error() { echo -e "${RED}[TURN]${NC} $1" >&2; }
+
+uci_get() { uci -q get "turn.$1" 2>/dev/null || echo "$2"; }
+
+#--- Status ---
+cmd_status() {
+	echo -e "${CYAN}=== TURN Server Status ===${NC}"
+
+	local enabled=$(uci_get main.enabled 0)
+	local realm=$(uci_get main.realm "turn.secubox.in")
+	local port=$(uci_get main.listening_port "3478")
+	local tls_port=$(uci_get main.tls_port "5349")
+	local external_ip=$(uci_get main.external_ip "")
+
+	echo "Enabled: $([ "$enabled" = "1" ] && echo "Yes" || echo "No")"
+	echo "Realm: $realm"
+	echo ""
+
+	if pgrep -f "turnserver" >/dev/null 2>&1; then
+		echo -e "Process: ${GREEN}Running${NC}"
+		local pid=$(pgrep -f "turnserver" | head -1)
+		echo "PID: $pid"
+	else
+		echo -e "Process: ${RED}Stopped${NC}"
+	fi
+
+	echo ""
+	echo -e "${CYAN}Ports:${NC}"
+	echo "  TURN/STUN (UDP/TCP): $port"
+	echo "  TURN TLS: $tls_port"
+
+	echo ""
+	echo -e "${CYAN}Network:${NC}"
+	if [ -n "$external_ip" ]; then
+		echo "  External IP: $external_ip"
+	else
+		local detected=$(curl -s -4 https://ifconfig.me 2>/dev/null || echo "unknown")
+		echo "  External IP: $detected (auto-detected)"
+	fi
+
+	# Check if ports are open
+	echo ""
+	echo -e "${CYAN}Port Status:${NC}"
+	if grep -q ":0D92 " /proc/net/udp 2>/dev/null; then
+		echo -e "  UDP $port: ${GREEN}Listening${NC}"
+	else
+		echo -e "  UDP $port: ${YELLOW}Not listening${NC}"
+	fi
+
+	if grep -q ":14E5 " /proc/net/tcp 2>/dev/null; then
+		echo -e "  TCP $tls_port: ${GREEN}Listening${NC}"
+	else
+		echo -e "  TCP $tls_port: ${YELLOW}Not listening${NC}"
+	fi
+}
+
+#--- Setup TURN for Jitsi ---
+cmd_setup_jitsi() {
+	local domain="${1:-jitsi.secubox.in}"
+	local turn_domain="${2:-turn.secubox.in}"
+
+	log "Setting up TURN for Jitsi Meet..."
+
+	# Enable TURN
+	uci set turn.main.enabled='1'
+	uci set turn.main.realm="$turn_domain"
+
+	# Auto-detect external IP
+	local external_ip=$(curl -s -4 https://ifconfig.me 2>/dev/null)
+	if [ -n "$external_ip" ]; then
+		uci set turn.main.external_ip="$external_ip"
+		log "Detected external IP: $external_ip"
+	fi
+
+	uci commit turn
+
+	# Start TURN server
+	/etc/init.d/turn restart
+	sleep 2
+
+	# Get auth secret
+	local auth_secret=$(uci_get main.static_auth_secret "")
+
+	log "TURN server configured!"
+	echo ""
+	echo -e "${CYAN}Jitsi Meet Configuration:${NC}"
+	echo ""
+	echo "Add to your Jitsi config.js:"
+	echo ""
+	echo "  p2p: {"
+	echo "    stunServers: ["
+	echo "      { urls: 'stun:${turn_domain}:3478' }"
+	echo "    ]"
+	echo "  },"
+	echo ""
+	echo "Add to your Prosody config:"
+	echo ""
+	echo "  turncredentials_secret = \"${auth_secret}\";"
+	echo "  turncredentials = {"
+	echo "    { type = \"stun\", host = \"${turn_domain}\", port = \"3478\" },"
+	echo "    { type = \"turn\", host = \"${turn_domain}\", port = \"3478\", transport = \"udp\" },"
+	echo "    { type = \"turns\", host = \"${turn_domain}\", port = \"5349\", transport = \"tcp\" }"
+	echo "  };"
+	echo ""
+}
+
+#--- Generate Credentials ---
+cmd_credentials() {
+	local username="${1:-$(date +%s)}"
+	local ttl="${2:-86400}"
+
+	local auth_secret=$(uci_get main.static_auth_secret "")
+	if [ -z "$auth_secret" ]; then
+		error "No auth secret configured. Run 'turnctl setup-jitsi' first."
+		return 1
+	fi
+
+	local realm=$(uci_get main.realm "turn.secubox.in")
+	local timestamp=$(($(date +%s) + ttl))
+	local temp_username="${timestamp}:${username}"
+
+	# HMAC-SHA1 credential generation
+	local password=$(echo -n "$temp_username" | openssl dgst -sha1 -hmac "$auth_secret" -binary | base64)
+
+	echo -e "${CYAN}=== TURN Credentials ===${NC}"
+	echo ""
+	echo "Realm: $realm"
+	echo "Username: $temp_username"
+	echo "Password: $password"
+	echo "TTL: ${ttl}s (expires: $(date -d @$timestamp 2>/dev/null || date -r $timestamp))"
+	echo ""
+	echo "ICE Server config:"
+	echo "{"
+	echo "  \"urls\": [\"turn:${realm}:3478\", \"turn:${realm}:3478?transport=tcp\"],"
+	echo "  \"username\": \"${temp_username}\","
+	echo "  \"credential\": \"${password}\""
+	echo "}"
+}
+
+#--- Test TURN Server ---
+cmd_test() {
+	local host="${1:-$(uci_get main.realm "turn.secubox.in")}"
+
+	log "Testing TURN server at $host..."
+
+	# Test STUN binding
+	echo ""
+	echo -e "${CYAN}STUN Test:${NC}"
+	if command -v stun-client >/dev/null 2>&1; then
+		stun-client "$host" 3478 2>&1 | head -5
+	elif command -v nc >/dev/null 2>&1; then
+		if nc -u -z -w 2 "$host" 3478 2>/dev/null; then
+			echo -e "  UDP 3478: ${GREEN}Reachable${NC}"
+		else
+			echo -e "  UDP 3478: ${RED}Unreachable${NC}"
+		fi
+
+		if nc -z -w 2 "$host" 5349 2>/dev/null; then
+			echo -e "  TCP 5349: ${GREEN}Reachable${NC}"
+		else
+			echo -e "  TCP 5349: ${RED}Unreachable${NC}"
+		fi
+	else
+		warn "No test tools available (stun-client or nc)"
+	fi
+}
+
+#--- Expose via HAProxy ---
+cmd_expose() {
+	local domain="${1:-turn.secubox.in}"
+
+	log "Exposing TURN on $domain..."
+
+	# TURN typically needs direct port access, not reverse proxy
+	# But we can expose the REST API or add DNS records
+
+	if command -v dnsctl >/dev/null 2>&1; then
+		local external_ip=$(uci_get main.external_ip "")
+		if [ -z "$external_ip" ]; then
+			external_ip=$(curl -s -4 https://ifconfig.me 2>/dev/null)
+		fi
+
+		if [ -n "$external_ip" ]; then
+			log "Adding DNS record: $domain -> $external_ip"
+			dnsctl record add "$domain" A "$external_ip"
+		fi
+	fi
+
+	# Open firewall ports
+	log "Configuring firewall..."
+
+	# Check if rules already exist
+	if ! uci -q get firewall.turn_stun >/dev/null 2>&1; then
+		uci add firewall rule
+		uci rename firewall.@rule[-1]='turn_stun'
+		uci set firewall.turn_stun.name='Allow-TURN-STUN'
+		uci set firewall.turn_stun.src='wan'
+		uci set firewall.turn_stun.dest_port='3478'
+		uci set firewall.turn_stun.proto='udp tcp'
+		uci set firewall.turn_stun.target='ACCEPT'
+
+		uci add firewall rule
+		uci rename firewall.@rule[-1]='turn_tls'
+		uci set firewall.turn_tls.name='Allow-TURN-TLS'
+		uci set firewall.turn_tls.src='wan'
+		uci set firewall.turn_tls.dest_port='5349'
+		uci set firewall.turn_tls.proto='tcp'
+		uci set firewall.turn_tls.target='ACCEPT'
+
+		uci add firewall rule
+		uci rename firewall.@rule[-1]='turn_relay'
+		uci set firewall.turn_relay.name='Allow-TURN-Relay'
+		uci set firewall.turn_relay.src='wan'
+		uci set firewall.turn_relay.dest_port='49152-65535'
+		uci set firewall.turn_relay.proto='udp'
+		uci set firewall.turn_relay.target='ACCEPT'
+
+		uci commit firewall
+		/etc/init.d/firewall reload
+		log "Firewall rules added"
+	else
+		log "Firewall rules already exist"
+	fi
+
+	log "TURN server exposed on $domain"
+}
+
+#--- SSL Certificate ---
+cmd_ssl() {
+	local domain="${1:-$(uci_get main.realm "turn.secubox.in")}"
+
+	log "Setting up SSL for TURN server..."
+
+	local cert_dir="/etc/ssl/turn"
+	mkdir -p "$cert_dir"
+
+	# Try to use ACME cert from HAProxy
+	if [ -f "/etc/ssl/acme/${domain}.crt" ]; then
+		cp "/etc/ssl/acme/${domain}.crt" "$cert_dir/cert.pem"
+		cp "/etc/ssl/acme/${domain}.key" "$cert_dir/key.pem"
+		log "Using ACME certificate for $domain"
+	elif command -v acme.sh >/dev/null 2>&1; then
+		log "Requesting certificate via ACME..."
+		acme.sh --issue -d "$domain" --standalone --httpport 8888 || true
+		if [ -f "$HOME/.acme.sh/${domain}/${domain}.cer" ]; then
+			cp "$HOME/.acme.sh/${domain}/${domain}.cer" "$cert_dir/cert.pem"
+			cp "$HOME/.acme.sh/${domain}/${domain}.key" "$cert_dir/key.pem"
+			log "Certificate obtained"
+		fi
+	else
+		# Generate self-signed
+		log "Generating self-signed certificate..."
+		openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+			-keyout "$cert_dir/key.pem" \
+			-out "$cert_dir/cert.pem" \
+			-subj "/CN=$domain" 2>/dev/null
+		warn "Using self-signed certificate (clients may need to trust it)"
+	fi
+
+	uci set turn.ssl.cert_path="$cert_dir/cert.pem"
+	uci set turn.ssl.key_path="$cert_dir/key.pem"
+	uci commit turn
+
+	# Restart to pick up new certs
+	/etc/init.d/turn restart
+
+	log "SSL configured"
+}
+
+#--- Service Control ---
+cmd_start() {
+	/etc/init.d/turn start
+	log "TURN server started"
+}
+
+cmd_stop() {
+	/etc/init.d/turn stop
+	log "TURN server stopped"
+}
+
+cmd_restart() {
+	/etc/init.d/turn restart
+	log "TURN server restarted"
+}
+
+cmd_enable() {
+	uci set turn.main.enabled='1'
+	uci commit turn
+	/etc/init.d/turn enable
+	log "TURN server enabled"
+}
+
+cmd_disable() {
+	uci set turn.main.enabled='0'
+	uci commit turn
+	/etc/init.d/turn disable
+	log "TURN server disabled"
+}
+
+#--- Logs ---
+cmd_logs() {
+	local lines="${1:-50}"
+	local log_file=$(uci_get log.log_file "/var/log/turnserver.log")
+
+	if [ -f "$log_file" ]; then
+		tail -n "$lines" "$log_file"
+	else
+		echo "No log file at $log_file"
+		echo "Checking syslog..."
+		logread | grep -i turn | tail -n "$lines"
+	fi
+}
+
+#--- Help ---
+cmd_help() {
+	cat <<EOF
+${CYAN}TURN Server Controller - SecuBox WebRTC NAT Traversal${NC}
+
+Usage: turnctl <command> [options]
+
+${GREEN}Service Commands:${NC}
+  status              Show server status
+  start               Start TURN server
+  stop                Stop TURN server
+  restart             Restart TURN server
+  enable              Enable autostart
+  disable             Disable autostart
+
+${GREEN}Setup:${NC}
+  setup-jitsi [domain] [turn-domain]
+                      Configure TURN for Jitsi Meet
+  ssl [domain]        Setup SSL certificate
+  expose [domain]     Configure DNS and firewall
+
+${GREEN}Operations:${NC}
+  credentials [user] [ttl]
+                      Generate temp credentials (default: 24h)
+  test [host]         Test TURN connectivity
+  logs [lines]        View server logs
+
+${GREEN}Examples:${NC}
+  turnctl setup-jitsi jitsi.secubox.in turn.secubox.in
+  turnctl ssl turn.secubox.in
+  turnctl credentials webrtc-user 3600
+  turnctl expose turn.secubox.in
+
+${GREEN}Ports Used:${NC}
+  3478/udp,tcp  STUN/TURN
+  5349/tcp      TURN over TLS
+  49152-65535   Media relay (UDP)
+
+EOF
+}
+
+#--- Main ---
+case "$1" in
+	status)       cmd_status ;;
+	start)        cmd_start ;;
+	stop)         cmd_stop ;;
+	restart)      cmd_restart ;;
+	enable)       cmd_enable ;;
+	disable)      cmd_disable ;;
+	setup-jitsi)  shift; cmd_setup_jitsi "$@" ;;
+	ssl)          shift; cmd_ssl "$@" ;;
+	expose)       shift; cmd_expose "$@" ;;
+	credentials)  shift; cmd_credentials "$@" ;;
+	test)         shift; cmd_test "$@" ;;
+	logs)         shift; cmd_logs "$@" ;;
+	help|--help|-h|"")
+		cmd_help
+		;;
+	*)
+		error "Unknown command: $1"
+		cmd_help
+		exit 1
+		;;
+esac
