@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-02-20_
+_Last updated: 2026-02-21_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -2847,3 +2847,84 @@ git checkout HEAD -- index.html
       - `secubox-app-turn/files/usr/sbin/turnctl`
     - Modified:
       - `secubox-app-jitsi/files/usr/sbin/jitsctl` — Added `setup-turn` command
+
+58. **WebRadio LuCI & Lyrion Bridge UI (2026-02-21)**
+    - New `luci-app-webradio/view/webradio/lyrion.js` — Lyrion Stream Bridge dashboard.
+    - **Lyrion Bridge Tab Features**:
+      - Architecture diagram: Lyrion → Squeezelite → FIFO → FFmpeg → Icecast
+      - Live status cards: Lyrion online, Squeezelite running, FFmpeg encoding, Mount active
+      - Now Playing display with artist/title from Icecast metadata
+      - Listener count from Icecast stats
+      - Quick Setup: One-click pipeline configuration with Lyrion IP input
+      - Bridge Control: Start/Stop buttons for the streaming pipeline
+      - Stream URL: Direct link + embedded HTML5 audio player
+    - **RPCD Methods Added** (luci.webradio):
+      - `bridge_status` — Get Lyrion/Squeezelite/FFmpeg/Mount status
+      - `bridge_start` — Start streaming pipeline
+      - `bridge_stop` — Stop streaming pipeline
+      - `bridge_setup [lyrion_server]` — Configure full pipeline
+    - ACL updated: `luci-app-webradio.json` with bridge methods
+    - Menu updated: Added "Lyrion Bridge" tab (order 80)
+    - Files:
+      - `luci-app-webradio/htdocs/luci-static/resources/view/webradio/lyrion.js` (196 lines)
+      - Modified: `luci.webradio` RPCD handler, ACL, menu
+
+59. **TURN Server LuCI Dashboard (2026-02-21)**
+    - New `luci-app-turn` package — Full TURN server management UI.
+    - **Overview Tab Features**:
+      - Status chips: Running/Stopped, Realm, Port
+      - Service Control: Start, Stop, Enable/Disable Autostart
+      - Port Status: UDP 3478, TCP 5349 with listening indicators
+      - External IP detection for STUN responses
+      - Jitsi Integration: One-click setup with domain inputs
+      - SSL & Expose: Certificate generation and DNS/firewall configuration
+      - Credential Generator: Time-limited TURN credentials (JSON output)
+      - Logs viewer: Real-time server logs
+    - **RPCD Handler** (luci.turn):
+      - `status` — Service and port status
+      - `start/stop/enable/disable` — Service control
+      - `setup_jitsi [jitsi_domain] [turn_domain]` — Jitsi configuration
+      - `ssl [domain]` — SSL certificate setup
+      - `expose [domain]` — DNS and firewall configuration
+      - `credentials [username] [ttl]` — Generate WebRTC credentials
+      - `logs [lines]` — Fetch server logs
+    - KISS UI pattern with inline CSS and dark mode support
+    - Files:
+      - `luci-app-turn/Makefile`
+      - `luci-app-turn/htdocs/luci-static/resources/view/turn/overview.js` (229 lines)
+      - `luci-app-turn/root/usr/libexec/rpcd/luci.turn` (shell RPCD handler)
+      - `luci-app-turn/root/usr/share/luci/menu.d/luci-app-turn.json`
+      - `luci-app-turn/root/usr/share/rpcd/acl.d/luci-app-turn.json`
+
+60. **WebRadio HTTPS Stream via HAProxy (2026-02-21)**
+    - Configured `stream.gk2.secubox.in` for HTTPS audio streaming.
+    - **Problem Solved**: Mixed content blocking — HTTPS player cannot load HTTP audio.
+    - **HAProxy Configuration**:
+      - New backend `icecast_lyrion` with HTTP/1.1 forced (`proto=h1`, `http_reuse=never`)
+      - Vhost `stream.gk2.secubox.in` → Icecast port 8000 with WAF bypass
+      - Let's Encrypt SSL certificate via ACME webroot mode
+    - **Web Player Updated** (`/srv/webradio/player/index.html`):
+      - Stream URL: `https://stream.gk2.secubox.in/lyrion`
+      - Status JSON: `https://stream.gk2.secubox.in/status-json.xsl`
+      - Removes mixed content errors in browser
+    - **Portal Integration**: WebRadio added to SecuBox portal (Cloud & Media section)
+    - **Endpoints**:
+      - `https://radio.gk2.secubox.in/` — Web player interface
+      - `https://stream.gk2.secubox.in/lyrion` — HTTPS audio stream
+      - `https://stream.gk2.secubox.in/status-json.xsl` — Icecast metadata
+
+61. **Release v0.26.0 (2026-02-21)**
+    - Tagged and pushed v0.26.0 with all WebRadio/TURN/Lyrion features.
+    - **New Packages**:
+      - `luci-app-webradio` — Web radio management + Lyrion bridge tab
+      - `luci-app-turn` — TURN/STUN server UI for WebRTC
+      - `secubox-app-lyrion-bridge` — Lyrion → Icecast streaming pipeline
+      - `secubox-app-squeezelite` — Virtual Squeezebox audio player
+      - `secubox-app-turn` — TURN server with Jitsi integration
+      - `secubox-app-webradio` — Icecast web radio server
+    - **Highlights**:
+      - HTTPS streaming via HAProxy (stream.gk2.secubox.in)
+      - Schedule-based programming with jingles
+      - CrowdSec security integration
+      - Time-limited TURN credentials for WebRTC
+    - 31 files changed, 3542 insertions
