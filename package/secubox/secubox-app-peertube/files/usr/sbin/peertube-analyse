@@ -187,8 +187,8 @@ extract_metadata() {
             webpage_url: .webpage_url,
             thumbnail: .thumbnail,
             language: .language,
-            subtitles: (.subtitles | keys),
-            automatic_captions: (.automatic_captions | keys)
+            subtitles: ((.subtitles // {}) | keys),
+            automatic_captions: ((.automatic_captions // {}) | keys)
         }' "$meta_file.tmp" > "$meta_file"
         rm -f "$meta_file.tmp"
 
