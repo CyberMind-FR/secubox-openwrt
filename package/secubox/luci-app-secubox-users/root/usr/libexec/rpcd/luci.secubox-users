@@ -168,9 +168,139 @@ update_password() {
 	fi
 }
 
+# Portal authentication - verify username/password
+authenticate() {
+	read -r input
+	local username=$(echo "$input" | jsonfilter -e '@.username' 2>/dev/null)
+	local password=$(echo "$input" | jsonfilter -e '@.password' 2>/dev/null)
+
+	if [ -z "$username" ] || [ -z "$password" ]; then
+		echo '{"success":false,"error":"Username and password required"}'
+		return
+	fi
+
+	# Check user exists and is enabled
+	local enabled=$(uci -q get ${CONFIG}.${username}.enabled)
+	if [ "$enabled" != "1" ]; then
+		echo '{"success":false,"error":"Invalid credentials"}'
+		return
+	fi
+
+	# Get stored hash and verify
+	local stored_hash=$(uci -q get ${CONFIG}.${username}.password_hash)
+	local input_hash=$(echo -n "$password" | sha256sum | cut -d' ' -f1)
+
+	if [ "$stored_hash" = "$input_hash" ]; then
+		local email=$(uci -q get ${CONFIG}.${username}.email)
+		local token=$(head -c 32 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 32)
+		local expiry=$(($(date +%s) + 86400))
+
+		# Store session
+		mkdir -p /tmp/secubox-sessions
+		echo "${username}:${expiry}" > /tmp/secubox-sessions/${token}
+
+		# Log success
+		logger -t secubox-portal "Login success: $username"
+
+		echo "{\"success\":true,\"username\":\"$username\",\"email\":\"$email\",\"token\":\"$token\"}"
+	else
+		logger -t secubox-portal "Login failed: $username"
+		echo '{"success":false,"error":"Invalid credentials"}'
+	fi
+}
+
+# Password recovery - send reset email
+recover() {
+	read -r input
+	local email=$(echo "$input" | jsonfilter -e '@.email' 2>/dev/null)
+
+	if [ -z "$email" ]; then
+		echo '{"success":false,"error":"Email required"}'
+		return
+	fi
+
+	# Find user by email
+	local username=""
+	for user in $(uci show ${CONFIG} 2>/dev/null | grep "=user$" | cut -d. -f2 | cut -d= -f1); do
+		local user_email=$(uci -q get ${CONFIG}.${user}.email)
+		if [ "$user_email" = "$email" ]; then
+			username="$user"
+			break
+		fi
+	done
+
+	if [ -z "$username" ]; then
+		# Don't reveal if email exists - always return success
+		echo '{"success":true,"message":"If this email exists, a recovery link has been sent"}'
+		return
+	fi
+
+	# Generate reset token
+	local reset_token=$(head -c 32 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 24)
+	local expiry=$(($(date +%s) + 3600))
+
+	mkdir -p /tmp/secubox-recovery
+	echo "${username}:${expiry}" > /tmp/secubox-recovery/${reset_token}
+
+	# Send recovery email
+	local domain=$(uci -q get ${CONFIG}.main.domain || echo "secubox.in")
+	local portal_url="https://portal.${domain}/reset.html?token=${reset_token}"
+
+	# Use mailctl if available, otherwise sendmail
+	if [ -x /usr/sbin/mailctl ]; then
+		echo -e "Subject: SecuBox Password Recovery\n\nClick here to reset your password:\n${portal_url}\n\nThis link expires in 1 hour." | mailctl send "$email" 2>/dev/null &
+	fi
+
+	logger -t secubox-portal "Recovery email sent: $username"
+	echo '{"success":true,"message":"If this email exists, a recovery link has been sent"}'
+}
+
+# Reset password with token
+reset_password() {
+	read -r input
+	local token=$(echo "$input" | jsonfilter -e '@.token' 2>/dev/null)
+	local password=$(echo "$input" | jsonfilter -e '@.password' 2>/dev/null)
+
+	if [ -z "$token" ] || [ -z "$password" ]; then
+		echo '{"success":false,"error":"Token and password required"}'
+		return
+	fi
+
+	local token_file="/tmp/secubox-recovery/${token}"
+	if [ ! -f "$token_file" ]; then
+		echo '{"success":false,"error":"Invalid or expired token"}'
+		return
+	fi
+
+	local data=$(cat "$token_file")
+	local username=$(echo "$data" | cut -d: -f1)
+	local expiry=$(echo "$data" | cut -d: -f2)
+	local now=$(date +%s)
+
+	if [ "$now" -gt "$expiry" ]; then
+		rm -f "$token_file"
+		echo '{"success":false,"error":"Token expired"}'
+		return
+	fi
+
+	# Update password
+	local new_hash=$(echo -n "$password" | sha256sum | cut -d' ' -f1)
+	uci set ${CONFIG}.${username}.password_hash="$new_hash"
+	uci commit ${CONFIG}
+
+	# Cleanup token
+	rm -f "$token_file"
+
+	# Sync to services if enabled
+	[ "$(uci -q get ${CONFIG}.main.sync_passwords)" = "1" ] && secubox-users sync "$username" "$password" 2>/dev/null &
+
+	logger -t secubox-portal "Password reset: $username"
+	echo '{"success":true,"message":"Password updated"}'
+}
+
 list_methods() {
 	cat <<'EOFM'
-{"status":{},"users":{},"add":{"username":"str","password":"str","services":"str"},"delete":{"username":"str"},"passwd":{"username":"str","password":"str"}}
+{"status":{},"users":{},"add":{"username":"str","password":"str","services":"str"},"delete":{"username":"str"},"passwd":{"username":"str","password":"str"},"authenticate":{"username":"str","password":"str"},"recover":{"email":"str"},"reset_password":{"token":"str","password":"str"}}
 EOFM
 }
 
@@ -183,6 +313,9 @@ case "$1" in
 			add) add_user ;;
 			delete) delete_user ;;
 			passwd) update_password ;;
+			authenticate) authenticate ;;
+			recover) recover ;;
+			reset_password) reset_password ;;
 			*) echo '{"error":"Unknown method"}' ;;
 		esac
 		;;
