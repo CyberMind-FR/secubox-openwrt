@@ -2742,3 +2742,34 @@ git checkout HEAD -- index.html
       - `luci-app-metablogizer/htdocs/luci-static/resources/view/metablogizer/dashboard.js`
       - `luci-app-metablogizer/htdocs/luci-static/resources/metablogizer/api.js`
       - `luci-app-metablogizer/root/usr/share/rpcd/acl.d/luci-app-metablogizer.json`
+
+54. **Matrix/Conduit E2EE Messaging Integration (2026-02-21)**
+    - New `secubox-app-matrix` package — Conduit Matrix homeserver in LXC container.
+    - New `luci-app-matrix` package — LuCI dashboard for Matrix management.
+    - **Backend (matrixctl CLI)**:
+      - Container lifecycle: `install`, `uninstall`, `update`
+      - Service control: `start`, `stop`, `restart`, `status`
+      - User management: `user add/del/passwd/list`
+      - Room management: `room create/delete/list`
+      - Exposure: `configure-haproxy`, `emancipate <domain>`
+      - Identity: `identity link/unlink` (DID integration)
+      - Mesh: `mesh publish/unpublish` (P2P service discovery)
+      - Backup: `backup`, `restore`
+    - **RPCD methods (17 total)**:
+      - Read: `status`, `logs`, `federation_status`, `identity_status`, `mesh_status`
+      - Write: `start`, `stop`, `install`, `uninstall`, `update`, `emancipate`, `configure_haproxy`, `user_add`, `user_del`, `identity_link`, `identity_unlink`, `mesh_publish`, `mesh_unpublish`
+    - **Dashboard features**:
+      - Install wizard for first-time setup
+      - Status cards with connection badges
+      - Service controls (Start/Stop/Restart)
+      - User management table
+      - Emancipate form for public exposure
+      - Identity/DID integration section
+      - Mesh publication controls
+      - Log viewer
+    - Container: Debian Bookworm arm64 + pre-built Conduit binary (~15MB)
+    - Resources: 512MB RAM, 2GB storage
+    - Catalog: Added to apps-local.json with "messaging" category
+    - Files:
+      - `secubox-app-matrix/`: Makefile, UCI config, init script, matrixctl (1279 lines)
+      - `luci-app-matrix/`: RPCD handler (461 lines), ACL, menu, overview.js (377 lines), api.js (137 lines)
