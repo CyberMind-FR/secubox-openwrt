@@ -60,7 +60,7 @@ return view.extend({
 					ui.addNotification(null, E('p', _('Video URL is required')), 'error');
 					return;
 				}
-				promise = api.importVideo(url);
+				promise = api.importVideo(url).then(function(res) { if (res && res.success && res.job_id) { self.pollImportJob(res.job_id); } return res; });
 				break;
 			default:
 				ui.hideModal();
@@ -81,6 +81,66 @@ return view.extend({
 			ui.hideModal();
 			ui.addNotification(null, E('p', _('Error: ') + e.message), 'error');
 		});
+	},
+
+	pollImportJob: function(jobId) {
+		var self = this;
+		var statusDiv = document.getElementById('import-status');
+		var pollCount = 0;
+		var maxPolls = 120; // 10 minutes max (5s intervals)
+
+		var updateStatus = function(status, message, isError) {
+			if (statusDiv) {
+				statusDiv.style.display = 'block';
+				statusDiv.style.background = isError ? '#ffebee' : (status === 'completed' ? '#e8f5e9' : '#e3f2fd');
+				statusDiv.innerHTML = '<span style="color:' + (isError ? '#c62828' : (status === 'completed' ? '#2e7d32' : '#1565c0')) + ';">' + message + '</span>';
+			}
+		};
+
+		var poll = function() {
+			api.importJobStatus(jobId).then(function(res) {
+				pollCount++;
+
+				switch(res.status) {
+					case 'downloading':
+						updateStatus('downloading', _('⬇️ Downloading video...'));
+						break;
+					case 'uploading':
+						updateStatus('uploading', _('⬆️ Uploading to PeerTube...'));
+						break;
+					case 'completed':
+						var videoUrl = res.video_uuid ?
+							'https://' + (document.getElementById('emancipate-domain').value || 'tube.gk2.secubox.in') + '/w/' + res.video_uuid :
+							'';
+						updateStatus('completed', _('✅ Import complete! ') + (videoUrl ? '<a href="' + videoUrl + '" target="_blank">' + _('View video') + '</a>' : ''));
+						ui.addNotification(null, E('p', _('Video imported successfully!')), 'success');
+						return;
+					case 'download_failed':
+						updateStatus('error', _('❌ Download failed'), true);
+						return;
+					case 'upload_failed':
+						updateStatus('error', _('❌ Upload failed'), true);
+						return;
+					case 'file_not_found':
+						updateStatus('error', _('❌ Downloaded file not found'), true);
+						return;
+					default:
+						if (pollCount >= maxPolls) {
+							updateStatus('error', _('❌ Timeout waiting for import'), true);
+							return;
+						}
+				}
+
+				// Continue polling
+				setTimeout(poll, 5000);
+			}).catch(function(e) {
+				updateStatus('error', _('❌ Error: ') + e.message, true);
+			});
+		};
+
+		// Start polling
+		updateStatus('starting', _('🚀 Starting import...'));
+		setTimeout(poll, 2000);
 	},
 
 	load: function() {
@@ -275,8 +335,9 @@ return view.extend({
 
 			E('hr'),
 
-			E('h4', {}, _('Import Video (yt-dlp)')),
-			E('p', {}, _('Download and import videos from YouTube, Vimeo, and 1000+ other sites using yt-dlp.')),
+			E('h4', {}, _('Import Video (Auto-Upload)')),
+			E('p', {}, _('Download videos from YouTube, Vimeo, and 1000+ sites. Videos are automatically uploaded to PeerTube.')),
+			E('div', { 'id': 'import-status', 'style': 'padding: 10px; margin-bottom: 10px; border-radius: 4px; background: #f5f5f5; display: none;' }),
 			E('div', { 'class': 'cbi-value' }, [
 				E('label', { 'class': 'cbi-value-title' }, _('Video URL')),
 				E('div', { 'class': 'cbi-value-field' }, [
@@ -296,7 +357,7 @@ return view.extend({
 						var urlInput = document.getElementById('import-video-url');
 						self.handleAction('import_video', urlInput.value);
 					}
-				}, _('Download Video')),
+				}, _('Import & Upload')),
 				' ',
 				E('button', {
 					'class': 'btn cbi-button',

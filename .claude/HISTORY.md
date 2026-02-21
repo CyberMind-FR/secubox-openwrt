@@ -2686,3 +2686,23 @@ git checkout HEAD -- index.html
     - Added missing ipset existence check before trying to list IPs
     - Version bumped to 0.5.2-r2
     - Files modified: `luci-app-system-hub/root/usr/libexec/rpcd/luci.system-hub`
+
+31. **PeerTube Auto-Upload Import (2026-02-21)**
+    - Enhanced video import to automatically upload to PeerTube after yt-dlp download
+    - Flow: Download → Extract metadata → OAuth authentication → API upload → Cleanup
+    - New features:
+      - OAuth token acquisition from UCI-stored admin credentials
+      - Video upload via PeerTube REST API (POST /api/v1/videos/upload)
+      - Real-time job status polling with `import_job_status` method
+      - Progress indicator in LuCI UI (downloading → uploading → completed)
+      - Automatic cleanup of temp files after successful upload
+    - RPCD methods:
+      - `import_video`: Now includes auto-upload (replaces download-only)
+      - `import_job_status`: Poll import job progress by job_id
+    - Prerequisites: Admin password stored in UCI (`uci set peertube.admin.password`)
+    - Version bumped to 1.1.0
+    - Files modified:
+      - `luci-app-peertube/root/usr/libexec/rpcd/luci.peertube`
+      - `luci-app-peertube/htdocs/luci-static/resources/view/peertube/overview.js`
+      - `luci-app-peertube/htdocs/luci-static/resources/peertube/api.js`
+      - `luci-app-peertube/root/usr/share/rpcd/acl.d/luci-app-peertube.json`

@@ -81,5 +81,12 @@ return L.Class.extend({
 		object: 'luci.peertube',
 		method: 'import_status',
 		expect: { }
+	}),
+
+	importJobStatus: rpc.declare({
+		object: 'luci.peertube',
+		method: 'import_job_status',
+		params: ['job_id'],
+		expect: { }
 	})
 });

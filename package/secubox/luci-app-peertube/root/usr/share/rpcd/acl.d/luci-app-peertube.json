@@ -3,7 +3,7 @@
 		"description": "Grant access to PeerTube management",
 		"read": {
 			"ubus": {
-				"luci.peertube": ["status", "logs", "import_status"]
+				"luci.peertube": ["status", "logs", "import_status", "import_job_status"]
 			},
 			"uci": ["peertube"]
 		},
