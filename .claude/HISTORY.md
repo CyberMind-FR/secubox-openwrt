@@ -3031,3 +3031,17 @@ git checkout HEAD -- index.html
     - Fix: Added null-coalescing in jq filter: `((.automatic_captions // {}) | keys)`
     - Also fixed `subtitles` field for consistency.
     - Cleaned up duplicate HAProxy vhost entry for cloud.gk2.secubox.in.
+
+29. **Nextcloud nginx 403 Fix (2026-02-21)**
+    - **Issue:** `/apps/dashboard/`, `/apps/files/`, `/apps/spreed/` returning 403 Forbidden
+    - **Root cause:** nginx `try_files $uri $uri/ /index.php$request_uri` was matching directories and failing to serve index
+    - **Fix:** Changed to `try_files $uri /index.php$request_uri` (removed `$uri/`)
+    - **File:** `/etc/nginx/sites-enabled/nextcloud` in nextcloud LXC container
+    - Also reset brute force protection for 192.168.255.1
+    - Reset admin password to `secubox123`
+
+30. **PeerTube Analyse Limitations Documented (2026-02-21)**
+    - Tool requires either existing subtitles OR Whisper installed
+    - YouTube videos blocked by PO token requirement for subtitle access
+    - PeerTube videos on tube.gk2 have no captions uploaded
+    - Metadata extraction works; transcript step fails without subtitles/Whisper
