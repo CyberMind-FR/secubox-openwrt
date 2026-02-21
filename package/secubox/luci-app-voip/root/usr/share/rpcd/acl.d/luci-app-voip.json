@@ -1,0 +1,23 @@
+{
+	"luci-app-voip": {
+		"description": "Grant access to VoIP PBX configuration",
+		"read": {
+			"ubus": {
+				"luci.voip": ["status", "extensions", "calls", "voicemails", "trunk_status",
+				              "rec_status", "rec_list", "rec_download"]
+			},
+			"uci": ["voip"]
+		},
+		"write": {
+			"ubus": {
+				"luci.voip": ["install", "start", "stop", "restart", "reload",
+				              "ext_add", "ext_del", "ext_passwd",
+				              "call_originate", "call_hangup",
+				              "trunk_add", "trunk_test",
+				              "vm_delete",
+				              "rec_enable", "rec_disable", "rec_delete", "rec_cleanup"]
+			},
+			"uci": ["voip"]
+		}
+	}
+}

@@ -31,7 +31,11 @@
 					"get_tor_status",
 					"get_instance_endpoints",
 					"get_instance_health",
-					"get_pipeline_status"
+					"get_pipeline_status",
+					"static_list",
+					"get_uploads",
+					"list_pending",
+					"get_submission"
 				]
 			},
 			"uci": ["hexojs"]
@@ -84,7 +88,21 @@
 					"unpublish_from_tor",
 					"full_publish",
 					"handle_webhook",
-					"setup_webhook"
+					"setup_webhook",
+					"static_upload",
+					"static_create",
+					"static_delete",
+					"static_publish",
+					"static_delete_file",
+					"static_configure_auth",
+					"upload_article",
+					"upload_pdf",
+					"upload_html",
+					"publish_draft",
+					"unpublish_post",
+					"submit_for_review",
+					"approve_submission",
+					"reject_submission"
 				]
 			},
 			"uci": ["hexojs"]

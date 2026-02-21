@@ -1,565 +1,411 @@
 'use strict';
 'require view';
 'require ui';
-'require dom';
-'require secubox/api as API';
-'require secubox-theme/theme as Theme';
-'require secubox/nav as SecuNav';
-'require secubox-theme/cascade as Cascade';
-'require secubox-portal/header as SbHeader';
+'require rpc';
 'require poll';
 'require secubox/kiss-theme';
 
-// Load global theme CSS
-document.head.appendChild(E('link', {
-	'rel': 'stylesheet',
-	'type': 'text/css',
-	'href': L.resource('secubox-theme/secubox-theme.css')
-}));
-document.head.appendChild(E('link', {
-	'rel': 'stylesheet',
-	'type': 'text/css',
-	'href': L.resource('secubox-theme/themes/cyberpunk.css')
-}));
-document.head.appendChild(E('link', {
-	'rel': 'stylesheet',
-	'type': 'text/css',
-	'href': L.resource('secubox/modules.css')
-}));
+/**
+ * SecuBox Modules - KISS Edition
+ * Self-contained with inline CSS, no external dependencies
+ */
 
-// Initialize global theme respecting LuCI selection
-var secuLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
-	(document.documentElement && document.documentElement.getAttribute('lang')) ||
-	(navigator.language ? navigator.language.split('-')[0] : 'en');
-Theme.init({ language: secuLang });
+var callGetModules = rpc.declare({
+	object: 'luci.secubox',
+	method: 'getModules',
+	expect: {}
+});
+
+var callEnableModule = rpc.declare({
+	object: 'luci.secubox',
+	method: 'enable_module',
+	params: ['module'],
+	expect: {}
+});
+
+var callDisableModule = rpc.declare({
+	object: 'luci.secubox',
+	method: 'disable_module',
+	params: ['module'],
+	expect: {}
+});
+
+var callInstallApp = rpc.declare({
+	object: 'luci.secubox.appstore',
+	method: 'install',
+	params: ['app_id'],
+	expect: {}
+});
 
 return view.extend({
 	modulesData: [],
 	currentFilter: 'all',
-	filterLayer: null,
-	debugMode: true,  // FORCE DEBUG MODE ON
-
-	debug: function() {
-		if (this.debugMode && console && console.log) {
-			console.log.apply(console, ['[Modules]'].concat(Array.prototype.slice.call(arguments)));
-		}
-	},
 
 	load: function() {
-		return this.refreshData();
-	},
-
-	refreshData: function() {
 		var self = this;
-		return API.getModules().then(function(data) {
-			self.debug('getModules raw response:', data);
-			if (!data) {
-				console.warn('[Modules] getModules returned empty data');
-				return { modules: [] };
-			}
-			self.debug('Modules from API:', data.modules);
-			self.modulesData = data.modules || [];
-			self.debug('Stored modulesData:', self.modulesData);
-			return data;
-		}).catch(function(err) {
-			console.error('[Modules] Error loading modules:', err);
-			ui.addNotification(null, E('p', _('Failed to load modules: ') + err.message), 'error');
-			return { modules: [] };
+		return callGetModules().then(function(data) {
+			self.modulesData = (data && data.modules) || [];
+			return self.modulesData;
+		}).catch(function() {
+			return [];
 		});
 	},
 
-	render: function(data) {
+	render: function() {
 		var self = this;
-		var modules = (data && data.modules) || this.modulesData || [];
+		var modules = this.modulesData || [];
+		var stats = this.getModuleStats(modules);
 
-		console.log('[Modules] ========== RENDER START ==========');
-		console.log('[Modules] render() called with data:', data);
-		console.log('[Modules] data.modules:', data ? data.modules : 'NO DATA');
-		console.log('[Modules] this.modulesData:', this.modulesData);
-		console.log('[Modules] Final modules array:', modules);
-		console.log('[Modules] Final modules.length:', modules.length);
-		console.log('[Modules] ========== RENDER START ==========');
-
-		var defaultFilter = this.currentFilter || 'all';
-		var container = E('div', {
-			'class': 'secubox-modules-page',
-			'data-cascade-root': 'modules'
-		}, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/core/variables.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/secubox.css') }),
-			SecuNav.renderTabs('modules'),
-			this.renderHeader(modules),
-			this.renderFilterTabs(),
-			E('div', {
-				'id': 'modules-grid',
-				'class': 'secubox-modules-grid sb-cascade-layer',
-				'data-cascade-layer': 'view',
-				'data-cascade-role': 'modules',
-				'data-cascade-depth': '3',
-				'data-cascade-filter': defaultFilter
-			}, this.renderModuleCards(modules, defaultFilter))
-		]);
-
-		// Auto-refresh
 		poll.add(function() {
-			return self.refreshData().then(function() {
-				self.updateModulesGrid();
+			return callGetModules().then(function(data) {
+				self.modulesData = (data && data.modules) || [];
+				self.updateGrid();
 			});
 		}, 30);
 
-		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
-		wrapper.appendChild(SbHeader.render());
-		wrapper.appendChild(container);
-		return KissTheme.wrap(wrapper, 'admin/secubox/modules');
+		var content = E('div', { 'class': 'sb-modules' }, [
+			E('style', {}, this.getStyles()),
+			this.renderHeader(stats),
+			this.renderFilterTabs(),
+			E('div', { 'id': 'modules-grid', 'class': 'sb-grid' },
+				this.renderModuleCards(modules, this.currentFilter))
+		]);
+
+		return KissTheme.wrap(content, 'admin/secubox/modules');
 	},
 
-	renderHeader: function(modules) {
-		var stats = this.getModuleStats(modules);
+	renderHeader: function(stats) {
+		var chips = [
+			{ icon: '📦', label: 'Total', value: stats.total },
+			{ icon: '💾', label: 'Installed', value: stats.installed },
+			{ icon: '🟢', label: 'Active', value: stats.enabled, color: stats.enabled > 0 ? '#22c55e' : '' },
+			{ icon: '⚪', label: 'Disabled', value: stats.disabled, color: stats.disabled > 0 ? '#f59e0b' : '' },
+			{ icon: '📥', label: 'Available', value: stats.available }
+		];
 
-		return E('div', { 'class': 'sh-page-header sh-page-header-lite' }, [
+		return E('div', { 'class': 'sb-header' }, [
 			E('div', {}, [
-				E('h2', { 'class': 'sh-page-title' }, [
-					E('span', { 'class': 'sh-page-title-icon' }, '📦'),
-					_('SecuBox Modules')
-				]),
-				E('p', { 'class': 'sh-page-subtitle' },
-					_('Manage and monitor all SecuBox modules'))
+				E('h2', { 'class': 'sb-title' }, '📦 SecuBox Modules'),
+				E('p', { 'class': 'sb-subtitle' }, 'Manage and monitor security modules')
 			]),
-			E('div', { 'class': 'sh-header-meta' }, [
-				this.renderHeaderChip('total', '🏷️', _('Total'), stats.total),
-				this.renderHeaderChip('installed', '💾', _('Installed'), stats.installed),
-				this.renderHeaderChip('active', '🟢', _('Active'), stats.enabled, stats.enabled ? 'success' : ''),
-				this.renderHeaderChip('inactive', '⚪', _('Disabled'), stats.disabled, stats.disabled ? 'warn' : ''),
-				this.renderHeaderChip('available', '📦', _('Available'), stats.available)
-			])
+			E('div', { 'class': 'sb-chips', 'id': 'header-chips' }, chips.map(function(chip) {
+				return E('div', {
+					'class': 'sb-chip',
+					'data-chip': chip.label.toLowerCase(),
+					'style': chip.color ? 'border-color:' + chip.color : ''
+				}, [
+					E('span', { 'class': 'sb-chip-icon' }, chip.icon),
+					E('div', {}, [
+						E('span', { 'class': 'sb-chip-label' }, chip.label),
+						E('strong', { 'style': chip.color ? 'color:' + chip.color : '' }, String(chip.value))
+					])
+				]);
+			}))
 		]);
 	},
 
 	renderFilterTabs: function() {
 		var self = this;
 		var tabs = [
-			{ id: 'all', label: _('All Modules'), icon: '📦' },
-			{ id: 'security', label: _('Security'), icon: '🛡️' },
-			{ id: 'monitoring', label: _('Monitoring'), icon: '📊' },
-			{ id: 'network', label: _('Network'), icon: '🌐' },
-			{ id: 'system', label: _('System'), icon: '⚙️' }
+			{ id: 'all', label: 'All', icon: '📦' },
+			{ id: 'security', label: 'Security', icon: '🛡️' },
+			{ id: 'monitoring', label: 'Monitoring', icon: '📊' },
+			{ id: 'network', label: 'Network', icon: '🌐' },
+			{ id: 'system', label: 'System', icon: '⚙️' }
 		];
 
-		this.filterLayer = Cascade.createLayer({
-			id: 'secubox-module-filters',
-			type: 'tabs',
-			role: 'categories',
-			depth: 2,
-			className: 'secubox-filter-tabs sh-nav-tabs secubox-nav-tabs secubox-module-tabs',
-			items: tabs.map(function(tab) {
-				return {
-					id: tab.id,
-					label: tab.label,
-					icon: tab.icon,
-					state: tab.id === self.currentFilter ? 'active' : null
-				};
-			}),
-			active: this.currentFilter,
-			onSelect: function(item, ev) {
-				ev.preventDefault();
-				self.filterModules(item.id);
-			}
-		});
-
-		return this.filterLayer;
+		return E('div', { 'class': 'sb-filters' }, tabs.map(function(tab) {
+			return E('button', {
+				'class': 'sb-filter' + (self.currentFilter === tab.id ? ' active' : ''),
+				'data-filter': tab.id,
+				'click': function() { self.filterModules(tab.id); }
+			}, [
+				E('span', {}, tab.icon),
+				E('span', {}, tab.label)
+			]);
+		}));
 	},
 
 	renderModuleCards: function(modules, filter) {
 		var self = this;
-
-		console.log('[Modules] renderModuleCards called with:');
-		console.log('[Modules]   modules.length:', modules.length);
-		console.log('[Modules]   filter:', filter);
-		console.log('[Modules]   First 3 modules:', modules.slice(0, 3));
-
 		var filtered = filter === 'all' ? modules :
 			modules.filter(function(m) { return m.category === filter; });
 
-		console.log('[Modules]   filtered.length:', filtered.length);
-
 		if (filtered.length === 0) {
-			console.warn('[Modules] No modules match filter:', filter);
-			return E('div', { 'class': 'secubox-empty-state' }, [
-				E('div', { 'class': 'secubox-empty-icon' }, '📭'),
-				E('div', { 'class': 'secubox-empty-title' }, 'No modules found'),
-				E('div', { 'class': 'secubox-empty-text' }, 'Try selecting a different category or view all modules')
-			]);
+			return [E('div', { 'class': 'sb-empty' }, [
+				E('span', {}, '📭'),
+				E('h3', {}, 'No modules found'),
+				E('p', {}, 'Try selecting a different category')
+			])];
 		}
 
-		return filtered.map(function(module) {
-			return self.renderModuleCard(module);
-		});
+		return filtered.map(function(mod) { return self.renderModuleCard(mod); });
 	},
 
-	resolveModuleVersion: function(module) {
-		if (!module)
-			return '—';
-
-		var candidates = [
-			module.version,
-			module.pkg_version,
-			module.package_version,
-			module.packageVersion,
-			module.Version
-		];
-
-		for (var i = 0; i < candidates.length; i++) {
-			var value = candidates[i];
-			if (typeof value === 'number')
-				return String(value);
-			if (typeof value === 'string' && value.trim())
-				return value.trim();
-		}
-
-		return '—';
-	},
-
-	renderModuleCard: function(module) {
+	renderModuleCard: function(mod) {
 		var self = this;
-		var status = module.status || 'unknown';
-		var isInstalled = module.installed;
-		var statusClass = isInstalled ? status : 'not-installed';
+		var status = mod.status || 'unknown';
+		var isInstalled = mod.installed;
+		var isEnabled = mod.enabled;
+		var statusClass = isInstalled ? (isEnabled ? 'active' : 'disabled') : 'not-installed';
+		var statusText = isInstalled ? (isEnabled ? '✓ Active' : '○ Disabled') : '- Not Installed';
+		var version = mod.version || mod.pkg_version || '—';
 
-		// Status label mapping (v0.3.1)
-		var statusLabels = {
-			'active': '✓ Activé',
-			'disabled': '○ Désactivé',
-			'error': '⚠️ Erreur',
-			'unknown': '? Inconnu',
-			'not-installed': '- Not Installed'
+		var categoryIcons = {
+			'security': '🛡️', 'monitoring': '📊', 'network': '🌐', 'system': '⚙️', 'other': '📦'
 		};
 
-		var statusLabel = isInstalled ? (statusLabels[status] || '○ Désactivé') : statusLabels['not-installed'];
-		var versionLabel = this.resolveModuleVersion(module);
-
 		return E('div', {
-			'class': 'secubox-module-card secubox-module-' + statusClass,
-			'data-cascade-item': module.id || module.name,
-			'data-cascade-category': module.category || 'other',
-			'data-cascade-status': status,
-			'data-module-installed': module.installed ? '1' : '0',
-			'data-module-enabled': module.enabled ? '1' : '0',
-			'data-module-access': statusClass,
-			'data-cascade-depth': '4',
-			'style': 'border-left: 4px solid ' + (module.color || '#64748b')
+			'class': 'sb-card sb-card-' + statusClass,
+			'data-category': mod.category || 'other',
+			'style': 'border-left: 4px solid ' + (mod.color || '#64748b')
 		}, [
-			// Card Header
-			E('div', { 'class': 'secubox-module-card-header' }, [
-				E('div', { 'class': 'secubox-module-icon' }, module.icon || '📦'),
-				E('div', { 'class': 'secubox-module-info' }, [
-					E('h3', { 'class': 'secubox-module-name' }, module.name || module.id),
-					E('div', { 'class': 'secubox-module-meta' }, [
-						E('span', { 'class': 'secubox-module-category' },
-							this.getCategoryIcon(module.category) + ' ' + (module.category || 'other')),
-						E('span', { 'class': 'secubox-module-version' },
-							versionLabel === '—' ? versionLabel : 'v' + versionLabel)
+			E('div', { 'class': 'sb-card-header' }, [
+				E('span', { 'class': 'sb-card-icon' }, mod.icon || '📦'),
+				E('div', { 'class': 'sb-card-info' }, [
+					E('h3', {}, mod.name || mod.id),
+					E('div', { 'class': 'sb-card-meta' }, [
+						E('span', {}, (categoryIcons[mod.category] || '📦') + ' ' + (mod.category || 'other')),
+						E('span', {}, version !== '—' ? 'v' + version : version)
 					])
 				]),
-				E('div', {
-					'class': 'secubox-status-indicator secubox-status-' + statusClass,
-					'title': statusLabel
-				})
+				E('span', { 'class': 'sb-status-dot sb-status-' + statusClass, 'title': statusText })
 			]),
-
-			// Card Body
-			E('div', { 'class': 'secubox-module-card-body' }, [
-				E('p', { 'class': 'secubox-module-description' },
-					module.description || 'No description available'),
-
-				E('div', { 'class': 'secubox-module-details' }, [
-					E('div', { 'class': 'secubox-module-detail' }, [
-						E('span', { 'class': 'secubox-detail-label' }, 'Package:'),
-						E('code', { 'class': 'secubox-detail-value' }, module.package || 'N/A')
-					]),
-					E('div', { 'class': 'secubox-module-detail' }, [
-						E('span', { 'class': 'secubox-detail-label' }, 'Status:'),
-						E('span', {
-							'class': 'secubox-detail-value secubox-status-text-' + statusClass
-						}, statusLabel)
-					])
-				])
+			E('p', { 'class': 'sb-card-desc' }, mod.description || 'No description'),
+			E('div', { 'class': 'sb-card-footer' }, [
+				E('span', { 'class': 'sb-card-pkg' }, mod.package || 'N/A'),
+				E('span', { 'class': 'sb-card-status sb-text-' + statusClass }, statusText)
 			]),
-
-			// Card Actions
-			E('div', {
-				'class': 'secubox-module-card-actions sb-cascade-layer',
-				'data-cascade-layer': 'actions',
-				'data-cascade-role': 'module-actions',
-				'data-cascade-depth': '5'
-			},
-				this.renderModuleActions(module))
+			E('div', { 'class': 'sb-card-actions' }, this.renderModuleActions(mod))
 		]);
 	},
 
-	renderModuleActions: function(module) {
+	renderModuleActions: function(mod) {
 		var self = this;
 		var actions = [];
 
-		if (!module.installed) {
-			actions.push(
-				E('button', {
-					'class': 'secubox-btn secubox-btn-primary secubox-btn-sm sb-cascade-item',
-					'data-cascade-action': 'install',
-					'data-module-target': module.id,
-					'click': function(ev) {
-						self.installModule(module, ev.target);
-					}
-				}, [
-					E('span', { 'class': 'sb-cascade-label' }, '📥 Install')
-				])
-			);
+		if (!mod.installed) {
+			actions.push(E('button', {
+				'class': 'sb-btn sb-btn-primary',
+				'click': function(ev) { self.installModule(mod, ev.target); }
+			}, '📥 Install'));
 		} else {
-			// Enable/Disable button (v0.3.1)
-			if (module.enabled) {
-				actions.push(
-					E('button', {
-						'class': 'secubox-btn secubox-btn-danger secubox-btn-sm sb-cascade-item',
-						'data-cascade-action': 'disable',
-						'data-module-target': module.id,
-						'click': function() {
-							self.disableModule(module);
-						}
-					}, [
-						E('span', { 'class': 'sb-cascade-label' }, '⏹️ Désactiver')
-					])
-				);
+			if (mod.enabled) {
+				actions.push(E('button', {
+					'class': 'sb-btn sb-btn-danger',
+					'click': function() { self.disableModule(mod); }
+				}, '⏹️ Disable'));
 			} else {
-				actions.push(
-					E('button', {
-						'class': 'secubox-btn secubox-btn-success secubox-btn-sm sb-cascade-item',
-						'data-cascade-action': 'enable',
-						'data-module-target': module.id,
-						'click': function() {
-							self.enableModule(module);
-						}
-					}, [
-						E('span', { 'class': 'sb-cascade-label' }, '▶️ Activer')
-					])
-				);
+				actions.push(E('button', {
+					'class': 'sb-btn sb-btn-success',
+					'click': function() { self.enableModule(mod); }
+				}, '▶️ Enable'));
 			}
 
-			// Dashboard link
-			var dashboardPath = this.getModuleDashboardPath(module.id);
-			if (dashboardPath) {
-				actions.push(
-					E('a', {
-						'href': L.url(dashboardPath),
-						'class': 'secubox-btn secubox-btn-primary secubox-btn-sm sb-cascade-item',
-						'data-cascade-action': 'navigate',
-						'data-module-target': module.id
-					}, [
-						E('span', { 'class': 'sb-cascade-label' }, '📊 Dashboard')
-					])
-				);
+			var dashPath = this.getModuleDashboard(mod.id);
+			if (dashPath) {
+				actions.push(E('a', {
+					'class': 'sb-btn sb-btn-primary',
+					'href': L.url(dashPath)
+				}, '📊 Dashboard'));
 			}
 		}
 
 		return actions;
 	},
 
-	getModuleDashboardPath: function(moduleId) {
+	getModuleDashboard: function(id) {
 		var paths = {
 			'crowdsec': 'admin/secubox/crowdsec/overview',
 			'netdata': 'admin/secubox/netdata/dashboard',
 			'netifyd': 'admin/secubox/netifyd/overview',
-			'wireguard': 'admin/secubox/wireguard/overview',
+			'wireguard': 'admin/services/wireguard',
 			'network_modes': 'admin/secubox/network/modes/overview',
 			'client_guardian': 'admin/secubox/client-guardian/overview',
 			'system_hub': 'admin/secubox/system-hub/overview',
 			'bandwidth_manager': 'admin/secubox/bandwidth-manager/overview',
-			'auth_guardian': 'admin/secubox/auth-guardian/overview',
 			'media_flow': 'admin/secubox/mediaflow/dashboard',
-			'vhost_manager': 'admin/secubox/vhosts/overview',
-			'traffic_shaper': 'admin/secubox/traffic-shaper/overview',
-			'cdn_cache': 'admin/secubox/cdn-cache/overview',
-			'ksm_manager': 'admin/secubox/ksm-manager/overview',
-			'mqtt_bridge': 'admin/secubox/network/mqtt-bridge/overview'
+			'vhost_manager': 'admin/secubox/vhosts/overview'
 		};
-		return paths[moduleId] || null;
+		return paths[id] || null;
 	},
 
-	getCategoryIcon: function(category) {
-		var icons = {
-			'security': '🛡️',
-			'monitoring': '📊',
-			'network': '🌐',
-			'system': '⚙️',
-			'other': '📦'
-		};
-		return icons[category] || icons['other'];
-	},
-
-	// Enable module (v0.3.1)
-	enableModule: function(module) {
+	enableModule: function(mod) {
 		var self = this;
-		ui.showModal(_('Activation du module'), [
-			E('p', {}, 'Activation de ' + module.name + '...')
-		]);
+		ui.showModal('Enabling Module', [E('p', { 'class': 'spinning' }, 'Enabling ' + mod.name + '...')]);
 
-		API.enableModule(module.id).then(function(result) {
+		callEnableModule(mod.id).then(function(result) {
 			ui.hideModal();
 			if (result && result.success !== false) {
-				ui.addNotification(null, E('p', module.name + ' activé avec succès'), 'info');
-				self.refreshData().then(function() {
-					self.updateModulesGrid();
+				ui.addNotification(null, E('p', {}, mod.name + ' enabled'), 'info');
+				return callGetModules().then(function(data) {
+					self.modulesData = (data && data.modules) || [];
+					self.updateGrid();
 				});
 			} else {
-				ui.addNotification(null, E('p', 'Échec de l\'activation de ' + module.name), 'error');
+				ui.addNotification(null, E('p', {}, 'Failed to enable ' + mod.name), 'error');
 			}
 		}).catch(function(err) {
 			ui.hideModal();
-			ui.addNotification(null, E('p', 'Erreur: ' + err.message), 'error');
+			ui.addNotification(null, E('p', {}, 'Error: ' + err.message), 'error');
 		});
 	},
 
-	// Disable module (v0.3.1)
-	disableModule: function(module) {
+	disableModule: function(mod) {
 		var self = this;
-		ui.showModal(_('Désactivation du module'), [
-			E('p', {}, 'Désactivation de ' + module.name + '...')
-		]);
+		ui.showModal('Disabling Module', [E('p', { 'class': 'spinning' }, 'Disabling ' + mod.name + '...')]);
 
-		API.disableModule(module.id).then(function(result) {
+		callDisableModule(mod.id).then(function(result) {
 			ui.hideModal();
 			if (result && result.success !== false) {
-				ui.addNotification(null, E('p', module.name + ' désactivé avec succès'), 'info');
-				self.refreshData().then(function() {
-					self.updateModulesGrid();
+				ui.addNotification(null, E('p', {}, mod.name + ' disabled'), 'info');
+				return callGetModules().then(function(data) {
+					self.modulesData = (data && data.modules) || [];
+					self.updateGrid();
 				});
 			} else {
-				ui.addNotification(null, E('p', 'Échec de la désactivation de ' + module.name), 'error');
+				ui.addNotification(null, E('p', {}, 'Failed to disable ' + mod.name), 'error');
 			}
 		}).catch(function(err) {
 			ui.hideModal();
-			ui.addNotification(null, E('p', 'Erreur: ' + err.message), 'error');
+			ui.addNotification(null, E('p', {}, 'Error: ' + err.message), 'error');
 		});
 	},
 
-	installModule: function(module, button) {
+	installModule: function(mod, btn) {
 		var self = this;
-		var originalText = button ? button.textContent : '';
+		var origText = btn ? btn.textContent : '';
+		if (btn) { btn.disabled = true; btn.textContent = 'Installing...'; }
 
-		if (button) {
-			button.disabled = true;
-			button.textContent = _('Installing...');
-		}
+		ui.showModal('Installing Module', [E('p', { 'class': 'spinning' }, 'Installing ' + mod.name + '...')]);
 
-		ui.showModal(_('Installing Module'), [
-			E('p', { 'class': 'spinning' }, _('Installing ') + module.name + '...')
-		]);
-
-		return API.installAppstoreApp(module.id).then(function(result) {
+		callInstallApp(mod.id).then(function(result) {
 			ui.hideModal();
 			if (result && result.success) {
-				ui.addNotification(null, E('p', module.name + ' ' + _('installed successfully')), 'info');
-				return self.refreshData().then(function() {
-					self.updateModulesGrid();
+				ui.addNotification(null, E('p', {}, mod.name + ' installed'), 'info');
+				return callGetModules().then(function(data) {
+					self.modulesData = (data && data.modules) || [];
+					self.updateGrid();
 				});
 			} else {
-				ui.addNotification(null, E('p', _('Installation failed: ') + (result.error || result.details || _('Unknown error'))), 'error');
-				if (button) {
-					button.disabled = false;
-					button.textContent = originalText;
-				}
+				ui.addNotification(null, E('p', {}, 'Installation failed: ' + (result.error || 'Unknown')), 'error');
+				if (btn) { btn.disabled = false; btn.textContent = origText; }
 			}
 		}).catch(function(err) {
 			ui.hideModal();
-			ui.addNotification(null, E('p', _('Installation error: ') + err.message), 'error');
-			if (button) {
-				button.disabled = false;
-				button.textContent = originalText;
-			}
+			ui.addNotification(null, E('p', {}, 'Error: ' + err.message), 'error');
+			if (btn) { btn.disabled = false; btn.textContent = origText; }
 		});
 	},
 
-	// DEPRECATED: Keeping for backward compatibility
-	startModule: function(module) {
-		return this.enableModule(module);
-	},
-
-	stopModule: function(module) {
-		return this.disableModule(module);
-	},
-
-	restartModule: function(module) {
-		var self = this;
-		return this.disableModule(module).then(function() {
-			return self.enableModule(module);
+	filterModules: function(filter) {
+		this.currentFilter = filter;
+		document.querySelectorAll('.sb-filter').forEach(function(btn) {
+			btn.classList.toggle('active', btn.dataset.filter === filter);
 		});
+		this.updateGrid();
 	},
 
-	filterModules: function(category) {
-		this.currentFilter = category || this.currentFilter || 'all';
+	updateGrid: function() {
 		var grid = document.getElementById('modules-grid');
 		if (grid) {
-			grid.setAttribute('data-cascade-filter', this.currentFilter);
-			dom.content(grid, this.renderModuleCards(this.modulesData, this.currentFilter));
+			grid.innerHTML = '';
+			this.renderModuleCards(this.modulesData, this.currentFilter).forEach(function(card) {
+				grid.appendChild(card);
+			});
 		}
-		if (this.filterLayer) {
-			Cascade.setActiveItem(this.filterLayer, this.currentFilter);
-		}
+		this.updateHeaderStats();
+	},
+
+	updateHeaderStats: function() {
+		var stats = this.getModuleStats(this.modulesData);
+		var chips = {
+			'total': stats.total,
+			'installed': stats.installed,
+			'active': stats.enabled,
+			'disabled': stats.disabled,
+			'available': stats.available
+		};
+		Object.keys(chips).forEach(function(key) {
+			var chip = document.querySelector('[data-chip="' + key + '"] strong');
+			if (chip) chip.textContent = String(chips[key]);
+		});
 	},
 
 	getModuleStats: function(modules) {
 		var list = modules || [];
 		var installed = list.filter(function(m) { return m.installed; }).length;
 		var enabled = list.filter(function(m) { return m.enabled; }).length;
-		var disabled = Math.max(installed - enabled, 0);
-		var available = Math.max(list.length - installed, 0);
-
 		return {
 			total: list.length,
 			installed: installed,
 			enabled: enabled,
-			disabled: disabled,
-			available: available
+			disabled: Math.max(installed - enabled, 0),
+			available: Math.max(list.length - installed, 0)
 		};
 	},
 
-	renderHeaderChip: function(id, icon, label, value, tone) {
-		return E('div', { 'class': 'sh-header-chip' + (tone ? ' ' + tone : '') }, [
-			E('span', { 'class': 'sh-chip-icon' }, icon),
-			E('div', { 'class': 'sh-chip-text' }, [
-				E('span', { 'class': 'sh-chip-label' }, label),
-				E('strong', { 'id': 'secubox-modules-chip-' + id }, value.toString())
-			])
-		]);
+	getStyles: function() {
+		return `
+.sb-modules { max-width: 1400px; margin: 0 auto; padding: 20px; }
+.sb-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; padding: 20px; background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.sb-title { margin: 0; font-size: 24px; font-weight: 700; }
+.sb-subtitle { margin: 4px 0 0; color: #666; font-size: 14px; }
+.sb-chips { display: flex; gap: 12px; flex-wrap: wrap; }
+.sb-chip { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #f8f9fa; border: 1px solid #e5e7eb; border-radius: 8px; }
+.sb-chip-icon { font-size: 18px; }
+.sb-chip-label { font-size: 11px; color: #666; display: block; }
+.sb-filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+.sb-filter { display: flex; align-items: center; gap: 6px; padding: 10px 16px; background: #f8f9fa; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+.sb-filter:hover { background: #e5e7eb; }
+.sb-filter.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+.sb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+.sb-card { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: transform 0.2s, box-shadow 0.2s; }
+.sb-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+.sb-card-header { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.sb-card-icon { font-size: 32px; }
+.sb-card-info { flex: 1; }
+.sb-card-info h3 { margin: 0 0 4px; font-size: 16px; font-weight: 600; }
+.sb-card-meta { display: flex; gap: 12px; font-size: 12px; color: #888; }
+.sb-status-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+.sb-status-active { background: #22c55e; box-shadow: 0 0 6px rgba(34,197,94,0.5); }
+.sb-status-disabled { background: #f59e0b; }
+.sb-status-not-installed { background: #d1d5db; }
+.sb-card-desc { font-size: 13px; color: #666; margin: 0 0 12px; line-height: 1.4; }
+.sb-card-footer { display: flex; justify-content: space-between; font-size: 12px; color: #888; margin-bottom: 12px; padding-top: 12px; border-top: 1px solid #f0f0f0; }
+.sb-card-pkg { font-family: monospace; }
+.sb-text-active { color: #22c55e; }
+.sb-text-disabled { color: #f59e0b; }
+.sb-text-not-installed { color: #888; }
+.sb-card-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.sb-btn { padding: 8px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid #e5e7eb; background: #f8f9fa; color: #333; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; transition: all 0.2s; }
+.sb-btn:hover { background: #e5e7eb; }
+.sb-btn-primary { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+.sb-btn-primary:hover { background: #2563eb; }
+.sb-btn-success { background: #22c55e; color: #fff; border-color: #22c55e; }
+.sb-btn-success:hover { background: #16a34a; }
+.sb-btn-danger { background: #ef4444; color: #fff; border-color: #ef4444; }
+.sb-btn-danger:hover { background: #dc2626; }
+.sb-empty { grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: #888; }
+.sb-empty span { font-size: 48px; display: block; margin-bottom: 16px; }
+.sb-empty h3 { margin: 0 0 8px; font-size: 18px; color: #333; }
+.sb-empty p { margin: 0; }
+@media (prefers-color-scheme: dark) {
+  .sb-modules { color: #e5e7eb; }
+  .sb-header, .sb-card { background: #1f2937; }
+  .sb-chip, .sb-filter { background: #374151; border-color: #4b5563; }
+  .sb-filter.active { background: #3b82f6; border-color: #3b82f6; }
+  .sb-chip-label, .sb-subtitle, .sb-card-meta, .sb-card-desc, .sb-card-footer { color: #9ca3af; }
+  .sb-card-info h3 { color: #f3f4f6; }
+  .sb-btn { background: #374151; border-color: #4b5563; color: #e5e7eb; }
+  .sb-btn:hover { background: #4b5563; }
+  .sb-card-footer { border-color: #374151; }
+  .sb-empty h3 { color: #f3f4f6; }
+}
+`;
 	},
 
-	updateHeaderStats: function() {
-		var stats = this.getModuleStats(this.modulesData);
-		this.setHeaderChipValue('total', stats.total);
-		this.setHeaderChipValue('installed', stats.installed);
-		this.setHeaderChipValue('active', stats.enabled, stats.enabled ? 'success' : '');
-		this.setHeaderChipValue('inactive', stats.disabled, stats.disabled ? 'warn' : '');
-		this.setHeaderChipValue('available', stats.available);
-	},
-
-	setHeaderChipValue: function(id, value, tone) {
-		var target = document.getElementById('secubox-modules-chip-' + id);
-		if (target)
-			target.textContent = value.toString();
-
-		var chip = target && target.closest('.sh-header-chip');
-		if (chip) {
-			chip.classList.remove('success', 'warn');
-			if (tone)
-				chip.classList.add(tone);
-		}
-	},
-
-	updateModulesGrid: function() {
-		this.filterModules(this.currentFilter || 'all');
-		this.updateHeaderStats();
-	},
-
-	handleSaveApply: null,
 	handleSave: null,
+	handleSaveApply: null,
 	handleReset: null
 });

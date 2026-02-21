@@ -756,8 +756,34 @@ wan_clear() {
 	json_dump
 }
 
+get_waf_rules() {
+	local rules_file="/srv/mitmproxy/waf-rules.json"
+	if [ -f "$rules_file" ]; then
+		cat "$rules_file"
+	else
+		echo "{"error":"WAF rules file not found"}"
+	fi
+}
+
+toggle_waf_category() {
+	read -r input
+	local category=$(jsonfilter -s "$input" -e '@.category' 2>/dev/null)
+	local enabled=$(jsonfilter -s "$input" -e '@.enabled' 2>/dev/null)
+	local rules_file="/srv/mitmproxy/waf-rules.json"
+	if [ -z "$category" ]; then
+		echo '{"error":"Missing category"}'
+		return
+	fi
+	if [ -f "$rules_file" ] && command -v jq >/dev/null 2>&1; then
+		cp "$rules_file" "${rules_file}.bak"
+		jq ".categories.\"$category\".enabled = $enabled" "$rules_file" > "${rules_file}.tmp" && mv "${rules_file}.tmp" "$rules_file"
+		echo '{"success":true}'
+	else
+		echo '{"error":"Cannot update rules"}'
+	fi
+}
 list_methods() { cat <<'EOFM'
-{"status":{},"status_cached":{},"settings":{},"save_settings":{"mode":"str","enabled":"bool","proxy_port":"int","web_port":"int","apply_now":"bool","wan_protection_enabled":"bool","wan_interface":"str"},"set_mode":{"mode":"str","apply_now":"bool"},"setup_firewall":{},"clear_firewall":{},"wan_setup":{},"wan_clear":{},"install":{},"start":{},"stop":{},"restart":{},"alerts":{},"threat_stats":{},"subdomain_metrics":{},"clear_alerts":{},"haproxy_enable":{},"haproxy_disable":{},"sync_routes":{},"bans":{},"unban":{"ip":"str"}}
+{"status":{},"status_cached":{},"settings":{},"save_settings":{"mode":"str","enabled":"bool","proxy_port":"int","web_port":"int","apply_now":"bool","wan_protection_enabled":"bool","wan_interface":"str"},"set_mode":{"mode":"str","apply_now":"bool"},"setup_firewall":{},"clear_firewall":{},"wan_setup":{},"wan_clear":{},"install":{},"start":{},"stop":{},"restart":{},"alerts":{},"threat_stats":{},"subdomain_metrics":{},"clear_alerts":{},"haproxy_enable":{},"haproxy_disable":{},"sync_routes":{},"bans":{},"unban":{"ip":"str"},"get_waf_rules":{},"toggle_waf_category":{"category":"str","enabled":"bool"}}
 EOFM
 }
 
@@ -787,6 +813,8 @@ case "$1" in
 			sync_routes) sync_routes ;;
 			bans) get_bans ;;
 			unban) unban_ip ;;
+			get_waf_rules) get_waf_rules ;;
+			toggle_waf_category) toggle_waf_category ;;
 			*) echo '{"error":"Unknown method"}' ;;
 		esac
 		;;

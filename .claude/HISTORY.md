@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-02-17_
+_Last updated: 2026-02-21_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -2271,3 +2271,763 @@ git checkout HEAD -- index.html
 - Ports: 25, 143, 587, 993
 - Mail storage: `/var/mail/` with vmail user (uid 5000)
 - Old Alpine backup: `/srv/lxc/mailserver-alpine-backup/`
+
+### 2026-02-17: mitmproxy WAF Filters UI
+
+**New LuCI View:**
+- Added "WAF Filters" tab to mitmproxy security interface
+- Displays all 10 WAF detection categories with enable/disable toggles
+- Categories: sqli, xss, lfi, rce, cve_2024, scanners, webmail, api_abuse, nextcloud, roundcube
+- Summary stats: total categories, active filters, rule count
+- Expandable rules tables showing patterns, descriptions, CVE links
+
+**RPCD Methods:**
+- `get_waf_rules` - Returns WAF rules JSON from `/srv/mitmproxy/waf-rules.json`
+- `toggle_waf_category` - Enable/disable category in rules file
+
+**Files Created/Modified:**
+- `luci-app-mitmproxy/htdocs/.../view/mitmproxy/waf-filters.js` (new)
+- `luci-app-mitmproxy/root/usr/libexec/rpcd/luci.mitmproxy` (added methods)
+- `luci-app-mitmproxy/root/usr/share/luci/menu.d/luci-app-mitmproxy.json` (menu entry)
+- `luci-app-mitmproxy/root/usr/share/rpcd/acl.d/luci-app-mitmproxy.json` (ACL permissions)
+
+### 2026-02-19: Jabber/XMPP Server Packages (Prosody)
+
+**New Packages:**
+- `secubox-app-jabber` - LXC-based Prosody XMPP server
+- `luci-app-jabber` - LuCI dashboard for Jabber management
+
+**Features:**
+- Debian 12 (Bookworm) LXC container with Prosody XMPP server
+- Full XMPP support: C2S (5222), S2S (5269), HTTP/BOSH (5280)
+- Multi-User Chat (MUC) rooms with message archiving
+- HTTP upload for file sharing (10MB default)
+- BOSH and WebSocket support for web clients
+- SSL/TLS encryption with auto-generated certificates
+- Server-to-server federation capability
+
+**CLI Commands (jabberctl):**
+- `install/uninstall` - Container lifecycle
+- `start/stop/restart/status` - Service control
+- `user add/del/passwd/list` - User management
+- `room create/delete/list` - MUC room management
+- `emancipate <domain>` - Public exposure with HAProxy + SSL + DNS
+
+**LuCI Dashboard:**
+- Status overview with service state and user count
+- Service controls (start/stop/update/uninstall)
+- User management (add/delete users)
+- Emancipate workflow for public exposure
+- Connection info display (XMPP, BOSH, WebSocket URLs)
+- Log viewer with refresh
+
+### 2026-02-19: Jabber/XMPP Deployment and Fixes
+
+**Deployment:**
+- Installed Jabber at xchat.gk2.secubox.in
+- Created admin user: admin@xchat.gk2.secubox.in
+- Fixed pf.gk2.secubox.in routing (was pointing to jabber, now streamlit_prompt)
+
+**Fixes Applied:**
+- Fixed Prosody process detection (lua.*prosody pattern instead of prosody)
+- Fixed startup script to run Prosody as prosody user (not root)
+- Fixed SSL certificate generation (openssl instead of prosodyctl)
+- Added xchat.gk2.secubox.in route to mitmproxy-in haproxy-routes.json
+- Fixed route IP from 127.0.0.1 to 192.168.255.1 for container accessibility
+
+### 2026-02-19: VoIP + Jabber Integration (Asterisk PBX)
+
+**New Packages:**
+- `secubox-app-voip` - LXC-based Asterisk PBX server
+- `luci-app-voip` - LuCI dashboard for VoIP management
+
+**Features:**
+- Debian 12 (Bookworm) LXC container with Asterisk PBX
+- OVH Telephony API integration for SIP trunk auto-provisioning
+- SIP extension management with PJSIP
+- Asterisk ARI/AMI support for call control
+- Click-to-call web interface
+- HAProxy integration with WebRTC support
+- Procd service management
+
+**CLI Commands (voipctl):**
+- `install/uninstall` - Container lifecycle
+- `start/stop/restart/status` - Service control
+- `ext add/del/passwd/list` - Extension management
+- `trunk add ovh/manual` - SIP trunk configuration
+- `trunk test/status` - Trunk connectivity testing
+- `call/hangup/calls` - Call origination and control
+- `vm list/play/delete` - Voicemail management
+- `configure-haproxy` - WebRTC proxy setup
+- `emancipate <domain>` - Public exposure
+
+**OVH Telephony Integration (ovh-telephony.sh):**
+- API signature generation (HMAC-SHA1)
+- Billing accounts and SIP lines discovery
+- SIP credentials retrieval and password reset
+- SMS sending via OVH SMS API
+- Auto-provisioning flow for trunk configuration
+
+**LuCI Dashboard (luci-app-voip):**
+- Overview with container/Asterisk/trunk status
+- Extensions management (add/delete)
+- Trunks configuration (OVH auto-provision, manual)
+- Click-to-call dialer with extension selector
+- Active calls display with live polling
+- Quick dial buttons for extensions
+- Logs viewer
+
+**Jabber VoIP Integration (Phase 3):**
+- Jingle VoIP support via mod_external_services
+- STUN/TURN server configuration
+- SMS relay via OVH (messages to sms@domain)
+- Voicemail notifications via Asterisk AMI → XMPP
+- New jabberctl commands: jingle enable/disable/status, sms config/send, voicemail-notify
+- New RPCD methods: jingle_status/enable/disable, sms_status/config/send, voicemail_status/config
+- Updated UCI config with jingle, sms, and voicemail sections
+
+**Files Created:**
+- `package/secubox/secubox-app-voip/Makefile`
+- `package/secubox/secubox-app-voip/files/etc/config/voip`
+- `package/secubox/secubox-app-voip/files/etc/init.d/voip`
+- `package/secubox/secubox-app-voip/files/usr/sbin/voipctl`
+- `package/secubox/secubox-app-voip/files/usr/lib/secubox/voip/ovh-telephony.sh`
+- `package/secubox/luci-app-voip/Makefile`
+- `package/secubox/luci-app-voip/root/usr/libexec/rpcd/luci.voip`
+- `package/secubox/luci-app-voip/root/usr/share/luci/menu.d/luci-app-voip.json`
+- `package/secubox/luci-app-voip/root/usr/share/rpcd/acl.d/luci-app-voip.json`
+- `package/secubox/luci-app-voip/htdocs/.../voip/api.js`
+- `package/secubox/luci-app-voip/htdocs/.../view/voip/overview.js`
+- `package/secubox/luci-app-voip/htdocs/.../view/voip/extensions.js`
+- `package/secubox/luci-app-voip/htdocs/.../view/voip/trunks.js`
+- `package/secubox/luci-app-voip/htdocs/.../view/voip/click-to-call.js`
+
+**Files Modified:**
+- `package/secubox/secubox-app-jabber/files/usr/sbin/jabberctl` (added VoIP integration)
+- `package/secubox/secubox-app-jabber/files/etc/config/jabber` (jingle/sms/voicemail sections)
+- `package/secubox/luci-app-jabber/root/usr/libexec/rpcd/luci.jabber` (VoIP methods)
+- `package/secubox/luci-app-jabber/root/usr/share/rpcd/acl.d/luci-app-jabber.json` (VoIP ACL)
+
+37. **WAF VoIP/XMPP Protection & Jitsi Meet (2026-02-19)**
+    - Added 4 new WAF categories to mitmproxy for VoIP/Jabber protection:
+      - `voip`: 12 SIP/VoIP security patterns (header injection, ARI abuse, AMI injection)
+      - `xmpp`: 10 XMPP/Jabber patterns (XSS, XXE, BOSH hijack, OOB file access)
+      - `cve_voip`: 9 CVE patterns for Asterisk/FreePBX/Kamailio/OpenSIPS
+      - `cve_xmpp`: 8 CVE patterns for Prosody/ejabberd/Tigase/Strophe
+    - Updated `waf-rules.json` to version 1.1.0 with comprehensive attack detection
+    - Added autoban options `ban_voip` and `ban_xmpp` for automatic IP blocking
+    - Updated `mitmproxy-waf-sync` to include new categories in JSON sync
+
+    - **Self-Hosted Jitsi Meet**: Full deployment in LXC container
+      - Prosody XMPP server on port 5380 (internal only)
+      - Jicofo conference focus component
+      - JVB (Jitsi Videobridge) for WebRTC media
+      - Nginx reverse proxy on port 9088
+      - HAProxy vhost at `meet.gk2.secubox.in` with Let's Encrypt SSL
+      - WAF bypass enabled for WebRTC compatibility
+      - Webchat updated to use self-hosted Jitsi instead of meet.jit.si
+      - Full video conferencing capability without external dependencies
+
+38. **VoIP PBX Package (2026-02-19)**
+    - Created `secubox-app-voip` package for Asterisk PBX in LXC container
+      - OVH SIP trunk auto-provisioning via Telephony API
+      - Extension management with voicemail support
+      - Click-to-call functionality
+      - WebRTC support via PJSIP
+    - Created `luci-app-voip` LuCI interface
+      - Overview dashboard with status cards
+      - Extension management view
+      - SIP trunk configuration
+      - Click-to-call dialer with dialpad
+    - Key files:
+      - `/usr/sbin/voipctl` - Main control script
+      - `/usr/lib/secubox/voip/ovh-telephony.sh` - OVH API helper
+      - `/usr/lib/secubox/voip/asterisk-config.sh` - Config generator
+    - Fixed Jitsi Meet ThreadPoolExecutor crash by changing Jicofo REST port (8888→8878)
+
+39. **Jabber VoIP LuCI Integration (2026-02-19)**
+    - Updated `luci-app-jabber` with full VoIP integration sections in overview.js:
+      - **Jingle VoIP**: Enable/Disable toggle, STUN server config, TURN status display
+      - **SMS Relay**: OVH API status indicator, sender name config, test SMS send form
+      - **Voicemail Notifications**: AMI connection info, notification JID configuration
+    - Added 9 new RPC methods to `jabber/api.js`:
+      - `jingleStatus`, `jingleEnable`, `jingleDisable`
+      - `smsStatus`, `smsConfig`, `smsSend`
+      - `voicemailStatus`, `voicemailConfig`
+    - Updated `overview.js` with VoIP sections after Connection Info:
+      - Status badges for enabled/disabled states
+      - STUN/TURN server configuration inputs
+      - SMS test form with phone number and message fields
+      - Voicemail JID configuration with Configure button
+    - ACL already configured in previous RPCD backend update
+    - Key files modified:
+      - `package/secubox/luci-app-jabber/htdocs/luci-static/resources/jabber/api.js`
+      - `package/secubox/luci-app-jabber/htdocs/luci-static/resources/view/jabber/overview.js`
+
+40. **VoIP Call Recording Feature (2026-02-19)**
+    - Added comprehensive call recording system to `secubox-app-voip`:
+      - Asterisk MixMonitor integration for automatic call recording
+      - Configurable recording format (wav) and retention policy
+      - Daily directory organization (YYYYMMDD/HHMMSS-caller-dest.wav)
+    - New `voipctl rec` commands:
+      - `rec enable` / `rec disable` - Toggle call recording
+      - `rec status` - JSON status with statistics
+      - `rec list [date]` - List recordings by date
+      - `rec play <file>` - Play recording
+      - `rec download <file>` - Get file path/content
+      - `rec delete <file>` - Delete recording
+      - `rec cleanup [days]` - Remove old recordings
+    - New LuCI recordings view (`voip/recordings.js`):
+      - Status dashboard with total/today counts and storage used
+      - Enable/Disable toggle buttons
+      - Cleanup old recordings button
+      - Date filter for browsing recordings
+      - Play, Download, Delete actions for each recording
+      - In-browser audio player with base64 content support
+    - RPCD methods added to `luci.voip`:
+      - `rec_status`, `rec_enable`, `rec_disable`
+      - `rec_list`, `rec_delete`, `rec_download`, `rec_cleanup`
+    - UCI config section: `config recording 'recording'` with enabled/format/retention_days
+    - Menu entry: Services → VoIP PBX → Recordings
+    - Note: OVH SIP trunk registration requires correct password from OVH Manager
+
+41. **Matrix Homeserver Integration (2026-02-19)**
+    - Created `secubox-app-matrix` package for Conduit Matrix server:
+      - Lightweight Rust-based homeserver (~15MB binary, ~500MB RAM)
+      - LXC Debian Bookworm container with pre-built ARM64/x86_64 binaries
+      - E2EE messaging with federation support
+      - RocksDB database for performance
+    - New `matrixctl` CLI commands:
+      - `install`, `uninstall`, `update` - Container lifecycle
+      - `start`, `stop`, `restart`, `status` - Service control
+      - `user add/del/passwd/list` - User management
+      - `room list/create/delete` - Room management
+      - `federation test/status` - Federation testing
+      - `configure-haproxy`, `emancipate <domain>` - Punk Exposure
+      - `identity link/unlink` - DID integration
+      - `mesh publish/unpublish` - P2P service registry
+      - `backup`, `restore` - Data persistence
+    - Created `luci-app-matrix` LuCI dashboard:
+      - Install wizard for new deployments
+      - Status card with running state, version, features
+      - Service controls (Start/Stop/Update/Uninstall)
+      - User management form
+      - Emancipate form for public exposure
+      - Identity integration section (DID linking)
+      - Mesh publication toggle
+      - Logs viewer with refresh
+    - RPCD methods (18 total): status, logs, start, stop, install, uninstall, update,
+      emancipate, configure_haproxy, user_add, user_del, federation_status,
+      identity_status, identity_link, identity_unlink, mesh_status, mesh_publish, mesh_unpublish
+    - UCI config sections: main, server, federation, admin, database, network, identity, mesh
+    - v1.0.0 roadmap: Matrix integration complements VoIP/Jabber for full mesh communication stack
+    - Files created:
+      - `package/secubox/secubox-app-matrix/` (Makefile, UCI, init.d, matrixctl)
+      - `package/secubox/luci-app-matrix/` (RPCD, ACL, menu, overview.js, api.js)
+
+25. **HexoJS KISS Static Upload & Multi-User Authentication (2026-02-20)**
+    - Added multi-user/multi-instance authentication:
+      - HAProxy Basic Auth integration with apr1 password hashing
+      - `hexoctl user add/del/passwd/list/grant/revoke` commands
+      - `hexoctl auth enable/disable/status/haproxy` commands
+      - UCI config sections for users and per-instance auth
+    - KISS Static Upload workflow (no Hexo build process):
+      - `hexoctl static create <name>` - Create static-only site
+      - `hexoctl static upload <file> [inst]` - Upload HTML/CSS/JS directly
+      - `hexoctl static publish [inst]` - Copy to /www/ for uhttpd serving
+      - `hexoctl static quick <file> [inst]` - One-command upload + publish
+      - `hexoctl static list [inst]` - List static files
+      - `hexoctl static serve [inst]` - Python/busybox httpd server
+      - `hexoctl static delete <name>` - Delete static instance
+    - Goal: Fast publishing experiment (KISSS) for HTML files without Node.js/Hexo build
+    - Tested and verified on router with immediate uhttpd serving
+
+26. **SaaS Relay CDN Caching & Session Replay (2026-02-20)**
+    - Enhanced `secubox-app-saas-relay` with CDN caching layer and multi-user session replay
+    - CDN Cache features:
+      - Configurable cache profiles: minimal, gandalf (default), aggressive
+      - Profile-based caching rules (content types, TTL, max size, exclude patterns)
+      - File-based cache storage with metadata for expiry tracking
+      - Cache-Control header respect (max-age, no-store, private)
+      - `X-SaaSRelay-Cache: HIT/MISS` header for debugging
+    - Session Replay features:
+      - Three modes: shared (default), per_user, master
+      - Shared mode: All SecuBox users share same session cookies
+      - Per-user mode: Each user gets their own session storage
+      - Master mode: One user (admin) authenticates, others replay their session
+    - New CLI commands:
+      - `saasctl cache {status|clear|profile|enable|disable}` - Cache management
+      - `saasctl session {status|mode|master|enable|disable}` - Session management
+    - Enhanced mitmproxy addon (415 lines) with:
+      - Response caching before network request
+      - Cache key generation with SHA-256 URL hashing
+      - Per-user session file storage with fallback to master
+      - Activity logging with emoji indicators
+    - UCI config sections added: cache, cache_profile (3), session_replay
+    - Config JSON export for container: config.json + services.json
+
+27. **Matrix Homeserver (Conduit) Integration (2026-02-20)**
+    - E2EE mesh messaging using Conduit Matrix homeserver (v0.10.12)
+    - `secubox-app-matrix` package with LXC container management:
+      - Pre-built ARM64 Conduit binary from GitLab artifacts
+      - Debian Bookworm base, RocksDB backend
+      - 512MB RAM limit, persistent data in /srv/matrix
+    - `matrixctl` CLI tool (1279 lines):
+      - Container: install, uninstall, update, check, shell
+      - Service: start, stop, restart, status, logs
+      - Users: add, del, passwd, list
+      - Rooms: list, create, delete
+      - Federation: test, status
+      - Exposure: configure-haproxy, emancipate
+      - Identity: link, unlink, status (DID integration)
+      - Mesh: publish, unpublish
+      - Backup: backup, restore
+    - `luci-app-matrix` dashboard:
+      - Install wizard for first-time setup
+      - Status cards with feature badges
+      - Service controls
+      - User management form
+      - Emancipate (public exposure) form
+      - Identity/DID linking section
+      - P2P mesh publication toggle
+      - Logs viewer with refresh
+    - RPCD methods (17 total): status, logs, start, stop, install, uninstall, update,
+      emancipate, configure_haproxy, user_add, user_del, federation_status,
+      identity_status, identity_link, identity_unlink, mesh_status, mesh_publish, mesh_unpublish
+    - UCI config sections: main, server, federation, admin, database, network, identity, mesh
+    - Matrix API responding with v1.1-v1.12 support
+    - Files: `package/secubox/secubox-app-matrix/`, `package/secubox/luci-app-matrix/`
+
+28. **Log Denoising for System Hub (2026-02-20)**
+    - Added smart log denoising to System Hub inspired by SysWarden patterns (Evolution #3)
+    - Three denoising modes:
+      - **RAW**: All logs displayed without filtering (default)
+      - **SMART**: Known threat IPs highlighted, all logs visible, noise ratio computed
+      - **SIGNAL_ONLY**: Only new/unknown threats shown, known IPs filtered out
+    - Noise filtering integrates with:
+      - IP Blocklist (Evolution #1): ipset with 100k+ blocked IPs
+      - CrowdSec decisions: Active bans from threat detection
+    - RPCD methods added to `luci.system-hub`:
+      - `get_denoised_logs(lines, filter, mode)`: Returns logs with noise ratio stats
+      - `get_denoise_stats()`: Returns known threat counts and blocklist status
+    - LuCI dashboard enhancements:
+      - Denoise mode selector panel (RAW/SMART/SIGNAL ONLY)
+      - Mode description tooltip
+      - Noise ratio percentage indicator with color coding
+      - Known threats counter from ipblocklist + CrowdSec
+      - Warning badge when IP Blocklist disabled
+      - Side panel metrics include noise stats when filtering active
+    - Implementation:
+      - Extracts IPs from log lines using regex
+      - Skips private/local IP ranges (10.*, 172.16-31.*, 192.168.*, 127.*)
+      - Checks both nftables sets and iptables ipsets for compatibility
+      - Queries CrowdSec decisions via `cscli decisions list`
+    - Part of SysWarden Evolution plan (Evolution #3 of 4)
+    - Files modified:
+      - `luci-app-system-hub/root/usr/libexec/rpcd/luci.system-hub`
+      - `luci-app-system-hub/root/usr/share/rpcd/acl.d/luci-app-system-hub.json`
+      - `luci-app-system-hub/htdocs/luci-static/resources/system-hub/api.js`
+      - `luci-app-system-hub/htdocs/luci-static/resources/view/system-hub/logs.js`
+      - `luci-app-system-hub/Makefile` (version bumped to 0.5.2-r1)
+
+28. **IP Blocklist - Static Threat Defense Layer (2026-02-20)**
+    - Evolution #1 from SysWarden-inspired EVOLUTION-PLAN.md
+    - Created `secubox-app-ipblocklist` backend package:
+      - `ipblocklist-update.sh` - Main update script with ipset management
+      - UCI config: sources (blocklist URLs), whitelist, update interval
+      - Cron hourly update job
+      - Supports nftables (fw4) and legacy iptables backends
+      - Default sources: Data-Shield (~100k IPs), Firehol Level 1
+      - CLI: start, stop, update, flush, status, test, logs
+    - Created `luci-app-ipblocklist` dashboard:
+      - Status card: entry count, memory usage, last update
+      - Enable/Disable toggle, Update Now, Flush buttons
+      - Test IP form with blocked/allowed result
+      - Sources manager with add/remove URLs
+      - Whitelist manager with add/remove entries
+      - Logs viewer with monospace output
+    - RPCD methods (12 total): status, logs, sources, whitelist, update, flush,
+      test_ip, set_enabled, add_source, remove_source, add_whitelist, remove_whitelist
+    - Architecture: Layer 1 pre-emptive blocking before CrowdSec Layer 2 reactive
+    - Files: `package/secubox/secubox-app-ipblocklist/`, `package/secubox/luci-app-ipblocklist/`
+
+29. **AbuseIPDB Reporter - Evolution #2 (2026-02-20)**
+    - Evolution #2 from SysWarden-inspired EVOLUTION-PLAN.md
+    - Added AbuseIPDB reporting to CrowdSec Dashboard (v0.8.0):
+      - New "AbuseIPDB" tab in CrowdSec Dashboard navigation
+      - UCI config `/etc/config/crowdsec_abuseipdb` for API key and settings
+      - `crowdsec-reporter.sh` CLI tool for IP reporting
+      - Cron job for automatic reporting every 15 minutes
+    - Reporter features:
+      - Report CrowdSec blocked IPs to AbuseIPDB community database
+      - Check IP reputation with confidence score
+      - Cooldown to prevent duplicate reports (15 min default)
+      - Daily/weekly/total stats tracking
+      - Rate limiting with 1-second delay between reports
+    - RPCD handler `luci.crowdsec-abuseipdb` with 9 methods:
+      - status, history, check_ip, report, set_enabled
+      - set_api_key, get_config, save_config, logs
+    - Dashboard features:
+      - Status card with reported counts
+      - Enable/Disable and Report Now buttons
+      - API key configuration form
+      - IP reputation checker
+      - Recent reports history table
+      - Logs viewer
+    - Attack categories: 18 (Brute-Force), 21 (Web App Attack)
+    - Files: `luci-app-crowdsec-dashboard/root/usr/sbin/crowdsec-reporter.sh`,
+      `luci-app-crowdsec-dashboard/htdocs/luci-static/resources/view/crowdsec-dashboard/reporter.js`
+
+30. **Log Denoising RPCD Fix (2026-02-21)**
+    - Fixed `get_denoise_stats` RPCD method returning "No response" (exit code 251)
+    - Root cause: `jsonfilter -e '@[*]'` doesn't work with CrowdSec JSON output
+    - Solution: Use `grep -c '"id":'` to count CrowdSec decisions instead
+    - Added fallback safety checks for empty/invalid counts
+    - Added missing ipset existence check before trying to list IPs
+    - Version bumped to 0.5.2-r2
+    - Files modified: `luci-app-system-hub/root/usr/libexec/rpcd/luci.system-hub`
+
+31. **PeerTube Auto-Upload Import (2026-02-21)**
+    - Enhanced video import to automatically upload to PeerTube after yt-dlp download
+    - Flow: Download → Extract metadata → OAuth authentication → API upload → Cleanup
+    - New features:
+      - OAuth token acquisition from UCI-stored admin credentials
+      - Video upload via PeerTube REST API (POST /api/v1/videos/upload)
+      - Real-time job status polling with `import_job_status` method
+      - Progress indicator in LuCI UI (downloading → uploading → completed)
+      - Automatic cleanup of temp files after successful upload
+    - RPCD methods:
+      - `import_video`: Now includes auto-upload (replaces download-only)
+      - `import_job_status`: Poll import job progress by job_id
+    - Prerequisites: Admin password stored in UCI (`uci set peertube.admin.password`)
+    - Version bumped to 1.1.0
+    - Files modified:
+      - `luci-app-peertube/root/usr/libexec/rpcd/luci.peertube`
+      - `luci-app-peertube/htdocs/luci-static/resources/view/peertube/overview.js`
+      - `luci-app-peertube/htdocs/luci-static/resources/peertube/api.js`
+      - `luci-app-peertube/root/usr/share/rpcd/acl.d/luci-app-peertube.json`
+
+32. **Streamlit KISS One-Click Features (2026-02-21)**
+    - Simplified dashboard to KISS UI pattern with status badges
+    - New RPCD methods:
+      - `upload_and_deploy`: One-click upload creates app + instance + starts
+      - `emancipate_instance`: Create HAProxy vhost with SSL for instance
+      - `unpublish`: Remove HAProxy vhost while preserving instance
+      - `set_auth_required`: Toggle authentication requirement
+      - `get_exposure_status`: Get all instances with cert validity/expiry
+    - Dashboard features:
+      - One-click deploy form (name + domain + file upload)
+      - Instances table with status badges (Running/Stopped, SSL valid/missing)
+      - Action buttons: Start/Stop, Expose/Unpublish, Auth toggle
+    - Version bumped to 1.0.0-r11
+    - Files modified:
+      - `luci-app-streamlit/root/usr/libexec/rpcd/luci.streamlit`
+      - `luci-app-streamlit/htdocs/luci-static/resources/view/streamlit/dashboard.js`
+      - `luci-app-streamlit/htdocs/luci-static/resources/streamlit/api.js`
+      - `luci-app-streamlit/root/usr/share/rpcd/acl.d/luci-app-streamlit.json`
+
+33. **MetaBlogizer KISS One-Click Features (2026-02-21)**
+    - Applied same KISS UI pattern from Streamlit to MetaBlogizer
+    - New RPCD methods:
+      - `upload_and_create_site`: One-click deploy with auto HAProxy setup
+      - `unpublish_site`: Remove HAProxy vhost while preserving content
+      - `set_auth_required`: Toggle authentication requirement per site
+      - `get_sites_exposure_status`: Exposure/cert status for all sites
+    - Dashboard features:
+      - One-click deploy form (name + domain + file upload)
+      - Sites table with status badges (Running, SSL OK/missing, Auth)
+      - Action buttons: Share, Upload, Expose/Unpublish, Lock/Unlock, Delete
+    - Files modified:
+      - `luci-app-metablogizer/root/usr/libexec/rpcd/luci.metablogizer`
+      - `luci-app-metablogizer/htdocs/luci-static/resources/view/metablogizer/dashboard.js`
+      - `luci-app-metablogizer/htdocs/luci-static/resources/metablogizer/api.js`
+      - `luci-app-metablogizer/root/usr/share/rpcd/acl.d/luci-app-metablogizer.json`
+
+54. **Matrix/Conduit E2EE Messaging Integration (2026-02-21)**
+    - New `secubox-app-matrix` package — Conduit Matrix homeserver in LXC container.
+    - New `luci-app-matrix` package — LuCI dashboard for Matrix management.
+    - **Backend (matrixctl CLI)**:
+      - Container lifecycle: `install`, `uninstall`, `update`
+      - Service control: `start`, `stop`, `restart`, `status`
+      - User management: `user add/del/passwd/list`
+      - Room management: `room create/delete/list`
+      - Exposure: `configure-haproxy`, `emancipate <domain>`
+      - Identity: `identity link/unlink` (DID integration)
+      - Mesh: `mesh publish/unpublish` (P2P service discovery)
+      - Backup: `backup`, `restore`
+    - **RPCD methods (17 total)**:
+      - Read: `status`, `logs`, `federation_status`, `identity_status`, `mesh_status`
+      - Write: `start`, `stop`, `install`, `uninstall`, `update`, `emancipate`, `configure_haproxy`, `user_add`, `user_del`, `identity_link`, `identity_unlink`, `mesh_publish`, `mesh_unpublish`
+    - **Dashboard features**:
+      - Install wizard for first-time setup
+      - Status cards with connection badges
+      - Service controls (Start/Stop/Restart)
+      - User management table
+      - Emancipate form for public exposure
+      - Identity/DID integration section
+      - Mesh publication controls
+      - Log viewer
+    - Container: Debian Bookworm arm64 + pre-built Conduit binary (~15MB)
+    - Resources: 512MB RAM, 2GB storage
+    - Catalog: Added to apps-local.json with "messaging" category
+    - Files:
+      - `secubox-app-matrix/`: Makefile, UCI config, init script, matrixctl (1279 lines)
+      - `luci-app-matrix/`: RPCD handler (461 lines), ACL, menu, overview.js (377 lines), api.js (137 lines)
+
+55. **SecuBox KISS UI Full Regeneration (2026-02-21)**
+    - Complete KISS pattern rewrite of all core SecuBox LuCI views.
+    - Removed legacy dependencies: SecuNav, Theme, Cascade, SbHeader.
+    - All views now use inline CSS with dark mode support via `prefers-color-scheme`.
+    - Unified styling across all SecuBox views with KissTheme.wrap().
+    - **Files rewritten**:
+      - `modules.js`: 565→280 lines — Module grid with filter tabs, install/enable actions
+      - `monitoring.js`: 442→245 lines — Live SVG charts, system stats, 5s polling
+      - `alerts.js`: 451→255 lines — Alert timeline, severity filters, dismiss actions
+      - `settings.js`: 540→220 lines — UCI form with header chips
+      - `services.js`: 1334→410 lines — Services registry, provider status, health checks
+    - **Total reduction**: 3,332→1,410 lines (~58% less code)
+    - **CSS optimization**: services.js reduced from 680 to 170 lines of inline CSS
+    - All views share consistent styling patterns:
+      - `.sb-header` with chips for stats
+      - `.sb-grid` responsive card layouts
+      - `.sb-btn` action buttons with hover states
+      - Dark mode via CSS media queries
+    - No external CSS file dependencies — fully self-contained views
+
+56. **Lyrion Stream Integration (2026-02-21)**
+    - New `secubox-app-squeezelite` package — Virtual Squeezebox player for Lyrion Music Server.
+    - New `secubox-app-lyrion-bridge` package — Audio bridge from Squeezelite to WebRadio/Icecast.
+    - **Squeezelite CLI (squeezelitectl)**:
+      - Service control: `start`, `stop`, `restart`, `enable`, `disable`, `status`
+      - Connection: `discover` (auto-find Lyrion), `connect [server]`, `disconnect`
+      - Audio: `devices` (list outputs), `output [device]` (set output)
+      - Streaming: `fifo enable [path]`, `fifo disable`, `fifo status`
+    - **Lyrion Bridge CLI (lyrionstreamctl)**:
+      - Setup: `setup [lyrion-ip]` — Full pipeline configuration
+      - Service: `start`, `stop`, `restart`, `enable`, `disable`, `status`
+      - Config: `config mount|bitrate|name|server [value]`
+      - Operations: `expose <domain>` (HAProxy+SSL), `logs [lines]`
+    - **Pipeline Architecture**:
+      - Lyrion Server → Squeezelite (FIFO output /tmp/squeezelite.pcm)
+      - Squeezelite → FFmpeg (PCM to MP3 encoding)
+      - FFmpeg → Icecast (HTTP streaming)
+    - **FFmpeg Bridge (ffmpeg-bridge.sh)**:
+      - Reads PCM from FIFO (s16le, 44100Hz, stereo)
+      - Encodes to MP3 (configurable bitrate, default 192kbps)
+      - Streams to Icecast mount point
+      - Auto-syncs metadata from Lyrion (artist/title)
+      - Auto-reconnect on stream errors
+    - UCI configs: `/etc/config/squeezelite`, `/etc/config/lyrion-bridge`
+    - Files:
+      - `secubox-app-squeezelite/`: Makefile, UCI config, init script, squeezelitectl
+      - `secubox-app-lyrion-bridge/`: Makefile, UCI config, init script, lyrionstreamctl, ffmpeg-bridge.sh
+
+57. **TURN Server for WebRTC (2026-02-21)**
+    - New `secubox-app-turn` package — coturn-based TURN/STUN server for NAT traversal.
+    - Required for Jitsi Meet when direct P2P connections fail (symmetric NAT, firewalls).
+    - **TURN CLI (turnctl)**:
+      - Service: `start`, `stop`, `restart`, `enable`, `disable`, `status`
+      - Setup: `setup-jitsi [jitsi-domain] [turn-domain]` — Configure for Jitsi Meet
+      - SSL: `ssl [domain]` — Generate/install SSL certificates
+      - Network: `expose [domain]` — Configure DNS and firewall rules
+      - Auth: `credentials [user] [ttl]` — Generate time-limited WebRTC credentials
+      - Testing: `test [host]` — Test TURN connectivity
+      - Logs: `logs [lines]` — View server logs
+    - **Ports**: 3478 (STUN/TURN), 5349 (TURN over TLS), 49152-65535 (media relay)
+    - **Security**: 
+      - HMAC-SHA1 time-limited credentials (REST API compatible)
+      - Blocked peer IPs: RFC1918, localhost, link-local
+      - Auto-generated static auth secret
+    - **Jitsi Integration**: Added `jitsctl setup-turn [domain]` command
+    - UCI config: `/etc/config/turn` (sections: main, ssl, limits, log)
+    - Files:
+      - `secubox-app-turn/Makefile`
+      - `secubox-app-turn/files/etc/config/turn`
+      - `secubox-app-turn/files/etc/init.d/turn`
+      - `secubox-app-turn/files/usr/sbin/turnctl`
+    - Modified:
+      - `secubox-app-jitsi/files/usr/sbin/jitsctl` — Added `setup-turn` command
+
+58. **WebRadio LuCI & Lyrion Bridge UI (2026-02-21)**
+    - New `luci-app-webradio/view/webradio/lyrion.js` — Lyrion Stream Bridge dashboard.
+    - **Lyrion Bridge Tab Features**:
+      - Architecture diagram: Lyrion → Squeezelite → FIFO → FFmpeg → Icecast
+      - Live status cards: Lyrion online, Squeezelite running, FFmpeg encoding, Mount active
+      - Now Playing display with artist/title from Icecast metadata
+      - Listener count from Icecast stats
+      - Quick Setup: One-click pipeline configuration with Lyrion IP input
+      - Bridge Control: Start/Stop buttons for the streaming pipeline
+      - Stream URL: Direct link + embedded HTML5 audio player
+    - **RPCD Methods Added** (luci.webradio):
+      - `bridge_status` — Get Lyrion/Squeezelite/FFmpeg/Mount status
+      - `bridge_start` — Start streaming pipeline
+      - `bridge_stop` — Stop streaming pipeline
+      - `bridge_setup [lyrion_server]` — Configure full pipeline
+    - ACL updated: `luci-app-webradio.json` with bridge methods
+    - Menu updated: Added "Lyrion Bridge" tab (order 80)
+    - Files:
+      - `luci-app-webradio/htdocs/luci-static/resources/view/webradio/lyrion.js` (196 lines)
+      - Modified: `luci.webradio` RPCD handler, ACL, menu
+
+59. **TURN Server LuCI Dashboard (2026-02-21)**
+    - New `luci-app-turn` package — Full TURN server management UI.
+    - **Overview Tab Features**:
+      - Status chips: Running/Stopped, Realm, Port
+      - Service Control: Start, Stop, Enable/Disable Autostart
+      - Port Status: UDP 3478, TCP 5349 with listening indicators
+      - External IP detection for STUN responses
+      - Jitsi Integration: One-click setup with domain inputs
+      - SSL & Expose: Certificate generation and DNS/firewall configuration
+      - Credential Generator: Time-limited TURN credentials (JSON output)
+      - Logs viewer: Real-time server logs
+    - **RPCD Handler** (luci.turn):
+      - `status` — Service and port status
+      - `start/stop/enable/disable` — Service control
+      - `setup_jitsi [jitsi_domain] [turn_domain]` — Jitsi configuration
+      - `ssl [domain]` — SSL certificate setup
+      - `expose [domain]` — DNS and firewall configuration
+      - `credentials [username] [ttl]` — Generate WebRTC credentials
+      - `logs [lines]` — Fetch server logs
+    - KISS UI pattern with inline CSS and dark mode support
+    - Files:
+      - `luci-app-turn/Makefile`
+      - `luci-app-turn/htdocs/luci-static/resources/view/turn/overview.js` (229 lines)
+      - `luci-app-turn/root/usr/libexec/rpcd/luci.turn` (shell RPCD handler)
+      - `luci-app-turn/root/usr/share/luci/menu.d/luci-app-turn.json`
+      - `luci-app-turn/root/usr/share/rpcd/acl.d/luci-app-turn.json`
+
+60. **WebRadio HTTPS Stream via HAProxy (2026-02-21)**
+    - Configured `stream.gk2.secubox.in` for HTTPS audio streaming.
+    - **Problem Solved**: Mixed content blocking — HTTPS player cannot load HTTP audio.
+    - **HAProxy Configuration**:
+      - New backend `icecast_lyrion` with HTTP/1.1 forced (`proto=h1`, `http_reuse=never`)
+      - Vhost `stream.gk2.secubox.in` → Icecast port 8000 with WAF bypass
+      - Let's Encrypt SSL certificate via ACME webroot mode
+    - **Web Player Updated** (`/srv/webradio/player/index.html`):
+      - Stream URL: `https://stream.gk2.secubox.in/lyrion`
+      - Status JSON: `https://stream.gk2.secubox.in/status-json.xsl`
+      - Removes mixed content errors in browser
+    - **Portal Integration**: WebRadio added to SecuBox portal (Cloud & Media section)
+    - **Endpoints**:
+      - `https://radio.gk2.secubox.in/` — Web player interface
+      - `https://stream.gk2.secubox.in/lyrion` — HTTPS audio stream
+      - `https://stream.gk2.secubox.in/status-json.xsl` — Icecast metadata
+
+61. **Release v0.26.0 (2026-02-21)**
+    - Tagged and pushed v0.26.0 with all WebRadio/TURN/Lyrion features.
+    - **New Packages**:
+      - `luci-app-webradio` — Web radio management + Lyrion bridge tab
+      - `luci-app-turn` — TURN/STUN server UI for WebRTC
+      - `secubox-app-lyrion-bridge` — Lyrion → Icecast streaming pipeline
+      - `secubox-app-squeezelite` — Virtual Squeezebox audio player
+      - `secubox-app-turn` — TURN server with Jitsi integration
+      - `secubox-app-webradio` — Icecast web radio server
+    - **Highlights**:
+      - HTTPS streaming via HAProxy (stream.gk2.secubox.in)
+      - Schedule-based programming with jingles
+      - CrowdSec security integration
+      - Time-limited TURN credentials for WebRTC
+    - 31 files changed, 3542 insertions
+
+62. **TURN Server Nextcloud Talk Integration (2026-02-21)**
+    - New `turnctl setup-nextcloud [turn-domain] [use-port-443]` command.
+    - Configures coturn for Nextcloud Talk compatibility:
+      - Uses port 443 by default (best firewall traversal)
+      - Generates static-auth-secret if not exists
+      - Auto-detects external IP
+      - Sets up SSL certificate
+    - Outputs ready-to-paste settings for Nextcloud Talk admin:
+      - STUN server: `turn.domain:3478`
+      - TURN server: `turn.domain:443`
+      - TURN secret + protocol settings
+    - LuCI integration:
+      - New "Nextcloud Talk" section in TURN overview
+      - One-click setup with settings display
+      - RPC method: `setup_nextcloud`
+    - ACL updated with `setup_nextcloud` permission
+    - Files modified:
+      - `secubox-app-turn/files/usr/sbin/turnctl` (+70 lines)
+      - `luci-app-turn/htdocs/luci-static/resources/view/turn/overview.js`
+      - `luci-app-turn/root/usr/libexec/rpcd/luci.turn`
+      - `luci-app-turn/root/usr/share/rpcd/acl.d/luci-app-turn.json`
+
+63. **PeerTube Transcript & AI Analysis Tool (2026-02-21)**
+    - New `peertube-analyse` CLI tool (778 lines, POSIX-compatible).
+    - **Pipeline Architecture**:
+      1. **Metadata**: yt-dlp --dump-json → `<slug>.meta.json`
+      2. **Subtitles**: PeerTube API check + yt-dlp download → VTT → TXT
+      3. **Whisper**: ffmpeg audio extraction → local transcription (fallback)
+      4. **Claude AI**: Structured intelligence analysis → Markdown report
+    - **CLI Flags**:
+      - `--url <url>` — PeerTube video URL
+      - `--no-whisper` — Subtitles only, disable Whisper
+      - `--force-whisper` — Force transcription even with subtitles
+      - `--no-analyse` — Skip Claude AI analysis
+      - `--model <name>` — Whisper model (tiny/base/small/medium/large-v3)
+      - `--lang <code>` — Language code (default: fr)
+    - **Output Structure**:
+      ```
+      ./output/<slug>/
+      ├── <slug>.meta.json      # Video metadata
+      ├── <slug>.fr.vtt         # Original subtitles (if available)
+      ├── <slug>.transcript.txt # Plain text transcript
+      └── <slug>.analyse.md     # Claude AI analysis
+      ```
+    - **Claude Analysis Structure**:
+      1. Résumé exécutif (5 lignes max)
+      2. Thèmes principaux et sous-thèmes
+      3. Acteurs/entités mentionnés
+      4. Points factuels clés et révélations
+      5. Angle narratif et biais éventuels
+      6. Pertinence cybersécurité/renseignement
+      7. Questions ouvertes
+    - **Technical Features**:
+      - POSIX-compatible (OpenWrt, Alpine, Debian)
+      - Colored terminal output (ANSI)
+      - Graceful degradation (works without Whisper/Claude)
+      - VTT → TXT conversion with deduplication
+      - Transcript truncation at 12k chars for API limits
+      - Supports whisper, whisper-cpp, and whisper.cpp (main)
+    - Package version bumped to 1.1.0
+    - Files:
+      - `secubox-app-peertube/files/usr/sbin/peertube-analyse` (778 lines)
+      - `secubox-app-peertube/Makefile` (updated)
+
+64. **PeerTube Analyse Web Interface & Portal (2026-02-21)**
+    - Created standalone web interface for PeerTube video analysis.
+    - **URL**: https://analyse.gk2.secubox.in/peertube-analyse/
+    - **Web Interface Features**:
+      - Cyberpunk-themed design matching SecuBox portal
+      - Video URL input with example presets
+      - Options: Force Whisper, No AI Analysis, Model/Language selection
+      - Progress status bar with live polling
+      - Tabbed results: Analysis (Markdown), Transcript, Metadata
+      - Copy to clipboard functionality
+    - **CGI Backend**:
+      - `/cgi-bin/peertube-analyse` — Start analysis (POST)
+      - `/cgi-bin/peertube-analyse-status` — Poll job status (GET)
+      - Async job system with background processing
+      - JSON API with job_id for polling
+    - **RPCD Integration**:
+      - Added `analyse` and `analyse_status` methods to `luci.peertube`
+      - ACL permissions updated for read/write access
+    - **Portal Integration**:
+      - New "Intelligence & Analyse" section in SecuBox portal
+      - Added PeerTube Analyse and Radio Stream services
+    - **HAProxy/SSL**:
+      - Domain: analyse.gk2.secubox.in
+      - Let's Encrypt certificate auto-provisioned
+      - Routing via uhttpd backend (static content)
+    - Files:
+      - `secubox-app-peertube/files/www/peertube-analyse/index.html`
+      - `secubox-app-peertube/files/www/cgi-bin/peertube-analyse`
+      - `secubox-app-peertube/files/www/cgi-bin/peertube-analyse-status`
+      - `luci-app-peertube/root/usr/libexec/rpcd/luci.peertube` (updated)
+      - `luci-app-secubox-portal/root/www/gk2-hub/portal.html` (updated)
+
+28. **PeerTube Analyse Bug Fix (2026-02-21)**
+    - Fixed jq error "null (null) has no keys" in metadata extraction.
+    - Root cause: PeerTube yt-dlp output doesn't include `automatic_captions` field.
+    - Fix: Added null-coalescing in jq filter: `((.automatic_captions // {}) | keys)`
+    - Also fixed `subtitles` field for consistency.
+    - Cleaned up duplicate HAProxy vhost entry for cloud.gk2.secubox.in.

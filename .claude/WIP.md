@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-17 (v0.21.0 - Nextcloud LXC + WebRadio)_
+_Last updated: 2026-02-21 (v0.24.1 - KISS UI Regeneration)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -62,7 +62,139 @@ _Last updated: 2026-02-17 (v0.21.0 - Nextcloud LXC + WebRadio)_
   - Gossip-based exposure config sync via secubox-p2p
   - Created `luci-app-vortex-dns` dashboard
 
+### Just Completed (2026-02-20)
+
+- **LuCI VM Manager** — DONE (2026-02-20)
+  - `luci-app-vm` package for LXC container management dashboard
+  - Status bar: total/running/stopped containers, disk usage
+  - Container cards with Start/Stop/Restart, Snapshot, Export controls
+  - RPCD handler with 10 methods: status, list, info, logs, start, stop, restart, snapshot, export
+  - Polling for live status updates
+
+- **Vortex Firewall Stats Fix** — DONE (2026-02-20)
+  - Enabled BIND RPZ logging for blocked queries
+  - Created `/usr/sbin/vortex-firewall-stats` script to parse logs
+  - Fixed RPCD handler to read hit_count from stats file
+  - Added cron job for automatic stats updates every 5 minutes
+  - Verified: 12,370 domains blocked, RPZ NXDOMAIN working
+
+- **SaaS Relay HAProxy Integration** — DONE (2026-02-20)
+  - Fixed relay.gk2.secubox.in routing to mitmproxy on port 8891
+  - Created SaaS relay dashboard HTML at /srv/saas-relay/web/
+  - HexoJS fallback via uhttpd on port 4000
+
+- **Matrix Homeserver (Conduit)** — DONE (2026-02-20)
+  - E2EE mesh messaging server using Conduit Matrix homeserver
+  - LXC container with pre-built ARM64 Conduit binary (0.10.12)
+  - `matrixctl` CLI (1279 lines): install/uninstall/update, user management, rooms, federation
+  - `luci-app-matrix` dashboard with:
+    - Install wizard, status cards, feature badges
+    - Service controls (Start/Stop/Update/Uninstall)
+    - User management form
+    - Emancipate (public exposure) with HAProxy + SSL
+    - Identity (DID) integration section
+    - P2P mesh publication toggle
+    - Logs viewer
+  - RPCD backend with 17 methods
+  - UCI config: main, server, federation, admin, database, network, identity, mesh
+  - Tested and verified on router (all checks pass, API responding)
+
+- **SaaS Relay CDN Caching & Session Replay** — DONE (2026-02-20)
+  - CDN cache with configurable profiles: minimal, gandalf, aggressive
+  - Session replay modes: shared (default), per_user, master
+  - New CLI commands: `saasctl cache {status|clear|profile|enable|disable}`
+  - New CLI commands: `saasctl session {status|mode|master|enable|disable}`
+  - Enhanced mitmproxy addon (415 lines) with response caching
+  - UCI config sections: cache, cache_profile (3), session_replay
+  - Config JSON export: config.json + services.json
+
+- **Media Services Hub Dashboard** — DONE (2026-02-20)
+  - Unified dashboard for all SecuBox media services at `/admin/services/media-hub`
+  - Category-organized cards: streaming, conferencing, apps, display, social, monitoring
+  - Service cards with status indicators, start/stop/restart controls
+  - RPCD backend querying 8 media services (Jellyfin, Lyrion, Jitsi, PeerTube, etc.)
+  - Files: `luci-app-media-hub` package
+
+- **HexoJS KISS Static Upload** — DONE (2026-02-20)
+  - Multi-user/multi-instance authentication with HAProxy Basic Auth
+  - UCI config for users, auth, and instances
+  - `hexoctl user add/del/passwd/grant/revoke` commands
+  - `hexoctl auth enable/disable/status/haproxy` commands
+  - KISS static upload workflow (no Hexo build required):
+    - `hexoctl static create <name>` - Create static-only site
+    - `hexoctl static upload <file>` - Upload HTML/CSS/JS directly
+    - `hexoctl static publish` - Copy to /www/ for immediate serving
+    - `hexoctl static quick <file>` - One-command upload + publish
+  - Tested and verified on router
+
+- **HexoJS Content Upload Wizard** — DONE (2026-02-20)
+  - 3-step wizard UI at `/admin/services/hexojs/upload`
+  - File upload: HTML, PDF, Markdown (.md) support
+  - Metadata: Title, Category, Tags, Public/Private visibility
+  - Multi-target publishing: HexoJS Blog, Gitea, Streamlit, MetaBlogizer
+  - Base64 encoding for binary file transfer
+  - RPCD methods: upload_article, upload_pdf, upload_html, publish_draft, unpublish_post, get_uploads
+  - Gitea integration with repo/path selection
+  - SecuBox Welcome Guide deployed at /guide/, /connexion.html, /accueil.html
+
+### Just Completed (2026-02-19)
+
+- **WAF VoIP/XMPP Security Filters** — DONE (2026-02-19)
+  - Added 4 new WAF categories to mitmproxy:
+    - `voip`: 12 SIP/VoIP patterns (header injection, ARI/AMI abuse)
+    - `xmpp`: 10 XMPP patterns (XSS, XXE, BOSH hijack)
+    - `cve_voip`: 9 CVEs for Asterisk/FreePBX/Kamailio/OpenSIPS
+    - `cve_xmpp`: 8 CVEs for Prosody/ejabberd/Tigase
+  - Autoban options for voip/xmpp attacks
+  - Total: 40+ new detection patterns, 17+ CVEs
+
+- **Self-Hosted Jitsi Meet** — DONE (2026-02-19)
+  - Full LXC deployment: Prosody (5380), Jicofo, JVB, Nginx (9088)
+  - HAProxy vhost at `meet.gk2.secubox.in` with Let's Encrypt SSL
+  - WAF bypass for WebRTC compatibility
+  - Webchat integrated with self-hosted Jitsi
+  - Complete video conferencing without external dependencies
+
+- **VoIP (Asterisk PBX) + Jabber Integration** — DONE (2026-02-19)
+  - Created `secubox-app-voip` package with Asterisk PBX in LXC container
+  - OVH Telephony API integration for SIP trunk auto-provisioning
+  - `voipctl` CLI: install/uninstall, ext add/del, trunk add ovh, call, vm list
+  - Created `luci-app-voip` with 4 views: Overview, Extensions, Trunks, Click-to-Call
+  - RPCD backend with 15 methods for VoIP management
+  - Jabber VoIP integration:
+    - Jingle VoIP support (STUN/TURN via mod_external_services)
+    - SMS relay via OVH (messages to sms@domain)
+    - Voicemail notifications via Asterisk AMI → XMPP
+  - Updated jabberctl with `jingle enable/disable`, `sms config/send`, `voicemail-notify`
+  - Updated luci.jabber RPCD with 9 new VoIP methods
+  - UCI config sections: jingle, sms, voicemail
+
+- **Matrix Homeserver Integration** — DONE (2026-02-19)
+  - Created `secubox-app-matrix` package with Conduit Matrix server in LXC
+  - Pre-built ARM64/x86_64 binaries (~15MB), ~500MB RAM footprint
+  - `matrixctl` CLI: install/start/stop, user management, federation, emancipate
+  - HAProxy integration, identity linking (DID), P2P mesh publication
+  - Created `luci-app-matrix` dashboard with KISS theme
+  - Install wizard, status cards, user form, emancipate form, logs viewer
+  - RPCD backend with 18 methods
+  - Completes v1.0.0 roadmap: Matrix + VoIP + Jabber = full mesh communication stack
+
 ### Just Completed (2026-02-17)
+
+- **PeerTube yt-dlp Video Import** — DONE (2026-02-17)
+  - Installed yt-dlp in PeerTube LXC container
+  - Added RPCD methods: import_video, import_status
+  - LuCI UI section with URL input and download button
+  - Supports YouTube, Vimeo, and 1000+ sites
+  - Downloads to import folder for PeerTube admin upload
+
+- **mitmproxy WAF Filters UI** — DONE (2026-02-17)
+  - Added new "WAF Filters" tab to mitmproxy LuCI interface
+  - Displays 10 filter categories: sqli, xss, lfi, rce, cve_2024, scanners, webmail, api_abuse, nextcloud, roundcube
+  - Toggle enable/disable per category with live updates
+  - Expandable rules tables showing patterns, descriptions, CVE links
+  - Summary stats: total categories, active filters, rule count
+  - RPCD methods: get_waf_rules, toggle_waf_category
 
 - **Security KISS Dashboard Enhancements** — DONE (2026-02-17)
   - Added ndpid (nDPI daemon) to service status monitoring
@@ -732,13 +864,73 @@ _Last updated: 2026-02-17 (v0.21.0 - Nextcloud LXC + WebRadio)_
   - 4 views: Overview, Devices, Policies, Settings
   - RPCD handler with 11 methods + public ACL for unauthenticated access
 
+### Just Completed (2026-02-21)
+
+- **SecuBox KISS UI Full Regeneration** — DONE (2026-02-21)
+  - Complete KISS pattern rewrite of 5 core LuCI views
+  - Removed legacy deps: SecuNav, Theme, Cascade, SbHeader
+  - All views now use inline CSS with dark mode support
+  - Files rewritten:
+    - `modules.js`: 565→280 lines — Module grid with filters
+    - `monitoring.js`: 442→245 lines — Live SVG charts
+    - `alerts.js`: 451→255 lines — Alert timeline with dismiss
+    - `settings.js`: 540→220 lines — UCI form with chips
+    - `services.js`: 1334→410 lines — Services registry
+  - Total reduction: 3,332→1,410 lines (~58% less code)
+
+### Just Completed (2026-02-20 PM)
+
+- **IP Blocklist - Evolution #1** — DONE (2026-02-20)
+  - Created `secubox-app-ipblocklist` backend package
+  - `ipblocklist-update.sh` CLI with ipset management
+  - Supports nftables (fw4) and iptables backends
+  - Default sources: Data-Shield (~100k IPs), Firehol Level 1
+  - Created `luci-app-ipblocklist` KISS dashboard
+  - RPCD handler with 12 methods
+  - Layer 1 pre-emptive defense before CrowdSec Layer 2
+
+- **AbuseIPDB Reporter - Evolution #2** — DONE (2026-02-20)
+  - Added to `luci-app-crowdsec-dashboard` (v0.8.0)
+  - New "AbuseIPDB" tab in CrowdSec Dashboard
+  - `crowdsec-reporter.sh` CLI for reporting blocked IPs
+  - RPCD handler `luci.crowdsec-abuseipdb` with 9 methods
+  - UCI config for API key, categories, cooldown settings
+  - Cron job for automatic reporting every 15 minutes
+  - IP reputation checker in dashboard
+
+- **Log Denoising - Evolution #3** — DONE (2026-02-20)
+  - Added smart log denoising to `luci-app-system-hub` (v0.5.2)
+  - Three modes: RAW (all logs), SMART (filter known IPs), SIGNAL_ONLY (new threats only)
+  - Integrates with IP Blocklist ipset + CrowdSec decisions
+  - RPCD methods: `get_denoised_logs`, `get_denoise_stats`
+  - LuCI dashboard additions:
+    - Denoise mode selector panel
+    - Noise ratio indicator with color coding
+    - Known threats counter
+    - Blocklist status warning
+  - Filters private IPs (10.*, 172.16-31.*, 192.168.*, 127.*)
+  - Supports both nftables and iptables backends
+
+### SysWarden Evolution Plan (2026-02-20)
+
+Implementing 4 evolutions inspired by SysWarden patterns:
+
+| # | Module | Priority | Status |
+|---|--------|----------|--------|
+| 1 | `luci-app-ipblocklist` | HIGH | DONE |
+| 2 | AbuseIPDB Reporter | HIGH | DONE |
+| 3 | Log Denoising (System Hub) | MEDIUM | DONE |
+| 4 | SIEM Connector (x86 only) | LOW | TODO |
+
+**Next**: Evolution #4 - SIEM Connector (optional, x86 only)
+
 ### Next Up — Couche 1
 
 1. **Guacamole Pre-built Binaries**
    - Current LXC build-from-source approach is too slow
    - Need to find/create pre-built ARM64 binaries for guacd + Tomcat
 
-2. **Multi-Node Mesh Testing**
+3. **Multi-Node Mesh Testing**
    - Deploy second SecuBox node to test real peer-to-peer sync
    - Validate bidirectional threat intelligence sharing
 

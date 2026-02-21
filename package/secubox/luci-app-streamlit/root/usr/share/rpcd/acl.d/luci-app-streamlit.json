@@ -8,7 +8,7 @@
 					"list_apps", "get_app", "get_install_progress",
 					"list_instances",
 					"get_gitea_config", "gitea_list_repos",
-					"get_source", "get_emancipation"
+					"get_source", "get_emancipation", "get_exposure_status"
 				]
 			},
 			"uci": ["streamlit"]
@@ -24,7 +24,8 @@
 					"add_instance", "remove_instance", "enable_instance", "disable_instance",
 					"rename_app", "rename_instance",
 					"save_gitea_config", "gitea_clone", "gitea_pull",
-					"save_source", "emancipate"
+					"save_source", "emancipate",
+					"upload_and_deploy", "emancipate_instance", "unpublish", "set_auth_required"
 				]
 			},
 			"uci": ["streamlit"]

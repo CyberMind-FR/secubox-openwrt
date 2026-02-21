@@ -1,0 +1,1059 @@
+#!/bin/sh
+# voipctl - SecuBox VoIP PBX Control Script
+# Manages Asterisk PBX in LXC container with OVH SIP trunk
+
+set -e
+
+CONTAINER_NAME="voip"
+CONTAINER_PATH="/srv/lxc/$CONTAINER_NAME"
+DATA_PATH="/srv/voip"
+LIB_PATH="/usr/lib/secubox/voip"
+
+# Source helper libraries
+[ -f "$LIB_PATH/ovh-telephony.sh" ] && . "$LIB_PATH/ovh-telephony.sh"
+[ -f "$LIB_PATH/asterisk-config.sh" ] && . "$LIB_PATH/asterisk-config.sh"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+log_info() { echo -e "${BLUE}[INFO]${NC} $*"; }
+log_ok() { echo -e "${GREEN}[OK]${NC} $*"; }
+log_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
+log_err() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
+
+usage() {
+	cat <<EOF
+Usage: voipctl <command> [options]
+
+Container Management:
+  install              Create LXC container and install Asterisk
+  uninstall            Remove container and all data
+  start                Start VoIP services
+  stop                 Stop VoIP services
+  restart              Restart VoIP services
+  status               Show status (JSON)
+  logs [-f]            View Asterisk logs
+  shell                Open shell in container
+
+Extension Management:
+  ext add <num> <name> [password]   Add extension
+  ext del <num>                     Delete extension
+  ext list                          List extensions
+  ext passwd <num> [password]       Set extension password
+
+Trunk Management:
+  trunk add ovh        Auto-provision OVH SIP trunk
+  trunk add manual     Configure trunk manually
+  trunk test           Test trunk connectivity
+  trunk status         Show registration status
+
+Call Operations:
+  call <from> <to>     Originate call (click-to-call)
+  hangup <channel>     Hang up active call
+  calls                List active calls
+
+Voicemail:
+  vm list [ext]        List voicemails
+  vm play <ext> <id>   Play voicemail
+  vm delete <ext> <id> Delete voicemail
+
+Call Recording:
+  rec enable           Enable call recording
+  rec disable          Disable call recording
+  rec status           Show recording status
+  rec list [date]      List recordings (YYYYMMDD)
+  rec play <file>      Play recording
+  rec download <file>  Get download path
+  rec delete <file>    Delete recording
+  rec cleanup [days]   Delete recordings older than N days
+
+Configuration:
+  configure-haproxy    Setup WebRTC proxy in HAProxy
+  emancipate <domain>  Full exposure with SSL
+  reload               Reload Asterisk configuration
+
+EOF
+	exit 1
+}
+
+# Check if container exists
+container_exists() {
+	[ -d "$CONTAINER_PATH/rootfs" ]
+}
+
+# Check if container is running
+container_running() {
+	lxc-info -n "$CONTAINER_NAME" -s 2>/dev/null | grep -q "RUNNING"
+}
+
+# Execute command in container
+container_exec() {
+	if ! container_running; then
+		log_err "Container not running"
+		return 1
+	fi
+	lxc-attach -n "$CONTAINER_NAME" -- "$@"
+}
+
+# Generate random password
+gen_password() {
+	head -c 16 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 16
+}
+
+#
+# Container Installation
+#
+cmd_install() {
+	if container_exists; then
+		log_warn "Container already exists. Use 'uninstall' first to reinstall."
+		return 1
+	fi
+
+	log_info "Creating VoIP container..."
+	mkdir -p "$CONTAINER_PATH" "$DATA_PATH"
+
+	# Create LXC config
+	cat > "$CONTAINER_PATH/config" <<EOF
+lxc.uts.name = $CONTAINER_NAME
+lxc.rootfs.path = dir:$CONTAINER_PATH/rootfs
+lxc.include = /usr/share/lxc/config/common.conf
+
+# Use host network for SIP/RTP
+lxc.net.0.type = none
+
+# Mount data directory
+lxc.mount.entry = $DATA_PATH srv/voip none bind,create=dir 0 0
+
+# Init with tini
+lxc.init.cmd = /usr/bin/tini -- /start-voip.sh
+
+# Capabilities for audio
+lxc.cap.keep = sys_nice
+EOF
+
+	log_info "Downloading Debian rootfs..."
+	local arch="arm64"
+	local release="bookworm"
+	local mirror="http://deb.debian.org/debian"
+	
+	# Use debootstrap if available, otherwise download tarball
+	if command -v debootstrap >/dev/null 2>&1; then
+		debootstrap --arch="$arch" --variant=minbase "$release" "$CONTAINER_PATH/rootfs" "$mirror"
+	else
+		# Download pre-built rootfs
+		local rootfs_url="https://images.linuxcontainers.org/images/debian/$release/$arch/default/"
+		local latest=$(wget -qO- "$rootfs_url" | grep -oE '[0-9]{8}_[0-9]{2}:[0-9]{2}' | tail -1)
+		wget -O /tmp/rootfs.tar.xz "${rootfs_url}${latest}/rootfs.tar.xz"
+		mkdir -p "$CONTAINER_PATH/rootfs"
+		tar -xJf /tmp/rootfs.tar.xz -C "$CONTAINER_PATH/rootfs"
+		rm -f /tmp/rootfs.tar.xz
+	fi
+
+	log_info "Installing Asterisk packages..."
+	
+	# Setup resolv.conf
+	cp /etc/resolv.conf "$CONTAINER_PATH/rootfs/etc/resolv.conf"
+
+	# Install packages
+	cat > "$CONTAINER_PATH/rootfs/tmp/setup.sh" <<'SETUP'
+#!/bin/bash
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y --no-install-recommends \
+    asterisk \
+    asterisk-core-sounds-en \
+    asterisk-moh-opsound-wav \
+    asterisk-modules \
+    tini \
+    curl \
+    jq \
+    ca-certificates
+
+# Clean up
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+
+# Create voip data directory
+mkdir -p /srv/voip/{sounds,recordings,voicemail,logs}
+SETUP
+	chmod +x "$CONTAINER_PATH/rootfs/tmp/setup.sh"
+	
+	# Start container temporarily to run setup
+	lxc-start -n "$CONTAINER_NAME" -d -F -- /bin/bash /tmp/setup.sh
+	
+	# Wait for setup to complete
+	local timeout=300
+	while [ $timeout -gt 0 ] && lxc-info -n "$CONTAINER_NAME" -s 2>/dev/null | grep -q "RUNNING"; do
+		sleep 5
+		timeout=$((timeout - 5))
+	done
+
+	# Create startup script
+	cat > "$CONTAINER_PATH/rootfs/start-voip.sh" <<'STARTUP'
+#!/bin/bash
+# VoIP container startup script
+
+# Clean stale PID files
+rm -f /var/run/asterisk/asterisk.pid 2>/dev/null
+
+# Start Asterisk
+/usr/sbin/asterisk -f -vvvg -c
+STARTUP
+	chmod +x "$CONTAINER_PATH/rootfs/start-voip.sh"
+
+	# Generate initial Asterisk config
+	generate_asterisk_config
+
+	log_ok "VoIP container installed successfully"
+	log_info "Run 'voipctl start' to start services"
+}
+
+cmd_uninstall() {
+	log_warn "This will remove the VoIP container and all data!"
+	echo -n "Continue? [y/N] "
+	read -r confirm
+	[ "$confirm" = "y" ] || [ "$confirm" = "Y" ] || return 1
+
+	if container_running; then
+		log_info "Stopping container..."
+		lxc-stop -n "$CONTAINER_NAME" -k 2>/dev/null || true
+	fi
+
+	log_info "Removing container..."
+	rm -rf "$CONTAINER_PATH"
+
+	log_ok "Container removed"
+	log_info "Data directory preserved at $DATA_PATH"
+}
+
+cmd_start() {
+	if ! container_exists; then
+		log_err "Container not installed. Run 'voipctl install' first."
+		return 1
+	fi
+
+	if container_running; then
+		log_warn "Container already running"
+		return 0
+	fi
+
+	log_info "Starting VoIP container..."
+	lxc-start -n "$CONTAINER_NAME" -d
+
+	# Wait for Asterisk to be ready
+	local timeout=30
+	while [ $timeout -gt 0 ]; do
+		if container_exec asterisk -rx "core show version" >/dev/null 2>&1; then
+			log_ok "Asterisk started"
+			return 0
+		fi
+		sleep 1
+		timeout=$((timeout - 1))
+	done
+
+	log_err "Asterisk failed to start in time"
+	return 1
+}
+
+cmd_stop() {
+	if ! container_running; then
+		log_warn "Container not running"
+		return 0
+	fi
+
+	log_info "Stopping VoIP container..."
+	lxc-stop -n "$CONTAINER_NAME"
+	log_ok "Container stopped"
+}
+
+cmd_restart() {
+	cmd_stop
+	sleep 2
+	cmd_start
+}
+
+cmd_status() {
+	local running=0
+	local registered=0
+	local active_calls=0
+	local extensions=0
+
+	if container_running; then
+		running=1
+		
+		# Check trunk registration
+		if container_exec asterisk -rx "pjsip show registrations" 2>/dev/null | grep -q "Registered"; then
+			registered=1
+		fi
+		
+		# Count active calls
+		active_calls=$(container_exec asterisk -rx "core show channels" 2>/dev/null | grep -oE "^[0-9]+ active" | cut -d' ' -f1 || echo 0)
+		
+		# Count extensions
+		extensions=$(container_exec asterisk -rx "pjsip show endpoints" 2>/dev/null | grep -c "^[0-9]" || echo 0)
+	fi
+
+	cat <<EOF
+{
+  "running": $running,
+  "trunk_registered": $registered,
+  "active_calls": ${active_calls:-0},
+  "extensions": ${extensions:-0},
+  "container": "$CONTAINER_NAME",
+  "data_path": "$DATA_PATH"
+}
+EOF
+}
+
+cmd_logs() {
+	local follow=""
+	[ "$1" = "-f" ] && follow="-f"
+	
+	if [ -n "$follow" ]; then
+		container_exec tail -f /var/log/asterisk/messages
+	else
+		container_exec tail -100 /var/log/asterisk/messages
+	fi
+}
+
+cmd_shell() {
+	container_exec /bin/bash
+}
+
+#
+# Extension Management
+#
+cmd_ext_add() {
+	local num="$1"
+	local name="$2"
+	local secret="${3:-$(gen_password)}"
+
+	[ -z "$num" ] || [ -z "$name" ] && {
+		log_err "Usage: voipctl ext add <number> <name> [password]"
+		return 1
+	}
+
+	# Validate extension number
+	if ! echo "$num" | grep -qE '^[0-9]{3,6}$'; then
+		log_err "Extension must be 3-6 digits"
+		return 1
+	fi
+
+	# Add to UCI
+	local section="ext_$num"
+	uci set voip.$section=extension
+	uci set voip.$section.name="$name"
+	uci set voip.$section.secret="$secret"
+	uci set voip.$section.context="internal"
+	uci set voip.$section.voicemail="1"
+	uci commit voip
+
+	# Regenerate Asterisk config
+	generate_pjsip_extensions
+
+	log_ok "Extension $num created for $name"
+	echo "Password: $secret"
+}
+
+cmd_ext_del() {
+	local num="$1"
+	[ -z "$num" ] && {
+		log_err "Usage: voipctl ext del <number>"
+		return 1
+	}
+
+	uci delete "voip.ext_$num" 2>/dev/null || {
+		log_err "Extension $num not found"
+		return 1
+	}
+	uci commit voip
+
+	generate_pjsip_extensions
+	log_ok "Extension $num deleted"
+}
+
+cmd_ext_list() {
+	echo "Extensions:"
+	echo "----------"
+	
+	uci show voip 2>/dev/null | grep "=extension" | while read -r line; do
+		local section=$(echo "$line" | cut -d'.' -f2 | cut -d'=' -f1)
+		local num=$(echo "$section" | sed 's/ext_//')
+		local name=$(uci -q get "voip.$section.name")
+		echo "  $num: $name"
+	done
+}
+
+cmd_ext_passwd() {
+	local num="$1"
+	local secret="${2:-$(gen_password)}"
+
+	[ -z "$num" ] && {
+		log_err "Usage: voipctl ext passwd <number> [password]"
+		return 1
+	}
+
+	uci set "voip.ext_$num.secret=$secret" 2>/dev/null || {
+		log_err "Extension $num not found"
+		return 1
+	}
+	uci commit voip
+
+	generate_pjsip_extensions
+	log_ok "Password updated for extension $num"
+	echo "New password: $secret"
+}
+
+#
+# Trunk Management
+#
+cmd_trunk_add_ovh() {
+	log_info "Provisioning OVH SIP trunk..."
+	
+	# Check OVH credentials
+	local app_key=$(uci -q get voip.ovh_telephony.app_key)
+	local app_secret=$(uci -q get voip.ovh_telephony.app_secret)
+	local consumer_key=$(uci -q get voip.ovh_telephony.consumer_key)
+
+	if [ -z "$app_key" ] || [ -z "$app_secret" ] || [ -z "$consumer_key" ]; then
+		log_err "OVH API credentials not configured"
+		log_info "Set credentials in /etc/config/voip under ovh_telephony section"
+		return 1
+	fi
+
+	# Fetch billing accounts
+	log_info "Fetching OVH telephony accounts..."
+	local accounts=$(ovh_api_get "/telephony")
+	
+	if [ -z "$accounts" ] || [ "$accounts" = "[]" ]; then
+		log_err "No telephony accounts found"
+		return 1
+	fi
+
+	echo "Available billing accounts:"
+	echo "$accounts" | jsonfilter -e '@[*]' | nl -w2 -s'. '
+	
+	echo -n "Select account number: "
+	read -r account_num
+	local billing_account=$(echo "$accounts" | jsonfilter -e "@[$((account_num-1))]")
+
+	# Fetch SIP lines
+	log_info "Fetching SIP lines..."
+	local lines=$(ovh_api_get "/telephony/$billing_account/line")
+	
+	echo "Available SIP lines:"
+	echo "$lines" | jsonfilter -e '@[*]' | nl -w2 -s'. '
+	
+	echo -n "Select line number: "
+	read -r line_num
+	local service_name=$(echo "$lines" | jsonfilter -e "@[$((line_num-1))]")
+
+	# Get SIP credentials
+	log_info "Fetching SIP credentials..."
+	local sip_accounts=$(ovh_api_get "/telephony/$billing_account/line/$service_name/sipAccounts")
+	local sip_username=$(echo "$sip_accounts" | jsonfilter -e '@[0]')
+
+	# Save to UCI
+	uci set voip.ovh_telephony.billing_account="$billing_account"
+	uci set voip.ovh_telephony.service_name="$service_name"
+	uci set voip.sip_trunk.enabled="1"
+	uci set voip.sip_trunk.provider="ovh"
+	uci set voip.sip_trunk.host="sip.ovh.net"
+	uci set voip.sip_trunk.username="$sip_username"
+	uci commit voip
+
+	log_info "Enter SIP password (from OVH manager):"
+	read -rs sip_password
+	uci set voip.sip_trunk.password="$sip_password"
+	uci commit voip
+
+	# Generate PJSIP config
+	generate_pjsip_trunk
+
+	log_ok "OVH trunk configured: $sip_username"
+	log_info "Run 'voipctl restart' to apply changes"
+}
+
+cmd_trunk_test() {
+	if ! container_running; then
+		log_err "Container not running"
+		return 1
+	fi
+
+	log_info "Testing trunk registration..."
+	container_exec asterisk -rx "pjsip show registrations"
+}
+
+cmd_trunk_status() {
+	if ! container_running; then
+		log_err "Container not running"
+		return 1
+	fi
+
+	container_exec asterisk -rx "pjsip show registrations"
+	echo
+	container_exec asterisk -rx "pjsip show endpoints" | head -20
+}
+
+#
+# Call Operations
+#
+cmd_call() {
+	local from="$1"
+	local to="$2"
+
+	[ -z "$from" ] || [ -z "$to" ] && {
+		log_err "Usage: voipctl call <from_ext> <to_number>"
+		return 1
+	}
+
+	if ! container_running; then
+		log_err "Container not running"
+		return 1
+	fi
+
+	log_info "Originating call: $from -> $to"
+	
+	# First ring the extension, then connect to destination
+	local channel=$(container_exec asterisk -rx "channel originate PJSIP/$from application Dial PJSIP/$to@ovh-trunk" 2>&1)
+	
+	if echo "$channel" | grep -qi "error"; then
+		log_err "Failed to originate call: $channel"
+		return 1
+	fi
+
+	log_ok "Call initiated"
+	echo "$channel"
+}
+
+cmd_hangup() {
+	local channel="$1"
+	[ -z "$channel" ] && {
+		log_err "Usage: voipctl hangup <channel>"
+		return 1
+	}
+
+	container_exec asterisk -rx "channel request hangup $channel"
+	log_ok "Hangup requested"
+}
+
+cmd_calls() {
+	if ! container_running; then
+		log_err "Container not running"
+		return 1
+	fi
+
+	container_exec asterisk -rx "core show channels"
+}
+
+#
+# Voicemail
+#
+cmd_vm_list() {
+	local ext="$1"
+	
+	if [ -n "$ext" ]; then
+		find "$DATA_PATH/voicemail/default/$ext" -name "msg*.wav" 2>/dev/null | while read -r msg; do
+			local id=$(basename "$msg" .wav)
+			local info=$(cat "${msg%.wav}.txt" 2>/dev/null | grep -E "^(callerid|origdate)=" | tr '\n' ' ')
+			echo "$id: $info"
+		done
+	else
+		find "$DATA_PATH/voicemail/default" -type d -name "[0-9]*" 2>/dev/null | while read -r dir; do
+			local ext=$(basename "$dir")
+			local count=$(find "$dir" -name "msg*.wav" 2>/dev/null | wc -l)
+			echo "$ext: $count messages"
+		done
+	fi
+}
+
+cmd_vm_play() {
+	local ext="$1"
+	local id="$2"
+	[ -z "$ext" ] || [ -z "$id" ] && {
+		log_err "Usage: voipctl vm play <extension> <msg_id>"
+		return 1
+	}
+
+	local file="$DATA_PATH/voicemail/default/$ext/$id.wav"
+	if [ -f "$file" ]; then
+		# Play via aplay or just output path
+		if command -v aplay >/dev/null; then
+			aplay "$file"
+		else
+			echo "Voicemail file: $file"
+		fi
+	else
+		log_err "Message not found: $id"
+		return 1
+	fi
+}
+
+cmd_vm_delete() {
+	local ext="$1"
+	local id="$2"
+	[ -z "$ext" ] || [ -z "$id" ] && {
+		log_err "Usage: voipctl vm delete <extension> <msg_id>"
+		return 1
+	}
+
+	rm -f "$DATA_PATH/voicemail/default/$ext/$id".*
+	log_ok "Message deleted"
+}
+
+#
+# Call Recording
+#
+RECORDINGS_PATH="$DATA_PATH/recordings"
+
+cmd_rec_enable() {
+	log_info "Enabling call recording..."
+	uci set voip.recording=recording
+	uci set voip.recording.enabled="1"
+	uci set voip.recording.format="wav"
+	uci set voip.recording.retention_days="30"
+	uci commit voip
+
+	# Create recordings directory
+	mkdir -p "$RECORDINGS_PATH"
+
+	# Regenerate dialplan with recording enabled
+	generate_dialplan
+
+	if container_running; then
+		container_exec asterisk -rx "dialplan reload"
+	fi
+
+	log_ok "Call recording enabled"
+	log_info "Recordings will be saved to: $RECORDINGS_PATH"
+}
+
+cmd_rec_disable() {
+	log_info "Disabling call recording..."
+	uci set voip.recording.enabled="0"
+	uci commit voip
+
+	generate_dialplan
+
+	if container_running; then
+		container_exec asterisk -rx "dialplan reload"
+	fi
+
+	log_ok "Call recording disabled"
+}
+
+cmd_rec_status() {
+	local enabled=$(uci -q get voip.recording.enabled)
+	local format=$(uci -q get voip.recording.format || echo "wav")
+	local retention=$(uci -q get voip.recording.retention_days || echo "30")
+	local total_count=0
+	local total_size=0
+	local today_count=0
+
+	if [ -d "$RECORDINGS_PATH" ]; then
+		total_count=$(find "$RECORDINGS_PATH" -type f -name "*.$format" 2>/dev/null | wc -l)
+		total_size=$(du -sh "$RECORDINGS_PATH" 2>/dev/null | cut -f1 || echo "0")
+
+		local today=$(date +%Y%m%d)
+		if [ -d "$RECORDINGS_PATH/$today" ]; then
+			today_count=$(find "$RECORDINGS_PATH/$today" -type f -name "*.$format" 2>/dev/null | wc -l)
+		fi
+	fi
+
+	cat <<EOF
+{
+  "enabled": ${enabled:-0},
+  "format": "$format",
+  "retention_days": $retention,
+  "path": "$RECORDINGS_PATH",
+  "total_recordings": $total_count,
+  "total_size": "$total_size",
+  "today_recordings": $today_count
+}
+EOF
+}
+
+cmd_rec_list() {
+	local date_filter="$1"
+	local format=$(uci -q get voip.recording.format || echo "wav")
+
+	if [ -n "$date_filter" ]; then
+		# List recordings for specific date
+		local dir="$RECORDINGS_PATH/$date_filter"
+		if [ -d "$dir" ]; then
+			echo "Recordings for $date_filter:"
+			echo "-------------------------"
+			find "$dir" -type f -name "*.$format" 2>/dev/null | while read -r file; do
+				local name=$(basename "$file")
+				local size=$(du -h "$file" 2>/dev/null | cut -f1)
+				local time=$(echo "$name" | cut -d'-' -f1)
+				local caller=$(echo "$name" | cut -d'-' -f2)
+				local dest=$(echo "$name" | cut -d'-' -f3 | sed "s/\.$format//")
+				printf "  %s  %s -> %s  (%s)\n" "$time" "$caller" "$dest" "$size"
+			done
+		else
+			log_warn "No recordings found for $date_filter"
+		fi
+	else
+		# List all recording dates with counts
+		echo "Recording dates:"
+		echo "---------------"
+		find "$RECORDINGS_PATH" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -r | while read -r dir; do
+			local date=$(basename "$dir")
+			local count=$(find "$dir" -type f -name "*.$format" 2>/dev/null | wc -l)
+			local size=$(du -sh "$dir" 2>/dev/null | cut -f1)
+			printf "  %s: %d recordings (%s)\n" "$date" "$count" "$size"
+		done
+	fi
+}
+
+cmd_rec_play() {
+	local file="$1"
+	[ -z "$file" ] && {
+		log_err "Usage: voipctl rec play <filename>"
+		return 1
+	}
+
+	# Find the file (could be full path or just filename)
+	local fullpath
+	if [ -f "$file" ]; then
+		fullpath="$file"
+	else
+		fullpath=$(find "$RECORDINGS_PATH" -name "$file" -type f 2>/dev/null | head -1)
+	fi
+
+	if [ -z "$fullpath" ] || [ ! -f "$fullpath" ]; then
+		log_err "Recording not found: $file"
+		return 1
+	fi
+
+	# Try to play the file
+	if command -v aplay >/dev/null 2>&1; then
+		log_info "Playing: $fullpath"
+		aplay "$fullpath"
+	elif command -v ffplay >/dev/null 2>&1; then
+		ffplay -nodisp -autoexit "$fullpath"
+	else
+		echo "File: $fullpath"
+		log_info "No audio player available. Download the file to play."
+	fi
+}
+
+cmd_rec_download() {
+	local file="$1"
+	[ -z "$file" ] && {
+		log_err "Usage: voipctl rec download <filename>"
+		return 1
+	}
+
+	local fullpath
+	if [ -f "$file" ]; then
+		fullpath="$file"
+	else
+		fullpath=$(find "$RECORDINGS_PATH" -name "$file" -type f 2>/dev/null | head -1)
+	fi
+
+	if [ -z "$fullpath" ] || [ ! -f "$fullpath" ]; then
+		log_err "Recording not found: $file"
+		return 1
+	fi
+
+	echo "$fullpath"
+}
+
+cmd_rec_delete() {
+	local file="$1"
+	[ -z "$file" ] && {
+		log_err "Usage: voipctl rec delete <filename>"
+		return 1
+	}
+
+	local fullpath
+	if [ -f "$file" ]; then
+		fullpath="$file"
+	else
+		fullpath=$(find "$RECORDINGS_PATH" -name "$file" -type f 2>/dev/null | head -1)
+	fi
+
+	if [ -z "$fullpath" ] || [ ! -f "$fullpath" ]; then
+		log_err "Recording not found: $file"
+		return 1
+	fi
+
+	rm -f "$fullpath"
+	log_ok "Deleted: $(basename "$fullpath")"
+
+	# Clean up empty directories
+	find "$RECORDINGS_PATH" -type d -empty -delete 2>/dev/null
+}
+
+cmd_rec_cleanup() {
+	local days="${1:-30}"
+
+	log_info "Cleaning up recordings older than $days days..."
+
+	local count=0
+	local freed=0
+
+	if [ -d "$RECORDINGS_PATH" ]; then
+		# Calculate size before
+		local before=$(du -s "$RECORDINGS_PATH" 2>/dev/null | cut -f1 || echo 0)
+
+		# Delete old recordings
+		count=$(find "$RECORDINGS_PATH" -type f -mtime +$days 2>/dev/null | wc -l)
+		find "$RECORDINGS_PATH" -type f -mtime +$days -delete 2>/dev/null
+
+		# Remove empty directories
+		find "$RECORDINGS_PATH" -type d -empty -delete 2>/dev/null
+
+		# Calculate freed space
+		local after=$(du -s "$RECORDINGS_PATH" 2>/dev/null | cut -f1 || echo 0)
+		freed=$(( (before - after) / 1024 ))
+	fi
+
+	log_ok "Deleted $count recordings, freed ${freed}MB"
+}
+
+cmd_rec_list_json() {
+	local date_filter="$1"
+	local format=$(uci -q get voip.recording.format || echo "wav")
+
+	echo "["
+	local first=1
+
+	if [ -n "$date_filter" ]; then
+		local dir="$RECORDINGS_PATH/$date_filter"
+		if [ -d "$dir" ]; then
+			find "$dir" -type f -name "*.$format" 2>/dev/null | sort -r | while read -r file; do
+				local name=$(basename "$file")
+				local size=$(stat -c%s "$file" 2>/dev/null || echo 0)
+				local mtime=$(stat -c%Y "$file" 2>/dev/null || echo 0)
+				local time=$(echo "$name" | cut -d'-' -f1)
+				local caller=$(echo "$name" | cut -d'-' -f2)
+				local dest=$(echo "$name" | cut -d'-' -f3 | sed "s/\.$format//")
+
+				[ $first -eq 0 ] && echo ","
+				first=0
+
+				cat <<ENTRY
+  {
+    "filename": "$name",
+    "path": "$file",
+    "date": "$date_filter",
+    "time": "$time",
+    "caller": "$caller",
+    "destination": "$dest",
+    "size": $size,
+    "timestamp": $mtime
+  }
+ENTRY
+			done
+		fi
+	else
+		# List recent recordings (last 7 days)
+		find "$RECORDINGS_PATH" -type f -name "*.$format" -mtime -7 2>/dev/null | sort -r | head -50 | while read -r file; do
+			local name=$(basename "$file")
+			local dir=$(dirname "$file")
+			local date=$(basename "$dir")
+			local size=$(stat -c%s "$file" 2>/dev/null || echo 0)
+			local mtime=$(stat -c%Y "$file" 2>/dev/null || echo 0)
+			local time=$(echo "$name" | cut -d'-' -f1)
+			local caller=$(echo "$name" | cut -d'-' -f2)
+			local dest=$(echo "$name" | cut -d'-' -f3 | sed "s/\.$format//")
+
+			[ $first -eq 0 ] && echo ","
+			first=0
+
+			cat <<ENTRY
+  {
+    "filename": "$name",
+    "path": "$file",
+    "date": "$date",
+    "time": "$time",
+    "caller": "$caller",
+    "destination": "$dest",
+    "size": $size,
+    "timestamp": $mtime
+  }
+ENTRY
+		done
+	fi
+
+	echo "]"
+}
+
+#
+# Configuration
+#
+cmd_configure_haproxy() {
+	log_info "Configuring HAProxy for WebRTC..."
+	
+	local domain=$(uci -q get voip.ssl.domain)
+	[ -z "$domain" ] && {
+		log_err "Domain not configured. Set voip.ssl.domain first."
+		return 1
+	}
+
+	# Add HAProxy backend for WebRTC
+	# This assumes secubox-app-haproxy is installed
+	if [ -f /usr/sbin/haproxyctl ]; then
+		# Generate HAProxy config snippet
+		cat >> /etc/haproxy/conf.d/voip.cfg <<EOF
+# VoIP WebRTC Backend
+backend voip_websocket
+    mode http
+    option forwardfor
+    server asterisk 127.0.0.1:8088 check
+
+# Route for /ws WebSocket
+acl is_voip_ws path_beg /ws
+use_backend voip_websocket if is_voip_ws
+EOF
+		
+		haproxyctl reload
+		log_ok "HAProxy configured for WebRTC"
+	else
+		log_warn "HAProxy not found. Install secubox-app-haproxy first."
+	fi
+}
+
+cmd_emancipate() {
+	local domain="$1"
+	[ -z "$domain" ] && {
+		log_err "Usage: voipctl emancipate <domain>"
+		return 1
+	}
+
+	log_info "Emancipating VoIP at $domain..."
+	
+	# Configure domain
+	uci set voip.ssl.enabled="1"
+	uci set voip.ssl.domain="$domain"
+	uci commit voip
+
+	# Configure HAProxy
+	cmd_configure_haproxy
+
+	# Request SSL certificate
+	if [ -f /usr/sbin/acmectl ]; then
+		acmectl issue "$domain"
+	fi
+
+	log_ok "VoIP exposed at https://$domain"
+}
+
+cmd_reload() {
+	if ! container_running; then
+		log_err "Container not running"
+		return 1
+	fi
+
+	log_info "Reloading Asterisk configuration..."
+	generate_asterisk_config
+	container_exec asterisk -rx "core reload"
+	log_ok "Configuration reloaded"
+}
+
+#
+# Main
+#
+case "$1" in
+	install)
+		cmd_install
+		;;
+	uninstall)
+		cmd_uninstall
+		;;
+	start)
+		cmd_start
+		;;
+	stop)
+		cmd_stop
+		;;
+	restart)
+		cmd_restart
+		;;
+	status)
+		cmd_status
+		;;
+	logs)
+		shift
+		cmd_logs "$@"
+		;;
+	shell)
+		cmd_shell
+		;;
+	ext)
+		case "$2" in
+			add) shift 2; cmd_ext_add "$@" ;;
+			del) shift 2; cmd_ext_del "$@" ;;
+			list) cmd_ext_list ;;
+			passwd) shift 2; cmd_ext_passwd "$@" ;;
+			*) usage ;;
+		esac
+		;;
+	trunk)
+		case "$2" in
+			add)
+				case "$3" in
+					ovh) cmd_trunk_add_ovh ;;
+					manual) log_info "Edit /etc/config/voip sip_trunk section" ;;
+					*) usage ;;
+				esac
+				;;
+			test) cmd_trunk_test ;;
+			status) cmd_trunk_status ;;
+			*) usage ;;
+		esac
+		;;
+	call)
+		shift
+		cmd_call "$@"
+		;;
+	hangup)
+		shift
+		cmd_hangup "$@"
+		;;
+	calls)
+		cmd_calls
+		;;
+	vm)
+		case "$2" in
+			list) shift 2; cmd_vm_list "$@" ;;
+			play) shift 2; cmd_vm_play "$@" ;;
+			delete) shift 2; cmd_vm_delete "$@" ;;
+			*) usage ;;
+		esac
+		;;
+	rec)
+		case "$2" in
+			enable) cmd_rec_enable ;;
+			disable) cmd_rec_disable ;;
+			status) cmd_rec_status ;;
+			list) shift 2; cmd_rec_list "$@" ;;
+			list-json) shift 2; cmd_rec_list_json "$@" ;;
+			play) shift 2; cmd_rec_play "$@" ;;
+			download) shift 2; cmd_rec_download "$@" ;;
+			delete) shift 2; cmd_rec_delete "$@" ;;
+			cleanup) shift 2; cmd_rec_cleanup "$@" ;;
+			*) usage ;;
+		esac
+		;;
+	configure-haproxy)
+		cmd_configure_haproxy
+		;;
+	emancipate)
+		shift
+		cmd_emancipate "$@"
+		;;
+	reload)
+		cmd_reload
+		;;
+	*)
+		usage
+		;;
+esac

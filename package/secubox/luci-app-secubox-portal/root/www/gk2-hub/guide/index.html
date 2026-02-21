@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SecuBox — Guide de connexion rapide</title>
+<style>
+  :root {
+    --bg:       #ffffff;
+    --surface:  #f5f7f9;
+    --border:   #1a1a2e;
+    --accent:   #005f9e;
+    --accent2:  #007a3d;
+    --warn:     #c45c00;
+    --danger:   #b81c1c;
+    --text:     #1a1a1a;
+    --muted:    #555566;
+    --light:    #e8ecf0;
+    --radius:   4px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Trebuchet MS', 'Segoe UI', Arial, sans-serif;
+    font-size: 13.5px;
+    line-height: 1.55;
+  }
+
+  .page { max-width: 820px; margin: 0 auto; padding: 1.5rem 1.5rem 3rem; }
+
+  /* ══ HEADER ══ */
+  header {
+    display: flex;
+    align-items: center;
+    gap: 1.2rem;
+    padding: 1.2rem 1.4rem;
+    background: var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 1.5rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Grid background — printed in solid black, no semi-tones */
+  header::before {
+    content: '';
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(var(--accent) 1px, transparent 1px),
+      linear-gradient(90deg, var(--accent) 1px, transparent 1px);
+    background-size: 24px 24px;
+    opacity: 0.12;
+  }
+
+  .logo {
+    width: 60px; height: 60px;
+    background: var(--accent);
+    border: 3px solid #fff;
+    border-radius: var(--radius);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Courier New', monospace;
+    font-size: 1.5rem;
+    font-weight: 900;
+    color: #fff;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
+  }
+
+  .header-text { position: relative; z-index: 1; }
+
+  .header-text h1 {
+    font-size: 1.8rem;
+    font-weight: 900;
+    color: #ffffff;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    line-height: 1.1;
+  }
+
+  .header-text h1 span { color: #7dd4fc; }
+
+  .header-text p {
+    color: #aac8e0;
+    font-size: 0.78rem;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 1px;
+    margin-top: 0.2rem;
+  }
+
+  .header-badge {
+    margin-left: auto;
+    background: var(--accent);
+    color: #fff;
+    font-family: 'Courier New', monospace;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 0.3rem 0.7rem;
+    border-radius: 3px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    border: 2px solid #7dd4fc;
+    white-space: nowrap;
+    align-self: flex-start;
+    position: relative; z-index: 1;
+  }
+
+  /* ══ SECTION ══ */
+  section {
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 1.2rem;
+    overflow: hidden;
+  }
+
+  .section-title {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.55rem 1rem;
+    background: var(--border);
+    color: #ffffff;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    font-family: 'Courier New', monospace;
+  }
+
+  /* ══ SERVICE CARDS ══ */
+  .services-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 0;
+    background: var(--border);
+    border-top: 1px solid var(--border);
+  }
+
+  .card {
+    background: var(--bg);
+    padding: 1rem 1.1rem 1.1rem;
+    border-right: 1px solid var(--light);
+    border-bottom: 1px solid var(--light);
+    position: relative;
+  }
+
+  /* Colored left bar — solid, print-safe */
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; bottom: 0;
+    width: 4px;
+  }
+
+  .card.portal::before  { background: var(--accent); }
+  .card.mail::before    { background: #7c3aed; }
+  .card.tube::before    { background: #b81c1c; }
+  .card.cloud::before   { background: var(--accent2); }
+  .card.vpn::before     { background: #0891b2; }
+  .card.admin::before   { background: var(--warn); }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.4rem;
+    padding-left: 8px;
+  }
+
+  .card-icon { font-size: 1.2rem; }
+
+  .card-name {
+    font-weight: 800;
+    font-size: 0.95rem;
+    color: var(--text);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .card-tag {
+    margin-left: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 0.6rem;
+    font-weight: 700;
+    padding: 0.15rem 0.4rem;
+    border-radius: 2px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border: 1.5px solid;
+  }
+
+  .card.portal .card-tag  { color: var(--accent); border-color: var(--accent); }
+  .card.mail .card-tag    { color: #7c3aed; border-color: #7c3aed; }
+  .card.tube .card-tag    { color: #b81c1c; border-color: #b81c1c; }
+  .card.cloud .card-tag   { color: var(--accent2); border-color: var(--accent2); }
+  .card.vpn .card-tag     { color: #0891b2; border-color: #0891b2; }
+  .card.admin .card-tag   { color: var(--warn); border-color: var(--warn); }
+
+  .card-url {
+    display: block;
+    font-family: 'Courier New', monospace;
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-decoration: none;
+    padding: 0.25rem 0.5rem;
+    margin: 0.5rem 0 0.6rem 8px;
+    border-radius: 2px;
+    word-break: break-all;
+    border-left: 3px solid;
+  }
+
+  .card.portal .card-url  { color: var(--accent); background: #eff6ff; border-color: var(--accent); }
+  .card.mail .card-url    { color: #7c3aed; background: #faf5ff; border-color: #7c3aed; }
+  .card.tube .card-url    { color: #b81c1c; background: #fef2f2; border-color: #b81c1c; }
+  .card.cloud .card-url   { color: var(--accent2); background: #f0fdf4; border-color: var(--accent2); }
+  .card.vpn .card-url     { color: #0891b2; background: #f0f9ff; border-color: #0891b2; }
+  .card.admin .card-url   { color: var(--warn); background: #fff7ed; border-color: var(--warn); }
+
+  .card-desc {
+    font-size: 0.78rem;
+    color: var(--muted);
+    margin-bottom: 0.75rem;
+    padding-left: 8px;
+    line-height: 1.45;
+  }
+
+  /* Steps */
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0.28rem;
+    padding-left: 8px;
+  }
+
+  .step {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.45rem;
+    font-size: 0.79rem;
+  }
+
+  .step-num {
+    font-family: 'Courier New', monospace;
+    font-size: 0.65rem;
+    font-weight: 900;
+    min-width: 1.3rem;
+    height: 1.3rem;
+    border-radius: 2px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    margin-top: 0.05rem;
+    border: 1.5px solid;
+    color: #fff;
+  }
+
+  .card.portal .step-num  { background: var(--accent); border-color: var(--accent); }
+  .card.mail .step-num    { background: #7c3aed; border-color: #7c3aed; }
+  .card.tube .step-num    { background: #b81c1c; border-color: #b81c1c; }
+  .card.cloud .step-num   { background: var(--accent2); border-color: var(--accent2); }
+  .card.vpn .step-num     { background: #0891b2; border-color: #0891b2; }
+  .card.admin .step-num   { background: var(--warn); border-color: var(--warn); }
+
+  .step-text { color: var(--text); line-height: 1.4; }
+
+  code {
+    font-family: 'Courier New', monospace;
+    font-size: 0.85em;
+    background: var(--light);
+    color: var(--accent);
+    padding: 0 3px;
+    border-radius: 2px;
+    font-weight: 700;
+  }
+
+  /* ══ CREDENTIALS ══ */
+  .creds-wrap { padding: 1rem; }
+
+  .creds-box {
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .creds-header {
+    padding: 0.45rem 1rem;
+    background: var(--warn);
+    color: #fff;
+    font-family: 'Courier New', monospace;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  .creds-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .cred-item {
+    padding: 0.75rem 1rem;
+    border-right: 1px solid var(--light);
+    border-bottom: 1px solid var(--light);
+  }
+
+  .cred-item:nth-child(2n) { border-right: none; }
+  .cred-item:nth-last-child(-n+2) { border-bottom: none; }
+
+  .cred-label {
+    font-size: 0.65rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    font-family: 'Courier New', monospace;
+    font-weight: 700;
+    margin-bottom: 0.3rem;
+  }
+
+  .cred-value {
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    color: var(--text);
+    font-weight: 700;
+    border-bottom: 1.5px dotted #aaa;
+    padding-bottom: 2px;
+    min-width: 100%;
+    display: block;
+    min-height: 1.4rem;
+  }
+
+  .cred-value.placeholder { color: #bbb; font-style: italic; font-weight: 400; }
+
+  /* ══ ALERT ══ */
+  .alert {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    margin: 1rem;
+    padding: 0.8rem 1rem;
+    background: #fff5f5;
+    border: 1.5px solid var(--danger);
+    border-left: 5px solid var(--danger);
+    border-radius: var(--radius);
+    font-size: 0.8rem;
+    color: var(--text);
+  }
+
+  .alert-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+  .alert strong { color: var(--danger); font-family: 'Courier New', monospace; }
+
+  /* ══ TIPS ══ */
+  .tips-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  }
+
+  .tip {
+    padding: 0.85rem 1rem;
+    border-right: 1px solid var(--light);
+    border-bottom: 1px solid var(--light);
+    display: flex;
+    gap: 0.6rem;
+  }
+
+  .tip:nth-child(3n) { border-right: none; }
+  .tip:nth-last-child(-n+3) { border-bottom: none; }
+
+  .tip-icon { font-size: 1.1rem; flex-shrink: 0; }
+
+  .tip-content strong {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--text);
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.2rem;
+  }
+
+  .tip-content span {
+    font-size: 0.76rem;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+
+  /* ══ QUICK REF ══ */
+  .quickref {
+    padding: 0.8rem 1rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 0.4rem 1rem;
+  }
+
+  .qr-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: 'Courier New', monospace;
+    font-size: 0.78rem;
+    padding: 0.3rem 0;
+    border-bottom: 1px dashed var(--light);
+  }
+
+  .qr-emoji { font-size: 0.9rem; }
+  .qr-label { color: var(--muted); font-weight: 700; width: 5rem; flex-shrink: 0; }
+  .qr-url { font-weight: 700; text-decoration: none; }
+
+  .qr-portal { color: var(--accent); }
+  .qr-mail   { color: #7c3aed; }
+  .qr-tube   { color: #b81c1c; }
+  .qr-cloud  { color: var(--accent2); }
+  .qr-vpn    { color: #0891b2; }
+  .qr-admin  { color: var(--warn); }
+
+  /* ══ FOOTER ══ */
+  footer {
+    text-align: center;
+    padding-top: 1.5rem;
+    font-family: 'Courier New', monospace;
+    font-size: 0.68rem;
+    color: var(--muted);
+    letter-spacing: 1px;
+    border-top: 2px solid var(--border);
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+  }
+
+  footer strong { color: var(--accent); }
+
+  @media (max-width: 600px) {
+    .services-grid { grid-template-columns: 1fr; }
+    .creds-grid { grid-template-columns: 1fr; }
+    .cred-item { border-right: none; }
+    .header-badge { display: none; }
+    .tip:nth-child(3n) { border-right: 1px solid var(--light); }
+    .tips-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HEADER -->
+  <header>
+    <div class="logo">S⃤</div>
+    <div class="header-text">
+      <h1>Secu<span>Box</span></h1>
+      <p>// GUIDE DE CONNEXION AUX SERVICES · v1.0</p>
+    </div>
+    <div class="header-badge">🔐 KISS DOC</div>
+  </header>
+
+  <!-- SERVICES -->
+  <section>
+    <div class="section-title">🔌 &nbsp;Services disponibles — connexion en 3 étapes</div>
+    <div class="services-grid">
+
+      <!-- PORTAIL -->
+      <div class="card portal">
+        <div class="card-header">
+          <div class="card-icon">🏠</div>
+          <div class="card-name">Portail</div>
+          <div class="card-tag">HTTPS</div>
+        </div>
+        <a class="card-url" href="https://secubox.in">secubox.in</a>
+        <p class="card-desc">🚪 Point d'entrée principal. Tableau de bord et accès à tous les services SecuBox.</p>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-text">🌐 Ouvrir <code>secubox.in</code> dans le navigateur</div>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-text">✍️ Saisir identifiant &amp; mot de passe</div>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-text">📲 Valider le code 2FA si demandé</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- WEBMAIL -->
+      <div class="card mail">
+        <div class="card-header">
+          <div class="card-icon">📧</div>
+          <div class="card-name">Webmail</div>
+          <div class="card-tag">ROUNDCUBE</div>
+        </div>
+        <a class="card-url" href="https://webmail.gk2.secubox.in">mail.secubox.in</a>
+        <p class="card-desc">✉️ Messagerie Roundcube. Accès aux courriels <code>@secubox.in</code> depuis n'importe où.</p>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-text">🌐 Aller sur <code>mail.secubox.in</code></div>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-text">👤 Login : <code>prénom.nom</code></div>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-text">🔑 Mot de passe identique au portail</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TUBE -->
+      <div class="card tube">
+        <div class="card-header">
+          <div class="card-icon">▶️</div>
+          <div class="card-name">PeerTube</div>
+          <div class="card-tag">VIDÉO</div>
+        </div>
+        <a class="card-url" href="https://tube.gk2.secubox.in">tube.secubox.in</a>
+        <p class="card-desc">🎬 Plateforme vidéo interne. Tutoriels, conférences et contenus de formation SecuBox.</p>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-text">🌐 Ouvrir <code>tube.secubox.in</code></div>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-text">🔝 Cliquer <code>Connexion</code> en haut à droite</div>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-text">🔑 Mêmes identifiants que le portail</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CLOUD -->
+      <div class="card cloud">
+        <div class="card-header">
+          <div class="card-icon">☁️</div>
+          <div class="card-name">Nextcloud</div>
+          <div class="card-tag">CLOUD</div>
+        </div>
+        <a class="card-url" href="https://cloud.gk2.secubox.in">cloud.secubox.in</a>
+        <p class="card-desc">📁 Stockage et partage de fichiers. Synchronisation desktop/mobile avec le client Nextcloud.</p>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-text">🌐 Ouvrir <code>cloud.secubox.in</code></div>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-text">✍️ Saisir identifiant &amp; mot de passe</div>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-text">💻 Optionnel : installer le client desktop</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- VPN -->
+      <div class="card vpn">
+        <div class="card-header">
+          <div class="card-icon">🔐</div>
+          <div class="card-name">VPN</div>
+          <div class="card-tag">WIREGUARD</div>
+        </div>
+        <a class="card-url" href="https://vpn.gk2.secubox.in">vpn.secubox.in</a>
+        <p class="card-desc">🛡️ Accès sécurisé depuis l'extérieur. Requiert le client WireGuard et votre fichier de config.</p>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-text">📥 Installer <code>WireGuard</code> sur votre appareil</div>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-text">📄 Importer le fichier <code>.conf</code> fourni</div>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-text">✅ Activer le tunnel → accès complet</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ADMIN -->
+      <div class="card admin">
+        <div class="card-header">
+          <div class="card-icon">⚙️</div>
+          <div class="card-name">Administration</div>
+          <div class="card-tag">ADMIN</div>
+        </div>
+        <a class="card-url" href="https://admin.gk2.secubox.in">admin.secubox.in</a>
+        <p class="card-desc">🛠️ Panneau LuCI / interfaces d'admin. Réservé aux opérateurs SecuBox habilités uniquement.</p>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-text">🔐 Connexion VPN <strong>obligatoire</strong> au préalable</div>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-text">🌐 Ouvrir <code>admin.secubox.in</code></div>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-text">🗝️ Compte administrateur dédié requis</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- CREDENTIALS -->
+  <section>
+    <div class="section-title">🗝️ &nbsp;Vos identifiants — à remplir &amp; conserver en lieu sûr</div>
+    <div class="creds-wrap">
+      <div class="creds-box">
+        <div class="creds-header">⚠️ &nbsp;INFORMATIONS DE CONNEXION PERSONNELLES</div>
+        <div class="creds-grid">
+          <div class="cred-item">
+            <div class="cred-label">👤 Identifiant</div>
+            <div class="cred-value placeholder">prénom.nom</div>
+          </div>
+          <div class="cred-item">
+            <div class="cred-label">🔒 Mot de passe</div>
+            <div class="cred-value placeholder">· · · · · · · · · ·</div>
+          </div>
+          <div class="cred-item">
+            <div class="cred-label">📧 Adresse email</div>
+            <div class="cred-value placeholder">prénom.nom@secubox.in</div>
+          </div>
+          <div class="cred-item">
+            <div class="cred-label">📲 Application 2FA</div>
+            <div class="cred-value placeholder">Aegis / Google Auth</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="alert">
+      <div class="alert-icon">🚫</div>
+      <div><strong>SÉCURITÉ :</strong> Ne jamais partager votre mot de passe par email, messagerie ou téléphone. En cas de doute sur la confidentialité de vos accès, contacter immédiatement <code>admin@secubox.in</code> pour réinitialisation.</div>
+    </div>
+  </section>
+
+  <!-- TIPS -->
+  <section>
+    <div class="section-title">💡 &nbsp;Conseils pratiques</div>
+    <div class="tips-grid">
+      <div class="tip">
+        <div class="tip-icon">🔒</div>
+        <div class="tip-content">
+          <strong>Certificat HTTPS</strong>
+          <span>Tous les services sont en HTTPS. Toute alerte de certificat doit être signalée immédiatement à l'admin.</span>
+        </div>
+      </div>
+      <div class="tip">
+        <div class="tip-icon">📱</div>
+        <div class="tip-content">
+          <strong>Accès mobile</strong>
+          <span>Services accessibles depuis smartphone. Utiliser Firefox ou Chrome mobile en version récente.</span>
+        </div>
+      </div>
+      <div class="tip">
+        <div class="tip-icon">🔄</div>
+        <div class="tip-content">
+          <strong>Mot de passe oublié</strong>
+          <span>Contacter l'admin via <code>admin@secubox.in</code>. Prévoir 24h ouvrées pour la réinitialisation.</span>
+        </div>
+      </div>
+      <div class="tip">
+        <div class="tip-icon">🌐</div>
+        <div class="tip-content">
+          <strong>Depuis l'extérieur</strong>
+          <span>Activer le tunnel VPN WireGuard avant toute connexion hors réseau local pour un accès optimal.</span>
+        </div>
+      </div>
+      <div class="tip">
+        <div class="tip-icon">🗂️</div>
+        <div class="tip-content">
+          <strong>Sync Nextcloud</strong>
+          <span>Installer le client desktop Nextcloud pour synchroniser automatiquement vos fichiers en local.</span>
+        </div>
+      </div>
+      <div class="tip">
+        <div class="tip-icon">🆘</div>
+        <div class="tip-content">
+          <strong>Support technique</strong>
+          <span>En cas de panne ou blocage : <code>admin@secubox.in</code> ou le canal de support dédié SecuBox.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- QUICK REF -->
+  <section>
+    <div class="section-title">📋 &nbsp;Récapitulatif rapide — URLs des services</div>
+    <div class="quickref">
+      <div class="qr-item">
+        <span class="qr-emoji">🏠</span>
+        <span class="qr-label">Portail</span>
+        <a class="qr-url qr-portal" href="https://secubox.in">secubox.in</a>
+      </div>
+      <div class="qr-item">
+        <span class="qr-emoji">📧</span>
+        <span class="qr-label">Webmail</span>
+        <a class="qr-url qr-mail" href="https://webmail.gk2.secubox.in">mail.secubox.in</a>
+      </div>
+      <div class="qr-item">
+        <span class="qr-emoji">▶️</span>
+        <span class="qr-label">Vidéo</span>
+        <a class="qr-url qr-tube" href="https://tube.gk2.secubox.in">tube.secubox.in</a>
+      </div>
+      <div class="qr-item">
+        <span class="qr-emoji">☁️</span>
+        <span class="qr-label">Cloud</span>
+        <a class="qr-url qr-cloud" href="https://cloud.gk2.secubox.in">cloud.secubox.in</a>
+      </div>
+      <div class="qr-item">
+        <span class="qr-emoji">🔐</span>
+        <span class="qr-label">VPN</span>
+        <a class="qr-url qr-vpn" href="https://vpn.gk2.secubox.in">vpn.secubox.in</a>
+      </div>
+      <div class="qr-item">
+        <span class="qr-emoji">⚙️</span>
+        <span class="qr-label">Admin</span>
+        <a class="qr-url qr-admin" href="https://admin.gk2.secubox.in">admin.secubox.in</a>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <strong>SecuBox</strong> · CyberMind.FR · Documentation utilisateur v1.0 &nbsp;·&nbsp;
+    Usage interne · Confidentiel &nbsp;·&nbsp;
+    Généré le <span id="date"></span>
+  </footer>
+
+</div>
+<script>
+  document.getElementById('date').textContent =
+    new Date().toLocaleDateString('fr-FR', {day:'2-digit', month:'long', year:'numeric'});
+</script>
+</body>
+</html>

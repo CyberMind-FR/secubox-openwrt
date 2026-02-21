@@ -1,0 +1,40 @@
+config matrix 'main'
+	option enabled '0'
+	option data_path '/srv/matrix'
+	option memory_limit '512'
+
+config matrix 'server'
+	option hostname 'matrix.local'
+	option port '8448'
+	option http_port '8008'
+	option registration_enabled '0'
+	option registration_token ''
+	option max_request_size '20971520'
+
+config matrix 'federation'
+	option enabled '1'
+	option allow_public_rooms '1'
+	option trusted_servers 'matrix.org'
+
+config matrix 'admin'
+	option email 'admin@localhost'
+	option initial_user 'admin'
+	option initial_password ''
+
+config matrix 'database'
+	option backend 'rocksdb'
+	option cache_capacity '300'
+
+config matrix 'network'
+	option domain ''
+	option haproxy '0'
+	option haproxy_ssl '1'
+	option firewall_wan '0'
+
+config matrix 'identity'
+	option did_linked '0'
+	option did_user ''
+
+config matrix 'mesh'
+	option published '0'
+	option service_name 'matrix'

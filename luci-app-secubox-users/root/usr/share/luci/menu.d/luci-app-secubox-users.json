@@ -1,0 +1,14 @@
+{
+	"admin/system/secubox-users": {
+		"title": "SecuBox Users",
+		"order": 85,
+		"action": {
+			"type": "view",
+			"path": "secubox-users/overview"
+		},
+		"depends": {
+			"acl": ["luci-app-secubox-users"],
+			"uci": {"secubox-users": true}
+		}
+	}
+}

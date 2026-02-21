@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SecuBox — Services Portal</title>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --border: #1a1a2e;
+    --accent: #005f9e;
+    --accent-glow: rgba(0,95,158,0.3);
+    --text: #e0e0e0;
+    --muted: #666;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, sans-serif;
+    min-height: 100vh;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,95,158,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,95,158,0.03) 1px, transparent 1px);
+    background-size: 50px 50px;
+    animation: gridMove 20s linear infinite;
+    pointer-events: none;
+  }
+
+  @keyframes gridMove {
+    0% { transform: translate(0,0); }
+    100% { transform: translate(50px,50px); }
+  }
+
+  .container { max-width: 1200px; margin: 0 auto; padding: 20px; position: relative; z-index: 1; }
+
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 30px;
+  }
+
+  .logo { display: flex; align-items: center; gap: 15px; }
+  .logo-icon {
+    width: 50px; height: 50px;
+    background: linear-gradient(135deg, var(--accent), #007acc);
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: "Courier New", monospace;
+    font-size: 1.5rem; font-weight: 900; color: #fff;
+  }
+  .logo-text { font-size: 1.5rem; font-weight: 700; }
+  .logo-text span { color: var(--accent); }
+
+  .user-info { display: flex; align-items: center; gap: 15px; }
+  .user-badge {
+    background: rgba(0,95,158,0.1);
+    border: 1px solid var(--accent);
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 0.9rem;
+  }
+  .logout-btn {
+    background: rgba(231,76,60,0.1);
+    border: 1px solid #e74c3c;
+    color: #e74c3c;
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+  }
+  .logout-btn:hover { background: rgba(231,76,60,0.2); }
+
+  .section-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--accent);
+    margin: 30px 0 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .services-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 15px;
+  }
+
+  .service-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.2s;
+  }
+  .service-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px var(--accent-glow);
+  }
+
+  .service-icon { font-size: 2rem; margin-bottom: 10px; }
+  .service-name { font-weight: 600; color: #fff; margin-bottom: 5px; }
+  .service-url { font-size: 0.75rem; color: var(--accent); font-family: monospace; }
+
+  .footer {
+    text-align: center;
+    padding: 40px 0 20px;
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+  .footer a { color: var(--accent); text-decoration: none; }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header class="header">
+    <div class="logo">
+      <div class="logo-icon">S</div>
+      <h1 class="logo-text">Secu<span>Box</span></h1>
+    </div>
+    <div class="user-info">
+      <span class="user-badge" id="userBadge"></span>
+      <button class="logout-btn" id="logoutBtn">Deconnexion</button>
+    </div>
+  </header>
+
+  <h2 class="section-title">Communication</h2>
+  <div class="services-grid">
+    <a href="https://webmail.gk2.secubox.in/" class="service-card" target="_blank">
+      <div class="service-icon">📧</div>
+      <div class="service-name">Webmail</div>
+      <div class="service-url">webmail.gk2.secubox.in</div>
+    </a>
+    <a href="https://matrix.gk2.secubox.in/" class="service-card" target="_blank">
+      <div class="service-icon">💬</div>
+      <div class="service-name">Matrix</div>
+      <div class="service-url">matrix.gk2.secubox.in</div>
+    </a>
+    <a href="https://xmpp.gk2.secubox.in/" class="service-card" target="_blank">
+      <div class="service-icon">🗨️</div>
+      <div class="service-name">Jabber</div>
+      <div class="service-url">xmpp.gk2.secubox.in</div>
+    </a>
+    <a href="https://meet.gk2.secubox.in/" class="service-card" target="_blank">
+      <div class="service-icon">📹</div>
+      <div class="service-name">Jitsi Meet</div>
+      <div class="service-url">meet.gk2.secubox.in</div>
+    </a>
+    <a href="https://voip.gk2.secubox.in/" class="service-card" target="_blank">
+      <div class="service-icon">📞</div>
+      <div class="service-name">VoIP</div>
+      <div class="service-url">voip.gk2.secubox.in</div>
+    </a>
+  </div>
+
+  <h2 class="section-title">Cloud & Media</h2>
+  <div class="services-grid">
+    <a href="https://cloud.gk2.secubox.in/" class="service-card" target="_blank">
+      <div class="service-icon">☁️</div>
+      <div class="service-name">Nextcloud</div>
+      <div class="service-url">cloud.gk2.secubox.in</div>
+    </a>
+    <a href="https://git.gk2.secubox.in/" class="service-card" target="_blank">
+      <div class="service-icon">🔀</div>
+      <div class="service-name">Gitea</div>
+      <div class="service-url">git.gk2.secubox.in</div>
+    </a>
+    <a href="https://tube.gk2.secubox.in/" class="service-card" target="_blank">
+      <div class="service-icon">🎬</div>
+      <div class="service-name">PeerTube</div>
+      <div class="service-url">tube.gk2.secubox.in</div>
+    </a>
+    <a href="https://jellyfin.gk2.secubox.in/" class="service-card" target="_blank">
+      <div class="service-icon">🎵</div>
+      <div class="service-name">Jellyfin</div>
+      <div class="service-url">jellyfin.gk2.secubox.in</div>
+    </a>
+    <a href="https://social.gk2.secubox.in/" class="service-card" target="_blank">
+      <div class="service-icon">🐘</div>
+      <div class="service-name">GoToSocial</div>
+      <div class="service-url">social.gk2.secubox.in</div>
+    </a>
+  </div>
+
+  <h2 class="section-title">Intelligence & Analyse</h2>
+  <div class="services-grid">
+    <a href="https://analyse.gk2.secubox.in/" class="service-card" target="_blank">
+      <div class="service-icon">🎬</div>
+      <div class="service-name">PeerTube Analyse</div>
+      <div class="service-url">analyse.gk2.secubox.in</div>
+    </a>
+    <a href="https://stream.gk2.secubox.in/" class="service-card" target="_blank">
+      <div class="service-icon">📻</div>
+      <div class="service-name">Radio Stream</div>
+      <div class="service-url">stream.gk2.secubox.in</div>
+    </a>
+  </div>
+
+  <h2 class="section-title">Administration</h2>
+  <div class="services-grid">
+    <a href="https://admin.gk2.secubox.in/" class="service-card" target="_blank">
+      <div class="service-icon">⚙️</div>
+      <div class="service-name">Admin LuCI</div>
+      <div class="service-url">admin.gk2.secubox.in</div>
+    </a>
+    <a href="https://vpn.gk2.secubox.in/" class="service-card" target="_blank">
+      <div class="service-icon">🔐</div>
+      <div class="service-name">WireGuard VPN</div>
+      <div class="service-url">vpn.gk2.secubox.in</div>
+    </a>
+    <a href="https://hub.gk2.secubox.in/" class="service-card" target="_blank">
+      <div class="service-icon">🏠</div>
+      <div class="service-name">Hub</div>
+      <div class="service-url">hub.gk2.secubox.in</div>
+    </a>
+    <a href="https://guacamole.gk2.secubox.in/" class="service-card" target="_blank">
+      <div class="service-icon">🖥️</div>
+      <div class="service-name">Guacamole</div>
+      <div class="service-url">guacamole.gk2.secubox.in</div>
+    </a>
+  </div>
+
+  <footer class="footer">
+    SecuBox Portal — <a href="https://cybermind.fr">CyberMind.FR</a>
+  </footer>
+</div>
+
+<script>
+// Check authentication
+var token = sessionStorage.getItem("secubox_token");
+var user = sessionStorage.getItem("secubox_user");
+var email = sessionStorage.getItem("secubox_email");
+
+if (!token || !user) {
+  window.location.href = "/login.html";
+} else {
+  document.getElementById("userBadge").textContent = user + " (" + email + ")";
+}
+
+document.getElementById("logoutBtn").onclick = function() {
+  sessionStorage.clear();
+  window.location.href = "/login.html";
+};
+</script>
+
+</body>
+</html>

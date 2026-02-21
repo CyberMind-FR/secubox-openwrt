@@ -1,0 +1,523 @@
+#!/bin/sh
+# Media Hub RPCD backend - Unified media services dashboard
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+# Service definitions: id|name|emoji|port|ctl_cmd|container|category
+MEDIA_SERVICES="
+jellyfin|Jellyfin|🎬|8096|jellyfinctl|jellyfin|streaming
+lyrion|Lyrion Music|🎵|9000|lyrionctl|lyrion|streaming
+jitsi|Jitsi Meet|📹|8443|jitsctl|jitsi-web|conferencing
+peertube|PeerTube|📺|9000|peertubectl|peertube|streaming
+streamlit|Streamlit|📊|8501|streamlitctl|streamlit|apps
+magicmirror|MagicMirror²|🪞|8080|mmctl|magicmirror|display
+gotosocial|GoToSocial|🦣|8080|gotosocialctl|gotosocial|social
+"
+
+# Check if a service is installed
+_service_installed() {
+	local ctl="$1"
+	command -v "$ctl" >/dev/null 2>&1
+}
+
+# Check container status
+_container_status() {
+	local name="$1"
+	if command -v lxc-info >/dev/null 2>&1; then
+		lxc-info -n "$name" -s 2>/dev/null | grep -q "RUNNING" && echo "running" && return
+		[ -d "/srv/lxc/$name" ] && echo "stopped" && return
+	fi
+	if command -v docker >/dev/null 2>&1; then
+		docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${name}$" && echo "running" && return
+		docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${name}$" && echo "stopped" && return
+	fi
+	echo "not_installed"
+}
+
+# Check if port is listening
+_port_listening() {
+	local port="$1"
+	netstat -tln 2>/dev/null | grep -q ":${port} " && echo "1" || echo "0"
+}
+
+# Get service status via its control command
+_get_service_status() {
+	local ctl="$1"
+	local output
+
+	if ! _service_installed "$ctl"; then
+		echo "not_installed"
+		return
+	fi
+
+	# Try to get status from the service's ctl command
+	output=$("$ctl" status 2>/dev/null | head -5)
+	if echo "$output" | grep -qi "running\|active\|started"; then
+		echo "running"
+	elif echo "$output" | grep -qi "stopped\|inactive\|not running"; then
+		echo "stopped"
+	else
+		echo "unknown"
+	fi
+}
+
+# ===========================================
+# Status - Overall dashboard status
+# ===========================================
+
+get_status() {
+	json_init
+
+	local total=0
+	local running=0
+	local stopped=0
+	local not_installed=0
+
+	echo "$MEDIA_SERVICES" | while IFS='|' read -r id name emoji port ctl container category; do
+		[ -z "$id" ] && continue
+		total=$((total + 1))
+
+		if ! _service_installed "$ctl"; then
+			not_installed=$((not_installed + 1))
+		elif [ "$(_port_listening "$port")" = "1" ]; then
+			running=$((running + 1))
+		else
+			stopped=$((stopped + 1))
+		fi
+	done
+
+	# Count installed services
+	local installed=0
+	local active=0
+	for svc in jellyfin lyrion jitsi peertube streamlit magicmirror gotosocial; do
+		case "$svc" in
+			jellyfin)   [ -x /usr/sbin/jellyfinctl ] && installed=$((installed+1)) && netstat -tln 2>/dev/null | grep -q ":8096 " && active=$((active+1)) ;;
+			lyrion)     [ -x /usr/sbin/lyrionctl ] && installed=$((installed+1)) && netstat -tln 2>/dev/null | grep -q ":9000 " && active=$((active+1)) ;;
+			jitsi)      [ -x /usr/sbin/jitsctl ] && installed=$((installed+1)) && netstat -tln 2>/dev/null | grep -q ":8443 " && active=$((active+1)) ;;
+			peertube)   [ -x /usr/sbin/peertubectl ] && installed=$((installed+1)) ;;
+			streamlit)  [ -x /usr/sbin/streamlitctl ] && installed=$((installed+1)) && netstat -tln 2>/dev/null | grep -q ":8501 " && active=$((active+1)) ;;
+			magicmirror) [ -x /usr/sbin/mmctl ] && installed=$((installed+1)) ;;
+			gotosocial) [ -x /usr/sbin/gotosocialctl ] && installed=$((installed+1)) ;;
+		esac
+	done
+
+	json_add_int "total_services" 7
+	json_add_int "installed" "$installed"
+	json_add_int "running" "$active"
+	json_add_int "stopped" "$((installed - active))"
+
+	json_dump
+}
+
+# ===========================================
+# Services - List all media services
+# ===========================================
+
+get_services() {
+	json_init
+	json_add_array "services"
+
+	# Jellyfin
+	json_add_object
+	json_add_string "id" "jellyfin"
+	json_add_string "name" "Jellyfin"
+	json_add_string "emoji" "🎬"
+	json_add_string "description" "Media server for movies, TV, music & photos"
+	json_add_string "category" "streaming"
+	json_add_int "port" 8096
+	json_add_string "ctl" "jellyfinctl"
+	if [ -x /usr/sbin/jellyfinctl ]; then
+		json_add_boolean "installed" 1
+		if netstat -tln 2>/dev/null | grep -q ":8096 "; then
+			json_add_string "status" "running"
+		else
+			json_add_string "status" "stopped"
+		fi
+	else
+		json_add_boolean "installed" 0
+		json_add_string "status" "not_installed"
+	fi
+	json_add_string "url" "/cgi-bin/luci/admin/services/jellyfin"
+	json_close_object
+
+	# Lyrion
+	json_add_object
+	json_add_string "id" "lyrion"
+	json_add_string "name" "Lyrion Music Server"
+	json_add_string "emoji" "🎵"
+	json_add_string "description" "Music streaming (Squeezebox/LMS)"
+	json_add_string "category" "streaming"
+	json_add_int "port" 9000
+	json_add_string "ctl" "lyrionctl"
+	if [ -x /usr/sbin/lyrionctl ]; then
+		json_add_boolean "installed" 1
+		if netstat -tln 2>/dev/null | grep -q ":9000 "; then
+			json_add_string "status" "running"
+		else
+			json_add_string "status" "stopped"
+		fi
+	else
+		json_add_boolean "installed" 0
+		json_add_string "status" "not_installed"
+	fi
+	json_add_string "url" "/cgi-bin/luci/admin/services/lyrion"
+	json_close_object
+
+	# Jitsi Meet
+	json_add_object
+	json_add_string "id" "jitsi"
+	json_add_string "name" "Jitsi Meet"
+	json_add_string "emoji" "📹"
+	json_add_string "description" "Video conferencing with E2E encryption"
+	json_add_string "category" "conferencing"
+	json_add_int "port" 8443
+	json_add_string "ctl" "jitsctl"
+	if [ -x /usr/sbin/jitsctl ]; then
+		json_add_boolean "installed" 1
+		# Check if jitsi containers are running
+		if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "jitsi"; then
+			json_add_string "status" "running"
+		else
+			json_add_string "status" "stopped"
+		fi
+	else
+		json_add_boolean "installed" 0
+		json_add_string "status" "not_installed"
+	fi
+	json_add_string "url" "/cgi-bin/luci/admin/services/jitsi"
+	json_close_object
+
+	# PeerTube
+	json_add_object
+	json_add_string "id" "peertube"
+	json_add_string "name" "PeerTube"
+	json_add_string "emoji" "📺"
+	json_add_string "description" "Federated video platform"
+	json_add_string "category" "streaming"
+	json_add_int "port" 9000
+	json_add_string "ctl" "peertubectl"
+	if [ -x /usr/sbin/peertubectl ]; then
+		json_add_boolean "installed" 1
+		if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "peertube"; then
+			json_add_string "status" "running"
+		else
+			json_add_string "status" "stopped"
+		fi
+	else
+		json_add_boolean "installed" 0
+		json_add_string "status" "not_installed"
+	fi
+	json_add_string "url" "/cgi-bin/luci/admin/services/peertube"
+	json_close_object
+
+	# Streamlit
+	json_add_object
+	json_add_string "id" "streamlit"
+	json_add_string "name" "Streamlit Apps"
+	json_add_string "emoji" "📊"
+	json_add_string "description" "Python data apps platform"
+	json_add_string "category" "apps"
+	json_add_int "port" 8501
+	json_add_string "ctl" "streamlitctl"
+	if [ -x /usr/sbin/streamlitctl ]; then
+		json_add_boolean "installed" 1
+		if lxc-info -n streamlit -s 2>/dev/null | grep -q "RUNNING"; then
+			json_add_string "status" "running"
+		else
+			json_add_string "status" "stopped"
+		fi
+	else
+		json_add_boolean "installed" 0
+		json_add_string "status" "not_installed"
+	fi
+	json_add_string "url" "/cgi-bin/luci/admin/services/streamlit"
+	json_close_object
+
+	# MagicMirror²
+	json_add_object
+	json_add_string "id" "magicmirror"
+	json_add_string "name" "MagicMirror²"
+	json_add_string "emoji" "🪞"
+	json_add_string "description" "Smart mirror display platform"
+	json_add_string "category" "display"
+	json_add_int "port" 8080
+	json_add_string "ctl" "mmctl"
+	if [ -x /usr/sbin/mmctl ]; then
+		json_add_boolean "installed" 1
+		if lxc-info -n magicmirror -s 2>/dev/null | grep -q "RUNNING" || docker ps --format '{{.Names}}' 2>/dev/null | grep -q "magicmirror"; then
+			json_add_string "status" "running"
+		else
+			json_add_string "status" "stopped"
+		fi
+	else
+		json_add_boolean "installed" 0
+		json_add_string "status" "not_installed"
+	fi
+	json_add_string "url" "/cgi-bin/luci/admin/services/magicmirror2"
+	json_close_object
+
+	# GoToSocial
+	json_add_object
+	json_add_string "id" "gotosocial"
+	json_add_string "name" "GoToSocial"
+	json_add_string "emoji" "🦣"
+	json_add_string "description" "Fediverse social network"
+	json_add_string "category" "social"
+	json_add_int "port" 8080
+	json_add_string "ctl" "gotosocialctl"
+	if [ -x /usr/sbin/gotosocialctl ]; then
+		json_add_boolean "installed" 1
+		if lxc-info -n gotosocial -s 2>/dev/null | grep -q "RUNNING" || docker ps --format '{{.Names}}' 2>/dev/null | grep -q "gotosocial"; then
+			json_add_string "status" "running"
+		else
+			json_add_string "status" "stopped"
+		fi
+	else
+		json_add_boolean "installed" 0
+		json_add_string "status" "not_installed"
+	fi
+	json_add_string "url" "/cgi-bin/luci/admin/services/gotosocial"
+	json_close_object
+
+	# Media Flow (monitoring)
+	json_add_object
+	json_add_string "id" "media-flow"
+	json_add_string "name" "Media Flow"
+	json_add_string "emoji" "📡"
+	json_add_string "description" "Stream detection & monitoring"
+	json_add_string "category" "monitoring"
+	json_add_int "port" 0
+	json_add_string "ctl" ""
+	# Media Flow is always "installed" if the menu exists
+	if [ -f /usr/share/luci/menu.d/luci-app-media-flow.json ]; then
+		json_add_boolean "installed" 1
+		json_add_string "status" "running"
+	else
+		json_add_boolean "installed" 0
+		json_add_string "status" "not_installed"
+	fi
+	json_add_string "url" "/cgi-bin/luci/admin/services/media-flow"
+	json_close_object
+
+	json_close_array
+	json_dump
+}
+
+# ===========================================
+# Service Status - Get detailed status for one service
+# ===========================================
+
+get_service_status() {
+	read input
+	json_load "$input"
+	json_get_var service_id id
+
+	json_init
+
+	case "$service_id" in
+		jellyfin)
+			if [ -x /usr/sbin/jellyfinctl ]; then
+				json_add_boolean "installed" 1
+				local status=$(jellyfinctl status 2>/dev/null)
+				if echo "$status" | grep -qi "running"; then
+					json_add_string "status" "running"
+				else
+					json_add_string "status" "stopped"
+				fi
+				json_add_string "details" "$status"
+			else
+				json_add_boolean "installed" 0
+				json_add_string "status" "not_installed"
+			fi
+			;;
+		lyrion)
+			if [ -x /usr/sbin/lyrionctl ]; then
+				json_add_boolean "installed" 1
+				local status=$(lyrionctl status 2>/dev/null)
+				if echo "$status" | grep -qi "running"; then
+					json_add_string "status" "running"
+				else
+					json_add_string "status" "stopped"
+				fi
+				json_add_string "details" "$status"
+			else
+				json_add_boolean "installed" 0
+				json_add_string "status" "not_installed"
+			fi
+			;;
+		jitsi)
+			if [ -x /usr/sbin/jitsctl ]; then
+				json_add_boolean "installed" 1
+				local status=$(jitsctl status 2>/dev/null)
+				if echo "$status" | grep -qi "running"; then
+					json_add_string "status" "running"
+				else
+					json_add_string "status" "stopped"
+				fi
+				json_add_string "details" "$status"
+			else
+				json_add_boolean "installed" 0
+				json_add_string "status" "not_installed"
+			fi
+			;;
+		*)
+			json_add_boolean "installed" 0
+			json_add_string "status" "unknown"
+			json_add_string "error" "Unknown service: $service_id"
+			;;
+	esac
+
+	json_dump
+}
+
+# ===========================================
+# Service Control
+# ===========================================
+
+service_start() {
+	read input
+	json_load "$input"
+	json_get_var service_id id
+
+	json_init
+
+	local ctl=""
+	case "$service_id" in
+		jellyfin)   ctl="jellyfinctl" ;;
+		lyrion)     ctl="lyrionctl" ;;
+		jitsi)      ctl="jitsctl" ;;
+		peertube)   ctl="peertubectl" ;;
+		streamlit)  ctl="streamlitctl" ;;
+		magicmirror) ctl="mmctl" ;;
+		gotosocial) ctl="gotosocialctl" ;;
+	esac
+
+	if [ -z "$ctl" ] || ! command -v "$ctl" >/dev/null 2>&1; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Service not installed or unknown"
+		json_dump
+		return
+	fi
+
+	local output=$("$ctl" start 2>&1)
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Service started"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+
+	json_dump
+}
+
+service_stop() {
+	read input
+	json_load "$input"
+	json_get_var service_id id
+
+	json_init
+
+	local ctl=""
+	case "$service_id" in
+		jellyfin)   ctl="jellyfinctl" ;;
+		lyrion)     ctl="lyrionctl" ;;
+		jitsi)      ctl="jitsctl" ;;
+		peertube)   ctl="peertubectl" ;;
+		streamlit)  ctl="streamlitctl" ;;
+		magicmirror) ctl="mmctl" ;;
+		gotosocial) ctl="gotosocialctl" ;;
+	esac
+
+	if [ -z "$ctl" ] || ! command -v "$ctl" >/dev/null 2>&1; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Service not installed or unknown"
+		json_dump
+		return
+	fi
+
+	local output=$("$ctl" stop 2>&1)
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Service stopped"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+
+	json_dump
+}
+
+service_restart() {
+	read input
+	json_load "$input"
+	json_get_var service_id id
+
+	json_init
+
+	local ctl=""
+	case "$service_id" in
+		jellyfin)   ctl="jellyfinctl" ;;
+		lyrion)     ctl="lyrionctl" ;;
+		jitsi)      ctl="jitsctl" ;;
+		peertube)   ctl="peertubectl" ;;
+		streamlit)  ctl="streamlitctl" ;;
+		magicmirror) ctl="mmctl" ;;
+		gotosocial) ctl="gotosocialctl" ;;
+	esac
+
+	if [ -z "$ctl" ] || ! command -v "$ctl" >/dev/null 2>&1; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Service not installed or unknown"
+		json_dump
+		return
+	fi
+
+	local output=$("$ctl" restart 2>&1)
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Service restarted"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+
+	json_dump
+}
+
+# ===========================================
+# Main Dispatcher
+# ===========================================
+
+case "$1" in
+	list)
+		cat << 'EOF'
+{
+  "status": {},
+  "services": {},
+  "service_status": {"id": "str"},
+  "service_start": {"id": "str"},
+  "service_stop": {"id": "str"},
+  "service_restart": {"id": "str"}
+}
+EOF
+		;;
+	call)
+		case "$2" in
+			status)          get_status ;;
+			services)        get_services ;;
+			service_status)  get_service_status ;;
+			service_start)   service_start ;;
+			service_stop)    service_stop ;;
+			service_restart) service_restart ;;
+			*) echo '{"error": "Unknown method"}' ;;
+		esac
+		;;
+esac

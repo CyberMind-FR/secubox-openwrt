@@ -176,6 +176,31 @@ Backup/Restore:
 Quick Commands:
   quick-publish [instance]     Clean, build, and publish
 
+User Management:
+  user add <name> [password]   Add user with password
+  user del <name>              Delete user
+  user list                    List all users
+  user passwd <name> [pass]    Change user password
+  user grant <name> <inst>     Grant access to instance
+  user revoke <name> <inst>    Revoke access to instance
+  user sync-secubox            Import users from SecuBox/LuCI
+
+Authentication:
+  auth enable <instance>       Enable auth for instance
+  auth disable <instance>      Disable auth for instance
+  auth status [instance]       Show auth status
+  auth haproxy <instance>      Generate HAProxy auth ACLs
+  auth apply <inst> [domain]   Auto-configure HAProxy with auth
+
+KISS Static Sites (No Hexo Build):
+  static create <name>         Create static-only site
+  static upload <file> [inst]  Upload HTML/CSS/JS directly
+  static publish [instance]    Publish to /www/ for immediate serving
+  static quick <file> [inst]   Upload + publish in one step
+  static list [instance]       List static files
+  static serve [instance]      Serve static files (Python/httpd)
+  static delete <name>         Delete static instance
+
 Utility:
   shell               Open shell in container
   logs [instance]     View logs
@@ -1440,6 +1465,682 @@ EOF
 	echo "}"
 }
 
+# ===============================================
+# User Management Commands
+# ===============================================
+
+HTPASSWD_FILE="/etc/hexojs/htpasswd"
+
+# Generate password hash (apr1 format for HAProxy)
+generate_password_hash() {
+	local password="$1"
+	# Use openssl for apr1 hash
+	openssl passwd -apr1 "$password" 2>/dev/null || \
+		openssl passwd -1 "$password" 2>/dev/null || \
+		echo "$password"  # fallback to plain (not recommended)
+}
+
+cmd_user_add() {
+	require_root
+
+	local username="$1"
+	local password="$2"
+
+	[ -z "$username" ] && { log_error "Username required"; return 1; }
+
+	# Validate username
+	echo "$username" | grep -qE '^[a-z][a-z0-9_]*$' || {
+		log_error "Invalid username. Use lowercase letters, numbers, underscore."
+		return 1
+	}
+
+	# Check if user exists
+	local existing=$(uci_get "user_$username")
+	[ -n "$existing" ] && { log_error "User '$username' already exists"; return 1; }
+
+	# Generate password if not provided
+	[ -z "$password" ] && {
+		password=$(head -c 16 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 12)
+		log_info "Generated password: $password"
+	}
+
+	# Create password hash
+	local hash=$(generate_password_hash "$password")
+
+	# Create UCI user section
+	uci set hexojs.user_${username}=user
+	uci set hexojs.user_${username}.password_hash="$hash"
+	uci set hexojs.user_${username}.role='editor'
+	uci commit hexojs
+
+	# Update htpasswd file
+	cmd_update_htpasswd
+
+	log_info "User '$username' created"
+}
+
+cmd_user_del() {
+	require_root
+
+	local username="$1"
+	[ -z "$username" ] && { log_error "Username required"; return 1; }
+
+	# Remove from UCI
+	uci delete hexojs.user_${username} 2>/dev/null || {
+		log_error "User '$username' not found"
+		return 1
+	}
+	uci commit hexojs
+
+	# Update htpasswd file
+	cmd_update_htpasswd
+
+	log_info "User '$username' deleted"
+}
+
+# Sync users from SecuBox/LuCI (rpcd config)
+cmd_user_sync_secubox() {
+	require_root
+
+	log_info "Syncing users from SecuBox/LuCI..."
+
+	local added=0
+	local skipped=0
+
+	# Read all login sections from rpcd config
+	for section in $(uci show rpcd 2>/dev/null | grep '=login$' | cut -d'.' -f2 | cut -d'=' -f1); do
+		local username=$(uci -q get rpcd.${section}.username)
+		[ -z "$username" ] && continue
+
+		# Skip if already exists in hexojs
+		local existing=$(uci_get "user_$username" 2>/dev/null)
+		if [ -n "$existing" ]; then
+			log_info "  Skip: $username (already exists)"
+			skipped=$((skipped + 1))
+			continue
+		fi
+
+		# Get password - format is $p$<system_user> or direct hash
+		local pw_ref=$(uci -q get rpcd.${section}.password)
+
+		# If $p$username format, get hash from /etc/shadow
+		local hash=""
+		if echo "$pw_ref" | grep -q '^\$p\$'; then
+			local sys_user="${pw_ref#\$p\$}"
+			# Extract hash from shadow file
+			local shadow_hash=$(grep "^${sys_user}:" /etc/shadow 2>/dev/null | cut -d: -f2)
+			if [ -n "$shadow_hash" ] && [ "$shadow_hash" != "*" ] && [ "$shadow_hash" != "x" ]; then
+				hash="$shadow_hash"
+			fi
+		else
+			# Direct hash in rpcd config
+			hash="$pw_ref"
+		fi
+
+		if [ -z "$hash" ]; then
+			log_warn "  Skip: $username (no password hash found)"
+			skipped=$((skipped + 1))
+			continue
+		fi
+
+		# Create HexoJS user with the same hash
+		uci set hexojs.user_${username}=user
+		uci set hexojs.user_${username}.password_hash="$hash"
+		uci set hexojs.user_${username}.role='editor'
+		uci set hexojs.user_${username}.source='secubox'
+
+		log_info "  Added: $username"
+		added=$((added + 1))
+	done
+
+	uci commit hexojs
+
+	# Update htpasswd file
+	cmd_update_htpasswd
+
+	log_info "Sync complete: $added added, $skipped skipped"
+}
+
+cmd_user_list() {
+	load_config
+
+	echo "HexoJS Users:"
+	echo "-------------"
+
+	local found=0
+	for section in $(uci show hexojs 2>/dev/null | grep '=user$' | cut -d'.' -f2 | cut -d'=' -f1); do
+		found=1
+		local username="${section#user_}"
+		local role=$(uci_get "${section}.role")
+		local instances=$(uci_get "${section}.instances")
+
+		printf "  %-15s role:%-8s instances: %s\n" "$username" "${role:-editor}" "${instances:-all}"
+	done
+
+	[ "$found" = "0" ] && echo "  (no users)"
+}
+
+cmd_user_passwd() {
+	require_root
+
+	local username="$1"
+	local password="$2"
+
+	[ -z "$username" ] && { log_error "Username required"; return 1; }
+
+	# Check if user exists
+	local existing=$(uci_get "user_$username")
+	[ -z "$existing" ] && { log_error "User '$username' not found"; return 1; }
+
+	# Generate password if not provided
+	[ -z "$password" ] && {
+		password=$(head -c 16 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 12)
+		log_info "Generated password: $password"
+	}
+
+	# Create password hash
+	local hash=$(generate_password_hash "$password")
+
+	# Update UCI
+	uci set hexojs.user_${username}.password_hash="$hash"
+	uci commit hexojs
+
+	# Update htpasswd file
+	cmd_update_htpasswd
+
+	log_info "Password changed for '$username'"
+}
+
+cmd_user_grant() {
+	require_root
+
+	local username="$1"
+	local instance="$2"
+
+	[ -z "$username" ] && { log_error "Username required"; return 1; }
+	[ -z "$instance" ] && { log_error "Instance required"; return 1; }
+
+	# Check if user exists
+	local existing=$(uci_get "user_$username")
+	[ -z "$existing" ] && { log_error "User '$username' not found"; return 1; }
+
+	# Add instance to user's list
+	uci add_list hexojs.user_${username}.instances="$instance"
+	uci commit hexojs
+
+	log_info "Granted '$username' access to '$instance'"
+}
+
+cmd_user_revoke() {
+	require_root
+
+	local username="$1"
+	local instance="$2"
+
+	[ -z "$username" ] && { log_error "Username required"; return 1; }
+	[ -z "$instance" ] && { log_error "Instance required"; return 1; }
+
+	# Remove instance from user's list
+	uci del_list hexojs.user_${username}.instances="$instance" 2>/dev/null
+	uci commit hexojs
+
+	log_info "Revoked '$username' access from '$instance'"
+}
+
+cmd_update_htpasswd() {
+	local htpasswd_dir=$(dirname "$HTPASSWD_FILE")
+	ensure_dir "$htpasswd_dir"
+
+	> "$HTPASSWD_FILE"
+
+	for section in $(uci show hexojs 2>/dev/null | grep '=user$' | cut -d'.' -f2 | cut -d'=' -f1); do
+		local username="${section#user_}"
+		local hash=$(uci_get "${section}.password_hash")
+		[ -n "$hash" ] && echo "${username}:${hash}" >> "$HTPASSWD_FILE"
+	done
+
+	chmod 600 "$HTPASSWD_FILE"
+}
+
+# ===============================================
+# Authentication Commands
+# ===============================================
+
+cmd_auth_enable() {
+	require_root
+	load_config
+
+	local instance="${1:-default}"
+	load_instance_config "$instance" || { log_error "Instance not found"; return 1; }
+
+	uci set hexojs.${instance}.auth_enabled='1'
+	uci commit hexojs
+
+	log_info "Authentication enabled for '$instance'"
+	log_info "Configure HAProxy with: hexoctl auth haproxy $instance"
+}
+
+cmd_auth_disable() {
+	require_root
+	load_config
+
+	local instance="${1:-default}"
+	load_instance_config "$instance" || { log_error "Instance not found"; return 1; }
+
+	uci set hexojs.${instance}.auth_enabled='0'
+	uci commit hexojs
+
+	log_info "Authentication disabled for '$instance'"
+}
+
+cmd_auth_status() {
+	load_config
+
+	local instance="${1:-}"
+
+	if [ -n "$instance" ]; then
+		load_instance_config "$instance" || { log_error "Instance not found"; return 1; }
+		local auth_enabled=$(uci_get "${instance}.auth_enabled")
+		local auth_users=$(uci_get "${instance}.auth_users")
+
+		echo "Instance: $instance"
+		echo "Auth Enabled: $([ "$auth_enabled" = "1" ] && echo "yes" || echo "no")"
+		echo "Allowed Users: ${auth_users:-all}"
+	else
+		echo "Authentication Status:"
+		echo "---------------------"
+
+		for inst in $(get_enabled_instances); do
+			load_instance_config "$inst" || continue
+			local auth_enabled=$(uci_get "${inst}.auth_enabled")
+			printf "  %-15s %s\n" "$inst" "$([ "$auth_enabled" = "1" ] && echo "[AUTH]" || echo "[PUBLIC]")"
+		done
+
+		echo ""
+		echo "Users:"
+		cmd_user_list | tail -n +3
+	fi
+}
+
+cmd_auth_haproxy() {
+	require_root
+	load_config
+
+	local instance="${1:-default}"
+	load_instance_config "$instance" || { log_error "Instance not found"; return 1; }
+
+	local auth_enabled=$(uci_get "${instance}.auth_enabled")
+	[ "$auth_enabled" != "1" ] && { log_error "Auth not enabled for '$instance'"; return 1; }
+
+	# Update htpasswd
+	cmd_update_htpasswd
+
+	local domain=$(uci_get "${instance}.domain")
+	[ -z "$domain" ] && domain="${instance}.hexo.local"
+
+	log_info "HAProxy configuration for authenticated instance '$instance':"
+	echo ""
+	echo "# Add to HAProxy frontend https-in:"
+	echo "    acl host_${instance}_hexo hdr(host) -i ${domain}"
+	echo "    http-request auth realm \"SecuBox HexoJS\" if host_${instance}_hexo !{ http_auth(hexojs_users) }"
+	echo "    use_backend hexo_${instance} if host_${instance}_hexo"
+	echo ""
+	echo "# Add userlist section:"
+	echo "userlist hexojs_users"
+
+	for section in $(uci show hexojs 2>/dev/null | grep '=user$' | cut -d'.' -f2 | cut -d'=' -f1); do
+		local username="${section#user_}"
+		local hash=$(uci_get "${section}.password_hash")
+		[ -n "$hash" ] && echo "    user ${username} password ${hash}"
+	done
+
+	echo ""
+	echo "# Add backend:"
+	echo "backend hexo_${instance}"
+	echo "    mode http"
+	echo "    server hexo 127.0.0.1:${instance_port} check"
+	echo ""
+
+	log_info "Copy the above to your HAProxy config and reload"
+}
+
+# Generate full HAProxy config for all authenticated instances
+cmd_auth_haproxy_all() {
+	require_root
+	load_config
+
+	echo "# HexoJS Authenticated Instances - HAProxy Config"
+	echo "# Generated: $(date)"
+	echo ""
+
+	echo "userlist hexojs_users"
+	for section in $(uci show hexojs 2>/dev/null | grep '=user$' | cut -d'.' -f2 | cut -d'=' -f1); do
+		local username="${section#user_}"
+		local hash=$(uci_get "${section}.password_hash")
+		[ -n "$hash" ] && echo "    user ${username} password ${hash}"
+	done
+	echo ""
+
+	for inst in $(get_enabled_instances); do
+		load_instance_config "$inst" || continue
+		local auth_enabled=$(uci_get "${inst}.auth_enabled")
+		[ "$auth_enabled" != "1" ] && continue
+
+		local domain=$(uci_get "${inst}.domain")
+		[ -z "$domain" ] && domain="${inst}.hexo.local"
+
+		echo "# Instance: $inst (port $instance_port)"
+		echo "acl host_${inst}_hexo hdr(host) -i ${domain}"
+		echo "http-request auth realm \"SecuBox HexoJS\" if host_${inst}_hexo !{ http_auth(hexojs_users) }"
+		echo "use_backend hexo_${inst} if host_${inst}_hexo"
+		echo ""
+		echo "backend hexo_${inst}"
+		echo "    mode http"
+		echo "    server hexo 127.0.0.1:${instance_port} check"
+		echo ""
+	done
+}
+
+# Apply auth configuration to HAProxy (auto-configure)
+cmd_auth_apply() {
+	require_root
+	load_config
+
+	local instance="${1:-}"
+	local domain="${2:-}"
+
+	[ -z "$instance" ] && { log_error "Instance name required"; return 1; }
+	[ -z "$domain" ] && domain="${instance}.secubox.local"
+
+	local auth_enabled=$(uci_get "${instance}.auth_enabled")
+	[ "$auth_enabled" != "1" ] && {
+		log_info "Enabling auth for '$instance'..."
+		uci set hexojs.${instance}.auth_enabled='1'
+		uci commit hexojs
+	}
+
+	# Save domain
+	uci set hexojs.${instance}.domain="$domain"
+	uci commit hexojs
+
+	# Update htpasswd
+	cmd_update_htpasswd
+
+	# Write userlist file for HAProxy include
+	local userlist_file="/srv/haproxy/config/hexojs-users.cfg"
+	log_info "Writing userlist to $userlist_file..."
+
+	cat > "$userlist_file" << 'USERLIST_HEAD'
+# HexoJS Users - Auto-generated by hexoctl
+# Include this in haproxy.cfg before frontends
+USERLIST_HEAD
+	echo "userlist hexojs_users" >> "$userlist_file"
+
+	for section in $(uci show hexojs 2>/dev/null | grep '=user$' | cut -d'.' -f2 | cut -d'=' -f1); do
+		local username="${section#user_}"
+		local hash=$(uci_get "${section}.password_hash")
+		[ -n "$hash" ] && echo "    user ${username} password ${hash}" >> "$userlist_file"
+	done
+
+	# Check if haproxyctl exists
+	if command -v haproxyctl >/dev/null 2>&1; then
+		# Add backend pointing to static files (served by uhttpd)
+		local static_url="/static/${instance}/"
+		local router_ip=$(uci -q get network.lan.ipaddr || echo "192.168.255.1")
+
+		log_info "Configuring HAProxy vhost: $domain"
+
+		# Remove existing vhost if present
+		haproxyctl vhost del "$domain" 2>/dev/null
+
+		# Add vhost pointing to uhttpd
+		haproxyctl vhost add "$domain" uhttpd "$router_ip" 80 2>/dev/null || true
+
+		# The auth rules need to be added to HAProxy config manually or via template
+		log_info "Vhost created: $domain -> uhttpd"
+		log_info ""
+		log_info "Add these lines to HAProxy frontend https-in:"
+		echo ""
+		echo "    # HexoJS Auth for $instance"
+		echo "    acl host_${instance}_hexo hdr(host) -i ${domain}"
+		echo "    http-request auth realm \"SecuBox HexoJS\" if host_${instance}_hexo !{ http_auth(hexojs_users) }"
+		echo ""
+		log_info "Then reload HAProxy: haproxyctl reload"
+	else
+		log_warn "haproxyctl not found"
+		log_info "Manual HAProxy config required - see: hexoctl auth haproxy $instance"
+	fi
+
+	log_info "Auth applied for '$instance' at $domain"
+}
+
+# ===============================================
+# KISS Static Upload (No Hexo Build Required)
+# ===============================================
+
+# Create a static-only instance (no Hexo, just serves files)
+cmd_static_create() {
+	require_root
+	load_config
+
+	local name="$1"
+	[ -z "$name" ] && { log_error "Instance name required"; return 1; }
+
+	# Validate name
+	echo "$name" | grep -qE '^[a-z][a-z0-9_]*$' || {
+		log_error "Invalid name. Use lowercase letters, numbers, underscore."
+		return 1
+	}
+
+	# Find next available port
+	local port=4000
+	while uci show hexojs 2>/dev/null | grep -q "port='$port'"; do
+		port=$((port + 1))
+	done
+
+	# Create UCI config
+	uci set hexojs.${name}=instance
+	uci set hexojs.${name}.enabled='1'
+	uci set hexojs.${name}.port="$port"
+	uci set hexojs.${name}.title="$name"
+	uci set hexojs.${name}.type='static'
+	uci commit hexojs
+
+	# Create directory structure
+	local static_dir="$data_path/static/$name"
+	ensure_dir "$static_dir"
+
+	# Create default index.html
+	cat > "$static_dir/index.html" << 'HTML'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecuBox Static Site</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #e0e0e0;
+        }
+        .container {
+            text-align: center;
+            padding: 40px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        h1 { font-size: 2.5em; margin-bottom: 20px; color: #f97316; }
+        p { color: #999; margin: 10px 0; }
+        .upload-hint {
+            margin-top: 30px;
+            padding: 15px;
+            background: rgba(249,115,22,0.1);
+            border-radius: 10px;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>SecuBox Static Site</h1>
+        <p>Upload your HTML files to get started</p>
+        <div class="upload-hint">
+            hexoctl static upload &lt;file.html&gt; [instance]
+        </div>
+    </div>
+</body>
+</html>
+HTML
+
+	log_info "Static instance '$name' created on port $port"
+	log_info "Directory: $static_dir"
+	log_info "Upload files: hexoctl static upload <file> $name"
+}
+
+# Upload file to static instance (KISS fast publish)
+cmd_static_upload() {
+	require_root
+	load_config
+
+	local file="$1"
+	local instance="${2:-default}"
+
+	[ -z "$file" ] && { log_error "File path required"; return 1; }
+	[ -f "$file" ] || { log_error "File not found: $file"; return 1; }
+
+	local static_dir="$data_path/static/$instance"
+	[ -d "$static_dir" ] || {
+		log_info "Creating static instance '$instance'..."
+		cmd_static_create "$instance"
+	}
+
+	local filename=$(basename "$file")
+	cp "$file" "$static_dir/$filename"
+
+	log_info "Uploaded: $filename → $static_dir/"
+	log_info "URL: http://$(uci -q get network.lan.ipaddr || echo localhost):$(uci_get ${instance}.port || echo 4000)/$filename"
+}
+
+# List files in static instance
+cmd_static_list() {
+	load_config
+
+	local instance="${1:-}"
+
+	if [ -n "$instance" ]; then
+		local static_dir="$data_path/static/$instance"
+		[ -d "$static_dir" ] || { log_error "Static instance '$instance' not found"; return 1; }
+
+		echo "Files in '$instance':"
+		ls -lh "$static_dir" | tail -n +2
+	else
+		echo "Static Instances:"
+		echo "-----------------"
+		for dir in "$data_path/static"/*; do
+			[ -d "$dir" ] || continue
+			local name=$(basename "$dir")
+			local count=$(find "$dir" -type f | wc -l)
+			local port=$(uci_get "${name}.port")
+			printf "  %-15s %3d files  port:%s\n" "$name" "$count" "${port:-?}"
+		done
+	fi
+}
+
+# Start simple static server (no Hexo, just Python/BusyBox httpd)
+cmd_static_serve() {
+	require_root
+	load_config
+
+	local instance="${1:-default}"
+	local static_dir="$data_path/static/$instance"
+
+	[ -d "$static_dir" ] || { log_error "Static instance '$instance' not found"; return 1; }
+
+	local port=$(uci_get "${instance}.port")
+	[ -z "$port" ] && port=4000
+
+	log_info "Serving '$instance' on port $port..."
+
+	# Try Python first, fallback to busybox httpd
+	if command -v python3 >/dev/null 2>&1; then
+		cd "$static_dir" && python3 -m http.server "$port" --bind 0.0.0.0
+	elif command -v busybox >/dev/null 2>&1; then
+		busybox httpd -f -p "$port" -h "$static_dir"
+	else
+		log_error "No HTTP server available (need python3 or busybox)"
+		return 1
+	fi
+}
+
+# Delete static instance
+cmd_static_delete() {
+	require_root
+	load_config
+
+	local name="$1"
+	[ -z "$name" ] && { log_error "Instance name required"; return 1; }
+
+	local static_dir="$data_path/static/$name"
+	[ -d "$static_dir" ] || { log_error "Static instance '$name' not found"; return 1; }
+
+	# Remove directory
+	rm -rf "$static_dir"
+
+	# Remove UCI config if exists
+	uci delete hexojs.${name} 2>/dev/null
+	uci commit hexojs 2>/dev/null
+
+	log_info "Static instance '$name' deleted"
+}
+
+# Publish static instance to /www/ (immediate serving via uhttpd)
+cmd_static_publish() {
+	require_root
+	load_config
+
+	local instance="${1:-default}"
+	local static_dir="$data_path/static/$instance"
+
+	[ -d "$static_dir" ] || { log_error "Static instance '$instance' not found"; return 1; }
+
+	local publish_path="/www/static/${instance}"
+	ensure_dir "$publish_path"
+
+	log_info "Publishing to $publish_path..."
+	rsync -av --delete "$static_dir/" "$publish_path/"
+
+	local file_count=$(find "$publish_path" -type f | wc -l)
+	log_info "Published $file_count files"
+	log_info "URL: http://$(uci -q get network.lan.ipaddr || echo localhost)/static/${instance}/"
+}
+
+# Quick upload + publish workflow (KISS one-liner)
+cmd_static_quick() {
+	require_root
+	load_config
+
+	local file="$1"
+	local instance="${2:-quick}"
+
+	[ -z "$file" ] && { log_error "File path required"; return 1; }
+	[ -f "$file" ] || { log_error "File not found: $file"; return 1; }
+
+	# Upload
+	cmd_static_upload "$file" "$instance"
+
+	# Publish immediately
+	cmd_static_publish "$instance"
+}
+
 cmd_instance_list_json() {
 	load_config
 
@@ -1567,6 +2268,48 @@ case "${1:-}" in
 	quick-publish) shift; cmd_quick_publish "$@" ;;
 	status-json) cmd_status_json ;;
 	instance-list-json) cmd_instance_list_json ;;
+
+	user)
+		shift
+		case "${1:-}" in
+			add)    shift; cmd_user_add "$@" ;;
+			del|delete) shift; cmd_user_del "$@" ;;
+			list)   shift; cmd_user_list "$@" ;;
+			passwd) shift; cmd_user_passwd "$@" ;;
+			grant)  shift; cmd_user_grant "$@" ;;
+			revoke) shift; cmd_user_revoke "$@" ;;
+			sync-secubox|sync) shift; cmd_user_sync_secubox "$@" ;;
+			*)      echo "Usage: hexoctl user {add|del|list|passwd|grant|revoke|sync-secubox}" ;;
+		esac
+		;;
+
+	auth)
+		shift
+		case "${1:-}" in
+			enable)  shift; cmd_auth_enable "$@" ;;
+			disable) shift; cmd_auth_disable "$@" ;;
+			status)  shift; cmd_auth_status "$@" ;;
+			haproxy) shift; cmd_auth_haproxy "$@" ;;
+			haproxy-all) cmd_auth_haproxy_all ;;
+			apply)   shift; cmd_auth_apply "$@" ;;
+			*)       echo "Usage: hexoctl auth {enable|disable|status|haproxy|apply} [instance]" ;;
+		esac
+		;;
+
+	# KISS Static Upload (no Hexo, direct HTML)
+	static)
+		shift
+		case "${1:-}" in
+			create)  shift; cmd_static_create "$@" ;;
+			upload)  shift; cmd_static_upload "$@" ;;
+			publish) shift; cmd_static_publish "$@" ;;
+			quick)   shift; cmd_static_quick "$@" ;;
+			list)    shift; cmd_static_list "$@" ;;
+			serve)   shift; cmd_static_serve "$@" ;;
+			delete)  shift; cmd_static_delete "$@" ;;
+			*)       echo "Usage: hexoctl static {create|upload|publish|quick|list|serve|delete} [instance]" ;;
+		esac
+		;;
 
 	*)          usage ;;
 esac

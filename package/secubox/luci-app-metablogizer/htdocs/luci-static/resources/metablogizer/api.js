@@ -139,6 +139,29 @@ var callEmancipateStatus = rpc.declare({
 	params: ['job_id']
 });
 
+var callUploadAndCreateSite = rpc.declare({
+	object: 'luci.metablogizer',
+	method: 'upload_and_create_site',
+	params: ['name', 'domain', 'content', 'is_zip']
+});
+
+var callUnpublishSite = rpc.declare({
+	object: 'luci.metablogizer',
+	method: 'unpublish_site',
+	params: ['id']
+});
+
+var callSetAuthRequired = rpc.declare({
+	object: 'luci.metablogizer',
+	method: 'set_auth_required',
+	params: ['id', 'auth_required']
+});
+
+var callGetSitesExposureStatus = rpc.declare({
+	object: 'luci.metablogizer',
+	method: 'get_sites_exposure_status'
+});
+
 return baseclass.extend({
 	getStatus: function() {
 		return callStatus();
@@ -269,16 +292,35 @@ return baseclass.extend({
 		return callEmancipateStatus(jobId);
 	},
 
+	uploadAndCreateSite: function(name, domain, content, isZip) {
+		return callUploadAndCreateSite(name, domain, content || '', isZip ? '1' : '0');
+	},
+
+	unpublishSite: function(id) {
+		return callUnpublishSite(id);
+	},
+
+	setAuthRequired: function(id, authRequired) {
+		return callSetAuthRequired(id, authRequired ? '1' : '0');
+	},
+
+	getSitesExposureStatus: function() {
+		return callGetSitesExposureStatus().then(function(res) {
+			return res.sites || [];
+		});
+	},
+
 	getDashboardData: function() {
 		var self = this;
 		return Promise.all([
 			self.getStatus(),
-			self.listSites()
+			self.listSites(),
+			self.getSitesExposureStatus()
 		]).then(function(results) {
 			return {
 				status: results[0] || {},
 				sites: results[1] || [],
-				hosting: {}
+				exposure: results[2] || []
 			};
 		});
 	}

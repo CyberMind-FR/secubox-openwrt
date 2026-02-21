@@ -1,0 +1,13 @@
+{
+	"admin/services/media-hub": {
+		"title": "Media Hub",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "media-hub/dashboard"
+		},
+		"depends": {
+			"acl": ["luci-app-media-hub"]
+		}
+	}
+}

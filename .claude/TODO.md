@@ -188,8 +188,8 @@ All cloud providers are **opt-in**. Offline resilience: local tier always active
 - [x] Config Advisor (ANSSI prep) — Done 2026-02-07
 - [ ] P2P Mesh Intelligence
 - [ ] Factory auto-provisioning
-- [ ] VoIP integration
-- [ ] Matrix integration
+- [x] VoIP integration — Done 2026-02-19
+- [x] Matrix integration — Done 2026-02-19
 
 ### v1.1+ — Extended Mesh
 

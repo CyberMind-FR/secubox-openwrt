@@ -83,6 +83,10 @@ config autoban 'autoban'
 	option ban_scanners '1'
 	# Auto-ban on rate limit exceeded
 	option ban_rate_limit '0'
+	# Auto-ban VoIP/SIP attacks
+	option ban_voip '1'
+	# Auto-ban XMPP/Jabber attacks
+	option ban_xmpp '1'
 	# Whitelist IPs from auto-ban (comma-separated)
 	option whitelist ''
 	#
@@ -176,3 +180,24 @@ config capture 'capture'
 	option capture_response_headers '1'
 	option capture_request_body '0'
 	option capture_response_body '0'
+
+# WAF Rules - enable/disable categories
+config waf_rules 'waf_rules'
+	option enabled '1'
+	# Core attack patterns
+	option sqli '1'
+	option xss '1'
+	option lfi '1'
+	option rce '1'
+	# CVE exploits
+	option cve_2024 '1'
+	# Scanner detection
+	option scanners '1'
+	# Application-specific
+	option webmail '1'
+	option api_abuse '1'
+	# VoIP/XMPP protection (new)
+	option voip '1'
+	option xmpp '1'
+	option cve_voip '1'
+	option cve_xmpp '1'

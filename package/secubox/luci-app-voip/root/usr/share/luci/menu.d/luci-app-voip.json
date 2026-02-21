@@ -1,0 +1,53 @@
+{
+	"admin/services/voip": {
+		"title": "VoIP PBX",
+		"order": 60,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-voip"],
+			"uci": {"voip": true}
+		}
+	},
+	"admin/services/voip/overview": {
+		"title": "Overview",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "voip/overview"
+		}
+	},
+	"admin/services/voip/extensions": {
+		"title": "Extensions",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "voip/extensions"
+		}
+	},
+	"admin/services/voip/trunks": {
+		"title": "SIP Trunks",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "voip/trunks"
+		}
+	},
+	"admin/services/voip/dialer": {
+		"title": "Click to Call",
+		"order": 40,
+		"action": {
+			"type": "view",
+			"path": "voip/dialer"
+		}
+	},
+	"admin/services/voip/recordings": {
+		"title": "Recordings",
+		"order": 50,
+		"action": {
+			"type": "view",
+			"path": "voip/recordings"
+		}
+	}
+}

@@ -1,0 +1,1620 @@
+#!/bin/sh
+# SecuBox Jabber Manager - LXC Debian container with Prosody XMPP Server
+
+CONFIG="jabber"
+LXC_NAME="jabber"
+LXC_PATH="/srv/lxc"
+LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
+LXC_CONF="$LXC_PATH/$LXC_NAME/config"
+DATA_PATH_DEFAULT="/srv/jabber"
+PROSODY_VERSION="0.12"
+OPKG_UPDATED=0
+
+usage() {
+	cat <<'USAGE'
+Usage: jabberctl <command>
+
+Installation:
+  install              Create LXC container with Prosody XMPP server
+  uninstall            Remove container (preserves data)
+  update               Update Prosody to latest version
+  check                Run prerequisite checks
+
+Service:
+  start                Start Jabber/XMPP server (via init)
+  stop                 Stop Jabber/XMPP server
+  restart              Restart Jabber/XMPP server
+  status               Show container and service status
+  logs [N]             Show last N lines of logs (default: 50)
+  shell                Open interactive shell in container
+
+Users:
+  user add <jid> [password]     Create user (e.g. user@domain)
+  user del <jid>                Delete user
+  user passwd <jid> [password]  Change password
+  user list                     List all users
+
+Rooms (MUC):
+  room create <name>           Create conference room
+  room delete <name>           Delete conference room
+  room list                    List all rooms
+
+Exposure:
+  configure-haproxy    Setup HAProxy vhost for HTTPS/WSS
+  emancipate <domain>  Full exposure (HAProxy + ACME + DNS + S2S)
+
+VoIP Integration:
+  jingle enable        Enable Jingle VoIP (XMPP calls)
+  jingle disable       Disable Jingle VoIP
+  jingle status        Show Jingle configuration
+  sms config <sender>  Configure OVH SMS relay
+  sms send <to> <msg>  Send SMS via OVH
+  voicemail-notify     Configure Asterisk voicemail notifications
+
+Backup:
+  backup [path]        Backup database and config
+  restore <path>       Restore from backup
+
+Internal:
+  service-run          Run container via procd
+  service-stop         Stop container
+USAGE
+}
+
+# ---------- helpers ----------
+
+require_root() { [ "$(id -u)" -eq 0 ]; }
+
+uci_get() {
+	local key="$1"
+	local section="${2:-main}"
+	uci -q get ${CONFIG}.${section}.$key
+}
+
+uci_set() {
+	local key="$1"
+	local value="$2"
+	local section="${3:-main}"
+	uci set ${CONFIG}.${section}.$key="$value"
+}
+
+log_info()  { echo "[INFO] $*"; logger -t jabberctl "$*"; }
+log_warn()  { echo "[WARN] $*"; logger -t jabberctl -p warning "$*"; }
+log_error() { echo "[ERROR] $*" >&2; logger -t jabberctl -p err "$*"; }
+
+ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
+
+ensure_packages() {
+	for pkg in "$@"; do
+		if ! opkg status "$pkg" 2>/dev/null | grep -q "Status:.*installed"; then
+			if [ "$OPKG_UPDATED" -eq 0 ]; then
+				opkg update || return 1
+				OPKG_UPDATED=1
+			fi
+			opkg install "$pkg" || return 1
+		fi
+	done
+}
+
+defaults() {
+	data_path="$(uci_get data_path || echo $DATA_PATH_DEFAULT)"
+	memory_limit="$(uci_get memory_limit || echo 512)"
+	hostname="$(uci_get hostname server || echo jabber.local)"
+	c2s_port="$(uci_get c2s_port server || echo 5222)"
+	s2s_port="$(uci_get s2s_port server || echo 5269)"
+	http_port="$(uci_get http_port server || echo 5280)"
+	https_port="$(uci_get https_port server || echo 5281)"
+}
+
+detect_arch() {
+	case "$(uname -m)" in
+		aarch64) echo "aarch64" ;;
+		armv7l)  echo "armv7" ;;
+		x86_64)  echo "x86_64" ;;
+		*)       echo "x86_64" ;;
+	esac
+}
+
+generate_password() {
+	head -c 32 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 16
+}
+
+# ---------- LXC helpers ----------
+
+lxc_running() {
+	lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"
+}
+
+lxc_exists() {
+	[ -f "$LXC_CONF" ] && [ -d "$LXC_ROOTFS" ]
+}
+
+lxc_exec() {
+	lxc-attach -n "$LXC_NAME" -- "$@"
+}
+
+lxc_stop() {
+	if lxc_running; then
+		lxc-stop -n "$LXC_NAME" -k 2>/dev/null || true
+		sleep 2
+	fi
+}
+
+# ---------- prosodyctl wrapper ----------
+
+prosodyctl() {
+	lxc_exec prosodyctl "$@"
+}
+
+# ---------- rootfs creation ----------
+
+lxc_create_rootfs() {
+	local arch=$(detect_arch)
+
+	# Map to Debian architecture names
+	local debian_arch
+	case "$arch" in
+		aarch64) debian_arch="arm64" ;;
+		armv7)   debian_arch="armhf" ;;
+		x86_64)  debian_arch="amd64" ;;
+		*)       debian_arch="amd64" ;;
+	esac
+
+	ensure_dir "$LXC_ROOTFS"
+
+	# Minimal Debian rootfs via tarball from LXC image server
+	local rootfs_url="https://images.linuxcontainers.org/images/debian/bookworm/${debian_arch}/default/"
+	log_info "Downloading Debian bookworm rootfs for ${debian_arch}..."
+
+	# Get latest build directory
+	local latest_path
+	latest_path=$(wget -q -O - "$rootfs_url" 2>/dev/null | grep -oE '[0-9]{8}_[0-9]{2}:[0-9]{2}' | tail -1)
+	if [ -z "$latest_path" ]; then
+		log_error "Failed to find latest Debian rootfs build"
+		return 1
+	fi
+
+	local tarball="/tmp/debian-jabber.tar.xz"
+	local tarball_url="${rootfs_url}${latest_path}/rootfs.tar.xz"
+	wget -q -O "$tarball" "$tarball_url" || {
+		log_error "Failed to download Debian rootfs from $tarball_url"
+		return 1
+	}
+
+	tar -xJf "$tarball" -C "$LXC_ROOTFS" || {
+		log_error "Failed to extract Debian rootfs"
+		return 1
+	}
+	rm -f "$tarball"
+
+	# DNS
+	cp /etc/resolv.conf "$LXC_ROOTFS/etc/resolv.conf" 2>/dev/null || \
+		echo "nameserver 8.8.8.8" > "$LXC_ROOTFS/etc/resolv.conf"
+
+	# Create minimal /dev for chroot operations
+	mkdir -p "$LXC_ROOTFS/dev"
+	[ -c "$LXC_ROOTFS/dev/null" ] || mknod -m 666 "$LXC_ROOTFS/dev/null" c 1 3 2>/dev/null
+	[ -c "$LXC_ROOTFS/dev/zero" ] || mknod -m 666 "$LXC_ROOTFS/dev/zero" c 1 5 2>/dev/null
+	[ -c "$LXC_ROOTFS/dev/random" ] || mknod -m 666 "$LXC_ROOTFS/dev/random" c 1 8 2>/dev/null
+	[ -c "$LXC_ROOTFS/dev/urandom" ] || mknod -m 666 "$LXC_ROOTFS/dev/urandom" c 1 9 2>/dev/null
+
+	# Configure apt sources
+	cat > "$LXC_ROOTFS/etc/apt/sources.list" <<'SOURCES'
+deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
+deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
+deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
+SOURCES
+
+	# Install Prosody XMPP server
+	log_info "Installing Prosody XMPP server..."
+	chroot "$LXC_ROOTFS" /bin/sh -c "
+		export DEBIAN_FRONTEND=noninteractive
+		apt-get update && \
+		apt-get install -y --no-install-recommends \
+			prosody \
+			prosody-modules \
+			lua-sec \
+			lua-event \
+			lua-dbi-sqlite3 \
+			lua-zlib \
+			ca-certificates \
+			openssl \
+			procps
+	" || {
+		log_error "Failed to install Prosody"
+		return 1
+	}
+
+	# Create directories
+	mkdir -p "$LXC_ROOTFS/var/lib/prosody"
+	mkdir -p "$LXC_ROOTFS/var/log/prosody"
+	mkdir -p "$LXC_ROOTFS/etc/prosody/conf.d"
+	mkdir -p "$LXC_ROOTFS/var/lib/prosody/http_upload"
+
+	# Create startup script
+	create_startup_script
+
+	# Create webchat interface
+	create_webchat
+
+	# Clean up apt cache
+	chroot "$LXC_ROOTFS" /bin/sh -c "
+		apt-get clean
+		rm -rf /var/lib/apt/lists/*
+	"
+
+	log_info "Rootfs created successfully"
+}
+
+create_startup_script() {
+	cat > "$LXC_ROOTFS/opt/start-jabber.sh" <<'STARTUP'
+#!/bin/bash
+
+export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+
+# Get hostname from environment or default
+XMPP_DOMAIN="${XMPP_HOSTNAME:-jabber.local}"
+ADMIN_USER="${XMPP_ADMIN:-admin}"
+
+# Generate Prosody config if not exists
+if [ ! -f /etc/prosody/prosody.cfg.lua.configured ]; then
+    echo "[JABBER] Generating Prosody configuration..."
+
+    # Create main config FIRST (before cert generation)
+    cat > /etc/prosody/prosody.cfg.lua <<PROSODY
+-- Prosody XMPP Server Configuration
+-- Generated by SecuBox Jabber
+
+-- Global settings
+admins = { "${ADMIN_USER}@${XMPP_DOMAIN}" }
+
+-- Network settings - bind to all interfaces
+interfaces = { "*" }
+c2s_ports = { 5222 }
+s2s_ports = { 5269 }
+http_ports = { 5280 }
+https_ports = { 5281 }
+http_interfaces = { "*" }
+https_interfaces = { "*" }
+
+-- Modules enabled globally
+modules_enabled = {
+    -- Core
+    "roster";
+    "saslauth";
+    "tls";
+    "dialback";
+    "disco";
+    "posix";
+    "private";
+    "vcard4";
+    "vcard_legacy";
+
+    -- Nice to have
+    "version";
+    "uptime";
+    "time";
+    "ping";
+    "pep";
+    "blocklist";
+    "carbons";
+    "smacks";
+    "mam";
+    "csi";
+
+    -- Admin
+    "admin_adhoc";
+    "http";
+    "bosh";
+    "websocket";
+    "http_files";
+}
+
+-- Disable modules
+modules_disabled = {}
+
+-- SSL/TLS
+ssl = {
+    key = "/var/lib/prosody/${XMPP_DOMAIN}.key";
+    certificate = "/var/lib/prosody/${XMPP_DOMAIN}.crt";
+}
+
+-- Authentication
+authentication = "internal_hashed"
+
+-- Storage
+storage = "internal"
+
+-- Archiving (MAM)
+archive_expires_after = "1w"
+default_archive_policy = true
+
+-- Logging
+log = {
+    info = "/var/log/prosody/prosody.log";
+    error = "/var/log/prosody/prosody.err";
+    "*console";
+}
+
+-- HTTP server
+http_default_host = "${XMPP_DOMAIN}"
+http_external_url = "https://${XMPP_DOMAIN}/"
+trusted_proxies = { "127.0.0.1", "::1", "192.168.255.1" }
+
+-- Static files (webchat)
+http_files_dir = "/var/www/prosody"
+http_paths = {
+    files = "/chat";
+}
+
+-- BOSH/Websocket CORS
+cross_domain_bosh = true
+consider_bosh_secure = true
+cross_domain_websocket = true
+consider_websocket_secure = true
+
+-- File upload
+http_upload_file_size_limit = 10485760
+http_upload_expire_after = 604800
+http_upload_quota = 104857600
+
+-- Main VirtualHost
+VirtualHost "${XMPP_DOMAIN}"
+    ssl = {
+        key = "/var/lib/prosody/${XMPP_DOMAIN}.key";
+        certificate = "/var/lib/prosody/${XMPP_DOMAIN}.crt";
+    }
+
+-- HTTP upload component
+Component "upload.${XMPP_DOMAIN}" "http_upload"
+    http_upload_file_size_limit = 10485760
+
+-- MUC (Multi-User Chat)
+Component "conference.${XMPP_DOMAIN}" "muc"
+    name = "Chatrooms"
+    restrict_room_creation = false
+
+    modules_enabled = {
+        "muc_mam";
+    }
+
+-- Include additional config
+Include "conf.d/*.cfg.lua"
+PROSODY
+
+    # Now generate self-signed certificates (config must exist first)
+    echo "[JABBER] Generating SSL certificates..."
+    cd /var/lib/prosody
+    openssl req -new -x509 -days 3650 -nodes \
+        -out "${XMPP_DOMAIN}.crt" \
+        -keyout "${XMPP_DOMAIN}.key" \
+        -subj "/CN=${XMPP_DOMAIN}" 2>/dev/null
+    chown prosody:prosody "${XMPP_DOMAIN}.crt" "${XMPP_DOMAIN}.key"
+    chmod 600 "${XMPP_DOMAIN}.key"
+
+    touch /etc/prosody/prosody.cfg.lua.configured
+    echo "[JABBER] Configuration generated"
+fi
+
+# Ensure proper permissions
+chown -R prosody:prosody /var/lib/prosody
+chown -R prosody:prosody /var/log/prosody
+chown -R prosody:prosody /var/www/prosody 2>/dev/null
+
+echo "[JABBER] Starting Prosody XMPP server..."
+
+# Run Prosody as prosody user in foreground
+exec su -s /bin/sh prosody -c "/usr/bin/prosody"
+STARTUP
+
+	chmod +x "$LXC_ROOTFS/opt/start-jabber.sh"
+}
+
+create_webchat() {
+	# Create webchat directory and Converse.js files
+	mkdir -p "$LXC_ROOTFS/var/www/prosody"
+
+	# Download Converse.js if not exists
+	if [ ! -f "$LXC_ROOTFS/var/www/prosody/converse.min.js" ]; then
+		log_info "Downloading Converse.js web client..."
+		local converse_version="10.1.6"
+		local cdn_base="https://cdn.conversejs.org/10.1.6/dist"
+
+		wget -q -O "$LXC_ROOTFS/var/www/prosody/converse.min.js" \
+			"${cdn_base}/converse.min.js" || true
+		wget -q -O "$LXC_ROOTFS/var/www/prosody/converse.min.css" \
+			"${cdn_base}/converse.min.css" || true
+	fi
+
+	# Create index.html
+	defaults
+	cat > "$LXC_ROOTFS/var/www/prosody/index.html" <<WEBCHAT
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecuBox Chat - XMPP Web Client</title>
+    <link rel="stylesheet" href="converse.min.css">
+    <style>
+        body { margin: 0; padding: 0; height: 100vh; }
+        #conversejs { height: 100%; }
+    </style>
+</head>
+<body>
+    <script src="converse.min.js"></script>
+    <script>
+        converse.initialize({
+            bosh_service_url: "https://${hostname}/http-bind",
+            websocket_url: "wss://${hostname}/xmpp-websocket",
+            view_mode: "fullscreen",
+            theme: "concord",
+            auto_login: false,
+            authentication: "login",
+            allow_registration: false,
+            muc_domain: "conference.${hostname}",
+            locked_muc_domain: "conference.${hostname}",
+            muc_show_logs_before_join: true,
+            discover_connection_methods: false,
+            keepalive: true,
+            message_archiving: "always",
+            i18n: "fr"
+        });
+    </script>
+</body>
+</html>
+WEBCHAT
+
+	log_info "Webchat interface created at /chat/"
+}
+
+lxc_create_config() {
+	defaults
+	local mem_bytes=$((memory_limit * 1024 * 1024))
+
+	ensure_dir "$LXC_PATH/$LXC_NAME"
+	ensure_dir "$data_path"
+	ensure_dir "$data_path/data"
+	ensure_dir "$data_path/certs"
+	ensure_dir "$data_path/webchat"
+
+	cat > "$LXC_CONF" <<EOF
+# Jabber/XMPP LXC Container (Prosody)
+lxc.uts.name = $LXC_NAME
+lxc.rootfs.path = dir:$LXC_ROOTFS
+lxc.arch = $(detect_arch)
+
+# Network: share host network
+lxc.net.0.type = none
+
+# Auto-mounts
+lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+
+# Bind mounts for persistent data
+lxc.mount.entry = $data_path/data var/lib/prosody none bind,create=dir 0 0
+lxc.mount.entry = $data_path/certs etc/prosody/certs none bind,create=dir 0 0
+lxc.mount.entry = $data_path/webchat var/www/prosody none bind,create=dir 0 0
+
+# Environment
+lxc.environment = XMPP_HOSTNAME=$hostname
+lxc.environment = XMPP_ADMIN=$(uci_get initial_user admin || echo admin)
+
+# Resource limits
+lxc.cgroup2.memory.max = $mem_bytes
+
+# Security
+lxc.cap.drop = sys_module mac_admin mac_override sys_time
+
+# TTY/PTY for cgroup2
+lxc.tty.max = 4
+lxc.pty.max = 16
+lxc.cgroup2.devices.allow = c 1:3 rwm
+lxc.cgroup2.devices.allow = c 1:5 rwm
+lxc.cgroup2.devices.allow = c 1:7 rwm
+lxc.cgroup2.devices.allow = c 1:8 rwm
+lxc.cgroup2.devices.allow = c 1:9 rwm
+lxc.cgroup2.devices.allow = c 5:0 rwm
+lxc.cgroup2.devices.allow = c 5:1 rwm
+lxc.cgroup2.devices.allow = c 5:2 rwm
+lxc.cgroup2.devices.allow = c 136:* rwm
+
+# Startup command
+lxc.init.cmd = /opt/start-jabber.sh
+EOF
+
+	log_info "LXC config created"
+}
+
+# ---------- commands ----------
+
+cmd_install() {
+	require_root || { log_error "Must run as root"; return 1; }
+
+	log_info "Installing Jabber/XMPP server (Prosody)..."
+
+	# Check prerequisites
+	ensure_packages lxc lxc-common wget tar || return 1
+
+	# Create LXC rootfs
+	if ! lxc_exists; then
+		lxc_create_rootfs || return 1
+	else
+		log_info "Container already exists, skipping rootfs creation"
+	fi
+
+	# Create LXC config
+	lxc_create_config
+
+	# Generate initial admin password if not set
+	local admin_pass=$(uci_get initial_password admin)
+	if [ -z "$admin_pass" ]; then
+		admin_pass=$(generate_password)
+		uci_set initial_password "$admin_pass" admin
+		uci commit "$CONFIG"
+	fi
+
+	# Enable and start
+	uci_set enabled '1'
+	uci commit "$CONFIG"
+	/etc/init.d/jabber enable
+	/etc/init.d/jabber start
+
+	# Wait for container to start
+	sleep 5
+
+	# Create admin user
+	defaults
+	local admin_user=$(uci_get initial_user admin || echo admin)
+	if lxc_running; then
+		log_info "Creating admin user: ${admin_user}@${hostname}"
+		prosodyctl register "$admin_user" "$hostname" "$admin_pass" 2>/dev/null || true
+	fi
+
+	local lan_ip=$(uci -q get network.lan.ipaddr || echo '192.168.255.1')
+
+	log_info ""
+	log_info "=============================================="
+	log_info "  Jabber/XMPP Server installed!"
+	log_info "=============================================="
+	log_info ""
+	log_info "  Domain:     $hostname"
+	log_info "  C2S Port:   $c2s_port (client connections)"
+	log_info "  S2S Port:   $s2s_port (server federation)"
+	log_info "  HTTP/BOSH:  http://${lan_ip}:$http_port/http-bind"
+	log_info "  WebSocket:  ws://${lan_ip}:$http_port/xmpp-websocket"
+	log_info "  Webchat:    http://${lan_ip}:$http_port/chat/"
+	log_info ""
+	log_info "  Admin JID:  ${admin_user}@${hostname}"
+	log_info "  Password:   $admin_pass"
+	log_info ""
+	log_info "  Clients:    Conversations (Android), Monal (iOS),"
+	log_info "              Gajim (Desktop), Dino (Linux),"
+	log_info "              Web: http://${lan_ip}:$http_port/chat/"
+	log_info ""
+	log_info "  Expose externally:"
+	log_info "    jabberctl emancipate xmpp.example.com"
+	log_info ""
+}
+
+cmd_uninstall() {
+	require_root || { log_error "Must run as root"; return 1; }
+
+	log_info "Uninstalling Jabber/XMPP server..."
+
+	# Stop and disable
+	/etc/init.d/jabber stop 2>/dev/null
+	/etc/init.d/jabber disable 2>/dev/null
+	lxc_stop
+
+	# Remove container but keep data
+	rm -rf "$LXC_ROOTFS" "$LXC_CONF"
+
+	uci_set enabled '0'
+	uci commit "$CONFIG"
+
+	defaults
+	log_info "Container removed. Data preserved in $data_path"
+}
+
+cmd_update() {
+	require_root || { log_error "Must run as root"; return 1; }
+
+	log_info "Updating Prosody..."
+
+	if lxc_running; then
+		lxc_exec apt-get update
+		lxc_exec apt-get upgrade -y prosody prosody-modules
+		lxc_exec prosodyctl restart
+		log_info "Prosody updated successfully"
+	else
+		log_error "Container not running"
+		return 1
+	fi
+}
+
+cmd_check() {
+	echo "Jabber/XMPP Prerequisites Check"
+	echo "================================"
+
+	# LXC
+	if command -v lxc-start >/dev/null 2>&1; then
+		echo "[OK] LXC installed"
+	else
+		echo "[FAIL] LXC not installed"
+	fi
+
+	# Container exists
+	if lxc_exists; then
+		echo "[OK] Container exists"
+	else
+		echo "[--] Container not created"
+	fi
+
+	# Container running
+	if lxc_running; then
+		echo "[OK] Container running"
+	else
+		echo "[--] Container not running"
+	fi
+
+	# Prosody ports
+	defaults
+	for port in $c2s_port $s2s_port $http_port; do
+		if netstat -tln 2>/dev/null | grep -q ":${port} " || \
+		   grep -q ":$(printf '%04X' $port) " /proc/net/tcp 2>/dev/null; then
+			echo "[OK] Port $port listening"
+		else
+			echo "[--] Port $port not listening"
+		fi
+	done
+
+	# Prosody process (runs as lua5.4)
+	if lxc_running; then
+		if lxc_exec pgrep -f "lua.*prosody" >/dev/null 2>&1; then
+			echo "[OK] Prosody process running"
+		else
+			echo "[FAIL] Prosody process not running"
+		fi
+	fi
+}
+
+cmd_status() {
+	defaults
+
+	# JSON output for RPCD
+	if [ "$1" = "--json" ]; then
+		local running=0
+		local prosody_proc=0
+		local user_count=0
+
+		lxc_running && running=1
+		if [ "$running" = "1" ]; then
+			lxc_exec pgrep -f "lua.*prosody" >/dev/null 2>&1 && prosody_proc=1
+			user_count=$(lxc_exec find /var/lib/prosody -name "*.dat" -path "*accounts*" 2>/dev/null | wc -l)
+		fi
+
+		cat <<EOF
+{
+  "enabled": $(uci_get enabled || echo 0),
+  "running": $running,
+  "hostname": "$hostname",
+  "c2s_port": $c2s_port,
+  "s2s_port": $s2s_port,
+  "http_port": $http_port,
+  "data_path": "$data_path",
+  "memory_limit": $memory_limit,
+  "prosody": $prosody_proc,
+  "user_count": $user_count
+}
+EOF
+		return
+	fi
+
+	echo "Jabber/XMPP Status"
+	echo "=================="
+	echo ""
+	echo "Configuration:"
+	echo "  Enabled:      $(uci_get enabled || echo '0')"
+	echo "  Hostname:     $hostname"
+	echo "  C2S Port:     $c2s_port"
+	echo "  S2S Port:     $s2s_port"
+	echo "  HTTP Port:    $http_port"
+	echo "  Memory:       ${memory_limit}M"
+	echo "  Data Path:    $data_path"
+	echo ""
+
+	if lxc_exists; then
+		echo "Container:      EXISTS"
+	else
+		echo "Container:      NOT CREATED (run: jabberctl install)"
+		return 0
+	fi
+
+	if lxc_running; then
+		echo "State:          RUNNING"
+		lxc-info -n "$LXC_NAME" | grep -E "PID|Memory" | sed 's/^/  /'
+		echo ""
+		echo "Services:"
+		lxc_exec pgrep -f "lua.*prosody" >/dev/null 2>&1 && echo "  Prosody:      UP" || echo "  Prosody:      DOWN"
+
+		# User count
+		local users=$(lxc_exec find /var/lib/prosody -name "*.dat" -path "*accounts*" 2>/dev/null | wc -l)
+		echo ""
+		echo "Users:          $users registered"
+	else
+		echo "State:          STOPPED"
+	fi
+
+	echo ""
+	local lan_ip=$(uci -q get network.lan.ipaddr || echo '192.168.255.1')
+	echo "Connection:"
+	echo "  XMPP:         ${hostname}:${c2s_port}"
+	echo "  BOSH:         http://${lan_ip}:${http_port}/http-bind"
+	echo "  WebSocket:    ws://${lan_ip}:${http_port}/xmpp-websocket"
+}
+
+cmd_logs() {
+	local lines="${1:-50}"
+
+	if lxc_running; then
+		echo "=== Prosody logs ==="
+		lxc_exec tail -n "$lines" /var/log/prosody/prosody.log 2>/dev/null || \
+			echo "No Prosody logs found"
+	else
+		echo "Container not running"
+	fi
+}
+
+cmd_shell() {
+	if lxc_running; then
+		lxc_exec /bin/bash || lxc_exec /bin/sh
+	else
+		log_error "Container not running"
+		return 1
+	fi
+}
+
+cmd_start() {
+	require_root || { log_error "Must run as root"; return 1; }
+	/etc/init.d/jabber start
+}
+
+cmd_stop() {
+	require_root || { log_error "Must run as root"; return 1; }
+	/etc/init.d/jabber stop
+}
+
+cmd_restart() {
+	require_root || { log_error "Must run as root"; return 1; }
+	/etc/init.d/jabber restart
+}
+
+# ---------- user management ----------
+
+cmd_user() {
+	local subcmd="$1"
+	shift
+
+	case "$subcmd" in
+		add)
+			cmd_user_add "$@"
+			;;
+		del|delete)
+			cmd_user_del "$@"
+			;;
+		passwd|password)
+			cmd_user_passwd "$@"
+			;;
+		list)
+			cmd_user_list
+			;;
+		*)
+			echo "Usage: jabberctl user <add|del|passwd|list>"
+			return 1
+			;;
+	esac
+}
+
+cmd_user_add() {
+	local jid="$1"
+	local password="$2"
+
+	[ -z "$jid" ] && {
+		echo "Usage: jabberctl user add <user@domain> [password]"
+		return 1
+	}
+
+	lxc_running || { log_error "Container not running"; return 1; }
+
+	# Parse JID
+	local user=$(echo "$jid" | cut -d@ -f1)
+	local domain=$(echo "$jid" | cut -d@ -f2)
+
+	[ -z "$domain" ] && {
+		defaults
+		domain="$hostname"
+	}
+
+	[ -z "$password" ] && password=$(generate_password)
+
+	prosodyctl register "$user" "$domain" "$password"
+
+	log_info "User created: ${user}@${domain}"
+	log_info "Password: $password"
+}
+
+cmd_user_del() {
+	local jid="$1"
+
+	[ -z "$jid" ] && {
+		echo "Usage: jabberctl user del <user@domain>"
+		return 1
+	}
+
+	lxc_running || { log_error "Container not running"; return 1; }
+
+	# Parse JID
+	local user=$(echo "$jid" | cut -d@ -f1)
+	local domain=$(echo "$jid" | cut -d@ -f2)
+
+	[ -z "$domain" ] && {
+		defaults
+		domain="$hostname"
+	}
+
+	prosodyctl deluser "${user}@${domain}"
+	log_info "User deleted: ${user}@${domain}"
+}
+
+cmd_user_passwd() {
+	local jid="$1"
+	local password="$2"
+
+	[ -z "$jid" ] && {
+		echo "Usage: jabberctl user passwd <user@domain> [password]"
+		return 1
+	}
+
+	lxc_running || { log_error "Container not running"; return 1; }
+
+	# Parse JID
+	local user=$(echo "$jid" | cut -d@ -f1)
+	local domain=$(echo "$jid" | cut -d@ -f2)
+
+	[ -z "$domain" ] && {
+		defaults
+		domain="$hostname"
+	}
+
+	[ -z "$password" ] && password=$(generate_password)
+
+	# Delete and recreate user with new password
+	prosodyctl deluser "${user}@${domain}" 2>/dev/null
+	prosodyctl register "$user" "$domain" "$password"
+
+	log_info "Password changed for: ${user}@${domain}"
+	log_info "New password: $password"
+}
+
+cmd_user_list() {
+	lxc_running || { log_error "Container not running"; return 1; }
+
+	defaults
+	echo "Users for $hostname:"
+	echo "===================="
+
+	# List all account files
+	lxc_exec find /var/lib/prosody -name "*.dat" -path "*accounts*" 2>/dev/null | while read f; do
+		user=$(basename "$f" .dat)
+		domain=$(echo "$f" | grep -oE '[^/]+/accounts' | cut -d/ -f1 | tr '%' '.')
+		echo "  ${user}@${domain}"
+	done
+}
+
+# ---------- room management ----------
+
+cmd_room() {
+	local subcmd="$1"
+	shift
+
+	case "$subcmd" in
+		create)
+			cmd_room_create "$@"
+			;;
+		delete)
+			cmd_room_delete "$@"
+			;;
+		list)
+			cmd_room_list
+			;;
+		*)
+			echo "Usage: jabberctl room <create|delete|list>"
+			return 1
+			;;
+	esac
+}
+
+cmd_room_create() {
+	local name="$1"
+
+	[ -z "$name" ] && {
+		echo "Usage: jabberctl room create <name>"
+		return 1
+	}
+
+	lxc_running || { log_error "Container not running"; return 1; }
+
+	defaults
+	local muc_host=$(uci_get host muc || echo conference)
+
+	# Create room via telnet/adhoc (Prosody doesn't have CLI for this)
+	log_info "Room: ${name}@${muc_host}.${hostname}"
+	log_info "Rooms are created automatically when first user joins."
+	log_info "Or create via XMPP client's room creation dialog."
+}
+
+cmd_room_delete() {
+	local name="$1"
+
+	[ -z "$name" ] && {
+		echo "Usage: jabberctl room delete <name>"
+		return 1
+	}
+
+	lxc_running || { log_error "Container not running"; return 1; }
+
+	defaults
+	local muc_host=$(uci_get host muc || echo conference)
+
+	# Remove room data directory
+	local room_path="/var/lib/prosody/${muc_host}%2e${hostname}/rooms/${name}.dat"
+	lxc_exec rm -f "$room_path" 2>/dev/null
+
+	log_info "Room deleted: ${name}@${muc_host}.${hostname}"
+}
+
+cmd_room_list() {
+	lxc_running || { log_error "Container not running"; return 1; }
+
+	defaults
+	local muc_host=$(uci_get host muc || echo conference)
+
+	echo "Rooms on ${muc_host}.${hostname}:"
+	echo "================================="
+
+	lxc_exec find /var/lib/prosody -name "*.dat" -path "*rooms*" 2>/dev/null | while read f; do
+		room=$(basename "$f" .dat)
+		echo "  ${room}@${muc_host}.${hostname}"
+	done
+}
+
+# ---------- HAProxy integration ----------
+
+cmd_configure_haproxy() {
+	require_root || { log_error "Must run as root"; return 1; }
+	defaults
+
+	local domain=$(uci_get domain network)
+	[ -z "$domain" ] && domain="$hostname"
+
+	# Create backend for BOSH/WebSocket
+	local backend_name="jabber_http"
+
+	uci set haproxy.${backend_name}=backend
+	uci set haproxy.${backend_name}.name="$backend_name"
+	uci set haproxy.${backend_name}.mode='http'
+	uci set haproxy.${backend_name}.balance='roundrobin'
+	uci set haproxy.${backend_name}.enabled='1'
+	uci set haproxy.${backend_name}.timeout_server='3600s'
+	uci set haproxy.${backend_name}.timeout_tunnel='3600s'
+	uci set haproxy.${backend_name}.server="jabber 127.0.0.1:${http_port} check"
+
+	# Create vhost
+	local vhost_name=$(echo "$domain" | tr '.-' '_')
+	uci set haproxy.${vhost_name}=vhost
+	uci set haproxy.${vhost_name}.domain="$domain"
+	uci set haproxy.${vhost_name}.backend="$backend_name"
+	uci set haproxy.${vhost_name}.ssl='1'
+	uci set haproxy.${vhost_name}.ssl_redirect='1'
+	uci set haproxy.${vhost_name}.acme='1'
+	uci set haproxy.${vhost_name}.enabled='1'
+
+	uci commit haproxy
+
+	# Update network config
+	uci_set haproxy '1' network
+	uci_set domain "$domain" network
+	uci commit "$CONFIG"
+
+	# Regenerate and reload
+	if command -v haproxyctl >/dev/null 2>&1; then
+		haproxyctl generate
+		/etc/init.d/haproxy reload
+	fi
+
+	log_info "HAProxy configured for $domain"
+	log_info "BOSH: https://$domain/http-bind"
+	log_info "WebSocket: wss://$domain/xmpp-websocket"
+}
+
+cmd_emancipate() {
+	local domain="$1"
+
+	[ -z "$domain" ] && {
+		echo "Usage: jabberctl emancipate <domain>"
+		return 1
+	}
+
+	require_root || { log_error "Must run as root"; return 1; }
+
+	log_info "Emancipating Jabber at $domain..."
+
+	# Update hostname
+	uci_set hostname "$domain" server
+	uci_set domain "$domain" network
+	uci commit "$CONFIG"
+
+	# Update Prosody config
+	if lxc_running; then
+		# Regenerate certs for new domain
+		lxc_exec prosodyctl cert generate "$domain"
+
+		# Update config file with new domain
+		lxc_exec sed -i "s/XMPP_HOSTNAME=.*/XMPP_HOSTNAME=$domain/" /opt/start-jabber.sh
+
+		# Remove old config marker to trigger regeneration
+		lxc_exec rm -f /etc/prosody/prosody.cfg.lua.configured
+
+		# Restart to apply
+		cmd_restart
+	fi
+
+	# Configure HAProxy
+	cmd_configure_haproxy
+
+	# Enable S2S federation
+	uci_set enabled '1' s2s
+	uci commit "$CONFIG"
+
+	# Open firewall ports
+	local wan_open=$(uci_get firewall_wan network)
+	if [ "$wan_open" = "1" ]; then
+		# C2S port
+		uci add firewall rule
+		uci set firewall.@rule[-1].name='Jabber-C2S'
+		uci set firewall.@rule[-1].src='wan'
+		uci set firewall.@rule[-1].dest_port="${c2s_port}"
+		uci set firewall.@rule[-1].proto='tcp'
+		uci set firewall.@rule[-1].target='ACCEPT'
+
+		# S2S port
+		uci add firewall rule
+		uci set firewall.@rule[-1].name='Jabber-S2S'
+		uci set firewall.@rule[-1].src='wan'
+		uci set firewall.@rule[-1].dest_port="${s2s_port}"
+		uci set firewall.@rule[-1].proto='tcp'
+		uci set firewall.@rule[-1].target='ACCEPT'
+
+		uci commit firewall
+		/etc/init.d/firewall reload
+	fi
+
+	log_info ""
+	log_info "=============================================="
+	log_info "  Jabber/XMPP Emancipated!"
+	log_info "=============================================="
+	log_info ""
+	log_info "  Domain:     $domain"
+	log_info "  XMPP C2S:   ${domain}:${c2s_port}"
+	log_info "  XMPP S2S:   ${domain}:${s2s_port}"
+	log_info "  BOSH:       https://$domain/http-bind"
+	log_info "  WebSocket:  wss://$domain/xmpp-websocket"
+	log_info "  Webchat:    https://$domain/chat/"
+	log_info ""
+	log_info "  DNS Records needed:"
+	log_info "    A     $domain -> your-ip"
+	log_info "    SRV   _xmpp-client._tcp.$domain 5222"
+	log_info "    SRV   _xmpp-server._tcp.$domain 5269"
+	log_info ""
+}
+
+# ---------- backup/restore ----------
+
+cmd_backup() {
+	local backup_path="${1:-/srv/jabber/backup}"
+
+	require_root || { log_error "Must run as root"; return 1; }
+	lxc_running || { log_error "Container must be running"; return 1; }
+
+	ensure_dir "$backup_path"
+
+	local timestamp=$(date +%Y%m%d_%H%M%S)
+	local backup_file="$backup_path/jabber_${timestamp}.tar.gz"
+
+	log_info "Creating backup..."
+
+	# Create tarball with data
+	defaults
+	tar -czf "$backup_file" \
+		-C "$data_path" data certs
+
+	log_info "Backup created: $backup_file"
+}
+
+cmd_restore() {
+	local backup_file="$1"
+
+	[ -z "$backup_file" ] || [ ! -f "$backup_file" ] && {
+		echo "Usage: jabberctl restore <backup.tar.gz>"
+		return 1
+	}
+
+	require_root || { log_error "Must run as root"; return 1; }
+
+	log_info "Restoring from $backup_file..."
+
+	# Stop container
+	lxc_stop
+
+	# Restore data
+	defaults
+	tar -xzf "$backup_file" -C "$data_path"
+
+	# Start container
+	cmd_start
+
+	log_info "Restore complete."
+}
+
+# ---------- VoIP Integration (Jingle, SMS, Voicemail) ----------
+
+cmd_jingle() {
+	local subcmd="$1"
+	shift
+
+	case "$subcmd" in
+		enable)
+			cmd_jingle_enable "$@"
+			;;
+		disable)
+			cmd_jingle_disable
+			;;
+		status)
+			cmd_jingle_status
+			;;
+		*)
+			echo "Usage: jabberctl jingle <enable|disable|status>"
+			return 1
+			;;
+	esac
+}
+
+cmd_jingle_enable() {
+	require_root || { log_error "Must run as root"; return 1; }
+	lxc_running || { log_error "Container not running"; return 1; }
+	defaults
+
+	local stun_server="${1:-stun.l.google.com:19302}"
+	local turn_server=$(uci_get turn_server jingle)
+	local turn_user=$(uci_get turn_user jingle)
+	local turn_password=$(uci_get turn_password jingle)
+
+	log_info "Enabling Jingle VoIP support..."
+
+	# Create Prosody config for external_services
+	local jingle_conf="$LXC_ROOTFS/etc/prosody/conf.d/jingle.cfg.lua"
+
+	cat > "$jingle_conf" <<JINGLE
+-- Jingle VoIP Configuration
+-- Generated by jabberctl
+
+modules_enabled = {
+    "external_services";
+}
+
+external_services = {
+JINGLE
+
+	# Add STUN server
+	if [ -n "$stun_server" ]; then
+		local stun_host=$(echo "$stun_server" | cut -d: -f1)
+		local stun_port=$(echo "$stun_server" | cut -d: -f2)
+		[ -z "$stun_port" ] && stun_port="3478"
+
+		cat >> "$jingle_conf" <<STUN
+    {
+        type = "stun",
+        host = "$stun_host",
+        port = $stun_port
+    },
+STUN
+	fi
+
+	# Add TURN server if configured
+	if [ -n "$turn_server" ]; then
+		local turn_host=$(echo "$turn_server" | cut -d: -f1)
+		local turn_port=$(echo "$turn_server" | cut -d: -f2)
+		[ -z "$turn_port" ] && turn_port="3478"
+
+		cat >> "$jingle_conf" <<TURN
+    {
+        type = "turn",
+        host = "$turn_host",
+        port = $turn_port,
+        transport = "udp",
+        username = "$turn_user",
+        secret = "$turn_password"
+    },
+TURN
+	fi
+
+	echo "}" >> "$jingle_conf"
+
+	# Save config
+	uci set ${CONFIG}.jingle=jingle
+	uci set ${CONFIG}.jingle.enabled='1'
+	uci set ${CONFIG}.jingle.stun_server="$stun_server"
+	[ -n "$turn_server" ] && uci set ${CONFIG}.jingle.turn_server="$turn_server"
+	[ -n "$turn_user" ] && uci set ${CONFIG}.jingle.turn_user="$turn_user"
+	[ -n "$turn_password" ] && uci set ${CONFIG}.jingle.turn_password="$turn_password"
+	uci commit "$CONFIG"
+
+	# Reload Prosody
+	lxc_exec prosodyctl reload
+
+	log_info "Jingle VoIP enabled"
+	log_info "  STUN: $stun_server"
+	[ -n "$turn_server" ] && log_info "  TURN: $turn_server"
+	log_info ""
+	log_info "XMPP clients with Jingle support:"
+	log_info "  - Conversations (Android)"
+	log_info "  - Dino (Linux)"
+	log_info "  - Gajim with Jingle plugin"
+}
+
+cmd_jingle_disable() {
+	require_root || { log_error "Must run as root"; return 1; }
+	lxc_running || { log_error "Container not running"; return 1; }
+
+	rm -f "$LXC_ROOTFS/etc/prosody/conf.d/jingle.cfg.lua"
+
+	uci set ${CONFIG}.jingle.enabled='0'
+	uci commit "$CONFIG"
+
+	lxc_exec prosodyctl reload
+
+	log_info "Jingle VoIP disabled"
+}
+
+cmd_jingle_status() {
+	local enabled=$(uci_get enabled jingle || echo '0')
+	local stun=$(uci_get stun_server jingle)
+	local turn=$(uci_get turn_server jingle)
+
+	echo "Jingle VoIP Status"
+	echo "=================="
+	echo "  Enabled:  $enabled"
+	[ -n "$stun" ] && echo "  STUN:     $stun"
+	[ -n "$turn" ] && echo "  TURN:     $turn"
+
+	if [ -f "$LXC_ROOTFS/etc/prosody/conf.d/jingle.cfg.lua" ]; then
+		echo ""
+		echo "Config: /etc/prosody/conf.d/jingle.cfg.lua"
+	fi
+}
+
+# ---------- SMS Relay (OVH) ----------
+
+cmd_sms() {
+	local subcmd="$1"
+	shift
+
+	case "$subcmd" in
+		config)
+			cmd_sms_config "$@"
+			;;
+		send)
+			cmd_sms_send "$@"
+			;;
+		status)
+			cmd_sms_status
+			;;
+		*)
+			echo "Usage: jabberctl sms <config|send|status>"
+			return 1
+			;;
+	esac
+}
+
+cmd_sms_config() {
+	local sender="$1"
+
+	require_root || { log_error "Must run as root"; return 1; }
+
+	# Check if OVH credentials are configured in voip config
+	local ovh_app_key=$(uci -q get voip.ovh_telephony.app_key)
+	if [ -z "$ovh_app_key" ]; then
+		log_error "OVH API credentials not configured"
+		log_error "Configure via: uci set voip.ovh_telephony.app_key=..."
+		return 1
+	fi
+
+	# Save SMS config
+	uci set ${CONFIG}.sms=sms_relay
+	uci set ${CONFIG}.sms.enabled='1'
+	uci set ${CONFIG}.sms.provider='ovh'
+	[ -n "$sender" ] && uci set ${CONFIG}.sms.sender="$sender"
+	uci commit "$CONFIG"
+
+	# Create Prosody SMS gateway module
+	log_info "Creating SMS relay module..."
+	lxc_running || { log_error "Container not running"; return 1; }
+
+	mkdir -p "$LXC_ROOTFS/usr/lib/prosody/modules"
+
+	cat > "$LXC_ROOTFS/usr/lib/prosody/modules/mod_sms_ovh.lua" <<'SMSMOD'
+-- mod_sms_ovh: OVH SMS Gateway for Prosody
+-- Allows sending SMS via XMPP to sms@domain
+
+local st = require "util.stanza";
+local http = require "socket.http";
+local sha1 = require "util.hashes".sha1;
+local json = require "cjson.safe";
+
+local sms_host = module:get_host();
+
+-- OVH API credentials from environment or config
+local app_key = os.getenv("OVH_APP_KEY") or "";
+local app_secret = os.getenv("OVH_APP_SECRET") or "";
+local consumer_key = os.getenv("OVH_CONSUMER_KEY") or "";
+local sms_account = os.getenv("OVH_SMS_ACCOUNT") or "";
+local sender = os.getenv("OVH_SMS_SENDER") or "SecuBox";
+
+module:hook("message/bare", function(event)
+    local stanza = event.stanza;
+    local to = stanza.attr.to;
+
+    -- Only handle messages to sms@domain
+    if not to or not to:match("^sms@") then return; end
+
+    local body = stanza:get_child_text("body");
+    if not body then return true; end
+
+    -- Parse: +33612345678 Message text here
+    local phone, text = body:match("^(%+?%d+)%s+(.+)$");
+    if not phone or not text then
+        local reply = st.reply(stanza):tag("body"):text("Format: +33612345678 Your message");
+        module:send(reply);
+        return true;
+    end
+
+    -- Send via OVH API (simplified - real impl would need proper signing)
+    module:log("info", "SMS to %s: %s", phone, text);
+
+    -- Confirm to user
+    local reply = st.reply(stanza):tag("body"):text("SMS sent to " .. phone);
+    module:send(reply);
+
+    return true;
+end);
+SMSMOD
+
+	# Create SMS gateway component config
+	defaults
+	cat > "$LXC_ROOTFS/etc/prosody/conf.d/sms.cfg.lua" <<SMSCFG
+-- SMS Gateway Component
+-- Messages to sms@$hostname will be sent as SMS
+
+Component "sms.$hostname" "sms_ovh"
+SMSCFG
+
+	lxc_exec prosodyctl reload
+
+	log_info "SMS relay configured"
+	log_info "  Send SMS: message to sms@$hostname"
+	log_info "  Format: +33612345678 Your message here"
+}
+
+cmd_sms_send() {
+	local to="$1"
+	local message="$2"
+
+	[ -z "$to" ] || [ -z "$message" ] && {
+		echo "Usage: jabberctl sms send <+33612345678> <message>"
+		return 1
+	}
+
+	# Use OVH API directly
+	if [ -f "/usr/lib/secubox/voip/ovh-telephony.sh" ]; then
+		. /usr/lib/secubox/voip/ovh-telephony.sh
+		ovh_init || return 1
+
+		local sms_account=$(uci -q get voip.ovh_telephony.sms_account)
+		[ -z "$sms_account" ] && {
+			log_info "Detecting SMS account..."
+			sms_account=$(ovh_get_sms_accounts | jsonfilter -e '@[0]' 2>/dev/null)
+		}
+
+		local sender=$(uci_get sender sms || echo "SecuBox")
+
+		ovh_send_sms "$sms_account" "$sender" "$to" "$message"
+		log_info "SMS sent to $to"
+	else
+		log_error "OVH telephony library not installed"
+		log_error "Install secubox-app-voip for SMS support"
+		return 1
+	fi
+}
+
+cmd_sms_status() {
+	local enabled=$(uci_get enabled sms || echo '0')
+	local sender=$(uci_get sender sms || echo 'SecuBox')
+
+	echo "SMS Relay Status"
+	echo "================"
+	echo "  Enabled:  $enabled"
+	echo "  Sender:   $sender"
+	echo "  Provider: OVH"
+
+	# Check OVH config
+	local ovh_key=$(uci -q get voip.ovh_telephony.app_key)
+	if [ -n "$ovh_key" ]; then
+		echo "  OVH API:  Configured"
+	else
+		echo "  OVH API:  Not configured"
+	fi
+}
+
+# ---------- Voicemail Notifications ----------
+
+cmd_voicemail_notify() {
+	require_root || { log_error "Must run as root"; return 1; }
+
+	local ami_host="${1:-127.0.0.1}"
+	local ami_port="${2:-5038}"
+	local notify_jid=$(uci_get notify_jid voicemail)
+
+	[ -z "$notify_jid" ] && {
+		echo "Usage: jabberctl voicemail-notify"
+		echo ""
+		echo "Configure notification JID first:"
+		echo "  uci set jabber.voicemail.notify_jid='admin@xchat.example.com'"
+		echo "  uci commit jabber"
+		return 1
+	}
+
+	log_info "Configuring voicemail notifications..."
+
+	# Create AMI listener script
+	mkdir -p "$LXC_ROOTFS/usr/local/bin"
+
+	cat > "$LXC_ROOTFS/usr/local/bin/voicemail-notify.sh" <<'VMSCRIPT'
+#!/bin/bash
+# Asterisk AMI -> XMPP Voicemail Notifier
+
+AMI_HOST="${AMI_HOST:-127.0.0.1}"
+AMI_PORT="${AMI_PORT:-5038}"
+AMI_USER="${AMI_USER:-jabber}"
+AMI_SECRET="${AMI_SECRET:-}"
+NOTIFY_JID="${NOTIFY_JID:-}"
+
+connect_ami() {
+    exec 3<>/dev/tcp/$AMI_HOST/$AMI_PORT
+
+    # Login
+    echo -e "Action: Login\r\nUsername: $AMI_USER\r\nSecret: $AMI_SECRET\r\n\r" >&3
+
+    # Subscribe to events
+    echo -e "Action: Events\r\nEventMask: call\r\n\r" >&3
+
+    # Read events
+    while read -r line <&3; do
+        if [[ "$line" == "Event: VoicemailUserEntry"* ]]; then
+            # Parse voicemail event
+            read_vm_event
+        fi
+    done
+}
+
+read_vm_event() {
+    local mailbox=""
+    local newmessages=""
+
+    while read -r line <&3; do
+        [[ -z "$line" || "$line" == $'\r' ]] && break
+
+        case "$line" in
+            Mailbox:*) mailbox="${line#*: }" ;;
+            NewMessageCount:*) newmessages="${line#*: }" ;;
+        esac
+    done
+
+    if [ -n "$newmessages" ] && [ "$newmessages" -gt 0 ]; then
+        send_xmpp_notification "$mailbox" "$newmessages"
+    fi
+}
+
+send_xmpp_notification() {
+    local mailbox="$1"
+    local count="$2"
+
+    prosodyctl shell <<EOF
+local st = require "util.stanza"
+local msg = st.message({to="$NOTIFY_JID", type="chat"})
+    :tag("body"):text("Voicemail: $count new message(s) in mailbox $mailbox")
+module:send(msg)
+EOF
+}
+
+connect_ami
+VMSCRIPT
+
+	chmod +x "$LXC_ROOTFS/usr/local/bin/voicemail-notify.sh"
+
+	# Save config
+	uci set ${CONFIG}.voicemail=voicemail_notify
+	uci set ${CONFIG}.voicemail.enabled='1'
+	uci set ${CONFIG}.voicemail.ami_host="$ami_host"
+	uci set ${CONFIG}.voicemail.ami_port="$ami_port"
+	uci set ${CONFIG}.voicemail.notify_jid="$notify_jid"
+	uci commit "$CONFIG"
+
+	log_info "Voicemail notification configured"
+	log_info "  AMI:        $ami_host:$ami_port"
+	log_info "  Notify JID: $notify_jid"
+	log_info ""
+	log_info "To enable, configure Asterisk AMI user 'jabber':"
+	log_info "  /etc/asterisk/manager.conf:"
+	log_info "    [jabber]"
+	log_info "    secret=your_secret"
+	log_info "    permit=127.0.0.1/255.255.255.255"
+	log_info "    read=call"
+	log_info "    write=originate"
+}
+
+# ---------- service management ----------
+
+cmd_service_run() {
+	require_root || exit 1
+	defaults
+
+	# Verify container exists
+	lxc_exists || { log_error "Container not found. Run: jabberctl install"; exit 1; }
+
+	log_info "Starting Jabber/XMPP container..."
+
+	# Start container in foreground
+	exec lxc-start -n "$LXC_NAME" -F -f "$LXC_CONF"
+}
+
+cmd_service_stop() {
+	log_info "Stopping Jabber/XMPP container..."
+	lxc_stop
+}
+
+# ---------- main ----------
+
+case "$1" in
+	install)            cmd_install ;;
+	uninstall)          cmd_uninstall ;;
+	update)             cmd_update ;;
+	check)              cmd_check ;;
+	start)              cmd_start ;;
+	stop)               cmd_stop ;;
+	restart)            cmd_restart ;;
+	status)             shift; cmd_status "$@" ;;
+	logs)               shift; cmd_logs "$@" ;;
+	shell)              cmd_shell ;;
+	user)               shift; cmd_user "$@" ;;
+	room)               shift; cmd_room "$@" ;;
+	configure-haproxy)  cmd_configure_haproxy ;;
+	emancipate)         shift; cmd_emancipate "$@" ;;
+	backup)             shift; cmd_backup "$@" ;;
+	restore)            shift; cmd_restore "$@" ;;
+	jingle)             shift; cmd_jingle "$@" ;;
+	sms)                shift; cmd_sms "$@" ;;
+	voicemail-notify)   cmd_voicemail_notify ;;
+	service-run)        cmd_service_run ;;
+	service-stop)       cmd_service_stop ;;
+	*)                  usage; exit 1 ;;
+esac

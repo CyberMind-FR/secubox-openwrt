@@ -254,6 +254,451 @@ method_configure_haproxy() {
 	json_dump
 }
 
+# Helper: Get PeerTube OAuth token
+get_peertube_token() {
+	local hostname port client_id client_secret username password
+	hostname=$(uci_get server hostname "peertube.local")
+	port=$(uci_get server port "9001")
+	username=$(uci_get admin username "root")
+	password=$(uci_get admin password "")
+
+	# Get OAuth client credentials
+	local oauth_response
+	oauth_response=$(curl -s -H "Host: $hostname" "http://127.0.0.1:${port}/api/v1/oauth-clients/local" 2>/dev/null)
+	client_id=$(echo "$oauth_response" | jsonfilter -e '@.client_id' 2>/dev/null)
+	client_secret=$(echo "$oauth_response" | jsonfilter -e '@.client_secret' 2>/dev/null)
+
+	if [ -z "$client_id" ] || [ -z "$client_secret" ]; then
+		echo ""
+		return 1
+	fi
+
+	# Get access token
+	local token_response
+	token_response=$(curl -s -H "Host: $hostname" \
+		-X POST "http://127.0.0.1:${port}/api/v1/users/token" \
+		-d "client_id=$client_id" \
+		-d "client_secret=$client_secret" \
+		-d "grant_type=password" \
+		-d "username=$username" \
+		-d "password=$password" 2>/dev/null)
+
+	local access_token
+	access_token=$(echo "$token_response" | jsonfilter -e '@.access_token' 2>/dev/null)
+	echo "$access_token"
+}
+
+# Helper: Upload video to PeerTube via API (from host via HAProxy)
+upload_to_peertube() {
+	local video_file="$1"
+	local title="$2"
+	local description="$3"
+
+	local hostname port username password
+	hostname=$(uci_get server hostname "peertube.local")
+	port=$(uci_get server port "9001")
+	username=$(uci_get admin username "root")
+	password=$(uci_get admin password "")
+
+	if [ -z "$password" ]; then
+		echo "Admin password not set in UCI config"
+		return 1
+	fi
+
+	# Convert container path to host path via LXC rootfs
+	local host_video_file="/srv/lxc/peertube/rootfs${video_file}"
+	if [ ! -f "$host_video_file" ]; then
+		echo "Video file not found at $host_video_file"
+		return 1
+	fi
+
+	# Get OAuth client credentials (via HAProxy on port 9001)
+	local oauth_response client_id client_secret
+	oauth_response=$(curl -s -H "Host: $hostname" "http://127.0.0.1:${port}/api/v1/oauth-clients/local" 2>/dev/null)
+	client_id=$(echo "$oauth_response" | jsonfilter -e '@.client_id' 2>/dev/null)
+	client_secret=$(echo "$oauth_response" | jsonfilter -e '@.client_secret' 2>/dev/null)
+
+	if [ -z "$client_id" ] || [ -z "$client_secret" ]; then
+		echo "Could not get OAuth client credentials"
+		return 1
+	fi
+
+	# Get access token
+	local token_response access_token
+	token_response=$(curl -s -H "Host: $hostname" \
+		-X POST "http://127.0.0.1:${port}/api/v1/users/token" \
+		-d "client_id=$client_id" \
+		-d "client_secret=$client_secret" \
+		-d "grant_type=password" \
+		-d "username=$username" \
+		-d "password=$password" 2>/dev/null)
+
+	access_token=$(echo "$token_response" | jsonfilter -e '@.access_token' 2>/dev/null)
+
+	if [ -z "$access_token" ]; then
+		echo "Could not get OAuth token: $token_response"
+		return 1
+	fi
+
+	# Get first video channel
+	local channels_response channel_id
+	channels_response=$(curl -s -H "Host: $hostname" -H "Authorization: Bearer $access_token" \
+		"http://127.0.0.1:${port}/api/v1/video-channels" 2>/dev/null)
+	channel_id=$(echo "$channels_response" | jsonfilter -e '@.data[0].id' 2>/dev/null)
+	[ -z "$channel_id" ] && channel_id="1"
+
+	# Truncate title and description
+	local safe_title safe_desc
+	safe_title=$(echo "$title" | head -c 120 | tr -d '"')
+	safe_desc=$(echo "$description" | head -c 500 | tr -d '"')
+
+	# Upload video via API
+	local upload_response video_uuid
+	upload_response=$(curl -s -H "Host: $hostname" -H "Authorization: Bearer $access_token" \
+		-X POST "http://127.0.0.1:${port}/api/v1/videos/upload" \
+		-F "videofile=@$host_video_file" \
+		-F "channelId=$channel_id" \
+		-F "name=$safe_title" \
+		-F "privacy=1" \
+		-F "waitTranscoding=false" 2>/dev/null)
+
+	video_uuid=$(echo "$upload_response" | jsonfilter -e '@.video.uuid' 2>/dev/null)
+
+	if [ -n "$video_uuid" ]; then
+		echo "$video_uuid"
+		return 0
+	else
+		echo "Upload failed: $upload_response"
+		return 1
+	fi
+}
+
+# Method: import_video (yt-dlp + auto-upload)
+method_import_video() {
+	read -r input
+	json_load "$input"
+	json_get_var url url
+	json_get_var auto_upload auto_upload
+
+	if [ -z "$url" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "URL is required"
+		json_dump
+		return
+	fi
+
+	# Check container is running
+	if ! lxc-info -n peertube 2>/dev/null | grep -q "RUNNING"; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "PeerTube container is not running"
+		json_dump
+		return
+	fi
+
+	# Create import directory inside container
+	local import_dir="/var/lib/peertube/storage/tmp/import"
+	lxc-attach -n peertube -- mkdir -p "$import_dir" 2>/dev/null
+
+	# Generate unique job ID
+	local job_id="import_$(date +%s)"
+	local logfile="/tmp/peertube-${job_id}.log"
+	local statusfile="/tmp/peertube-${job_id}.status"
+
+	# Write initial status
+	echo "downloading" > "$statusfile"
+
+	# Run import script in background
+	(
+		# Download with yt-dlp
+		echo "[$(date)] Starting download: $url" >> "$logfile"
+
+		local output_template="$import_dir/${job_id}_%(title)s.%(ext)s"
+		lxc-attach -n peertube -- /usr/local/bin/yt-dlp \
+			--no-playlist \
+			--format "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best" \
+			--merge-output-format mp4 \
+			--output "$output_template" \
+			--write-info-json \
+			--print-to-file filename "/tmp/peertube-${job_id}.filename" \
+			"$url" >> "$logfile" 2>&1
+
+		local dl_rc=$?
+
+		if [ $dl_rc -ne 0 ]; then
+			echo "download_failed" > "$statusfile"
+			echo "[$(date)] Download failed with code $dl_rc" >> "$logfile"
+			exit 1
+		fi
+
+		echo "[$(date)] Download completed" >> "$logfile"
+
+		# Find the downloaded file
+		local video_file
+		video_file=$(lxc-attach -n peertube -- find "$import_dir" -name "${job_id}_*.mp4" -type f 2>/dev/null | head -1)
+
+		if [ -z "$video_file" ]; then
+			echo "file_not_found" > "$statusfile"
+			echo "[$(date)] Downloaded file not found" >> "$logfile"
+			exit 1
+		fi
+
+		echo "[$(date)] Found video: $video_file" >> "$logfile"
+
+		# Convert to host path via LXC rootfs
+		local host_video_file="/srv/lxc/peertube/rootfs${video_file}"
+		local host_info_file="${host_video_file%.mp4}.info.json"
+
+		# Extract title from info.json (using host path)
+		local title description
+		if [ -f "$host_info_file" ]; then
+			title=$(jsonfilter -i "$host_info_file" -e '@.title' 2>/dev/null)
+			description=$(jsonfilter -i "$host_info_file" -e '@.description' 2>/dev/null | head -c 1000)
+		fi
+
+		[ -z "$title" ] && title="Imported Video $(date +%Y%m%d-%H%M%S)"
+		[ -z "$description" ] && description="Imported from: $url"
+
+		echo "uploading" > "$statusfile"
+		echo "[$(date)] Starting upload: $title" >> "$logfile"
+
+		# Upload to PeerTube (pass container path, function converts to host path)
+		local result
+		result=$(upload_to_peertube "$video_file" "$title" "$description")
+
+		if echo "$result" | grep -q "^[a-f0-9-]\{36\}$"; then
+			echo "completed:$result" > "$statusfile"
+			echo "[$(date)] Upload successful! Video UUID: $result" >> "$logfile"
+
+			# Cleanup temp files (using host paths)
+			rm -f "$host_video_file" "${host_video_file%.mp4}.info.json" "${host_video_file%.mp4}.webp" 2>/dev/null
+			echo "[$(date)] Cleaned up temporary files" >> "$logfile"
+		else
+			echo "upload_failed" > "$statusfile"
+			echo "[$(date)] Upload failed: $result" >> "$logfile"
+		fi
+	) &
+
+	local pid=$!
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Import started (auto-upload enabled)"
+	json_add_string "job_id" "$job_id"
+	json_add_int "pid" "$pid"
+	json_dump
+}
+
+# Method: import_job_status - Check specific import job
+method_import_job_status() {
+	read -r input
+	json_load "$input"
+	json_get_var job_id job_id
+
+	local statusfile="/tmp/peertube-${job_id}.status"
+	local logfile="/tmp/peertube-${job_id}.log"
+
+	local status="unknown"
+	local video_uuid=""
+	local logs=""
+
+	if [ -f "$statusfile" ]; then
+		local raw_status
+		raw_status=$(cat "$statusfile")
+
+		case "$raw_status" in
+			completed:*)
+				status="completed"
+				video_uuid="${raw_status#completed:}"
+				;;
+			*)
+				status="$raw_status"
+				;;
+		esac
+	fi
+
+	if [ -f "$logfile" ]; then
+		logs=$(tail -20 "$logfile")
+	fi
+
+	json_init
+	json_add_string "job_id" "$job_id"
+	json_add_string "status" "$status"
+	json_add_string "video_uuid" "$video_uuid"
+	json_add_string "logs" "$logs"
+	json_dump
+}
+
+# Method: analyse - Start video transcript analysis
+method_analyse() {
+	read -r input
+	json_load "$input"
+	json_get_var url url ""
+	json_get_var force_whisper force_whisper "0"
+	json_get_var no_analyse no_analyse "0"
+	json_get_var model model "medium"
+	json_get_var lang lang "fr"
+
+	if [ -z "$url" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "URL is required"
+		json_dump
+		return
+	fi
+
+	# Check if peertube-analyse exists
+	if [ ! -x "/usr/sbin/peertube-analyse" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "peertube-analyse not installed"
+		json_dump
+		return
+	fi
+
+	# Generate job ID
+	local job_id="analyse_$(date +%s)_$$"
+	local output_dir="/tmp/peertube-analyse/${job_id}"
+	local statusfile="/tmp/peertube-analyse-${job_id}.status"
+	local resultfile="/tmp/peertube-analyse-${job_id}.json"
+
+	mkdir -p "$output_dir"
+	echo "starting" > "$statusfile"
+
+	# Build command args
+	local args=""
+	[ "$force_whisper" = "1" ] && args="$args --force-whisper"
+	[ "$no_analyse" = "1" ] && args="$args --no-analyse"
+	[ -n "$model" ] && args="$args --model $model"
+	[ -n "$lang" ] && args="$args --lang $lang"
+	args="$args --output $output_dir"
+
+	# Run in background
+	(
+		echo "extracting" > "$statusfile"
+
+		# Run the analysis
+		OUTPUT_BASE="$output_dir" /usr/sbin/peertube-analyse $args "$url" > "/tmp/peertube-analyse-${job_id}.log" 2>&1
+		local rc=$?
+
+		if [ $rc -eq 0 ]; then
+			echo "completed" > "$statusfile"
+
+			# Build result JSON
+			local meta_file=$(find "$output_dir" -name "*.meta.json" -type f 2>/dev/null | head -1)
+			local transcript_file=$(find "$output_dir" -name "*.transcript.txt" -type f 2>/dev/null | head -1)
+			local analysis_file=$(find "$output_dir" -name "*.analyse.md" -type f 2>/dev/null | head -1)
+
+			# Create result JSON manually (avoid jshn for large content)
+			{
+				echo '{'
+				echo '"success": true,'
+				echo '"job_id": "'"$job_id"'",'
+
+				# Metadata (use jq if available, otherwise jsonfilter)
+				if [ -f "$meta_file" ]; then
+					echo '"metadata": '
+					cat "$meta_file"
+					echo ','
+				else
+					echo '"metadata": null,'
+				fi
+
+				# Transcript
+				if [ -f "$transcript_file" ]; then
+					printf '"transcript": '
+					cat "$transcript_file" | jq -Rs '.'
+					echo ','
+				else
+					echo '"transcript": null,'
+				fi
+
+				# Analysis
+				if [ -f "$analysis_file" ]; then
+					printf '"analysis": '
+					cat "$analysis_file" | jq -Rs '.'
+				else
+					echo '"analysis": null'
+				fi
+
+				echo '}'
+			} > "$resultfile"
+		else
+			echo "failed" > "$statusfile"
+			echo '{"success": false, "error": "Analysis failed", "job_id": "'"$job_id"'"}' > "$resultfile"
+		fi
+	) &
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Analysis started"
+	json_add_string "job_id" "$job_id"
+	json_dump
+}
+
+# Method: analyse_status - Get analysis job status/results
+method_analyse_status() {
+	read -r input
+	json_load "$input"
+	json_get_var job_id job_id ""
+
+	if [ -z "$job_id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "job_id is required"
+		json_dump
+		return
+	fi
+
+	local statusfile="/tmp/peertube-analyse-${job_id}.status"
+	local resultfile="/tmp/peertube-analyse-${job_id}.json"
+	local logfile="/tmp/peertube-analyse-${job_id}.log"
+
+	local status="unknown"
+	[ -f "$statusfile" ] && status=$(cat "$statusfile")
+
+	# If completed, return the full result
+	if [ "$status" = "completed" ] && [ -f "$resultfile" ]; then
+		cat "$resultfile"
+		return
+	fi
+
+	# Otherwise return status
+	local logs=""
+	[ -f "$logfile" ] && logs=$(tail -10 "$logfile")
+
+	json_init
+	json_add_string "status" "$status"
+	json_add_string "job_id" "$job_id"
+	json_add_string "logs" "$logs"
+	json_dump
+}
+
+# Method: import_status - Check import progress
+method_import_status() {
+	local import_dir="/var/lib/peertube/storage/tmp/import"
+	local files=""
+	local count=0
+
+	if lxc-info -n peertube 2>/dev/null | grep -q "RUNNING"; then
+		files=$(lxc-attach -n peertube -- ls -la "$import_dir" 2>/dev/null | tail -10)
+		count=$(lxc-attach -n peertube -- find "$import_dir" -name "*.mp4" 2>/dev/null | wc -l)
+	fi
+
+	# Check for running yt-dlp processes
+	local downloading="false"
+	if lxc-attach -n peertube -- pgrep -f yt-dlp >/dev/null 2>&1; then
+		downloading="true"
+	fi
+
+	json_init
+	json_add_string "downloading" "$downloading"
+	json_add_int "video_count" "$count"
+	json_add_string "files" "$files"
+	json_dump
+}
+
 # List available methods
 list_methods() {
 	json_init
@@ -280,6 +725,24 @@ list_methods() {
 	json_add_object "live_disable"
 	json_close_object
 	json_add_object "configure_haproxy"
+	json_close_object
+	json_add_object "import_video"
+	json_add_string "url" ""
+	json_close_object
+	json_add_object "import_status"
+	json_close_object
+	json_add_object "import_job_status"
+	json_add_string "job_id" ""
+	json_close_object
+	json_add_object "analyse"
+	json_add_string "url" ""
+	json_add_string "force_whisper" "0"
+	json_add_string "no_analyse" "0"
+	json_add_string "model" "medium"
+	json_add_string "lang" "fr"
+	json_close_object
+	json_add_object "analyse_status"
+	json_add_string "job_id" ""
 	json_close_object
 	json_dump
 }
@@ -326,6 +789,21 @@ case "$1" in
 				;;
 			configure_haproxy)
 				method_configure_haproxy
+				;;
+			import_video)
+				method_import_video
+				;;
+			import_status)
+				method_import_status
+				;;
+			import_job_status)
+				method_import_job_status
+				;;
+			analyse)
+				method_analyse
+				;;
+			analyse_status)
+				method_analyse_status
 				;;
 			*)
 				echo '{"error":"Method not found"}'

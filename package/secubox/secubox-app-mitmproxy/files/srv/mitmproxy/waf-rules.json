@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "version": "1.0.0",
-    "updated": "2026-02-07",
-    "sources": ["OWASP Top 10", "CERT advisories", "CVE database"]
+    "version": "1.1.0",
+    "updated": "2026-02-19",
+    "sources": ["OWASP Top 10", "CERT advisories", "CVE database", "VoIP Security Research", "XMPP Standards Foundation"]
   },
   
   "categories": {
@@ -117,6 +117,77 @@
         {"id": "api-002", "pattern": "graphql.*(__schema|introspection)", "desc": "GraphQL introspection"},
         {"id": "api-003", "pattern": "\\{.*\\$where.*\\}", "desc": "NoSQL injection"},
         {"id": "api-004", "pattern": "jwt=.*\\.\\.\\.\\.", "desc": "JWT manipulation"}
+      ]
+    },
+
+    "voip": {
+      "name": "VoIP/SIP Security",
+      "severity": "high",
+      "enabled": true,
+      "patterns": [
+        {"id": "voip-001", "pattern": "SIP/2\\.0.*\\r\\n.*Via:.*\\r\\n.*<sip:[^>]*;[^>]*exec", "desc": "SIP header injection", "check": "body"},
+        {"id": "voip-002", "pattern": "INVITE sip:.*\\$\\(|`|;", "desc": "SIP INVITE command injection"},
+        {"id": "voip-003", "pattern": "/ari/(channels|bridges|endpoints|recordings)/.*(\\||;|`|\\$\\()", "desc": "Asterisk ARI command injection"},
+        {"id": "voip-004", "pattern": "/admin/config\\.php.*(system|exec|passthru|shell_exec)", "desc": "FreePBX RCE attempt", "cve": "CVE-2019-19006"},
+        {"id": "voip-005", "pattern": "/recordings/misc/audio\\.php.*file=\\.\\./", "desc": "FreePBX path traversal", "cve": "CVE-2019-19006"},
+        {"id": "voip-006", "pattern": "Action:\\s*(originate|redirect).*Channel:.*Local/.*@", "desc": "AMI command injection via Channel"},
+        {"id": "voip-007", "pattern": "/cgi-bin/asterisk\\.cgi.*\\|", "desc": "Asterisk CGI injection"},
+        {"id": "voip-008", "pattern": "Content-Type:.*multipart.*boundary.*\\.\\./", "desc": "SIP multipart traversal"},
+        {"id": "voip-009", "pattern": "Digest.*uri=\".*\\.\\./", "desc": "SIP Digest auth traversal"},
+        {"id": "voip-010", "pattern": "SIP.*realm=\".*[<>'\"]", "desc": "SIP realm injection"},
+        {"id": "voip-011", "pattern": "/asterisk/rawman\\?action=", "desc": "Unauth AMI web access"},
+        {"id": "voip-012", "pattern": "Record-Route:.*<sip:[^>]*\\$\\{", "desc": "SIP header expression injection"}
+      ]
+    },
+
+    "xmpp": {
+      "name": "XMPP/Jabber Security",
+      "severity": "high",
+      "enabled": true,
+      "patterns": [
+        {"id": "xmpp-001", "pattern": "<message.*<script", "desc": "XSS in XMPP message"},
+        {"id": "xmpp-002", "pattern": "<iq.*type=[\"']set[\"'].*<query.*xmlns=[\"']jabber:iq:register", "desc": "Open registration abuse"},
+        {"id": "xmpp-003", "pattern": "/http-bind.*<body.*sid=[\"'].*[<>'\"\\x00]", "desc": "BOSH session hijack"},
+        {"id": "xmpp-004", "pattern": "xmlns:xi=[\"']http://www.w3.org/2001/XInclude", "desc": "XXE via XInclude"},
+        {"id": "xmpp-005", "pattern": "<!ENTITY.*SYSTEM.*file://", "desc": "XXE in XMPP stream"},
+        {"id": "xmpp-006", "pattern": "/xmpp-websocket.*<stream:stream.*xmlns:.*=.*javascript:", "desc": "WebSocket XSS"},
+        {"id": "xmpp-007", "pattern": "<presence.*<show>.*<script", "desc": "XSS in presence"},
+        {"id": "xmpp-008", "pattern": "/upload.*filename=[\"'].*(php|phtml|jsp|asp)", "desc": "HTTP upload abuse"},
+        {"id": "xmpp-009", "pattern": "<x.*xmlns=[\"']jabber:x:oob[\"'].*<url>.*file://", "desc": "OOB file access"},
+        {"id": "xmpp-010", "pattern": "to=[\"'][^\"']*(@|%)00", "desc": "Null byte in JID"}
+      ]
+    },
+
+    "cve_voip": {
+      "name": "VoIP CVE Exploits",
+      "severity": "critical",
+      "enabled": true,
+      "patterns": [
+        {"id": "cve-ast-2021-26906", "pattern": "/asterisk.*res_pjsip.*malformed.*sdp", "desc": "Asterisk PJSIP crash", "cve": "CVE-2021-26906"},
+        {"id": "cve-ast-2022-42705", "pattern": "Content-Length:\\s*-", "desc": "Asterisk negative CL DoS", "cve": "CVE-2022-42705"},
+        {"id": "cve-ast-2022-42706", "pattern": "Via:.*branch=z9hG4bK.*\\x00", "desc": "Asterisk Via header overflow", "cve": "CVE-2022-42706"},
+        {"id": "cve-ast-2023-37457", "pattern": "Route:.*<sip:.*;lr>\\s*,\\s*<sip:.*;lr>.*\\x00", "desc": "Asterisk Route header crash", "cve": "CVE-2023-37457"},
+        {"id": "cve-ast-2023-49294", "pattern": "INVITE.*m=audio.*a=rtpmap:\\d+.*\\s{1000,}", "desc": "Asterisk SDP buffer overflow", "cve": "CVE-2023-49294"},
+        {"id": "cve-ast-2024-35190", "pattern": "CSeq:.*[A-Z]{50,}", "desc": "Asterisk CSeq method overflow", "cve": "CVE-2024-35190"},
+        {"id": "cve-fpbx-2023-26566", "pattern": "/admin/ajax\\.php.*command=.*`", "desc": "FreePBX command injection", "cve": "CVE-2023-26566"},
+        {"id": "cve-kamailio-2020-27507", "pattern": "Via:.*received=.*\\[\\d{1000,}", "desc": "Kamailio overflow", "cve": "CVE-2020-27507"},
+        {"id": "cve-opensips-2023-49323", "pattern": "Contact:.*<sip:.*>;\\+sip\\.instance=.*\\x00", "desc": "OpenSIPS crash", "cve": "CVE-2023-49323"}
+      ]
+    },
+
+    "cve_xmpp": {
+      "name": "XMPP CVE Exploits",
+      "severity": "critical",
+      "enabled": true,
+      "patterns": [
+        {"id": "cve-prosody-2021-37601", "pattern": "xmlns=[\"'].*[\"']\\s*xmlns=[\"']", "desc": "Prosody namespace confusion", "cve": "CVE-2021-37601"},
+        {"id": "cve-prosody-2022-0217", "pattern": "<stream:stream.*version=[\"'].*\\x00", "desc": "Prosody stream DoS", "cve": "CVE-2022-0217"},
+        {"id": "cve-prosody-2024-25274", "pattern": "/http-upload.*Content-Length:\\s*\\d{10,}", "desc": "Prosody upload DoS", "cve": "CVE-2024-25274"},
+        {"id": "cve-ejabberd-2023-29529", "pattern": "<iq.*type=[\"']get[\"'].*<query.*xmlns=[\"']http://jabber.org/protocol/disco", "desc": "ejabberd disco info leak", "cve": "CVE-2023-29529"},
+        {"id": "cve-conversejs-2020-25017", "pattern": "converse\\.js.*message.*<img.*onerror", "desc": "Converse.js XSS", "cve": "CVE-2020-25017"},
+        {"id": "cve-strophe-2022-29168", "pattern": "Strophe\\.js.*<body.*xmlns=.*\\x00", "desc": "Strophe.js parsing crash", "cve": "CVE-2022-29168"},
+        {"id": "cve-xmpp-2021-21351", "pattern": "XMPPframework.*<iq.*<enable.*xmlns=[\"'].*push", "desc": "XMPP push auth bypass"},
+        {"id": "cve-tigase-2023-39350", "pattern": "/rest/adhoc/.*sess-man.*user-add", "desc": "Tigase unauth user creation", "cve": "CVE-2023-39350"}
       ]
     }
   }

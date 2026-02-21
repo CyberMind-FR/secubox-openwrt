@@ -1,0 +1,234 @@
+#!/bin/sh
+# RPCD handler for TURN server management
+
+. /usr/share/libubox/jshn.sh
+
+uci_get() { uci -q get "turn.$1" 2>/dev/null || echo "$2"; }
+
+case "$1" in
+	list)
+		echo '{"status":{},"logs":{"lines":50},"test":{"host":""},"start":{},"stop":{},"restart":{},"enable":{},"disable":{},"setup_jitsi":{"jitsi_domain":"","turn_domain":""},"setup_nextcloud":{"turn_domain":"","use_port_443":"yes"},"ssl":{"domain":""},"expose":{"domain":""},"credentials":{"username":"","ttl":86400}}'
+		;;
+	call)
+		case "$2" in
+			status)
+				json_init
+
+				local enabled=$(uci_get main.enabled 0)
+				local realm=$(uci_get main.realm "turn.secubox.in")
+				local port=$(uci_get main.listening_port "3478")
+				local tls_port=$(uci_get main.tls_port "5349")
+				local external_ip=$(uci_get main.external_ip "")
+
+				json_add_boolean enabled $([ "$enabled" = "1" ] && echo 1 || echo 0)
+				json_add_string realm "$realm"
+				json_add_int port "$port"
+				json_add_int tls_port "$tls_port"
+				json_add_string external_ip "$external_ip"
+
+				if pgrep -f "turnserver" >/dev/null 2>&1; then
+					json_add_boolean running 1
+					json_add_int pid $(pgrep -f "turnserver" | head -1)
+				else
+					json_add_boolean running 0
+					json_add_int pid 0
+				fi
+
+				# Check ports
+				if grep -q ":0D92 " /proc/net/udp 2>/dev/null; then
+					json_add_boolean udp_3478 1
+				else
+					json_add_boolean udp_3478 0
+				fi
+
+				if grep -q ":14E5 " /proc/net/tcp 2>/dev/null; then
+					json_add_boolean tcp_5349 1
+				else
+					json_add_boolean tcp_5349 0
+				fi
+
+				# Auto-detect external IP if empty
+				if [ -z "$external_ip" ]; then
+					external_ip=$(curl -s -4 --connect-timeout 3 https://ifconfig.me 2>/dev/null || echo "")
+					json_add_string detected_ip "$external_ip"
+				fi
+
+				json_dump
+				;;
+
+			logs)
+				read -r input
+				json_load "$input"
+				json_get_var lines lines 50
+
+				json_init
+				json_add_string result "ok"
+
+				local log_file=$(uci_get log.log_file "/var/log/turnserver.log")
+				if [ -f "$log_file" ]; then
+					json_add_string logs "$(tail -n "$lines" "$log_file" 2>/dev/null | head -c 50000)"
+				else
+					json_add_string logs "$(logread | grep -i turn | tail -n "$lines" | head -c 50000)"
+				fi
+
+				json_dump
+				;;
+
+			test)
+				read -r input
+				json_load "$input"
+				json_get_var host host ""
+
+				[ -z "$host" ] && host=$(uci_get main.realm "turn.secubox.in")
+
+				json_init
+
+				# Test UDP 3478
+				if nc -u -z -w 2 "$host" 3478 2>/dev/null; then
+					json_add_boolean udp_reachable 1
+				else
+					json_add_boolean udp_reachable 0
+				fi
+
+				# Test TCP 5349
+				if nc -z -w 2 "$host" 5349 2>/dev/null; then
+					json_add_boolean tcp_reachable 1
+				else
+					json_add_boolean tcp_reachable 0
+				fi
+
+				json_add_string host "$host"
+				json_dump
+				;;
+
+			start)
+				/etc/init.d/turn start 2>&1
+				json_init
+				json_add_string result "ok"
+				json_dump
+				;;
+
+			stop)
+				/etc/init.d/turn stop 2>&1
+				json_init
+				json_add_string result "ok"
+				json_dump
+				;;
+
+			restart)
+				/etc/init.d/turn restart 2>&1
+				json_init
+				json_add_string result "ok"
+				json_dump
+				;;
+
+			enable)
+				uci set turn.main.enabled='1'
+				uci commit turn
+				/etc/init.d/turn enable
+				/etc/init.d/turn start
+				json_init
+				json_add_string result "ok"
+				json_dump
+				;;
+
+			disable)
+				uci set turn.main.enabled='0'
+				uci commit turn
+				/etc/init.d/turn disable
+				/etc/init.d/turn stop
+				json_init
+				json_add_string result "ok"
+				json_dump
+				;;
+
+			setup_jitsi)
+				read -r input
+				json_load "$input"
+				json_get_var jitsi_domain jitsi_domain ""
+				json_get_var turn_domain turn_domain "turn.secubox.in"
+
+				output=$(turnctl setup-jitsi "$jitsi_domain" "$turn_domain" 2>&1)
+				local auth_secret=$(uci_get main.static_auth_secret "")
+
+				json_init
+				json_add_string result "ok"
+				json_add_string turn_domain "$turn_domain"
+				json_add_string auth_secret "$auth_secret"
+				json_add_string output "$output"
+				json_dump
+				;;
+
+			setup_nextcloud)
+				read -r input
+				json_load "$input"
+				json_get_var turn_domain turn_domain "turn.secubox.in"
+				json_get_var use_port_443 use_port_443 "yes"
+
+				output=$(turnctl setup-nextcloud "$turn_domain" "$use_port_443" 2>&1)
+				local auth_secret=$(uci_get main.static_auth_secret "")
+				local tls_port=$(uci_get main.tls_port "443")
+				local stun_port=$(uci_get main.listening_port "3478")
+
+				json_init
+				json_add_string result "ok"
+				json_add_string turn_domain "$turn_domain"
+				json_add_string auth_secret "$auth_secret"
+				json_add_int stun_port "$stun_port"
+				json_add_int tls_port "$tls_port"
+				json_add_string output "$output"
+				json_dump
+				;;
+
+			ssl)
+				read -r input
+				json_load "$input"
+				json_get_var domain domain ""
+
+				output=$(turnctl ssl "$domain" 2>&1)
+
+				json_init
+				json_add_string result "ok"
+				json_add_string output "$output"
+				json_dump
+				;;
+
+			expose)
+				read -r input
+				json_load "$input"
+				json_get_var domain domain ""
+
+				output=$(turnctl expose "$domain" 2>&1)
+
+				json_init
+				json_add_string result "ok"
+				json_add_string output "$output"
+				json_dump
+				;;
+
+			credentials)
+				read -r input
+				json_load "$input"
+				json_get_var username username "webrtc"
+				json_get_var ttl ttl 86400
+
+				local auth_secret=$(uci_get main.static_auth_secret "")
+				local realm=$(uci_get main.realm "turn.secubox.in")
+				local timestamp=$(($(date +%s) + ttl))
+				local temp_username="${timestamp}:${username}"
+
+				# HMAC-SHA1 credential
+				local password=$(echo -n "$temp_username" | openssl dgst -sha1 -hmac "$auth_secret" -binary | base64)
+
+				json_init
+				json_add_string result "ok"
+				json_add_string realm "$realm"
+				json_add_string username "$temp_username"
+				json_add_string password "$password"
+				json_add_int ttl "$ttl"
+				json_add_int expires "$timestamp"
+				json_dump
+				;;
+		esac
+		;;
+esac

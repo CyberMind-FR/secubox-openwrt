@@ -65,5 +65,13 @@
 			"type": "view",
 			"path": "webradio/security"
 		}
+	},
+	"admin/services/webradio/lyrion": {
+		"title": "Lyrion Bridge",
+		"order": 80,
+		"action": {
+			"type": "view",
+			"path": "webradio/lyrion"
+		}
 	}
 }

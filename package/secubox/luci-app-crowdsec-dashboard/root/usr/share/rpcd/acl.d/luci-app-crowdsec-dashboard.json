@@ -3,6 +3,13 @@
 		"description": "Grant access to LuCI CrowdSec Dashboard",
 		"read": {
 			"ubus": {
+				"luci.crowdsec-abuseipdb": [
+					"status",
+					"history",
+					"check_ip",
+					"get_config",
+					"logs"
+				],
 				"luci.crowdsec-dashboard": [
 					"get_overview",
 					"decisions",
@@ -33,10 +40,16 @@
 				"uci": [ "get", "state", "configs" ],
 				"file": [ "read", "stat", "exec" ]
 			},
-			"uci": [ "crowdsec", "crowdsec-dashboard" ]
+			"uci": [ "crowdsec", "crowdsec-dashboard", "crowdsec_abuseipdb" ]
 		},
 		"write": {
 			"ubus": {
+				"luci.crowdsec-abuseipdb": [
+					"report",
+					"set_enabled",
+					"set_api_key",
+					"save_config"
+				],
 				"luci.crowdsec-dashboard": [
 					"ban",
 					"unban",
@@ -62,7 +75,7 @@
 				"uci": [ "set", "add", "delete", "rename", "order", "commit", "apply", "confirm", "rollback" ],
 				"file": [ "exec" ]
 			},
-			"uci": [ "crowdsec", "crowdsec-dashboard" ]
+			"uci": [ "crowdsec", "crowdsec-dashboard", "crowdsec_abuseipdb" ]
 		}
 	}
 }

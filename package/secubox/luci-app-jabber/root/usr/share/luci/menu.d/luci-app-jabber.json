@@ -1,0 +1,14 @@
+{
+	"admin/services/jabber": {
+		"title": "Jabber/XMPP",
+		"order": 68,
+		"action": {
+			"type": "view",
+			"path": "jabber/overview"
+		},
+		"depends": {
+			"acl": ["luci-app-jabber"],
+			"uci": {"jabber": true}
+		}
+	}
+}

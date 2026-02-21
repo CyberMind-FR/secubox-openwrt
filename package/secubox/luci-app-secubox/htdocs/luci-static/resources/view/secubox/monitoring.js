@@ -1,442 +1,329 @@
 'use strict';
 'require view';
 'require ui';
-'require dom';
+'require rpc';
 'require poll';
-'require secubox/api as API';
-'require secubox-theme/theme as Theme';
-'require secubox/nav as SecuNav';
-'require secubox-portal/header as SbHeader';
 'require secubox/kiss-theme';
 
-// Load theme resources
-document.head.appendChild(E('link', {
-	'rel': 'stylesheet',
-	'type': 'text/css',
-	'href': L.resource('secubox-theme/secubox-theme.css')
-}));
-document.head.appendChild(E('link', {
-	'rel': 'stylesheet',
-	'type': 'text/css',
-	'href': L.resource('secubox-theme/themes/cyberpunk.css')
-}));
+/**
+ * SecuBox Monitoring - KISS Edition
+ * Live system telemetry with inline CSS
+ */
 
-// Respect LuCI language/theme preferences
-var secuLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
-	(document.documentElement && document.documentElement.getAttribute('lang')) ||
-	(navigator.language ? navigator.language.split('-')[0] : 'en');
-Theme.init({ language: secuLang });
+var callSystemHealth = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_system_health',
+	expect: {}
+});
+
+function formatBytes(bytes) {
+	if (!bytes || bytes === 0) return '0 B';
+	var k = 1024, sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+	var i = Math.floor(Math.log(bytes) / Math.log(k));
+	return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function formatUptime(seconds) {
+	if (!seconds) return '0m';
+	var d = Math.floor(seconds / 86400);
+	var h = Math.floor((seconds % 86400) / 3600);
+	var m = Math.floor((seconds % 3600) / 60);
+	if (d > 0) return d + 'd ' + h + 'h';
+	if (h > 0) return h + 'h ' + m + 'm';
+	return m + 'm';
+}
+
+function getBarColor(percent) {
+	if (percent >= 90) return '#ef4444';
+	if (percent >= 70) return '#f59e0b';
+	return '#22c55e';
+}
 
 return view.extend({
-	cpuHistory: [],
-	memoryHistory: [],
-	diskHistory: [],
-	loadHistory: [],
-	networkHistory: [],
-	maxDataPoints: 60,
-	latestHealth: {},
+	health: {},
+	history: { cpu: [], memory: [], disk: [], load: [] },
+	maxPoints: 60,
 
 	load: function() {
-		return this.refreshData();
+		var self = this;
+		return callSystemHealth().then(function(data) {
+			self.health = data || {};
+			self.addDataPoint();
+			return self.health;
+		}).catch(function() { return {}; });
 	},
 
-	refreshData: function() {
+	addDataPoint: function() {
+		var h = this.health;
+		var cpu = h.cpu || {};
+		var memory = h.memory || {};
+		var disk = h.disk || {};
+		var now = Date.now();
+
+		var cpuPct = cpu.usage_percent || cpu.percent || cpu.usage || 0;
+		var memPct = memory.usage_percent || memory.percent || memory.usage || 0;
+		var diskPct = disk.usage_percent || disk.percent || disk.usage || 0;
+
+		var loadStr = cpu.load || h.load || '0';
+		var loadAvg = Array.isArray(loadStr) ? loadStr[0] : (typeof loadStr === 'string' ? parseFloat(loadStr.split(' ')[0]) : loadStr);
+		var cores = cpu.count || 4;
+		var loadPct = Math.min(100, (parseFloat(loadAvg) / cores) * 100);
+
+		this.history.cpu.push({ time: now, value: cpuPct });
+		this.history.memory.push({ time: now, value: memPct });
+		this.history.disk.push({ time: now, value: diskPct });
+		this.history.load.push({ time: now, value: loadPct, raw: loadAvg });
+
 		var self = this;
-		return API.getSystemHealth().then(function(data) {
-			var health = data || {};
-			self.latestHealth = health;
-			self.addDataPoint(health);
-			return health;
+		['cpu', 'memory', 'disk', 'load'].forEach(function(k) {
+			if (self.history[k].length > self.maxPoints) self.history[k].shift();
 		});
 	},
 
-	addDataPoint: function(health) {
-		var timestamp = Date.now();
-
-		// API returns usage_percent, not percent
-		this.cpuHistory.push({ time: timestamp, value: (health.cpu && (health.cpu.usage_percent || health.cpu.percent)) || 0 });
-		this.memoryHistory.push({ time: timestamp, value: (health.memory && (health.memory.usage_percent || health.memory.percent)) || 0 });
-		this.diskHistory.push({ time: timestamp, value: (health.disk && (health.disk.usage_percent || health.disk.percent)) || 0 });
-
-		// System load - parse from string "2.14 1.86 1.70" or array, scale to percentage (assume 4 cores = 400% max)
-		var loadStr = (health.cpu && health.cpu.load) || (health.load && (Array.isArray(health.load) ? health.load[0] : health.load)) || '0';
-		var loadAvg = Array.isArray(loadStr) ? loadStr[0] : (typeof loadStr === 'string' ? parseFloat(loadStr.split(' ')[0]) : loadStr);
-		var numCores = (health.cpu && health.cpu.count) || 4;
-		var loadPercent = Math.min(100, (parseFloat(loadAvg) / numCores) * 100);
-		this.loadHistory.push({ time: timestamp, value: loadPercent, raw: loadAvg });
-
-		var netRx = (health.network && health.network.rx_bytes) || 0;
-		var netTx = (health.network && health.network.tx_bytes) || 0;
-		this.networkHistory.push({ time: timestamp, rx: netRx, tx: netTx });
-
-		['cpuHistory', 'memoryHistory', 'diskHistory', 'loadHistory', 'networkHistory'].forEach(function(key) {
-			if (this[key].length > this.maxDataPoints)
-				this[key].shift();
-		}, this);
-	},
-
 	render: function() {
-		var container = E('div', { 'class': 'secubox-monitoring-page' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/core/variables.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/secubox.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/monitoring.css') }),
-			SecuNav.renderTabs('monitoring'),
-			this.renderHeader(),
-			this.renderCurrentStatsCard(),
-			this.renderChartsGrid()
-		]);
-
-		this.updateCharts();
-		this.updateCurrentStats();
-
 		var self = this;
+
 		poll.add(function() {
-			return self.refreshData().then(function() {
-				self.updateCharts();
-				self.updateCurrentStats();
+			return callSystemHealth().then(function(data) {
+				self.health = data || {};
+				self.addDataPoint();
+				self.updateDisplay();
 			});
 		}, 5);
 
-		this.hideLegacyTabMenu();
+		var content = E('div', { 'class': 'sb-monitoring' }, [
+			E('style', {}, this.getStyles()),
+			this.renderHeader(),
+			this.renderStatsGrid(),
+			this.renderChartsGrid()
+		]);
 
-		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
-		wrapper.appendChild(SbHeader.render());
-		wrapper.appendChild(container);
-
-		return KissTheme.wrap(wrapper, 'admin/secubox/monitoring');
+		return KissTheme.wrap(content, 'admin/secubox/monitoring');
 	},
 
 	renderHeader: function() {
-		var snapshot = this.getLatestSnapshot();
-		var rates = this.getNetworkRateSummary();
+		var h = this.health;
+		var cpu = h.cpu || {};
+		var memory = h.memory || {};
+		var disk = h.disk || {};
 
-		return E('div', { 'class': 'sh-page-header sh-page-header-lite' }, [
+		var cpuPct = cpu.usage_percent || cpu.percent || 0;
+		var memPct = memory.usage_percent || memory.percent || 0;
+		var diskPct = disk.usage_percent || disk.percent || 0;
+		var uptime = h.uptime || 0;
+
+		var chips = [
+			{ icon: '🔥', label: 'CPU', value: cpuPct.toFixed(1) + '%', color: getBarColor(cpuPct) },
+			{ icon: '💾', label: 'Memory', value: memPct.toFixed(1) + '%', color: getBarColor(memPct) },
+			{ icon: '💿', label: 'Disk', value: diskPct.toFixed(1) + '%', color: getBarColor(diskPct) },
+			{ icon: '⏱', label: 'Uptime', value: formatUptime(uptime) }
+		];
+
+		return E('div', { 'class': 'sb-header' }, [
 			E('div', {}, [
-				E('h2', { 'class': 'sh-page-title' }, [
-					E('span', { 'class': 'sh-page-title-icon' }, '📡'),
-					_('SecuBox Monitoring')
-				]),
-				E('p', { 'class': 'sh-page-subtitle' },
-					_('Live telemetry for CPU, memory, storage, and network throughput'))
+				E('h2', { 'class': 'sb-title' }, '📡 System Monitoring'),
+				E('p', { 'class': 'sb-subtitle' }, 'Live telemetry · 5s refresh')
 			]),
-			E('div', { 'class': 'sh-header-meta' }, [
-				this.renderHeaderChip('cpu', '🔥', _('CPU'), snapshot.cpu.value.toFixed(1) + '%', snapshot.cpu.value),
-				this.renderHeaderChip('memory', '💾', _('Memory'), snapshot.memory.value.toFixed(1) + '%', snapshot.memory.value),
-				this.renderHeaderChip('disk', '💿', _('Disk'), snapshot.disk.value.toFixed(1) + '%', snapshot.disk.value),
-				this.renderHeaderChip('uptime', '⏱', _('Uptime'), API.formatUptime(snapshot.uptime || 0)),
-				this.renderHeaderChip('net', '🌐', _('Network'), rates.summary)
-			])
+			E('div', { 'class': 'sb-chips' }, chips.map(function(c) {
+				return E('div', { 'class': 'sb-chip', 'data-chip': c.label.toLowerCase() }, [
+					E('span', { 'class': 'sb-chip-icon' }, c.icon),
+					E('div', {}, [
+						E('span', { 'class': 'sb-chip-label' }, c.label),
+						E('strong', { 'style': c.color ? 'color:' + c.color : '' }, c.value)
+					])
+				]);
+			}))
 		]);
 	},
 
-	renderHeaderChip: function(id, icon, label, value, percent) {
-		return E('div', { 'class': 'sh-header-chip' }, [
-			E('span', { 'class': 'sh-chip-icon' }, icon),
-			E('div', { 'class': 'sh-chip-text' }, [
-				E('span', { 'class': 'sh-chip-label' }, label),
-				E('strong', { 'id': 'secubox-monitoring-chip-' + id, 'style': (typeof percent === 'number') ? ('color:' + this.getColorForValue(percent)) : '' }, value)
-			])
-		]);
+	renderStatsGrid: function() {
+		var h = this.health;
+		var cpu = h.cpu || {};
+		var memory = h.memory || {};
+		var disk = h.disk || {};
+		var network = h.network || {};
+
+		var loadStr = cpu.load || h.load || '0';
+		var load = Array.isArray(loadStr) ? loadStr[0] : (typeof loadStr === 'string' ? loadStr.split(' ')[0] : loadStr);
+
+		var stats = [
+			{ icon: '⚡', label: 'CPU Usage', value: (cpu.usage_percent || cpu.percent || 0).toFixed(1) + '%', id: 'cpu' },
+			{ icon: '💾', label: 'Memory Usage', value: (memory.usage_percent || memory.percent || 0).toFixed(1) + '%', id: 'memory' },
+			{ icon: '💿', label: 'Disk Usage', value: (disk.usage_percent || disk.percent || 0).toFixed(1) + '%', id: 'disk' },
+			{ icon: '📈', label: 'Load (1m)', value: load, id: 'load' },
+			{ icon: '🌐', label: 'Network', value: network.wan_up ? 'Online' : 'Offline', id: 'network' },
+			{ icon: '🕒', label: 'Data Points', value: this.history.cpu.length + '/' + this.maxPoints, id: 'points' }
+		];
+
+		return E('div', { 'class': 'sb-stats-grid' }, stats.map(function(s) {
+			return E('div', { 'class': 'sb-stat-card' }, [
+				E('span', { 'class': 'sb-stat-icon' }, s.icon),
+				E('div', {}, [
+					E('div', { 'class': 'sb-stat-value', 'data-stat': s.id }, s.value),
+					E('div', { 'class': 'sb-stat-label' }, s.label)
+				])
+			]);
+		}));
 	},
 
 	renderChartsGrid: function() {
-		return E('section', { 'class': 'secubox-charts-grid' }, [
-			this.renderChartCard('cpu', _('CPU Usage'), '%', '#6366f1'),
-			this.renderChartCard('memory', _('Memory Usage'), '%', '#22c55e'),
-			this.renderChartCard('disk', _('Disk Usage'), '%', '#f59e0b'),
-			this.renderChartCard('load', _('System Load'), '', '#ec4899')
-		]);
-	},
-
-	renderChartCard: function(type, title, unit, accent) {
-		return E('div', { 'class': 'secubox-chart-card' }, [
-			E('h3', { 'class': 'secubox-chart-title' }, title),
-			E('div', { 'class': 'secubox-chart-container' }, [
-				E('div', { 'id': 'chart-empty-' + type, 'class': 'secubox-chart-empty' }, [
-					E('span', { 'class': 'secubox-chart-empty-icon' }, '📊'),
-					E('span', { 'class': 'secubox-chart-empty-text' }, _('Collecting data...')),
-					E('div', { 'class': 'secubox-chart-empty-progress' }, [
-						E('span', { 'class': 'secubox-chart-empty-dot' }),
-						E('span', { 'class': 'secubox-chart-empty-dot' }),
-						E('span', { 'class': 'secubox-chart-empty-dot' })
-					])
-				]),
-				E('svg', {
-					'id': 'chart-' + type,
-					'class': 'secubox-chart',
-					'viewBox': '0 0 600 200',
-					'preserveAspectRatio': 'none',
-					'data-accent': accent
-				})
-			]),
-			E('div', { 'class': 'secubox-chart-legend' }, [
-				E('span', { 'id': 'current-' + type, 'class': 'secubox-current-value' }, '—'),
-				E('span', { 'id': 'unit-' + type, 'class': 'secubox-chart-unit' }, _('Waiting'))
-			])
-		]);
-	},
-
-	renderCurrentStatsCard: function() {
-		return E('section', { 'class': 'sb-card' }, [
-			E('div', { 'class': 'sb-card-header' }, [
-				E('h2', {}, _('Current Statistics')),
-				E('p', { 'class': 'sb-card-subtitle' }, _('Real-time snapshot of key resources'))
-			]),
-			E('div', { 'id': 'current-stats', 'class': 'secubox-stats-table' }, this.renderStatsTable())
-		]);
-	},
-
-	renderStatsTable: function() {
-		var snapshot = this.getLatestSnapshot();
-		var rates = this.getNetworkRateSummary();
-		// Load from cpu.load string "2.14 1.86 1.70" or load array
-		var loadStr = (this.latestHealth.cpu && this.latestHealth.cpu.load) ||
-		              (this.latestHealth.load && (Array.isArray(this.latestHealth.load) ? this.latestHealth.load[0] : this.latestHealth.load)) || '0.00';
-		var load = typeof loadStr === 'string' ? loadStr.split(' ')[0] : loadStr;
-
-		var stats = [
-			{ label: _('CPU Usage'), value: snapshot.cpu.value.toFixed(1) + '%', icon: '⚡' },
-			{ label: _('Memory Usage'), value: snapshot.memory.value.toFixed(1) + '%', icon: '💾' },
-			{ label: _('Disk Usage'), value: snapshot.disk.value.toFixed(1) + '%', icon: '💿' },
-			{ label: _('System Load (1m)'), value: load, icon: '📈' },
-			{ label: _('Network RX/TX'), value: rates.summary, icon: '🌐' },
-			{ label: _('Data Window'), value: this.cpuHistory.length + ' / ' + this.maxDataPoints, icon: '🕒' }
+		var charts = [
+			{ id: 'cpu', label: 'CPU Usage', color: '#6366f1' },
+			{ id: 'memory', label: 'Memory Usage', color: '#22c55e' },
+			{ id: 'disk', label: 'Disk Usage', color: '#f59e0b' },
+			{ id: 'load', label: 'System Load', color: '#ec4899' }
 		];
 
-		return stats.map(function(stat) {
-			return E('div', { 'class': 'secubox-stat-item' }, [
-				E('span', { 'class': 'secubox-stat-icon' }, stat.icon),
-				E('div', { 'class': 'secubox-stat-details' }, [
-					E('div', { 'class': 'secubox-stat-label' }, stat.label),
-					E('div', { 'class': 'secubox-stat-value' }, stat.value)
+		return E('div', { 'class': 'sb-charts-grid' }, charts.map(function(c) {
+			return E('div', { 'class': 'sb-chart-card' }, [
+				E('h4', {}, c.label),
+				E('div', { 'class': 'sb-chart-container' }, [
+					E('svg', {
+						'id': 'chart-' + c.id,
+						'class': 'sb-chart',
+						'viewBox': '0 0 600 150',
+						'preserveAspectRatio': 'none'
+					})
+				]),
+				E('div', { 'class': 'sb-chart-footer' }, [
+					E('span', { 'id': 'current-' + c.id }, '—'),
+					E('span', { 'class': 'sb-chart-status' }, 'Live')
 				])
 			]);
+		}));
+	},
+
+	updateDisplay: function() {
+		this.updateHeaderChips();
+		this.updateStatsGrid();
+		this.updateCharts();
+	},
+
+	updateHeaderChips: function() {
+		var h = this.health;
+		var cpu = h.cpu || {};
+		var memory = h.memory || {};
+		var disk = h.disk || {};
+
+		var updates = {
+			'cpu': { value: (cpu.usage_percent || cpu.percent || 0).toFixed(1) + '%', color: getBarColor(cpu.usage_percent || 0) },
+			'memory': { value: (memory.usage_percent || memory.percent || 0).toFixed(1) + '%', color: getBarColor(memory.usage_percent || 0) },
+			'disk': { value: (disk.usage_percent || disk.percent || 0).toFixed(1) + '%', color: getBarColor(disk.usage_percent || 0) },
+			'uptime': { value: formatUptime(h.uptime || 0) }
+		};
+
+		Object.keys(updates).forEach(function(key) {
+			var chip = document.querySelector('[data-chip="' + key + '"] strong');
+			if (chip) {
+				chip.textContent = updates[key].value;
+				if (updates[key].color) chip.style.color = updates[key].color;
+			}
+		});
+	},
+
+	updateStatsGrid: function() {
+		var h = this.health;
+		var cpu = h.cpu || {};
+		var memory = h.memory || {};
+		var disk = h.disk || {};
+		var network = h.network || {};
+
+		var loadStr = cpu.load || h.load || '0';
+		var load = Array.isArray(loadStr) ? loadStr[0] : (typeof loadStr === 'string' ? loadStr.split(' ')[0] : loadStr);
+
+		var updates = {
+			'cpu': (cpu.usage_percent || cpu.percent || 0).toFixed(1) + '%',
+			'memory': (memory.usage_percent || memory.percent || 0).toFixed(1) + '%',
+			'disk': (disk.usage_percent || disk.percent || 0).toFixed(1) + '%',
+			'load': load,
+			'network': network.wan_up ? 'Online' : 'Offline',
+			'points': this.history.cpu.length + '/' + this.maxPoints
+		};
+
+		Object.keys(updates).forEach(function(key) {
+			var el = document.querySelector('[data-stat="' + key + '"]');
+			if (el) el.textContent = updates[key];
 		});
 	},
 
 	updateCharts: function() {
-		this.drawChart('cpu', this.cpuHistory, '#6366f1');
-		this.drawChart('memory', this.memoryHistory, '#22c55e');
-		this.drawChart('disk', this.diskHistory, '#f59e0b');
-		this.drawLoadChart();
-	},
+		var self = this;
+		var charts = [
+			{ id: 'cpu', data: this.history.cpu, color: '#6366f1' },
+			{ id: 'memory', data: this.history.memory, color: '#22c55e' },
+			{ id: 'disk', data: this.history.disk, color: '#f59e0b' },
+			{ id: 'load', data: this.history.load, color: '#ec4899' }
+		];
 
-	drawChart: function(type, data, color) {
-		var svg = document.getElementById('chart-' + type);
-		var emptyEl = document.getElementById('chart-empty-' + type);
-		var currentEl = document.getElementById('current-' + type);
-		var unitEl = document.getElementById('unit-' + type);
-
-		if (!svg || data.length === 0) {
-			if (emptyEl) emptyEl.style.display = 'flex';
-			return;
-		}
-
-		// Hide empty state, show chart
-		if (emptyEl) emptyEl.style.display = 'none';
-		if (unitEl) unitEl.textContent = _('Live');
-
-		var width = 600;
-		var height = 200;
-		var padding = 12;
-
-		var values = data.map(function(d) { return d.value; });
-		var maxValue = Math.max(100, Math.max.apply(Math, values));
-		var minValue = 0;
-		var pathPoints = data.map(function(point, idx) {
-			var x = padding + (width - 2 * padding) * (idx / Math.max(1, this.maxDataPoints - 1));
-			var y = height - padding - ((point.value - minValue) / (maxValue - minValue)) * (height - 2 * padding);
-			return x + ',' + y;
-		}, this).join(' ');
-
-		svg.innerHTML = '';
-
-		svg.appendChild(E('polyline', {
-			'points': pathPoints,
-			'fill': 'none',
-			'stroke': color,
-			'stroke-width': '2',
-			'stroke-linejoin': 'round',
-			'stroke-linecap': 'round'
-		}));
-
-		if (currentEl) {
-			currentEl.textContent = (data[data.length - 1].value || 0).toFixed(1) + '%';
-		}
-	},
-
-	drawNetworkChart: function() {
-		var svg = document.getElementById('chart-network');
-		var currentEl = document.getElementById('current-network');
-		if (!svg || this.networkHistory.length < 2)
-			return;
-
-		var width = 600;
-		var height = 200;
-		var padding = 12;
-		var rates = this.networkHistory.slice(1).map(function(point, idx) {
-			var prev = this.networkHistory[idx];
-			var seconds = Math.max(1, (point.time - prev.time) / 1000);
-			return {
-				time: point.time,
-				rx: Math.max(0, (point.rx - prev.rx) / seconds),
-				tx: Math.max(0, (point.tx - prev.tx) / seconds)
-			};
-		}, this);
-
-		var maxRate = Math.max(1024, Math.max.apply(Math, rates.map(function(r) {
-			return Math.max(r.rx, r.tx);
-		})));
-
-		function buildPoints(fn) {
-			return rates.map(function(point, idx) {
-				var x = padding + (width - 2 * padding) * (idx / Math.max(1, rates.length - 1));
-				var y = height - padding - (fn(point) / maxRate) * (height - 2 * padding);
-				return x + ',' + y;
-			}).join(' ');
-		}
-
-		svg.innerHTML = '';
-		svg.appendChild(E('polyline', {
-			'points': buildPoints(function(p) { return p.rx; }),
-			'fill': 'none',
-			'stroke': '#22c55e',
-			'stroke-width': '2'
-		}));
-		svg.appendChild(E('polyline', {
-			'points': buildPoints(function(p) { return p.tx; }),
-			'fill': 'none',
-			'stroke': '#3b82f6',
-			'stroke-width': '2'
-		}));
-
-		if (currentEl) {
-			var last = rates[rates.length - 1];
-			currentEl.textContent = API.formatBits(last.rx + last.tx);
-		}
-	},
-
-	drawLoadChart: function() {
-		var svg = document.getElementById('chart-load');
-		var emptyEl = document.getElementById('chart-empty-load');
-		var currentEl = document.getElementById('current-load');
-		var unitEl = document.getElementById('unit-load');
-
-		if (!svg || this.loadHistory.length === 0) {
-			if (emptyEl) emptyEl.style.display = 'flex';
-			return;
-		}
-
-		// Hide empty state, show chart
-		if (emptyEl) emptyEl.style.display = 'none';
-		if (unitEl) unitEl.textContent = _('Live');
-
-		var width = 600;
-		var height = 200;
-		var padding = 12;
-
-		var values = this.loadHistory.map(function(d) { return d.value; });
-		var maxValue = Math.max(100, Math.max.apply(Math, values));
-		var minValue = 0;
-		var pathPoints = this.loadHistory.map(function(point, idx) {
-			var x = padding + (width - 2 * padding) * (idx / Math.max(1, this.maxDataPoints - 1));
-			var y = height - padding - ((point.value - minValue) / (maxValue - minValue)) * (height - 2 * padding);
-			return x + ',' + y;
-		}, this).join(' ');
-
-		svg.innerHTML = '';
-
-		svg.appendChild(E('polyline', {
-			'points': pathPoints,
-			'fill': 'none',
-			'stroke': '#ec4899',
-			'stroke-width': '2',
-			'stroke-linejoin': 'round',
-			'stroke-linecap': 'round'
-		}));
-
-		if (currentEl) {
-			var lastPoint = this.loadHistory[this.loadHistory.length - 1];
-			currentEl.textContent = (lastPoint.raw || '0.00');
-		}
-	},
-
-	updateCurrentStats: function() {
-		var statsContainer = document.getElementById('current-stats');
-		if (statsContainer)
-			dom.content(statsContainer, this.renderStatsTable());
-
-		var snapshot = this.getLatestSnapshot();
-		this.updateHeaderChips(snapshot);
-	},
-
-	updateHeaderChips: function(snapshot) {
-		this.setHeaderChipValue('cpu', snapshot.cpu.value.toFixed(1) + '%', snapshot.cpu.value);
-		this.setHeaderChipValue('memory', snapshot.memory.value.toFixed(1) + '%', snapshot.memory.value);
-		this.setHeaderChipValue('disk', snapshot.disk.value.toFixed(1) + '%', snapshot.disk.value);
-		this.setHeaderChipValue('uptime', API.formatUptime(snapshot.uptime || 0));
-		var rates = this.getNetworkRateSummary();
-		this.setHeaderChipValue('net', rates.summary);
-	},
-
-	setHeaderChipValue: function(id, text, percent) {
-		var target = document.getElementById('secubox-monitoring-chip-' + id);
-		if (!target)
-			return;
-
-		target.textContent = text;
-		if (typeof percent === 'number')
-			target.style.color = this.getColorForValue(percent);
-		else
-			target.style.color = '';
-	},
-
-	hideLegacyTabMenu: function() {
-		window.requestAnimationFrame(function() {
-			var menus = document.querySelectorAll('.main > .tabmenu, .main > .cbi-tabmenu');
-			menus.forEach(function(menu) {
-				menu.style.display = 'none';
-			});
+		charts.forEach(function(c) {
+			self.drawChart(c.id, c.data, c.color);
 		});
 	},
 
-	getLatestSnapshot: function() {
-		return {
-			cpu: this.cpuHistory[this.cpuHistory.length - 1] || { value: 0 },
-			memory: this.memoryHistory[this.memoryHistory.length - 1] || { value: 0 },
-			disk: this.diskHistory[this.diskHistory.length - 1] || { value: 0 },
-			uptime: (this.latestHealth && this.latestHealth.uptime) || 0,
-			timestamp: (this.latestHealth && this.latestHealth.timestamp) || Date.now()
-		};
+	drawChart: function(id, data, color) {
+		var svg = document.getElementById('chart-' + id);
+		var currentEl = document.getElementById('current-' + id);
+		if (!svg || data.length === 0) return;
+
+		var width = 600, height = 150, padding = 10;
+		var values = data.map(function(d) { return d.value; });
+		var maxVal = Math.max(100, Math.max.apply(Math, values));
+
+		var points = data.map(function(p, i) {
+			var x = padding + (width - 2 * padding) * (i / Math.max(1, this.maxPoints - 1));
+			var y = height - padding - ((p.value / maxVal) * (height - 2 * padding));
+			return x + ',' + y;
+		}, this).join(' ');
+
+		svg.innerHTML = '';
+		var polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+		polyline.setAttribute('points', points);
+		polyline.setAttribute('fill', 'none');
+		polyline.setAttribute('stroke', color);
+		polyline.setAttribute('stroke-width', '2');
+		polyline.setAttribute('stroke-linejoin', 'round');
+		polyline.setAttribute('stroke-linecap', 'round');
+		svg.appendChild(polyline);
+
+		if (currentEl) {
+			var last = data[data.length - 1];
+			currentEl.textContent = id === 'load' ? (last.raw || '0.00') : last.value.toFixed(1) + '%';
+		}
 	},
 
-	getNetworkRateSummary: function() {
-		if (this.networkHistory.length < 2)
-			return { summary: '— ↓ · — ↑', rx: 0, tx: 0 };
-
-		var last = this.networkHistory[this.networkHistory.length - 1];
-		var prev = this.networkHistory[this.networkHistory.length - 2];
-		var seconds = Math.max(1, (last.time - prev.time) / 1000);
-		var rx = Math.max(0, (last.rx - prev.rx) / seconds);
-		var tx = Math.max(0, (last.tx - prev.tx) / seconds);
-
-		return {
-			summary: API.formatBits(rx) + ' ↓ · ' + API.formatBits(tx) + ' ↑',
-			rx: rx,
-			tx: tx
-		};
+	getStyles: function() {
+		return `
+.sb-monitoring { max-width: 1400px; margin: 0 auto; padding: 20px; }
+.sb-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; padding: 20px; background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.sb-title { margin: 0; font-size: 24px; font-weight: 700; }
+.sb-subtitle { margin: 4px 0 0; color: #666; font-size: 14px; }
+.sb-chips { display: flex; gap: 12px; flex-wrap: wrap; }
+.sb-chip { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #f8f9fa; border: 1px solid #e5e7eb; border-radius: 8px; }
+.sb-chip-icon { font-size: 18px; }
+.sb-chip-label { font-size: 11px; color: #666; display: block; }
+.sb-stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 24px; }
+.sb-stat-card { display: flex; align-items: center; gap: 12px; padding: 16px; background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.sb-stat-icon { font-size: 24px; }
+.sb-stat-value { font-size: 18px; font-weight: 700; }
+.sb-stat-label { font-size: 12px; color: #666; }
+.sb-charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.sb-chart-card { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.sb-chart-card h4 { margin: 0 0 12px; font-size: 14px; font-weight: 600; }
+.sb-chart-container { height: 120px; background: #f8f9fa; border-radius: 8px; overflow: hidden; }
+.sb-chart { width: 100%; height: 100%; }
+.sb-chart-footer { display: flex; justify-content: space-between; margin-top: 8px; font-size: 13px; }
+.sb-chart-status { color: #22c55e; font-weight: 500; }
+@media (prefers-color-scheme: dark) {
+  .sb-monitoring { color: #e5e7eb; }
+  .sb-header, .sb-stat-card, .sb-chart-card { background: #1f2937; }
+  .sb-chip { background: #374151; border-color: #4b5563; }
+  .sb-chip-label, .sb-subtitle, .sb-stat-label { color: #9ca3af; }
+  .sb-chart-container { background: #374151; }
+}
+`;
 	},
 
-	getColorForValue: function(value) {
-		if (value >= 90) return '#ef4444';
-		if (value >= 75) return '#f59e0b';
-		if (value >= 50) return '#3b82f6';
-		return '#22c55e';
-	},
-
-	handleSaveApply: null,
 	handleSave: null,
+	handleSaveApply: null,
 	handleReset: null
 });

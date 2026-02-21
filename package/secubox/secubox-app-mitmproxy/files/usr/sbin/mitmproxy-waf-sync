@@ -13,6 +13,10 @@ cve_2024=$(uci -q get mitmproxy.waf_rules.cve_2024 || echo 1)
 scanners=$(uci -q get mitmproxy.waf_rules.scanners || echo 1)
 webmail=$(uci -q get mitmproxy.waf_rules.webmail || echo 1)
 api_abuse=$(uci -q get mitmproxy.waf_rules.api_abuse || echo 1)
+voip=$(uci -q get mitmproxy.waf_rules.voip || echo 1)
+xmpp=$(uci -q get mitmproxy.waf_rules.xmpp || echo 1)
+cve_voip=$(uci -q get mitmproxy.waf_rules.cve_voip || echo 1)
+cve_xmpp=$(uci -q get mitmproxy.waf_rules.cve_xmpp || echo 1)
 
 # Convert to JSON booleans
 to_bool() { [ "$1" = "1" ] && echo "true" || echo "false"; }
@@ -28,7 +32,11 @@ cat > "$CONFIG_FILE" << EOF
     "cve_2024": $(to_bool $cve_2024),
     "scanners": $(to_bool $scanners),
     "webmail": $(to_bool $webmail),
-    "api_abuse": $(to_bool $api_abuse)
+    "api_abuse": $(to_bool $api_abuse),
+    "voip": $(to_bool $voip),
+    "xmpp": $(to_bool $xmpp),
+    "cve_voip": $(to_bool $cve_voip),
+    "cve_xmpp": $(to_bool $cve_xmpp)
   }
 }
 EOF

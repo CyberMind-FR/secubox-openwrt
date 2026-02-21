@@ -42,3 +42,33 @@ config theme_config 'theme'
 config portal 'portal'
 	option enabled '0'
 	option path '/www'
+
+# Authentication settings for protected sites
+config auth 'auth'
+	option enabled '0'
+	option method 'basic'
+	# basic = HTTP Basic Auth via HAProxy
+	# secubox = SecuBox LuCI user integration
+	option realm 'SecuBox HexoJS'
+	option htpasswd_path '/etc/hexojs/htpasswd'
+
+# Example instance with authentication
+# config instance 'private_blog'
+#	option enabled '1'
+#	option port '4001'
+#	option title 'Private Blog'
+#	option theme 'cybermind'
+#	option auth_enabled '1'
+#	option auth_users 'admin,editor1'
+#	option owner 'admin'
+
+# Example user
+# config user 'admin'
+#	option password_hash '$apr1$...'
+#	option role 'owner'
+#	list instances 'private_blog'
+
+# config user 'editor1'
+#	option password_hash '$apr1$...'
+#	option role 'editor'
+#	list instances 'private_blog'

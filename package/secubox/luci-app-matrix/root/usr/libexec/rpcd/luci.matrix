@@ -1,0 +1,460 @@
+#!/bin/sh
+
+# RPCD backend for Matrix Homeserver LuCI app
+
+. /usr/share/libubox/jshn.sh
+
+MATRIXCTL="/usr/sbin/matrixctl"
+
+# Helper to get UCI value
+uci_get() {
+	local section="$1"
+	local option="$2"
+	local default="$3"
+	local val
+	val=$(uci -q get "matrix.${section}.${option}")
+	echo "${val:-$default}"
+}
+
+# Get container status
+get_container_status() {
+	local state="not_installed"
+	local running="false"
+	local lxc_info=""
+
+	if [ -d "/srv/lxc/matrix" ]; then
+		state="installed"
+		lxc_info=$(lxc-info -n matrix 2>/dev/null)
+		if echo "$lxc_info" | grep -q "State:.*RUNNING"; then
+			running="true"
+		fi
+	fi
+
+	echo "$state $running"
+}
+
+# Method: status
+method_status() {
+	local enabled hostname http_port port
+	local container_state running version
+	local info
+
+	enabled=$(uci_get main enabled 0)
+	hostname=$(uci_get server hostname "matrix.local")
+	http_port=$(uci_get server http_port "8008")
+	port=$(uci_get server port "8448")
+
+	info=$(get_container_status)
+	container_state=$(echo "$info" | awk '{print $1}')
+	running=$(echo "$info" | awk '{print $2}')
+
+	# Get version if running
+	version=""
+	if [ "$running" = "true" ]; then
+		version=$(lxc-attach -n matrix -- /usr/local/bin/conduit --version 2>/dev/null | head -1)
+	fi
+
+	# Get configured domain if emancipated
+	local domain haproxy federation_enabled registration_enabled
+	domain=$(uci_get network domain "")
+	haproxy=$(uci_get network haproxy "0")
+	federation_enabled=$(uci_get federation enabled "1")
+	registration_enabled=$(uci_get server registration_enabled "0")
+
+	# Identity and mesh
+	local did_linked mesh_published
+	did_linked=$(uci_get identity did_linked "0")
+	mesh_published=$(uci_get mesh published "0")
+
+	json_init
+	json_add_string "enabled" "$enabled"
+	json_add_string "container_state" "$container_state"
+	json_add_string "running" "$running"
+	json_add_string "hostname" "$hostname"
+	json_add_string "http_port" "$http_port"
+	json_add_string "port" "$port"
+	json_add_string "version" "$version"
+	json_add_string "domain" "$domain"
+	json_add_string "haproxy" "$haproxy"
+	json_add_string "federation_enabled" "$federation_enabled"
+	json_add_string "registration_enabled" "$registration_enabled"
+	json_add_string "did_linked" "$did_linked"
+	json_add_string "mesh_published" "$mesh_published"
+	json_dump
+}
+
+# Method: start
+method_start() {
+	local output
+	output=$($MATRIXCTL start 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Matrix homeserver started successfully"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: stop
+method_stop() {
+	local output
+	output=$($MATRIXCTL stop 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Matrix homeserver stopped successfully"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: install
+method_install() {
+	local output
+	output=$($MATRIXCTL install 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Matrix homeserver installed successfully"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: uninstall
+method_uninstall() {
+	local output
+	output=$($MATRIXCTL uninstall 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Matrix homeserver uninstalled successfully"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: update
+method_update() {
+	local output
+	output=$($MATRIXCTL update 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Matrix homeserver updated successfully"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: logs
+method_logs() {
+	local lines="${1:-50}"
+	local output
+
+	if [ -d "/srv/lxc/matrix" ]; then
+		output=$($MATRIXCTL logs "$lines" 2>&1 | tail -n "$lines")
+	else
+		output="Container not installed"
+	fi
+
+	json_init
+	json_add_string "logs" "$output"
+	json_dump
+}
+
+# Method: emancipate
+method_emancipate() {
+	read -r input
+	json_load "$input"
+	json_get_var domain domain
+
+	if [ -z "$domain" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Domain is required"
+		json_dump
+		return
+	fi
+
+	local output
+	output=$($MATRIXCTL emancipate "$domain" 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Matrix homeserver emancipated at $domain"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: configure_haproxy
+method_configure_haproxy() {
+	local output
+	output=$($MATRIXCTL configure-haproxy 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "HAProxy configured successfully"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: user_add
+method_user_add() {
+	read -r input
+	json_load "$input"
+	json_get_var mxid mxid
+	json_get_var password password
+
+	if [ -z "$mxid" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Matrix ID is required"
+		json_dump
+		return
+	fi
+
+	local output
+	output=$($MATRIXCTL user add "$mxid" "$password" 2>&1)
+	local rc=$?
+
+	# Extract password from output
+	local new_password
+	new_password=$(echo "$output" | grep -oE 'Password: [a-zA-Z0-9]+' | cut -d' ' -f2)
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "User created successfully"
+		[ -n "$new_password" ] && json_add_string "password" "$new_password"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: user_del
+method_user_del() {
+	read -r input
+	json_load "$input"
+	json_get_var mxid mxid
+
+	if [ -z "$mxid" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Matrix ID is required"
+		json_dump
+		return
+	fi
+
+	local output
+	output=$($MATRIXCTL user del "$mxid" 2>&1)
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "$output"
+	json_dump
+}
+
+# Method: federation_status
+method_federation_status() {
+	local enabled allow_public trusted
+	enabled=$(uci_get federation enabled "1")
+	allow_public=$(uci_get federation allow_public_rooms "1")
+	trusted=$(uci_get federation trusted_servers "matrix.org")
+
+	json_init
+	json_add_string "enabled" "$enabled"
+	json_add_string "allow_public_rooms" "$allow_public"
+	json_add_string "trusted_servers" "$trusted"
+	json_dump
+}
+
+# Method: identity_status
+method_identity_status() {
+	local linked mxid did
+	linked=$(uci_get identity did_linked "0")
+	mxid=$(uci_get identity did_user "")
+	did=$(uci -q get "matrix.identity._did")
+
+	json_init
+	json_add_string "linked" "$linked"
+	json_add_string "mxid" "$mxid"
+	json_add_string "did" "$did"
+	json_dump
+}
+
+# Method: identity_link
+method_identity_link() {
+	read -r input
+	json_load "$input"
+	json_get_var mxid mxid
+
+	if [ -z "$mxid" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Matrix ID is required"
+		json_dump
+		return
+	fi
+
+	local output
+	output=$($MATRIXCTL identity link "$mxid" 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Identity linked successfully"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: identity_unlink
+method_identity_unlink() {
+	local output
+	output=$($MATRIXCTL identity unlink 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Identity unlinked"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: mesh_status
+method_mesh_status() {
+	local published service_name
+	published=$(uci_get mesh published "0")
+	service_name=$(uci_get mesh service_name "matrix")
+
+	json_init
+	json_add_string "published" "$published"
+	json_add_string "service_name" "$service_name"
+	json_dump
+}
+
+# Method: mesh_publish
+method_mesh_publish() {
+	local output
+	output=$($MATRIXCTL mesh publish 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Published to mesh"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: mesh_unpublish
+method_mesh_unpublish() {
+	local output
+	output=$($MATRIXCTL mesh unpublish 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Removed from mesh"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Main RPC handler
+case "$1" in
+	list)
+		cat <<'JSON'
+{
+	"status": {},
+	"logs": {"lines": 50},
+	"start": {},
+	"stop": {},
+	"install": {},
+	"uninstall": {},
+	"update": {},
+	"emancipate": {"domain": "string"},
+	"configure_haproxy": {},
+	"user_add": {"mxid": "string", "password": "string"},
+	"user_del": {"mxid": "string"},
+	"federation_status": {},
+	"identity_status": {},
+	"identity_link": {"mxid": "string"},
+	"identity_unlink": {},
+	"mesh_status": {},
+	"mesh_publish": {},
+	"mesh_unpublish": {}
+}
+JSON
+		;;
+	call)
+		case "$2" in
+			status)            method_status ;;
+			logs)              method_logs ;;
+			start)             method_start ;;
+			stop)              method_stop ;;
+			install)           method_install ;;
+			uninstall)         method_uninstall ;;
+			update)            method_update ;;
+			emancipate)        method_emancipate ;;
+			configure_haproxy) method_configure_haproxy ;;
+			user_add)          method_user_add ;;
+			user_del)          method_user_del ;;
+			federation_status) method_federation_status ;;
+			identity_status)   method_identity_status ;;
+			identity_link)     method_identity_link ;;
+			identity_unlink)   method_identity_unlink ;;
+			mesh_status)       method_mesh_status ;;
+			mesh_publish)      method_mesh_publish ;;
+			mesh_unpublish)    method_mesh_unpublish ;;
+			*)                 echo '{"error":"Unknown method"}' ;;
+		esac
+		;;
+esac

@@ -1,0 +1,14 @@
+{
+	"admin/services/turn": {
+		"title": "TURN Server",
+		"order": 85,
+		"action": {
+			"type": "view",
+			"path": "turn/overview"
+		},
+		"depends": {
+			"acl": ["luci-app-turn"],
+			"uci": { "turn": true }
+		}
+	}
+}

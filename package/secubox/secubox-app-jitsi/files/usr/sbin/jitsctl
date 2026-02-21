@@ -566,6 +566,58 @@ restore() {
 }
 
 # ============================================================================
+# TURN Server Integration
+# ============================================================================
+
+setup_turn() {
+	local turn_domain="${1:-turn.secubox.in}"
+
+	log "Setting up TURN server for Jitsi..."
+
+	# Check if turnctl is available
+	if ! command -v turnctl >/dev/null 2>&1; then
+		error "turnctl not found. Install secubox-app-turn first."
+		echo "  opkg install secubox-app-turn"
+		return 1
+	fi
+
+	# Setup TURN server for Jitsi
+	local jitsi_domain=$(uci -q get jitsi.main.domain || echo "meet.secubox.local")
+	turnctl setup-jitsi "$jitsi_domain" "$turn_domain"
+
+	# Get the TURN credentials
+	local turn_secret=$(uci -q get turn.main.static_auth_secret)
+	local external_ip=$(uci -q get turn.main.external_ip)
+
+	if [ -z "$turn_secret" ]; then
+		error "TURN server not configured. Run 'turnctl setup-jitsi' first."
+		return 1
+	fi
+
+	# Update Jitsi UCI config
+	uci set jitsi.turn=jitsi
+	uci set jitsi.turn.enabled='1'
+	uci set jitsi.turn.server="$turn_domain"
+	uci set jitsi.turn.use_secret='1'
+	uci set jitsi.turn.secret="$turn_secret"
+	uci commit jitsi
+
+	# Update STUN servers
+	uci set jitsi.jvb.stun_servers="$turn_domain:3478"
+	uci commit jitsi
+
+	# Regenerate config
+	generate_config
+
+	log "TURN configured for Jitsi!"
+	echo ""
+	echo "TURN Server: $turn_domain"
+	echo "External IP: $external_ip"
+	echo ""
+	echo "Restart Jitsi to apply: jitsctl restart"
+}
+
+# ============================================================================
 # Main
 # ============================================================================
 
@@ -596,6 +648,7 @@ Commands:
 
   configure-haproxy Add HAProxy vhost
   configure-fw      Configure firewall rules
+  setup-turn [dom]  Configure TURN server for NAT traversal
 
 Examples:
   jitsctl install
@@ -654,6 +707,9 @@ case "$1" in
 		;;
 	configure-fw)
 		configure_firewall
+		;;
+	setup-turn)
+		setup_turn "$2"
 		;;
 	-h|--help|help)
 		show_help

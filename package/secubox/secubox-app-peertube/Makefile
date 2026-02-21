@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-app-peertube
 PKG_RELEASE:=1
-PKG_VERSION:=1.0.0
+PKG_VERSION:=1.1.0
 PKG_ARCH:=all
 PKG_MAINTAINER:=CyberMind Studio <contact@cybermind.fr>
 PKG_LICENSE:=AGPL-3.0
@@ -22,6 +22,7 @@ define Package/secubox-app-peertube/description
 PeerTube federated video streaming platform.
 Runs in an LXC Debian container with PostgreSQL, Redis, and Node.js.
 Supports video hosting, live streaming, and ActivityPub federation.
+Includes peertube-analyse: transcript extraction and Claude AI analysis.
 endef
 
 define Package/secubox-app-peertube/conffiles
@@ -40,6 +41,14 @@ define Package/secubox-app-peertube/install
 
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_BIN) ./files/usr/sbin/peertubectl $(1)/usr/sbin/peertubectl
+	$(INSTALL_BIN) ./files/usr/sbin/peertube-analyse $(1)/usr/sbin/peertube-analyse
+
+	$(INSTALL_DIR) $(1)/www/peertube-analyse
+	$(INSTALL_DATA) ./files/www/peertube-analyse/index.html $(1)/www/peertube-analyse/
+
+	$(INSTALL_DIR) $(1)/www/cgi-bin
+	$(INSTALL_BIN) ./files/www/cgi-bin/peertube-analyse $(1)/www/cgi-bin/
+	$(INSTALL_BIN) ./files/www/cgi-bin/peertube-analyse-status $(1)/www/cgi-bin/
 endef
 
 $(eval $(call BuildPackage,secubox-app-peertube))

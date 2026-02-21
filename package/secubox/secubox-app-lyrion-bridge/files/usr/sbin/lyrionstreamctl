@@ -1,0 +1,337 @@
+#!/bin/sh
+# Lyrion Stream Controller - Bridge Management CLI
+
+set -e
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+log() { echo -e "${GREEN}[LyrionStream]${NC} $1"; }
+warn() { echo -e "${YELLOW}[LyrionStream]${NC} $1"; }
+error() { echo -e "${RED}[LyrionStream]${NC} $1" >&2; }
+
+uci_get() { uci -q get "lyrion-bridge.$1" 2>/dev/null || echo "$2"; }
+
+#--- Status ---
+cmd_status() {
+	echo -e "${CYAN}=== Lyrion Stream Bridge Status ===${NC}"
+
+	local enabled=$(uci_get main.enabled 0)
+	local lyrion_server=$(uci_get main.lyrion_server "127.0.0.1")
+	local lyrion_port=$(uci_get main.lyrion_port "9000")
+
+	echo "Bridge Enabled: $([ "$enabled" = "1" ] && echo "Yes" || echo "No")"
+	echo ""
+
+	# Check Lyrion
+	echo -e "${CYAN}Lyrion Server:${NC}"
+	if curl -s "http://${lyrion_server}:${lyrion_port}/status.html" >/dev/null 2>&1; then
+		echo -e "  Status: ${GREEN}Online${NC} (${lyrion_server}:${lyrion_port})"
+
+		# Get current playing info
+		local status=$(curl -s "http://${lyrion_server}:${lyrion_port}/jsonrpc.js" \
+			-d '{"id":1,"method":"slim.request","params":["",["status","-",1,"tags:adl"]]}' 2>/dev/null)
+
+		if [ -n "$status" ]; then
+			local title=$(echo "$status" | jsonfilter -e '@.result.playlist_loop[0].title' 2>/dev/null)
+			local artist=$(echo "$status" | jsonfilter -e '@.result.playlist_loop[0].artist' 2>/dev/null)
+			local mode=$(echo "$status" | jsonfilter -e '@.result.mode' 2>/dev/null)
+
+			echo "  Mode: $mode"
+			[ -n "$title" ] && echo "  Now Playing: ${artist:+$artist - }$title"
+		fi
+	else
+		echo -e "  Status: ${RED}Offline${NC}"
+	fi
+
+	echo ""
+
+	# Check Squeezelite
+	echo -e "${CYAN}Squeezelite Player:${NC}"
+	if pgrep -f "squeezelite" >/dev/null 2>&1; then
+		echo -e "  Status: ${GREEN}Running${NC}"
+		local fifo=$(uci -q get squeezelite.streaming.fifo_path)
+		[ -p "$fifo" ] && echo "  FIFO: $fifo (active)" || echo "  FIFO: Not configured"
+	else
+		echo -e "  Status: ${RED}Stopped${NC}"
+	fi
+
+	echo ""
+
+	# Check FFmpeg Bridge
+	echo -e "${CYAN}FFmpeg Bridge:${NC}"
+	if pgrep -f "ffmpeg-bridge.sh" >/dev/null 2>&1 || pgrep -f "ffmpeg.*lyrion" >/dev/null 2>&1; then
+		echo -e "  Status: ${GREEN}Running${NC}"
+	else
+		echo -e "  Status: ${YELLOW}Stopped${NC}"
+	fi
+
+	echo ""
+
+	# Check Icecast mount
+	echo -e "${CYAN}Icecast Output:${NC}"
+	local icecast_host=$(uci_get icecast.host "127.0.0.1")
+	local icecast_port=$(uci_get icecast.port "8000")
+	local icecast_mount=$(uci_get icecast.mount "/lyrion")
+
+	local mount_status=$(curl -s "http://${icecast_host}:${icecast_port}/status-json.xsl" 2>/dev/null | \
+		jsonfilter -e "@.icestats.source[@.listenurl='http://${icecast_host}:${icecast_port}${icecast_mount}']" 2>/dev/null)
+
+	if [ -n "$mount_status" ]; then
+		local listeners=$(echo "$mount_status" | jsonfilter -e '@.listeners' 2>/dev/null || echo "0")
+		echo -e "  Mount: ${GREEN}Active${NC} (${icecast_mount})"
+		echo "  Listeners: $listeners"
+		echo "  URL: http://${icecast_host}:${icecast_port}${icecast_mount}"
+	else
+		echo -e "  Mount: ${YELLOW}Inactive${NC} (${icecast_mount})"
+	fi
+}
+
+#--- Setup Full Pipeline ---
+cmd_setup() {
+	local lyrion_server="${1:-127.0.0.1}"
+
+	log "Setting up Lyrion → WebRadio bridge..."
+
+	# Step 1: Configure Squeezelite
+	log "Step 1: Configuring Squeezelite..."
+	uci set squeezelite.main.enabled='1'
+	uci set squeezelite.main.server="$lyrion_server"
+	uci set squeezelite.streaming.fifo_output='1'
+	uci set squeezelite.streaming.fifo_path='/tmp/squeezelite.pcm'
+	uci commit squeezelite
+
+	# Step 2: Configure bridge
+	log "Step 2: Configuring bridge..."
+	local icecast_pass=$(uci -q get webradio.main.source_password || echo "hackme")
+	uci set lyrion-bridge.main.enabled='1'
+	uci set lyrion-bridge.main.lyrion_server="$lyrion_server"
+	uci set lyrion-bridge.icecast.password="$icecast_pass"
+	uci commit lyrion-bridge
+
+	# Step 3: Create FIFO
+	log "Step 3: Creating audio FIFO..."
+	local fifo_path=$(uci_get audio.input_fifo "/tmp/squeezelite.pcm")
+	[ -p "$fifo_path" ] || mkfifo "$fifo_path"
+
+	# Step 4: Start services
+	log "Step 4: Starting services..."
+	/etc/init.d/squeezelite restart
+	sleep 2
+	/etc/init.d/lyrion-bridge start
+
+	log "Setup complete!"
+	echo ""
+	cmd_status
+}
+
+#--- Quick Start ---
+cmd_start() {
+	log "Starting Lyrion stream bridge..."
+
+	# Ensure Squeezelite is running with FIFO
+	if ! pgrep -f "squeezelite" >/dev/null 2>&1; then
+		log "Starting Squeezelite..."
+		/etc/init.d/squeezelite start
+		sleep 2
+	fi
+
+	# Start bridge
+	/etc/init.d/lyrion-bridge start
+
+	sleep 2
+	if pgrep -f "ffmpeg-bridge.sh" >/dev/null 2>&1; then
+		log "Bridge started"
+		local icecast_port=$(uci_get icecast.port "8000")
+		local icecast_mount=$(uci_get icecast.mount "/lyrion")
+		echo "Stream URL: http://127.0.0.1:${icecast_port}${icecast_mount}"
+	else
+		error "Failed to start bridge"
+		return 1
+	fi
+}
+
+#--- Stop ---
+cmd_stop() {
+	log "Stopping Lyrion stream bridge..."
+	/etc/init.d/lyrion-bridge stop
+	log "Bridge stopped"
+}
+
+#--- Restart ---
+cmd_restart() {
+	cmd_stop
+	sleep 1
+	cmd_start
+}
+
+#--- Enable/Disable ---
+cmd_enable() {
+	uci set lyrion-bridge.main.enabled='1'
+	uci commit lyrion-bridge
+	/etc/init.d/lyrion-bridge enable
+	log "Bridge enabled"
+}
+
+cmd_disable() {
+	uci set lyrion-bridge.main.enabled='0'
+	uci commit lyrion-bridge
+	/etc/init.d/lyrion-bridge disable
+	log "Bridge disabled"
+}
+
+#--- Configure Icecast Settings ---
+cmd_config() {
+	case "$1" in
+		mount)
+			if [ -n "$2" ]; then
+				uci set lyrion-bridge.icecast.mount="$2"
+				uci commit lyrion-bridge
+				log "Mount point set to: $2"
+			else
+				echo "Mount: $(uci_get icecast.mount '/lyrion')"
+			fi
+			;;
+		bitrate)
+			if [ -n "$2" ]; then
+				uci set lyrion-bridge.icecast.bitrate="$2"
+				uci commit lyrion-bridge
+				log "Bitrate set to: ${2}kbps"
+			else
+				echo "Bitrate: $(uci_get icecast.bitrate '192')kbps"
+			fi
+			;;
+		name)
+			shift
+			if [ -n "$1" ]; then
+				uci set lyrion-bridge.icecast.name="$*"
+				uci commit lyrion-bridge
+				log "Stream name set to: $*"
+			else
+				echo "Name: $(uci_get icecast.name 'Lyrion Stream')"
+			fi
+			;;
+		server)
+			if [ -n "$2" ]; then
+				uci set lyrion-bridge.main.lyrion_server="$2"
+				uci commit lyrion-bridge
+				log "Lyrion server set to: $2"
+			else
+				echo "Lyrion Server: $(uci_get main.lyrion_server '127.0.0.1')"
+			fi
+			;;
+		*)
+			echo "Usage: lyrionstreamctl config {mount|bitrate|name|server} [value]"
+			echo ""
+			echo "Current settings:"
+			echo "  Lyrion Server: $(uci_get main.lyrion_server '127.0.0.1')"
+			echo "  Mount Point: $(uci_get icecast.mount '/lyrion')"
+			echo "  Bitrate: $(uci_get icecast.bitrate '192')kbps"
+			echo "  Stream Name: $(uci_get icecast.name 'Lyrion Stream')"
+			;;
+	esac
+}
+
+#--- View Logs ---
+cmd_logs() {
+	local lines="${1:-50}"
+	if [ -f /var/log/lyrion-bridge.log ]; then
+		tail -n "$lines" /var/log/lyrion-bridge.log
+	else
+		echo "No logs available"
+	fi
+}
+
+#--- Expose via HAProxy ---
+cmd_expose() {
+	local domain="$1"
+
+	if [ -z "$domain" ]; then
+		error "Usage: lyrionstreamctl expose <domain>"
+		return 1
+	fi
+
+	local icecast_port=$(uci_get icecast.port "8000")
+	local icecast_mount=$(uci_get icecast.mount "/lyrion")
+
+	log "Exposing Lyrion stream on $domain..."
+
+	if command -v haproxyctl >/dev/null 2>&1; then
+		# Create backend for Icecast
+		haproxyctl backend add lyrion_stream 127.0.0.1 "$icecast_port" 2>/dev/null || true
+		# Create vhost
+		haproxyctl vhost add "$domain" lyrion_stream
+		haproxyctl reload
+
+		log "Stream exposed at: https://$domain${icecast_mount}"
+	else
+		error "haproxyctl not available"
+		return 1
+	fi
+}
+
+#--- Help ---
+cmd_help() {
+	cat <<EOF
+${CYAN}Lyrion Stream Controller - Bridge Management CLI${NC}
+
+Usage: lyrionstreamctl <command> [options]
+
+${GREEN}Quick Start:${NC}
+  setup [lyrion-ip]   Configure and start full pipeline
+  start               Start the bridge
+  stop                Stop the bridge
+  restart             Restart the bridge
+
+${GREEN}Service Control:${NC}
+  status              Show detailed status
+  enable              Enable autostart
+  disable             Disable autostart
+
+${GREEN}Configuration:${NC}
+  config              Show all settings
+  config mount [path] Set Icecast mount point
+  config bitrate [kb] Set stream bitrate
+  config name [name]  Set stream name
+  config server [ip]  Set Lyrion server IP
+
+${GREEN}Operations:${NC}
+  expose <domain>     Expose stream via HAProxy/SSL
+  logs [lines]        View bridge logs
+
+${GREEN}Examples:${NC}
+  lyrionstreamctl setup 192.168.1.100
+  lyrionstreamctl config bitrate 256
+  lyrionstreamctl expose radio.secubox.in
+
+${GREEN}Architecture:${NC}
+  Lyrion Server → Squeezelite (FIFO) → FFmpeg → Icecast
+
+EOF
+}
+
+#--- Main ---
+case "$1" in
+	status)     cmd_status ;;
+	setup)      shift; cmd_setup "$@" ;;
+	start)      cmd_start ;;
+	stop)       cmd_stop ;;
+	restart)    cmd_restart ;;
+	enable)     cmd_enable ;;
+	disable)    cmd_disable ;;
+	config)     shift; cmd_config "$@" ;;
+	expose)     shift; cmd_expose "$@" ;;
+	logs)       shift; cmd_logs "$@" ;;
+	help|--help|-h|"")
+		cmd_help
+		;;
+	*)
+		error "Unknown command: $1"
+		cmd_help
+		exit 1
+		;;
+esac

@@ -1,0 +1,61 @@
+#!/bin/sh /etc/rc.common
+
+START=96
+STOP=09
+USE_PROCD=1
+
+BRIDGE_SCRIPT=/usr/lib/lyrion-bridge/ffmpeg-bridge.sh
+
+start_service() {
+	local enabled auto_start
+
+	config_load lyrion-bridge
+
+	config_get enabled main enabled '0'
+	[ "$enabled" != "1" ] && return 0
+
+	config_get auto_start main auto_start '1'
+
+	# Ensure Squeezelite is configured for FIFO
+	local fifo_enabled=$(uci -q get squeezelite.streaming.fifo_output)
+	if [ "$fifo_enabled" != "1" ]; then
+		logger -t lyrion-bridge "Enabling Squeezelite FIFO output..."
+		uci set squeezelite.streaming.fifo_output='1'
+		uci commit squeezelite
+		/etc/init.d/squeezelite restart
+		sleep 2
+	fi
+
+	# Get Icecast password from webradio config if not set
+	local icecast_pass=$(uci -q get lyrion-bridge.icecast.password)
+	if [ -z "$icecast_pass" ]; then
+		icecast_pass=$(uci -q get webradio.main.source_password)
+		[ -n "$icecast_pass" ] && uci set lyrion-bridge.icecast.password="$icecast_pass"
+	fi
+
+	procd_open_instance
+	procd_set_param command $BRIDGE_SCRIPT
+	procd_set_param respawn
+	procd_set_param stderr 1
+	procd_set_param stdout 1
+	procd_set_param pidfile /var/run/lyrion-bridge.pid
+	procd_close_instance
+
+	logger -t lyrion-bridge "Bridge started"
+}
+
+stop_service() {
+	# Kill ffmpeg processes related to bridge
+	pkill -f "ffmpeg.*lyrion" 2>/dev/null || true
+	pkill -f "ffmpeg-bridge.sh" 2>/dev/null || true
+	logger -t lyrion-bridge "Bridge stopped"
+}
+
+reload_service() {
+	stop_service
+	start_service
+}
+
+service_triggers() {
+	procd_add_reload_trigger "lyrion-bridge"
+}

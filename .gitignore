@@ -4,6 +4,10 @@ secubox-tools/cache/
 secubox-tools/build/
 secubox-tools/openwrt/
 secubox-tools/local-feed/
+secubox-tools/webui/secubox_webui.egg-info/
+
+# Large data files
+package/secubox/secubox-app-mac-guardian/files/usr/lib/secubox/mac-guardian/oui.tsv
 
 # IDE settings
 .vscode/

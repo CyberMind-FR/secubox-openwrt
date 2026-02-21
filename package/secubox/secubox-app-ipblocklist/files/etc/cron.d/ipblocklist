@@ -1,0 +1,2 @@
+# SecuBox IP Blocklist - Hourly update
+0 * * * * root [ "$(uci -q get ipblocklist.global.enabled)" = "1" ] && /usr/sbin/ipblocklist-update.sh update >/dev/null 2>&1

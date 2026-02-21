@@ -50,6 +50,19 @@ var callGetLogs = rpc.declare({
 	expect: { logs: [] }
 });
 
+var callGetDenoisedLogs = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'get_denoised_logs',
+	params: ['lines', 'filter', 'mode'],
+	expect: {}
+});
+
+var callGetDenoiseStats = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'get_denoise_stats',
+	expect: {}
+});
+
 var callBackupConfig = rpc.declare({
 	object: 'luci.system-hub',
 	method: 'backup_config',
@@ -249,6 +262,10 @@ return baseclass.extend({
 	listServices: callListServices,
 	serviceAction: callServiceAction,
 	getLogs: callGetLogs,
+	getDenoisedLogs: function(lines, filter, mode) {
+		return callGetDenoisedLogs({ lines: lines, filter: filter, mode: mode });
+	},
+	getDenoiseStats: callGetDenoiseStats,
 	backupConfig: callBackupConfig,
 	restoreConfig: function(fileName, data) {
 		if (typeof fileName === 'object')

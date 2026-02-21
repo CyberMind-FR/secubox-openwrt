@@ -24,13 +24,34 @@ return view.extend({
 	severityFilter: 'all',
 	lastLogCount: 0,
 	pollInterval: 2,
+	// Denoising mode: RAW, SMART, SIGNAL_ONLY
+	denoiseMode: 'RAW',
+	noiseRatio: 0,
+	filteredLines: 0,
+	totalLines: 0,
+	denoiseStats: null,
 
 	load: function() {
-		return API.getLogs(this.lineCount, '');
+		var self = this;
+		return Promise.all([
+			API.getDenoisedLogs(this.lineCount, '', this.denoiseMode),
+			API.getDenoiseStats()
+		]).then(function(results) {
+			return {
+				logsData: results[0],
+				denoiseStats: results[1]
+			};
+		});
 	},
 
 	render: function(data) {
-		this.logs = Array.isArray(data) ? data : (data && data.logs) || [];
+		// Extract logs and denoising info from new data structure
+		var logsData = data.logsData || {};
+		this.logs = logsData.logs || [];
+		this.noiseRatio = logsData.noise_ratio || 0;
+		this.filteredLines = logsData.filtered_lines || 0;
+		this.totalLines = logsData.total_lines || this.logs.length;
+		this.denoiseStats = data.denoiseStats || {};
 		this.lastLogCount = this.logs.length;
 
 		var content = [
@@ -40,6 +61,7 @@ return view.extend({
 			ThemeAssets.stylesheet('logs.css'),
 			HubNav.renderTabs('logs'),
 			this.renderHero(),
+			this.renderDenoisePanel(),
 			this.renderControls(),
 			this.renderBody()
 		];
@@ -51,13 +73,17 @@ return view.extend({
 		poll.add(function() {
 			if (!self.autoRefresh) return;
 			self.updateLiveIndicator(true);
-			return API.getLogs(self.lineCount, '').then(function(result) {
-				var newLogs = Array.isArray(result) ? result : (result && result.logs) || [];
+			return API.getDenoisedLogs(self.lineCount, '', self.denoiseMode).then(function(result) {
+				var newLogs = result.logs || [];
 				var hasNewLogs = newLogs.length !== self.lastLogCount;
 				self.logs = newLogs;
+				self.noiseRatio = result.noise_ratio || 0;
+				self.filteredLines = result.filtered_lines || 0;
+				self.totalLines = result.total_lines || newLogs.length;
 				self.lastLogCount = newLogs.length;
 				self.updateStats();
 				self.updateLogStream(hasNewLogs);
+				self.updateDenoiseIndicator();
 				self.updateLiveIndicator(false);
 			});
 		}, this.pollInterval);
@@ -96,6 +122,74 @@ return view.extend({
 			E('span', { 'class': 'label' }, label),
 			E('span', { 'class': 'value' }, value)
 		]);
+	},
+
+	renderDenoisePanel: function() {
+		var self = this;
+		var stats = this.denoiseStats || {};
+		var knownThreats = stats.total_known_threats || 0;
+		var ipblocklistEnabled = stats.ipblocklist_enabled;
+
+		var modeDescriptions = {
+			'RAW': _('All logs displayed without filtering'),
+			'SMART': _('Known threat IPs highlighted, all logs visible'),
+			'SIGNAL_ONLY': _('Only new/unknown threats shown')
+		};
+
+		return E('div', { 'class': 'sh-denoise-panel', 'style': 'display: flex; align-items: center; gap: 1.5em; padding: 0.8em 1.2em; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 8px; margin-bottom: 1em; border: 1px solid rgba(99, 102, 241, 0.3);' }, [
+			// Mode selector
+			E('div', { 'style': 'display: flex; align-items: center; gap: 0.5em;' }, [
+				E('span', { 'style': 'font-weight: 600; color: #94a3b8;' }, '🧹 ' + _('Denoise Mode') + ':'),
+				E('select', {
+					'id': 'sh-denoise-mode',
+					'style': 'background: #334155; color: #f1f5f9; border: 1px solid #475569; border-radius: 4px; padding: 0.4em 0.8em; cursor: pointer;',
+					'change': function(ev) {
+						self.denoiseMode = ev.target.value;
+						self.refreshLogs();
+					}
+				}, [
+					E('option', { 'value': 'RAW', 'selected': this.denoiseMode === 'RAW' ? 'selected' : null }, 'RAW'),
+					E('option', { 'value': 'SMART', 'selected': this.denoiseMode === 'SMART' ? 'selected' : null }, 'SMART'),
+					E('option', { 'value': 'SIGNAL_ONLY', 'selected': this.denoiseMode === 'SIGNAL_ONLY' ? 'selected' : null }, 'SIGNAL ONLY')
+				])
+			]),
+			// Mode description
+			E('span', { 'id': 'sh-denoise-desc', 'style': 'color: #64748b; font-size: 0.9em;' }, modeDescriptions[this.denoiseMode]),
+			// Spacer
+			E('div', { 'style': 'flex: 1;' }),
+			// Noise ratio indicator
+			E('div', { 'id': 'sh-noise-indicator', 'style': 'display: flex; align-items: center; gap: 0.8em;' }, [
+				this.denoiseMode !== 'RAW' ? E('div', { 'style': 'text-align: center;' }, [
+					E('div', { 'style': 'font-size: 0.75em; color: #64748b; text-transform: uppercase;' }, _('Noise Filtered')),
+					E('div', {
+						'id': 'sh-noise-ratio',
+						'style': 'font-size: 1.4em; font-weight: 700; color: ' + this.getNoiseColor(this.noiseRatio) + ';'
+					}, this.noiseRatio + '%')
+				]) : null,
+				E('div', { 'style': 'text-align: center;' }, [
+					E('div', { 'style': 'font-size: 0.75em; color: #64748b; text-transform: uppercase;' }, _('Known Threats')),
+					E('div', { 'style': 'font-size: 1.4em; font-weight: 700; color: #f59e0b;' }, knownThreats.toLocaleString())
+				]),
+				!ipblocklistEnabled ? E('span', {
+					'style': 'padding: 0.3em 0.6em; background: #7c3aed; color: #fff; border-radius: 4px; font-size: 0.8em;',
+					'title': _('Enable IP Blocklist for better noise reduction')
+				}, '⚠ ' + _('Blocklist Off')) : null
+			])
+		]);
+	},
+
+	getNoiseColor: function(ratio) {
+		if (ratio >= 70) return '#22c55e';  // Green - lots of noise filtered
+		if (ratio >= 40) return '#f59e0b';  // Orange - moderate
+		return '#94a3b8';  // Gray - low noise
+	},
+
+	updateDenoiseIndicator: function() {
+		var ratioEl = document.getElementById('sh-noise-ratio');
+		if (ratioEl) {
+			ratioEl.textContent = this.noiseRatio + '%';
+			ratioEl.style.color = this.getNoiseColor(this.noiseRatio);
+		}
 	},
 
 	renderControls: function() {
@@ -309,12 +403,20 @@ return view.extend({
 	},
 
 	buildMetrics: function() {
-		return [
+		var metrics = [
 			{ label: _('Critical events (last refresh)'), value: this.countSeverity('error') },
 			{ label: _('Warnings'), value: this.countSeverity('warning') },
 			{ label: _('Info/Debug'), value: this.countSeverity('info') },
 			{ label: _('Matched search'), value: this.getFilteredLogs().length }
 		];
+
+		// Add denoising metrics when not in RAW mode
+		if (this.denoiseMode !== 'RAW') {
+			metrics.push({ label: _('Noise ratio'), value: this.noiseRatio + '%' });
+			metrics.push({ label: _('Filtered entries'), value: this.filteredLines });
+		}
+
+		return metrics;
 	},
 
 	refreshLogs: function() {
@@ -322,11 +424,15 @@ return view.extend({
 		ui.showModal(_('Loading logs...'), [
 			E('p', { 'class': 'spinning' }, _('Fetching system logs'))
 		]);
-		return API.getLogs(this.lineCount, '').then(function(result) {
+		return API.getDenoisedLogs(this.lineCount, '', this.denoiseMode).then(function(result) {
 			ui.hideModal();
-			self.logs = Array.isArray(result) ? result : (result && result.logs) || [];
+			self.logs = result.logs || [];
+			self.noiseRatio = result.noise_ratio || 0;
+			self.filteredLines = result.filtered_lines || 0;
+			self.totalLines = result.total_lines || self.logs.length;
 			self.updateStats();
 			self.updateLogStream();
+			self.updateDenoiseIndicator();
 		}).catch(function(err) {
 			ui.hideModal();
 			ui.addNotification(null, E('p', {}, err.message || err), 'error');

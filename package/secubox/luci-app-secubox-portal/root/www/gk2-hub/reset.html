@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SecuBox — Reset Password</title>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --border: #1a1a2e;
+    --accent: #005f9e;
+    --accent-glow: rgba(0,95,158,0.3);
+    --text: #e0e0e0;
+    --muted: #666;
+    --success: #27ae60;
+    --error: #e74c3c;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,95,158,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,95,158,0.03) 1px, transparent 1px);
+    background-size: 50px 50px;
+    pointer-events: none;
+  }
+
+  .container { width: 100%; max-width: 420px; position: relative; z-index: 1; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 40px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+
+  .logo-section { text-align: center; margin-bottom: 35px; }
+  .logo {
+    width: 80px; height: 80px;
+    background: linear-gradient(135deg, var(--accent), #007acc);
+    border-radius: 16px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: "Courier New", monospace;
+    font-size: 2rem; font-weight: 900; color: #fff;
+    margin-bottom: 16px;
+    box-shadow: 0 8px 30px var(--accent-glow);
+  }
+  .logo-title { font-size: 1.5rem; font-weight: 700; letter-spacing: 2px; }
+  .logo-title span { color: var(--accent); }
+
+  .form-group { margin-bottom: 20px; }
+  .form-label { display: block; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); margin-bottom: 8px; }
+  .form-input {
+    width: 100%; padding: 14px 16px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); font-size: 1rem;
+  }
+  .form-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+
+  .btn {
+    width: 100%; padding: 14px;
+    background: linear-gradient(135deg, var(--accent), #007acc);
+    border: none; border-radius: 8px;
+    color: #fff; font-size: 1rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 2px;
+    cursor: pointer; margin-top: 10px;
+  }
+  .btn:hover { transform: translateY(-2px); box-shadow: 0 8px 25px var(--accent-glow); }
+  .btn.loading { opacity: 0.7; pointer-events: none; }
+
+  .msg { padding: 12px; border-radius: 8px; font-size: 0.9rem; margin-bottom: 20px; display: none; text-align: center; }
+  .msg.error { background: rgba(231,76,60,0.1); border: 1px solid var(--error); color: var(--error); }
+  .msg.success { background: rgba(39,174,96,0.1); border: 1px solid var(--success); color: var(--success); }
+  .msg.show { display: block; }
+
+  .footer { text-align: center; margin-top: 25px; font-size: 0.85rem; }
+  .footer a { color: var(--accent); text-decoration: none; }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="card">
+    <div class="logo-section">
+      <div class="logo">S</div>
+      <h1 class="logo-title">Nouveau <span>mot de passe</span></h1>
+    </div>
+
+    <div id="msg" class="msg"></div>
+
+    <form id="reset-form" onsubmit="return handleReset(event)">
+      <div class="form-group">
+        <label class="form-label">Nouveau mot de passe</label>
+        <input type="password" id="password" class="form-input" placeholder="********" required minlength="8">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Confirmer</label>
+        <input type="password" id="password2" class="form-input" placeholder="********" required>
+      </div>
+
+      <button type="submit" id="btn-reset" class="btn">Reinitialiser</button>
+    </form>
+
+    <div class="footer">
+      <a href="/login.html">Retour a la connexion</a>
+    </div>
+  </div>
+</div>
+
+<script>
+var token = new URLSearchParams(window.location.search).get("token");
+
+if (!token) {
+  document.getElementById("msg").textContent = "Token invalide ou manquant";
+  document.getElementById("msg").className = "msg error show";
+  document.getElementById("reset-form").style.display = "none";
+}
+
+function showMsg(text, type) {
+  var msg = document.getElementById("msg");
+  msg.textContent = text;
+  msg.className = "msg " + type + " show";
+}
+
+function handleReset(e) {
+  e.preventDefault();
+
+  var password = document.getElementById("password").value;
+  var password2 = document.getElementById("password2").value;
+  var btn = document.getElementById("btn-reset");
+
+  if (password !== password2) {
+    showMsg("Les mots de passe ne correspondent pas", "error");
+    return false;
+  }
+
+  if (password.length < 8) {
+    showMsg("Minimum 8 caracteres", "error");
+    return false;
+  }
+
+  btn.classList.add("loading");
+  btn.textContent = "En cours...";
+
+  fetch("/ubus", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "call",
+      params: ["00000000000000000000000000000000", "luci.portal-auth", "reset_password", { token: token, password: password }]
+    })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(resp) {
+    if (resp.result && resp.result[1] && resp.result[1].success) {
+      showMsg("Mot de passe mis a jour! Redirection...", "success");
+      setTimeout(function() { window.location.href = "/login.html"; }, 2000);
+    } else {
+      var err = (resp.result && resp.result[1]) ? resp.result[1].error : "Erreur";
+      showMsg(err, "error");
+      btn.classList.remove("loading");
+      btn.textContent = "Reinitialiser";
+    }
+  })
+  .catch(function() {
+    showMsg("Erreur serveur", "error");
+    btn.classList.remove("loading");
+    btn.textContent = "Reinitialiser";
+  });
+
+  return false;
+}
+</script>
+
+</body>
+</html>

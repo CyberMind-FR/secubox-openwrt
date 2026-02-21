@@ -1,0 +1,151 @@
+#!/bin/sh
+# CGI endpoint for PeerTube video analysis
+# Returns JSON response
+
+# Set headers
+printf "Content-Type: application/json\r\n"
+printf "Access-Control-Allow-Origin: *\r\n"
+printf "Access-Control-Allow-Methods: POST, OPTIONS\r\n"
+printf "Access-Control-Allow-Headers: Content-Type\r\n"
+printf "\r\n"
+
+# Handle OPTIONS (CORS preflight)
+if [ "$REQUEST_METHOD" = "OPTIONS" ]; then
+    exit 0
+fi
+
+# Only allow POST
+if [ "$REQUEST_METHOD" != "POST" ]; then
+    echo '{"error": "Method not allowed"}'
+    exit 0
+fi
+
+# Read input
+INPUT=$(cat)
+
+# Parse JSON (use jq if available, else jsonfilter)
+if command -v jq >/dev/null 2>&1; then
+    URL=$(echo "$INPUT" | jq -r '.url // empty')
+    FORCE_WHISPER=$(echo "$INPUT" | jq -r '.force_whisper // "0"')
+    NO_ANALYSE=$(echo "$INPUT" | jq -r '.no_analyse // "0"')
+    MODEL=$(echo "$INPUT" | jq -r '.model // "medium"')
+    LANG=$(echo "$INPUT" | jq -r '.lang // "fr"')
+else
+    URL=$(echo "$INPUT" | jsonfilter -e '@.url' 2>/dev/null)
+    FORCE_WHISPER=$(echo "$INPUT" | jsonfilter -e '@.force_whisper' 2>/dev/null)
+    NO_ANALYSE=$(echo "$INPUT" | jsonfilter -e '@.no_analyse' 2>/dev/null)
+    MODEL=$(echo "$INPUT" | jsonfilter -e '@.model' 2>/dev/null)
+    LANG=$(echo "$INPUT" | jsonfilter -e '@.lang' 2>/dev/null)
+fi
+
+# Validate URL
+if [ -z "$URL" ]; then
+    echo '{"error": "URL is required"}'
+    exit 0
+fi
+
+# Sanitize URL (basic security check)
+case "$URL" in
+    http://*|https://*)
+        # Valid URL prefix
+        ;;
+    *)
+        echo '{"error": "Invalid URL format"}'
+        exit 0
+        ;;
+esac
+
+# Set defaults
+[ -z "$MODEL" ] && MODEL="medium"
+[ -z "$LANG" ] && LANG="fr"
+
+# Generate job ID
+JOB_ID="analyse_$(date +%s)_$$"
+OUTPUT_DIR="/tmp/peertube-analyse/${JOB_ID}"
+STATUS_FILE="/tmp/peertube-analyse-${JOB_ID}.status"
+RESULT_FILE="/tmp/peertube-analyse-${JOB_ID}.json"
+LOG_FILE="/tmp/peertube-analyse-${JOB_ID}.log"
+
+mkdir -p "$OUTPUT_DIR"
+
+# Check for existing analysis script
+if [ ! -x "/usr/sbin/peertube-analyse" ]; then
+    echo '{"error": "peertube-analyse not installed"}'
+    exit 0
+fi
+
+# Build command arguments
+ARGS=""
+[ "$FORCE_WHISPER" = "1" ] || [ "$FORCE_WHISPER" = "true" ] && ARGS="$ARGS --force-whisper"
+[ "$NO_ANALYSE" = "1" ] || [ "$NO_ANALYSE" = "true" ] && ARGS="$ARGS --no-analyse"
+[ -n "$MODEL" ] && ARGS="$ARGS --model $MODEL"
+[ -n "$LANG" ] && ARGS="$ARGS --lang $LANG"
+ARGS="$ARGS --output $OUTPUT_DIR"
+
+# Start analysis in background
+echo "starting" > "$STATUS_FILE"
+(
+    echo "extracting" > "$STATUS_FILE"
+
+    # Run the analysis
+    OUTPUT_BASE="$OUTPUT_DIR" /usr/sbin/peertube-analyse $ARGS "$URL" > "$LOG_FILE" 2>&1
+    RC=$?
+
+    if [ $RC -eq 0 ]; then
+        echo "completed" > "$STATUS_FILE"
+
+        # Find output files
+        META_FILE=$(find "$OUTPUT_DIR" -name "*.meta.json" -type f 2>/dev/null | head -1)
+        TRANSCRIPT_FILE=$(find "$OUTPUT_DIR" -name "*.transcript.txt" -type f 2>/dev/null | head -1)
+        ANALYSIS_FILE=$(find "$OUTPUT_DIR" -name "*.analyse.md" -type f 2>/dev/null | head -1)
+
+        # Build result JSON
+        {
+            echo '{'
+            echo '"success": true,'
+            echo '"job_id": "'"$JOB_ID"'",'
+
+            # Metadata
+            if [ -f "$META_FILE" ]; then
+                echo '"metadata": '
+                cat "$META_FILE"
+                echo ','
+            else
+                echo '"metadata": null,'
+            fi
+
+            # Transcript
+            if [ -f "$TRANSCRIPT_FILE" ]; then
+                printf '"transcript": '
+                if command -v jq >/dev/null 2>&1; then
+                    cat "$TRANSCRIPT_FILE" | jq -Rs '.'
+                else
+                    printf '"%s"' "$(cat "$TRANSCRIPT_FILE" | sed 's/\\/\\\\/g; s/"/\\"/g; s/$/\\n/' | tr -d '\n')"
+                fi
+                echo ','
+            else
+                echo '"transcript": null,'
+            fi
+
+            # Analysis
+            if [ -f "$ANALYSIS_FILE" ]; then
+                printf '"analysis": '
+                if command -v jq >/dev/null 2>&1; then
+                    cat "$ANALYSIS_FILE" | jq -Rs '.'
+                else
+                    printf '"%s"' "$(cat "$ANALYSIS_FILE" | sed 's/\\/\\\\/g; s/"/\\"/g; s/$/\\n/' | tr -d '\n')"
+                fi
+            else
+                echo '"analysis": null'
+            fi
+
+            echo '}'
+        } > "$RESULT_FILE"
+    else
+        echo "failed" > "$STATUS_FILE"
+        echo '{"success": false, "error": "Analysis failed", "job_id": "'"$JOB_ID"'"}' > "$RESULT_FILE"
+    fi
+) &
+
+# Return job ID for polling
+echo "{\"success\": true, \"message\": \"Analysis started\", \"job_id\": \"$JOB_ID\"}"

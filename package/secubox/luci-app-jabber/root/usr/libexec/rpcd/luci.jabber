@@ -1,0 +1,763 @@
+#!/bin/sh
+
+# RPCD backend for Jabber/XMPP LuCI app
+
+. /usr/share/libubox/jshn.sh
+
+JABBERCTL="/usr/sbin/jabberctl"
+
+# Helper to get UCI value
+uci_get() {
+	local section="$1"
+	local option="$2"
+	local default="$3"
+	local val
+	val=$(uci -q get "jabber.${section}.${option}")
+	echo "${val:-$default}"
+}
+
+# Get container status
+get_container_status() {
+	local state="not_installed"
+	local running="false"
+	local lxc_info=""
+
+	if [ -d "/srv/lxc/jabber" ]; then
+		state="installed"
+		lxc_info=$(lxc-info -n jabber 2>/dev/null)
+		if echo "$lxc_info" | grep -q "State:.*RUNNING"; then
+			running="true"
+		fi
+	fi
+
+	echo "$state $running"
+}
+
+# Method: status
+method_status() {
+	local enabled hostname c2s_port s2s_port http_port
+	local container_state running
+	local info user_count
+
+	enabled=$(uci_get main enabled 0)
+	hostname=$(uci_get server hostname "jabber.local")
+	c2s_port=$(uci_get server c2s_port "5222")
+	s2s_port=$(uci_get server s2s_port "5269")
+	http_port=$(uci_get server http_port "5280")
+
+	info=$(get_container_status)
+	container_state=$(echo "$info" | awk '{print $1}')
+	running=$(echo "$info" | awk '{print $2}')
+
+	# Get user count
+	user_count=0
+	if [ "$running" = "true" ]; then
+		user_count=$(lxc-attach -n jabber -- find /var/lib/prosody -name "*.dat" -path "*accounts*" 2>/dev/null | wc -l)
+	fi
+
+	# Get configured domain if emancipated
+	local domain haproxy muc_enabled s2s_enabled
+	domain=$(uci_get network domain "")
+	haproxy=$(uci_get network haproxy "0")
+	muc_enabled=$(uci_get muc enabled "1")
+	s2s_enabled=$(uci_get s2s enabled "0")
+
+	# Get admin info
+	local admin_email admin_user
+	admin_email=$(uci_get admin email "admin@localhost")
+	admin_user=$(uci_get admin initial_user "admin")
+
+	json_init
+	json_add_string "enabled" "$enabled"
+	json_add_string "container_state" "$container_state"
+	json_add_string "running" "$running"
+	json_add_string "hostname" "$hostname"
+	json_add_string "c2s_port" "$c2s_port"
+	json_add_string "s2s_port" "$s2s_port"
+	json_add_string "http_port" "$http_port"
+	json_add_int "user_count" "$user_count"
+	json_add_string "domain" "$domain"
+	json_add_string "haproxy" "$haproxy"
+	json_add_string "muc_enabled" "$muc_enabled"
+	json_add_string "s2s_enabled" "$s2s_enabled"
+	json_add_string "admin_email" "$admin_email"
+	json_add_string "admin_user" "$admin_user"
+	json_dump
+}
+
+# Method: start
+method_start() {
+	local output
+	output=$($JABBERCTL start 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Jabber/XMPP started successfully"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: stop
+method_stop() {
+	local output
+	output=$($JABBERCTL stop 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Jabber/XMPP stopped successfully"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: install
+method_install() {
+	local output
+	output=$($JABBERCTL install 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Jabber/XMPP installed successfully"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: uninstall
+method_uninstall() {
+	local output
+	output=$($JABBERCTL uninstall 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Jabber/XMPP uninstalled successfully"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: update
+method_update() {
+	local output
+	output=$($JABBERCTL update 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Jabber/XMPP updated successfully"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: logs
+method_logs() {
+	local lines="${1:-50}"
+	local output
+
+	if [ -d "/srv/lxc/jabber" ]; then
+		output=$($JABBERCTL logs "$lines" 2>&1 | tail -n "$lines")
+	else
+		output="Container not installed"
+	fi
+
+	json_init
+	json_add_string "logs" "$output"
+	json_dump
+}
+
+# Method: emancipate
+method_emancipate() {
+	read -r input
+	json_load "$input"
+	json_get_var domain domain
+
+	if [ -z "$domain" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Domain is required"
+		json_dump
+		return
+	fi
+
+	local output
+	output=$($JABBERCTL emancipate "$domain" 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Jabber/XMPP emancipated to $domain"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: configure_haproxy
+method_configure_haproxy() {
+	local output
+	output=$($JABBERCTL configure-haproxy 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "HAProxy configured for Jabber"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: user_add
+method_user_add() {
+	read -r input
+	json_load "$input"
+	json_get_var jid jid
+	json_get_var password password
+
+	if [ -z "$jid" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "JID is required"
+		json_dump
+		return
+	fi
+
+	local output
+	if [ -n "$password" ]; then
+		output=$($JABBERCTL user add "$jid" "$password" 2>&1)
+	else
+		output=$($JABBERCTL user add "$jid" 2>&1)
+	fi
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "User $jid created"
+		# Extract password from output
+		local new_pass=$(echo "$output" | grep -oE 'Password: [^ ]+' | cut -d: -f2 | tr -d ' ')
+		json_add_string "password" "$new_pass"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: user_del
+method_user_del() {
+	read -r input
+	json_load "$input"
+	json_get_var jid jid
+
+	if [ -z "$jid" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "JID is required"
+		json_dump
+		return
+	fi
+
+	local output
+	output=$($JABBERCTL user del "$jid" 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "User $jid deleted"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: user_passwd
+method_user_passwd() {
+	read -r input
+	json_load "$input"
+	json_get_var jid jid
+	json_get_var password password
+
+	if [ -z "$jid" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "JID is required"
+		json_dump
+		return
+	fi
+
+	local output
+	if [ -n "$password" ]; then
+		output=$($JABBERCTL user passwd "$jid" "$password" 2>&1)
+	else
+		output=$($JABBERCTL user passwd "$jid" 2>&1)
+	fi
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Password changed for $jid"
+		local new_pass=$(echo "$output" | grep -oE 'New password: [^ ]+' | cut -d: -f2 | tr -d ' ')
+		json_add_string "password" "$new_pass"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: user_list
+method_user_list() {
+	local users=""
+
+	if lxc-info -n jabber 2>/dev/null | grep -q "RUNNING"; then
+		users=$(lxc-attach -n jabber -- find /var/lib/prosody -name "*.dat" -path "*accounts*" 2>/dev/null | while read f; do
+			user=$(basename "$f" .dat)
+			domain=$(echo "$f" | grep -oE '[^/]+/accounts' | cut -d/ -f1 | tr '%' '.')
+			echo "${user}@${domain}"
+		done | paste -sd,)
+	fi
+
+	json_init
+	json_add_string "users" "$users"
+	json_dump
+}
+
+# Method: room_create
+method_room_create() {
+	read -r input
+	json_load "$input"
+	json_get_var name name
+
+	if [ -z "$name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Room name is required"
+		json_dump
+		return
+	fi
+
+	local output
+	output=$($JABBERCTL room create "$name" 2>&1)
+	local rc=$?
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Room $name available (created on first join)"
+	json_dump
+}
+
+# Method: room_delete
+method_room_delete() {
+	read -r input
+	json_load "$input"
+	json_get_var name name
+
+	if [ -z "$name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Room name is required"
+		json_dump
+		return
+	fi
+
+	local output
+	output=$($JABBERCTL room delete "$name" 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Room $name deleted"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: room_list
+method_room_list() {
+	local rooms=""
+
+	if lxc-info -n jabber 2>/dev/null | grep -q "RUNNING"; then
+		rooms=$(lxc-attach -n jabber -- find /var/lib/prosody -name "*.dat" -path "*rooms*" 2>/dev/null | while read f; do
+			room=$(basename "$f" .dat)
+			echo "$room"
+		done | paste -sd,)
+	fi
+
+	json_init
+	json_add_string "rooms" "$rooms"
+	json_dump
+}
+
+# ---------- VoIP Integration Methods ----------
+
+# Method: jingle_status
+method_jingle_status() {
+	local enabled stun_server turn_server
+
+	enabled=$(uci_get jingle enabled 0)
+	stun_server=$(uci_get jingle stun_server "stun.l.google.com:19302")
+	turn_server=$(uci_get jingle turn_server "")
+
+	json_init
+	json_add_string "enabled" "$enabled"
+	json_add_string "stun_server" "$stun_server"
+	json_add_string "turn_server" "$turn_server"
+	json_dump
+}
+
+# Method: jingle_enable
+method_jingle_enable() {
+	read -r input
+	json_load "$input"
+	json_get_var stun_server stun_server
+
+	local output
+	if [ -n "$stun_server" ]; then
+		output=$($JABBERCTL jingle enable "$stun_server" 2>&1)
+	else
+		output=$($JABBERCTL jingle enable 2>&1)
+	fi
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Jingle VoIP enabled"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: jingle_disable
+method_jingle_disable() {
+	local output
+	output=$($JABBERCTL jingle disable 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Jingle VoIP disabled"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: sms_status
+method_sms_status() {
+	local enabled sender provider
+
+	enabled=$(uci_get sms enabled 0)
+	sender=$(uci_get sms sender "SecuBox")
+	provider=$(uci_get sms provider "ovh")
+
+	# Check OVH API configured
+	local ovh_configured="0"
+	local ovh_key=$(uci -q get voip.ovh_telephony.app_key 2>/dev/null)
+	[ -n "$ovh_key" ] && ovh_configured="1"
+
+	json_init
+	json_add_string "enabled" "$enabled"
+	json_add_string "sender" "$sender"
+	json_add_string "provider" "$provider"
+	json_add_string "ovh_configured" "$ovh_configured"
+	json_dump
+}
+
+# Method: sms_config
+method_sms_config() {
+	read -r input
+	json_load "$input"
+	json_get_var sender sender
+
+	local output
+	output=$($JABBERCTL sms config "$sender" 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "SMS relay configured"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: sms_send
+method_sms_send() {
+	read -r input
+	json_load "$input"
+	json_get_var to to
+	json_get_var message message
+
+	if [ -z "$to" ] || [ -z "$message" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Phone number and message are required"
+		json_dump
+		return
+	fi
+
+	local output
+	output=$($JABBERCTL sms send "$to" "$message" 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "SMS sent to $to"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# Method: voicemail_status
+method_voicemail_status() {
+	local enabled ami_host ami_port notify_jid
+
+	enabled=$(uci_get voicemail enabled 0)
+	ami_host=$(uci_get voicemail ami_host "127.0.0.1")
+	ami_port=$(uci_get voicemail ami_port "5038")
+	notify_jid=$(uci_get voicemail notify_jid "")
+
+	json_init
+	json_add_string "enabled" "$enabled"
+	json_add_string "ami_host" "$ami_host"
+	json_add_string "ami_port" "$ami_port"
+	json_add_string "notify_jid" "$notify_jid"
+	json_dump
+}
+
+# Method: voicemail_config
+method_voicemail_config() {
+	read -r input
+	json_load "$input"
+	json_get_var notify_jid notify_jid
+
+	if [ -z "$notify_jid" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Notification JID is required"
+		json_dump
+		return
+	fi
+
+	# Save to UCI first
+	uci set jabber.voicemail=voicemail_notify
+	uci set jabber.voicemail.notify_jid="$notify_jid"
+	uci commit jabber
+
+	local output
+	output=$($JABBERCTL voicemail-notify 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Voicemail notifications configured"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+	json_dump
+}
+
+# List available methods
+list_methods() {
+	json_init
+	json_add_object "status"
+	json_close_object
+	json_add_object "start"
+	json_close_object
+	json_add_object "stop"
+	json_close_object
+	json_add_object "install"
+	json_close_object
+	json_add_object "uninstall"
+	json_close_object
+	json_add_object "update"
+	json_close_object
+	json_add_object "logs"
+	json_add_int "lines" 50
+	json_close_object
+	json_add_object "emancipate"
+	json_add_string "domain" ""
+	json_close_object
+	json_add_object "configure_haproxy"
+	json_close_object
+	json_add_object "user_add"
+	json_add_string "jid" ""
+	json_add_string "password" ""
+	json_close_object
+	json_add_object "user_del"
+	json_add_string "jid" ""
+	json_close_object
+	json_add_object "user_passwd"
+	json_add_string "jid" ""
+	json_add_string "password" ""
+	json_close_object
+	json_add_object "user_list"
+	json_close_object
+	json_add_object "room_create"
+	json_add_string "name" ""
+	json_close_object
+	json_add_object "room_delete"
+	json_add_string "name" ""
+	json_close_object
+	json_add_object "room_list"
+	json_close_object
+	json_add_object "jingle_status"
+	json_close_object
+	json_add_object "jingle_enable"
+	json_add_string "stun_server" ""
+	json_close_object
+	json_add_object "jingle_disable"
+	json_close_object
+	json_add_object "sms_status"
+	json_close_object
+	json_add_object "sms_config"
+	json_add_string "sender" ""
+	json_close_object
+	json_add_object "sms_send"
+	json_add_string "to" ""
+	json_add_string "message" ""
+	json_close_object
+	json_add_object "voicemail_status"
+	json_close_object
+	json_add_object "voicemail_config"
+	json_add_string "notify_jid" ""
+	json_close_object
+	json_dump
+}
+
+# Main dispatcher
+case "$1" in
+	list)
+		list_methods
+		;;
+	call)
+		case "$2" in
+			status)
+				method_status
+				;;
+			start)
+				method_start
+				;;
+			stop)
+				method_stop
+				;;
+			install)
+				method_install
+				;;
+			uninstall)
+				method_uninstall
+				;;
+			update)
+				method_update
+				;;
+			logs)
+				read -r input
+				json_load "$input"
+				json_get_var lines lines
+				method_logs "${lines:-50}"
+				;;
+			emancipate)
+				method_emancipate
+				;;
+			configure_haproxy)
+				method_configure_haproxy
+				;;
+			user_add)
+				method_user_add
+				;;
+			user_del)
+				method_user_del
+				;;
+			user_passwd)
+				method_user_passwd
+				;;
+			user_list)
+				method_user_list
+				;;
+			room_create)
+				method_room_create
+				;;
+			room_delete)
+				method_room_delete
+				;;
+			room_list)
+				method_room_list
+				;;
+			jingle_status)
+				method_jingle_status
+				;;
+			jingle_enable)
+				method_jingle_enable
+				;;
+			jingle_disable)
+				method_jingle_disable
+				;;
+			sms_status)
+				method_sms_status
+				;;
+			sms_config)
+				method_sms_config
+				;;
+			sms_send)
+				method_sms_send
+				;;
+			voicemail_status)
+				method_voicemail_status
+				;;
+			voicemail_config)
+				method_voicemail_config
+				;;
+			*)
+				echo '{"error":"Method not found"}'
+				;;
+		esac
+		;;
+	*)
+		echo '{"error":"Invalid action"}'
+		;;
+esac

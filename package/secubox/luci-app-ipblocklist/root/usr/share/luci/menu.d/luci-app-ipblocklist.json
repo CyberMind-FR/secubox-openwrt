@@ -1,0 +1,14 @@
+{
+    "admin/services/ipblocklist": {
+        "title": "IP Blocklist",
+        "order": 45,
+        "action": {
+            "type": "view",
+            "path": "ipblocklist/dashboard"
+        },
+        "depends": {
+            "acl": ["luci-app-ipblocklist"],
+            "uci": {"ipblocklist": true}
+        }
+    }
+}

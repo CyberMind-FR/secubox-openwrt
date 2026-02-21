@@ -1,0 +1,461 @@
+#!/bin/sh
+# SaaS Relay RPCD backend
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+CONFIG="saas-relay"
+SAASCTL="/usr/sbin/saasctl"
+DATA_PATH="/srv/saas-relay"
+COOKIES_PATH="$DATA_PATH/cookies"
+LOG_PATH="$DATA_PATH/logs"
+
+uci_get() { uci -q get ${CONFIG}.$1; }
+
+# ===========================================
+# Status Methods
+# ===========================================
+
+get_status() {
+	json_init
+
+	local enabled=$(uci_get main.enabled) || enabled="0"
+	local status=$(uci_get main.status) || status="stopped"
+	local proxy_port=$(uci_get main.proxy_port) || proxy_port="8890"
+
+	json_add_boolean "enabled" "$enabled"
+	json_add_string "status" "$status"
+	json_add_int "proxy_port" "$proxy_port"
+	json_add_string "data_path" "$DATA_PATH"
+
+	# Count services and cookies
+	local service_count=0
+	local cookie_count=0
+	local enabled_services=0
+
+	config_load "$CONFIG"
+	_count_service() {
+		local section="$1"
+		local svc_enabled domain
+		config_get domain "$section" domain
+		[ -z "$domain" ] && return
+
+		service_count=$((service_count + 1))
+		config_get svc_enabled "$section" enabled "0"
+		[ "$svc_enabled" = "1" ] && enabled_services=$((enabled_services + 1))
+	}
+	config_foreach _count_service service
+
+	for f in "$COOKIES_PATH"/*.json; do
+		[ -f "$f" ] || continue
+		local count=$(grep -c '"' "$f" 2>/dev/null | awk '{print int($1/2)}')
+		cookie_count=$((cookie_count + count))
+	done
+
+	json_add_int "service_count" "$service_count"
+	json_add_int "enabled_services" "$enabled_services"
+	json_add_int "total_cookies" "$cookie_count"
+
+	json_dump
+}
+
+# ===========================================
+# Service Methods
+# ===========================================
+
+list_services() {
+	json_init
+	json_add_array "services"
+
+	config_load "$CONFIG"
+
+	_add_service() {
+		local section="$1"
+		local enabled name emoji domain status cookie_domains auth_required last_check
+
+		config_get domain "$section" domain
+		[ -z "$domain" ] && return
+
+		config_get enabled "$section" enabled "0"
+		config_get name "$section" name "$section"
+		config_get emoji "$section" emoji "🔗"
+		config_get status "$section" status "disconnected"
+		config_get cookie_domains "$section" cookie_domains "$domain"
+		config_get auth_required "$section" auth_required "1"
+		config_get last_check "$section" last_check "0"
+
+		# Count cookies for this service
+		local cookie_file="$COOKIES_PATH/${section}.json"
+		local cookie_count=0
+		[ -f "$cookie_file" ] && cookie_count=$(grep -c '"' "$cookie_file" 2>/dev/null | awk '{print int($1/2)}')
+
+		json_add_object
+		json_add_string "id" "$section"
+		json_add_string "name" "$name"
+		json_add_string "emoji" "$emoji"
+		json_add_string "domain" "$domain"
+		json_add_boolean "enabled" "$enabled"
+		json_add_string "status" "$status"
+		json_add_int "cookie_count" "$cookie_count"
+		json_add_string "cookie_domains" "$cookie_domains"
+		json_add_boolean "auth_required" "$auth_required"
+		json_add_int "last_check" "$last_check"
+		json_close_object
+	}
+
+	config_foreach _add_service service
+
+	json_close_array
+	json_dump
+}
+
+service_enable() {
+	read input
+	json_load "$input"
+	json_get_var id id
+
+	json_init
+
+	if [ -z "$id" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Service ID required"
+		json_dump
+		return
+	fi
+
+	uci set ${CONFIG}.${id}.enabled='1'
+	uci commit ${CONFIG}
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Service enabled"
+	json_add_string "emoji" "🔓"
+
+	json_dump
+}
+
+service_disable() {
+	read input
+	json_load "$input"
+	json_get_var id id
+
+	json_init
+
+	if [ -z "$id" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Service ID required"
+		json_dump
+		return
+	fi
+
+	uci set ${CONFIG}.${id}.enabled='0'
+	uci commit ${CONFIG}
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Service disabled"
+	json_add_string "emoji" "🔐"
+
+	json_dump
+}
+
+service_add() {
+	read input
+	json_load "$input"
+	json_get_var id id
+	json_get_var name name
+	json_get_var domain domain
+	json_get_var emoji emoji
+
+	json_init
+
+	if [ -z "$id" ] || [ -z "$name" ] || [ -z "$domain" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "ID, name, and domain required"
+		json_dump
+		return
+	fi
+
+	[ -z "$emoji" ] && emoji="🔗"
+
+	uci set ${CONFIG}.${id}=service
+	uci set ${CONFIG}.${id}.enabled='1'
+	uci set ${CONFIG}.${id}.name="$name"
+	uci set ${CONFIG}.${id}.emoji="$emoji"
+	uci set ${CONFIG}.${id}.domain="$domain"
+	uci set ${CONFIG}.${id}.cookie_domains="$domain,.$domain"
+	uci set ${CONFIG}.${id}.auth_required='1'
+	uci set ${CONFIG}.${id}.status='disconnected'
+	uci commit ${CONFIG}
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Service added: $name"
+	json_add_string "emoji" "$emoji"
+
+	json_dump
+}
+
+service_delete() {
+	read input
+	json_load "$input"
+	json_get_var id id
+
+	json_init
+
+	if [ -z "$id" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Service ID required"
+		json_dump
+		return
+	fi
+
+	uci delete ${CONFIG}.${id} 2>/dev/null
+	uci commit ${CONFIG}
+
+	# Remove cookies
+	rm -f "$COOKIES_PATH/${id}.json"
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Service deleted"
+	json_add_string "emoji" "🗑️"
+
+	json_dump
+}
+
+# ===========================================
+# Cookie Methods
+# ===========================================
+
+list_cookies() {
+	read input
+	json_load "$input"
+	json_get_var service service
+
+	json_init
+	json_add_boolean "success" 1
+
+	if [ -n "$service" ]; then
+		local cookie_file="$COOKIES_PATH/${service}.json"
+		json_add_string "service" "$service"
+
+		if [ -f "$cookie_file" ]; then
+			local content=$(cat "$cookie_file")
+			json_add_string "cookies" "$content"
+			local count=$(grep -c '"' "$cookie_file" 2>/dev/null | awk '{print int($1/2)}')
+			json_add_int "count" "$count"
+		else
+			json_add_string "cookies" "{}"
+			json_add_int "count" 0
+		fi
+	else
+		json_add_array "services"
+
+		for f in "$COOKIES_PATH"/*.json; do
+			[ -f "$f" ] || continue
+			local svc=$(basename "$f" .json)
+			local count=$(grep -c '"' "$f" 2>/dev/null | awk '{print int($1/2)}')
+			local size=$(stat -c%s "$f" 2>/dev/null || echo 0)
+			local modified=$(stat -c%Y "$f" 2>/dev/null || echo 0)
+
+			json_add_object
+			json_add_string "service" "$svc"
+			json_add_int "count" "$count"
+			json_add_int "size" "$size"
+			json_add_int "modified" "$modified"
+			json_close_object
+		done
+
+		json_close_array
+	fi
+
+	json_dump
+}
+
+import_cookies() {
+	read input
+	json_load "$input"
+	json_get_var service service
+	json_get_var cookies cookies
+
+	json_init
+
+	if [ -z "$service" ] || [ -z "$cookies" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Service and cookies required"
+		json_dump
+		return
+	fi
+
+	mkdir -p "$COOKIES_PATH"
+	echo "$cookies" > "$COOKIES_PATH/${service}.json"
+	chmod 600 "$COOKIES_PATH/${service}.json"
+
+	local count=$(grep -c '"' "$COOKIES_PATH/${service}.json" 2>/dev/null | awk '{print int($1/2)}')
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Imported $count cookies"
+	json_add_string "emoji" "🍪"
+	json_add_int "count" "$count"
+
+	json_dump
+}
+
+clear_cookies() {
+	read input
+	json_load "$input"
+	json_get_var service service
+
+	json_init
+
+	if [ -n "$service" ]; then
+		rm -f "$COOKIES_PATH/${service}.json"
+		json_add_string "message" "Cleared cookies for $service"
+	else
+		rm -f "$COOKIES_PATH"/*.json
+		json_add_string "message" "Cleared all cookies"
+	fi
+
+	json_add_boolean "success" 1
+	json_add_string "emoji" "🗑️"
+
+	json_dump
+}
+
+# ===========================================
+# Control Methods
+# ===========================================
+
+start_relay() {
+	json_init
+
+	local output=$("$SAASCTL" start 2>&1)
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "SaaS Relay started"
+		json_add_string "emoji" "🔄"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+
+	json_dump
+}
+
+stop_relay() {
+	json_init
+
+	local output=$("$SAASCTL" stop 2>&1)
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "SaaS Relay stopped"
+		json_add_string "emoji" "🔌"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+
+	json_dump
+}
+
+setup_relay() {
+	json_init
+
+	local output=$("$SAASCTL" setup 2>&1)
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Setup complete"
+		json_add_string "emoji" "✅"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+
+	json_dump
+}
+
+# ===========================================
+# Activity Log
+# ===========================================
+
+get_log() {
+	read input
+	json_load "$input"
+	json_get_var lines lines
+
+	[ -z "$lines" ] && lines=50
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_array "entries"
+
+	if [ -f "$LOG_PATH/activity.log" ]; then
+		tail -n "$lines" "$LOG_PATH/activity.log" | while read line; do
+			json_add_string "" "$line"
+		done
+	fi
+
+	json_close_array
+	json_dump
+}
+
+clear_log() {
+	json_init
+
+	> "$LOG_PATH/activity.log" 2>/dev/null
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Log cleared"
+	json_add_string "emoji" "📋"
+
+	json_dump
+}
+
+# ===========================================
+# Main Dispatcher
+# ===========================================
+
+case "$1" in
+	list)
+		cat << 'EOF'
+{
+  "status": {},
+  "list_services": {},
+  "service_enable": {"id": "str"},
+  "service_disable": {"id": "str"},
+  "service_add": {"id": "str", "name": "str", "domain": "str", "emoji": "str"},
+  "service_delete": {"id": "str"},
+  "list_cookies": {"service": "str"},
+  "import_cookies": {"service": "str", "cookies": "str"},
+  "clear_cookies": {"service": "str"},
+  "start": {},
+  "stop": {},
+  "setup": {},
+  "get_log": {"lines": "int"},
+  "clear_log": {}
+}
+EOF
+		;;
+	call)
+		case "$2" in
+			status)          get_status ;;
+			list_services)   list_services ;;
+			service_enable)  service_enable ;;
+			service_disable) service_disable ;;
+			service_add)     service_add ;;
+			service_delete)  service_delete ;;
+			list_cookies)    list_cookies ;;
+			import_cookies)  import_cookies ;;
+			clear_cookies)   clear_cookies ;;
+			start)           start_relay ;;
+			stop)            stop_relay ;;
+			setup)           setup_relay ;;
+			get_log)         get_log ;;
+			clear_log)       clear_log ;;
+			*) echo '{"error": "Unknown method"}' ;;
+		esac
+		;;
+esac

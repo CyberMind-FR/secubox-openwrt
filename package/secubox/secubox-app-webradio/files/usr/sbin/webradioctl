@@ -1,0 +1,675 @@
+#!/bin/sh
+# WebRadio Controller - SecuBox Backend CLI
+# Manages Icecast, Ezstream, DarkIce streaming services
+
+set -e
+
+CONF_DIR="/srv/webradio/config"
+MUSIC_DIR="/srv/webradio/music"
+JINGLE_DIR="/srv/webradio/jingles"
+PLAYLIST_FILE="/tmp/webradio_playlist.m3u"
+ICECAST_XML="$CONF_DIR/icecast.xml"
+EZSTREAM_XML="$CONF_DIR/ezstream.xml"
+DARKICE_CFG="$CONF_DIR/darkice.cfg"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+log() { echo -e "${GREEN}[WebRadio]${NC} $1"; }
+warn() { echo -e "${YELLOW}[WebRadio]${NC} $1"; }
+error() { echo -e "${RED}[WebRadio]${NC} $1" >&2; }
+
+uci_get() { uci -q get "webradio.$1" 2>/dev/null || echo "$2"; }
+
+#--- Status ---
+cmd_status() {
+	echo -e "${CYAN}=== WebRadio Status ===${NC}"
+
+	local enabled=$(uci_get main.enabled 0)
+	local name=$(uci_get main.name "SecuBox Radio")
+	local port=$(uci_get main.port 8000)
+
+	echo "Station: $name"
+	echo "Enabled: $([ "$enabled" = "1" ] && echo "Yes" || echo "No")"
+	echo ""
+
+	# Icecast status
+	if pgrep -f "icecast" >/dev/null 2>&1; then
+		echo -e "Icecast:  ${GREEN}Running${NC} (port $port)"
+		# Get listener count
+		local listeners=$(curl -s "http://127.0.0.1:$port/status-json.xsl" 2>/dev/null | jsonfilter -e '@.icestats.source.listeners' 2>/dev/null || echo "0")
+		echo "Listeners: $listeners"
+	else
+		echo -e "Icecast:  ${RED}Stopped${NC}"
+	fi
+
+	# Ezstream status
+	if pgrep -f "ezstream" >/dev/null 2>&1; then
+		echo -e "Ezstream: ${GREEN}Running${NC} (playlist mode)"
+	else
+		echo -e "Ezstream: ${YELLOW}Stopped${NC}"
+	fi
+
+	# DarkIce status
+	if pgrep -f "darkice" >/dev/null 2>&1; then
+		echo -e "DarkIce:  ${GREEN}Running${NC} (live mode)"
+	else
+		echo -e "DarkIce:  ${YELLOW}Stopped${NC}"
+	fi
+
+	# Exposure status
+	local domain=$(uci_get exposure.domain "")
+	if [ -n "$domain" ]; then
+		echo ""
+		echo "Exposed at: https://$domain/"
+	fi
+}
+
+#--- Generate Configs ---
+cmd_genconfig() {
+	log "Generating configuration files..."
+	mkdir -p "$CONF_DIR"
+
+	# Generate Icecast config
+	generate_icecast_config
+
+	# Generate Ezstream config
+	generate_ezstream_config
+
+	# Generate DarkIce config
+	generate_darkice_config
+
+	log "Configuration files generated in $CONF_DIR"
+}
+
+generate_icecast_config() {
+	local name=$(uci_get main.name "SecuBox Radio")
+	local port=$(uci_get main.port 8000)
+	local max_listeners=$(uci_get main.max_listeners 100)
+	local source_pass=$(uci_get main.source_password "hackme")
+	local admin_pass=$(uci_get main.admin_password "admin123")
+	local relay_pass=$(uci_get main.relay_password "relay123")
+
+	cat > "$ICECAST_XML" <<EOF
+<icecast>
+    <location>SecuBox</location>
+    <admin>admin@secubox.local</admin>
+    <limits>
+        <clients>$max_listeners</clients>
+        <sources>5</sources>
+        <queue-size>524288</queue-size>
+        <client-timeout>30</client-timeout>
+        <header-timeout>15</header-timeout>
+        <source-timeout>10</source-timeout>
+        <burst-on-connect>1</burst-on-connect>
+        <burst-size>65535</burst-size>
+    </limits>
+    <authentication>
+        <source-password>$source_pass</source-password>
+        <relay-password>$relay_pass</relay-password>
+        <admin-user>admin</admin-user>
+        <admin-password>$admin_pass</admin-password>
+    </authentication>
+    <hostname>localhost</hostname>
+    <listen-socket>
+        <port>$port</port>
+        <bind-address>0.0.0.0</bind-address>
+    </listen-socket>
+    <mount>
+        <mount-name>/stream</mount-name>
+        <fallback-mount>/silence.mp3</fallback-mount>
+        <fallback-override>1</fallback-override>
+        <stream-name>$name</stream-name>
+        <stream-description>SecuBox Community Radio</stream-description>
+        <genre>Various</genre>
+        <public>0</public>
+    </mount>
+    <mount>
+        <mount-name>/live</mount-name>
+        <stream-name>$name - Live</stream-name>
+        <public>0</public>
+    </mount>
+    <fileserve>1</fileserve>
+    <paths>
+        <basedir>/usr/share/icecast</basedir>
+        <logdir>/var/log/webradio</logdir>
+        <webroot>/usr/share/icecast/web</webroot>
+        <adminroot>/usr/share/icecast/admin</adminroot>
+        <pidfile>/var/run/icecast.pid</pidfile>
+    </paths>
+    <logging>
+        <accesslog>access.log</accesslog>
+        <errorlog>error.log</errorlog>
+        <loglevel>3</loglevel>
+    </logging>
+    <security>
+        <chroot>0</chroot>
+        <changeowner>
+            <user>icecast</user>
+            <group>icecast</group>
+        </changeowner>
+    </security>
+</icecast>
+EOF
+}
+
+generate_ezstream_config() {
+	local port=$(uci_get main.port 8000)
+	local source_pass=$(uci_get main.source_password "hackme")
+	local format=$(uci_get stream.format "mp3")
+	local bitrate=$(uci_get stream.bitrate 128)
+	local samplerate=$(uci_get stream.samplerate 44100)
+	local channels=$(uci_get stream.channels 2)
+	local shuffle=$(uci_get playlist.shuffle 1)
+
+	cat > "$EZSTREAM_XML" <<EOF
+<ezstream>
+    <url>http://localhost:$port/stream</url>
+    <sourcepassword>$source_pass</sourcepassword>
+    <format>MP3</format>
+    <filename>$PLAYLIST_FILE</filename>
+    <playlist_program>0</playlist_program>
+    <shuffle>$shuffle</shuffle>
+    <stream_once>0</stream_once>
+    <reconnect_attempts>-1</reconnect_attempts>
+    <svrinfoname>SecuBox Radio</svrinfoname>
+    <svrinfourl>https://secubox.in</svrinfourl>
+    <svrinfogenre>Various</svrinfogenre>
+    <svrinfodescription>SecuBox Community Radio</svrinfodescription>
+    <svrinfobitrate>$bitrate</svrinfobitrate>
+    <svrinfochannels>$channels</svrinfochannels>
+    <svrinfosamplerate>$samplerate</svrinfosamplerate>
+    <svrinfopublic>0</svrinfopublic>
+</ezstream>
+EOF
+}
+
+generate_darkice_config() {
+	local port=$(uci_get main.port 8000)
+	local source_pass=$(uci_get main.source_password "hackme")
+	local device=$(uci_get live.device "default")
+	local bitrate=$(uci_get live.bitrate 192)
+	local samplerate=$(uci_get stream.samplerate 44100)
+	local channels=$(uci_get stream.channels 2)
+
+	cat > "$DARKICE_CFG" <<EOF
+[general]
+duration        = 0
+bufferSecs      = 5
+reconnect       = yes
+
+[input]
+device          = $device
+sampleRate      = $samplerate
+bitsPerSample   = 16
+channel         = $channels
+
+[icecast2-0]
+bitrateMode     = cbr
+format          = mp3
+bitrate         = $bitrate
+server          = localhost
+port            = $port
+password        = $source_pass
+mountPoint      = live
+name            = SecuBox Radio - Live
+description     = Live broadcast
+genre           = Live
+public          = no
+EOF
+}
+
+#--- Playlist Management ---
+cmd_playlist() {
+	case "$1" in
+		generate)
+			cmd_playlist_generate
+			;;
+		list)
+			cmd_playlist_list
+			;;
+		add)
+			shift
+			cmd_playlist_add "$@"
+			;;
+		*)
+			cmd_playlist_list
+			;;
+	esac
+}
+
+cmd_playlist_generate() {
+	log "Generating playlist..."
+	mkdir -p "$MUSIC_DIR"
+
+	local shuffle=$(uci_get playlist.shuffle 1)
+	local jingle_interval=$(uci_get playlist.jingle_interval 4)
+	local jingle_dir=$(uci_get playlist.jingle_directory "$JINGLE_DIR")
+
+	# Find all audio files
+	find "$MUSIC_DIR" -type f \( -name "*.mp3" -o -name "*.ogg" -o -name "*.flac" \) > /tmp/music_files.txt
+
+	# Shuffle if enabled (using awk for BusyBox compatibility)
+	if [ "$shuffle" = "1" ]; then
+		awk 'BEGIN{srand()} {print rand()"\t"$0}' /tmp/music_files.txt | sort -n | cut -f2- > /tmp/music_shuffled.txt
+		mv /tmp/music_shuffled.txt /tmp/music_files.txt
+	fi
+
+	# Generate playlist with jingles
+	rm -f "$PLAYLIST_FILE"
+	local count=0
+	while read -r file; do
+		echo "$file" >> "$PLAYLIST_FILE"
+		count=$((count + 1))
+
+		# Insert jingle every N tracks
+		if [ "$jingle_interval" -gt 0 ] && [ $((count % jingle_interval)) -eq 0 ]; then
+			local jingle=$(find "$jingle_dir" -type f -name "*.mp3" 2>/dev/null | sort -R | head -1)
+			[ -n "$jingle" ] && echo "$jingle" >> "$PLAYLIST_FILE"
+		fi
+	done < /tmp/music_files.txt
+
+	rm -f /tmp/music_files.txt
+
+	local total=$(wc -l < "$PLAYLIST_FILE" 2>/dev/null || echo 0)
+	log "Playlist generated: $total tracks"
+}
+
+cmd_playlist_list() {
+	echo -e "${CYAN}=== Playlist ===${NC}"
+	if [ -f "$PLAYLIST_FILE" ]; then
+		awk '{print NR": "$0}' "$PLAYLIST_FILE" | head -20
+		local total=$(wc -l < "$PLAYLIST_FILE")
+		echo "..."
+		echo "Total: $total tracks"
+	else
+		warn "No playlist generated. Run: webradioctl playlist generate"
+	fi
+}
+
+cmd_playlist_add() {
+	local file="$1"
+	if [ -f "$file" ]; then
+		cp "$file" "$MUSIC_DIR/"
+		log "Added: $(basename "$file")"
+	else
+		error "File not found: $file"
+		return 1
+	fi
+}
+
+#--- Stream Mode (FFmpeg) ---
+cmd_stream() {
+	case "$1" in
+		start)
+			cmd_stream_start
+			;;
+		stop)
+			cmd_stream_stop
+			;;
+		*)
+			cmd_stream_status
+			;;
+	esac
+}
+
+cmd_stream_start() {
+	if pgrep -f "ffmpeg.*icecast" >/dev/null 2>&1; then
+		warn "Stream already running"
+		return 0
+	fi
+
+	# Ensure playlist exists
+	if [ ! -f "$PLAYLIST_FILE" ] || [ ! -s "$PLAYLIST_FILE" ]; then
+		cmd_playlist_generate
+	fi
+
+	if [ ! -s "$PLAYLIST_FILE" ]; then
+		error "No music files found in $MUSIC_DIR"
+		return 1
+	fi
+
+	local port=$(uci_get main.port 8000)
+	local source_pass=$(uci_get main.source_password "hackme")
+	local bitrate=$(uci_get stream.bitrate 128)
+	local name=$(uci_get main.name "SecuBox Radio")
+
+	log "Starting stream to icecast..."
+
+	# Create a loop script for continuous streaming
+	cat > /tmp/webradio_stream.sh << 'STREAMEOF'
+#!/bin/sh
+PLAYLIST="$1"
+PORT="$2"
+PASS="$3"
+BITRATE="$4"
+NAME="$5"
+
+while true; do
+	while read -r file; do
+		[ -f "$file" ] || continue
+		ffmpeg -re -i "$file" \
+			-vn -acodec libmp3lame -ab ${BITRATE}k -ar 44100 -ac 2 \
+			-content_type audio/mpeg \
+			-f mp3 "icecast://source:${PASS}@127.0.0.1:${PORT}/stream" \
+			2>/var/log/webradio/ffmpeg.log
+	done < "$PLAYLIST"
+	# Re-shuffle for next loop (BusyBox compatible)
+	awk 'BEGIN{srand()} {print rand()"\t"$0}' "$PLAYLIST" | sort -n | cut -f2- > "${PLAYLIST}.tmp" && mv "${PLAYLIST}.tmp" "$PLAYLIST"
+done
+STREAMEOF
+	chmod +x /tmp/webradio_stream.sh
+
+	nohup /tmp/webradio_stream.sh "$PLAYLIST_FILE" "$port" "$source_pass" "$bitrate" "$name" \
+		>/dev/null 2>&1 &
+
+	sleep 3
+	if pgrep -f "webradio_stream.sh" >/dev/null 2>&1 || pgrep -f "ffmpeg" >/dev/null 2>&1; then
+		log "Stream started on http://127.0.0.1:$port/stream"
+	else
+		error "Failed to start stream - check /var/log/webradio/ffmpeg.log"
+		return 1
+	fi
+}
+
+cmd_stream_status() {
+	local port=$(uci_get main.port 8000)
+	if pgrep -f "webradio_stream.sh" >/dev/null 2>&1 || pgrep -f "ffmpeg" >/dev/null 2>&1; then
+		echo -e "FFmpeg Stream: ${GREEN}Running${NC}"
+		echo "URL: http://127.0.0.1:$port/stream"
+		# Get current listener count
+		local listeners=$(curl -s "http://127.0.0.1:$port/status-json.xsl" 2>/dev/null | jsonfilter -e '@.icestats.source.listeners' 2>/dev/null || echo "0")
+		echo "Listeners: $listeners"
+	else
+		echo -e "FFmpeg Stream: ${YELLOW}Stopped${NC}"
+	fi
+}
+
+cmd_stream_stop() {
+	log "Stopping stream..."
+	pkill -f "webradio_stream.sh" 2>/dev/null || true
+	pkill -f "ffmpeg.*icecast" 2>/dev/null || true
+	log "Stream stopped"
+}
+
+#--- Live Mode ---
+cmd_live() {
+	case "$1" in
+		start)
+			cmd_live_start
+			;;
+		stop)
+			cmd_live_stop
+			;;
+		status)
+			cmd_live_status
+			;;
+		devices)
+			cmd_live_devices
+			;;
+		*)
+			cmd_live_status
+			;;
+	esac
+}
+
+cmd_live_start() {
+	if pgrep -f "darkice" >/dev/null 2>&1; then
+		warn "DarkIce already running"
+		return 0
+	fi
+
+	if [ ! -f "$DARKICE_CFG" ]; then
+		cmd_genconfig
+	fi
+
+	log "Starting live broadcast..."
+	darkice -c "$DARKICE_CFG" &
+	sleep 1
+
+	if pgrep -f "darkice" >/dev/null 2>&1; then
+		log "Live broadcast started on /live"
+	else
+		error "Failed to start DarkIce"
+		return 1
+	fi
+}
+
+cmd_live_stop() {
+	log "Stopping live broadcast..."
+	pkill -f "darkice" 2>/dev/null || true
+	log "Live broadcast stopped"
+}
+
+cmd_live_status() {
+	if pgrep -f "darkice" >/dev/null 2>&1; then
+		echo -e "DarkIce: ${GREEN}Running${NC}"
+		local device=$(uci_get live.device "default")
+		echo "Device: $device"
+	else
+		echo -e "DarkIce: ${YELLOW}Stopped${NC}"
+	fi
+}
+
+cmd_live_devices() {
+	echo -e "${CYAN}=== Audio Devices ===${NC}"
+	if command -v arecord >/dev/null 2>&1; then
+		arecord -l 2>/dev/null || echo "No capture devices found"
+	else
+		echo "alsa-utils not installed"
+	fi
+}
+
+#--- Exposure (Punk Model) ---
+cmd_expose() {
+	local domain="$1"
+	local channel="${2:-dns}"  # dns, tor, mesh, all
+
+	if [ -z "$domain" ]; then
+		error "Usage: webradioctl expose <domain> [dns|tor|mesh|all]"
+		return 1
+	fi
+
+	local port=$(uci_get main.port 8000)
+
+	log "Exposing WebRadio on $domain (channel: $channel)..."
+
+	case "$channel" in
+		dns|all)
+			# Create HAProxy vhost
+			if command -v haproxyctl >/dev/null 2>&1; then
+				# Create backend
+				haproxyctl backend add webradio_stream 127.0.0.1 "$port" 2>/dev/null || true
+				# Create vhost
+				haproxyctl vhost add "$domain" webradio_stream
+				haproxyctl reload
+				log "DNS exposure: https://$domain/"
+			else
+				error "haproxyctl not available"
+			fi
+			;;
+	esac
+
+	case "$channel" in
+		tor|all)
+			# Add Tor hidden service
+			if command -v torctl >/dev/null 2>&1; then
+				torctl hidden-service add webradio "$port"
+				local onion=$(torctl hidden-service get webradio 2>/dev/null)
+				[ -n "$onion" ] && log "Tor exposure: http://$onion/"
+			else
+				warn "torctl not available - skipping Tor"
+			fi
+			;;
+	esac
+
+	case "$channel" in
+		mesh|all)
+			# Publish to mesh
+			if command -v vortexctl >/dev/null 2>&1; then
+				vortexctl mesh publish webradio "$domain" "$port"
+				log "Mesh exposure: Published to P2P network"
+			else
+				warn "vortexctl not available - skipping Mesh"
+			fi
+			;;
+	esac
+
+	# Save exposure config
+	uci set webradio.exposure.domain="$domain"
+	[ "$channel" = "tor" ] || [ "$channel" = "all" ] && uci set webradio.exposure.tor='1'
+	[ "$channel" = "mesh" ] || [ "$channel" = "all" ] && uci set webradio.exposure.mesh='1'
+	uci commit webradio
+
+	log "Exposure complete!"
+}
+
+cmd_unexpose() {
+	local domain=$(uci_get exposure.domain "")
+
+	if [ -z "$domain" ]; then
+		warn "No exposure configured"
+		return 0
+	fi
+
+	log "Removing exposure for $domain..."
+
+	# Remove HAProxy vhost
+	if command -v haproxyctl >/dev/null 2>&1; then
+		haproxyctl vhost del "$domain" 2>/dev/null || true
+		haproxyctl reload
+	fi
+
+	# Remove Tor hidden service
+	if command -v torctl >/dev/null 2>&1; then
+		torctl hidden-service del webradio 2>/dev/null || true
+	fi
+
+	# Remove from mesh
+	if command -v vortexctl >/dev/null 2>&1; then
+		vortexctl mesh unpublish webradio 2>/dev/null || true
+	fi
+
+	# Clear config
+	uci set webradio.exposure.domain=''
+	uci set webradio.exposure.tor='0'
+	uci set webradio.exposure.mesh='0'
+	uci commit webradio
+
+	log "Exposure removed"
+}
+
+#--- Service Control ---
+cmd_start() {
+	/etc/init.d/webradio start
+}
+
+cmd_stop() {
+	/etc/init.d/webradio stop
+}
+
+cmd_restart() {
+	/etc/init.d/webradio restart
+}
+
+cmd_enable() {
+	uci set webradio.main.enabled='1'
+	uci commit webradio
+	/etc/init.d/webradio enable
+	log "WebRadio enabled"
+}
+
+cmd_disable() {
+	uci set webradio.main.enabled='0'
+	uci commit webradio
+	/etc/init.d/webradio disable
+	log "WebRadio disabled"
+}
+
+#--- Skip Track ---
+cmd_skip() {
+	if pgrep -f "ezstream" >/dev/null 2>&1; then
+		pkill -USR1 -f "ezstream"
+		log "Skipped to next track"
+	else
+		warn "Ezstream not running"
+	fi
+}
+
+#--- Help ---
+cmd_help() {
+	cat <<EOF
+${CYAN}WebRadio Controller - SecuBox Backend CLI${NC}
+
+Usage: webradioctl <command> [options]
+
+${GREEN}Service Commands:${NC}
+  status              Show service status
+  start               Start WebRadio services
+  stop                Stop WebRadio services
+  restart             Restart services
+  enable              Enable autostart
+  disable             Disable autostart
+
+${GREEN}Configuration:${NC}
+  genconfig           Generate Icecast/Ezstream/DarkIce configs
+
+${GREEN}Playlist:${NC}
+  playlist            List current playlist
+  playlist generate   Regenerate playlist from music directory
+  playlist add <file> Add file to music directory
+
+${GREEN}Streaming:${NC}
+  stream              Show stream status
+  stream start        Start FFmpeg stream to Icecast
+  stream stop         Stop streaming
+  skip                Skip to next track
+
+${GREEN}Live Broadcast:${NC}
+  live                Show live status
+  live start          Start DarkIce live input
+  live stop           Stop live broadcast
+  live devices        List audio capture devices
+
+${GREEN}Exposure (Punk Model):${NC}
+  expose <domain> [channel]  Expose radio (dns|tor|mesh|all)
+  unexpose                   Remove all exposure
+
+${GREEN}Examples:${NC}
+  webradioctl enable
+  webradioctl playlist generate
+  webradioctl stream start
+  webradioctl expose radio.secubox.in dns
+  webradioctl expose radio.secubox.in all
+
+EOF
+}
+
+#--- Main ---
+case "$1" in
+	status)     cmd_status ;;
+	start)      cmd_start ;;
+	stop)       cmd_stop ;;
+	restart)    cmd_restart ;;
+	enable)     cmd_enable ;;
+	disable)    cmd_disable ;;
+	genconfig)  cmd_genconfig ;;
+	playlist)   shift; cmd_playlist "$@" ;;
+	stream)     shift; cmd_stream "$@" ;;
+	skip)       cmd_skip ;;
+	live)       shift; cmd_live "$@" ;;
+	expose)     shift; cmd_expose "$@" ;;
+	unexpose)   cmd_unexpose ;;
+	help|--help|-h|"")
+		cmd_help
+		;;
+	*)
+		error "Unknown command: $1"
+		cmd_help
+		exit 1
+		;;
+esac

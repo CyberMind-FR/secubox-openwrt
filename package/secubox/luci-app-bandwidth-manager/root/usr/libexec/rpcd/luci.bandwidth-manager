@@ -418,10 +418,22 @@ get_usage_realtime() {
 		while read -r expires mac ip hostname clientid; do
 			local rx_bytes=0 tx_bytes=0
 
-			# Get current bytes from iptables
-			if iptables -L $IPTABLES_CHAIN -n -v -x 2>/dev/null | grep -qi "$mac"; then
-				rx_bytes=$(iptables -L $IPTABLES_CHAIN -n -v -x 2>/dev/null | grep -i "$mac" | awk '{print $2}' | head -1)
-				tx_bytes=$(iptables -L $IPTABLES_CHAIN -n -v -x 2>/dev/null | grep -i "$mac" | awk '{print $2}' | tail -1)
+			# Get bytes from conntrack for this IP (works with nftables kernel)
+			if command -v conntrack >/dev/null 2>&1; then
+				# RX = bytes destined to this IP, TX = bytes sourced from this IP
+				rx_bytes=$(conntrack -L 2>/dev/null | grep "dst=$ip " | awk -F'bytes=' '{sum+=$2} END {print sum+0}')
+				tx_bytes=$(conntrack -L 2>/dev/null | grep "src=$ip " | awk -F'bytes=' '{sum+=$2} END {print sum+0}')
+			fi
+
+			# Fallback: try nftables counter if available
+			if [ "${rx_bytes:-0}" -eq 0 ] && [ "${tx_bytes:-0}" -eq 0 ]; then
+				# Get MAC without colons for nftables lookup
+				local mac_nocolon=$(echo "$mac" | tr -d ':' | tr '[:lower:]' '[:upper:]')
+				# Check for nftables counters with this MAC
+				local nft_counter=$(nft list ruleset 2>/dev/null | grep -i "ether saddr $mac" | grep -oE "bytes [0-9]+" | awk '{sum+=$2} END {print sum+0}')
+				if [ -n "$nft_counter" ] && [ "$nft_counter" -gt 0 ]; then
+					tx_bytes=$nft_counter
+				fi
 			fi
 
 			# Get quota info if exists
@@ -2486,15 +2498,17 @@ get_realtime_bandwidth() {
 	local rx2=$(cat /sys/class/net/$interface/statistics/rx_bytes 2>/dev/null || echo 0)
 	local tx2=$(cat /sys/class/net/$interface/statistics/tx_bytes 2>/dev/null || echo 0)
 
-	# Calculate Mbps
+	# Calculate bps
 	local rx_bps=$(( (rx2 - rx1) * 8 ))
 	local tx_bps=$(( (tx2 - tx1) * 8 ))
-	local rx_mbps=$(( rx_bps / 1000000 ))
-	local tx_mbps=$(( tx_bps / 1000000 ))
+
+	# Calculate Mbps as decimal string (awk for floating point)
+	local rx_mbps=$(awk "BEGIN {printf \"%.2f\", $rx_bps / 1000000}")
+	local tx_mbps=$(awk "BEGIN {printf \"%.2f\", $tx_bps / 1000000}")
 
 	json_init
-	json_add_int "rx_mbps" "$rx_mbps"
-	json_add_int "tx_mbps" "$tx_mbps"
+	json_add_string "rx_mbps" "$rx_mbps"
+	json_add_string "tx_mbps" "$tx_mbps"
 	json_add_int "rx_bps" "$rx_bps"
 	json_add_int "tx_bps" "$tx_bps"
 	json_add_int "timestamp" "$(date +%s)"

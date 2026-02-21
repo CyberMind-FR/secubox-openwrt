@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SecuBox — Authentification</title>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --border: #1a1a2e;
+    --accent: #005f9e;
+    --accent-glow: rgba(0,95,158,0.3);
+    --text: #e0e0e0;
+    --muted: #666;
+    --success: #27ae60;
+    --error: #e74c3c;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,95,158,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,95,158,0.03) 1px, transparent 1px);
+    background-size: 50px 50px;
+    animation: gridMove 20s linear infinite;
+    pointer-events: none;
+  }
+
+  @keyframes gridMove {
+    0% { transform: translate(0, 0); }
+    100% { transform: translate(50px, 50px); }
+  }
+
+  .login-container { width: 100%; max-width: 420px; position: relative; z-index: 1; }
+
+  .login-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 40px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+
+  .logo-section { text-align: center; margin-bottom: 35px; }
+
+  .logo {
+    width: 80px; height: 80px;
+    background: linear-gradient(135deg, var(--accent), #007acc);
+    border-radius: 16px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: "Courier New", monospace;
+    font-size: 2rem; font-weight: 900; color: #fff;
+    margin-bottom: 16px;
+    box-shadow: 0 8px 30px var(--accent-glow);
+  }
+
+  .logo-title { font-size: 1.8rem; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; }
+  .logo-title span { color: var(--accent); }
+  .logo-subtitle { color: var(--muted); font-size: 0.85rem; font-family: "Courier New", monospace; margin-top: 5px; }
+
+  .form-group { margin-bottom: 20px; }
+  .form-label { display: block; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); margin-bottom: 8px; }
+
+  .form-input {
+    width: 100%; padding: 14px 16px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); font-size: 1rem; transition: all 0.2s;
+  }
+  .form-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+  .form-input::placeholder { color: #444; }
+
+  .btn-login {
+    width: 100%; padding: 14px;
+    background: linear-gradient(135deg, var(--accent), #007acc);
+    border: none; border-radius: 8px;
+    color: #fff; font-size: 1rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 2px;
+    cursor: pointer; transition: all 0.2s; margin-top: 10px;
+  }
+  .btn-login:hover { transform: translateY(-2px); box-shadow: 0 8px 25px var(--accent-glow); }
+  .btn-login:active { transform: translateY(0); }
+  .btn-login.loading { opacity: 0.7; pointer-events: none; }
+
+  .msg { padding: 12px; border-radius: 8px; font-size: 0.9rem; margin-bottom: 20px; display: none; }
+  .msg.error { background: rgba(231,76,60,0.1); border: 1px solid var(--error); color: var(--error); }
+  .msg.success { background: rgba(39,174,96,0.1); border: 1px solid var(--success); color: var(--success); }
+  .msg.show { display: block; }
+
+  .recover-link { text-align: center; margin-top: 20px; font-size: 0.85rem; }
+  .recover-link a { color: var(--accent); text-decoration: none; }
+  .recover-link a:hover { text-decoration: underline; }
+
+  .footer { text-align: center; margin-top: 30px; font-size: 0.75rem; color: var(--muted); }
+  .footer a { color: var(--accent); text-decoration: none; }
+
+  #recover-form { display: none; }
+  .back-link { text-align: center; margin-top: 15px; font-size: 0.85rem; }
+  .back-link a { color: var(--muted); text-decoration: none; cursor: pointer; }
+</style>
+</head>
+<body>
+
+<div class="login-container">
+  <div class="login-card">
+    <div class="logo-section">
+      <div class="logo">S</div>
+      <h1 class="logo-title">Secu<span>Box</span></h1>
+      <p class="logo-subtitle">// PORTAIL SECURISE</p>
+    </div>
+
+    <div id="msg" class="msg"></div>
+
+    <!-- Login Form -->
+    <form id="login-form" onsubmit="return handleLogin(event)">
+      <div class="form-group">
+        <label class="form-label">Identifiant</label>
+        <input type="text" id="username" class="form-input" placeholder="prenom.nom" required autocomplete="username">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Mot de passe</label>
+        <input type="password" id="password" class="form-input" placeholder="********" required autocomplete="current-password">
+      </div>
+
+      <button type="submit" id="btn-submit" class="btn-login">Connexion</button>
+
+      <div class="recover-link">
+        <a href="#" onclick="showRecover(); return false;">Mot de passe oublie ?</a>
+      </div>
+    </form>
+
+    <!-- Recovery Form -->
+    <form id="recover-form" onsubmit="return handleRecover(event)">
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input type="email" id="recover-email" class="form-input" placeholder="votre@email.com" required>
+      </div>
+
+      <button type="submit" id="btn-recover" class="btn-login">Envoyer le lien</button>
+
+      <div class="back-link">
+        <a onclick="showLogin(); return false;">Retour a la connexion</a>
+      </div>
+    </form>
+
+    <div class="footer">
+      <p><a href="https://gk2.secubox.in/guide/">Guide utilisateur</a></p>
+      <p>SecuBox - <a href="https://cybermind.fr">CyberMind.FR</a></p>
+    </div>
+  </div>
+</div>
+
+<script>
+function showMsg(text, type) {
+  var msg = document.getElementById("msg");
+  msg.textContent = text;
+  msg.className = "msg " + type + " show";
+}
+
+function hideMsg() {
+  document.getElementById("msg").className = "msg";
+}
+
+function showRecover() {
+  document.getElementById("login-form").style.display = "none";
+  document.getElementById("recover-form").style.display = "block";
+  hideMsg();
+}
+
+function showLogin() {
+  document.getElementById("recover-form").style.display = "none";
+  document.getElementById("login-form").style.display = "block";
+  hideMsg();
+}
+
+function rpcCall(method, params) {
+  return fetch("/ubus", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "call",
+      params: ["00000000000000000000000000000000", "luci.portal-auth", method, params]
+    })
+  }).then(function(r) { return r.json(); });
+}
+
+function handleLogin(e) {
+  e.preventDefault();
+
+  var btn = document.getElementById("btn-submit");
+  var username = document.getElementById("username").value.trim();
+  var password = document.getElementById("password").value;
+
+  btn.classList.add("loading");
+  btn.textContent = "Verification...";
+  hideMsg();
+
+  rpcCall("authenticate", { username: username, password: password })
+    .then(function(resp) {
+      if (resp.result && resp.result[1] && resp.result[1].success) {
+        var data = resp.result[1];
+        sessionStorage.setItem("secubox_token", data.token);
+        sessionStorage.setItem("secubox_user", data.username);
+        sessionStorage.setItem("secubox_email", data.email);
+        showMsg("Connexion reussie!", "success");
+        setTimeout(function() { window.location.href = "/portal.html"; }, 500);
+      } else {
+        var err = (resp.result && resp.result[1]) ? resp.result[1].error : "Erreur de connexion";
+        showMsg(err, "error");
+        btn.classList.remove("loading");
+        btn.textContent = "Connexion";
+      }
+    })
+    .catch(function() {
+      showMsg("Erreur serveur", "error");
+      btn.classList.remove("loading");
+      btn.textContent = "Connexion";
+    });
+
+  return false;
+}
+
+function handleRecover(e) {
+  e.preventDefault();
+
+  var btn = document.getElementById("btn-recover");
+  var email = document.getElementById("recover-email").value.trim();
+
+  btn.classList.add("loading");
+  btn.textContent = "Envoi...";
+  hideMsg();
+
+  rpcCall("recover", { email: email })
+    .then(function(resp) {
+      if (resp.result && resp.result[1]) {
+        showMsg(resp.result[1].message || "Email envoye si le compte existe", "success");
+      }
+      btn.classList.remove("loading");
+      btn.textContent = "Envoyer le lien";
+    })
+    .catch(function() {
+      showMsg("Erreur serveur", "error");
+      btn.classList.remove("loading");
+      btn.textContent = "Envoyer le lien";
+    });
+
+  return false;
+}
+
+// Check if already authenticated
+if (sessionStorage.getItem("secubox_token")) {
+  window.location.href = "/portal.html";
+}
+</script>
+
+</body>
+</html>

@@ -294,6 +294,8 @@ return view.extend({
 				'</div>';
 		};
 
-		return KissTheme.wrap([m.render()], 'admin/services/jitsi');
+		return m.render().then(function(mapEl) {
+			return KissTheme.wrap([mapEl], 'admin/services/jitsi');
+		});
 	}
 });
