@@ -12,7 +12,8 @@
 					"get_hosting_status",
 					"check_site_health",
 					"get_tor_status",
-					"discover_vhosts"
+					"discover_vhosts",
+					"get_sites_exposure_status"
 				],
 				"file": ["read", "list", "stat"]
 			},
@@ -39,7 +40,10 @@
 					"import_vhost",
 					"sync_config",
 					"emancipate",
-					"emancipate_status"
+					"emancipate_status",
+					"upload_and_create_site",
+					"unpublish_site",
+					"set_auth_required"
 				],
 				"luci.haproxy": [
 					"create_backend",
