@@ -145,6 +145,12 @@ var callUploadAndCreateSite = rpc.declare({
 	params: ['name', 'domain', 'content', 'is_zip']
 });
 
+var callCreateSiteFromUpload = rpc.declare({
+	object: 'luci.metablogizer',
+	method: 'create_site_from_upload',
+	params: ['upload_id', 'name', 'domain', 'is_zip']
+});
+
 var callUnpublishSite = rpc.declare({
 	object: 'luci.metablogizer',
 	method: 'unpublish_site',
@@ -293,7 +299,33 @@ return baseclass.extend({
 	},
 
 	uploadAndCreateSite: function(name, domain, content, isZip) {
-		return callUploadAndCreateSite(name, domain, content || '', isZip ? '1' : '0');
+		var self = this;
+		var CHUNK_THRESHOLD = 40000; // Use chunked upload for base64 > 40KB
+
+		// For small files, use direct upload
+		if (!content || content.length <= CHUNK_THRESHOLD) {
+			return callUploadAndCreateSite(name, domain, content || '', isZip ? '1' : '0');
+		}
+
+		// For large files, use chunked upload
+		var CHUNK_SIZE = 40000;
+		var uploadId = 'create_' + name.replace(/[^a-z0-9]/gi, '_') + '_' + Date.now();
+		var chunks = [];
+
+		for (var i = 0; i < content.length; i += CHUNK_SIZE) {
+			chunks.push(content.substring(i, i + CHUNK_SIZE));
+		}
+
+		var promise = Promise.resolve();
+		chunks.forEach(function(chunk, idx) {
+			promise = promise.then(function() {
+				return self.uploadChunk(uploadId, chunk, idx);
+			});
+		});
+
+		return promise.then(function() {
+			return callCreateSiteFromUpload(uploadId, name, domain, isZip ? '1' : '0');
+		});
 	},
 
 	unpublishSite: function(id) {

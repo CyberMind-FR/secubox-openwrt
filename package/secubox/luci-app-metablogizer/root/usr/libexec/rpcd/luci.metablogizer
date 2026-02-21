@@ -438,7 +438,7 @@ EOF
 		uci commit haproxy
 
 		# Regenerate HAProxy config and reload
-		reload_haproxy
+		reload_haproxy &
 		haproxy_configured=1
 	else
 		logger -t metablogizer "HAProxy not available, site created without proxy config"
@@ -522,7 +522,7 @@ method_delete_site() {
 
 		# Only reload if HAProxy is actually running
 		if haproxy_available; then
-			reload_haproxy
+			reload_haproxy &
 		fi
 	fi
 
@@ -967,6 +967,147 @@ method_upload_finalize() {
 		json_add_string "error" "Failed to decode and write file"
 		json_dump
 	fi
+}
+
+# Create site from chunked upload (for large files)
+method_create_site_from_upload() {
+	local tmpinput="/tmp/rpcd_mb_create_upload_$$.json"
+	cat > "$tmpinput"
+
+	local upload_id name domain is_zip
+	upload_id=$(jsonfilter -i "$tmpinput" -e '@.upload_id' 2>/dev/null)
+	name=$(jsonfilter -i "$tmpinput" -e '@.name' 2>/dev/null)
+	domain=$(jsonfilter -i "$tmpinput" -e '@.domain' 2>/dev/null)
+	is_zip=$(jsonfilter -i "$tmpinput" -e '@.is_zip' 2>/dev/null)
+	rm -f "$tmpinput"
+
+	# Sanitize upload_id
+	upload_id=$(echo "$upload_id" | sed 's/[^a-zA-Z0-9_]/_/g; s/^_*//; s/_*$//')
+
+	if [ -z "$upload_id" ] || [ -z "$name" ] || [ -z "$domain" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing upload_id, name, or domain"
+		json_dump
+		return
+	fi
+
+	local staging="/tmp/metablogizer_upload_${upload_id}.b64"
+	if [ ! -s "$staging" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "No upload data found for $upload_id"
+		json_dump
+		return
+	fi
+
+	# Sanitize name
+	local section_id="site_$(echo "$name" | sed 's/[^a-zA-Z0-9]/_/g')"
+
+	# Check if site already exists
+	if uci -q get "$UCI_CONFIG.$section_id" >/dev/null 2>&1; then
+		rm -f "$staging"
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Site with this name already exists"
+		json_dump
+		return
+	fi
+
+	SITES_ROOT=$(get_uci main sites_root "$SITES_ROOT")
+
+	# Create site directory
+	mkdir -p "$SITES_ROOT/$name"
+	umask 022
+
+	# Decode staged content and save
+	if [ "$is_zip" = "1" ]; then
+		local tmpzip="/tmp/metablog_upload_$$.zip"
+		base64 -d < "$staging" > "$tmpzip" 2>/dev/null
+		unzip -o "$tmpzip" -d "$SITES_ROOT/$name" >/dev/null 2>&1
+		rm -f "$tmpzip"
+	else
+		base64 -d < "$staging" > "$SITES_ROOT/$name/index.html" 2>/dev/null
+	fi
+	rm -f "$staging"
+
+	# Fix permissions
+	fix_permissions "$SITES_ROOT/$name"
+
+	# Create default index if none exists
+	if [ ! -f "$SITES_ROOT/$name/index.html" ]; then
+		cat > "$SITES_ROOT/$name/index.html" <<EOF
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>$name</title>
+</head>
+<body>
+    <h1>$name</h1>
+    <p>Site published with MetaBlogizer</p>
+</body>
+</html>
+EOF
+		chmod 644 "$SITES_ROOT/$name/index.html"
+	fi
+
+	# Get next port and create uhttpd instance
+	local port=$(get_next_port)
+	local server_address=$(uci -q get network.lan.ipaddr || echo "192.168.255.1")
+
+	uci set "uhttpd.metablog_${section_id}=uhttpd"
+	uci set "uhttpd.metablog_${section_id}.listen_http=0.0.0.0:$port"
+	uci set "uhttpd.metablog_${section_id}.home=$SITES_ROOT/$name"
+	uci set "uhttpd.metablog_${section_id}.index_page=index.html"
+	uci set "uhttpd.metablog_${section_id}.error_page=/index.html"
+	uci commit uhttpd
+	/etc/init.d/uhttpd reload 2>/dev/null
+
+	# Create UCI site config
+	uci set "$UCI_CONFIG.$section_id=site"
+	uci set "$UCI_CONFIG.$section_id.name=$name"
+	uci set "$UCI_CONFIG.$section_id.domain=$domain"
+	uci set "$UCI_CONFIG.$section_id.ssl=1"
+	uci set "$UCI_CONFIG.$section_id.enabled=1"
+	uci set "$UCI_CONFIG.$section_id.port=$port"
+	uci set "$UCI_CONFIG.$section_id.runtime=uhttpd"
+
+	# Create HAProxy backend if available
+	if haproxy_available; then
+		local backend_name="metablog_$(echo "$name" | sed 's/[^a-zA-Z0-9]/_/g')"
+
+		uci set "haproxy.$backend_name=backend"
+		uci set "haproxy.$backend_name.name=$backend_name"
+		uci set "haproxy.$backend_name.mode=http"
+		uci set "haproxy.$backend_name.balance=roundrobin"
+		uci set "haproxy.$backend_name.enabled=1"
+
+		local server_name="${backend_name}_srv"
+		uci set "haproxy.$server_name=server"
+		uci set "haproxy.$server_name.backend=$backend_name"
+		uci set "haproxy.$server_name.name=srv"
+		uci set "haproxy.$server_name.address=$server_address"
+		uci set "haproxy.$server_name.port=$port"
+		uci set "haproxy.$server_name.weight=100"
+		uci set "haproxy.$server_name.check=1"
+		uci set "haproxy.$server_name.enabled=1"
+
+		uci commit haproxy
+		reload_haproxy &
+	fi
+
+	uci commit "$UCI_CONFIG"
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "id" "$section_id"
+	json_add_string "name" "$name"
+	json_add_string "domain" "$domain"
+	json_add_int "port" "$port"
+	json_add_string "url" "https://$domain"
+	json_dump
 }
 
 # List files in a site
@@ -1592,7 +1733,7 @@ EOF
 	fi
 
 	# 4. Reload HAProxy
-	reload_haproxy
+	reload_haproxy &
 	repairs="$repairs haproxy_reloaded"
 
 	json_init
@@ -1726,7 +1867,7 @@ EOF
 		uci set "haproxy.$server_name.enabled=1"
 
 		uci commit haproxy
-		reload_haproxy
+		reload_haproxy &
 	fi
 
 	uci commit "$UCI_CONFIG"
@@ -1778,7 +1919,7 @@ method_unpublish_site() {
 		uci delete "haproxy.cert_$vhost_id" 2>/dev/null
 
 		uci commit haproxy
-		reload_haproxy
+		reload_haproxy &
 	fi
 
 	# Mark as unpublished in UCI
@@ -1830,7 +1971,7 @@ method_set_auth_required() {
 		if uci -q get "haproxy.$vhost_id" >/dev/null 2>&1; then
 			uci set "haproxy.$vhost_id.auth_required=$auth_required"
 			uci commit haproxy
-			reload_haproxy
+			reload_haproxy &
 		fi
 	fi
 
@@ -2352,6 +2493,7 @@ case "$1" in
 	"upload_file": { "id": "string", "filename": "string", "content": "string" },
 	"upload_chunk": { "upload_id": "string", "data": "string", "index": 0 },
 	"upload_finalize": { "upload_id": "string", "site_id": "string", "filename": "string" },
+	"create_site_from_upload": { "upload_id": "string", "name": "string", "domain": "string", "is_zip": "string" },
 	"list_files": { "id": "string" },
 	"get_settings": {},
 	"save_settings": { "enabled": "boolean", "nginx_container": "string", "sites_root": "string" },
@@ -2386,6 +2528,7 @@ EOF
 			upload_file)        method_upload_file ;;
 			upload_chunk)       method_upload_chunk ;;
 			upload_finalize)    method_upload_finalize ;;
+			create_site_from_upload) method_create_site_from_upload ;;
 			list_files)         method_list_files ;;
 			get_settings)       method_get_settings ;;
 			save_settings)      method_save_settings ;;
