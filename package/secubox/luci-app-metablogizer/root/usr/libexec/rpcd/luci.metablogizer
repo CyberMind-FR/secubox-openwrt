@@ -423,19 +423,33 @@ EOF
 		uci set "haproxy.$server_name.check=1"
 		uci set "haproxy.$server_name.enabled=1"
 
-		# 8. Create HAProxy vhost
+		# 8. Create HAProxy vhost (route through mitmproxy WAF)
 		local vhost_name=$(echo "$domain" | sed 's/[^a-zA-Z0-9]/_/g')
 		local acme_val="0"
 		[ "$ssl" = "1" ] && acme_val="1"
 
 		uci set "haproxy.$vhost_name=vhost"
 		uci set "haproxy.$vhost_name.domain=$domain"
-		uci set "haproxy.$vhost_name.backend=$backend_name"
+		uci set "haproxy.$vhost_name.backend=mitmproxy_inspector"
 		uci set "haproxy.$vhost_name.ssl=$ssl"
 		uci set "haproxy.$vhost_name.ssl_redirect=$ssl"
 		uci set "haproxy.$vhost_name.acme=$acme_val"
 		uci set "haproxy.$vhost_name.enabled=1"
 		uci commit haproxy
+
+		# Add mitmproxy route for WAF inspection
+		local routes_file="/srv/mitmproxy-in/haproxy-routes.json"
+		if [ -f "$routes_file" ]; then
+			# Add route: domain -> [server_address, server_port]
+			local tmp_routes="/tmp/routes_update_$$.json"
+			jsonfilter -i "$routes_file" -e '@' 2>/dev/null | \
+				sed "s/}$/,\"$domain\":[\"$server_address\",$server_port]}/" > "$tmp_routes" 2>/dev/null
+			if [ -s "$tmp_routes" ]; then
+				mv "$tmp_routes" "$routes_file"
+			else
+				rm -f "$tmp_routes"
+			fi
+		fi
 
 		# Regenerate HAProxy config and reload
 		reload_haproxy &
@@ -1094,7 +1108,32 @@ EOF
 		uci set "haproxy.$server_name.check=1"
 		uci set "haproxy.$server_name.enabled=1"
 
+		# Create HAProxy vhost (route through mitmproxy WAF)
+		local vhost_name=$(echo "$domain" | sed 's/[^a-zA-Z0-9]/_/g')
+		uci set "haproxy.$vhost_name=vhost"
+		uci set "haproxy.$vhost_name.domain=$domain"
+		uci set "haproxy.$vhost_name.backend=mitmproxy_inspector"
+		uci set "haproxy.$vhost_name.ssl=1"
+		uci set "haproxy.$vhost_name.ssl_redirect=1"
+		uci set "haproxy.$vhost_name.acme=1"
+		uci set "haproxy.$vhost_name.enabled=1"
+
 		uci commit haproxy
+
+		# Add mitmproxy route for WAF inspection
+		local routes_file="/srv/mitmproxy-in/haproxy-routes.json"
+		if [ -f "$routes_file" ]; then
+			# Add route: domain -> [server_address, port]
+			local tmp_routes="/tmp/routes_update_$$.json"
+			jsonfilter -i "$routes_file" -e '@' 2>/dev/null | \
+				sed "s/}$/,\"$domain\":[\"$server_address\",$port]}/" > "$tmp_routes" 2>/dev/null
+			if [ -s "$tmp_routes" ]; then
+				mv "$tmp_routes" "$routes_file"
+			else
+				rm -f "$tmp_routes"
+			fi
+		fi
+
 		reload_haproxy &
 	fi
 
@@ -1866,7 +1905,32 @@ EOF
 		uci set "haproxy.$server_name.check=1"
 		uci set "haproxy.$server_name.enabled=1"
 
+		# Create HAProxy vhost (route through mitmproxy WAF)
+		local vhost_name=$(echo "$domain" | sed 's/[^a-zA-Z0-9]/_/g')
+		uci set "haproxy.$vhost_name=vhost"
+		uci set "haproxy.$vhost_name.domain=$domain"
+		uci set "haproxy.$vhost_name.backend=mitmproxy_inspector"
+		uci set "haproxy.$vhost_name.ssl=1"
+		uci set "haproxy.$vhost_name.ssl_redirect=1"
+		uci set "haproxy.$vhost_name.acme=1"
+		uci set "haproxy.$vhost_name.enabled=1"
+
 		uci commit haproxy
+
+		# Add mitmproxy route for WAF inspection
+		local routes_file="/srv/mitmproxy-in/haproxy-routes.json"
+		if [ -f "$routes_file" ]; then
+			# Add route: domain -> [server_address, port]
+			local tmp_routes="/tmp/routes_update_$$.json"
+			jsonfilter -i "$routes_file" -e '@' 2>/dev/null | \
+				sed "s/}$/,\"$domain\":[\"$server_address\",$port]}/" > "$tmp_routes" 2>/dev/null
+			if [ -s "$tmp_routes" ]; then
+				mv "$tmp_routes" "$routes_file"
+			else
+				rm -f "$tmp_routes"
+			fi
+		fi
+
 		reload_haproxy &
 	fi
 

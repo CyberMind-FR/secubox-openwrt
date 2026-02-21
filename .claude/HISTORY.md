@@ -3088,3 +3088,12 @@ git checkout HEAD -- index.html
     - Installed Node.js (20.20.0) for yt-dlp JavaScript runtime support
     - Verified end-to-end import flow: YouTube → download → subtitles → PeerTube upload
 
+
+32. **MetaBlogizer Vhost Auto-Creation Fix (2026-02-22)**
+    - Fixed `create_site_from_upload` and `upload_and_create_site` methods missing HAProxy vhost creation.
+    - All three site creation methods now:
+      - Create HAProxy backend + server (direct to uhttpd port)
+      - Create HAProxy vhost pointing to `mitmproxy_inspector` (WAF routing)
+      - Add mitmproxy route in `/srv/mitmproxy-in/haproxy-routes.json`
+    - Ensures all MetaBlogizer sites go through WAF inspection (security policy compliance).
+    - Uploaded sites now immediately accessible via HTTPS domain.
