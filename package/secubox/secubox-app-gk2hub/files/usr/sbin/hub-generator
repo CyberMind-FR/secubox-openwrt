@@ -1,28 +1,27 @@
 #!/bin/sh
-# SecuBox Hub Generator v3 - Dynamic portal with categories and thumbnails
+# SecuBox Hub Generator v5 - MetaBlogizer + Streamlit + PeerTube videos
 
 OUTPUT="/www/gk2-hub/index.html"
 TEMP="/tmp/hub_gen_$$.html"
-CACHE_DIR="/tmp/hub-cache"
 DATE=$(date "+%Y-%m-%d %H:%M")
+PEERTUBE_API="http://192.168.255.1:9001/api/v1"
+PEERTUBE_URL="https://tube.gk2.secubox.in"
 
-mkdir -p "$CACHE_DIR"
-
-# Categorize site based on name
 categorize_site() {
     local name=$(echo "$1" | tr '[:upper:]' '[:lower:]')
     case "$name" in
         *intel*|*dgse*|*osint*|*threat*|*secu*|*raid*|*confid*|*mku*|*bdgse*|*camus*) echo "Intelligence" ;;
         *game*|*play*|*comic*|*virus*|*survie*) echo "Divertissement" ;;
-        *dev*|*code*|*git*|*sdlc*|*crt*|*fabric*) echo "Développement" ;;
+        *dev*|*code*|*git*|*sdlc*|*crt*|*fabric*|*hermes*) echo "Développement" ;;
         *doc*|*manual*|*guide*|*how*|*fm*|*bgp*|*lrh*|*bcf*) echo "Documentation" ;;
         *media*|*video*|*tube*|*stream*|*radio*|*lyrion*|*jellyfin*) echo "Média" ;;
         *blog*|*news*|*press*|*zine*|*flash*|*pub*) echo "Actualités" ;;
-        *cloud*|*file*|*nextcloud*) echo "Cloud" ;;
-        *admin*|*control*|*status*|*hub*|*glances*|*holo*) echo "Administration" ;;
+        *cloud*|*file*|*nextcloud*|*photo*) echo "Cloud" ;;
+        *admin*|*control*|*status*|*hub*|*glances*|*holo*|*console*|*evolution*) echo "Administration" ;;
         *money*|*coin*|*crypto*|*cgv*|*cpi*|*apr*) echo "Finance" ;;
         *geo*|*map*|*gondwana*|*earth*) echo "Géographie" ;;
-        *psy*|*oracle*|*yijing*|*bazi*|*equa*|*lunaquar*|*clock*) echo "Ésotérique" ;;
+        *psy*|*oracle*|*yijing*|*bazi*|*equa*|*lunaquar*|*clock*|*wuyun*|*yling*|*pix*|*tam*) echo "Ésotérique" ;;
+        *metabol*|*osint*|*generix*|*swg*|*ftvm*|*cpf*) echo "Outils" ;;
         *) echo "Projets" ;;
     esac
 }
@@ -40,11 +39,27 @@ get_emoji() {
         "Finance") echo "💰" ;;
         "Géographie") echo "🌍" ;;
         "Ésotérique") echo "🔮" ;;
+        "Outils") echo "🛠️" ;;
+        "Streamlit") echo "📊" ;;
+        "PeerTube") echo "🎥" ;;
         *) echo "📄" ;;
     esac
 }
 
-# Start HTML
+format_duration() {
+    local sec=$1
+    local min=$((sec / 60))
+    local s=$((sec % 60))
+    if [ $min -ge 60 ]; then
+        local h=$((min / 60))
+        min=$((min % 60))
+        printf "%d:%02d:%02d" $h $min $s
+    else
+        printf "%d:%02d" $min $s
+    fi
+}
+
+# HTML Header
 cat > "$TEMP" << 'HTMLHEAD'
 <!DOCTYPE html>
 <html lang="fr">
@@ -54,7 +69,7 @@ cat > "$TEMP" << 'HTMLHEAD'
 <title>GK² Hub — Portal SecuBox</title>
 <meta http-equiv="refresh" content="300">
 <style>
-:root{--bg:#0a0a0f;--surface:#12121a;--surface2:#1a1a24;--border:#2a2a3e;--accent:#00d4ff;--accent2:#7c3aed;--text:#e0e0e0;--muted:#888}
+:root{--bg:#0a0a0f;--surface:#12121a;--surface2:#1a1a24;--border:#2a2a3e;--accent:#00d4ff;--accent2:#7c3aed;--accent3:#10b981;--accent4:#f97316;--text:#e0e0e0;--muted:#888}
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh}
 .bg-grid{position:fixed;inset:0;background-image:linear-gradient(rgba(0,212,255,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,255,0.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0}
@@ -88,17 +103,28 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .view-compact .sites-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px}
 .site-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;text-decoration:none;color:inherit;display:flex;flex-direction:column;transition:all 0.3s}
 .site-card:hover{border-color:var(--accent);transform:translateY(-3px);box-shadow:0 10px 40px rgba(0,212,255,0.15)}
+.site-card.streamlit{border-color:var(--accent3)}
+.site-card.streamlit:hover{border-color:var(--accent3);box-shadow:0 10px 40px rgba(16,185,129,0.15)}
+.site-card.video{border-color:var(--accent4)}
+.site-card.video:hover{border-color:var(--accent4);box-shadow:0 10px 40px rgba(249,115,22,0.15)}
 .view-list .site-card{flex-direction:row}
 .card-preview{width:100%;height:120px;background:var(--surface2);position:relative;overflow:hidden}
 .view-list .card-preview{width:160px;flex-shrink:0}
 .view-compact .card-preview{height:70px}
 .card-preview iframe{width:200%;height:200%;transform:scale(0.5);transform-origin:0 0;border:none;pointer-events:none}
-.card-preview .emoji-placeholder{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:2.5rem;background:linear-gradient(135deg,var(--surface2),var(--bg))}
+.card-preview img{width:100%;height:100%;object-fit:cover}
+.card-preview .duration{position:absolute;bottom:4px;right:4px;background:rgba(0,0,0,0.8);color:#fff;padding:2px 6px;border-radius:4px;font-size:0.7rem;font-family:monospace}
+.card-preview .play-icon{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:48px;height:48px;background:rgba(0,0,0,0.7);border-radius:50%;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.2s}
+.site-card.video:hover .play-icon{opacity:1}
+.play-icon:after{content:'';border-style:solid;border-width:10px 0 10px 16px;border-color:transparent transparent transparent #fff;margin-left:4px}
 .card-content{padding:12px;flex:1}
 .view-compact .card-content{padding:8px}
 .card-title{font-weight:600;font-size:0.9rem;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .card-domain{font-size:0.7rem;color:var(--accent);font-family:monospace;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.card-cat{display:inline-block;padding:2px 6px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:4px;font-size:0.6rem;color:#fff;font-weight:600}
+.card-cat{display:inline-block;padding:2px 6px;border-radius:4px;font-size:0.6rem;color:#fff;font-weight:600;margin-right:4px}
+.card-cat.meta{background:linear-gradient(135deg,var(--accent),var(--accent2))}
+.card-cat.streamlit{background:linear-gradient(135deg,var(--accent3),#059669)}
+.card-cat.video{background:linear-gradient(135deg,var(--accent4),#ea580c)}
 .footer{margin-top:40px;padding:20px 0;border-top:1px solid var(--border);text-align:center;color:var(--muted);font-size:0.8rem}
 .footer a{color:var(--accent);text-decoration:none}
 @media(max-width:768px){.header{flex-direction:column;align-items:flex-start}.view-list .site-card{flex-direction:column}.view-list .card-preview{width:100%}}
@@ -129,38 +155,111 @@ cat >> "$TEMP" << EOF
 </div>
 EOF
 
-# Collect sites
+# Collect all sites
 SITES_FILE="/tmp/hub_sites_$$.txt"
 CAT_FILE="/tmp/hub_cats_$$.txt"
+VIDEOS_FILE="/tmp/hub_videos_$$.txt"
 > "$SITES_FILE"
 > "$CAT_FILE"
+> "$VIDEOS_FILE"
 
+# MetaBlogizer sites
 uci show metablogizer 2>/dev/null | grep "=site$" | sed "s/metablogizer\.\(.*\)=site/\1/" | while read site; do
     name=$(uci -q get "metablogizer.$site.name")
     domain=$(uci -q get "metablogizer.$site.domain")
     enabled=$(uci -q get "metablogizer.$site.enabled")
-    
     [ "$enabled" != "1" ] && continue
     [ -z "$domain" ] && continue
-    
     cat=$(categorize_site "$name")
     emoji=$(get_emoji "$cat")
-    
     echo "$cat" >> "$CAT_FILE"
-    printf '%s\t%s\t%s\t%s\n' "$domain" "$name" "$cat" "$emoji" >> "$SITES_FILE"
+    printf '%s\t%s\t%s\t%s\tmeta\t\t\n' "$domain" "$name" "$cat" "$emoji" >> "$SITES_FILE"
 done
+
+# Streamlit instances
+uci show streamlit 2>/dev/null | grep "=instance$" | sed "s/streamlit\.\(.*\)=instance/\1/" | while read app; do
+    name=$(uci -q get "streamlit.$app.name")
+    domain=$(uci -q get "streamlit.$app.domain")
+    enabled=$(uci -q get "streamlit.$app.enabled")
+    [ "$enabled" != "1" ] && continue
+    [ -z "$domain" ] && continue
+    cat=$(categorize_site "$name")
+    emoji=$(get_emoji "$cat")
+    echo "$cat" >> "$CAT_FILE"
+    printf '%s\t%s\t%s\t%s\tstreamlit\t\t\n' "$domain" "$name" "$cat" "$emoji" >> "$SITES_FILE"
+done
+
+# PeerTube videos
+VIDEOS_JSON=$(curl -s "${PEERTUBE_API}/videos?count=50" 2>/dev/null)
+TOTAL_VIDEOS=0
+if [ -n "$VIDEOS_JSON" ]; then
+    # Parse videos using jsonfilter
+    echo "$VIDEOS_JSON" | jsonfilter -e '@.data[*]' 2>/dev/null | while read -r video_line; do
+        # Skip if empty
+        [ -z "$video_line" ] && continue
+
+        uuid=$(echo "$VIDEOS_JSON" | jsonfilter -e "@.data[$TOTAL_VIDEOS].uuid" 2>/dev/null)
+        name=$(echo "$VIDEOS_JSON" | jsonfilter -e "@.data[$TOTAL_VIDEOS].name" 2>/dev/null)
+        thumb=$(echo "$VIDEOS_JSON" | jsonfilter -e "@.data[$TOTAL_VIDEOS].thumbnailPath" 2>/dev/null)
+        duration=$(echo "$VIDEOS_JSON" | jsonfilter -e "@.data[$TOTAL_VIDEOS].duration" 2>/dev/null)
+
+        [ -z "$uuid" ] && break
+        [ -z "$name" ] && continue
+
+        # Format duration
+        dur_fmt=$(format_duration "$duration")
+
+        # Video URL and thumbnail
+        video_url="${PEERTUBE_URL}/w/${uuid}"
+        thumb_url="${PEERTUBE_URL}${thumb}"
+
+        echo "Média" >> "$CAT_FILE"
+        printf '%s\t%s\tMédia\t🎥\tvideo\t%s\t%s\n' "$video_url" "$name" "$thumb_url" "$dur_fmt" >> "$VIDEOS_FILE"
+
+        TOTAL_VIDEOS=$((TOTAL_VIDEOS + 1))
+    done
+
+    # Alternative parsing if jsonfilter fails
+    if [ ! -s "$VIDEOS_FILE" ]; then
+        # Use simple sed/awk parsing
+        echo "$VIDEOS_JSON" | sed 's/},/}\n/g' | while read -r line; do
+            uuid=$(echo "$line" | sed -n 's/.*"uuid":"\([^"]*\)".*/\1/p')
+            name=$(echo "$line" | sed -n 's/.*"name":"\([^"]*\)".*/\1/p' | head -1)
+            thumb=$(echo "$line" | sed -n 's/.*"thumbnailPath":"\([^"]*\)".*/\1/p')
+            duration=$(echo "$line" | sed -n 's/.*"duration":\([0-9]*\).*/\1/p')
+
+            [ -z "$uuid" ] && continue
+            [ -z "$name" ] && continue
+
+            dur_fmt=$(format_duration "${duration:-0}")
+            video_url="${PEERTUBE_URL}/w/${uuid}"
+            thumb_url="${PEERTUBE_URL}${thumb}"
+
+            echo "Média" >> "$CAT_FILE"
+            printf '%s\t%s\tMédia\t🎥\tvideo\t%s\t%s\n' "$video_url" "$name" "$thumb_url" "$dur_fmt" >> "$VIDEOS_FILE"
+        done
+    fi
+fi
+
+# Merge videos into sites file
+cat "$VIDEOS_FILE" >> "$SITES_FILE" 2>/dev/null
 
 # Stats
 TOTAL=$(wc -l < "$SITES_FILE" | tr -d ' ')
-[ -z "$TOTAL" ] && TOTAL=0
-CAT_COUNTS=$(sort "$CAT_FILE" 2>/dev/null | uniq -c | sort -rn)
+TOTAL_META=$(grep "	meta	" "$SITES_FILE" | wc -l | tr -d ' ')
+TOTAL_STREAMLIT=$(grep "	streamlit	" "$SITES_FILE" | wc -l | tr -d ' ')
+TOTAL_VIDEOS=$(grep "	video	" "$SITES_FILE" | wc -l | tr -d ' ')
+CAT_COUNTS=$(grep -v "^$" "$CAT_FILE" 2>/dev/null | sort | uniq -c | sort -rn)
 
 # Stats bar
 cat >> "$TEMP" << EOF
 <div class="stats-bar">
-    <div class="stat"><span class="stat-value">$TOTAL</span><span class="stat-label">Sites</span></div>
+    <div class="stat"><span class="stat-value">$TOTAL</span><span class="stat-label">Total</span></div>
+    <div class="stat"><span class="stat-value">$TOTAL_META</span><span class="stat-label">Sites</span></div>
+    <div class="stat"><span class="stat-value">$TOTAL_STREAMLIT</span><span class="stat-label">Streamlit</span></div>
+    <div class="stat"><span class="stat-value">$TOTAL_VIDEOS</span><span class="stat-label">Vidéos</span></div>
 EOF
-echo "$CAT_COUNTS" | head -5 | while read count cat; do
+echo "$CAT_COUNTS" | head -3 | while read count cat; do
     [ -n "$cat" ] && printf '    <div class="stat"><span class="stat-value">%s</span><span class="stat-label">%s</span></div>\n' "$count" "$cat" >> "$TEMP"
 done
 echo "</div>" >> "$TEMP"
@@ -168,6 +267,9 @@ echo "</div>" >> "$TEMP"
 # Tag cloud
 echo '<div class="tag-cloud" id="tagCloud">' >> "$TEMP"
 echo '<span class="tag active" data-cat="all">Tous</span>' >> "$TEMP"
+echo '<span class="tag" data-cat="meta">📝 Sites</span>' >> "$TEMP"
+echo '<span class="tag" data-cat="streamlit">📊 Streamlit</span>' >> "$TEMP"
+echo '<span class="tag" data-cat="video">🎥 Vidéos</span>' >> "$TEMP"
 echo "$CAT_COUNTS" | while read count cat; do
     [ -n "$cat" ] && printf '<span class="tag" data-cat="%s">%s<span class="count">%s</span></span>\n' "$cat" "$cat" "$count" >> "$TEMP"
 done
@@ -176,27 +278,53 @@ echo '</div>' >> "$TEMP"
 # Category tabs
 echo '<div class="category-tabs">' >> "$TEMP"
 printf '<div class="cat-tab active" data-cat="all">📁 Tous<span class="count">%s</span></div>\n' "$TOTAL" >> "$TEMP"
-echo "$CAT_COUNTS" | while read count cat; do
+printf '<div class="cat-tab" data-cat="meta">📝 Sites<span class="count">%s</span></div>\n' "$TOTAL_META" >> "$TEMP"
+printf '<div class="cat-tab" data-cat="streamlit">📊 Streamlit<span class="count">%s</span></div>\n' "$TOTAL_STREAMLIT" >> "$TEMP"
+printf '<div class="cat-tab" data-cat="video">🎥 Vidéos<span class="count">%s</span></div>\n' "$TOTAL_VIDEOS" >> "$TEMP"
+echo "$CAT_COUNTS" | head -6 | while read count cat; do
     emoji=$(get_emoji "$cat")
     [ -n "$cat" ] && printf '<div class="cat-tab" data-cat="%s">%s %s<span class="count">%s</span></div>\n' "$cat" "$emoji" "$cat" "$count" >> "$TEMP"
 done
 echo '</div>' >> "$TEMP"
 
-# Sites grid with iframe preview
+# Sites grid
 echo '<div class="view-grid" id="viewContainer"><div class="sites-grid" id="sitesGrid">' >> "$TEMP"
 
-while IFS='	' read -r domain name cat emoji; do
-    [ -z "$domain" ] && continue
-    
+while IFS='	' read -r url name cat emoji type thumb duration; do
+    [ -z "$url" ] && continue
+
+    if [ "$type" = "streamlit" ]; then
+        card_class="site-card streamlit"
+        cat_class="card-cat streamlit"
+        preview_html="<iframe src=\"https://$url/\" loading=\"lazy\" sandbox></iframe>"
+    elif [ "$type" = "video" ]; then
+        card_class="site-card video"
+        cat_class="card-cat video"
+        preview_html="<img src=\"$thumb\" alt=\"$name\" loading=\"lazy\"><div class=\"play-icon\"></div><span class=\"duration\">$duration</span>"
+    else
+        card_class="site-card"
+        cat_class="card-cat meta"
+        preview_html="<iframe src=\"https://$url/\" loading=\"lazy\" sandbox></iframe>"
+    fi
+
+    # URL handling - videos already have full URL
+    if [ "$type" = "video" ]; then
+        link_url="$url"
+        domain_display="tube.gk2.secubox.in"
+    else
+        link_url="https://$url/"
+        domain_display="$url"
+    fi
+
     cat >> "$TEMP" << CARD
-<a href="https://$domain/" class="site-card" target="_blank" data-category="$cat" data-search="$domain $name $cat">
+<a href="$link_url" class="$card_class" target="_blank" data-category="$cat" data-type="$type" data-search="$url $name $cat $type">
     <div class="card-preview">
-        <iframe src="https://$domain/" loading="lazy" sandbox></iframe>
+        $preview_html
     </div>
     <div class="card-content">
         <div class="card-title">$name</div>
-        <div class="card-domain">$domain</div>
-        <span class="card-cat">$emoji $cat</span>
+        <div class="card-domain">$domain_display</div>
+        <span class="$cat_class">$emoji $cat</span>
     </div>
 </a>
 CARD
@@ -214,28 +342,31 @@ document.addEventListener('DOMContentLoaded',function(){
     const cards=document.querySelectorAll('.site-card');
     const search=document.getElementById('searchBox');
     const cloud=document.getElementById('tagCloud');
-    
+
     document.querySelectorAll('.view-btn[data-view]').forEach(b=>b.onclick=function(){
         document.querySelectorAll('.view-btn[data-view]').forEach(x=>x.classList.remove('active'));
         this.classList.add('active');
         container.className='view-'+this.dataset.view;
     });
-    
+
     document.getElementById('toggleCloud').onclick=function(){
         cloud.classList.toggle('visible');
         this.classList.toggle('active');
     };
-    
+
     function filter(cat){
-        cards.forEach(c=>c.style.display=(cat==='all'||c.dataset.category===cat)?'':'none');
+        cards.forEach(c=>{
+            let show = cat==='all' || c.dataset.category===cat || c.dataset.type===cat;
+            c.style.display = show ? '' : 'none';
+        });
     }
-    
+
     document.querySelectorAll('.cat-tab,.tag').forEach(t=>t.onclick=function(){
         document.querySelectorAll('.cat-tab,.tag').forEach(x=>x.classList.remove('active'));
         this.classList.add('active');
         filter(this.dataset.cat);
     });
-    
+
     search.oninput=function(){
         const q=this.value.toLowerCase();
         cards.forEach(c=>c.style.display=c.dataset.search.toLowerCase().includes(q)?'':'none');
@@ -246,7 +377,7 @@ document.addEventListener('DOMContentLoaded',function(){
 </html>
 FOOTER
 
-rm -f "$SITES_FILE" "$CAT_FILE"
+rm -f "$SITES_FILE" "$CAT_FILE" "$VIDEOS_FILE"
 mv "$TEMP" "$OUTPUT"
 chmod 644 "$OUTPUT"
-logger -t hub-generator "Hub v3: $TOTAL sites"
+logger -t hub-generator "Hub v5: $TOTAL items ($TOTAL_META sites + $TOTAL_STREAMLIT streamlit + $TOTAL_VIDEOS videos)"

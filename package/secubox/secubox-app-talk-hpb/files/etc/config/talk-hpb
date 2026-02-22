@@ -1,0 +1,20 @@
+config talk-hpb 'main'
+	option enabled '0'
+	option container_name 'nextcloud-talk-hpb'
+	option image 'ghcr.io/nextcloud-releases/aio-talk:latest'
+
+config server 'server'
+	option nc_domain ''
+	option signaling_domain ''
+	option signaling_port '8081'
+	option talk_port '3478'
+
+config secrets 'secrets'
+	option turn_secret ''
+	option signaling_secret ''
+	option internal_secret ''
+
+config turn 'turn'
+	option enabled '1'
+	option udp '1'
+	option tcp '1'
