@@ -3097,3 +3097,19 @@ git checkout HEAD -- index.html
       - Add mitmproxy route in `/srv/mitmproxy-in/haproxy-routes.json`
     - Ensures all MetaBlogizer sites go through WAF inspection (security policy compliance).
     - Uploaded sites now immediately accessible via HTTPS domain.
+
+33. **GK2 Hub Generator v3 (2026-02-22)**
+    - Complete rewrite of hub-generator with dynamic multi-view portal.
+    - **Features:**
+      - Automatic categorization: Intelligence, Développement, Documentation, Finance, Média, etc.
+      - Iframe thumbnail previews showing real site content
+      - Tag cloud with category counts
+      - Category tabs with emoji indicators
+      - Instant search by domain/name/category
+      - Three view modes: Grid, List, Compact
+      - Auto-refresh every 5 minutes via cron
+    - Created explicit HAProxy vhosts for all 54 MetaBlogizer sites with `waf_bypass=1` and `priority=50`.
+    - Fixed wildcard `.gk2.secubox.in` routing to use `vortex_hub` with `priority=999` (processed last).
+    - Fixed missing mitmproxy routes for `admin.gk2.secubox.in` and `hub.gk2.secubox.in`.
+    - **Files:**
+      - `secubox-app-gk2hub/files/usr/sbin/hub-generator` (new)

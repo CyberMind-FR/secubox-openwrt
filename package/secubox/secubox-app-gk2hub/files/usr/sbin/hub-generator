@@ -1,0 +1,252 @@
+#!/bin/sh
+# SecuBox Hub Generator v3 - Dynamic portal with categories and thumbnails
+
+OUTPUT="/www/gk2-hub/index.html"
+TEMP="/tmp/hub_gen_$$.html"
+CACHE_DIR="/tmp/hub-cache"
+DATE=$(date "+%Y-%m-%d %H:%M")
+
+mkdir -p "$CACHE_DIR"
+
+# Categorize site based on name
+categorize_site() {
+    local name=$(echo "$1" | tr '[:upper:]' '[:lower:]')
+    case "$name" in
+        *intel*|*dgse*|*osint*|*threat*|*secu*|*raid*|*confid*|*mku*|*bdgse*|*camus*) echo "Intelligence" ;;
+        *game*|*play*|*comic*|*virus*|*survie*) echo "Divertissement" ;;
+        *dev*|*code*|*git*|*sdlc*|*crt*|*fabric*) echo "Développement" ;;
+        *doc*|*manual*|*guide*|*how*|*fm*|*bgp*|*lrh*|*bcf*) echo "Documentation" ;;
+        *media*|*video*|*tube*|*stream*|*radio*|*lyrion*|*jellyfin*) echo "Média" ;;
+        *blog*|*news*|*press*|*zine*|*flash*|*pub*) echo "Actualités" ;;
+        *cloud*|*file*|*nextcloud*) echo "Cloud" ;;
+        *admin*|*control*|*status*|*hub*|*glances*|*holo*) echo "Administration" ;;
+        *money*|*coin*|*crypto*|*cgv*|*cpi*|*apr*) echo "Finance" ;;
+        *geo*|*map*|*gondwana*|*earth*) echo "Géographie" ;;
+        *psy*|*oracle*|*yijing*|*bazi*|*equa*|*lunaquar*|*clock*) echo "Ésotérique" ;;
+        *) echo "Projets" ;;
+    esac
+}
+
+get_emoji() {
+    case "$1" in
+        "Intelligence") echo "🔍" ;;
+        "Divertissement") echo "🎮" ;;
+        "Développement") echo "💻" ;;
+        "Documentation") echo "📚" ;;
+        "Média") echo "🎬" ;;
+        "Actualités") echo "📰" ;;
+        "Cloud") echo "☁️" ;;
+        "Administration") echo "⚙️" ;;
+        "Finance") echo "💰" ;;
+        "Géographie") echo "🌍" ;;
+        "Ésotérique") echo "🔮" ;;
+        *) echo "📄" ;;
+    esac
+}
+
+# Start HTML
+cat > "$TEMP" << 'HTMLHEAD'
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GK² Hub — Portal SecuBox</title>
+<meta http-equiv="refresh" content="300">
+<style>
+:root{--bg:#0a0a0f;--surface:#12121a;--surface2:#1a1a24;--border:#2a2a3e;--accent:#00d4ff;--accent2:#7c3aed;--text:#e0e0e0;--muted:#888}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh}
+.bg-grid{position:fixed;inset:0;background-image:linear-gradient(rgba(0,212,255,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,255,0.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0}
+.container{max-width:1600px;margin:0 auto;padding:20px;position:relative;z-index:1}
+.header{display:flex;justify-content:space-between;align-items:center;padding:20px 0;border-bottom:1px solid var(--border);margin-bottom:20px;flex-wrap:wrap;gap:15px}
+.logo{display:flex;align-items:center;gap:12px}
+.logo-icon{width:48px;height:48px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:12px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1.1rem;color:#fff}
+.logo-text{font-size:1.4rem;font-weight:700}
+.logo-text span{color:var(--accent)}
+.meta-info{font-size:0.8rem;color:var(--muted)}
+.controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.view-btn{padding:8px 16px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);cursor:pointer;transition:all 0.2s;font-size:0.85rem}
+.view-btn:hover,.view-btn.active{background:var(--accent);color:#000;border-color:var(--accent)}
+.search-box{padding:8px 16px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);width:200px}
+.search-box:focus{outline:none;border-color:var(--accent)}
+.tag-cloud{display:none;flex-wrap:wrap;gap:8px;padding:20px;background:var(--surface);border-radius:12px;margin-bottom:20px;justify-content:center}
+.tag-cloud.visible{display:flex}
+.tag{padding:6px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;font-size:0.8rem;cursor:pointer;transition:all 0.2s}
+.tag:hover,.tag.active{background:var(--accent);color:#000;border-color:var(--accent)}
+.tag .count{font-size:0.7rem;opacity:0.7;margin-left:4px}
+.stats-bar{display:flex;gap:20px;padding:15px 20px;background:var(--surface);border-radius:12px;margin-bottom:20px;flex-wrap:wrap}
+.stat{display:flex;align-items:center;gap:8px}
+.stat-value{color:var(--accent);font-weight:700;font-size:1.2rem}
+.stat-label{color:var(--muted);font-size:0.8rem}
+.category-tabs{display:flex;gap:5px;margin-bottom:20px;overflow-x:auto;padding-bottom:10px}
+.cat-tab{padding:10px 20px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);cursor:pointer;white-space:nowrap;transition:all 0.2s;font-size:0.85rem}
+.cat-tab:hover,.cat-tab.active{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border-color:transparent}
+.cat-tab .count{background:rgba(255,255,255,0.2);padding:2px 8px;border-radius:10px;font-size:0.75rem;margin-left:8px}
+.sites-grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+.view-list .sites-grid{grid-template-columns:1fr}
+.view-compact .sites-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px}
+.site-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;text-decoration:none;color:inherit;display:flex;flex-direction:column;transition:all 0.3s}
+.site-card:hover{border-color:var(--accent);transform:translateY(-3px);box-shadow:0 10px 40px rgba(0,212,255,0.15)}
+.view-list .site-card{flex-direction:row}
+.card-preview{width:100%;height:120px;background:var(--surface2);position:relative;overflow:hidden}
+.view-list .card-preview{width:160px;flex-shrink:0}
+.view-compact .card-preview{height:70px}
+.card-preview iframe{width:200%;height:200%;transform:scale(0.5);transform-origin:0 0;border:none;pointer-events:none}
+.card-preview .emoji-placeholder{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:2.5rem;background:linear-gradient(135deg,var(--surface2),var(--bg))}
+.card-content{padding:12px;flex:1}
+.view-compact .card-content{padding:8px}
+.card-title{font-weight:600;font-size:0.9rem;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-domain{font-size:0.7rem;color:var(--accent);font-family:monospace;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-cat{display:inline-block;padding:2px 6px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:4px;font-size:0.6rem;color:#fff;font-weight:600}
+.footer{margin-top:40px;padding:20px 0;border-top:1px solid var(--border);text-align:center;color:var(--muted);font-size:0.8rem}
+.footer a{color:var(--accent);text-decoration:none}
+@media(max-width:768px){.header{flex-direction:column;align-items:flex-start}.view-list .site-card{flex-direction:column}.view-list .card-preview{width:100%}}
+</style>
+</head>
+<body>
+<div class="bg-grid"></div>
+<div class="container">
+HTMLHEAD
+
+# Header
+cat >> "$TEMP" << EOF
+<div class="header">
+    <div class="logo">
+        <div class="logo-icon">GK²</div>
+        <div>
+            <div class="logo-text">Secu<span>Box</span> Hub</div>
+            <div class="meta-info">$DATE — Auto-refresh 5min</div>
+        </div>
+    </div>
+    <div class="controls">
+        <input type="text" class="search-box" placeholder="🔍 Rechercher..." id="searchBox">
+        <button class="view-btn active" data-view="grid">▦ Grille</button>
+        <button class="view-btn" data-view="list">☰ Liste</button>
+        <button class="view-btn" data-view="compact">▪ Compact</button>
+        <button class="view-btn" id="toggleCloud">☁ Tags</button>
+    </div>
+</div>
+EOF
+
+# Collect sites
+SITES_FILE="/tmp/hub_sites_$$.txt"
+CAT_FILE="/tmp/hub_cats_$$.txt"
+> "$SITES_FILE"
+> "$CAT_FILE"
+
+uci show metablogizer 2>/dev/null | grep "=site$" | sed "s/metablogizer\.\(.*\)=site/\1/" | while read site; do
+    name=$(uci -q get "metablogizer.$site.name")
+    domain=$(uci -q get "metablogizer.$site.domain")
+    enabled=$(uci -q get "metablogizer.$site.enabled")
+    
+    [ "$enabled" != "1" ] && continue
+    [ -z "$domain" ] && continue
+    
+    cat=$(categorize_site "$name")
+    emoji=$(get_emoji "$cat")
+    
+    echo "$cat" >> "$CAT_FILE"
+    printf '%s\t%s\t%s\t%s\n' "$domain" "$name" "$cat" "$emoji" >> "$SITES_FILE"
+done
+
+# Stats
+TOTAL=$(wc -l < "$SITES_FILE" | tr -d ' ')
+[ -z "$TOTAL" ] && TOTAL=0
+CAT_COUNTS=$(sort "$CAT_FILE" 2>/dev/null | uniq -c | sort -rn)
+
+# Stats bar
+cat >> "$TEMP" << EOF
+<div class="stats-bar">
+    <div class="stat"><span class="stat-value">$TOTAL</span><span class="stat-label">Sites</span></div>
+EOF
+echo "$CAT_COUNTS" | head -5 | while read count cat; do
+    [ -n "$cat" ] && printf '    <div class="stat"><span class="stat-value">%s</span><span class="stat-label">%s</span></div>\n' "$count" "$cat" >> "$TEMP"
+done
+echo "</div>" >> "$TEMP"
+
+# Tag cloud
+echo '<div class="tag-cloud" id="tagCloud">' >> "$TEMP"
+echo '<span class="tag active" data-cat="all">Tous</span>' >> "$TEMP"
+echo "$CAT_COUNTS" | while read count cat; do
+    [ -n "$cat" ] && printf '<span class="tag" data-cat="%s">%s<span class="count">%s</span></span>\n' "$cat" "$cat" "$count" >> "$TEMP"
+done
+echo '</div>' >> "$TEMP"
+
+# Category tabs
+echo '<div class="category-tabs">' >> "$TEMP"
+printf '<div class="cat-tab active" data-cat="all">📁 Tous<span class="count">%s</span></div>\n' "$TOTAL" >> "$TEMP"
+echo "$CAT_COUNTS" | while read count cat; do
+    emoji=$(get_emoji "$cat")
+    [ -n "$cat" ] && printf '<div class="cat-tab" data-cat="%s">%s %s<span class="count">%s</span></div>\n' "$cat" "$emoji" "$cat" "$count" >> "$TEMP"
+done
+echo '</div>' >> "$TEMP"
+
+# Sites grid with iframe preview
+echo '<div class="view-grid" id="viewContainer"><div class="sites-grid" id="sitesGrid">' >> "$TEMP"
+
+while IFS='	' read -r domain name cat emoji; do
+    [ -z "$domain" ] && continue
+    
+    cat >> "$TEMP" << CARD
+<a href="https://$domain/" class="site-card" target="_blank" data-category="$cat" data-search="$domain $name $cat">
+    <div class="card-preview">
+        <iframe src="https://$domain/" loading="lazy" sandbox></iframe>
+    </div>
+    <div class="card-content">
+        <div class="card-title">$name</div>
+        <div class="card-domain">$domain</div>
+        <span class="card-cat">$emoji $cat</span>
+    </div>
+</a>
+CARD
+done < "$SITES_FILE"
+
+echo '</div></div>' >> "$TEMP"
+
+# Footer and JS
+cat >> "$TEMP" << 'FOOTER'
+<div class="footer">SecuBox Hub — <a href="https://cybermind.fr">CyberMind.FR</a></div>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded',function(){
+    const container=document.getElementById('viewContainer');
+    const cards=document.querySelectorAll('.site-card');
+    const search=document.getElementById('searchBox');
+    const cloud=document.getElementById('tagCloud');
+    
+    document.querySelectorAll('.view-btn[data-view]').forEach(b=>b.onclick=function(){
+        document.querySelectorAll('.view-btn[data-view]').forEach(x=>x.classList.remove('active'));
+        this.classList.add('active');
+        container.className='view-'+this.dataset.view;
+    });
+    
+    document.getElementById('toggleCloud').onclick=function(){
+        cloud.classList.toggle('visible');
+        this.classList.toggle('active');
+    };
+    
+    function filter(cat){
+        cards.forEach(c=>c.style.display=(cat==='all'||c.dataset.category===cat)?'':'none');
+    }
+    
+    document.querySelectorAll('.cat-tab,.tag').forEach(t=>t.onclick=function(){
+        document.querySelectorAll('.cat-tab,.tag').forEach(x=>x.classList.remove('active'));
+        this.classList.add('active');
+        filter(this.dataset.cat);
+    });
+    
+    search.oninput=function(){
+        const q=this.value.toLowerCase();
+        cards.forEach(c=>c.style.display=c.dataset.search.toLowerCase().includes(q)?'':'none');
+    };
+});
+</script>
+</body>
+</html>
+FOOTER
+
+rm -f "$SITES_FILE" "$CAT_FILE"
+mv "$TEMP" "$OUTPUT"
+chmod 644 "$OUTPUT"
+logger -t hub-generator "Hub v3: $TOTAL sites"
