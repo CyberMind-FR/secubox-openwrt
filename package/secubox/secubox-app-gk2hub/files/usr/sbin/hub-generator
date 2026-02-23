@@ -125,6 +125,13 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .card-cat.meta{background:linear-gradient(135deg,var(--accent),var(--accent2))}
 .card-cat.streamlit{background:linear-gradient(135deg,var(--accent3),#059669)}
 .card-cat.video{background:linear-gradient(135deg,var(--accent4),#ea580c)}
+.lock-badge{position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.7);padding:4px 8px;border-radius:4px;font-size:0.8rem}
+.site-card[data-protected]{display:none}
+.site-card[data-protected].unlocked{display:flex}
+.login-banner{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 20px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.login-banner.hidden{display:none}
+.login-banner a{color:var(--accent);text-decoration:none;padding:6px 16px;border:1px solid var(--accent);border-radius:6px}
+.login-banner a:hover{background:var(--accent);color:#000}
 .footer{margin-top:40px;padding:20px 0;border-top:1px solid var(--border);text-align:center;color:var(--muted);font-size:0.8rem}
 .footer a{color:var(--accent);text-decoration:none}
 @media(max-width:768px){.header{flex-direction:column;align-items:flex-start}.view-list .site-card{flex-direction:column}.view-list .card-preview{width:100%}}
@@ -153,6 +160,10 @@ cat >> "$TEMP" << EOF
         <button class="view-btn" id="toggleCloud">☁ Tags</button>
     </div>
 </div>
+<div class="login-banner" id="loginBanner">
+    <span>🔒 Certains contenus nécessitent une authentification</span>
+    <a href="/login.html">Se connecter</a>
+</div>
 EOF
 
 # Collect all sites
@@ -168,12 +179,16 @@ uci show metablogizer 2>/dev/null | grep "=site$" | sed "s/metablogizer\.\(.*\)=
     name=$(uci -q get "metablogizer.$site.name")
     domain=$(uci -q get "metablogizer.$site.domain")
     enabled=$(uci -q get "metablogizer.$site.enabled")
+    auth_required=$(uci -q get "metablogizer.$site.auth_required")
     [ "$enabled" != "1" ] && continue
     [ -z "$domain" ] && continue
     cat=$(categorize_site "$name")
     emoji=$(get_emoji "$cat")
     echo "$cat" >> "$CAT_FILE"
-    printf '%s\t%s\t%s\t%s\tmeta\t\t\n' "$domain" "$name" "$cat" "$emoji" >> "$SITES_FILE"
+    # 7th field: protected (1 if auth_required)
+    protected=""
+    [ "$auth_required" = "1" ] && protected="protected"
+    printf '%s\t%s\t%s\t%s\tmeta\t\t%s\n' "$domain" "$name" "$cat" "$emoji" "$protected" >> "$SITES_FILE"
 done
 
 # Streamlit instances
@@ -290,8 +305,22 @@ echo '</div>' >> "$TEMP"
 # Sites grid
 echo '<div class="view-grid" id="viewContainer"><div class="sites-grid" id="sitesGrid">' >> "$TEMP"
 
-while IFS='	' read -r url name cat emoji type thumb duration; do
+while IFS='	' read -r url name cat emoji type thumb protected; do
     [ -z "$url" ] && continue
+
+    # For videos, 'thumb' is thumbnail URL and 'protected' is duration
+    duration=""
+    if [ "$type" = "video" ]; then
+        duration="$protected"
+        protected=""
+    fi
+
+    protected_attr=""
+    protected_badge=""
+    if [ "$protected" = "protected" ]; then
+        protected_attr="data-protected=\"1\""
+        protected_badge="<span class=\"lock-badge\">🔒</span>"
+    fi
 
     if [ "$type" = "streamlit" ]; then
         card_class="site-card streamlit"
@@ -317,9 +346,10 @@ while IFS='	' read -r url name cat emoji type thumb duration; do
     fi
 
     cat >> "$TEMP" << CARD
-<a href="$link_url" class="$card_class" target="_blank" data-category="$cat" data-type="$type" data-search="$url $name $cat $type">
+<a href="$link_url" class="$card_class" target="_blank" data-category="$cat" data-type="$type" data-search="$url $name $cat $type" $protected_attr>
     <div class="card-preview">
         $preview_html
+        $protected_badge
     </div>
     <div class="card-content">
         <div class="card-title">$name</div>
@@ -342,6 +372,20 @@ document.addEventListener('DOMContentLoaded',function(){
     const cards=document.querySelectorAll('.site-card');
     const search=document.getElementById('searchBox');
     const cloud=document.getElementById('tagCloud');
+    const loginBanner=document.getElementById('loginBanner');
+    const protectedCards=document.querySelectorAll('.site-card[data-protected]');
+
+    // Check authentication
+    const isLoggedIn=sessionStorage.getItem('secubox_token')!==null;
+
+    if(isLoggedIn){
+        // Unlock protected cards
+        protectedCards.forEach(c=>c.classList.add('unlocked'));
+        loginBanner.classList.add('hidden');
+    }else if(protectedCards.length===0){
+        // No protected content, hide banner
+        loginBanner.classList.add('hidden');
+    }
 
     document.querySelectorAll('.view-btn[data-view]').forEach(b=>b.onclick=function(){
         document.querySelectorAll('.view-btn[data-view]').forEach(x=>x.classList.remove('active'));
@@ -357,6 +401,7 @@ document.addEventListener('DOMContentLoaded',function(){
     function filter(cat){
         cards.forEach(c=>{
             let show = cat==='all' || c.dataset.category===cat || c.dataset.type===cat;
+            if(c.dataset.protected && !isLoggedIn) show=false;
             c.style.display = show ? '' : 'none';
         });
     }
@@ -369,7 +414,11 @@ document.addEventListener('DOMContentLoaded',function(){
 
     search.oninput=function(){
         const q=this.value.toLowerCase();
-        cards.forEach(c=>c.style.display=c.dataset.search.toLowerCase().includes(q)?'':'none');
+        cards.forEach(c=>{
+            let show=c.dataset.search.toLowerCase().includes(q);
+            if(c.dataset.protected && !isLoggedIn) show=false;
+            c.style.display=show?'':'none';
+        });
     };
 });
 </script>
