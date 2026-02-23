@@ -486,6 +486,31 @@ generate_certs_list() {
 # Configuration Generation
 # ===========================================
 
+# Helper to print a single userlist from UCI
+_print_uci_userlist() {
+	local section="$1"
+	local name user
+
+	config_get name "$section" name
+	config_get user "$section" user
+
+	[ -z "$name" ] && return
+	[ -z "$user" ] && return
+
+	echo "userlist $name"
+	# user format in UCI: username:password_hash
+	local username="${user%%:*}"
+	local password="${user#*:}"
+	echo "    user $username password $password"
+	echo ""
+}
+
+# Generate all UCI-defined userlists
+_generate_uci_userlists() {
+	config_load haproxy
+	config_foreach _print_uci_userlist userlist
+}
+
 generate_config() {
 	load_config
 
@@ -540,6 +565,9 @@ EOF
 		cat "$AUTH_USERLIST_FILE" >> "$cfg_file"
 		echo "" >> "$cfg_file"
 	fi
+
+	# Generate UCI-defined userlists
+	_generate_uci_userlists >> "$cfg_file"
 
 	# Stats frontend
 	if [ "$stats_enabled" = "1" ]; then
@@ -609,6 +637,14 @@ frontend https-in
     mode http
     http-request set-header X-Forwarded-Proto https
     http-request set-header X-Real-IP %[src]
+
+    # Security: Block access to sensitive paths
+    acl is_sensitive_path path_beg /.git
+    acl is_sensitive_path path_beg /.svn
+    acl is_sensitive_path path_beg /.env
+    acl is_sensitive_path path_beg /.htaccess
+    acl is_sensitive_path path_beg /.htpasswd
+    http-request deny if is_sensitive_path
 EOF
 		else
 			# Fallback to directory mode if no certs.list
@@ -618,6 +654,14 @@ frontend https-in
     mode http
     http-request set-header X-Forwarded-Proto https
     http-request set-header X-Real-IP %[src]
+
+    # Security: Block access to sensitive paths
+    acl is_sensitive_path path_beg /.git
+    acl is_sensitive_path path_beg /.svn
+    acl is_sensitive_path path_beg /.env
+    acl is_sensitive_path path_beg /.htaccess
+    acl is_sensitive_path path_beg /.htpasswd
+    http-request deny if is_sensitive_path
 EOF
 		fi
 		# Add path-based ACLs BEFORE vhost ACLs (path rules take precedence)
@@ -800,10 +844,12 @@ _add_vhost_acl() {
 	esac
 
 	# Add auth requirement for private vhosts
-	local auth_enabled
+	local auth_enabled auth_realm auth_userlist
 	config_get auth_enabled "$section" auth_enabled "0"
 	if [ "$auth_enabled" = "1" ]; then
-		echo "    http-request auth realm \"SecuBox\" if host_${acl_name} !{ http_auth(secubox_users) }"
+		config_get auth_realm "$section" auth_realm "SecuBox"
+		config_get auth_userlist "$section" auth_userlist "secubox_users"
+		echo "    http-request auth realm \"$auth_realm\" if host_${acl_name} !{ http_auth($auth_userlist) }"
 		# Log auth user in header for backend (http_auth_user only works after successful auth)
 		echo "    http-request set-header X-Auth-User %[http_auth_user] if host_${acl_name}"
 	fi
