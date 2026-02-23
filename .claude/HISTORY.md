@@ -3148,3 +3148,14 @@ git checkout HEAD -- index.html
     - Search and category filters respect authentication state.
     - **Files:**
       - `secubox-app-gk2hub/files/usr/sbin/hub-generator` (updated)
+
+37. **HAProxy HTTP/2 Auth Bug Fix (2026-02-23)**
+    - Fixed inconsistent HTTP Basic Auth behavior with HTTP/2 multiplexing.
+    - Protected vhosts randomly returned 200 (bypass) or 401 (auth required) when using HTTP/2.
+    - Root cause: HTTP/2 connection multiplexing caused HAProxy's `http_auth()` to inconsistently evaluate auth rules.
+    - **Fix:** Disabled HTTP/2 ALPN negotiation, reverting to HTTP/1.1 only.
+    - All protected MetaBlogizer sites (sa, ab, dgse, dcb, ccom) now consistently require authentication.
+    - **Files:**
+      - `secubox-app-haproxy/files/usr/sbin/haproxyctl` (alpn h2,http/1.1 → alpn http/1.1)
+      - `secubox-app-haproxy/files/usr/share/haproxy/templates/default.cfg` (updated)
+      - `secubox-app-haproxy/files/etc/config/haproxy` (updated)

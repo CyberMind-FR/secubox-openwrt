@@ -36,7 +36,7 @@ config frontend 'http_front'
 # Example frontend (HTTPS with SNI using crt-list for multi-cert support)
 config frontend 'https_front'
 	option name 'https-in'
-	option bind '*:443 ssl crt-list /opt/haproxy/certs/certs.list alpn h2,http/1.1'
+	option bind '*:443 ssl crt-list /opt/haproxy/certs/certs.list alpn http/1.1'
 	option mode 'http'
 	option default_backend 'fallback'
 	option enabled '1'

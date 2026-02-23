@@ -605,7 +605,7 @@ EOF
 		if [ -f "$CERTS_LIST_FILE" ] && [ -s "$CERTS_LIST_FILE" ]; then
 			cat << EOF
 frontend https-in
-    bind *:$https_port,[::]:$https_port ssl crt-list $CONTAINER_CERTS_PATH/certs.list alpn h2,http/1.1
+    bind *:$https_port,[::]:$https_port ssl crt-list $CONTAINER_CERTS_PATH/certs.list alpn http/1.1
     mode http
     http-request set-header X-Forwarded-Proto https
     http-request set-header X-Real-IP %[src]
@@ -614,7 +614,7 @@ EOF
 			# Fallback to directory mode if no certs.list
 			cat << EOF
 frontend https-in
-    bind *:$https_port,[::]:$https_port ssl crt $CONTAINER_CERTS_PATH/ alpn h2,http/1.1
+    bind *:$https_port,[::]:$https_port ssl crt $CONTAINER_CERTS_PATH/ alpn http/1.1
     mode http
     http-request set-header X-Forwarded-Proto https
     http-request set-header X-Real-IP %[src]
