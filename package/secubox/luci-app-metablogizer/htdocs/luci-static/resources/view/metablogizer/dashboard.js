@@ -170,6 +170,13 @@ return view.extend({
 			]),
 			// Actions column
 			E('td', { 'class': 'td', 'style': 'text-align:center; white-space:nowrap' }, [
+				// Edit button
+				E('button', {
+					'class': 'cbi-button',
+					'style': 'padding:0.25em 0.5em; margin:2px',
+					'title': _('Edit site settings'),
+					'click': ui.createHandlerFn(self, 'showEditModal', site)
+				}, _('Edit')),
 				// Share button
 				E('button', {
 					'class': 'cbi-button',
@@ -510,6 +517,78 @@ return view.extend({
 						});
 					}
 				}, _('Delete'))
+			])
+		]);
+	},
+
+	showEditModal: function(site) {
+		var self = this;
+
+		ui.showModal(_('Edit Site: ') + site.name, [
+			E('div', { 'class': 'cbi-section' }, [
+				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, _('Name')),
+					E('div', { 'class': 'cbi-value-field' }, [
+						E('input', { 'type': 'text', 'id': 'edit-name', 'class': 'cbi-input-text',
+							'value': site.name, 'style': 'width:100%' })
+					])
+				]),
+				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, _('Domain')),
+					E('div', { 'class': 'cbi-value-field' }, [
+						E('input', { 'type': 'text', 'id': 'edit-domain', 'class': 'cbi-input-text',
+							'value': site.domain || '', 'style': 'width:100%' }),
+						E('div', { 'class': 'cbi-value-description' }, _('e.g. blog.example.com'))
+					])
+				]),
+				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, _('Description')),
+					E('div', { 'class': 'cbi-value-field' }, [
+						E('input', { 'type': 'text', 'id': 'edit-description', 'class': 'cbi-input-text',
+							'value': site.description || '', 'style': 'width:100%' })
+					])
+				]),
+				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, _('Enabled')),
+					E('div', { 'class': 'cbi-value-field' }, [
+						E('input', { 'type': 'checkbox', 'id': 'edit-enabled',
+							'checked': site.enabled !== '0' && site.enabled !== false })
+					])
+				])
+			]),
+			E('div', { 'class': 'right', 'style': 'margin-top:1em' }, [
+				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
+				' ',
+				E('button', {
+					'class': 'cbi-button cbi-button-positive',
+					'click': function() {
+						var name = document.getElementById('edit-name').value.trim();
+						var domain = document.getElementById('edit-domain').value.trim();
+						var description = document.getElementById('edit-description').value.trim();
+						var enabled = document.getElementById('edit-enabled').checked ? '1' : '0';
+
+						if (!name) {
+							ui.addNotification(null, E('p', _('Name is required')), 'error');
+							return;
+						}
+
+						ui.hideModal();
+						ui.showModal(_('Saving'), [E('p', { 'class': 'spinning' }, _('Updating site...'))]);
+
+						api.updateSite(site.id, name, domain, '', '1', enabled, description).then(function(r) {
+							ui.hideModal();
+							if (r.success) {
+								ui.addNotification(null, E('p', _('Site updated')));
+								window.location.reload();
+							} else {
+								ui.addNotification(null, E('p', _('Failed: ') + (r.error || 'Unknown')), 'error');
+							}
+						}).catch(function(e) {
+							ui.hideModal();
+							ui.addNotification(null, E('p', _('Error: ') + e.message), 'error');
+						});
+					}
+				}, _('Save'))
 			])
 		]);
 	},
