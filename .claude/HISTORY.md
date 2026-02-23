@@ -3113,3 +3113,38 @@ git checkout HEAD -- index.html
     - Fixed missing mitmproxy routes for `admin.gk2.secubox.in` and `hub.gk2.secubox.in`.
     - **Files:**
       - `secubox-app-gk2hub/files/usr/sbin/hub-generator` (new)
+
+34. **Nextcloud Talk High Performance Backend Package (2026-02-22)**
+    - New `secubox-app-talk-hpb` package for Nextcloud Talk signaling server.
+    - **Features:**
+      - TURN/STUN server for WebRTC media relay
+      - Signaling server for presence and call coordination
+      - Auto-generates secure secrets (turn, signaling, internal)
+      - HAProxy vhost auto-creation for signaling domain
+      - Docker-based deployment (ghcr.io/nextcloud-releases/aio-talk)
+    - **CLI Interface:**
+      ```bash
+      talk-hpbctl setup nextcloud.example.com signaling.example.com
+      talk-hpbctl show-config  # Display Nextcloud admin settings
+      talk-hpbctl test         # Verify signaling server
+      ```
+    - **Files:**
+      - `secubox-app-talk-hpb/files/usr/sbin/talk-hpbctl` (new)
+      - `secubox-app-talk-hpb/files/etc/init.d/talk-hpb` (new)
+      - `secubox-app-talk-hpb/files/etc/config/talk-hpb` (new)
+
+35. **MetaBlogizer Reliability Improvements (2026-02-22)**
+    - **Edit button:** Added site edit functionality in LuCI dashboard.
+    - **Domain change handling:** HAProxy vhost republished when domain changes (delete old + create new).
+    - **Mitmproxy route fix:** Replaced fragile sed-based JSON manipulation with Python for reliable JSON parsing.
+    - **SSL cert mapping:** Auto-adds UCI cert entries for wildcard SSL certificates (*.gk2.secubox.in.pem) on site creation.
+    - Sites now work immediately after one-click deploy without manual HAProxy reload.
+
+36. **GK2 Hub Authentication Integration (2026-02-23)**
+    - Protected MetaBlogizer sites (auth_required=1) hidden until user login.
+    - Login banner displayed when unauthenticated with protected content present.
+    - Uses sessionStorage `secubox_token` from secubox-core portal-auth system.
+    - Lock badge icon on protected site cards.
+    - Search and category filters respect authentication state.
+    - **Files:**
+      - `secubox-app-gk2hub/files/usr/sbin/hub-generator` (updated)
