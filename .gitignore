@@ -29,3 +29,10 @@ openwrt# Large package files - should not be in git
 package/secubox/secubox-app-bonus/root/www/secubox-feed/luci-app-secubox-bonus_*.ipk
 package/secubox/secubox-app-bonus/root/www/secubox-feed/secubox-app-bonus_*.ipk
 __pycache__/
+secubox-tools/c3box-vm/output/
+secubox-tools/c3box-vm/*.img
+secubox-tools/c3box-vm/*.img.gz
+*.qcow2
+*.vdi
+*.vmdk
+*.ova
