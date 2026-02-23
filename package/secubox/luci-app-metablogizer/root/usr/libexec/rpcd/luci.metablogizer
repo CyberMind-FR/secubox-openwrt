@@ -97,6 +97,30 @@ reload_haproxy() {
 	fi
 }
 
+# Add mitmproxy route for domain -> backend mapping
+add_mitmproxy_route() {
+	local domain="$1"
+	local address="$2"
+	local port="$3"
+
+	# Add to both mitmproxy and mitmproxy-in routes files
+	for routes_file in /srv/mitmproxy/haproxy-routes.json /srv/mitmproxy-in/haproxy-routes.json; do
+		[ -f "$routes_file" ] || continue
+		python3 - "$routes_file" "$domain" "$address" "$port" 2>/dev/null <<'PYEOF'
+import json, sys
+routes_file, domain, address, port = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
+try:
+    with open(routes_file) as f:
+        routes = json.load(f)
+    routes[domain] = [address, port]
+    with open(routes_file, 'w') as f:
+        json.dump(routes, f, indent=2)
+except Exception as e:
+    pass
+PYEOF
+	done
+}
+
 # Get .onion address for a site if Tor hidden service exists
 get_onion_address() {
 	local site_name="$1"
@@ -439,18 +463,7 @@ EOF
 		uci commit haproxy
 
 		# Add mitmproxy route for WAF inspection
-		local routes_file="/srv/mitmproxy-in/haproxy-routes.json"
-		if [ -f "$routes_file" ]; then
-			# Add route: domain -> [server_address, server_port]
-			local tmp_routes="/tmp/routes_update_$$.json"
-			jsonfilter -i "$routes_file" -e '@' 2>/dev/null | \
-				sed "s/}$/,\"$domain\":[\"$server_address\",$server_port]}/" > "$tmp_routes" 2>/dev/null
-			if [ -s "$tmp_routes" ]; then
-				mv "$tmp_routes" "$routes_file"
-			else
-				rm -f "$tmp_routes"
-			fi
-		fi
+		add_mitmproxy_route "$domain" "$server_address" "$server_port"
 
 		# Regenerate HAProxy config and reload
 		reload_haproxy &
@@ -1163,18 +1176,7 @@ EOF
 		uci commit haproxy
 
 		# Add mitmproxy route for WAF inspection
-		local routes_file="/srv/mitmproxy-in/haproxy-routes.json"
-		if [ -f "$routes_file" ]; then
-			# Add route: domain -> [server_address, port]
-			local tmp_routes="/tmp/routes_update_$$.json"
-			jsonfilter -i "$routes_file" -e '@' 2>/dev/null | \
-				sed "s/}$/,\"$domain\":[\"$server_address\",$port]}/" > "$tmp_routes" 2>/dev/null
-			if [ -s "$tmp_routes" ]; then
-				mv "$tmp_routes" "$routes_file"
-			else
-				rm -f "$tmp_routes"
-			fi
-		fi
+		add_mitmproxy_route "$domain" "$server_address" "$port"
 
 		reload_haproxy &
 	fi
@@ -1961,18 +1963,7 @@ EOF
 		uci commit haproxy
 
 		# Add mitmproxy route for WAF inspection
-		local routes_file="/srv/mitmproxy-in/haproxy-routes.json"
-		if [ -f "$routes_file" ]; then
-			# Add route: domain -> [server_address, port]
-			local tmp_routes="/tmp/routes_update_$$.json"
-			jsonfilter -i "$routes_file" -e '@' 2>/dev/null | \
-				sed "s/}$/,\"$domain\":[\"$server_address\",$port]}/" > "$tmp_routes" 2>/dev/null
-			if [ -s "$tmp_routes" ]; then
-				mv "$tmp_routes" "$routes_file"
-			else
-				rm -f "$tmp_routes"
-			fi
-		fi
+		add_mitmproxy_route "$domain" "$server_address" "$port"
 
 		reload_haproxy &
 	fi
