@@ -185,10 +185,10 @@ uci show metablogizer 2>/dev/null | grep "=site$" | sed "s/metablogizer\.\(.*\)=
     cat=$(categorize_site "$name")
     emoji=$(get_emoji "$cat")
     echo "$cat" >> "$CAT_FILE"
-    # 7th field: protected (1 if auth_required)
-    protected=""
+    # 7th field: protected (use - placeholder for empty thumb to fix BusyBox read)
+    protected="-"
     [ "$auth_required" = "1" ] && protected="protected"
-    printf '%s\t%s\t%s\t%s\tmeta\t\t%s\n' "$domain" "$name" "$cat" "$emoji" "$protected" >> "$SITES_FILE"
+    printf '%s\t%s\t%s\t%s\tmeta\t-\t%s\n' "$domain" "$name" "$cat" "$emoji" "$protected" >> "$SITES_FILE"
 done
 
 # Streamlit instances
@@ -201,7 +201,7 @@ uci show streamlit 2>/dev/null | grep "=instance$" | sed "s/streamlit\.\(.*\)=in
     cat=$(categorize_site "$name")
     emoji=$(get_emoji "$cat")
     echo "$cat" >> "$CAT_FILE"
-    printf '%s\t%s\t%s\t%s\tstreamlit\t\t\n' "$domain" "$name" "$cat" "$emoji" >> "$SITES_FILE"
+    printf '%s\t%s\t%s\t%s\tstreamlit\t-\t-\n' "$domain" "$name" "$cat" "$emoji" >> "$SITES_FILE"
 done
 
 # PeerTube videos
@@ -307,6 +307,10 @@ echo '<div class="view-grid" id="viewContainer"><div class="sites-grid" id="site
 
 while IFS='	' read -r url name cat emoji type thumb protected; do
     [ -z "$url" ] && continue
+
+    # Handle placeholder values (- means empty, used for BusyBox read compatibility)
+    [ "$thumb" = "-" ] && thumb=""
+    [ "$protected" = "-" ] && protected=""
 
     # For videos, 'thumb' is thumbnail URL and 'protected' is duration
     duration=""
