@@ -121,6 +121,23 @@ PYEOF
 	done
 }
 
+# Add HAProxy cert entry for wildcard SSL mapping
+add_haproxy_cert() {
+	local domain="$1"
+
+	# Extract base domain for wildcard cert (e.g., gk2.secubox.in from sub.gk2.secubox.in)
+	local base_domain=$(echo "$domain" | sed 's/^[^.]*\.//')
+	local cert_name=$(echo "$domain" | sed 's/[^a-zA-Z0-9]/_/g')
+
+	# Check if wildcard cert exists
+	local wildcard_cert="/opt/haproxy/certs/*.${base_domain}.pem"
+	if lxc-attach -n haproxy -- ls "$wildcard_cert" >/dev/null 2>&1; then
+		uci set "haproxy.cert_${cert_name}=cert"
+		uci set "haproxy.cert_${cert_name}.domain=$domain"
+		uci set "haproxy.cert_${cert_name}.cert_file=$wildcard_cert"
+	fi
+}
+
 # Get .onion address for a site if Tor hidden service exists
 get_onion_address() {
 	local site_name="$1"
@@ -460,6 +477,9 @@ EOF
 		uci set "haproxy.$vhost_name.acme=$acme_val"
 		uci set "haproxy.$vhost_name.enabled=1"
 		uci set "haproxy.$vhost_name.priority=50"
+
+		# Add cert entry for wildcard SSL
+		add_haproxy_cert "$domain"
 		uci commit haproxy
 
 		# Add mitmproxy route for WAF inspection
@@ -838,6 +858,9 @@ method_update_site() {
 				uci set "haproxy.$vhost_name.ssl_redirect=1"
 				uci set "haproxy.$vhost_name.acme=1"
 				uci set "haproxy.$vhost_name.enabled=1"
+
+				# Add cert entry for wildcard SSL
+				add_haproxy_cert "$domain"
 				uci commit haproxy
 
 				# Regenerate and reload HAProxy
@@ -1173,6 +1196,8 @@ EOF
 		uci set "haproxy.$vhost_name.enabled=1"
 		uci set "haproxy.$vhost_name.priority=50"
 
+		# Add cert entry for wildcard SSL
+		add_haproxy_cert "$domain"
 		uci commit haproxy
 
 		# Add mitmproxy route for WAF inspection
@@ -1960,6 +1985,8 @@ EOF
 		uci set "haproxy.$vhost_name.enabled=1"
 		uci set "haproxy.$vhost_name.priority=50"
 
+		# Add cert entry for wildcard SSL
+		add_haproxy_cert "$domain"
 		uci commit haproxy
 
 		# Add mitmproxy route for WAF inspection
