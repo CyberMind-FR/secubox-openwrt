@@ -775,15 +775,22 @@ method_update_site() {
 		return
 	fi
 
-	# Check site exists
-	local current_name
+	# Check site exists and get current values
+	local current_name current_domain
 	current_name=$(get_uci "$id" name "")
+	current_domain=$(get_uci "$id" domain "")
 	if [ -z "$current_name" ]; then
 		json_init
 		json_add_boolean "success" 0
 		json_add_string "error" "Site not found"
 		json_dump
 		return
+	fi
+
+	# Track if domain changed
+	local domain_changed=0
+	if [ -n "$domain" ] && [ "$domain" != "$current_domain" ]; then
+		domain_changed=1
 	fi
 
 	[ -n "$name" ] && uci set "$UCI_CONFIG.$id.name=$name"
@@ -794,8 +801,41 @@ method_update_site() {
 	[ -n "$description" ] && uci set "$UCI_CONFIG.$id.description=$description"
 	uci commit "$UCI_CONFIG"
 
+	# If domain changed and vhost exists, republish
+	if [ "$domain_changed" = "1" ] && [ -n "$current_domain" ]; then
+		# Remove old vhost
+		local old_vhost_name=$(echo "$current_domain" | sed 's/[^a-zA-Z0-9]/_/g')
+		uci delete "haproxy.$old_vhost_name" 2>/dev/null
+		uci commit haproxy
+
+		# Create new vhost if new domain is set
+		if [ -n "$domain" ]; then
+			local port=$(get_uci "$id" port "")
+			if [ -n "$port" ]; then
+				local site_name="${name:-$current_name}"
+				local backend_name="meta_$(echo "$site_name" | tr -cd 'a-zA-Z0-9_' | head -c 20)"
+				local vhost_name=$(echo "$domain" | sed 's/[^a-zA-Z0-9]/_/g')
+
+				# Create vhost
+				uci set "haproxy.$vhost_name=vhost"
+				uci set "haproxy.$vhost_name.domain=$domain"
+				uci set "haproxy.$vhost_name.backend=$backend_name"
+				uci set "haproxy.$vhost_name.priority=50"
+				uci set "haproxy.$vhost_name.ssl=1"
+				uci set "haproxy.$vhost_name.ssl_redirect=1"
+				uci set "haproxy.$vhost_name.acme=1"
+				uci set "haproxy.$vhost_name.enabled=1"
+				uci commit haproxy
+
+				# Regenerate and reload HAProxy
+				reload_haproxy
+			fi
+		fi
+	fi
+
 	json_init
 	json_add_boolean "success" 1
+	json_add_boolean "republished" "$domain_changed"
 	json_dump
 }
 
