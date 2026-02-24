@@ -1,0 +1,397 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (C) 2026 CyberMind.FR / SecuBox
+#
+# RPCD backend for ZKP Hamiltonian Dashboard
+# Wraps zkp_keygen, zkp_prover, zkp_verifier CLI tools
+
+. /usr/share/libubox/jshn.sh
+
+readonly ZKP_DIR="/var/lib/zkp"
+readonly GRAPHS_DIR="$ZKP_DIR/graphs"
+readonly KEYS_DIR="$ZKP_DIR/keys"
+readonly PROOFS_DIR="$ZKP_DIR/proofs"
+
+# Ensure directories exist
+init_dirs() {
+	mkdir -p "$GRAPHS_DIR" "$KEYS_DIR" "$PROOFS_DIR" 2>/dev/null
+}
+
+# Check if ZKP tools are available
+check_tools() {
+	command -v zkp_keygen >/dev/null 2>&1 && \
+	command -v zkp_prover >/dev/null 2>&1 && \
+	command -v zkp_verifier >/dev/null 2>&1
+}
+
+# Get library version
+get_version() {
+	if check_tools; then
+		zkp_keygen --version 2>/dev/null | head -1 || echo "1.0.0"
+	else
+		echo "not installed"
+	fi
+}
+
+# Count saved keys
+count_keys() {
+	init_dirs
+	ls -1 "$KEYS_DIR"/*.key 2>/dev/null | wc -l
+}
+
+# ============== RPC Methods ==============
+
+method_status() {
+	local tools_ok="false"
+	local version="not installed"
+	local key_count=0
+
+	if check_tools; then
+		tools_ok="true"
+		version=$(get_version)
+	fi
+
+	init_dirs
+	key_count=$(ls -1 "$KEYS_DIR"/*.key 2>/dev/null | wc -l)
+
+	cat <<EOF
+{"tools_available":$tools_ok,"version":"$version","key_count":$key_count,"graphs_dir":"$GRAPHS_DIR","keys_dir":"$KEYS_DIR","proofs_dir":"$PROOFS_DIR"}
+EOF
+}
+
+method_list_keys() {
+	init_dirs
+
+	local first=1
+	echo -n '{"keys":['
+
+	for keyfile in "$KEYS_DIR"/*.key; do
+		[ -f "$keyfile" ] || continue
+
+		local name=$(basename "$keyfile" .key)
+		local graphfile="$GRAPHS_DIR/${name}.graph"
+		local nodes=0
+		local graph_size=0
+		local key_size=0
+		local created=0
+
+		if [ -f "$graphfile" ]; then
+			graph_size=$(stat -c %s "$graphfile" 2>/dev/null || echo 0)
+			nodes=$(od -A n -t u1 -j 4 -N 1 "$graphfile" 2>/dev/null | tr -d ' ' || echo 0)
+		fi
+
+		key_size=$(stat -c %s "$keyfile" 2>/dev/null || echo 0)
+		created=$(stat -c %Y "$keyfile" 2>/dev/null || echo 0)
+
+		[ "$first" = "1" ] || echo -n ','
+		first=0
+		echo -n "{\"name\":\"$name\",\"nodes\":${nodes:-0},\"graph_size\":$graph_size,\"key_size\":$key_size,\"created\":$created}"
+	done
+
+	echo ']}'
+}
+
+method_keygen() {
+	local nodes density name
+
+	read -r input
+	json_load "$input"
+	json_get_var nodes nodes
+	json_get_var density density
+	json_get_var name name
+
+	# Defaults
+	[ -z "$nodes" ] && nodes=20
+	[ -z "$density" ] && density="0.8"
+	[ -z "$name" ] && name="key_$(date +%s)"
+
+	# Validate
+	if [ "$nodes" -lt 4 ] || [ "$nodes" -gt 50 ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Nodes must be between 4 and 50"
+		json_dump
+		return
+	fi
+
+	# Sanitize name
+	name=$(echo "$name" | sed 's/[^a-zA-Z0-9_-]/_/g')
+
+	init_dirs
+
+	local graphfile="$GRAPHS_DIR/${name}.graph"
+	local keyfile="$KEYS_DIR/${name}.key"
+
+	# Check if already exists
+	if [ -f "$keyfile" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Key '$name' already exists"
+		json_dump
+		return
+	fi
+
+	# Generate
+	if ! check_tools; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "ZKP tools not installed"
+		json_dump
+		return
+	fi
+
+	local output
+	output=$(zkp_keygen -n "$nodes" -d "$density" -g "$graphfile" -k "$keyfile" 2>&1)
+	local rc=$?
+
+	if [ $rc -eq 0 ] && [ -f "$graphfile" ] && [ -f "$keyfile" ]; then
+		local graph_size=$(stat -c %s "$graphfile")
+		local key_size=$(stat -c %s "$keyfile")
+
+		json_init
+		json_add_boolean "success" 1
+		json_add_string "name" "$name"
+		json_add_int "nodes" "$nodes"
+		json_add_string "density" "$density"
+		json_add_int "graph_size" "$graph_size"
+		json_add_int "key_size" "$key_size"
+		json_add_string "output" "$output"
+		json_dump
+	else
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Keygen failed: $output"
+		json_dump
+	fi
+}
+
+method_prove() {
+	local name
+
+	read -r input
+	json_load "$input"
+	json_get_var name name
+
+	if [ -z "$name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing key name"
+		json_dump
+		return
+	fi
+
+	local graphfile="$GRAPHS_DIR/${name}.graph"
+	local keyfile="$KEYS_DIR/${name}.key"
+	local prooffile="$PROOFS_DIR/${name}.proof"
+
+	if [ ! -f "$graphfile" ] || [ ! -f "$keyfile" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Key '$name' not found"
+		json_dump
+		return
+	fi
+
+	if ! check_tools; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "ZKP tools not installed"
+		json_dump
+		return
+	fi
+
+	local output
+	output=$(zkp_prover -g "$graphfile" -k "$keyfile" -p "$prooffile" 2>&1)
+	local rc=$?
+
+	if [ $rc -eq 0 ] && [ -f "$prooffile" ]; then
+		local proof_size=$(stat -c %s "$prooffile")
+		# Base64 encode for transport (first 1KB for preview)
+		local proof_preview=$(head -c 1024 "$prooffile" | base64 -w 0)
+
+		json_init
+		json_add_boolean "success" 1
+		json_add_string "name" "$name"
+		json_add_int "proof_size" "$proof_size"
+		json_add_string "proof_file" "$prooffile"
+		json_add_string "proof_preview" "$proof_preview"
+		json_add_string "output" "$output"
+		json_dump
+	else
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Prove failed: $output"
+		json_dump
+	fi
+}
+
+method_verify() {
+	local name
+
+	read -r input
+	json_load "$input"
+	json_get_var name name
+
+	if [ -z "$name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing key name"
+		json_dump
+		return
+	fi
+
+	local graphfile="$GRAPHS_DIR/${name}.graph"
+	local prooffile="$PROOFS_DIR/${name}.proof"
+
+	if [ ! -f "$graphfile" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Graph '$name' not found"
+		json_dump
+		return
+	fi
+
+	if [ ! -f "$prooffile" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Proof '$name' not found (run prove first)"
+		json_dump
+		return
+	fi
+
+	if ! check_tools; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "ZKP tools not installed"
+		json_dump
+		return
+	fi
+
+	local output result
+	output=$(zkp_verifier -g "$graphfile" -p "$prooffile" 2>&1)
+	local rc=$?
+
+	# Parse result from output
+	if echo "$output" | grep -q "ACCEPT"; then
+		result="ACCEPT"
+	elif echo "$output" | grep -q "REJECT"; then
+		result="REJECT"
+	else
+		result="UNKNOWN"
+	fi
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "name" "$name"
+	json_add_string "result" "$result"
+	json_add_boolean "valid" "$([ "$result" = "ACCEPT" ] && echo 1 || echo 0)"
+	json_add_string "output" "$output"
+	json_dump
+}
+
+method_delete_key() {
+	local name
+
+	read -r input
+	json_load "$input"
+	json_get_var name name
+
+	if [ -z "$name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing key name"
+		json_dump
+		return
+	fi
+
+	local graphfile="$GRAPHS_DIR/${name}.graph"
+	local keyfile="$KEYS_DIR/${name}.key"
+	local prooffile="$PROOFS_DIR/${name}.proof"
+
+	local deleted=0
+	[ -f "$graphfile" ] && rm -f "$graphfile" && deleted=$((deleted + 1))
+	[ -f "$keyfile" ] && rm -f "$keyfile" && deleted=$((deleted + 1))
+	[ -f "$prooffile" ] && rm -f "$prooffile" && deleted=$((deleted + 1))
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "name" "$name"
+	json_add_int "files_deleted" "$deleted"
+	json_dump
+}
+
+method_get_graph() {
+	local name
+
+	read -r input
+	json_load "$input"
+	json_get_var name name
+
+	if [ -z "$name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing key name"
+		json_dump
+		return
+	fi
+
+	local graphfile="$GRAPHS_DIR/${name}.graph"
+
+	if [ ! -f "$graphfile" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Graph '$name' not found"
+		json_dump
+		return
+	fi
+
+	# Extract graph info from binary
+	local nodes=$(od -A n -t u1 -j 4 -N 1 "$graphfile" 2>/dev/null | tr -d ' ')
+	local graph_size=$(stat -c %s "$graphfile")
+
+	# Generate simple adjacency representation
+	# Read adjacency bits and create edge list
+	local edges=""
+	local i=0
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "name" "$name"
+	json_add_int "nodes" "${nodes:-0}"
+	json_add_int "size" "$graph_size"
+	json_add_string "file" "$graphfile"
+	json_dump
+}
+
+# ============== Main Dispatcher ==============
+
+case "$1" in
+	list)
+		echo '{'
+		echo '"status":{},'
+		echo '"list_keys":{},'
+		echo '"get_graph":{"name":"String"},'
+		echo '"keygen":{"nodes":"Number","density":"String","name":"String"},'
+		echo '"prove":{"name":"String"},'
+		echo '"verify":{"name":"String"},'
+		echo '"delete_key":{"name":"String"}'
+		echo '}'
+		;;
+	call)
+		case "$2" in
+			status)     method_status ;;
+			list_keys)  method_list_keys ;;
+			get_graph)  method_get_graph ;;
+			keygen)     method_keygen ;;
+			prove)      method_prove ;;
+			verify)     method_verify ;;
+			delete_key) method_delete_key ;;
+			*)
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "Unknown method: $2"
+				json_dump
+				;;
+		esac
+		;;
+esac

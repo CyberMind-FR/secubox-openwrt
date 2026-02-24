@@ -866,6 +866,12 @@ _Last updated: 2026-02-24 (Service Stability Fixes)_
 
 ### Just Completed (2026-02-24)
 
+- **MetaBlogizer Upload Workflow Fix** — DONE (2026-02-24)
+  - Sites now work immediately after upload without unpublish + expose cycle
+  - Root cause: mitmproxy never received reload signal after route creation
+  - Fix: `reload_haproxy()` now calls `mitmproxyctl sync-routes`
+  - Commit: ec8e96a7
+
 - **ZKP Hamiltonian Library** — DONE (2026-02-24)
   - Zero-Knowledge Proof implementation based on Hamiltonian Cycle (Blum 1986)
   - NIZK via Fiat-Shamir heuristic, SHA3-256 commitments (OpenSSL)

@@ -416,7 +416,8 @@
       "Bash(./zkp_prover:*)",
       "Bash(./zkp_verifier:*)",
       "Bash(printf:*)",
-      "Bash(dd:*)"
+      "Bash(dd:*)",
+      "Bash(gh release create:*)"
     ]
   }
 }

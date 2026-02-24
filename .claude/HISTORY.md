@@ -3231,3 +3231,11 @@ git checkout HEAD -- index.html
       - `zkp-hamiltonian/tests/{test_crypto,test_graph,test_protocol,test_serialize}.c`
       - `zkp-hamiltonian/CMakeLists.txt`
     - **Commit:** `65539368 feat(zkp-hamiltonian): Add Zero-Knowledge Proof library based on Hamiltonian Cycle`
+
+41. **MetaBlogizer Upload Workflow Fix (2026-02-24)**
+    - Sites now work immediately after upload without needing unpublish + expose.
+    - **Root cause:** Upload created HAProxy vhost and mitmproxy route file entry, but mitmproxy never received a reload signal to activate the route.
+    - **Fix:** `reload_haproxy()` now calls `mitmproxyctl sync-routes` to ensure mitmproxy picks up new routes immediately after vhost creation.
+    - **Files:**
+      - `luci-app-metablogizer/root/usr/libexec/rpcd/luci.metablogizer`
+    - **Commit:** `ec8e96a7 fix(metablogizer): Auto-sync mitmproxy routes on HAProxy reload`
