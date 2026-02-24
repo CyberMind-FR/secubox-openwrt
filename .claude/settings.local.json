@@ -406,7 +406,17 @@
       "Bash(vboxmanage startvm:*)",
       "Bash(# Find the built packages find /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools -name \"\"luci-theme-secubox*.ipk\"\" -newer /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed)",
       "Bash(do if ssh -o ConnectTimeout=5 root@192.168.255.1 \"echo ''System up''\")",
-      "Bash(do if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no root@192.168.255.1 \"echo ''System up''\")"
+      "Bash(do if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no root@192.168.255.1 \"echo ''System up''\")",
+      "Bash(ctest:*)",
+      "Bash(./test_crypto:*)",
+      "Bash(./test_graph:*)",
+      "Bash(./test_protocol:*)",
+      "Bash(./test_nizk:*)",
+      "Bash(./zkp_keygen:*)",
+      "Bash(./zkp_prover:*)",
+      "Bash(./zkp_verifier:*)",
+      "Bash(printf:*)",
+      "Bash(dd:*)"
     ]
   }
 }

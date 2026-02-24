@@ -1,0 +1,14 @@
+# Build output
+/build/
+
+# Generated files
+*.o
+*.a
+*.so
+*.so.*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

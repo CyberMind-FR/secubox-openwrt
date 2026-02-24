@@ -3177,6 +3177,25 @@ git checkout HEAD -- index.html
       - Changed backend from `mitmproxy_inspector` to `nextcloud` (WAF was disabled for this vhost).
     - **LXC Autostart Configuration:**
       - Enabled `lxc.start.auto = 1` for mailserver and roundcube containers.
-    - **Verification:** All 13 LXC containers + 6 core services confirmed running after reboot.
+    - **Metrics Page Fix:**
+      - Created symlink `/srv/mitmproxy/threats.log` → `/srv/mitmproxy-in/threats.log`.
+      - Metrics page now displays visitor data, traffic stats, and threat analytics.
+    - **Webmail Fix:**
+      - Fixed HAProxy vhost backend: `roundcube` → `webmail` (correct backend name).
+      - Reset password for `ragondin@secubox.in`.
+      - Cleared Roundcube sessions and restarted PHP-FPM to fix cached credentials.
+    - **Verification:** All 14 LXC containers + 6 core services + 6 web endpoints confirmed running.
     - **Files:**
       - `secubox-core/root/usr/sbin/secubox-led-pulse` (fixed HAProxy check)
+
+39. **HAProxy Config Sync Fix (2026-02-24)**
+    - Fixed issue where MetaBlogizer uploads resulted in 404 errors.
+    - Root cause: HAProxy config generated to `/srv/haproxy/config/haproxy.cfg` but HAProxy reads from `/etc/haproxy.cfg`.
+    - **Fix in `luci.metablogizer`:**
+      - `reload_haproxy()` now syncs config to `/etc/haproxy.cfg` and `/opt/haproxy/config/` after generation.
+    - **Fix in `haproxyctl`:**
+      - `generate_config()` now copies config to `/etc/haproxy.cfg` after generation.
+    - Sites now work immediately after upload without manual intervention.
+    - **Files:**
+      - `luci-app-metablogizer/root/usr/libexec/rpcd/luci.metablogizer`
+      - `secubox-app-haproxy/files/usr/sbin/haproxyctl`
