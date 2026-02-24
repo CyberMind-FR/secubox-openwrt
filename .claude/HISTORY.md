@@ -3272,3 +3272,29 @@ git checkout HEAD -- index.html
       - `zkp-hamiltonian/include/zkp_types.h` (ZKP_MAX_N guard)
       - `luci-app-zkp/root/usr/libexec/rpcd/luci.zkp` (CLI flag fixes)
 
+
+44. **WAF CVE-2025-14528 Router Botnet Detection (2026-02-24)**
+    - Added new `router_botnet` WAF category for IoT/router exploitation attempts.
+    - **CVE-2025-14528 Detection:**
+      - D-Link DIR-803 getcfg.php credential leak
+      - AUTHORIZED_GROUP parameter manipulation
+      - Newline injection bypass (%0a, %0d)
+      - SERVICES=DEVICE.ACCOUNT enumeration
+    - **Additional Router Exploit Patterns:**
+      - D-Link hedwig.cgi, HNAP, service.cgi RCE
+      - UPnP SOAP injection
+      - Goform command injection
+      - ASUS infosvr/apply.cgi exploits
+      - TP-Link/Netgear command exec patterns
+      - Zyxel zhttpd shell injection
+    - **Mirai-Variant Botnet Scanner Detection:**
+      - User-Agent signatures: Mirai, Hajime, Mozi, BotenaGo, Gafgyt, etc.
+      - Router wget/curl payload injection
+      - Telnet enable attempts
+    - **Files Modified:**
+      - `secubox-app-mitmproxy/files/srv/mitmproxy/waf-rules.json` (19 new patterns)
+      - `secubox-app-mitmproxy/files/srv/mitmproxy/addons/secubox_analytics.py`
+      - `secubox-app-mitmproxy/files/etc/config/mitmproxy`
+      - `secubox-app-mitmproxy/files/usr/sbin/mitmproxy-waf-sync`
+    - **Sources:** [CrowdSec Threat Intel](https://www.crowdsec.net/vulntracking-report/cve-2025-14528), [Global Security Mag](https://www.globalsecuritymag.com/old-routers-new-botnets-active-exploitation-of-cve-2025-14528.html)
+

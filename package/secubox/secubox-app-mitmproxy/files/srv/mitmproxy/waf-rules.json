@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "version": "1.1.0",
-    "updated": "2026-02-19",
-    "sources": ["OWASP Top 10", "CERT advisories", "CVE database", "VoIP Security Research", "XMPP Standards Foundation"]
+    "version": "1.2.0",
+    "updated": "2026-02-24",
+    "sources": ["OWASP Top 10", "CERT advisories", "CVE database", "VoIP Security Research", "XMPP Standards Foundation", "CrowdSec Threat Intel"]
   },
   
   "categories": {
@@ -13,7 +13,7 @@
       "owasp": "A03:2021",
       "patterns": [
         {"id": "sqli-001", "pattern": "union\\s+(all\\s+)?select", "desc": "UNION-based injection"},
-        {"id": "sqli-002", "pattern": "[\x27\x22]\\s*(or|and)\\s*[\x27\x22]?\\d", "desc": "Boolean-based injection"},
+        {"id": "sqli-002", "pattern": "['\"]\\s*(or|and)\\s*['\"]?\\d", "desc": "Boolean-based injection"},
         {"id": "sqli-003", "pattern": "(sleep|benchmark|waitfor|pg_sleep)\\s*\\(", "desc": "Time-based blind injection"},
         {"id": "sqli-004", "pattern": "information_schema\\.", "desc": "Schema enumeration"},
         {"id": "sqli-005", "pattern": "(load_file|into\\s+outfile|into\\s+dumpfile)", "desc": "File operations"},
@@ -102,7 +102,7 @@
       "patterns": [
         {"id": "mail-001", "pattern": "\\.\\./(config|db|data)", "desc": "Roundcube path traversal"},
         {"id": "mail-002", "pattern": "_action=(upload|import).*\\.(php|phtml)", "desc": "Malicious upload"},
-        {"id": "mail-003", "pattern": "_uid=.*[\\x27\\x22<>]", "desc": "XSS in mail UID"},
+        {"id": "mail-003", "pattern": "_uid=.*['\"><>]", "desc": "XSS in mail UID"},
         {"id": "mail-004", "pattern": "installer/", "desc": "Installer access attempt"},
         {"id": "mail-005", "pattern": "(temp|logs)/.*\\.(php|sh|pl)", "desc": "Script in temp/logs"}
       ]
@@ -188,6 +188,33 @@
         {"id": "cve-strophe-2022-29168", "pattern": "Strophe\\.js.*<body.*xmlns=.*\\x00", "desc": "Strophe.js parsing crash", "cve": "CVE-2022-29168"},
         {"id": "cve-xmpp-2021-21351", "pattern": "XMPPframework.*<iq.*<enable.*xmlns=[\"'].*push", "desc": "XMPP push auth bypass"},
         {"id": "cve-tigase-2023-39350", "pattern": "/rest/adhoc/.*sess-man.*user-add", "desc": "Tigase unauth user creation", "cve": "CVE-2023-39350"}
+      ]
+    },
+
+    "router_botnet": {
+      "name": "Router/IoT Botnet Exploits",
+      "severity": "critical",
+      "enabled": true,
+      "patterns": [
+        {"id": "cve-2025-14528", "pattern": "/getcfg\\.php.*AUTHORIZED_GROUP", "desc": "D-Link getcfg.php credential leak", "cve": "CVE-2025-14528"},
+        {"id": "cve-2025-14528-srv", "pattern": "/getcfg\\.php.*SERVICES=DEVICE\\.ACCOUNT", "desc": "D-Link DEVICE.ACCOUNT enumeration", "cve": "CVE-2025-14528"},
+        {"id": "cve-2025-14528-nl", "pattern": "/getcfg\\.php.*(%0a|%0d|\\n|\\r)", "desc": "D-Link getcfg newline injection", "cve": "CVE-2025-14528"},
+        {"id": "dlink-getcfg", "pattern": "/getcfg\\.php\\?", "desc": "D-Link getcfg.php probe (botnet recon)"},
+        {"id": "dlink-hedwig", "pattern": "/hedwig\\.cgi", "desc": "D-Link Hedwig command injection"},
+        {"id": "dlink-hnap", "pattern": "/HNAP1/", "desc": "D-Link HNAP protocol abuse"},
+        {"id": "dlink-service", "pattern": "/service\\.cgi.*(exec|system|passthru)", "desc": "D-Link service.cgi RCE"},
+        {"id": "router-upnp-soap", "pattern": "/(upnp|UPnP)/.*<SOAP-ENV", "desc": "UPnP SOAP injection"},
+        {"id": "router-setup-cgi", "pattern": "/setup\\.cgi.*next_file=", "desc": "Router setup.cgi traversal"},
+        {"id": "router-goform", "pattern": "/goform/.*\\$\\(|`|;", "desc": "Router goform command injection"},
+        {"id": "router-cgi-bin", "pattern": "/cgi-bin/(firmwareupgrade|upgrade|syscmd|syslog)", "desc": "Router sensitive CGI access"},
+        {"id": "router-admin-pw", "pattern": "/userRpm/.*admin.*password", "desc": "Router admin password access"},
+        {"id": "tplink-cgi", "pattern": "/cgi-bin/luci.*;.*admin", "desc": "TP-Link LuCI injection"},
+        {"id": "netgear-cgi", "pattern": "/cgi-bin/.*setup\\.cgi.*syscmd", "desc": "Netgear setup.cgi command exec"},
+        {"id": "asus-infosvr", "pattern": "/(infosvr|apply\\.cgi).*action_mode", "desc": "ASUS router command exec"},
+        {"id": "mirai-scan", "pattern": "User-Agent:.*(Mirai|Hajime|Mozi|BotenaGo)", "desc": "Mirai-variant botnet scanner", "check": "user-agent"},
+        {"id": "router-telnet-enable", "pattern": "/(syscmd|system_cmd).*telnetd", "desc": "Router telnet enable attempt"},
+        {"id": "router-wget-inject", "pattern": "/(setup|apply|cmd).*wget.*\\|", "desc": "Router wget payload injection"},
+        {"id": "zyxel-zhttpd", "pattern": "/cgi-bin/zhttpd/.*shell", "desc": "Zyxel zhttpd shell injection"}
       ]
     }
   }

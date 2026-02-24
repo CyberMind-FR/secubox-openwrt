@@ -17,6 +17,7 @@ voip=$(uci -q get mitmproxy.waf_rules.voip || echo 1)
 xmpp=$(uci -q get mitmproxy.waf_rules.xmpp || echo 1)
 cve_voip=$(uci -q get mitmproxy.waf_rules.cve_voip || echo 1)
 cve_xmpp=$(uci -q get mitmproxy.waf_rules.cve_xmpp || echo 1)
+router_botnet=$(uci -q get mitmproxy.waf_rules.router_botnet || echo 1)
 
 # Convert to JSON booleans
 to_bool() { [ "$1" = "1" ] && echo "true" || echo "false"; }
@@ -36,7 +37,8 @@ cat > "$CONFIG_FILE" << EOF
     "voip": $(to_bool $voip),
     "xmpp": $(to_bool $xmpp),
     "cve_voip": $(to_bool $cve_voip),
-    "cve_xmpp": $(to_bool $cve_xmpp)
+    "cve_xmpp": $(to_bool $cve_xmpp),
+    "router_botnet": $(to_bool $router_botnet)
   }
 }
 EOF

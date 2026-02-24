@@ -196,8 +196,10 @@ config waf_rules 'waf_rules'
 	# Application-specific
 	option webmail '1'
 	option api_abuse '1'
-	# VoIP/XMPP protection (new)
+	# VoIP/XMPP protection
 	option voip '1'
 	option xmpp '1'
 	option cve_voip '1'
 	option cve_xmpp '1'
+	# Router/IoT botnet protection (CVE-2025-14528, Mirai variants)
+	option router_botnet '1'
