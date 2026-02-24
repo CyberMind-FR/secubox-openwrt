@@ -140,9 +140,21 @@ method_keygen() {
 		return
 	fi
 
+	# Create temp directory for generation
+	local tmpdir="/tmp/zkp_gen_$$"
+	mkdir -p "$tmpdir"
+	local prefix="$tmpdir/$name"
+
 	local output
-	output=$(zkp_keygen -n "$nodes" -d "$density" -g "$graphfile" -k "$keyfile" 2>&1)
+	output=$(zkp_keygen -n "$nodes" -r "$density" -o "$prefix" 2>&1)
 	local rc=$?
+
+	# Move generated files to proper locations
+	if [ $rc -eq 0 ] && [ -f "${prefix}.graph" ] && [ -f "${prefix}.key" ]; then
+		mv "${prefix}.graph" "$graphfile"
+		mv "${prefix}.key" "$keyfile"
+	fi
+	rm -rf "$tmpdir"
 
 	if [ $rc -eq 0 ] && [ -f "$graphfile" ] && [ -f "$keyfile" ]; then
 		local graph_size=$(stat -c %s "$graphfile")
@@ -201,7 +213,7 @@ method_prove() {
 	fi
 
 	local output
-	output=$(zkp_prover -g "$graphfile" -k "$keyfile" -p "$prooffile" 2>&1)
+	output=$(zkp_prover -g "$graphfile" -k "$keyfile" -o "$prooffile" 2>&1)
 	local rc=$?
 
 	if [ $rc -eq 0 ] && [ -f "$prooffile" ]; then

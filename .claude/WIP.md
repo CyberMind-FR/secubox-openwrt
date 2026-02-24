@@ -866,6 +866,12 @@ _Last updated: 2026-02-24 (Service Stability Fixes)_
 
 ### Just Completed (2026-02-24)
 
+- **LuCI ZKP Dashboard** — DONE (2026-02-24)
+  - Web UI for ZKP Hamiltonian cryptographic proofs
+  - Features: keygen, prove, verify, keys management
+  - KISS theme with dark mode
+  - Commit: b60d7fd0
+
 - **MetaBlogizer Upload Workflow Fix** — DONE (2026-02-24)
   - Sites now work immediately after upload without unpublish + expose cycle
   - Root cause: mitmproxy never received reload signal after route creation

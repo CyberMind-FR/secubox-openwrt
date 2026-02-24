@@ -15,7 +15,9 @@
 #include <stddef.h>
 
 /* Protocol constants */
+#ifndef ZKP_MAX_N
 #define ZKP_MAX_N        128
+#endif
 #define ZKP_NONCE_SIZE   32
 #define ZKP_HASH_SIZE    32
 #define ZKP_VERSION      0x01

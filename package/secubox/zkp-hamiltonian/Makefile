@@ -43,10 +43,10 @@ CMAKE_OPTIONS += \
 
 define Build/Prepare
 	mkdir -p $(PKG_BUILD_DIR)
-	$(CP) ../src $(PKG_BUILD_DIR)/
-	$(CP) ../include $(PKG_BUILD_DIR)/
-	$(CP) ../tools $(PKG_BUILD_DIR)/
-	$(CP) ../CMakeLists.txt $(PKG_BUILD_DIR)/
+	$(CP) $(CURDIR)/src $(PKG_BUILD_DIR)/
+	$(CP) $(CURDIR)/include $(PKG_BUILD_DIR)/
+	$(CP) $(CURDIR)/tools $(PKG_BUILD_DIR)/
+	$(CP) $(CURDIR)/CMakeLists.txt $(PKG_BUILD_DIR)/
 endef
 
 define Package/zkp-hamiltonian/install

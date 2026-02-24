@@ -3239,3 +3239,36 @@ git checkout HEAD -- index.html
     - **Files:**
       - `luci-app-metablogizer/root/usr/libexec/rpcd/luci.metablogizer`
     - **Commit:** `ec8e96a7 fix(metablogizer): Auto-sync mitmproxy routes on HAProxy reload`
+
+42. **LuCI ZKP Dashboard (2026-02-24)**
+    - Created `luci-app-zkp` package for ZKP Hamiltonian cryptographic proofs.
+    - **Dashboard Features:**
+      - Status display: library version, saved keys count, storage paths
+      - Key generation: node count (4-50), edge density selector
+      - Prove/Verify workflow with visual ACCEPT/REJECT results
+      - Keys table with Prove, Verify, Delete actions
+      - KISS theme with dark mode support
+    - **RPCD Methods:** status, keygen, prove, verify, list_keys, delete_key, get_graph
+    - **Menu Location:** Status > ZKP Cryptography
+    - Note: Requires `zkp-hamiltonian` CLI tools to be built for ARM64
+    - **Files:**
+      - `luci-app-zkp/htdocs/luci-static/resources/view/zkp/overview.js`
+      - `luci-app-zkp/root/usr/libexec/rpcd/luci.zkp`
+    - **Commit:** `b60d7fd0 feat(luci-app-zkp): Add ZKP Hamiltonian cryptographic dashboard`
+
+43. **ZKP Hamiltonian ARM64 Build & Deployment (2026-02-24)**
+    - Built `zkp-hamiltonian` package for ARM64 (aarch64_cortex-a72) using full OpenWrt toolchain.
+    - **Build Notes:**
+      - SDK lacks target OpenSSL headers; must use full toolchain in `secubox-tools/openwrt/`
+      - Fixed `ZKP_MAX_N` macro redefinition by adding `#ifndef` guard in `zkp_types.h`
+      - Fixed RPCD script CLI flags: `-r` for ratio (not `-d`), `-o` for output prefix
+    - **Deployed CLI Tools:**
+      - `zkp_keygen` - 75KB binary
+      - `zkp_prover` - 76KB binary
+      - `zkp_verifier` - 75KB binary
+    - **Verification:** Full workflow tested on router (keygen → prove → verify → ACCEPT)
+    - **Files:**
+      - `zkp-hamiltonian/Makefile` (moved from openwrt/ subdirectory)
+      - `zkp-hamiltonian/include/zkp_types.h` (ZKP_MAX_N guard)
+      - `luci-app-zkp/root/usr/libexec/rpcd/luci.zkp` (CLI flag fixes)
+

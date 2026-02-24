@@ -417,7 +417,9 @@
       "Bash(./zkp_verifier:*)",
       "Bash(printf:*)",
       "Bash(dd:*)",
-      "Bash(gh release create:*)"
+      "Bash(gh release create:*)",
+      "Bash(# Check if OpenWrt toolchain is available ls -la /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/openwrt/)",
+      "Bash(# Create symlink in SDK feeds cd /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/sdk ln -sf ../local-feed/zkp-hamiltonian/openwrt feeds/local/zkp-hamiltonian || true ls -la feeds/local/)"
     ]
   }
 }
