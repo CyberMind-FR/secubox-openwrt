@@ -91,7 +91,17 @@ reload_haproxy() {
 		return 1
 	fi
 
+	# Generate new config
 	/usr/sbin/haproxyctl generate >/dev/null 2>&1
+
+	# Sync generated config to all locations HAProxy might read from
+	local src_cfg="/srv/haproxy/config/haproxy.cfg"
+	if [ -f "$src_cfg" ]; then
+		cp "$src_cfg" /etc/haproxy.cfg 2>/dev/null
+		[ -d /opt/haproxy/config ] && cp "$src_cfg" /opt/haproxy/config/haproxy.cfg 2>/dev/null
+	fi
+
+	# Reload HAProxy
 	if [ -x /etc/init.d/haproxy ]; then
 		/etc/init.d/haproxy reload >/dev/null 2>&1
 	fi

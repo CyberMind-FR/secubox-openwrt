@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-21 (v0.24.1 - KISS UI Regeneration)_
+_Last updated: 2026-02-24 (Service Stability Fixes)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -864,6 +864,16 @@ _Last updated: 2026-02-21 (v0.24.1 - KISS UI Regeneration)_
   - 4 views: Overview, Devices, Policies, Settings
   - RPCD handler with 11 methods + public ACL for unauthenticated access
 
+### Just Completed (2026-02-24)
+
+- **Service Stability & LED Pulse Fix** — DONE (2026-02-24)
+  - CrowdSec autostart: Fixed machine registration mismatch, downloaded GeoLite2-City.mmdb
+  - LED pulse: Fixed HAProxy check to run on host instead of non-existent LXC container
+  - Docker: Restored corrupted nextcloud-talk-hpb container
+  - HAProxy: Fixed cloud.gk2.secubox.in 503 (wrong backend)
+  - LXC: Enabled autostart for mailserver and roundcube containers
+  - Verified: All 13 LXC containers + 6 core services running after reboot
+
 ### Just Completed (2026-02-21)
 
 - **SecuBox KISS UI Full Regeneration** — DONE (2026-02-21)
@@ -913,24 +923,17 @@ _Last updated: 2026-02-21 (v0.24.1 - KISS UI Regeneration)_
 
 ### SysWarden Evolution Plan (2026-02-20)
 
-Implementing 4 evolutions inspired by SysWarden patterns:
+Implementing 3 evolutions inspired by SysWarden patterns:
 
 | # | Module | Priority | Status |
 |---|--------|----------|--------|
 | 1 | `luci-app-ipblocklist` | HIGH | DONE |
 | 2 | AbuseIPDB Reporter | HIGH | DONE |
 | 3 | Log Denoising (System Hub) | MEDIUM | DONE |
-| 4 | SIEM Connector (x86 only) | LOW | TODO |
-
-**Next**: Evolution #4 - SIEM Connector (optional, x86 only)
 
 ### Next Up — Couche 1
 
-1. **Guacamole Pre-built Binaries**
-   - Current LXC build-from-source approach is too slow
-   - Need to find/create pre-built ARM64 binaries for guacd + Tomcat
-
-3. **Multi-Node Mesh Testing**
+1. **Multi-Node Mesh Testing**
    - Deploy second SecuBox node to test real peer-to-peer sync
    - Validate bidirectional threat intelligence sharing
 

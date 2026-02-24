@@ -591,6 +591,9 @@ EOF
 	_generate_backends >> "$cfg_file"
 
 	log_info "Configuration generated: $cfg_file"
+
+	# Sync config to all locations HAProxy might read from
+	cp "$cfg_file" /etc/haproxy.cfg 2>/dev/null || true
 }
 
 _generate_frontends() {

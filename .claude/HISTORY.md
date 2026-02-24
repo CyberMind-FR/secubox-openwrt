@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-02-21_
+_Last updated: 2026-02-24_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -3159,3 +3159,24 @@ git checkout HEAD -- index.html
       - `secubox-app-haproxy/files/usr/sbin/haproxyctl` (alpn h2,http/1.1 → alpn http/1.1)
       - `secubox-app-haproxy/files/usr/share/haproxy/templates/default.cfg` (updated)
       - `secubox-app-haproxy/files/etc/config/haproxy` (updated)
+
+38. **Service Stability & LED Pulse Fix (2026-02-24)**
+    - **CrowdSec Autostart Fix:**
+      - Root cause: Machine registration mismatch between credentials file (`secubox-local`) and database (old UUID-style name).
+      - Fix: Re-registered machine with `cscli machines add secubox-local --auto --force`.
+      - Downloaded GeoLite2-City.mmdb (63MB) via `cscli hub update`.
+      - CrowdSec now starts automatically after reboot.
+    - **LED Pulse SPUNK ALERT Fix:**
+      - Root cause: `secubox-led-pulse` was checking `lxc-attach -n haproxy -- pgrep haproxy` but HAProxy runs on host, not in LXC.
+      - Fix: Changed to `pgrep haproxy` (host process check).
+      - Committed: `8a51a3e6 fix(led-pulse): Check HAProxy on host instead of LXC container`.
+    - **Docker nextcloud-talk-hpb Restore:**
+      - Fixed corrupted Docker storage layer (`GetImageBlob: no such file or directory`).
+      - Restarted dockerd, re-pulled image, container now healthy.
+    - **cloud.gk2.secubox.in 503 Fix:**
+      - Changed backend from `mitmproxy_inspector` to `nextcloud` (WAF was disabled for this vhost).
+    - **LXC Autostart Configuration:**
+      - Enabled `lxc.start.auto = 1` for mailserver and roundcube containers.
+    - **Verification:** All 13 LXC containers + 6 core services confirmed running after reboot.
+    - **Files:**
+      - `secubox-core/root/usr/sbin/secubox-led-pulse` (fixed HAProxy check)
