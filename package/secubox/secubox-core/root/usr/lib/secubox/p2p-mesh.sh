@@ -654,22 +654,27 @@ case "$1" in
         start_api_server "$2"
         ;;
     *)
-        echo "SecuBox P2P Mesh - Distributed Recovery Infrastructure"
-        echo ""
-        echo "Usage: $0 <command> [args]"
-        echo ""
-        echo "Commands:"
-        echo "  init              Initialize mesh node"
-        echo "  peer-add <ip>     Add peer node"
-        echo "  peer-list         List known peers"
-        echo "  discover          Broadcast discovery"
-        echo "  sync              Sync with all peers"
-        echo "  snapshot [name]   Create snapshot"
-        echo "  restore <hash>    Restore from snapshot"
-        echo "  reborn [file]     Generate reborn script"
-        echo "  catalog <type>    List catalog (apps|profiles|snapshots)"
-        echo "  chain             Show blockchain"
-        echo "  verify            Verify chain integrity"
-        echo "  api [port]        Start API server"
+        # Only show usage when run directly, not when sourced
+        case "$0" in
+            *p2p-mesh.sh)
+                echo "SecuBox P2P Mesh - Distributed Recovery Infrastructure"
+                echo ""
+                echo "Usage: $0 <command> [args]"
+                echo ""
+                echo "Commands:"
+                echo "  init              Initialize mesh node"
+                echo "  peer-add <ip>     Add peer node"
+                echo "  peer-list         List known peers"
+                echo "  discover          Broadcast discovery"
+                echo "  sync              Sync with all peers"
+                echo "  snapshot [name]   Create snapshot"
+                echo "  restore <hash>    Restore from snapshot"
+                echo "  reborn [file]     Generate reborn script"
+                echo "  catalog <type>    List catalog (apps|profiles|snapshots)"
+                echo "  chain             Show blockchain"
+                echo "  verify            Verify chain integrity"
+                echo "  api [port]        Start API server"
+                ;;
+        esac
         ;;
 esac

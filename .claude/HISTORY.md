@@ -3436,3 +3436,56 @@ git checkout HEAD -- index.html
     - **Files Modified:**
       - `secubox-core/root/usr/lib/secubox/p2p-mesh.sh`
       - `secubox-core/root/www/api/chain`
+
+
+50. **Factory Auto-Provisioning (2026-02-24)**
+    - Zero-touch provisioning for new mesh devices
+    - **Hardware Inventory Collection:**
+      - `inventory.sh`: Collect serial, MAC, model, CPU, RAM, storage
+      - Store inventories in `/var/lib/secubox-factory/inventory/`
+      - Pre-registered device matching for auto-approval
+    - **Profile-Based Configuration:**
+      - `profiles.sh`: Match devices by MAC prefix, model, or serial pattern
+      - 7 pre-built profiles: default, enterprise, home-basic, home-office, home-security, media-server, smart-home
+      - UCI commands, packages, and services per profile
+    - **Discovery Mode:**
+      - New devices can register without pre-shared tokens
+      - Master maintains pending queue for manual approval
+      - Auto-approve option for pre-registered MAC/serial devices
+      - `discovery_window` option for timed open enrollment
+    - **Bulk Token Generation:**
+      - Generate up to 100 tokens per batch
+      - Profile assignment per token
+      - Batch tracking with `batch_id`
+    - **Clone Provision Enhancements:**
+      - Hardware inventory on first boot
+      - Discovery-based join (poll for approval)
+      - Fallback to legacy token-based join
+    - **RPCD Methods Added:**
+      - `pending_devices`: List devices awaiting approval
+      - `approve_device`: Approve with profile assignment
+      - `reject_device`: Reject with reason
+      - `bulk_tokens`: Generate token batches
+      - `inventory`: List hardware inventories
+      - `list_profiles`: List available profiles
+      - `discovery_status`: Get discovery mode state
+      - `toggle_discovery`: Enable/disable discovery mode
+      - `import_preregistered`: Import MAC/serial list
+    - **UCI Options:**
+      - `discovery_mode`: Enable zero-touch provisioning
+      - `auto_approve_known`: Auto-approve pre-registered devices
+      - `discovery_window`: Time limit for discovery (seconds)
+      - `default_profile`: Profile for auto-approved devices
+    - **Files Modified:**
+      - `master-link.sh`: Added 8 discovery/bulk functions
+      - `master-link` UCI config: Added 4 discovery options
+      - `50-secubox-clone-provision`: Added inventory collection and discovery join
+      - `luci.cloner` RPCD: Added 9 new methods with JSON object responses
+      - `luci-app-cloner.json` ACL: Added permissions for new methods
+    - **Files Created:**
+      - `inventory.sh`: Hardware inventory library
+      - `profiles.sh`: Profile management library
+      - `default.json`: Default peer profile template
+    - **Fix Applied:**
+      - `p2p-mesh.sh`: Silenced usage output when sourced as library
+    - **Tested:** All RPCD methods working via ubus, discovery mode toggle, bulk tokens

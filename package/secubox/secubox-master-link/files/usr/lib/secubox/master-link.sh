@@ -1267,6 +1267,283 @@ ml_tree() {
 }
 
 # ============================================================================
+# Factory Auto-Provisioning (Discovery Mode)
+# ============================================================================
+
+ML_PENDING_DIR="$ML_DIR/pending"
+ML_APPROVED_DIR="$ML_DIR/approved"
+ML_BULK_DIR="$ML_DIR/bulk"
+
+# Check if discovery mode is enabled
+ml_discovery_enabled() {
+	local enabled
+	enabled=$(uci -q get master-link.main.discovery_mode || echo "0")
+	[ "$enabled" = "1" ]
+}
+
+# Handle discovery request from new device (no token required)
+ml_discovery_request() {
+	local inventory_json="$1"
+	local peer_addr="$2"
+
+	# Check if discovery mode is enabled
+	ml_discovery_enabled || {
+		echo '{"error":"discovery_disabled","message":"Discovery mode is not enabled on this master"}'
+		return 1
+	}
+
+	# Extract device identifiers from inventory
+	local mac serial model
+	mac=$(echo "$inventory_json" | jsonfilter -e '@.mac' 2>/dev/null)
+	serial=$(echo "$inventory_json" | jsonfilter -e '@.serial' 2>/dev/null)
+	model=$(echo "$inventory_json" | jsonfilter -e '@.model' 2>/dev/null)
+
+	# Generate device ID from MAC (lowercase, no colons)
+	local device_id
+	device_id=$(echo "$mac" | tr -d ':' | tr '[:upper:]' '[:lower:]')
+
+	[ -z "$device_id" ] && {
+		echo '{"error":"invalid_inventory","message":"Missing MAC address in inventory"}'
+		return 1
+	}
+
+	# Store inventory
+	if [ -f /usr/lib/secubox/inventory.sh ]; then
+		. /usr/lib/secubox/inventory.sh
+		inventory_store "$device_id" "$inventory_json"
+	fi
+
+	# Check if pre-registered for auto-approval
+	local auto_approve
+	auto_approve=$(uci -q get master-link.main.auto_approve_known || echo "0")
+
+	if [ "$auto_approve" = "1" ] && [ -f /usr/lib/secubox/inventory.sh ]; then
+		local match
+		match=$(inventory_match "$mac" "$serial")
+		if [ -n "$match" ]; then
+			# Auto-approve: determine profile and generate token
+			local profile
+			profile=$(echo "$match" | jsonfilter -e '@.profile' 2>/dev/null)
+			[ -z "$profile" ] && profile="default"
+
+			local token
+			token=$(ml_clone_token_generate 3600 | jsonfilter -e '@.token' 2>/dev/null)
+
+			logger -t master-link "Auto-approved device $device_id (MAC: $mac)"
+
+			local my_addr
+			my_addr=$(uci -q get network.lan.ipaddr || echo "192.168.255.1")
+
+			cat <<-EOF
+			{
+				"status": "approved",
+				"device_id": "$device_id",
+				"token": "$token",
+				"profile": "$profile",
+				"master": "$my_addr"
+			}
+			EOF
+			return 0
+		fi
+	fi
+
+	# Queue for manual approval
+	mkdir -p "$ML_PENDING_DIR"
+
+	local now
+	now=$(date +%s)
+
+	cat > "$ML_PENDING_DIR/${device_id}.json" <<-EOF
+	{
+		"device_id": "$device_id",
+		"mac": "$mac",
+		"serial": "$serial",
+		"model": "$model",
+		"address": "$peer_addr",
+		"inventory": $inventory_json,
+		"requested_at": $now,
+		"status": "pending"
+	}
+	EOF
+
+	logger -t master-link "Discovery request queued: $device_id (MAC: $mac)"
+
+	cat <<-EOF
+	{
+		"status": "pending",
+		"device_id": "$device_id",
+		"message": "Awaiting approval from master"
+	}
+	EOF
+}
+
+# Approve pending discovery device
+ml_discovery_approve() {
+	local device_id="$1"
+	local profile="${2:-default}"
+
+	local pending_file="$ML_PENDING_DIR/${device_id}.json"
+	[ -f "$pending_file" ] || {
+		echo '{"error":"device_not_found","message":"No pending device with this ID"}'
+		return 1
+	}
+
+	local device_info
+	device_info=$(cat "$pending_file")
+
+	local mac peer_addr
+	mac=$(echo "$device_info" | jsonfilter -e '@.mac' 2>/dev/null)
+	peer_addr=$(echo "$device_info" | jsonfilter -e '@.address' 2>/dev/null)
+
+	# Generate token for the device
+	local token
+	token=$(ml_clone_token_generate 3600 | jsonfilter -e '@.token' 2>/dev/null)
+
+	local now
+	now=$(date +%s)
+
+	# Store in approved directory
+	mkdir -p "$ML_APPROVED_DIR"
+
+	cat > "$ML_APPROVED_DIR/${device_id}.json" <<-EOF
+	{
+		"device_id": "$device_id",
+		"mac": "$mac",
+		"profile": "$profile",
+		"token": "$token",
+		"approved_at": $now,
+		"approved_by": "$(factory_fingerprint 2>/dev/null || echo 'master')"
+	}
+	EOF
+
+	# Remove from pending
+	rm -f "$pending_file"
+
+	# Notify device if online (fire-and-forget)
+	if [ -n "$peer_addr" ]; then
+		curl -s -X POST "http://$peer_addr:7331/api/discovery/approved" \
+			-H "Content-Type: application/json" \
+			-d "{\"token\":\"$token\",\"profile\":\"$profile\"}" \
+			--connect-timeout 2 &
+	fi
+
+	logger -t master-link "Approved discovery device: $device_id (profile: $profile)"
+
+	echo "{\"status\":\"approved\",\"device_id\":\"$device_id\",\"profile\":\"$profile\"}"
+}
+
+# Reject pending discovery device
+ml_discovery_reject() {
+	local device_id="$1"
+	local reason="${2:-rejected by admin}"
+
+	local pending_file="$ML_PENDING_DIR/${device_id}.json"
+	[ -f "$pending_file" ] || {
+		echo '{"error":"device_not_found"}'
+		return 1
+	}
+
+	rm -f "$pending_file"
+
+	logger -t master-link "Rejected discovery device: $device_id - $reason"
+
+	echo "{\"status\":\"rejected\",\"device_id\":\"$device_id\",\"reason\":\"$reason\"}"
+}
+
+# List pending discovery devices
+ml_discovery_pending() {
+	mkdir -p "$ML_PENDING_DIR"
+
+	echo "["
+	local first=1
+	for f in "$ML_PENDING_DIR"/*.json; do
+		[ -f "$f" ] || continue
+		[ "$first" = "1" ] || echo ","
+		cat "$f"
+		first=0
+	done
+	echo "]"
+}
+
+# Get discovery status for a device
+ml_discovery_status() {
+	local device_id="$1"
+
+	# Check approved
+	if [ -f "$ML_APPROVED_DIR/${device_id}.json" ]; then
+		cat "$ML_APPROVED_DIR/${device_id}.json"
+		return 0
+	fi
+
+	# Check pending
+	if [ -f "$ML_PENDING_DIR/${device_id}.json" ]; then
+		cat "$ML_PENDING_DIR/${device_id}.json"
+		return 0
+	fi
+
+	echo '{"status":"unknown","device_id":"'"$device_id"'"}'
+	return 1
+}
+
+# Generate bulk tokens for mass provisioning
+ml_bulk_tokens() {
+	local count="$1"
+	local profile="${2:-default}"
+	local ttl="${3:-86400}"
+
+	# Validate count
+	[ "$count" -gt 0 ] 2>/dev/null || {
+		echo '{"error":"invalid_count","message":"Count must be a positive number"}'
+		return 1
+	}
+	[ "$count" -le 100 ] || {
+		echo '{"error":"max_100","message":"Maximum 100 tokens per batch"}'
+		return 1
+	}
+
+	local batch_id
+	batch_id=$(date +%s)
+	mkdir -p "$ML_BULK_DIR/${batch_id}"
+
+	echo "["
+	local i=1
+	while [ "$i" -le "$count" ]; do
+		[ "$i" -gt 1 ] && echo ","
+
+		local token_json
+		token_json=$(ml_clone_token_generate "$ttl" "bulk")
+		local token
+		token=$(echo "$token_json" | jsonfilter -e '@.token' 2>/dev/null)
+
+		# Store with profile association
+		echo "{\"profile\":\"$profile\",\"batch\":\"$batch_id\"}" > "$ML_BULK_DIR/${batch_id}/${token}.meta"
+
+		printf '{"index":%d,"token":"%s","profile":"%s"}' "$i" "$token" "$profile"
+		i=$((i + 1))
+	done
+	echo "]"
+
+	logger -t master-link "Generated bulk tokens: batch=$batch_id count=$count profile=$profile"
+}
+
+# List bulk token batches
+ml_bulk_list() {
+	mkdir -p "$ML_BULK_DIR"
+
+	echo "["
+	local first=1
+	for d in "$ML_BULK_DIR"/*/; do
+		[ -d "$d" ] || continue
+		[ "$first" = "1" ] || echo ","
+		local batch_id=$(basename "$d")
+		local token_count=$(ls -1 "$d"/*.meta 2>/dev/null | wc -l)
+		printf '{"batch_id":"%s","token_count":%d}' "$batch_id" "$token_count"
+		first=0
+	done
+	echo "]"
+}
+
+# ============================================================================
 # Auth Helpers
 # ============================================================================
 
@@ -1497,6 +1774,32 @@ case "${1:-}" in
 		;;
 	zkp-trust-peer)
 		ml_zkp_trust_peer "$2" "$3"
+		;;
+	# Discovery mode commands
+	discovery-request)
+		# Usage: discovery-request <inventory_json> <peer_addr>
+		ml_discovery_request "$2" "$3"
+		;;
+	discovery-approve)
+		# Usage: discovery-approve <device_id> [profile]
+		ml_discovery_approve "$2" "$3"
+		;;
+	discovery-reject)
+		# Usage: discovery-reject <device_id> [reason]
+		ml_discovery_reject "$2" "$3"
+		;;
+	discovery-pending)
+		ml_discovery_pending
+		;;
+	discovery-status)
+		ml_discovery_status "$2"
+		;;
+	bulk-tokens)
+		# Usage: bulk-tokens <count> [profile] [ttl]
+		ml_bulk_tokens "$2" "$3" "$4"
+		;;
+	bulk-list)
+		ml_bulk_list
 		;;
 	*)
 		# Sourced as library - do nothing

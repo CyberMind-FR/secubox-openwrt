@@ -1,0 +1,11 @@
+{
+  "name": "default",
+  "description": "Default peer configuration for auto-provisioned devices",
+  "uci": [
+    "set system.@system[0].hostname='secubox-peer'",
+    "set master-link.main.role='peer'",
+    "set master-link.main.enabled='1'"
+  ],
+  "packages": [],
+  "services": ["secubox-core", "secubox-master-link"]
+}

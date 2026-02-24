@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-24 (ZKP Mesh Authentication)_
+_Last updated: 2026-02-24 (Factory Auto-Provisioning)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -63,6 +63,18 @@ _Last updated: 2026-02-24 (ZKP Mesh Authentication)_
   - Created `luci-app-vortex-dns` dashboard
 
 ### Just Completed (2026-02-24)
+
+- **Factory Auto-Provisioning** — DONE (2026-02-24)
+  - Zero-touch provisioning for new mesh devices without pre-shared tokens
+  - Hardware inventory collection (MAC, serial, model, CPU, RAM, storage)
+  - Profile-based configuration (7 profiles: default, enterprise, home-*, media-server, smart-home)
+  - Discovery mode with pending queue and manual/auto approval
+  - Bulk token generation (up to 100 tokens per batch)
+  - Clone provision enhancements for discovery-based join
+  - 9 new RPCD methods in luci.cloner
+  - Files: `inventory.sh`, `profiles.sh`, `default.json` (new)
+  - Modified: `master-link.sh`, `50-secubox-clone-provision`, `luci.cloner`, `p2p-mesh.sh`
+  - Tested: All methods working via ubus
 
 - **ZKP Mesh Authentication** — DONE (2026-02-24)
   - Zero-Knowledge Proof integration for cryptographic mesh authentication

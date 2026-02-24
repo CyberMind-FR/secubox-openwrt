@@ -14,3 +14,12 @@ config master-link 'main'
 	option zkp_fingerprint ''
 	option zkp_require_on_join '0'
 	option zkp_challenge_ttl '30'
+	# Factory Auto-Provisioning (Discovery Mode)
+	option discovery_mode '0'
+	# Enable discovery mode to accept new devices without tokens
+	option auto_approve_known '0'
+	# Auto-approve pre-registered MAC/serial devices
+	option discovery_window '300'
+	# Discovery window in seconds (0 = always open)
+	option default_profile 'default'
+	# Default profile for new devices

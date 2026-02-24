@@ -47,6 +47,135 @@ load_clone_config() {
 	return 1
 }
 
+# Collect hardware inventory for discovery mode
+collect_inventory() {
+	if [ -f /usr/lib/secubox/inventory.sh ]; then
+		. /usr/lib/secubox/inventory.sh
+		inventory_collect
+		return
+	fi
+
+	# Inline fallback if inventory.sh not available
+	local mac serial model ram storage
+
+	mac=$(cat /sys/class/net/eth0/address 2>/dev/null)
+	[ -z "$mac" ] && mac=$(cat /sys/class/net/br-lan/address 2>/dev/null)
+
+	serial=$(cat /sys/class/net/eth0/address 2>/dev/null | tr -d ':')
+
+	model=$(cat /tmp/sysinfo/board_name 2>/dev/null || echo "unknown")
+
+	ram=$(awk '/MemTotal/{print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)
+
+	storage=$(df -BG / 2>/dev/null | awk 'NR==2{gsub("G",""); print $2}' || echo 0)
+
+	cat <<EOF
+{"serial":"$serial","mac":"$mac","model":"$model","cpu":"unknown","ram_mb":$ram,"storage_gb":$storage,"collected_at":$(date +%s)}
+EOF
+}
+
+# Try discovery join (no token required, uses hardware inventory)
+try_discovery_join() {
+	local master_ip="$1"
+
+	log "Attempting discovery-based join to $master_ip..."
+
+	local inventory
+	inventory=$(collect_inventory)
+	log "Collected inventory: $(echo "$inventory" | head -c 100)..."
+
+	local response
+	response=$(curl -s -X POST "http://$master_ip:7331/api/discovery/register" \
+		-H "Content-Type: application/json" \
+		-d "$inventory" \
+		--connect-timeout 5 --max-time 10 2>/dev/null)
+
+	if [ -z "$response" ]; then
+		log "Discovery request failed - no response"
+		return 1
+	fi
+
+	local status
+	status=$(echo "$response" | jsonfilter -e '@.status' 2>/dev/null)
+
+	case "$status" in
+		approved)
+			# Got immediate approval with token
+			local token profile
+			token=$(echo "$response" | jsonfilter -e '@.token' 2>/dev/null)
+			profile=$(echo "$response" | jsonfilter -e '@.profile' 2>/dev/null)
+
+			log "Discovery approved! Token received, profile: $profile"
+
+			# Store token for mesh join
+			echo "$token" > /tmp/discovery-token
+			echo "$profile" > /tmp/discovery-profile
+
+			# Update CLONE_TOKEN for join_mesh to use
+			CLONE_TOKEN="$token"
+			return 0
+			;;
+		pending)
+			# Queued for approval - store device ID for polling
+			local device_id
+			device_id=$(echo "$response" | jsonfilter -e '@.device_id' 2>/dev/null)
+			log "Discovery pending approval (device_id: $device_id)"
+			echo "$device_id" > /tmp/discovery-device-id
+
+			# Poll for approval (up to 5 minutes)
+			poll_discovery_approval "$master_ip" "$device_id" 300
+			return $?
+			;;
+		*)
+			local error
+			error=$(echo "$response" | jsonfilter -e '@.error' 2>/dev/null)
+			log "Discovery failed: $status ($error)"
+			return 1
+			;;
+	esac
+}
+
+# Poll for discovery approval
+poll_discovery_approval() {
+	local master_ip="$1"
+	local device_id="$2"
+	local max_wait="${3:-300}"
+
+	log "Polling for approval (max ${max_wait}s)..."
+
+	local waited=0
+	while [ "$waited" -lt "$max_wait" ]; do
+		sleep 10
+		waited=$((waited + 10))
+
+		local response
+		response=$(curl -s "http://$master_ip:7331/api/discovery/status/$device_id" \
+			--connect-timeout 2 --max-time 5 2>/dev/null)
+
+		local status
+		status=$(echo "$response" | jsonfilter -e '@.status' 2>/dev/null)
+
+		if [ "$status" = "approved" ]; then
+			local token profile
+			token=$(echo "$response" | jsonfilter -e '@.token' 2>/dev/null)
+			profile=$(echo "$response" | jsonfilter -e '@.profile' 2>/dev/null)
+
+			log "Approval received after ${waited}s! Profile: $profile"
+
+			echo "$token" > /tmp/discovery-token
+			echo "$profile" > /tmp/discovery-profile
+
+			CLONE_TOKEN="$token"
+			return 0
+		fi
+
+		log "Still pending... (${waited}s / ${max_wait}s)"
+	done
+
+	log "Approval timeout - manual approval required on master"
+	return 1
+}
+
 # Resize root partition to full disk
 resize_root() {
 	log "Checking root partition resize..."
@@ -201,19 +330,32 @@ join_mesh() {
 
 		# Use master-link join with token
 		if [ -x /usr/lib/secubox/master-link.sh ]; then
-			if /usr/lib/secubox/master-link.sh join "$master" "$token" 2>/dev/null; then
+			if /usr/lib/secubox/master-link.sh join-with-zkp "$master" "$token" 2>/dev/null; then
 				log "Joined mesh successfully with token"
 				return 0
 			else
-				log "Token join failed, falling back to request"
+				log "Token join failed, falling back to discovery"
 			fi
 		fi
 	fi
 
-	# Request join (requires manual approval on master)
+	# Try discovery-based join (zero-touch provisioning)
 	if [ "$AUTO_JOIN" = "1" ]; then
-		log "Requesting mesh join (needs approval on master)..."
+		log "Attempting discovery-based join..."
+		if try_discovery_join "$master"; then
+			# Discovery approved - token stored in /tmp/discovery-token
+			if [ -f /tmp/discovery-token ]; then
+				local disc_token=$(cat /tmp/discovery-token)
+				if [ -x /usr/lib/secubox/master-link.sh ]; then
+					/usr/lib/secubox/master-link.sh join-with-zkp "$master" "$disc_token" 2>/dev/null
+					log "Joined mesh via discovery"
+					return 0
+				fi
+			fi
+		fi
 
+		# Fallback: legacy request join
+		log "Requesting mesh join (needs approval on master)..."
 		if [ -x /usr/lib/secubox/master-link.sh ]; then
 			if /usr/lib/secubox/master-link.sh request_join "$master" 2>/dev/null; then
 				log "Join request sent to master"

@@ -1145,6 +1145,209 @@ do_scan_network() {
 	json_dump
 }
 
+# ============================================================================
+# Factory Auto-Provisioning Methods
+# ============================================================================
+
+do_pending_devices() {
+	local pending_json="[]"
+
+	if [ -f /usr/lib/secubox/master-link.sh ]; then
+		. /usr/lib/secubox/master-link.sh 2>/dev/null
+		pending_json=$(ml_discovery_pending 2>/dev/null)
+		[ -z "$pending_json" ] && pending_json="[]"
+	fi
+
+	# Wrap array in object for ubus
+	printf '{"devices":%s}\n' "$pending_json"
+}
+
+do_approve_device() {
+	local input device_id profile result
+
+	read input
+	device_id=$(echo "$input" | jsonfilter -e '@.device_id' 2>/dev/null)
+	profile=$(echo "$input" | jsonfilter -e '@.profile' 2>/dev/null)
+
+	if [ -z "$device_id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing device_id"
+		json_dump
+		return
+	fi
+
+	if [ -f /usr/lib/secubox/master-link.sh ]; then
+		. /usr/lib/secubox/master-link.sh 2>/dev/null
+		result=$(ml_discovery_approve "$device_id" "$profile" 2>/dev/null)
+		# Result is already JSON object
+		[ -n "$result" ] && echo "$result" || echo '{"success":false,"error":"approval failed"}'
+		return
+	fi
+
+	json_init
+	json_add_boolean "success" 0
+	json_add_string "error" "master-link not available"
+	json_dump
+}
+
+do_reject_device() {
+	local input device_id reason result
+
+	read input
+	device_id=$(echo "$input" | jsonfilter -e '@.device_id' 2>/dev/null)
+	reason=$(echo "$input" | jsonfilter -e '@.reason' 2>/dev/null)
+
+	if [ -z "$device_id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing device_id"
+		json_dump
+		return
+	fi
+
+	if [ -f /usr/lib/secubox/master-link.sh ]; then
+		. /usr/lib/secubox/master-link.sh 2>/dev/null
+		result=$(ml_discovery_reject "$device_id" "$reason" 2>/dev/null)
+		# Result is already JSON object
+		[ -n "$result" ] && echo "$result" || echo '{"success":false,"error":"rejection failed"}'
+		return
+	fi
+
+	json_init
+	json_add_boolean "success" 0
+	json_add_string "error" "master-link not available"
+	json_dump
+}
+
+do_bulk_tokens() {
+	local input count profile ttl tokens_json
+
+	read input
+	count=$(echo "$input" | jsonfilter -e '@.count' 2>/dev/null)
+	profile=$(echo "$input" | jsonfilter -e '@.profile' 2>/dev/null)
+	ttl=$(echo "$input" | jsonfilter -e '@.ttl' 2>/dev/null)
+
+	[ -z "$count" ] && count=10
+	[ -z "$profile" ] && profile="default"
+	[ -z "$ttl" ] && ttl=86400
+
+	if [ -f /usr/lib/secubox/master-link.sh ]; then
+		. /usr/lib/secubox/master-link.sh 2>/dev/null
+		tokens_json=$(ml_bulk_tokens "$count" "$profile" "$ttl" 2>/dev/null)
+		[ -z "$tokens_json" ] && tokens_json="[]"
+		printf '{"tokens":%s}\n' "$tokens_json"
+		return
+	fi
+
+	json_init
+	json_add_boolean "success" 0
+	json_add_string "error" "master-link not available"
+	json_dump
+}
+
+do_inventory() {
+	local inv_json="[]"
+
+	if [ -f /usr/lib/secubox/inventory.sh ]; then
+		. /usr/lib/secubox/inventory.sh 2>/dev/null
+		inv_json=$(inventory_list 2>/dev/null)
+		[ -z "$inv_json" ] && inv_json="[]"
+	fi
+
+	# Wrap array in object for ubus
+	printf '{"inventory":%s}\n' "$inv_json"
+}
+
+do_list_profiles() {
+	local prof_json="[]"
+
+	if [ -f /usr/lib/secubox/profiles.sh ]; then
+		. /usr/lib/secubox/profiles.sh 2>/dev/null
+		prof_json=$(profile_list 2>/dev/null)
+		[ -z "$prof_json" ] && prof_json="[]"
+	fi
+
+	# Wrap array in object for ubus
+	printf '{"profiles":%s}\n' "$prof_json"
+}
+
+do_import_preregistered() {
+	local input devices
+
+	read input
+	devices=$(echo "$input" | jsonfilter -e '@.devices' 2>/dev/null)
+
+	json_init
+
+	if [ -z "$devices" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing devices data"
+		json_dump
+		return
+	fi
+
+	local preregistered="/etc/secubox/preregistered.json"
+	mkdir -p "$(dirname "$preregistered")"
+
+	# Write devices to pre-registered file
+	echo "$devices" > "$preregistered"
+
+	local count=$(echo "$devices" | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+	json_add_boolean "success" 1
+	json_add_int "imported" "$count"
+	json_dump
+}
+
+do_discovery_status() {
+	json_init
+
+	local discovery_mode=$(uci -q get master-link.main.discovery_mode)
+	local auto_approve_known=$(uci -q get master-link.main.auto_approve_known)
+	local default_profile=$(uci -q get master-link.main.default_profile)
+
+	json_add_boolean "discovery_enabled" "$([ "$discovery_mode" = "1" ] && echo 1 || echo 0)"
+	json_add_boolean "auto_approve_known" "$([ "$auto_approve_known" = "1" ] && echo 1 || echo 0)"
+	json_add_string "default_profile" "${default_profile:-default}"
+
+	# Count pending devices
+	local pending_count=0
+	if [ -d /var/lib/secubox-master-link/pending ]; then
+		pending_count=$(ls -1 /var/lib/secubox-master-link/pending/*.json 2>/dev/null | wc -l)
+	fi
+	json_add_int "pending_count" "$pending_count"
+
+	# Count inventoried devices
+	local inventory_count=0
+	if [ -d /var/lib/secubox-factory/inventory ]; then
+		inventory_count=$(ls -1 /var/lib/secubox-factory/inventory/*.json 2>/dev/null | wc -l)
+	fi
+	json_add_int "inventory_count" "$inventory_count"
+
+	json_dump
+}
+
+do_toggle_discovery() {
+	local input enabled
+
+	read input
+	enabled=$(echo "$input" | jsonfilter -e '@.enabled' 2>/dev/null)
+
+	json_init
+
+	if [ "$enabled" = "true" ] || [ "$enabled" = "1" ]; then
+		uci -q set master-link.main.discovery_mode='1'
+	else
+		uci -q set master-link.main.discovery_mode='0'
+	fi
+	uci commit master-link
+
+	local new_state=$(uci -q get master-link.main.discovery_mode)
+	json_add_boolean "success" 1
+	json_add_boolean "discovery_enabled" "$([ "$new_state" = "1" ] && echo 1 || echo 0)"
+	json_dump
+}
+
 case "$1" in
 	list)
 		echo '{'
@@ -1178,7 +1381,16 @@ case "$1" in
 		echo '"remote_status":{"ip":"String"},'
 		echo '"remote_upload":{"ip":"String","image":"String"},'
 		echo '"remote_flash":{"ip":"String","image":"String","keep_settings":"Boolean","token":"String"},'
-		echo '"scan_network":{}'
+		echo '"scan_network":{},'
+		echo '"pending_devices":{},'
+		echo '"approve_device":{"device_id":"String","profile":"String"},'
+		echo '"reject_device":{"device_id":"String","reason":"String"},'
+		echo '"bulk_tokens":{"count":"Number","profile":"String","ttl":"Number"},'
+		echo '"inventory":{},'
+		echo '"list_profiles":{},'
+		echo '"import_preregistered":{"devices":"Object"},'
+		echo '"discovery_status":{},'
+		echo '"toggle_discovery":{"enabled":"Boolean"}'
 		echo '}'
 		;;
 	call)
@@ -1214,6 +1426,15 @@ case "$1" in
 			remote_upload) do_remote_upload ;;
 			remote_flash) do_remote_flash ;;
 			scan_network) do_scan_network ;;
+			pending_devices) do_pending_devices ;;
+			approve_device) do_approve_device ;;
+			reject_device) do_reject_device ;;
+			bulk_tokens) do_bulk_tokens ;;
+			inventory) do_inventory ;;
+			list_profiles) do_list_profiles ;;
+			import_preregistered) do_import_preregistered ;;
+			discovery_status) do_discovery_status ;;
+			toggle_discovery) do_toggle_discovery ;;
 		esac
 		;;
 esac

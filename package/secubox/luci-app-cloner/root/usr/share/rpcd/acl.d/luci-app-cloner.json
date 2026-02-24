@@ -7,7 +7,8 @@
 					"status", "list_images", "list_tokens", "list_clones", "list_devices",
 					"build_progress", "build_log", "serial_ports", "serial_read",
 					"history_list", "storage_info", "image_details",
-					"list_remotes", "remote_status", "scan_network"
+					"list_remotes", "remote_status", "scan_network",
+					"pending_devices", "inventory", "list_profiles", "discovery_status"
 				]
 			}
 		},
@@ -17,7 +18,9 @@
 					"generate_token", "build_image", "tftp_start", "tftp_stop",
 					"delete_token", "delete_image", "serial_start", "serial_stop", "serial_write",
 					"history_add", "history_clear", "image_rename",
-					"add_remote", "remove_remote", "remote_upload", "remote_flash"
+					"add_remote", "remove_remote", "remote_upload", "remote_flash",
+					"approve_device", "reject_device", "bulk_tokens",
+					"import_preregistered", "toggle_discovery"
 				]
 			}
 		}
