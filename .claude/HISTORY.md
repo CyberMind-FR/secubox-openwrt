@@ -3199,3 +3199,35 @@ git checkout HEAD -- index.html
     - **Files:**
       - `luci-app-metablogizer/root/usr/libexec/rpcd/luci.metablogizer`
       - `secubox-app-haproxy/files/usr/sbin/haproxyctl`
+
+40. **ZKP Hamiltonian Cryptographic Library (2026-02-24)**
+    - Created `zkp-hamiltonian` package implementing Zero-Knowledge Proofs based on Hamiltonian Cycle problem (Blum 1986).
+    - **Cryptographic Implementation:**
+      - SHA3-256 commitments via OpenSSL EVP API
+      - Fiat-Shamir heuristic for NIZK transformation
+      - Fisher-Yates shuffle for uniform random permutations
+      - Constant-time memory comparison (timing attack resistant)
+      - Secure memory zeroing with compiler barrier
+    - **Library API:**
+      - `zkp_prove()` - Generate NIZK proof of Hamiltonian cycle knowledge
+      - `zkp_verify()` - Verify proof (stateless, O(n²))
+      - `zkp_generate_graph()` - Generate random graphs with guaranteed Hamiltonian cycle
+      - `zkp_serialize_*()` / `zkp_deserialize_*()` - Binary serialization (big-endian, portable)
+    - **CLI Tools:**
+      - `zkp_keygen` - Generate graph + Hamiltonian cycle (prover secret)
+      - `zkp_prover` - Create proof from graph + key
+      - `zkp_verifier` - Verify proof against graph
+    - **Test Coverage:**
+      - 41 tests across 4 test suites (crypto, graph, protocol, serialize)
+      - Completeness, soundness, tamper detection, anti-replay verification
+    - **Specifications:**
+      - C99, targets OpenWrt ARM64 (MochaBin Cortex-A72)
+      - Graph size: 4-50 nodes (configurable MAX_N=50)
+      - Proof size: ~160KB for n=50
+    - **Files:**
+      - `zkp-hamiltonian/src/{zkp_crypto,zkp_graph,zkp_prove,zkp_verify,zkp_serialize}.c`
+      - `zkp-hamiltonian/include/{zkp_hamiltonian,zkp_crypto,zkp_graph,zkp_types}.h`
+      - `zkp-hamiltonian/tools/{zkp_keygen,zkp_prover,zkp_verifier}.c`
+      - `zkp-hamiltonian/tests/{test_crypto,test_graph,test_protocol,test_serialize}.c`
+      - `zkp-hamiltonian/CMakeLists.txt`
+    - **Commit:** `65539368 feat(zkp-hamiltonian): Add Zero-Knowledge Proof library based on Hamiltonian Cycle`

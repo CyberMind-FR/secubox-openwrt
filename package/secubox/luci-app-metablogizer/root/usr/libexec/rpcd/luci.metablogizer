@@ -101,6 +101,13 @@ reload_haproxy() {
 		[ -d /opt/haproxy/config ] && cp "$src_cfg" /opt/haproxy/config/haproxy.cfg 2>/dev/null
 	fi
 
+	# Sync mitmproxy routes from HAProxy config and trigger reload
+	# This ensures WAF routing is properly configured for new vhosts
+	if command -v mitmproxyctl >/dev/null 2>&1; then
+		mitmproxyctl sync-routes >/dev/null 2>&1
+		logger -t metablogizer "Synced mitmproxy routes"
+	fi
+
 	# Reload HAProxy
 	if [ -x /etc/init.d/haproxy ]; then
 		/etc/init.d/haproxy reload >/dev/null 2>&1

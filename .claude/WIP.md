@@ -866,6 +866,14 @@ _Last updated: 2026-02-24 (Service Stability Fixes)_
 
 ### Just Completed (2026-02-24)
 
+- **ZKP Hamiltonian Library** — DONE (2026-02-24)
+  - Zero-Knowledge Proof implementation based on Hamiltonian Cycle (Blum 1986)
+  - NIZK via Fiat-Shamir heuristic, SHA3-256 commitments (OpenSSL)
+  - Complete library: prove/verify/serialize + CLI tools (keygen/prover/verifier)
+  - 41 tests passing: completeness, soundness, tamper detection, anti-replay
+  - C99 targeting OpenWrt ARM64, CMake build system
+  - Commit: 65539368
+
 - **Service Stability & LED Pulse Fix** — DONE (2026-02-24)
   - CrowdSec autostart: Fixed machine registration mismatch, downloaded GeoLite2-City.mmdb
   - LED pulse: Fixed HAProxy check to run on host instead of non-existent LXC container
