@@ -36,3 +36,4 @@ secubox-tools/c3box-vm/*.img.gz
 *.vdi
 *.vmdk
 *.ova
+package/secubox/zkp-hamiltonian/build-*/

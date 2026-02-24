@@ -429,7 +429,9 @@
       "Bash(/usr/bin/tail:*)",
       "Bash(/usr/bin/make:*)",
       "Bash(/tmp/build-zkp-x86.sh:*)",
-      "Bash(__NEW_LINE_a9089175728efc91__ echo \"\")"
+      "Bash(__NEW_LINE_a9089175728efc91__ echo \"\")",
+      "WebFetch(domain:pent.gk2.secubox.in)",
+      "Bash(__NEW_LINE_84a971cd6a876509__ echo \"Done deploying to clone\")"
     ]
   }
 }
