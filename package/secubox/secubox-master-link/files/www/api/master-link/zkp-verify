@@ -1,0 +1,49 @@
+#!/bin/sh
+# Master-Link API - ZKP Proof Verification
+# POST /api/master-link/zkp-verify
+# Body: {"fingerprint": "<peer_fp>", "challenge_id": "<id>", "proof": "<base64>"}
+# Returns: {"result": "ACCEPT|REJECT", "verified_at": <timestamp>}
+
+echo "Content-Type: application/json"
+echo "Access-Control-Allow-Origin: *"
+echo "Access-Control-Allow-Methods: POST, OPTIONS"
+echo "Access-Control-Allow-Headers: Content-Type"
+echo ""
+
+# Handle CORS preflight
+if [ "$REQUEST_METHOD" = "OPTIONS" ]; then
+	exit 0
+fi
+
+# Load library
+. /usr/lib/secubox/master-link.sh >/dev/null 2>&1
+
+# Check if ZKP is enabled
+zkp_enabled=$(uci -q get master-link.main.zkp_enabled)
+if [ "$zkp_enabled" != "1" ]; then
+	echo '{"error":"zkp_disabled"}'
+	exit 0
+fi
+
+# Only accept POST
+if [ "$REQUEST_METHOD" != "POST" ]; then
+	echo '{"error":"method_not_allowed"}'
+	exit 0
+fi
+
+# Read request body
+read -r input
+
+# Parse fields
+fingerprint=$(echo "$input" | jsonfilter -e '@.fingerprint' 2>/dev/null)
+challenge_id=$(echo "$input" | jsonfilter -e '@.challenge_id' 2>/dev/null)
+proof=$(echo "$input" | jsonfilter -e '@.proof' 2>/dev/null)
+
+# Validate required fields
+if [ -z "$fingerprint" ] || [ -z "$proof" ]; then
+	echo '{"error":"missing_required_fields","required":["fingerprint","proof"]}'
+	exit 0
+fi
+
+# Verify proof
+ml_zkp_verify "$fingerprint" "$proof" "$challenge_id"

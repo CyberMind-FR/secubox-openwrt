@@ -25,9 +25,39 @@ case "$PATH_INFO" in
         SINCE_HASH=${PATH_INFO#/since/}
         # Return blocks since given hash (for sync)
         if [ -f "$CHAIN_FILE" ]; then
-            cat "$CHAIN_FILE"
+            # Find index of the hash and return subsequent blocks as JSON array
+            FOUND_INDEX=""
+            TOTAL_BLOCKS=$(jsonfilter -i "$CHAIN_FILE" -e '@.blocks[*]' 2>/dev/null | wc -l)
+
+            # Find the block with matching hash
+            for i in $(seq 0 $((TOTAL_BLOCKS - 1))); do
+                BLOCK_HASH=$(jsonfilter -i "$CHAIN_FILE" -e "@.blocks[$i].hash" 2>/dev/null)
+                if [ "$BLOCK_HASH" = "$SINCE_HASH" ] || echo "$BLOCK_HASH" | grep -q "^$SINCE_HASH"; then
+                    FOUND_INDEX=$i
+                    break
+                fi
+            done
+
+            if [ -n "$FOUND_INDEX" ]; then
+                # Return blocks after the found index as array
+                START_INDEX=$((FOUND_INDEX + 1))
+                echo "["
+                FIRST=1
+                for i in $(seq $START_INDEX $((TOTAL_BLOCKS - 1))); do
+                    BLOCK=$(jsonfilter -i "$CHAIN_FILE" -e "@.blocks[$i]" 2>/dev/null)
+                    if [ -n "$BLOCK" ]; then
+                        [ "$FIRST" = "1" ] || echo ","
+                        echo "$BLOCK"
+                        FIRST=0
+                    fi
+                done
+                echo "]"
+            else
+                # Hash not found, return empty array
+                echo "[]"
+            fi
         else
-            echo "{\"blocks\":[]}"
+            echo "[]"
         fi
         ;;
     *)

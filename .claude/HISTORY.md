@@ -3232,6 +3232,43 @@ git checkout HEAD -- index.html
       - `zkp-hamiltonian/CMakeLists.txt`
     - **Commit:** `65539368 feat(zkp-hamiltonian): Add Zero-Knowledge Proof library based on Hamiltonian Cycle`
 
+41. **ZKP Mesh Authentication Integration (2026-02-24)**
+    - Integrated Zero-Knowledge Proofs into SecuBox master-link mesh authentication system.
+    - **Architecture:**
+      - Each node has ZKP identity (public graph + secret Hamiltonian cycle)
+      - Challenge-response authentication between mesh peers
+      - Blockchain acknowledgment of successful verifications
+    - **New API Endpoints:**
+      - `GET /api/master-link/zkp-challenge` — Generate authentication challenge with TTL
+      - `POST /api/master-link/zkp-verify` — Verify ZKP proof, record to blockchain
+      - `GET /api/zkp/graph` — Serve node's public ZKP graph (base64)
+    - **New Shell Functions in master-link.sh:**
+      - `ml_zkp_init()` — Initialize ZKP identity on first boot
+      - `ml_zkp_status()` — Return ZKP configuration status
+      - `ml_zkp_challenge()` — Generate challenge with UUID and expiry
+      - `ml_zkp_prove()` — Generate proof for given challenge
+      - `ml_zkp_verify()` — Verify peer's proof against trusted graph
+      - `ml_zkp_trust_peer()` — Store peer's public graph for future verification
+      - `ml_zkp_get_graph()` — Return base64-encoded public graph
+    - **Blockchain Acknowledgment:**
+      - New block type: `peer_zkp_verified`
+      - Records: peer_fp, proof_hash, challenge_id, result, verified_by
+    - **UCI Configuration:**
+      - `zkp_enabled` — Toggle ZKP authentication
+      - `zkp_fingerprint` — Auto-derived from graph hash (SHA256[0:16])
+      - `zkp_require_on_join` — Require ZKP proof for new peers
+      - `zkp_challenge_ttl` — Challenge validity in seconds (default 30)
+    - **Verification Test Results:**
+      - Master (192.168.255.1): ZKP identity initialized, fingerprint `7c5ead2b4e4b0106`
+      - API verification flow tested: challenge → proof → verify → blockchain record
+      - `peer_zkp_verified` block successfully recorded to chain
+    - **Files:**
+      - `secubox-master-link/files/usr/lib/secubox/master-link.sh` (ZKP functions)
+      - `secubox-master-link/files/www/api/zkp/graph` (new)
+      - `secubox-master-link/files/www/api/master-link/zkp-challenge` (new)
+      - `secubox-master-link/files/www/api/master-link/zkp-verify` (new)
+      - `secubox-master-link/files/etc/config/master-link` (ZKP options)
+
 41. **MetaBlogizer Upload Workflow Fix (2026-02-24)**
     - Sites now work immediately after upload without needing unpublish + expose.
     - **Root cause:** Upload created HAProxy vhost and mitmproxy route file entry, but mitmproxy never received a reload signal to activate the route.
@@ -3312,3 +3349,90 @@ git checkout HEAD -- index.html
     - **Verification:** `rcve.gk2.secubox.in` now returns HTTP 200 with correct content.
     - **Files Modified:**
       - `luci-app-metablogizer/root/usr/libexec/rpcd/luci.metablogizer`
+
+
+46. **ZKP Join Flow Integration (2026-02-24)**
+    - Enhanced mesh join protocol to support ZKP (Zero-Knowledge Proof) authentication.
+    - **Join Request Enhancement** (`ml_join_request()`):
+      - Now accepts `zkp_proof` (base64) and `zkp_graph` (base64) parameters
+      - Verifies proof against provided graph using `zkp_verifier`
+      - Validates fingerprint matches SHA256(graph)[0:16]
+      - Auto-stores peer's graph in `/etc/secubox/zkp/peers/` on successful verification
+      - Records `zkp_verified` and `zkp_proof_hash` in request file
+    - **Join Approval Enhancement** (`ml_join_approve()`):
+      - Auto-fetches peer's ZKP graph if not already stored during join
+      - Records `zkp_graph_stored` status in approval response
+      - Blockchain `peer_approved` blocks now include `zkp_verified` field
+    - **Peer-side Join** (`ml_join_with_zkp()`):
+      - New function for ZKP-authenticated mesh joining
+      - Generates ZKP proof using local identity keypair
+      - Uses ZKP fingerprint (from graph hash) instead of factory fingerprint
+      - Auto-stores master's graph for mutual authentication
+    - **API Update** (`/api/master-link/join`):
+      - Accepts `zkp_proof` and `zkp_graph` fields in POST body
+    - **Configuration**:
+      - `zkp_require_on_join`: When set to 1, rejects joins without valid ZKP proof
+    - **Verification:** Clone joined with `zkp_verified: true`, graphs exchanged bidirectionally
+    - **Files Modified:**
+      - `secubox-master-link/files/usr/lib/secubox/master-link.sh`
+      - `secubox-master-link/files/www/api/master-link/join`
+
+
+47. **LuCI ZKP Dashboard (2026-02-24)**
+    - Enhanced `luci-app-master-link` with ZKP authentication status visualization.
+    - **Overview Tab - ZKP Status Section:**
+      - ZKP Identity card: fingerprint display, copy button, generation status
+      - ZKP Tools card: installation status for zkp_keygen/prover/verifier
+      - Trusted Peers card: count of stored peer graphs
+      - Purple theme (violet gradient) for ZKP elements
+      - Enabled/Disabled badge next to section title
+    - **Peer Table Enhancement:**
+      - New "Auth" column showing authentication method
+      - `zkpBadge()` helper function for visual indicators:
+        - 🔐 ZKP badge (purple) for ZKP-verified peers
+        - TOKEN badge (gray) for token-only authentication
+    - **Design:**
+      - Purple accent colors (#8b5cf6, #a855f7, #c084fc) for ZKP elements
+      - Consistent with SecuBox KISS theme guidelines
+    - **Files Modified:**
+      - `luci-app-master-link/htdocs/luci-static/resources/view/secubox/master-link.js`
+
+
+48. **MirrorNet Ash Compatibility Fix (2026-02-24)**
+    - Fixed process substitution (`< <(cmd)`) incompatibility with BusyBox ash shell.
+    - **Pattern replaced:** `while read; do ... done < <(jsonfilter ...)`
+    - **Ash-compatible pattern:** `jsonfilter ... | while read; do ... done` with temp files for variable persistence
+    - **Files fixed:**
+      - `secubox-mirrornet/files/usr/lib/mirrornet/mirror.sh` (3 instances)
+      - `secubox-mirrornet/files/usr/lib/mirrornet/gossip.sh` (3 instances)
+      - `secubox-mirrornet/files/usr/lib/mirrornet/health.sh` (1 instance)
+      - `secubox-mirrornet/files/usr/lib/mirrornet/identity.sh` (1 instance - for loop fix)
+    - **Tested:** `mirrorctl status`, `mirror-add`, `mirror-upstream`, `mirror-check`, `mirror-haproxy` all working
+    - **Deployed:** Both master (192.168.255.1) and clone (192.168.255.156) routers
+
+
+49. **Mesh Blockchain Sync (2026-02-24)**
+    - Fixed blockchain chain synchronization between mesh nodes.
+    - **Chain Append Fix:**
+      - `chain_add_block()`: Uses awk to safely insert new blocks before `] }` ending
+      - Handles JSON with/without trailing newlines and varying whitespace
+      - Compacts multi-line blocks to single line for clean insertion
+    - **Chain Merge Fix:**
+      - `chain_merge_block()`: Same awk-based approach for remote block merging
+      - Validates block structure and prev_hash linkage before merging
+    - **Sync Endpoint Fix:**
+      - `/api/chain/since/<hash>`: Now properly returns only blocks after given hash
+      - Returns JSON array of blocks (not full chain)
+      - Supports partial hash matching
+    - **Sync Function Fix:**
+      - `sync_with_peer()`: Properly fetches and merges missing blocks
+      - Uses `chain_merge_block()` for each received block
+      - Stores block data in blocks directory
+    - **Verification:**
+      - Master→Clone sync: Block 70 synced successfully
+      - Clone→Master sync: Block 69 synced successfully
+      - Both nodes at height 70 with matching hash
+      - JSON validity confirmed via Python parser
+    - **Files Modified:**
+      - `secubox-core/root/usr/lib/secubox/p2p-mesh.sh`
+      - `secubox-core/root/www/api/chain`

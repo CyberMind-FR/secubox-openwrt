@@ -289,15 +289,14 @@ health_check_all_peers() {
     echo "  \"timestamp\": $(date +%s),"
     echo "  \"peers\": ["
 
-    local first=1
-    while read -r peer_line; do
+    # Collect peer check results (ash-compatible)
+    local tmp_results="/tmp/health_check_$$.tmp"
+    jsonfilter -i "$peers_file" -e '@[*]' 2>/dev/null | while read -r peer_line; do
         local peer_id peer_addr
         peer_id=$(echo "$peer_line" | jsonfilter -e '@.id' 2>/dev/null)
         peer_addr=$(echo "$peer_line" | jsonfilter -e '@.address' 2>/dev/null)
 
         [ -z "$peer_addr" ] && continue
-
-        [ "$first" = "1" ] || echo ","
 
         # Run health checks
         local ping_result http_result
@@ -318,20 +317,22 @@ health_check_all_peers() {
             combined_status="unhealthy"
         fi
 
-        echo "    {"
-        echo "      \"peer_id\": \"$peer_id\","
-        echo "      \"address\": \"$peer_addr\","
-        echo "      \"status\": \"$combined_status\","
-        echo "      \"ping\": $ping_result,"
-        echo "      \"http\": $http_result"
-        echo "    }"
+        # Output peer result as single line JSON
+        echo "{\"peer_id\":\"$peer_id\",\"address\":\"$peer_addr\",\"status\":\"$combined_status\",\"ping\":$ping_result,\"http\":$http_result}"
 
         # Record metrics
         local metrics="{\"latency_ms\":$(echo "$ping_result" | jsonfilter -e '@.latency_ms' 2>/dev/null || echo null),\"packet_loss\":$(echo "$ping_result" | jsonfilter -e '@.packet_loss' 2>/dev/null || echo 0),\"http_code\":$(echo "$http_result" | jsonfilter -e '@.http_code' 2>/dev/null || echo 0)}"
         health_record_metrics "$peer_id" "$metrics"
+    done > "$tmp_results"
 
+    # Output collected results with proper formatting
+    local first=1
+    while read -r result; do
+        [ "$first" = "1" ] || echo ","
+        echo "    $result"
         first=0
-    done < <(jsonfilter -i "$peers_file" -e '@[*]' 2>/dev/null)
+    done < "$tmp_results"
+    rm -f "$tmp_results"
 
     echo "  ]"
     echo "}"

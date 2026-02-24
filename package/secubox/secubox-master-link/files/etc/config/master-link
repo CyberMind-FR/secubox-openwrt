@@ -9,3 +9,8 @@ config master-link 'main'
 	option token_ttl '3600'
 	option auto_approve '0'
 	option ipk_path '/www/secubox-feed/secubox-master-link_*.ipk'
+	# ZKP Authentication
+	option zkp_enabled '1'
+	option zkp_fingerprint ''
+	option zkp_require_on_join '0'
+	option zkp_challenge_ttl '30'

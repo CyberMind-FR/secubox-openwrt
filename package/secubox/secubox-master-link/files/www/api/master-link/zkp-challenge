@@ -1,0 +1,28 @@
+#!/bin/sh
+# Master-Link API - ZKP Challenge Generation
+# GET /api/master-link/zkp-challenge
+# Returns: challenge_id and timestamp for ZKP authentication
+
+echo "Content-Type: application/json"
+echo "Access-Control-Allow-Origin: *"
+echo "Access-Control-Allow-Methods: GET, OPTIONS"
+echo "Access-Control-Allow-Headers: Content-Type"
+echo ""
+
+# Handle CORS preflight
+if [ "$REQUEST_METHOD" = "OPTIONS" ]; then
+	exit 0
+fi
+
+# Load library
+. /usr/lib/secubox/master-link.sh >/dev/null 2>&1
+
+# Check if ZKP is enabled
+zkp_enabled=$(uci -q get master-link.main.zkp_enabled)
+if [ "$zkp_enabled" != "1" ]; then
+	echo '{"error":"zkp_disabled"}'
+	exit 0
+fi
+
+# Generate challenge
+ml_zkp_challenge

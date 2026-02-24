@@ -30,6 +30,10 @@ fingerprint=$(echo "$input" | jsonfilter -e '@.fingerprint' 2>/dev/null)
 address=$(echo "$input" | jsonfilter -e '@.address' 2>/dev/null)
 peer_hostname=$(echo "$input" | jsonfilter -e '@.hostname' 2>/dev/null)
 
+# ZKP fields (optional unless zkp_require_on_join=1)
+zkp_proof=$(echo "$input" | jsonfilter -e '@.zkp_proof' 2>/dev/null)
+zkp_graph=$(echo "$input" | jsonfilter -e '@.zkp_graph' 2>/dev/null)
+
 # Use REMOTE_ADDR as fallback for address
 [ -z "$address" ] && address="$REMOTE_ADDR"
 
@@ -38,4 +42,4 @@ if [ -z "$token" ] || [ -z "$fingerprint" ]; then
 	exit 0
 fi
 
-ml_join_request "$token" "$fingerprint" "$address" "$peer_hostname"
+ml_join_request "$token" "$fingerprint" "$address" "$peer_hostname" "$zkp_proof" "$zkp_graph"

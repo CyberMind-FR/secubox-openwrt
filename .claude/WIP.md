@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-24 (Service Stability Fixes)_
+_Last updated: 2026-02-24 (ZKP Mesh Authentication)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -61,6 +61,52 @@ _Last updated: 2026-02-24 (Service Stability Fixes)_
   - First Peek auto-registration of services
   - Gossip-based exposure config sync via secubox-p2p
   - Created `luci-app-vortex-dns` dashboard
+
+### Just Completed (2026-02-24)
+
+- **ZKP Mesh Authentication** — DONE (2026-02-24)
+  - Zero-Knowledge Proof integration for cryptographic mesh authentication
+  - Each node has ZKP identity (public graph + secret Hamiltonian cycle)
+  - New API endpoints: `/api/master-link/zkp-challenge`, `/api/master-link/zkp-verify`, `/api/zkp/graph`
+  - Shell functions: `ml_zkp_init()`, `ml_zkp_challenge()`, `ml_zkp_verify()`, `ml_zkp_trust_peer()`
+  - Blockchain acknowledgment via `peer_zkp_verified` block type
+  - UCI config options: `zkp_enabled`, `zkp_fingerprint`, `zkp_require_on_join`, `zkp_challenge_ttl`
+  - Tested on master (fingerprint: `7c5ead2b4e4b0106`)
+  - Files: `master-link.sh` (ZKP functions), 3 new API endpoints
+
+- **ZKP Join Flow Integration** — DONE (2026-02-24)
+  - Enhanced `ml_join_request()` to accept and verify ZKP proofs during join
+  - Enhanced `ml_join_approve()` to auto-fetch and store peer's ZKP graph
+  - New peer-side `ml_join_with_zkp()` function for ZKP-authenticated joining
+  - `/api/master-link/join` now accepts `zkp_proof` and `zkp_graph` fields
+  - When ZKP proof provided: fingerprint = SHA256(graph)[0:16] (ZKP fingerprint)
+  - Option `zkp_require_on_join` to mandate ZKP for all new joins
+  - Join requests now store `zkp_verified` and `zkp_proof_hash` fields
+  - Tested: Clone joined with `zkp_verified: true`, graph auto-stored on approval
+
+- **LuCI ZKP Dashboard** — DONE (2026-02-24)
+  - Added ZKP Status section to `luci-app-master-link` Overview tab
+  - Cards: ZKP Identity (fingerprint), ZKP Tools status, Trusted Peers count
+  - Color theme: purple gradient for ZKP elements
+  - Added ZKP badge column to peer table (🔐ZKP vs TOKEN)
+  - Helper function `zkpBadge()` for visual auth type indicator
+
+- **MirrorNet Ash Compatibility Fix** — DONE (2026-02-24)
+  - Fixed process substitution `< <(cmd)` incompatibility with BusyBox ash
+  - Converted to pipe-based patterns with temp files for variable persistence
+  - Files fixed: mirror.sh (3), gossip.sh (3), health.sh (1), identity.sh (1)
+  - Tested: `mirrorctl` CLI fully functional on both routers
+  - Mirror features working: add service, add upstream, health check, HAProxy config generation
+
+- **Mesh Blockchain Sync** — DONE (2026-02-24)
+  - Fixed chain.json append logic for proper JSON structure preservation
+  - Fixed `/api/chain/since/<hash>` endpoint to return only new blocks as array
+  - `chain_add_block()`: Uses awk to safely insert before closing `] }`
+  - `chain_merge_block()`: Same awk-based approach for remote block merging
+  - `sync_with_peer()`: Properly merges blocks into local chain
+  - Handles JSON with/without trailing newlines and varying whitespace
+  - Tested bidirectional sync: Master ↔ Clone both at height 70, matching hash
+  - Files: `p2p-mesh.sh` (chain functions), `/www/api/chain` (endpoint)
 
 ### Just Completed (2026-02-20)
 

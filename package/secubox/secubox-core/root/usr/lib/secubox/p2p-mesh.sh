@@ -138,12 +138,72 @@ EOF
 )
 
     # Append to chain (using temp file for atomic update)
+    # JSON structure ends with: ...} ] } (with possible whitespace)
+    # Use awk to replace the last ] } with ,newblock ] }
     local tmp_chain="$MESH_DIR/tmp/chain_$$.json"
-    jsonfilter -i "$CHAIN_FILE" -e '@' | sed 's/\]$//' > "$tmp_chain"
-    echo ",$block_record]}" >> "$tmp_chain"
-    mv "$tmp_chain" "$CHAIN_FILE"
 
+    # Compact the block to single line (escape special chars for awk)
+    local compact_block=$(echo "$block_record" | tr '\n' ' ' | tr -s ' ' | sed 's/&/\\&/g')
+
+    # Use awk to replace last occurrence of ] followed by whitespace and }
+    # RS="" reads entire file, gsub replaces pattern
+    awk -v block="$compact_block" '
+        BEGIN { RS=""; ORS="" }
+        {
+            # Find last ] } pattern and insert block before it
+            n = match($0, /\][ \t\n]*\}[ \t\n]*$/)
+            if (n > 0) {
+                print substr($0, 1, n-1) "," block "]}\n"
+            } else {
+                print $0
+            }
+        }
+    ' "$CHAIN_FILE" > "$tmp_chain"
+
+    mv "$tmp_chain" "$CHAIN_FILE"
     echo "$block_hash"
+}
+
+# Merge a remote block into the local chain (for sync)
+chain_merge_block() {
+    local block_json="$1"
+
+    # Validate block structure
+    local block_index=$(echo "$block_json" | jsonfilter -e '@.index' 2>/dev/null)
+    local block_hash=$(echo "$block_json" | jsonfilter -e '@.hash' 2>/dev/null)
+    local block_prev=$(echo "$block_json" | jsonfilter -e '@.prev_hash' 2>/dev/null)
+
+    [ -z "$block_index" ] && return 1
+    [ -z "$block_hash" ] && return 1
+
+    # Check prev_hash matches our tip
+    local local_hash=$(chain_get_hash)
+    if [ "$block_prev" != "$local_hash" ]; then
+        echo "Block prev_hash mismatch: expected=$local_hash got=$block_prev" >&2
+        return 1
+    fi
+
+    # Append block to chain
+    local tmp_chain="$MESH_DIR/tmp/chain_merge_$$.json"
+
+    # Compact block to single line (escape special chars for awk)
+    local compact_block=$(echo "$block_json" | tr '\n' ' ' | tr -s ' ' | sed 's/&/\\&/g')
+
+    # Use awk to insert block before last ] }
+    awk -v block="$compact_block" '
+        BEGIN { RS=""; ORS="" }
+        {
+            n = match($0, /\][ \t\n]*\}[ \t\n]*$/)
+            if (n > 0) {
+                print substr($0, 1, n-1) "," block "]}\n"
+            } else {
+                print $0
+            }
+        }
+    ' "$CHAIN_FILE" > "$tmp_chain"
+
+    mv "$tmp_chain" "$CHAIN_FILE"
+    echo "Merged block $block_index ($block_hash)"
 }
 
 chain_verify() {
@@ -326,22 +386,34 @@ sync_with_peer() {
 
     # Get missing blocks from peer
     local missing=$(curl -s "http://$peer_addr:$peer_port/api/chain/since/$local_hash" 2>/dev/null)
-    if [ -n "$missing" ]; then
-        echo "$missing" | jsonfilter -e '@[*]' | while read block; do
-            local block_hash=$(echo "$block" | jsonfilter -e '@.hash')
-            local block_type=$(echo "$block" | jsonfilter -e '@.type')
+    if [ -n "$missing" ] && [ "$missing" != "[]" ]; then
+        # Store blocks in temp file for ordered processing
+        local tmp_blocks="$MESH_DIR/tmp/sync_blocks_$$.tmp"
+        echo "$missing" | jsonfilter -e '@[*]' > "$tmp_blocks" 2>/dev/null
 
-            # Fetch and store block data
-            if ! block_exists "$block_hash"; then
-                curl -s "http://$peer_addr:$peer_port/api/block/$block_hash" -o "$MESH_DIR/tmp/$block_hash"
-                if [ -f "$MESH_DIR/tmp/$block_hash" ]; then
-                    block_store_file "$MESH_DIR/tmp/$block_hash"
-                    rm "$MESH_DIR/tmp/$block_hash"
+        local synced_count=0
+        while read -r block; do
+            [ -z "$block" ] && continue
+            local block_hash=$(echo "$block" | jsonfilter -e '@.hash' 2>/dev/null)
+
+            # Merge block into local chain
+            if chain_merge_block "$block"; then
+                synced_count=$((synced_count + 1))
+
+                # Also store block data if present
+                if [ -n "$block_hash" ] && ! block_exists "$block_hash"; then
+                    local block_data=$(echo "$block" | jsonfilter -e '@.data' 2>/dev/null)
+                    if [ -n "$block_data" ]; then
+                        echo "$block_data" | block_store "$block_hash"
+                    fi
                 fi
             fi
-        done
+        done < "$tmp_blocks"
+        rm -f "$tmp_blocks"
 
-        echo "Synced $(echo "$missing" | jsonfilter -e '@[*]' | wc -l) blocks from $peer_addr"
+        echo "Synced $synced_count blocks from $peer_addr"
+    else
+        echo "No new blocks from $peer_addr"
     fi
 }
 

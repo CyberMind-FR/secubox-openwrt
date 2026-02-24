@@ -15,10 +15,269 @@ ML_TOKENS_DIR="$ML_DIR/tokens"
 ML_REQUESTS_DIR="$ML_DIR/requests"
 MESH_PORT="${MESH_PORT:-7331}"
 
+# ZKP Configuration
+ZKP_DIR="/etc/secubox/zkp"
+ZKP_IDENTITY_GRAPH="$ZKP_DIR/identity.graph"
+ZKP_IDENTITY_KEY="$ZKP_DIR/identity.key"
+ZKP_PEERS_DIR="$ZKP_DIR/peers"
+ZKP_CHALLENGES_DIR="/tmp/zkp_challenges"
+ZKP_CHALLENGE_TTL="${ZKP_CHALLENGE_TTL:-30}"
+
 ml_init() {
 	mkdir -p "$ML_DIR" "$ML_TOKENS_DIR" "$ML_REQUESTS_DIR"
 	factory_init_keys >/dev/null 2>&1
 	mesh_init >/dev/null 2>&1
+	ml_zkp_init >/dev/null 2>&1
+}
+
+# ============================================================================
+# ZKP Identity Management
+# ============================================================================
+
+# Initialize ZKP identity (generate keypair if not exists)
+ml_zkp_init() {
+	# Check if ZKP tools are available
+	command -v zkp_keygen >/dev/null 2>&1 || return 0
+
+	mkdir -p "$ZKP_DIR" "$ZKP_PEERS_DIR" "$ZKP_CHALLENGES_DIR"
+
+	# Generate identity if not exists
+	if [ ! -f "$ZKP_IDENTITY_GRAPH" ] || [ ! -f "$ZKP_IDENTITY_KEY" ]; then
+		logger -t master-link "Generating ZKP identity keypair..."
+		local tmpprefix="/tmp/zkp_init_$$"
+		if zkp_keygen -n 50 -r 1.0 -o "$tmpprefix" >/dev/null 2>&1; then
+			mv "${tmpprefix}.graph" "$ZKP_IDENTITY_GRAPH"
+			mv "${tmpprefix}.key" "$ZKP_IDENTITY_KEY"
+			chmod 644 "$ZKP_IDENTITY_GRAPH"
+			chmod 600 "$ZKP_IDENTITY_KEY"
+			logger -t master-link "ZKP identity generated"
+		else
+			logger -t master-link "ZKP keygen failed"
+			rm -f "${tmpprefix}.graph" "${tmpprefix}.key"
+			return 1
+		fi
+	fi
+
+	# Derive and store ZKP fingerprint
+	if [ -f "$ZKP_IDENTITY_GRAPH" ]; then
+		local zkp_fp=$(sha256sum "$ZKP_IDENTITY_GRAPH" | cut -c1-16)
+		uci -q set master-link.main.zkp_fingerprint="$zkp_fp"
+		uci -q set master-link.main.zkp_enabled="1"
+		uci commit master-link
+	fi
+
+	return 0
+}
+
+# Get ZKP status
+ml_zkp_status() {
+	local zkp_enabled=$(uci -q get master-link.main.zkp_enabled)
+	local zkp_fp=$(uci -q get master-link.main.zkp_fingerprint)
+	local has_tools="false"
+	local has_identity="false"
+	local peer_count=0
+
+	command -v zkp_keygen >/dev/null 2>&1 && has_tools="true"
+	[ -f "$ZKP_IDENTITY_GRAPH" ] && [ -f "$ZKP_IDENTITY_KEY" ] && has_identity="true"
+	[ -d "$ZKP_PEERS_DIR" ] && peer_count=$(ls -1 "$ZKP_PEERS_DIR"/*.graph 2>/dev/null | wc -l)
+
+	cat <<-EOF
+	{
+		"enabled": ${zkp_enabled:-0},
+		"tools_available": $has_tools,
+		"has_identity": $has_identity,
+		"fingerprint": "${zkp_fp:-}",
+		"trusted_peers": $peer_count
+	}
+	EOF
+}
+
+# Generate ZKP challenge for authentication
+ml_zkp_challenge() {
+	mkdir -p "$ZKP_CHALLENGES_DIR"
+
+	local challenge_id=$(head -c 16 /dev/urandom 2>/dev/null | sha256sum | cut -c1-32)
+	local timestamp=$(date +%s)
+	local expires=$((timestamp + ZKP_CHALLENGE_TTL))
+
+	# Store challenge
+	echo "{\"id\":\"$challenge_id\",\"timestamp\":$timestamp,\"expires\":$expires}" > "$ZKP_CHALLENGES_DIR/${challenge_id}.json"
+
+	# Cleanup old challenges
+	find "$ZKP_CHALLENGES_DIR" -name "*.json" -mmin +5 -delete 2>/dev/null
+
+	cat <<-EOF
+	{
+		"challenge_id": "$challenge_id",
+		"timestamp": $timestamp,
+		"expires": $expires,
+		"ttl": $ZKP_CHALLENGE_TTL
+	}
+	EOF
+}
+
+# Generate ZKP proof for authentication
+ml_zkp_prove() {
+	local challenge_id="$1"
+
+	# Check identity exists
+	if [ ! -f "$ZKP_IDENTITY_GRAPH" ] || [ ! -f "$ZKP_IDENTITY_KEY" ]; then
+		echo '{"success":false,"error":"no_identity"}'
+		return 1
+	fi
+
+	# Check tools available
+	command -v zkp_prover >/dev/null 2>&1 || {
+		echo '{"success":false,"error":"no_zkp_tools"}'
+		return 1
+	}
+
+	local proof_file="/tmp/zkp_proof_$$.proof"
+
+	# Generate proof
+	if zkp_prover -g "$ZKP_IDENTITY_GRAPH" -k "$ZKP_IDENTITY_KEY" -o "$proof_file" >/dev/null 2>&1; then
+		local proof_b64=$(base64 -w 0 "$proof_file")
+		local proof_hash=$(sha256sum "$proof_file" | cut -c1-16)
+		local proof_size=$(stat -c %s "$proof_file" 2>/dev/null || echo 0)
+		rm -f "$proof_file"
+
+		local zkp_fp=$(uci -q get master-link.main.zkp_fingerprint)
+
+		cat <<-EOF
+		{
+			"success": true,
+			"fingerprint": "$zkp_fp",
+			"challenge_id": "$challenge_id",
+			"proof": "$proof_b64",
+			"proof_hash": "$proof_hash",
+			"proof_size": $proof_size
+		}
+		EOF
+	else
+		rm -f "$proof_file"
+		echo '{"success":false,"error":"proof_generation_failed"}'
+		return 1
+	fi
+}
+
+# Verify ZKP proof from peer
+ml_zkp_verify() {
+	local peer_fp="$1"
+	local proof_b64="$2"
+	local challenge_id="$3"
+
+	# Validate challenge
+	local challenge_file="$ZKP_CHALLENGES_DIR/${challenge_id}.json"
+	if [ -n "$challenge_id" ] && [ -f "$challenge_file" ]; then
+		local expires=$(jsonfilter -i "$challenge_file" -e '@.expires' 2>/dev/null)
+		local now=$(date +%s)
+		if [ -n "$expires" ] && [ "$now" -gt "$expires" ]; then
+			rm -f "$challenge_file"
+			echo '{"success":false,"result":"REJECT","error":"challenge_expired"}'
+			return 1
+		fi
+	fi
+
+	# Check peer graph exists
+	local graph_file="$ZKP_PEERS_DIR/${peer_fp}.graph"
+	if [ ! -f "$graph_file" ]; then
+		echo '{"success":false,"result":"REJECT","error":"unknown_peer"}'
+		return 1
+	fi
+
+	# Check tools available
+	command -v zkp_verifier >/dev/null 2>&1 || {
+		echo '{"success":false,"result":"REJECT","error":"no_zkp_tools"}'
+		return 1
+	}
+
+	# Decode and verify proof
+	local proof_file="/tmp/zkp_verify_$$.proof"
+	echo "$proof_b64" | base64 -d > "$proof_file" 2>/dev/null
+
+	local result=$(zkp_verifier -g "$graph_file" -p "$proof_file" 2>&1)
+	local rc=$?
+	local proof_hash=$(sha256sum "$proof_file" 2>/dev/null | cut -c1-16)
+	rm -f "$proof_file"
+
+	# Clean up challenge after use
+	[ -f "$challenge_file" ] && rm -f "$challenge_file"
+
+	local my_fp=$(factory_fingerprint 2>/dev/null)
+	local timestamp=$(date +%s)
+
+	if [ "$result" = "ACCEPT" ]; then
+		# Record to blockchain
+		chain_add_block "peer_zkp_verified" \
+			"{\"peer_fp\":\"$peer_fp\",\"proof_hash\":\"$proof_hash\",\"challenge_id\":\"$challenge_id\",\"result\":\"ACCEPT\",\"verified_by\":\"$my_fp\"}" \
+			"$(echo "zkp_verify:${peer_fp}:${proof_hash}:${timestamp}" | sha256sum | cut -d' ' -f1)" >/dev/null 2>&1
+
+		logger -t master-link "ZKP verified: peer=$peer_fp result=ACCEPT"
+
+		cat <<-EOF
+		{
+			"success": true,
+			"result": "ACCEPT",
+			"peer_fp": "$peer_fp",
+			"proof_hash": "$proof_hash",
+			"verified_at": $timestamp,
+			"verified_by": "$my_fp"
+		}
+		EOF
+	else
+		logger -t master-link "ZKP verification failed: peer=$peer_fp result=$result"
+		cat <<-EOF
+		{
+			"success": true,
+			"result": "REJECT",
+			"peer_fp": "$peer_fp",
+			"error": "verification_failed"
+		}
+		EOF
+		return 1
+	fi
+}
+
+# Store peer's ZKP graph (called during approval)
+ml_zkp_trust_peer() {
+	local peer_fp="$1"
+	local peer_addr="$2"
+
+	mkdir -p "$ZKP_PEERS_DIR"
+
+	# Fetch peer's graph
+	local graph_b64=$(curl -s --connect-timeout 5 "http://${peer_addr}:${MESH_PORT}/api/zkp/graph" 2>/dev/null)
+	if [ -z "$graph_b64" ]; then
+		logger -t master-link "Failed to fetch ZKP graph from $peer_addr"
+		return 1
+	fi
+
+	# Decode and verify fingerprint
+	local tmp_graph="/tmp/zkp_peer_$$.graph"
+	echo "$graph_b64" | base64 -d > "$tmp_graph" 2>/dev/null
+
+	local fetched_fp=$(sha256sum "$tmp_graph" | cut -c1-16)
+	if [ "$fetched_fp" != "$peer_fp" ]; then
+		logger -t master-link "ZKP fingerprint mismatch: expected=$peer_fp got=$fetched_fp"
+		rm -f "$tmp_graph"
+		return 1
+	fi
+
+	# Store trusted peer graph
+	mv "$tmp_graph" "$ZKP_PEERS_DIR/${peer_fp}.graph"
+	chmod 644 "$ZKP_PEERS_DIR/${peer_fp}.graph"
+
+	logger -t master-link "Trusted ZKP peer: $peer_fp"
+	return 0
+}
+
+# Get own public graph (base64 encoded)
+ml_zkp_get_graph() {
+	if [ -f "$ZKP_IDENTITY_GRAPH" ]; then
+		base64 -w 0 "$ZKP_IDENTITY_GRAPH"
+	else
+		echo ""
+	fi
 }
 
 # ============================================================================
@@ -282,11 +541,14 @@ ml_token_is_auto_approve() {
 # ============================================================================
 
 # Handle join request from new node
+# Enhanced with ZKP authentication support
 ml_join_request() {
 	local token="$1"
 	local peer_fp="$2"
 	local peer_addr="$3"
 	local peer_hostname="${4:-unknown}"
+	local zkp_proof_b64="$5"
+	local zkp_graph_b64="$6"
 
 	# Validate token
 	local validation=$(ml_token_validate "$token")
@@ -298,9 +560,62 @@ ml_join_request() {
 	fi
 
 	local token_hash=$(echo "$token" | sha256sum | cut -d' ' -f1)
-
-	# Store join request
 	local now=$(date +%s)
+	local zkp_verified="false"
+	local zkp_proof_hash=""
+
+	# Check if ZKP is required for join
+	local zkp_require=$(uci -q get master-link.main.zkp_require_on_join)
+	local zkp_enabled=$(uci -q get master-link.main.zkp_enabled)
+
+	# ZKP verification if proof provided
+	if [ -n "$zkp_proof_b64" ] && [ -n "$zkp_graph_b64" ]; then
+		# Check ZKP tools available
+		if command -v zkp_verifier >/dev/null 2>&1; then
+			# First, verify peer fingerprint matches graph hash
+			local tmp_graph="/tmp/zkp_join_$$.graph"
+			local tmp_proof="/tmp/zkp_join_$$.proof"
+
+			echo "$zkp_graph_b64" | base64 -d > "$tmp_graph" 2>/dev/null
+			echo "$zkp_proof_b64" | base64 -d > "$tmp_proof" 2>/dev/null
+
+			local graph_fp=$(sha256sum "$tmp_graph" 2>/dev/null | cut -c1-16)
+			zkp_proof_hash=$(sha256sum "$tmp_proof" 2>/dev/null | cut -c1-16)
+
+			if [ "$graph_fp" = "$peer_fp" ]; then
+				# Fingerprint matches - verify proof
+				local verify_result=$(zkp_verifier -g "$tmp_graph" -p "$tmp_proof" 2>&1)
+				if [ "$verify_result" = "ACCEPT" ]; then
+					zkp_verified="true"
+					logger -t master-link "ZKP join proof verified for $peer_fp"
+
+					# Store peer graph for future verifications
+					mkdir -p "$ZKP_PEERS_DIR"
+					mv "$tmp_graph" "$ZKP_PEERS_DIR/${peer_fp}.graph"
+					chmod 644 "$ZKP_PEERS_DIR/${peer_fp}.graph"
+				else
+					logger -t master-link "ZKP join proof REJECTED for $peer_fp: $verify_result"
+					rm -f "$tmp_graph"
+				fi
+			else
+				logger -t master-link "ZKP fingerprint mismatch: expected=$peer_fp got=$graph_fp"
+				rm -f "$tmp_graph"
+			fi
+
+			rm -f "$tmp_proof"
+		else
+			logger -t master-link "ZKP tools not available, skipping proof verification"
+		fi
+	fi
+
+	# Reject if ZKP required but not verified
+	if [ "$zkp_require" = "1" ] && [ "$zkp_enabled" = "1" ] && [ "$zkp_verified" != "true" ]; then
+		logger -t master-link "Rejecting join: ZKP required but not verified ($peer_fp)"
+		echo '{"success":false,"error":"zkp_required","message":"ZKP proof required for join"}'
+		return 1
+	fi
+
+	# Store join request with ZKP status
 	cat > "$ML_REQUESTS_DIR/${peer_fp}.json" <<-EOF
 	{
 		"fingerprint": "$peer_fp",
@@ -308,16 +623,18 @@ ml_join_request() {
 		"hostname": "$peer_hostname",
 		"token_hash": "$token_hash",
 		"timestamp": $now,
+		"zkp_verified": $zkp_verified,
+		"zkp_proof_hash": "$zkp_proof_hash",
 		"status": "pending"
 	}
 	EOF
 
-	# Add join_request block to chain
+	# Add join_request block to chain (with ZKP status)
 	chain_add_block "join_request" \
-		"{\"fp\":\"$peer_fp\",\"addr\":\"$peer_addr\",\"hostname\":\"$peer_hostname\",\"token_hash\":\"$token_hash\"}" \
+		"{\"fp\":\"$peer_fp\",\"addr\":\"$peer_addr\",\"hostname\":\"$peer_hostname\",\"token_hash\":\"$token_hash\",\"zkp_verified\":$zkp_verified}" \
 		"$(echo "join_request:${peer_fp}:${now}" | sha256sum | cut -d' ' -f1)" >/dev/null 2>&1
 
-	logger -t master-link "Join request from $peer_hostname ($peer_fp) at $peer_addr"
+	logger -t master-link "Join request from $peer_hostname ($peer_fp) at $peer_addr [zkp=$zkp_verified]"
 
 	# Check auto-approve: either global setting or token-specific (clone tokens)
 	local auto_approve=$(uci -q get master-link.main.auto_approve)
@@ -329,10 +646,11 @@ ml_join_request() {
 		return $?
 	fi
 
-	echo "{\"success\":true,\"status\":\"pending\",\"message\":\"Join request queued for approval\"}"
+	echo "{\"success\":true,\"status\":\"pending\",\"zkp_verified\":$zkp_verified,\"message\":\"Join request queued for approval\"}"
 }
 
 # Approve a peer join request
+# Enhanced with ZKP graph fetching on approval
 ml_join_approve() {
 	local peer_fp="$1"
 
@@ -351,7 +669,10 @@ ml_join_approve() {
 	local peer_hostname=$(jsonfilter -i "$request_file" -e '@.hostname' 2>/dev/null)
 	local token_hash=$(jsonfilter -i "$request_file" -e '@.token_hash' 2>/dev/null)
 	local orig_ts=$(jsonfilter -i "$request_file" -e '@.timestamp' 2>/dev/null)
+	local zkp_verified=$(jsonfilter -i "$request_file" -e '@.zkp_verified' 2>/dev/null)
+	local zkp_proof_hash=$(jsonfilter -i "$request_file" -e '@.zkp_proof_hash' 2>/dev/null)
 	[ -z "$orig_ts" ] && orig_ts=0
+	[ -z "$zkp_verified" ] && zkp_verified="false"
 	local now=$(date +%s)
 	local my_fp=$(factory_fingerprint 2>/dev/null)
 	local my_depth=$(uci -q get master-link.main.depth)
@@ -364,7 +685,22 @@ ml_join_approve() {
 	# Add peer to mesh
 	peer_add "$peer_addr" "$MESH_PORT" "$peer_fp" >/dev/null 2>&1
 
-	# Update request status
+	# Fetch peer's ZKP graph if not already stored (from join verification)
+	local zkp_enabled=$(uci -q get master-link.main.zkp_enabled)
+	local zkp_graph_stored="false"
+	if [ "$zkp_enabled" = "1" ] && [ ! -f "$ZKP_PEERS_DIR/${peer_fp}.graph" ]; then
+		logger -t master-link "Fetching ZKP graph from approved peer $peer_fp"
+		if ml_zkp_trust_peer "$peer_fp" "$peer_addr" >/dev/null 2>&1; then
+			zkp_graph_stored="true"
+			logger -t master-link "Stored ZKP graph for peer $peer_fp"
+		else
+			logger -t master-link "Failed to fetch ZKP graph from $peer_fp (ZKP auth won't work for this peer)"
+		fi
+	elif [ -f "$ZKP_PEERS_DIR/${peer_fp}.graph" ]; then
+		zkp_graph_stored="true"
+	fi
+
+	# Update request status with ZKP info
 	cat > "$request_file" <<-EOF
 	{
 		"fingerprint": "$peer_fp",
@@ -375,6 +711,9 @@ ml_join_approve() {
 		"approved_at": $now,
 		"approved_by": "$my_fp",
 		"depth": $peer_depth,
+		"zkp_verified": $zkp_verified,
+		"zkp_proof_hash": "$zkp_proof_hash",
+		"zkp_graph_stored": $zkp_graph_stored,
 		"status": "approved"
 	}
 	EOF
@@ -391,15 +730,15 @@ ml_join_approve() {
 		fi
 	done
 
-	# Add peer_approved block to chain
+	# Add peer_approved block to chain (with ZKP status)
 	chain_add_block "peer_approved" \
-		"{\"fp\":\"$peer_fp\",\"addr\":\"$peer_addr\",\"depth\":$peer_depth,\"approved_by\":\"$my_fp\"}" \
+		"{\"fp\":\"$peer_fp\",\"addr\":\"$peer_addr\",\"depth\":$peer_depth,\"approved_by\":\"$my_fp\",\"zkp_verified\":$zkp_verified}" \
 		"$(echo "peer_approved:${peer_fp}:${now}" | sha256sum | cut -d' ' -f1)" >/dev/null 2>&1
 
 	# Sync chain with new peer
 	gossip_sync >/dev/null 2>&1 &
 
-	logger -t master-link "Peer approved: $peer_hostname ($peer_fp) at depth $peer_depth"
+	logger -t master-link "Peer approved: $peer_hostname ($peer_fp) at depth $peer_depth [zkp_verified=$zkp_verified]"
 
 	cat <<-EOF
 	{
@@ -408,6 +747,8 @@ ml_join_approve() {
 		"address": "$peer_addr",
 		"hostname": "$peer_hostname",
 		"depth": $peer_depth,
+		"zkp_verified": $zkp_verified,
+		"zkp_graph_stored": $zkp_graph_stored,
 		"status": "approved"
 	}
 	EOF
@@ -818,6 +1159,16 @@ ml_status() {
 
 	local hostname=$(uci -q get system.@system[0].hostname 2>/dev/null || hostname)
 
+	# ZKP status
+	local zkp_enabled=$(uci -q get master-link.main.zkp_enabled)
+	local zkp_fp=$(uci -q get master-link.main.zkp_fingerprint)
+	local zkp_tools="false"
+	local zkp_identity="false"
+	local zkp_peers=0
+	command -v zkp_keygen >/dev/null 2>&1 && zkp_tools="true"
+	[ -f "$ZKP_IDENTITY_GRAPH" ] && [ -f "$ZKP_IDENTITY_KEY" ] && zkp_identity="true"
+	[ -d "$ZKP_PEERS_DIR" ] && zkp_peers=$(ls -1 "$ZKP_PEERS_DIR"/*.graph 2>/dev/null | wc -l)
+
 	cat <<-EOF
 	{
 		"enabled": $enabled,
@@ -835,7 +1186,14 @@ ml_status() {
 			"total": $((pending + approved + rejected))
 		},
 		"active_tokens": $active_tokens,
-		"chain_height": $chain_height
+		"chain_height": $chain_height,
+		"zkp": {
+			"enabled": ${zkp_enabled:-0},
+			"fingerprint": "${zkp_fp:-}",
+			"tools_available": $zkp_tools,
+			"has_identity": $zkp_identity,
+			"trusted_peers": $zkp_peers
+		}
 	}
 	EOF
 }
@@ -942,6 +1300,98 @@ ml_check_local_auth() {
 }
 
 # ============================================================================
+# Peer-side Join with ZKP
+# ============================================================================
+
+# Send a ZKP-authenticated join request to master
+# Called by a node wanting to join a mesh
+ml_join_with_zkp() {
+	local master_addr="$1"
+	local token="$2"
+
+	[ -z "$master_addr" ] || [ -z "$token" ] && {
+		echo '{"success":false,"error":"missing_args","usage":"ml_join_with_zkp <master_ip> <token>"}'
+		return 1
+	}
+
+	# Initialize ZKP if not already done
+	ml_zkp_init >/dev/null 2>&1
+
+	local my_hostname=$(uci -q get system.@system[0].hostname 2>/dev/null || hostname)
+	local my_addr=$(uci -q get network.lan.ipaddr)
+	[ -z "$my_addr" ] && my_addr=$(ip -4 addr show br-lan 2>/dev/null | grep -oP 'inet \K[0-9.]+' | head -1)
+
+	# Prepare ZKP proof if available
+	local zkp_proof_b64=""
+	local zkp_graph_b64=""
+	local my_fp=""
+
+	if [ -f "$ZKP_IDENTITY_GRAPH" ] && [ -f "$ZKP_IDENTITY_KEY" ] && command -v zkp_prover >/dev/null 2>&1; then
+		local proof_file="/tmp/zkp_join_proof_$$.proof"
+		if zkp_prover -g "$ZKP_IDENTITY_GRAPH" -k "$ZKP_IDENTITY_KEY" -o "$proof_file" >/dev/null 2>&1; then
+			zkp_proof_b64=$(base64 -w 0 "$proof_file")
+			zkp_graph_b64=$(base64 -w 0 "$ZKP_IDENTITY_GRAPH")
+			# Use ZKP fingerprint (graph hash) when ZKP is available
+			my_fp=$(sha256sum "$ZKP_IDENTITY_GRAPH" | cut -c1-16)
+			rm -f "$proof_file"
+			logger -t master-link "Generated ZKP proof for join request (zkp_fp=$my_fp)"
+		else
+			logger -t master-link "ZKP proof generation failed, joining without ZKP"
+			rm -f "$proof_file"
+			my_fp=$(factory_fingerprint 2>/dev/null)
+		fi
+	else
+		logger -t master-link "No ZKP identity or tools, joining without ZKP"
+		my_fp=$(factory_fingerprint 2>/dev/null)
+	fi
+
+	# Build JSON request body
+	local body="{\"token\":\"$token\",\"fingerprint\":\"$my_fp\",\"hostname\":\"$my_hostname\",\"address\":\"$my_addr\""
+
+	if [ -n "$zkp_proof_b64" ]; then
+		body="${body},\"zkp_proof\":\"$zkp_proof_b64\",\"zkp_graph\":\"$zkp_graph_b64\""
+	fi
+
+	body="${body}}"
+
+	# Send join request
+	local response=$(curl -s --connect-timeout 10 -X POST \
+		"http://${master_addr}:${MESH_PORT}/api/master-link/join" \
+		-H "Content-Type: application/json" \
+		-d "$body" 2>/dev/null)
+
+	if [ -z "$response" ]; then
+		echo '{"success":false,"error":"connection_failed"}'
+		return 1
+	fi
+
+	# Check if approved, store upstream
+	local status=$(echo "$response" | jsonfilter -e '@.status' 2>/dev/null)
+	local success=$(echo "$response" | jsonfilter -e '@.success' 2>/dev/null)
+	local zkp_verified=$(echo "$response" | jsonfilter -e '@.zkp_verified' 2>/dev/null)
+
+	if [ "$success" = "true" ]; then
+		if [ "$status" = "approved" ]; then
+			# Auto-approved - configure as peer
+			uci -q set master-link.main.role='peer'
+			uci -q set master-link.main.upstream="$master_addr"
+			local depth=$(echo "$response" | jsonfilter -e '@.depth' 2>/dev/null)
+			[ -n "$depth" ] && uci -q set master-link.main.depth="$depth"
+			uci commit master-link
+
+			# Fetch master's ZKP graph for mutual authentication
+			ml_zkp_trust_peer "$(echo "$response" | jsonfilter -e '@.approved_by' 2>/dev/null || echo 'master')" "$master_addr" >/dev/null 2>&1
+
+			logger -t master-link "Joined mesh as peer of $master_addr [zkp=$zkp_verified]"
+		else
+			logger -t master-link "Join request pending approval at $master_addr"
+		fi
+	fi
+
+	echo "$response"
+}
+
+# ============================================================================
 # Main CLI
 # ============================================================================
 case "${1:-}" in
@@ -989,7 +1439,13 @@ case "${1:-}" in
 		echo "{\"registered\":true,\"token_hash\":\"$token_hash\",\"expires\":$expires}"
 		;;
 	join-request)
-		ml_join_request "$2" "$3" "$4" "$5"
+		# Usage: join-request <token> <fingerprint> <addr> [hostname] [zkp_proof] [zkp_graph]
+		ml_join_request "$2" "$3" "$4" "$5" "$6" "$7"
+		;;
+	join-with-zkp)
+		# Join a mesh with ZKP authentication (peer-side command)
+		# Usage: master-link.sh join-with-zkp <master_ip> <token>
+		ml_join_with_zkp "$2" "$3"
 		;;
 	join-approve)
 		ml_join_approve "$2"
@@ -1018,6 +1474,29 @@ case "${1:-}" in
 	init)
 		ml_init
 		echo "Master-link initialized"
+		;;
+	# ZKP commands
+	zkp-init)
+		ml_zkp_init
+		echo "ZKP identity initialized"
+		;;
+	zkp-status)
+		ml_zkp_status
+		;;
+	zkp-challenge)
+		ml_zkp_challenge
+		;;
+	zkp-prove)
+		ml_zkp_prove "$2"
+		;;
+	zkp-verify)
+		ml_zkp_verify "$2" "$3" "$4"
+		;;
+	zkp-graph)
+		ml_zkp_get_graph
+		;;
+	zkp-trust-peer)
+		ml_zkp_trust_peer "$2" "$3"
 		;;
 	*)
 		# Sourced as library - do nothing
