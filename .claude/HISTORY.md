@@ -3298,3 +3298,17 @@ git checkout HEAD -- index.html
       - `secubox-app-mitmproxy/files/usr/sbin/mitmproxy-waf-sync`
     - **Sources:** [CrowdSec Threat Intel](https://www.crowdsec.net/vulntracking-report/cve-2025-14528), [Global Security Mag](https://www.globalsecuritymag.com/old-routers-new-botnets-active-exploitation-of-cve-2025-14528.html)
 
+
+45. **MetaBlogizer Quick Publish WAF Route Fix (2026-02-24)**
+    - Fixed 404 errors after site upload/publish in MetaBlogizer.
+    - **Root Cause:** HAProxy vhosts created with `backend=mitmproxy_inspector` but no `original_backend` field.
+      - `mitmproxyctl sync-routes` needs `original_backend` to determine where to forward traffic after WAF inspection.
+      - Without it, mitmproxy had no route and returned 404.
+    - **Fix:** Added `original_backend=$backend_name` to all 3 vhost creation locations:
+      - `method_create_site` (line 491)
+      - `method_emancipate_site` (line 1210)
+      - `method_upload_and_create_site` (line 2001)
+    - **Integration:** `reload_haproxy()` calls `mitmproxyctl sync-routes` which now properly syncs all routes.
+    - **Verification:** `rcve.gk2.secubox.in` now returns HTTP 200 with correct content.
+    - **Files Modified:**
+      - `luci-app-metablogizer/root/usr/libexec/rpcd/luci.metablogizer`
