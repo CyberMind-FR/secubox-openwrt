@@ -260,7 +260,7 @@ process_received() {
 get_validated() {
     echo "["
     local first=1
-    for f in "$VALIDATED_DIR"/*.json 2>/dev/null; do
+    for f in "$VALIDATED_DIR"/*.json; do
         [ -f "$f" ] || continue
         [ "$first" = "1" ] || echo ","
         cat "$f"
