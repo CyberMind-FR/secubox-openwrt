@@ -54,9 +54,9 @@ user_add() {
 	mv "${passfile}.tmp" "$passfile"
 
 	# Sync to Dovecot inside container
-	# Use correct uid:gid for vmail user (102:105) and proper mail path with userdb_mail
+	# Use correct uid:gid for vmail user (5000:5000) and proper mail path with userdb_mail
 	local mail_path="/var/mail/$domain/$user"
-	local dovecot_entry="$email:$hash:102:105::$mail_path::userdb_mail=maildir:$mail_path"
+	local dovecot_entry="$email:$hash:5000:5000::$mail_path::userdb_mail=maildir:$mail_path"
 
 	# Write to temp file first to avoid shell expansion issues with $6$ in hash
 	local tmpfile="/tmp/dovecot_entry_$$"
@@ -139,14 +139,14 @@ user_passwd() {
 	sed -i "s|^$email:.*|$email:$hash|" "$passfile"
 
 	# Sync to Dovecot inside container
-	# Use correct uid:gid for vmail user (102:105) and proper mail path with userdb_mail
+	# Use correct uid:gid for vmail user (5000:5000) and proper mail path with userdb_mail
 	local user=$(echo "$email" | cut -d@ -f1)
 	local domain=$(echo "$email" | cut -d@ -f2)
 	local mail_path="/var/mail/$domain/$user"
 
 	# Build dovecot entry with proper format:
 	# user:password:uid:gid:gecos:home:shell:userdb_mail=maildir:/path
-	local dovecot_entry="$email:$hash:102:105::$mail_path::userdb_mail=maildir:$mail_path"
+	local dovecot_entry="$email:$hash:5000:5000::$mail_path::userdb_mail=maildir:$mail_path"
 
 	# Write to temp file first to avoid shell expansion issues with $6$ in hash
 	local tmpfile="/tmp/dovecot_entry_$$"

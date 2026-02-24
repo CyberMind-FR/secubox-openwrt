@@ -17,6 +17,10 @@ config validation 'validation'
 	option require_signature '1'
 	option min_source_trust '40'
 	# Minimum trust score to accept IOCs
+	option zkp_trust_bonus '20'
+	# Extra trust for ZKP-verified peers
+	option zkp_require_for_critical '1'
+	# Require ZKP verification for critical severity IOCs
 	option verify_transitive '1'
 	# Verify IOCs from peers-of-peers
 	option max_age_hours '168'
@@ -38,3 +42,12 @@ config application 'application'
 	# 24 hours default
 	option whitelist_local '1'
 	# Never block local subnets
+
+config feedback 'feedback'
+	option enabled '1'
+	option track_effectiveness '1'
+	# Track if IOCs actually blocked attacks
+	option reputation_update '1'
+	# Update peer reputation on feedback (+5/-8)
+	option blockchain_record '1'
+	# Record feedback to blockchain audit trail

@@ -206,12 +206,51 @@ gossip_receive() {
     # Process by type
     case "$type" in
         ioc)
-            # Threat intelligence update
-            if [ -f /usr/lib/secubox/threat-intel.sh ]; then
-                . /usr/lib/secubox/threat-intel.sh
-                local ioc_data
-                ioc_data=$(echo "$message" | jsonfilter -e '@.data')
-                threat_intel_receive "$ioc_data" "$origin"
+            # Threat intelligence update - bridge to p2p-intel with ZKP trust
+            local ioc_data
+            ioc_data=$(echo "$message" | jsonfilter -e '@.data')
+
+            if [ -f /usr/lib/p2p-intel/validator.sh ]; then
+                . /usr/lib/p2p-intel/validator.sh
+
+                # Validate IOC with ZKP-enhanced trust
+                if _is_source_trusted "$origin"; then
+                    # Update reputation for valid IOC
+                    if [ -f /usr/lib/mirrornet/reputation.sh ]; then
+                        . /usr/lib/mirrornet/reputation.sh
+                        reputation_valid_ioc "$origin"
+                    fi
+
+                    # Queue for application
+                    if [ -f /usr/lib/p2p-intel/applier.sh ]; then
+                        . /usr/lib/p2p-intel/applier.sh
+                        queue_pending "$ioc_data" "$origin"
+                    fi
+
+                    # Track IOC source for feedback attribution
+                    if [ -f /usr/lib/p2p-intel/feedback.sh ]; then
+                        . /usr/lib/p2p-intel/feedback.sh
+                        local ioc_value ioc_type
+                        ioc_value=$(echo "$ioc_data" | jsonfilter -e '@.value' 2>/dev/null)
+                        ioc_type=$(echo "$ioc_data" | jsonfilter -e '@.type' 2>/dev/null)
+                        [ -n "$ioc_value" ] && feedback_track_ioc "$ioc_value" "$ioc_type" "$origin"
+                    fi
+
+                    logger -t mirrornet "Gossip: valid IOC from ZKP-trusted $origin"
+                else
+                    # Untrusted source
+                    if [ -f /usr/lib/mirrornet/reputation.sh ]; then
+                        . /usr/lib/mirrornet/reputation.sh
+                        reputation_invalid_ioc "$origin"
+                    fi
+                    logger -t mirrornet "Gossip: rejected IOC from untrusted $origin"
+                fi
+            else
+                # Fallback to legacy threat-intel.sh
+                if [ -f /usr/lib/secubox/threat-intel.sh ]; then
+                    . /usr/lib/secubox/threat-intel.sh
+                    threat_intel_receive "$ioc_data" "$origin"
+                fi
             fi
             ;;
         peer_status)

@@ -22,6 +22,10 @@ SCORE_VALID_BLOCK=2
 SCORE_INVALID_BLOCK=-15
 SCORE_SPAM=-20
 
+# IOC effectiveness feedback scores
+SCORE_IOC_EFFECTIVE=5
+SCORE_IOC_FALSE_POSITIVE=-8
+
 # Initialize reputation storage
 reputation_init() {
     mkdir -p "$REPUTATION_DIR"
