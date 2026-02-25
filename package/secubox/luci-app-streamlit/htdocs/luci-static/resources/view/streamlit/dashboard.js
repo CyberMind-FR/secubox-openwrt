@@ -146,6 +146,7 @@ return view.extend({
 			var isExposed = exp.emancipated;
 			var certValid = exp.cert_valid;
 			var authRequired = exp.auth_required;
+			var wafEnabled = exp.waf_enabled;
 
 			// Status indicator
 			var statusBadge;
@@ -157,6 +158,15 @@ return view.extend({
 					'\u26A0 Cert pending');
 			} else {
 				statusBadge = E('span', { 'style': 'color:#999' }, _('Local only'));
+			}
+
+			// WAF badge (shown when exposed)
+			var wafBadge = '';
+			if (isExposed && wafEnabled) {
+				wafBadge = E('span', {
+					'style': 'display:inline-block; padding:2px 6px; border-radius:4px; font-size:0.85em; background:#d1ecf1; color:#0c5460; margin-left:4px',
+					'title': _('Traffic inspected by WAF (mitmproxy)')
+				}, 'WAF');
 			}
 
 			// Running indicator
@@ -221,7 +231,7 @@ return view.extend({
 				E('td', {}, [runStatus, ' ', E('strong', {}, inst.id)]),
 				E('td', {}, inst.app || '-'),
 				E('td', {}, ':' + inst.port),
-				E('td', {}, statusBadge),
+				E('td', {}, [statusBadge, wafBadge]),
 				E('td', {}, actions)
 			]);
 		});

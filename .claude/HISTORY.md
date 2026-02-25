@@ -3571,3 +3571,24 @@ git checkout HEAD -- index.html
       - `secubox-app-haproxy/files/usr/sbin/haproxyctl`: Added lxc_start_bg, lxc_reload; fixed ACME cert handling
       - `secubox-app-haproxy/files/usr/sbin/haproxy-sync-certs`: Uses haproxyctl reload instead of init script
     - **Verified:** 20 consecutive tests all returned HTTP 200 across all sites
+
+32. **Streamlit Gitea Integration & WAF Enhancements (2026-02-25)**
+    - **Auto Gitea Push on Emancipate:**
+      - Added automatic Gitea push when instance is emancipated
+      - Also pushes on app rename (keeps code in sync with Gitea)
+    - **WAF (mitmproxy) Integration:**
+      - Emancipate now routes through `mitmproxy_inspector` backend by default (all traffic WAF-protected)
+      - Adds mitmproxy route entry for domain → streamlit port
+      - Restarts mitmproxy to pick up new routes
+      - Uses `haproxyctl reload` instead of restart for smooth reloads
+    - **Enhanced Rename Functions:**
+      - `rename_app()` now actually renames app folder/file (not just display name)
+      - Updates all instance references when app ID changes
+      - `rename_instance()` can now change domain, updates HAProxy vhost and mitmproxy routes
+    - **WAF Status Display:**
+      - Dashboard shows WAF badge for exposed instances
+      - `get_exposure_status()` returns `waf_enabled` field
+      - Blue "WAF" badge displayed next to exposure status
+    - **Files Modified:**
+      - `luci-app-streamlit/root/usr/libexec/rpcd/luci.streamlit`: emancipate_instance, rename_app, rename_instance, get_exposure_status
+      - `luci-app-streamlit/htdocs/luci-static/resources/view/streamlit/dashboard.js`: WAF badge display
