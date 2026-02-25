@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-24 (Factory Auto-Provisioning)_
+_Last updated: 2026-02-25 (Factory Dashboard LuCI)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -62,9 +62,19 @@ _Last updated: 2026-02-24 (Factory Auto-Provisioning)_
   - Gossip-based exposure config sync via secubox-p2p
   - Created `luci-app-vortex-dns` dashboard
 
-### Just Completed (2026-02-24)
+### Just Completed (2026-02-25)
 
-- **Factory Auto-Provisioning** — DONE (2026-02-24)
+- **Factory Dashboard LuCI** — DONE (2026-02-25)
+  - Added Factory tab to Cloning Station (`luci-app-cloner/overview.js`)
+  - Discovery Mode Toggle with visual status (🟢 ON / 🔴 OFF)
+  - Pending Devices list with approve/reject and profile assignment
+  - Bulk Token Generator with profile selection
+  - Hardware Inventory table (MAC, Model, CPU, RAM, Storage)
+  - 8 RPC declarations, 5 state properties, 5 render functions, 6 event handlers
+  - Polling: Factory data included in 5-second refresh when on tab
+  - UI Pattern: KISS theme components (stat boxes, cards, tables, buttons)
+
+- **Factory Auto-Provisioning Backend** — DONE (2026-02-24)
   - Zero-touch provisioning for new mesh devices without pre-shared tokens
   - Hardware inventory collection (MAC, serial, model, CPU, RAM, storage)
   - Profile-based configuration (7 profiles: default, enterprise, home-*, media-server, smart-home)

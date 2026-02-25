@@ -3498,3 +3498,27 @@ git checkout HEAD -- index.html
       - `dovecot.conf` template: Changed mail_uid/gid, first_valid_uid/last_valid_uid
       - `configure_postfix`: Changed virtual_uid_maps/virtual_gid_maps
       - `cmd_add_user`: Changed passwd file uid:gid entries
+
+28. **Factory Dashboard LuCI Implementation (2026-02-25)**
+    - Added Factory tab to Cloning Station (`luci-app-cloner/overview.js`)
+    - **Features:**
+      - Discovery Mode Toggle: Enable/disable zero-touch provisioning with visual status
+      - Pending Devices: List and approve/reject devices awaiting provisioning with profile assignment
+      - Bulk Token Generator: Generate multiple tokens at once with profile selection
+      - Hardware Inventory: Table view of discovered device specs (MAC, Model, CPU, RAM, Storage)
+    - **RPC Declarations Added:**
+      - `callPendingDevices`, `callApproveDevice`, `callRejectDevice`
+      - `callBulkTokens`, `callInventory`, `callListProfiles`
+      - `callDiscoveryStatus`, `callToggleDiscovery`
+    - **State Properties Added:**
+      - `pendingDevices`, `hwInventory`, `profiles`, `discoveryStatus`, `generatedTokens`
+    - **Render Functions Added:**
+      - `renderFactoryTab()`: Main tab with stats grid and two-column layout
+      - `renderPendingDevices()`: Device cards with approve/reject buttons
+      - `renderGeneratedTokens()`: Token list with copy functionality
+      - `renderInventory()`: Kiss-table with hardware specs
+    - **Event Handlers Added:**
+      - `handleToggleDiscovery()`, `handleApproveDevice()`, `handleRejectDevice()`
+      - `handleGenerateBulkTokens()`, `handleCopyAllTokens()`, `refreshFactory()`
+    - **Polling:** Factory data included in 5-second refresh when on Factory tab
+    - **UI Pattern:** KISS theme components (stat boxes, cards, tables, buttons)
