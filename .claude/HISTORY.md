@@ -3669,3 +3669,30 @@ git checkout HEAD -- index.html
       - `/srv/streamlit/apps/alerte_depot/app.py`: Full whistleblower platform
       - `/srv/secubox/mesh/alertes-chain.json`: Audit blockchain
       - `/usr/sbin/alerte-depot-cron`: Deadline monitor
+
+37. **VoIP Voice Recorder Configuration (2026-02-25)**
+    - **Voice Recorder Mode:**
+      - All incoming calls sent directly to voicemail
+      - Automatic email notification with WAV attachment
+      - OVH SIP trunk integration for official number
+    - **Email Integration:**
+      - Created voicemail@secubox.in account in mailserver
+      - Configured msmtp in VoIP container
+      - Email subject template with caller ID
+    - **Files:**
+      - `/srv/lxc/voip/rootfs/etc/asterisk/voicemail.conf`
+      - `/srv/lxc/voip/rootfs/etc/asterisk/extensions.conf`
+      - `/srv/lxc/voip/rootfs/etc/msmtprc`
+
+38. **ALERTE.DEPOT Authentication Fix (2026-02-25)**
+    - **Container HTTP Auth:**
+      - Streamlit container cannot access host `ubus` directly
+      - Changed authenticate_admin() from subprocess to HTTP API
+      - Uses http://127.0.0.1/ubus JSON-RPC endpoint
+    - **SecuBox Users Integration:**
+      - Admin login validates via luci.secubox-users RPCD
+      - Session tokens stored in /tmp/secubox-sessions/
+      - 24-hour token expiry
+    - **Test Credentials:**
+      - gk2 / Gk2Test2026
+      - ragondin / Secubox@2026
