@@ -320,6 +320,20 @@
     </a>
   </div>
 
+  <h2 class="section-title">Account</h2>
+  <div class="services-grid">
+    <a href="#" class="service-card" id="changePasswordCard" onclick="openPasswordModal(); return false;">
+      <div class="service-icon">🔑</div>
+      <div class="service-name">Change Password</div>
+      <div class="service-url">Update password for all services</div>
+    </a>
+    <a href="#" class="service-card" onclick="showMyServices(); return false;">
+      <div class="service-icon">📋</div>
+      <div class="service-name">My Services</div>
+      <div class="service-url">View enabled services</div>
+    </a>
+  </div>
+
   <h2 class="section-title">Administration</h2>
   <div class="services-grid">
     <a href="https://admin.gk2.secubox.in/" class="service-card" target="_blank">
@@ -393,6 +407,51 @@
   </div>
 </div>
 
+<!-- Password Change Modal -->
+<div class="modal-overlay" id="passwordModal" style="display:none;">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>🔑 Change Password</h3>
+      <button class="modal-close" onclick="closePasswordModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Current Password</label>
+        <input type="password" id="currentPassword" placeholder="Enter current password" class="modal-input">
+      </div>
+      <div class="form-group">
+        <label>New Password</label>
+        <input type="password" id="newPassword" placeholder="Enter new password (min 8 chars)" class="modal-input">
+      </div>
+      <div class="form-group">
+        <label>Confirm New Password</label>
+        <input type="password" id="confirmPassword" placeholder="Confirm new password" class="modal-input">
+      </div>
+      <div id="passwordResult" style="display:none;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closePasswordModal()">Cancel</button>
+      <button class="btn-primary" id="changePasswordBtn" onclick="doChangePassword()">Change Password</button>
+    </div>
+  </div>
+</div>
+
+<!-- Services Modal -->
+<div class="modal-overlay" id="servicesModal" style="display:none;">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>📋 My Services</h3>
+      <button class="modal-close" onclick="closeServicesModal()">&times;</button>
+    </div>
+    <div class="modal-body" id="servicesContent">
+      Loading...
+    </div>
+    <div class="modal-footer">
+      <button class="btn-primary" onclick="closeServicesModal()">Close</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // Check authentication
 var token = sessionStorage.getItem("secubox_token");
@@ -409,6 +468,120 @@ document.getElementById("logoutBtn").onclick = function() {
   sessionStorage.clear();
   window.location.href = "/login.html";
 };
+
+// Password Change Modal
+function openPasswordModal() {
+  document.getElementById("passwordModal").style.display = "flex";
+  document.getElementById("currentPassword").value = "";
+  document.getElementById("newPassword").value = "";
+  document.getElementById("confirmPassword").value = "";
+  document.getElementById("passwordResult").style.display = "none";
+  document.getElementById("changePasswordBtn").disabled = false;
+}
+
+function closePasswordModal() {
+  document.getElementById("passwordModal").style.display = "none";
+}
+
+function doChangePassword() {
+  var currentPass = document.getElementById("currentPassword").value;
+  var newPass = document.getElementById("newPassword").value;
+  var confirmPass = document.getElementById("confirmPassword").value;
+
+  if (!currentPass || !newPass || !confirmPass) {
+    showPasswordResult("Please fill in all fields", true);
+    return;
+  }
+
+  if (newPass.length < 8) {
+    showPasswordResult("New password must be at least 8 characters", true);
+    return;
+  }
+
+  if (newPass !== confirmPass) {
+    showPasswordResult("New passwords do not match", true);
+    return;
+  }
+
+  document.getElementById("changePasswordBtn").disabled = true;
+  showPasswordResult("Updating password on all services...", false);
+
+  fetch("/cgi-bin/luci/rpc/sys", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      method: "call",
+      params: ["00000000000000000000000000000000", "luci.secubox-users", "change_password", {
+        username: user,
+        current_password: currentPass,
+        new_password: newPass
+      }]
+    })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    var result = data.result;
+    if (result && result.success) {
+      var msg = result.message || "Password updated successfully";
+      if (result.manual) {
+        msg += "<br><br><small>Note: Some services require manual password update:<br>" + result.manual + "</small>";
+      }
+      showPasswordResult(msg, false);
+      setTimeout(function() {
+        closePasswordModal();
+        // Clear session and redirect to login
+        sessionStorage.clear();
+        alert("Password changed. Please log in again with your new password.");
+        window.location.href = "/login.html";
+      }, 3000);
+    } else {
+      showPasswordResult(result.error || "Failed to change password", true);
+      document.getElementById("changePasswordBtn").disabled = false;
+    }
+  })
+  .catch(function(err) {
+    showPasswordResult("Error: " + err.message, true);
+    document.getElementById("changePasswordBtn").disabled = false;
+  });
+}
+
+function showPasswordResult(message, isError) {
+  var el = document.getElementById("passwordResult");
+  el.style.display = "block";
+  el.className = isError ? "result-error" : "result-success";
+  el.innerHTML = message;
+}
+
+// Services Modal
+function showMyServices() {
+  document.getElementById("servicesModal").style.display = "flex";
+  document.getElementById("servicesContent").innerHTML = "Loading your services...";
+
+  // For now, show static list based on what portal shows
+  var services = [
+    {icon: "📧", name: "Email", status: "webmail.gk2.secubox.in"},
+    {icon: "💬", name: "Matrix", status: "matrix.gk2.secubox.in"},
+    {icon: "🗨️", name: "Jabber", status: "xmpp.gk2.secubox.in"},
+    {icon: "☁️", name: "Nextcloud", status: "cloud.gk2.secubox.in"},
+    {icon: "🎬", name: "PeerTube", status: "tube.gk2.secubox.in"}
+  ];
+
+  var html = '<div style="margin-top:10px;">';
+  html += '<p style="color:var(--muted);margin-bottom:15px;">Services enabled for <strong>' + user + '</strong>:</p>';
+  services.forEach(function(s) {
+    html += '<div style="padding:10px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;display:flex;align-items:center;gap:10px;">';
+    html += '<span style="font-size:1.5rem;">' + s.icon + '</span>';
+    html += '<div><strong>' + s.name + '</strong><br><small style="color:var(--accent);">' + s.status + '</small></div>';
+    html += '</div>';
+  });
+  html += '</div>';
+
+  document.getElementById("servicesContent").innerHTML = html;
+}
+
+function closeServicesModal() {
+  document.getElementById("servicesModal").style.display = "none";
+}
 
 // Video Import Modal
 var importJobId = null;

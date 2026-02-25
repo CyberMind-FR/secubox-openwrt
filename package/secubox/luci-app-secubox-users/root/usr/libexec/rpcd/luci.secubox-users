@@ -298,9 +298,109 @@ reset_password() {
 	echo '{"success":true,"message":"Password updated"}'
 }
 
+# Authenticated password change (user changes their own password)
+change_password() {
+	read -r input
+	local username=$(echo "$input" | jsonfilter -e '@.username' 2>/dev/null)
+	local current_password=$(echo "$input" | jsonfilter -e '@.current_password' 2>/dev/null)
+	local new_password=$(echo "$input" | jsonfilter -e '@.new_password' 2>/dev/null)
+
+	if [ -z "$username" ] || [ -z "$current_password" ] || [ -z "$new_password" ]; then
+		echo '{"success":false,"error":"Username, current password, and new password required"}'
+		return
+	fi
+
+	# Validate new password strength
+	if [ ${#new_password} -lt 8 ]; then
+		echo '{"success":false,"error":"New password must be at least 8 characters"}'
+		return
+	fi
+
+	# Check user exists
+	if ! uci -q get ${CONFIG}.${username} >/dev/null 2>&1; then
+		echo '{"success":false,"error":"User not found"}'
+		return
+	fi
+
+	# Verify current password
+	local stored_hash=$(uci -q get ${CONFIG}.${username}.password_hash)
+	local input_hash=$(echo -n "$current_password" | sha256sum | cut -d' ' -f1)
+
+	if [ "$stored_hash" != "$input_hash" ]; then
+		logger -t secubox-portal "Password change failed (wrong current password): $username"
+		echo '{"success":false,"error":"Current password is incorrect"}'
+		return
+	fi
+
+	# Update password in UCI
+	local new_hash=$(echo -n "$new_password" | sha256sum | cut -d' ' -f1)
+	uci set ${CONFIG}.${username}.password_hash="$new_hash"
+	uci commit ${CONFIG}
+
+	# Sync to all enabled services (mailserver, matrix, jabber, etc.)
+	local services=$(uci -q get ${CONFIG}.${username}.services 2>/dev/null | tr ' ' '\n' | sort -u)
+	local synced=""
+	local failed=""
+
+	for svc in $services; do
+		case "$svc" in
+			email)
+				if [ -x /usr/sbin/mailserverctl ]; then
+					local domain=$(uci -q get ${CONFIG}.main.domain || echo "secubox.in")
+					local email="${username}@${domain}"
+					# Update mailserver password
+					. /usr/lib/mailserver/users.sh 2>/dev/null
+					if user_passwd "$email" "$new_password" >/dev/null 2>&1; then
+						synced="$synced email"
+					else
+						failed="$failed email"
+					fi
+				fi
+				;;
+			jabber)
+				if [ -x /usr/sbin/jabberctl ]; then
+					local domain=$(uci -q get ${CONFIG}.main.domain || echo "secubox.in")
+					if jabberctl user passwd "${username}@${domain}" "$new_password" >/dev/null 2>&1; then
+						synced="$synced jabber"
+					else
+						failed="$failed jabber"
+					fi
+				fi
+				;;
+			nextcloud)
+				if [ -x /usr/sbin/nextcloudctl ]; then
+					export OC_PASS="$new_password"
+					if nextcloudctl occ user:resetpassword "$username" --password-from-env >/dev/null 2>&1; then
+						synced="$synced nextcloud"
+					else
+						failed="$failed nextcloud"
+					fi
+				fi
+				;;
+			matrix)
+				# Matrix Conduit doesn't have easy password change API
+				# User will need to change via Element client
+				failed="$failed matrix(manual)"
+				;;
+			peertube)
+				# PeerTube doesn't have direct password change
+				failed="$failed peertube(manual)"
+				;;
+		esac
+	done
+
+	logger -t secubox-portal "Password changed: $username (synced:$synced failed:$failed)"
+
+	if [ -n "$failed" ]; then
+		echo "{\"success\":true,\"message\":\"Password updated. Some services require manual update:$failed\",\"synced\":\"$synced\",\"manual\":\"$failed\"}"
+	else
+		echo "{\"success\":true,\"message\":\"Password updated on all services\",\"synced\":\"$synced\"}"
+	fi
+}
+
 list_methods() {
 	cat <<'EOFM'
-{"status":{},"users":{},"add":{"username":"str","password":"str","services":"str"},"delete":{"username":"str"},"passwd":{"username":"str","password":"str"},"authenticate":{"username":"str","password":"str"},"recover":{"email":"str"},"reset_password":{"token":"str","password":"str"}}
+{"status":{},"users":{},"add":{"username":"str","password":"str","services":"str"},"delete":{"username":"str"},"passwd":{"username":"str","password":"str"},"authenticate":{"username":"str","password":"str"},"recover":{"email":"str"},"reset_password":{"token":"str","password":"str"},"change_password":{"username":"str","current_password":"str","new_password":"str"}}
 EOFM
 }
 
@@ -316,6 +416,7 @@ case "$1" in
 			authenticate) authenticate ;;
 			recover) recover ;;
 			reset_password) reset_password ;;
+			change_password) change_password ;;
 			*) echo '{"error":"Unknown method"}' ;;
 		esac
 		;;
