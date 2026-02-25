@@ -64,6 +64,13 @@ _Last updated: 2026-02-25 (Factory Dashboard LuCI)_
 
 ### Just Completed (2026-02-25)
 
+- **MetaBlogizer HAProxy Stability** — DONE (2026-02-25)
+  - Fixed random 404 errors caused by multiple HAProxy instances
+  - Root cause: Both host and container HAProxy were listening on ports 80/443
+  - Fix: Disabled host HAProxy service, container HAProxy is now sole handler
+  - Added auto-republish on upload for emancipated sites
+  - All sites (rfg, form, facb, plainte) now consistently return HTTP 200
+
 - **Factory Dashboard LuCI** — DONE (2026-02-25)
   - Added Factory tab to Cloning Station (`luci-app-cloner/overview.js`)
   - Discovery Mode Toggle with visual status (🟢 ON / 🔴 OFF)

@@ -432,7 +432,11 @@
       "Bash(__NEW_LINE_a9089175728efc91__ echo \"\")",
       "WebFetch(domain:pent.gk2.secubox.in)",
       "Bash(__NEW_LINE_84a971cd6a876509__ echo \"Done deploying to clone\")",
-      "Bash(# Remove build artifacts from staging git reset HEAD -- package/secubox/zkp-hamiltonian/build-musl/ package/secubox/zkp-hamiltonian/build-static/ package/secubox/zkp-hamiltonian/build-x86/ # Add to gitignore echo \"\"package/secubox/zkp-hamiltonian/build-*/\"\" # Check status git status --short)"
+      "Bash(# Remove build artifacts from staging git reset HEAD -- package/secubox/zkp-hamiltonian/build-musl/ package/secubox/zkp-hamiltonian/build-static/ package/secubox/zkp-hamiltonian/build-x86/ # Add to gitignore echo \"\"package/secubox/zkp-hamiltonian/build-*/\"\" # Check status git status --short)",
+      "Bash(do if ping -c 1 -W 2 192.168.255.156)",
+      "Bash(break)",
+      "Bash(if ping -c 1 -W 3 192.168.255.156)",
+      "Bash(else)"
     ]
   }
 }

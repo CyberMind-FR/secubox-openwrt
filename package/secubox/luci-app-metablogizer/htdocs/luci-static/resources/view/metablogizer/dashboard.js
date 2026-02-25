@@ -136,6 +136,15 @@ return view.extend({
 			}, 'Auth');
 		}
 
+		// WAF badge (from site.waf_enabled returned by list_sites)
+		var wafBadge = '';
+		if (site.waf_enabled) {
+			wafBadge = E('span', {
+				'style': 'display:inline-block; padding:2px 6px; border-radius:4px; font-size:0.85em; background:#d1ecf1; color:#0c5460; margin-left:4px',
+				'title': _('Traffic inspected by WAF (mitmproxy)')
+			}, 'WAF');
+		}
+
 		// Domain link
 		var domainEl;
 		if (site.domain) {
@@ -166,7 +175,8 @@ return view.extend({
 			// Exposure column
 			E('td', { 'class': 'td' }, [
 				exposureBadge,
-				authBadge
+				authBadge,
+				wafBadge
 			]),
 			// Actions column
 			E('td', { 'class': 'td', 'style': 'text-align:center; white-space:nowrap' }, [

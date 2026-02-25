@@ -3542,3 +3542,16 @@ git checkout HEAD -- index.html
       - `luci-app-cloner/root/usr/libexec/rpcd/luci.cloner`: Added list_versions, list_build_profiles, updated build_image
       - `luci-app-cloner/root/usr/share/rpcd/acl.d/luci-app-cloner.json`: Added permissions for new methods
     - **Tested:** CLI help, versions command, RPCD methods via ubus all working
+
+30. **MetaBlogizer HAProxy Stability Fix (2026-02-25)**
+    - **Root Cause Identified:** Multiple HAProxy instances (container + host) were both listening on ports 80/443, causing random routing and intermittent 404 errors for all sites
+    - **Fix Applied:**
+      - Disabled host HAProxy service (`/etc/init.d/haproxy disable`)
+      - Container HAProxy is now the sole handler for web traffic
+    - **Auto-Republish Feature Added:**
+      - When files are uploaded to an emancipated site, `metablogizerctl publish` is now called automatically
+      - This ensures uhttpd and HAProxy routing stay in sync after content updates
+    - **Files Modified:**
+      - `luci-app-metablogizer/root/usr/libexec/rpcd/luci.metablogizer`: Added auto-republish in `method_upload_finalize()`
+    - **Sites Fixed:** rfg, form, facb, plainte all returning HTTP 200 consistently
+    - **Verified:** 20 consecutive tests all returned 200 (previously ~50% failure rate)

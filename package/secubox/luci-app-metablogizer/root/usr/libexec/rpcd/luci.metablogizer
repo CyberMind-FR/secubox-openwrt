@@ -312,6 +312,18 @@ _add_site() {
 		fi
 	fi
 
+	# Check WAF status (is site routed through mitmproxy_inspector?)
+	local waf_enabled="0"
+	local vhost_name=$(echo "$domain" | sed 's/[^a-zA-Z0-9]/_/g')
+	local vhost_backend=$(uci -q get "haproxy.${vhost_name}.backend" 2>/dev/null)
+	if [ "$vhost_backend" = "mitmproxy_inspector" ]; then
+		waf_enabled="1"
+	fi
+
+	# Check emancipated status
+	local emancipated=$(uci -q get "${UCI_CONFIG}.${section}.emancipated" 2>/dev/null)
+	[ -z "$emancipated" ] && emancipated="0"
+
 	json_add_object
 	json_add_string "id" "$section"
 	json_add_string "name" "$name"
@@ -326,6 +338,8 @@ _add_site() {
 	[ -n "$port" ] && json_add_int "port" "$port"
 	[ -n "$runtime" ] && json_add_string "runtime" "$runtime"
 	json_add_boolean "backend_running" "$backend_running"
+	json_add_boolean "waf_enabled" "$waf_enabled"
+	json_add_boolean "emancipated" "$emancipated"
 
 	# Tor hidden service info
 	json_add_boolean "tor_enabled" "$(has_tor_service "$name" && echo 1 || echo 0)"
@@ -1065,6 +1079,11 @@ method_upload_finalize() {
 		fix_permissions "$site_path"
 		# Auto-push to Gitea if configured (background, use site name not UCI section id)
 		metablogizerctl gitea push "$name" >/dev/null 2>&1 &
+		# Auto-republish if site is emancipated (ensures HAProxy routing works after upload)
+		local is_emancipated=$(get_uci "$site_id" emancipated "0")
+		if [ "$is_emancipated" = "1" ]; then
+			metablogizerctl publish "$name" >/dev/null 2>&1 &
+		fi
 		json_init
 		json_add_boolean "success" 1
 		json_add_string "filename" "$filename"
