@@ -201,8 +201,8 @@ return view.extend({
 					'title': _('Upload content'),
 					'click': ui.createHandlerFn(self, 'showUploadModal', site)
 				}, _('Upload')),
-				// Expose/Unpublish button
-				exp.vhost_exists ?
+				// Expose/Unpublish button - use emancipated flag, not vhost_exists
+				exp.emancipated ?
 					E('button', {
 						'class': 'cbi-button cbi-button-remove',
 						'style': 'padding:0.25em 0.5em; margin:2px',
