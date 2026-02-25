@@ -3639,3 +3639,33 @@ git checkout HEAD -- index.html
       - Added route to mitmproxy-in for WAF inspection
     - **Files Modified:**
       - `luci-app-streamlit/root/usr/libexec/rpcd/luci.streamlit`: upload_app, upload_and_deploy with KISS ZIP handling
+
+36. **ALERTE.DEPOT Whistleblower Platform (2026-02-25)**
+    - **Anonymous Whistleblower Application (Loi Waserman compliant):**
+      - Pseudonymized submissions - no personal data required
+      - Token-based tracking (16-char alphanumeric tokens)
+      - Three modes: Submit / Track / Admin
+      - SecuBox Users authentication for investigators
+      - Gitea backend (private repo: gandalf/alertes-depot)
+      - QR code generation for attestations
+    - **Tracking Portal:**
+      - Token lookup searches Gitea issues
+      - Status display with visual badges
+      - Two-way communication with investigators
+      - Add supplementary information capability
+    - **Admin Dashboard:**
+      - SecuBox Users RPCD authentication
+      - Case management with status workflow
+      - Internal notes vs public responses
+      - Statistics overview
+    - **Security & Compliance:**
+      - Audit trail blockchain (/srv/secubox/mesh/alertes-chain.json)
+      - Deadline monitoring cron (7-day ack, 3-month response)
+      - Immutable hash chain for all actions
+    - **Dual-Channel Access:**
+      - HTTPS: alerte.gk2.secubox.in (production SSL cert)
+      - Tor: i7j46m67zvdksfhddbq273yydpuo5xvewsl2fjl5zlycjyo4qelysnid.onion
+    - **Files:**
+      - `/srv/streamlit/apps/alerte_depot/app.py`: Full whistleblower platform
+      - `/srv/secubox/mesh/alertes-chain.json`: Audit blockchain
+      - `/usr/sbin/alerte-depot-cron`: Deadline monitor

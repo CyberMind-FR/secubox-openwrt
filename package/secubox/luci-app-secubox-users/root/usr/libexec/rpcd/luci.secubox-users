@@ -16,6 +16,7 @@ check_service() {
 		matrix)    [ -x /usr/sbin/matrixctl ] && lxc-info -n matrix 2>/dev/null | grep -q "RUNNING" && echo "1" || echo "0" ;;
 		jabber)    [ -x /usr/sbin/jabberctl ] && lxc-info -n jabber 2>/dev/null | grep -q "RUNNING" && echo "1" || echo "0" ;;
 		email)     [ -x /usr/sbin/mailserverctl ] && lxc-info -n mailserver 2>/dev/null | grep -q "RUNNING" && echo "1" || echo "0" ;;
+		gitea)     [ -x /usr/sbin/giteactl ] && lxc-info -n gitea 2>/dev/null | grep -q "RUNNING" && echo "1" || echo "0" ;;
 		*) echo "0" ;;
 	esac
 }
@@ -30,6 +31,7 @@ get_status() {
 	local mx_running=$(check_service matrix)
 	local jb_running=$(check_service jabber)
 	local em_running=$(check_service email)
+	local gt_running=$(check_service gitea)
 
 	cat <<EOFJ
 {
@@ -41,7 +43,8 @@ get_status() {
 		"peertube": $pt_running,
 		"matrix": $mx_running,
 		"jabber": $jb_running,
-		"email": $em_running
+		"email": $em_running,
+		"gitea": $gt_running
 	}
 }
 EOFJ
@@ -156,9 +159,71 @@ update_password() {
 	fi
 
 	if echo "$output" | grep -q "Password updated"; then
+		# Sync to all enabled services
+		local services=$(uci -q get ${CONFIG}.${username}.services 2>/dev/null | tr ' ' '\n' | sort -u)
+		local synced=""
+		local failed=""
+
+		for svc in $services; do
+			case "$svc" in
+				gitea)
+					local gitea_url=$(uci -q get gitea.main.url 2>/dev/null || echo "http://192.168.255.1:3001")
+					local gitea_token=$(uci -q get gitea.main.token 2>/dev/null)
+					if [ -n "$gitea_token" ]; then
+						local result=$(curl -s -X PATCH \
+							-H "Authorization: token $gitea_token" \
+							-H "Content-Type: application/json" \
+							-d "{\"login_name\":\"$username\",\"password\":\"$password\"}" \
+							"${gitea_url}/api/v1/admin/users/${username}" 2>/dev/null)
+						if echo "$result" | grep -q "\"username\""; then
+							synced="$synced gitea"
+						else
+							failed="$failed gitea"
+						fi
+					fi
+					;;
+				email)
+					if [ -x /usr/sbin/mailserverctl ]; then
+						local domain=$(uci -q get ${CONFIG}.main.domain || echo "secubox.in")
+						local email="${username}@${domain}"
+						. /usr/lib/mailserver/users.sh 2>/dev/null
+						if user_passwd "$email" "$password" >/dev/null 2>&1; then
+							synced="$synced email"
+						else
+							failed="$failed email"
+						fi
+					fi
+					;;
+				jabber)
+					if [ -x /usr/sbin/jabberctl ]; then
+						local domain=$(uci -q get ${CONFIG}.main.domain || echo "secubox.in")
+						if jabberctl user passwd "${username}@${domain}" "$password" >/dev/null 2>&1; then
+							synced="$synced jabber"
+						else
+							failed="$failed jabber"
+						fi
+					fi
+					;;
+				nextcloud)
+					if [ -x /usr/sbin/nextcloudctl ]; then
+						export OC_PASS="$password"
+						if nextcloudctl occ user:resetpassword "$username" --password-from-env >/dev/null 2>&1; then
+							synced="$synced nextcloud"
+						else
+							failed="$failed nextcloud"
+						fi
+					fi
+					;;
+			esac
+		done
+
+		logger -t secubox-users "Password updated for $username (synced:$synced failed:$failed)"
+
 		json_init
 		json_add_boolean "success" 1
 		json_add_string "password" "$password"
+		json_add_string "synced" "$synced"
+		json_add_string "failed" "$failed"
 		json_dump
 	else
 		json_init
@@ -365,6 +430,25 @@ change_password() {
 					else
 						failed="$failed jabber"
 					fi
+				fi
+				;;
+			gitea)
+				# Sync password to Gitea via API
+				local gitea_url=$(uci -q get gitea.main.url 2>/dev/null || echo "http://192.168.255.1:3001")
+				local gitea_token=$(uci -q get gitea.main.token 2>/dev/null)
+				if [ -n "$gitea_token" ]; then
+					local result=$(curl -s -X PATCH \
+						-H "Authorization: token $gitea_token" \
+						-H "Content-Type: application/json" \
+						-d "{\"login_name\":\"$username\",\"password\":\"$new_password\"}" \
+						"${gitea_url}/api/v1/admin/users/${username}" 2>/dev/null)
+					if echo "$result" | grep -q "\"username\""; then
+						synced="$synced gitea"
+					else
+						failed="$failed gitea"
+					fi
+				else
+					failed="$failed gitea(no-token)"
 				fi
 				;;
 			nextcloud)
