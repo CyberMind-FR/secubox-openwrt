@@ -3555,3 +3555,19 @@ git checkout HEAD -- index.html
       - `luci-app-metablogizer/root/usr/libexec/rpcd/luci.metablogizer`: Added auto-republish in `method_upload_finalize()`
     - **Sites Fixed:** rfg, form, facb, plainte all returning HTTP 200 consistently
     - **Verified:** 20 consecutive tests all returned 200 (previously ~50% failure rate)
+
+31. **HAProxy Host/Container Architecture Permanent Fix (2026-02-25)**
+    - **Problem:** Host HAProxy kept restarting alongside container HAProxy due to:
+      - `haproxyctl` called `/etc/init.d/haproxy start|reload` which started host HAProxy
+      - ACME cron jobs and certificate scripts also called host init script
+      - ACME triggers in procd could restart host HAProxy
+    - **Permanent Fix Applied:**
+      - Renamed `/etc/init.d/haproxy` to `/etc/init.d/haproxy.host-disabled` to prevent any trigger
+      - Added `lxc_start_bg()` function to `haproxyctl` for starting container in background
+      - Added `lxc_reload()` function for reloading container HAProxy
+      - Replaced all `/etc/init.d/haproxy start|reload` calls with container-aware functions
+      - Fixed `haproxy-sync-certs` script to use `haproxyctl reload` instead of init script
+    - **Files Modified:**
+      - `secubox-app-haproxy/files/usr/sbin/haproxyctl`: Added lxc_start_bg, lxc_reload; fixed ACME cert handling
+      - `secubox-app-haproxy/files/usr/sbin/haproxy-sync-certs`: Uses haproxyctl reload instead of init script
+    - **Verified:** 20 consecutive tests all returned HTTP 200 across all sites

@@ -214,6 +214,40 @@ lxc_stop() {
 	fi
 }
 
+# Start the container in background (daemon mode)
+lxc_start_bg() {
+	if lxc_running; then
+		return 0
+	fi
+	if ! lxc_exists; then
+		log_error "Container not installed. Run 'haproxyctl install' first."
+		return 1
+	fi
+	log_info "Starting HAProxy container..."
+	generate_config
+	lxc-start -n "$LXC_NAME" -d
+	sleep 2
+	if lxc_running; then
+		log_info "Container started"
+		return 0
+	else
+		log_error "Failed to start container"
+		return 1
+	fi
+}
+
+# Reload HAProxy config inside the container (quick reload without restart)
+lxc_reload() {
+	if ! lxc_running; then
+		log_warn "Container not running, starting it..."
+		lxc_start_bg || return 1
+	fi
+	generate_config
+	lxc_exec cp /opt/haproxy/config/haproxy.cfg /etc/haproxy/haproxy.cfg 2>/dev/null || true
+	lxc_exec killall -USR2 haproxy 2>/dev/null || \
+		lxc_exec killall -HUP haproxy 2>/dev/null || true
+}
+
 lxc_create_rootfs() {
 	log_info "Creating Alpine rootfs for HAProxy..."
 
@@ -1538,11 +1572,9 @@ cmd_cert_add() {
 				sleep 1
 			fi
 
-			# Ensure HAProxy is running with ACME backend
+			# Ensure HAProxy container is running with ACME backend
 			if ! lxc_running; then
-				log_info "Starting HAProxy..."
-				/etc/init.d/haproxy start 2>/dev/null || true
-				sleep 2
+				lxc_start_bg || true
 			fi
 
 			# Issue certificate using webroot mode (NO HAProxy restart needed!)
@@ -1570,7 +1602,7 @@ cmd_cert_add() {
 				--cert-file "$CERTS_PATH/$cert_filename.crt" \
 				--key-file "$CERTS_PATH/$cert_filename.key" \
 				--fullchain-file "$CERTS_PATH/$cert_filename.fullchain.pem" \
-				--reloadcmd "/etc/init.d/haproxy reload" 2>/dev/null || true
+				--reloadcmd "/usr/sbin/haproxyctl reload" 2>/dev/null || true
 
 			# HAProxy needs combined file: fullchain + private key
 			log_info "Creating combined PEM for HAProxy..."
@@ -1582,7 +1614,7 @@ cmd_cert_add() {
 
 			# Reload HAProxy to pick up new cert
 			log_info "Reloading HAProxy to use new certificate..."
-			/etc/init.d/haproxy reload 2>/dev/null || true
+			lxc_reload
 		fi
 
 		# Check if certificate was created
@@ -1866,7 +1898,7 @@ cmd_install() {
 	log_info "Next steps:"
 	log_info "  1. Enable: uci set haproxy.main.enabled=1 && uci commit haproxy"
 	log_info "  2. Add vhost: haproxyctl vhost add example.com backend_name"
-	log_info "  3. Start: /etc/init.d/haproxy start"
+	log_info "  3. Start: haproxyctl service-run (foreground) or lxc-start -n haproxy -d (background)"
 }
 
 cmd_status() {
