@@ -517,7 +517,7 @@ get_app() {
 	json_close_obj
 }
 
-# Upload app (receive base64 content)
+# Upload app (receive base64 content) - KISS: auto-detects ZIP or .py
 # NOTE: uhttpd-mod-ubus has a 64KB JSON body limit.
 # Small files (<40KB) go through RPC directly.
 # Larger files use chunked upload: upload_chunk + upload_finalize.
@@ -548,27 +548,115 @@ upload_app() {
 	local data_path
 	config_load "$CONFIG"
 	config_get data_path main data_path "/srv/streamlit"
-
-	local app_file="$data_path/apps/${name}.py"
 	mkdir -p "$data_path/apps"
 
-	base64 -d < "$b64file" > "$app_file" 2>/dev/null
+	# Decode content to temp file first
+	local tmpfile="/tmp/upload_${name}_$$.bin"
+	base64 -d < "$b64file" > "$tmpfile" 2>/dev/null
 	local rc=$?
 	rm -f "$b64file"
 
-	if [ $rc -eq 0 ] && [ -s "$app_file" ]; then
-		uci set "${CONFIG}.${name}=app"
-		uci set "${CONFIG}.${name}.name=$name"
-		uci set "${CONFIG}.${name}.path=${name}.py"
-		uci set "${CONFIG}.${name}.enabled=1"
-		uci commit "$CONFIG"
-		# Auto-create Gitea repo and push (background)
-		streamlitctl gitea push "$name" >/dev/null 2>&1 &
-		json_success "App uploaded: $name"
-	else
-		rm -f "$app_file"
-		json_error "Failed to decode app content"
+	if [ $rc -ne 0 ] || [ ! -s "$tmpfile" ]; then
+		rm -f "$tmpfile"
+		json_error "Failed to decode content"
+		return
 	fi
+
+	# KISS: Auto-detect ZIP by magic bytes (PK = 0x504B)
+	local is_zip_file=0
+	local magic=$(head -c2 "$tmpfile" 2>/dev/null | od -An -tx1 | tr -d ' ')
+	[ "$magic" = "504b" ] && is_zip_file=1
+
+	local app_file="$data_path/apps/${name}.py"
+
+	if [ "$is_zip_file" = "1" ]; then
+		# Extract app.py from ZIP archive
+		local tmpdir="/tmp/extract_${name}_$$"
+		mkdir -p "$tmpdir"
+
+		python3 -c "
+import zipfile, sys
+try:
+    z = zipfile.ZipFile('$tmpfile')
+    names = z.namelist()
+    app_py = None
+    req_txt = None
+    for n in names:
+        bn = n.split('/')[-1]
+        if bn == 'app.py':
+            app_py = n
+        elif bn == 'requirements.txt':
+            req_txt = n
+        elif bn.endswith('.py') and app_py is None:
+            app_py = n
+    if app_py:
+        content = z.read(app_py).decode('utf-8', errors='replace')
+        if not content.startswith('# -*- coding'):
+            content = '# -*- coding: utf-8 -*-\n' + content
+        with open('$app_file', 'w') as f:
+            f.write(content)
+        if req_txt:
+            z.extract(req_txt, '$tmpdir')
+            import shutil
+            shutil.move('$tmpdir/' + req_txt, '$tmpdir/requirements.txt')
+        sys.exit(0)
+    else:
+        sys.exit(1)
+except:
+    sys.exit(1)
+" 2>/dev/null
+		rc=$?
+		rm -f "$tmpfile"
+
+		if [ $rc -ne 0 ] || [ ! -s "$app_file" ]; then
+			rm -rf "$tmpdir"
+			json_error "No Python file found in ZIP"
+			return
+		fi
+
+		# Install requirements if found
+		if [ -f "$tmpdir/requirements.txt" ] && lxc_running; then
+			cp "$tmpdir/requirements.txt" "$data_path/apps/${name}_requirements.txt"
+			lxc-attach -n "$LXC_NAME" -- pip3 install --break-system-packages \
+				-r "/srv/apps/${name}_requirements.txt" >/dev/null 2>&1 &
+		fi
+		rm -rf "$tmpdir"
+	else
+		# Plain .py file - add encoding declaration if needed
+		local first_line=$(head -c 50 "$tmpfile" 2>/dev/null)
+		if ! echo "$first_line" | grep -q "coding"; then
+			printf '# -*- coding: utf-8 -*-\n' > "$app_file"
+			cat "$tmpfile" >> "$app_file"
+		else
+			mv "$tmpfile" "$app_file"
+		fi
+		rm -f "$tmpfile"
+	fi
+
+	if [ ! -s "$app_file" ]; then
+		json_error "Failed to create app file"
+		return
+	fi
+
+	uci set "${CONFIG}.${name}=app"
+	uci set "${CONFIG}.${name}.name=$name"
+	uci set "${CONFIG}.${name}.path=${name}.py"
+	uci set "${CONFIG}.${name}.enabled=1"
+	uci commit "$CONFIG"
+
+	# Restart instance if running (for re-uploads)
+	if lxc_running; then
+		local port=$(uci -q get "${CONFIG}.${name}.port")
+		if [ -n "$port" ]; then
+			lxc-attach -n "$LXC_NAME" -- pkill -f "port=$port" 2>/dev/null
+			sleep 1
+			streamlitctl instance start "$name" >/dev/null 2>&1 &
+		fi
+	fi
+
+	# Auto-create Gitea repo and push (background)
+	streamlitctl gitea push "$name" >/dev/null 2>&1 &
+	json_success "App uploaded: $name"
 }
 
 # Chunked upload: receive a base64 chunk and append to temp file
@@ -1553,7 +1641,7 @@ get_emancipation() {
 	json_close_obj
 }
 
-# One-click upload with auto instance creation
+# One-click upload with auto instance creation (KISS: handles ZIP or .py)
 upload_and_deploy() {
 	local tmpinput="/tmp/rpcd_deploy_$$.json"
 	cat > "$tmpinput"
@@ -1584,14 +1672,96 @@ upload_and_deploy() {
 	config_get data_path main data_path "/srv/streamlit"
 	mkdir -p "$data_path/apps"
 
-	local app_file="$data_path/apps/${name}.py"
-	base64 -d < "$b64file" > "$app_file" 2>/dev/null
+	# Decode content to temp file first
+	local tmpfile="/tmp/upload_${name}_$$.bin"
+	base64 -d < "$b64file" > "$tmpfile" 2>/dev/null
 	local rc=$?
 	rm -f "$b64file"
 
-	if [ $rc -ne 0 ] || [ ! -s "$app_file" ]; then
-		rm -f "$app_file"
+	if [ $rc -ne 0 ] || [ ! -s "$tmpfile" ]; then
+		rm -f "$tmpfile"
 		json_error "Failed to decode content"
+		return
+	fi
+
+	# KISS: Auto-detect ZIP by magic bytes (PK = 0x504B)
+	local is_zip_file=0
+	local magic=$(head -c2 "$tmpfile" 2>/dev/null | od -An -tx1 | tr -d ' ')
+	[ "$magic" = "504b" ] && is_zip_file=1
+
+	local app_file="$data_path/apps/${name}.py"
+
+	if [ "$is_zip_file" = "1" ]; then
+		# Extract app.py from ZIP archive
+		local tmpdir="/tmp/extract_${name}_$$"
+		mkdir -p "$tmpdir"
+
+		# Use Python to extract (unzip may not be available)
+		python3 -c "
+import zipfile, sys
+try:
+    z = zipfile.ZipFile('$tmpfile')
+    names = z.namelist()
+    # Find app.py or main .py file
+    app_py = None
+    req_txt = None
+    for n in names:
+        bn = n.split('/')[-1]
+        if bn == 'app.py':
+            app_py = n
+        elif bn == 'requirements.txt':
+            req_txt = n
+        elif bn.endswith('.py') and app_py is None:
+            app_py = n
+    if app_py:
+        content = z.read(app_py).decode('utf-8', errors='replace')
+        # Add UTF-8 encoding if not present
+        if not content.startswith('# -*- coding'):
+            content = '# -*- coding: utf-8 -*-\n' + content
+        with open('$app_file', 'w') as f:
+            f.write(content)
+        # Extract requirements.txt if present
+        if req_txt:
+            z.extract(req_txt, '$tmpdir')
+            import shutil
+            shutil.move('$tmpdir/' + req_txt, '$tmpdir/requirements.txt')
+        sys.exit(0)
+    else:
+        sys.exit(1)
+except Exception as e:
+    print(str(e), file=sys.stderr)
+    sys.exit(1)
+" 2>/dev/null
+		rc=$?
+		rm -f "$tmpfile"
+
+		if [ $rc -ne 0 ] || [ ! -s "$app_file" ]; then
+			rm -rf "$tmpdir"
+			json_error "No Python file found in ZIP"
+			return
+		fi
+
+		# Install requirements if found
+		if [ -f "$tmpdir/requirements.txt" ] && lxc_running; then
+			cp "$tmpdir/requirements.txt" "$data_path/apps/${name}_requirements.txt"
+			lxc-attach -n "$LXC_NAME" -- pip3 install --break-system-packages \
+				-r "/srv/apps/${name}_requirements.txt" >/dev/null 2>&1 &
+		fi
+		rm -rf "$tmpdir"
+	else
+		# Plain .py file - add encoding declaration if needed
+		local first_line=$(head -c 50 "$tmpfile" 2>/dev/null)
+		if ! echo "$first_line" | grep -q "coding"; then
+			printf '# -*- coding: utf-8 -*-\n' > "$app_file"
+			cat "$tmpfile" >> "$app_file"
+		else
+			mv "$tmpfile" "$app_file"
+		fi
+		rm -f "$tmpfile"
+	fi
+
+	if [ ! -s "$app_file" ]; then
+		json_error "Failed to create app file"
 		return
 	fi
 
