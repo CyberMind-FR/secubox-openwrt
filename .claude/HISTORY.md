@@ -3522,3 +3522,23 @@ git checkout HEAD -- index.html
       - `handleGenerateBulkTokens()`, `handleCopyAllTokens()`, `refreshFactory()`
     - **Polling:** Factory data included in 5-second refresh when on Factory tab
     - **UI Pattern:** KISS theme components (stat boxes, cards, tables, buttons)
+
+29. **Cloner Image Builder Version/Profile Support (2026-02-25)**
+    - Enhanced `secubox-cloner` CLI with OpenWrt version selection and package profiles
+    - **New CLI Options:**
+      - `--version VER`: Select OpenWrt version (24.10.5, 24.10.0, 23.05.5, 23.05.4)
+      - `--profile PROFILE`: Select package profile (slim, core, full)
+      - `secubox-cloner versions`: List available versions and profiles
+    - **Package Profiles:**
+      - `slim`: Minimal OpenWrt (LuCI + network essentials only)
+      - `core`: Slim + SecuBox mesh (master-link, p2p, secubox-core)
+      - `full`: Clone all installed SecuBox packages from current device
+    - **New RPCD Methods:**
+      - `list_versions`: Returns available OpenWrt versions with latest flag
+      - `list_build_profiles`: Returns available package profiles with descriptions
+      - `build_image`: Now accepts `version` and `profile` parameters
+    - **Files Modified:**
+      - `secubox-core/root/usr/sbin/secubox-cloner`: Added version/profile parsing and build_via_asu profile logic
+      - `luci-app-cloner/root/usr/libexec/rpcd/luci.cloner`: Added list_versions, list_build_profiles, updated build_image
+      - `luci-app-cloner/root/usr/share/rpcd/acl.d/luci-app-cloner.json`: Added permissions for new methods
+    - **Tested:** CLI help, versions command, RPCD methods via ubus all working

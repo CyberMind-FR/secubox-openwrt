@@ -234,23 +234,30 @@ EOF
 }
 
 do_build_image() {
-	local input device_type
+	local input device_type version profile
 
 	read input
 	device_type=$(echo "$input" | jsonfilter -e '@.device_type' 2>/dev/null)
+	version=$(echo "$input" | jsonfilter -e '@.version' 2>/dev/null)
+	profile=$(echo "$input" | jsonfilter -e '@.profile' 2>/dev/null)
+
+	# Defaults
+	[ -z "$version" ] && version="24.10.5"
+	[ -z "$profile" ] && profile="slim"
 
 	json_init
 
 	if [ -x /usr/sbin/secubox-cloner ]; then
-		if [ -n "$device_type" ]; then
-			(/usr/sbin/secubox-cloner build "$device_type" 2>&1 > /tmp/cloner-build.log) &
-			json_add_boolean "success" 1
-			json_add_string "message" "Build started for $device_type"
-		else
-			(/usr/sbin/secubox-cloner build 2>&1 > /tmp/cloner-build.log) &
-			json_add_boolean "success" 1
-			json_add_string "message" "Build started for current device"
-		fi
+		local cmd_args=""
+		[ -n "$device_type" ] && cmd_args="$cmd_args --device $device_type"
+		cmd_args="$cmd_args --version $version --profile $profile"
+
+		(/usr/sbin/secubox-cloner build $cmd_args 2>&1 > /tmp/cloner-build.log) &
+		json_add_boolean "success" 1
+		json_add_string "message" "Build started: ${device_type:-auto} / $version / $profile"
+		json_add_string "device" "${device_type:-auto}"
+		json_add_string "version" "$version"
+		json_add_string "profile" "$profile"
 	else
 		json_add_boolean "success" 0
 		json_add_string "message" "secubox-cloner not installed"
@@ -285,6 +292,68 @@ do_list_devices() {
 	json_add_string "id" "x86-64"
 	json_add_string "name" "Generic x86-64"
 	json_add_string "cpu" "x86_64"
+	json_close_object
+
+	json_close_array
+	json_dump
+}
+
+do_list_versions() {
+	json_init
+	json_add_array "versions"
+
+	json_add_object ""
+	json_add_string "id" "24.10.5"
+	json_add_string "name" "OpenWrt 24.10.5"
+	json_add_boolean "latest" 1
+	json_close_object
+
+	json_add_object ""
+	json_add_string "id" "24.10.0"
+	json_add_string "name" "OpenWrt 24.10.0"
+	json_add_boolean "latest" 0
+	json_close_object
+
+	json_add_object ""
+	json_add_string "id" "23.05.5"
+	json_add_string "name" "OpenWrt 23.05.5 (LTS)"
+	json_add_boolean "latest" 0
+	json_close_object
+
+	json_add_object ""
+	json_add_string "id" "23.05.4"
+	json_add_string "name" "OpenWrt 23.05.4 (LTS)"
+	json_add_boolean "latest" 0
+	json_close_object
+
+	json_close_array
+	json_add_string "default" "24.10.5"
+	json_dump
+}
+
+do_list_build_profiles() {
+	json_init
+	json_add_array "profiles"
+
+	json_add_object ""
+	json_add_string "id" "slim"
+	json_add_string "name" "Slim"
+	json_add_string "description" "Minimal OpenWrt (LuCI + network essentials)"
+	json_add_boolean "default" 1
+	json_close_object
+
+	json_add_object ""
+	json_add_string "id" "core"
+	json_add_string "name" "Core"
+	json_add_string "description" "Slim + SecuBox mesh (master-link, p2p)"
+	json_add_boolean "default" 0
+	json_close_object
+
+	json_add_object ""
+	json_add_string "id" "full"
+	json_add_string "name" "Full"
+	json_add_string "description" "All SecuBox packages from current device"
+	json_add_boolean "default" 0
 	json_close_object
 
 	json_close_array
@@ -1502,6 +1571,8 @@ case "$1" in
 		echo '"list_tokens":{},'
 		echo '"list_clones":{},'
 		echo '"list_devices":{},'
+		echo '"list_versions":{},'
+		echo '"list_build_profiles":{},'
 		echo '"build_progress":{},'
 		echo '"build_log":{"lines":"Number","offset":"Number"},'
 		echo '"serial_ports":{},'
@@ -1516,7 +1587,7 @@ case "$1" in
 		echo '"image_details":{"name":"String"},'
 		echo '"image_rename":{"old_name":"String","new_name":"String"},'
 		echo '"generate_token":{"auto_approve":"Boolean"},'
-		echo '"build_image":{"device_type":"String"},'
+		echo '"build_image":{"device_type":"String","version":"String","profile":"String"},'
 		echo '"tftp_start":{},'
 		echo '"tftp_stop":{},'
 		echo '"delete_token":{"token":"String"},'
@@ -1550,6 +1621,8 @@ case "$1" in
 			list_tokens) do_list_tokens ;;
 			list_clones) do_list_clones ;;
 			list_devices) do_list_devices ;;
+			list_versions) do_list_versions ;;
+			list_build_profiles) do_list_build_profiles ;;
 			build_progress) do_build_progress ;;
 			build_log) do_build_log ;;
 			serial_ports) do_serial_ports ;;
