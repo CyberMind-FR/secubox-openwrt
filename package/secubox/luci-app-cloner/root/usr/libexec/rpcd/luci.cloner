@@ -1104,6 +1104,152 @@ do_remote_flash() {
 	json_dump
 }
 
+
+# ============================================================================
+# Staged Flash Methods (KISS Remote Flash v2)
+# ============================================================================
+
+do_remote_prepare_flash() {
+	local input ip image keep_settings token
+	read input
+	ip=$(echo "$input" | jsonfilter -e '@.ip' 2>/dev/null)
+	image=$(echo "$input" | jsonfilter -e '@.image' 2>/dev/null)
+	keep_settings=$(echo "$input" | jsonfilter -e '@.keep_settings' 2>/dev/null)
+	token=$(echo "$input" | jsonfilter -e '@.token' 2>/dev/null)
+	json_init
+	if [ -z "$ip" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "IP address required"
+		json_dump
+		return
+	fi
+	if [ -z "$image" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Image required"
+		json_dump
+		return
+	fi
+	if ! ping -c 1 -W 2 "$ip" >/dev/null 2>&1; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Device not reachable: $ip"
+		json_dump
+		return
+	fi
+	local img_path=""
+	[ -f "$TFTP_ROOT/$image" ] && img_path="$TFTP_ROOT/$image"
+	[ -f "$CLONE_DIR/$image" ] && img_path="$CLONE_DIR/$image"
+	if [ -z "$img_path" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Image not found: $image"
+		json_dump
+		return
+	fi
+	local img_size=$(ls -lh "$img_path" | awk '{print $5}')
+	if ! do_scp "$img_path" "root@$ip:/tmp/firmware.img"; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Failed to upload image"
+		json_dump
+		return
+	fi
+	local sysupgrade_opts="-n"
+	[ "$keep_settings" = "true" ] && sysupgrade_opts=""
+	do_ssh "$ip" "cat > /etc/secubox-staged-flash.sh << 'FLASHEOF'
+#!/bin/sh
+if [ -f /tmp/firmware.img ] && [ -f /root/.secubox-flash-opts ]; then
+    rm -f /root/.secubox-flash-opts
+    sysupgrade $sysupgrade_opts /tmp/firmware.img
+fi
+FLASHEOF
+chmod +x /etc/secubox-staged-flash.sh"
+	do_ssh "$ip" "grep -q 'secubox-staged-flash' /etc/rc.local 2>/dev/null || sed -i '/^exit 0/i /etc/secubox-staged-flash.sh' /etc/rc.local"
+	do_ssh "$ip" "touch /root/.secubox-flash-opts"
+	json_add_boolean "success" 1
+	json_add_string "message" "Flash prepared - awaiting confirmation"
+	json_add_string "ip" "$ip"
+	json_add_string "image" "$image"
+	json_add_string "size" "$img_size"
+	json_dump
+}
+
+do_remote_confirm_flash() {
+	local input ip
+	read input
+	ip=$(echo "$input" | jsonfilter -e "@.ip" 2>/dev/null)
+	json_init
+	if [ -z "$ip" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "IP address required"
+		json_dump
+		return
+	fi
+	# Check firmware exists (try both /tmp and /root)
+	local fw_path=$(do_ssh "$ip" "[ -f /tmp/firmware.img ] && echo /tmp/firmware.img || ([ -f /tmp/firmware.img ] && echo /tmp/firmware.img)" 2>/dev/null)
+	if [ -z "$fw_path" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "No firmware found on $ip"
+		json_dump
+		return
+	fi
+	# Get sysupgrade options
+	local opts=$(do_ssh "$ip" "cat /root/.secubox-flash-opts 2>/dev/null || echo -n" 2>/dev/null)
+	# Execute sysupgrade directly - SSH will disconnect when device reboots
+	do_ssh "$ip" "sysupgrade $opts $fw_path" 2>/dev/null &
+	json_add_boolean "success" 1
+	json_add_string "message" "Sysupgrade started on $ip"
+	json_add_string "ip" "$ip"
+	json_add_string "firmware" "$fw_path"
+	json_dump
+}
+
+do_remote_flash_status() {
+	local input ip
+	read input
+	ip=$(echo "$input" | jsonfilter -e '@.ip' 2>/dev/null)
+	json_init
+	if [ -z "$ip" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "IP address required"
+		json_dump
+		return
+	fi
+	if ! ping -c 1 -W 2 "$ip" >/dev/null 2>&1; then
+		json_add_boolean "success" 1
+		json_add_string "status" "offline"
+		json_add_string "ip" "$ip"
+		json_dump
+		return
+	fi
+	local has_fw=$(do_ssh "$ip" "[ -f /tmp/firmware.img ] && echo yes || echo no" 2>/dev/null)
+	local has_marker=$(do_ssh "$ip" "[ -f /root/.secubox-flash-opts ] && echo yes || echo no" 2>/dev/null)
+	local status="none"
+	[ "$has_fw" = "yes" ] && [ "$has_marker" = "yes" ] && status="pending"
+	[ "$has_fw" = "yes" ] && [ "$has_marker" = "no" ] && status="ready"
+	json_add_boolean "success" 1
+	json_add_string "status" "$status"
+	json_add_string "ip" "$ip"
+	json_add_string "has_firmware" "$has_fw"
+	json_add_string "has_marker" "$has_marker"
+	json_dump
+}
+
+do_remote_cancel_flash() {
+	local input ip
+	read input
+	ip=$(echo "$input" | jsonfilter -e '@.ip' 2>/dev/null)
+	json_init
+	if [ -z "$ip" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "IP address required"
+		json_dump
+		return
+	fi
+	do_ssh "$ip" "rm -f /tmp/firmware.img /root/.secubox-flash-opts /etc/secubox-staged-flash.sh; sed -i '/secubox-staged-flash/d' /etc/rc.local" 2>/dev/null
+	json_add_boolean "success" 1
+	json_add_string "message" "Flash cancelled"
+	json_add_string "ip" "$ip"
+	json_dump
+}
+
 do_scan_network() {
 	json_init
 	json_add_array "devices"
@@ -1390,7 +1536,11 @@ case "$1" in
 		echo '"list_profiles":{},'
 		echo '"import_preregistered":{"devices":"Object"},'
 		echo '"discovery_status":{},'
-		echo '"toggle_discovery":{"enabled":"Boolean"}'
+		echo '"toggle_discovery":{"enabled":"Boolean"},'
+		echo '"remote_prepare_flash":{"ip":"String","image":"String","keep_settings":"Boolean","token":"String"},'
+		echo '"remote_confirm_flash":{"ip":"String"},'
+		echo '"remote_flash_status":{"ip":"String"},'
+		echo '"remote_cancel_flash":{"ip":"String"}'
 		echo '}'
 		;;
 	call)
@@ -1435,6 +1585,10 @@ case "$1" in
 			import_preregistered) do_import_preregistered ;;
 			discovery_status) do_discovery_status ;;
 			toggle_discovery) do_toggle_discovery ;;
+			remote_prepare_flash) do_remote_prepare_flash ;;
+			remote_confirm_flash) do_remote_confirm_flash ;;
+			remote_flash_status) do_remote_flash_status ;;
+			remote_cancel_flash) do_remote_cancel_flash ;;
 		esac
 		;;
 esac
