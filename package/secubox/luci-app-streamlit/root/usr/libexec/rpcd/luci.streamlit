@@ -564,8 +564,8 @@ upload_app() {
 
 	# KISS: Auto-detect ZIP by magic bytes (PK = 0x504B)
 	local is_zip_file=0
-	local magic=$(head -c2 "$tmpfile" 2>/dev/null | od -An -tx1 | tr -d ' ')
-	[ "$magic" = "504b" ] && is_zip_file=1
+	local magic=$(head -c2 "$tmpfile" 2>/dev/null)
+	[ "$magic" = "PK" ] && is_zip_file=1
 
 	local app_file="$data_path/apps/${name}.py"
 
@@ -574,39 +574,42 @@ upload_app() {
 		local tmpdir="/tmp/extract_${name}_$$"
 		mkdir -p "$tmpdir"
 
-		python3 -c "
-import zipfile, sys
+		# Use Python to extract (write script to file to avoid stdin conflict with RPCD)
+		local pyscript="/tmp/extract_$$.py"
+		cat > "$pyscript" << 'PYEOF'
+import zipfile, sys, os
+tmpfile, app_file, tmpdir = sys.argv[1], sys.argv[2], sys.argv[3]
 try:
-    z = zipfile.ZipFile('$tmpfile')
-    names = z.namelist()
+    z = zipfile.ZipFile(tmpfile)
     app_py = None
     req_txt = None
-    for n in names:
-        bn = n.split('/')[-1]
-        if bn == 'app.py':
+    for n in z.namelist():
+        bn = os.path.basename(n)
+        if bn == "app.py":
             app_py = n
-        elif bn == 'requirements.txt':
+        elif bn == "requirements.txt":
             req_txt = n
-        elif bn.endswith('.py') and app_py is None:
+        elif bn.endswith(".py") and not app_py:
             app_py = n
-    if app_py:
-        content = z.read(app_py).decode('utf-8', errors='replace')
-        if not content.startswith('# -*- coding'):
-            content = '# -*- coding: utf-8 -*-\n' + content
-        with open('$app_file', 'w') as f:
-            f.write(content)
-        if req_txt:
-            z.extract(req_txt, '$tmpdir')
-            import shutil
-            shutil.move('$tmpdir/' + req_txt, '$tmpdir/requirements.txt')
-        sys.exit(0)
-    else:
+    if not app_py:
         sys.exit(1)
-except:
+    content = z.read(app_py).decode("utf-8", errors="replace")
+    if not content.startswith("# -*- coding"):
+        content = "# -*- coding: utf-8 -*-\n" + content
+    with open(app_file, "w") as f:
+        f.write(content)
+    if req_txt:
+        try:
+            z.extract(req_txt, tmpdir)
+        except:
+            pass
+    sys.exit(0)
+except Exception:
     sys.exit(1)
-" 2>/dev/null
+PYEOF
+		python3 "$pyscript" "$tmpfile" "$app_file" "$tmpdir" 2>/dev/null
 		rc=$?
-		rm -f "$tmpfile"
+		rm -f "$tmpfile" "$pyscript"
 
 		if [ $rc -ne 0 ] || [ ! -s "$app_file" ]; then
 			rm -rf "$tmpdir"
@@ -1686,8 +1689,8 @@ upload_and_deploy() {
 
 	# KISS: Auto-detect ZIP by magic bytes (PK = 0x504B)
 	local is_zip_file=0
-	local magic=$(head -c2 "$tmpfile" 2>/dev/null | od -An -tx1 | tr -d ' ')
-	[ "$magic" = "504b" ] && is_zip_file=1
+	local magic=$(head -c2 "$tmpfile" 2>/dev/null)
+	[ "$magic" = "PK" ] && is_zip_file=1
 
 	local app_file="$data_path/apps/${name}.py"
 
@@ -1696,44 +1699,42 @@ upload_and_deploy() {
 		local tmpdir="/tmp/extract_${name}_$$"
 		mkdir -p "$tmpdir"
 
-		# Use Python to extract (unzip may not be available)
-		python3 -c "
-import zipfile, sys
+		# Use Python to extract (write script to file to avoid stdin conflict with RPCD)
+		local pyscript="/tmp/extract_$$.py"
+		cat > "$pyscript" << 'PYEOF'
+import zipfile, sys, os
+tmpfile, app_file, tmpdir = sys.argv[1], sys.argv[2], sys.argv[3]
 try:
-    z = zipfile.ZipFile('$tmpfile')
-    names = z.namelist()
-    # Find app.py or main .py file
+    z = zipfile.ZipFile(tmpfile)
     app_py = None
     req_txt = None
-    for n in names:
-        bn = n.split('/')[-1]
-        if bn == 'app.py':
+    for n in z.namelist():
+        bn = os.path.basename(n)
+        if bn == "app.py":
             app_py = n
-        elif bn == 'requirements.txt':
+        elif bn == "requirements.txt":
             req_txt = n
-        elif bn.endswith('.py') and app_py is None:
+        elif bn.endswith(".py") and not app_py:
             app_py = n
-    if app_py:
-        content = z.read(app_py).decode('utf-8', errors='replace')
-        # Add UTF-8 encoding if not present
-        if not content.startswith('# -*- coding'):
-            content = '# -*- coding: utf-8 -*-\n' + content
-        with open('$app_file', 'w') as f:
-            f.write(content)
-        # Extract requirements.txt if present
-        if req_txt:
-            z.extract(req_txt, '$tmpdir')
-            import shutil
-            shutil.move('$tmpdir/' + req_txt, '$tmpdir/requirements.txt')
-        sys.exit(0)
-    else:
+    if not app_py:
         sys.exit(1)
-except Exception as e:
-    print(str(e), file=sys.stderr)
+    content = z.read(app_py).decode("utf-8", errors="replace")
+    if not content.startswith("# -*- coding"):
+        content = "# -*- coding: utf-8 -*-\n" + content
+    with open(app_file, "w") as f:
+        f.write(content)
+    if req_txt:
+        try:
+            z.extract(req_txt, tmpdir)
+        except:
+            pass
+    sys.exit(0)
+except Exception:
     sys.exit(1)
-" 2>/dev/null
+PYEOF
+		python3 "$pyscript" "$tmpfile" "$app_file" "$tmpdir" 2>/dev/null
 		rc=$?
-		rm -f "$tmpfile"
+		rm -f "$tmpfile" "$pyscript"
 
 		if [ $rc -ne 0 ] || [ ! -s "$app_file" ]; then
 			rm -rf "$tmpdir"
