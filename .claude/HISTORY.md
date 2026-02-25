@@ -3604,3 +3604,20 @@ git checkout HEAD -- index.html
     - **Verified:** test2.gk2.secubox.in emancipation successful with WAF enabled
     - **Files Modified:**
       - `secubox-app-streamlit/files/usr/sbin/streamlitctl`: Added waf_enabled UCI field, use haproxyctl reload
+
+34. **Portal Password Change & MetaBlogizer Upload Fix (2026-02-25)**
+    - **Portal Password Change:**
+      - New "Account" section with "Change Password" and "My Services" cards
+      - Password change modal with current/new/confirm fields
+      - RPC method `change_password` verifies current password, syncs to all services
+      - Syncs to: email (mailserver), jabber, nextcloud
+      - Matrix/PeerTube noted as manual update required
+    - **MetaBlogizer Upload Fix:**
+      - `method_upload_file` now auto-republishes emancipated sites (was only in finalize)
+      - `cmd_publish` now auto-pushes to Gitea if enabled
+      - Uses `haproxyctl reload` (container-aware)
+    - **Files Modified:**
+      - `luci-app-secubox-users/root/usr/libexec/rpcd/luci.secubox-users`: New change_password method
+      - `luci-app-secubox-portal/root/www/gk2-hub/portal.html`: Account section + password modal
+      - `luci-app-metablogizer/root/usr/libexec/rpcd/luci.metablogizer`: Auto-republish on upload
+      - `secubox-app-metablogizer/files/usr/sbin/metablogizerctl`: Gitea push on publish

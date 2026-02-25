@@ -961,10 +961,19 @@ method_upload_file() {
 	if [ $rc -eq 0 ]; then
 		# Fix permissions for entire site directory
 		fix_permissions "$site_path"
+
+		# Auto-republish if site is emancipated (ensures content is served immediately)
+		local is_emancipated=$(get_uci "$id" emancipated "0")
+		if [ "$is_emancipated" = "1" ]; then
+			# Republish in background to reload HAProxy and push to Gitea if configured
+			metablogizerctl publish "$name" >/dev/null 2>&1 &
+		fi
+
 		json_init
 		json_add_boolean "success" 1
 		json_add_string "filename" "$filename"
 		json_add_string "path" "$file_path"
+		json_add_string "republished" "$is_emancipated"
 		json_dump
 	else
 		json_init

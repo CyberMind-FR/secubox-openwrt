@@ -368,9 +368,9 @@ cmd_publish() {
 
 	uci commit haproxy
 
-	# Regenerate HAProxy config
+	# Regenerate HAProxy config and reload container
 	/usr/sbin/haproxyctl generate 2>/dev/null
-	/etc/init.d/haproxy reload 2>/dev/null
+	/usr/sbin/haproxyctl reload 2>/dev/null
 
 	log_info "Site published!"
 	echo ""
@@ -378,6 +378,13 @@ cmd_publish() {
 	echo ""
 	echo "To request SSL certificate:"
 	echo "  haproxyctl cert add $domain"
+
+	# Auto-push to Gitea if configured
+	local gitea_enabled=$(uci_get gitea.enabled)
+	if [ "$gitea_enabled" = "1" ]; then
+		log_info "Pushing to Gitea repository..."
+		cmd_gitea_push "$name" 2>/dev/null &
+	fi
 
 	# Auto-package for P2P distribution
 	if [ -x /usr/sbin/secubox-content-pkg ]; then
