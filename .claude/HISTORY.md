@@ -3489,3 +3489,12 @@ git checkout HEAD -- index.html
     - **Fix Applied:**
       - `p2p-mesh.sh`: Silenced usage output when sourced as library
     - **Tested:** All RPCD methods working via ubus, discovery mode toggle, bulk tokens
+
+27. **Mailserver Dovecot UID/GID Fix (2026-02-25)**
+    - Fixed Roundcube IMAP "Internal error" caused by Dovecot running as wrong user (uid 102 instead of 5000)
+    - **Problem:** Dovecot config had hardcoded uid=102/gid=105 from Alpine defaults, but vmail user is uid=5000/gid=5000
+    - **Files Modified:**
+      - `mailserverctl`: Fixed 7 uid/gid references (102→5000, 105→5000)
+      - `dovecot.conf` template: Changed mail_uid/gid, first_valid_uid/last_valid_uid
+      - `configure_postfix`: Changed virtual_uid_maps/virtual_gid_maps
+      - `cmd_add_user`: Changed passwd file uid:gid entries

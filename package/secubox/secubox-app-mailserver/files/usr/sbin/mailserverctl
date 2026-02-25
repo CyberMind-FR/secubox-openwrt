@@ -203,8 +203,8 @@ mynetworks = 127.0.0.0/8 [::1]/128 192.168.255.0/24
 virtual_mailbox_domains = $domain
 virtual_mailbox_base = /var/mail
 virtual_mailbox_maps = lmdb:/etc/postfix/vmailbox
-virtual_uid_maps = static:102
-virtual_gid_maps = static:105
+virtual_uid_maps = static:5000
+virtual_gid_maps = static:5000
 virtual_transport = lmtp:unix:private/dovecot-lmtp
 
 # SASL auth via Dovecot
@@ -282,10 +282,10 @@ configure_dovecot() {
 protocols = imap lmtp
 listen = *
 mail_location = maildir:/var/mail/%d/%n
-mail_uid = 102
-mail_gid = 105
-first_valid_uid = 102
-last_valid_uid = 102
+mail_uid = 5000
+mail_gid = 5000
+first_valid_uid = 500
+last_valid_uid = 65534
 
 # Auth
 auth_mechanisms = plain login
@@ -295,7 +295,7 @@ passdb {
 }
 userdb {
   driver = static
-  args = uid=102 gid=105 home=/var/mail/%d/%n
+  args = uid=5000 gid=5000 home=/var/mail/%d/%n
 }
 
 # SSL
@@ -383,10 +383,10 @@ cmd_add_user() {
 	# Generate password hash and add to users file
 	if lxc_running; then
 		local pass_hash=$(lxc-attach -n "$CONTAINER" -- doveadm pw -s SHA512-CRYPT -p "$password")
-		echo "${email}:${pass_hash}:102:105::/var/mail/${domain}/${user}::" >> "$rootfs/etc/dovecot/users"
+		echo "${email}:${pass_hash}:5000:5000::/var/mail/${domain}/${user}::" >> "$rootfs/etc/dovecot/users"
 		# Fix permissions (dovecot needs read access)
 		chmod 644 "$rootfs/etc/dovecot/users"
-		chown root:102 "$rootfs/etc/dovecot/users"
+		chown root:5000 "$rootfs/etc/dovecot/users"
 	else
 		error "Container not running. Start it first."
 		return 1
