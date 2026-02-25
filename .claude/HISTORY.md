@@ -3621,3 +3621,21 @@ git checkout HEAD -- index.html
       - `luci-app-secubox-portal/root/www/gk2-hub/portal.html`: Account section + password modal
       - `luci-app-metablogizer/root/usr/libexec/rpcd/luci.metablogizer`: Auto-republish on upload
       - `secubox-app-metablogizer/files/usr/sbin/metablogizerctl`: Gitea push on publish
+
+35. **Streamlit KISS Upload & Service Fixes (2026-02-25)**
+    - **Streamlit KISS Upload:**
+      - Auto-detects ZIP files by magic bytes (PK header)
+      - Extracts app.py from ZIP archives automatically
+      - Adds UTF-8 encoding declaration to Python files
+      - Installs requirements.txt dependencies in background
+      - Restarts instance on re-upload for immediate update
+      - Matches MetaBlogizer KISS pattern
+    - **Mailserver POP3S Fix:**
+      - Added `pop3` to dovecot protocols (was only imap lmtp)
+      - POP3S (995) now listening alongside IMAPS (993)
+    - **Alerte Streamlit Fix:**
+      - Extracted app.py from incorrectly saved ZIP file
+      - Installed missing qrcode/python-dotenv dependencies
+      - Added route to mitmproxy-in for WAF inspection
+    - **Files Modified:**
+      - `luci-app-streamlit/root/usr/libexec/rpcd/luci.streamlit`: upload_app, upload_and_deploy with KISS ZIP handling
