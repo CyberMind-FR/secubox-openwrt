@@ -590,6 +590,8 @@ return view.extend({
 	renderFactoryTab: function() {
 		var self = this;
 		var disco = this.discoveryStatus || {};
+		// Map backend field name to UI expected name
+		disco.enabled = disco.discovery_enabled;
 		var pendingCount = this.pendingDevices.length;
 		var inventoryCount = this.hwInventory.length;
 		var profileCount = this.profiles.length;
