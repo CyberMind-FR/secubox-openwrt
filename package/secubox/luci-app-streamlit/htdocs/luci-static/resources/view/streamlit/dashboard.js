@@ -147,32 +147,63 @@ return view.extend({
 			var certValid = exp.cert_valid;
 			var authRequired = exp.auth_required;
 			var wafEnabled = exp.waf_enabled;
-
-			// Status indicator
-			var statusBadge;
-			if (isExposed && certValid) {
-				statusBadge = E('span', { 'style': 'background:#0a0; color:#fff; padding:2px 6px; border-radius:3px; font-size:11px' },
-					'\u2713 ' + (exp.domain || 'Exposed'));
-			} else if (isExposed) {
-				statusBadge = E('span', { 'style': 'background:#f90; color:#fff; padding:2px 6px; border-radius:3px; font-size:11px' },
-					'\u26A0 Cert pending');
-			} else {
-				statusBadge = E('span', { 'style': 'color:#999' }, _('Local only'));
-			}
-
-			// WAF badge (shown when exposed)
-			var wafBadge = '';
-			if (isExposed && wafEnabled) {
-				wafBadge = E('span', {
-					'style': 'display:inline-block; padding:2px 6px; border-radius:4px; font-size:0.85em; background:#d1ecf1; color:#0c5460; margin-left:4px',
-					'title': _('Traffic inspected by WAF (mitmproxy)')
-				}, 'WAF');
-			}
+			var domain = exp.domain || '';
 
 			// Running indicator
 			var runStatus = inst.enabled ?
 				E('span', { 'style': 'color:#0a0' }, '\u25CF') :
 				E('span', { 'style': 'color:#999' }, '\u25CB');
+
+			// Domain/Vhost column - editable input or link
+			var domainCell;
+			if (isExposed && domain) {
+				// Show clickable link + edit button
+				domainCell = E('div', { 'style': 'display:flex; align-items:center; gap:4px' }, [
+					E('a', {
+						'href': 'https://' + domain,
+						'target': '_blank',
+						'style': 'font-size:12px; color:#007bff'
+					}, domain),
+					E('button', {
+						'class': 'cbi-button',
+						'style': 'padding:2px 6px; font-size:10px',
+						'title': _('Edit domain'),
+						'click': function() { self.editDomain(inst.id, domain); }
+					}, '\u270E')
+				]);
+			} else {
+				// Show input field for setting domain before expose
+				var inputId = 'domain-' + inst.id;
+				var defaultDomain = inst.id + '.gk2.secubox.in';
+				domainCell = E('input', {
+					'type': 'text',
+					'id': inputId,
+					'value': defaultDomain,
+					'style': 'width:160px; font-size:11px; padding:2px 4px',
+					'placeholder': 'domain.example.com'
+				});
+			}
+
+			// Status badges
+			var badges = [];
+			if (isExposed) {
+				if (certValid) {
+					badges.push(E('span', {
+						'style': 'background:#0a0; color:#fff; padding:2px 6px; border-radius:3px; font-size:10px'
+					}, '\u2713 SSL'));
+				} else {
+					badges.push(E('span', {
+						'style': 'background:#f90; color:#fff; padding:2px 6px; border-radius:3px; font-size:10px'
+					}, '\u26A0 Cert'));
+				}
+				if (wafEnabled) {
+					badges.push(E('span', {
+						'style': 'background:#d1ecf1; color:#0c5460; padding:2px 6px; border-radius:3px; font-size:10px; margin-left:2px'
+					}, 'WAF'));
+				}
+			} else {
+				badges.push(E('span', { 'style': 'color:#999; font-size:11px' }, _('Local')));
+			}
 
 			// Action buttons
 			var actions = [];
@@ -204,8 +235,12 @@ return view.extend({
 				actions.push(E('button', {
 					'class': 'cbi-button cbi-button-positive',
 					'style': 'margin-left:4px',
-					'title': _('Expose (one-click)'),
-					'click': function() { self.exposeInstance(inst.id); }
+					'title': _('Expose with domain'),
+					'click': function() {
+						var input = document.getElementById('domain-' + inst.id);
+						var customDomain = input ? input.value.trim() : '';
+						self.exposeInstance(inst.id, customDomain);
+					}
 				}, '\u2197'));
 			}
 
@@ -231,7 +266,8 @@ return view.extend({
 				E('td', {}, [runStatus, ' ', E('strong', {}, inst.id)]),
 				E('td', {}, inst.app || '-'),
 				E('td', {}, ':' + inst.port),
-				E('td', {}, [statusBadge, wafBadge]),
+				E('td', {}, domainCell),
+				E('td', {}, badges),
 				E('td', {}, actions)
 			]);
 		});
@@ -241,7 +277,8 @@ return view.extend({
 				E('th', { 'class': 'th' }, _('Instance')),
 				E('th', { 'class': 'th' }, _('App')),
 				E('th', { 'class': 'th' }, _('Port')),
-				E('th', { 'class': 'th' }, _('Exposure')),
+				E('th', { 'class': 'th' }, _('Domain')),
+				E('th', { 'class': 'th' }, _('Status')),
 				E('th', { 'class': 'th' }, _('Actions'))
 			])
 		].concat(rows));
@@ -473,14 +510,15 @@ return view.extend({
 		]);
 	},
 
-	// One-click expose
-	exposeInstance: function(id) {
+	// One-click expose with optional domain
+	exposeInstance: function(id, domain) {
 		var self = this;
+		domain = domain || '';
 		ui.showModal(_('Exposing...'), [
-			E('p', { 'class': 'spinning' }, _('Creating vhost + SSL certificate...'))
+			E('p', { 'class': 'spinning' }, _('Creating vhost + SSL certificate for ') + (domain || id + '.gk2.secubox.in') + '...')
 		]);
 
-		api.emancipateInstance(id, '').then(function(r) {
+		api.emancipateInstance(id, domain).then(function(r) {
 			ui.hideModal();
 			if (r && r.success) {
 				ui.addNotification(null, E('p', {}, _('Exposed at: ') + r.url), 'success');
@@ -489,6 +527,49 @@ return view.extend({
 				ui.addNotification(null, E('p', {}, r.message || _('Failed')), 'error');
 			}
 		});
+	},
+
+	// Edit domain for existing exposed instance
+	editDomain: function(id, currentDomain) {
+		var self = this;
+		ui.showModal(_('Edit Domain'), [
+			E('p', {}, _('Change domain for instance: ') + id),
+			E('input', {
+				'type': 'text',
+				'id': 'edit-domain-input',
+				'value': currentDomain,
+				'style': 'width:100%; margin:8px 0'
+			}),
+			E('p', { 'style': 'color:#666; font-size:12px' },
+				_('Note: Changing domain will request a new SSL certificate.')),
+			E('div', { 'class': 'right', 'style': 'margin-top:16px' }, [
+				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
+				E('button', {
+					'class': 'cbi-button cbi-button-positive',
+					'style': 'margin-left:8px',
+					'click': function() {
+						var newDomain = document.getElementById('edit-domain-input').value.trim();
+						if (!newDomain) {
+							ui.addNotification(null, E('p', {}, _('Domain cannot be empty')), 'error');
+							return;
+						}
+						ui.hideModal();
+						ui.showModal(_('Updating...'), [
+							E('p', { 'class': 'spinning' }, _('Updating domain and certificate...'))
+						]);
+						api.renameInstance(id, id, newDomain).then(function(r) {
+							ui.hideModal();
+							if (r && r.success) {
+								ui.addNotification(null, E('p', {}, _('Domain updated to: ') + newDomain), 'success');
+								self.refresh().then(function() { self.updateStatus(); });
+							} else {
+								ui.addNotification(null, E('p', {}, r.message || _('Failed')), 'error');
+							}
+						});
+					}
+				}, _('Save'))
+			])
+		]);
 	},
 
 	// Unpublish

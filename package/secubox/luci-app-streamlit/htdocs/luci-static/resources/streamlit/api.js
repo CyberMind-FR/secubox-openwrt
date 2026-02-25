@@ -195,7 +195,7 @@ var callRenameApp = rpc.declare({
 var callRenameInstance = rpc.declare({
 	object: 'luci.streamlit',
 	method: 'rename_instance',
-	params: ['id', 'name'],
+	params: ['id', 'name', 'domain'],
 	expect: { result: {} }
 });
 
@@ -457,8 +457,8 @@ return baseclass.extend({
 		return callRenameApp(id, name);
 	},
 
-	renameInstance: function(id, name) {
-		return callRenameInstance(id, name);
+	renameInstance: function(id, name, domain) {
+		return callRenameInstance(id, name, domain || '');
 	},
 
 	getGiteaConfig: function() {
