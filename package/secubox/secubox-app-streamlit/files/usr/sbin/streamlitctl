@@ -1301,17 +1301,28 @@ _emancipate_haproxy() {
 	uci set haproxy.${server_name}.check="1"
 	uci set haproxy.${server_name}.enabled="1"
 
-	# Create vhost with SSL
+	# Create vhost with SSL - Route through mitmproxy_inspector for WAF protection
 	local vhost_name=$(echo "$domain" | tr '.-' '_')
 	uci set haproxy.${vhost_name}=vhost
 	uci set haproxy.${vhost_name}.domain="$domain"
-	uci set haproxy.${vhost_name}.backend="$backend_name"
+	uci set haproxy.${vhost_name}.backend="mitmproxy_inspector"
 	uci set haproxy.${vhost_name}.ssl="1"
 	uci set haproxy.${vhost_name}.ssl_redirect="1"
 	uci set haproxy.${vhost_name}.acme="1"
 	uci set haproxy.${vhost_name}.enabled="1"
 
 	uci commit haproxy
+
+	# Add mitmproxy route for this domain
+	local routes_file="/srv/mitmproxy/haproxy-routes.json"
+	local routes_file_in="/srv/mitmproxy-in/haproxy-routes.json"
+	if [ -f "$routes_file" ]; then
+		# Add route: "domain": ["192.168.255.1", port]
+		sed -i "s/}$/,\"${domain}\":[\"192.168.255.1\",${port}]}/" "$routes_file" 2>/dev/null || true
+	fi
+	if [ -f "$routes_file_in" ]; then
+		sed -i "s/}$/,\"${domain}\":[\"192.168.255.1\",${port}]}/" "$routes_file_in" 2>/dev/null || true
+	fi
 
 	# Generate HAProxy config
 	if command -v haproxyctl >/dev/null 2>&1; then
