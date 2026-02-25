@@ -284,17 +284,21 @@ cmd_status() {
 
 	if container_running; then
 		running=1
-		
+
 		# Check trunk registration
 		if container_exec asterisk -rx "pjsip show registrations" 2>/dev/null | grep -q "Registered"; then
 			registered=1
 		fi
-		
+
 		# Count active calls
-		active_calls=$(container_exec asterisk -rx "core show channels" 2>/dev/null | grep -oE "^[0-9]+ active" | cut -d' ' -f1 || echo 0)
-		
+		local calls_output
+		calls_output=$(container_exec asterisk -rx "core show channels" 2>/dev/null | grep -oE "^[0-9]+ active" | head -1 | cut -d' ' -f1) || true
+		active_calls=${calls_output:-0}
+
 		# Count extensions
-		extensions=$(container_exec asterisk -rx "pjsip show endpoints" 2>/dev/null | grep -c "^[0-9]" || echo 0)
+		local ext_output
+		ext_output=$(container_exec asterisk -rx "pjsip show endpoints" 2>/dev/null | wc -l) || true
+		extensions=${ext_output:-0}
 	fi
 
 	cat <<EOF
