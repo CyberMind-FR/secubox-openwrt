@@ -308,10 +308,18 @@ return view.extend({
 					])
 				]),
 				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, _('Set as index')),
+					E('div', { 'class': 'cbi-value-field' }, [
+						E('input', { 'type': 'checkbox', 'id': 'upload-as-index', 'checked': true }),
+						E('span', { 'style': 'margin-left:0.5em' }, _('Replace index.html (main page)')),
+						E('div', { 'class': 'cbi-value-description' }, _('Uncheck to keep original filename'))
+					])
+				]),
+				E('div', { 'class': 'cbi-value', 'id': 'upload-dest-row', 'style': 'display:none' }, [
 					E('label', { 'class': 'cbi-value-title' }, _('Destination')),
 					E('div', { 'class': 'cbi-value-field' }, [
 						E('input', { 'type': 'text', 'id': 'upload-dest', 'class': 'cbi-input-text',
-							'placeholder': 'index.html' }),
+							'placeholder': 'filename.html' }),
 						E('div', { 'class': 'cbi-value-description' }, _('Leave empty to use original filename'))
 					])
 				])
@@ -324,6 +332,7 @@ return view.extend({
 					'click': function() {
 						var fileInput = document.getElementById('upload-file-input');
 						var destInput = document.getElementById('upload-dest');
+						var asIndexCheckbox = document.getElementById('upload-as-index');
 						var file = fileInput.files[0];
 
 						if (!file) {
@@ -331,7 +340,7 @@ return view.extend({
 							return;
 						}
 
-						var dest = destInput.value.trim() || file.name;
+						var dest = asIndexCheckbox.checked ? 'index.html' : (destInput.value.trim() || file.name);
 
 						ui.hideModal();
 						ui.showModal(_('Uploading'), [E('p', { 'class': 'spinning' }, _('Uploading file...'))]);
@@ -370,6 +379,13 @@ return view.extend({
 				}, _('Upload'))
 			])
 		]);
+
+		// Toggle destination field based on checkbox
+		var checkbox = document.getElementById('upload-as-index');
+		var destRow = document.getElementById('upload-dest-row');
+		checkbox.onchange = function() {
+			destRow.style.display = this.checked ? 'none' : '';
+		};
 	},
 
 	handleEmancipate: function(site) {
