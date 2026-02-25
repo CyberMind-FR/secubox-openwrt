@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-21 (v0.24.1 - KISS UI Regeneration)_
+_Last updated: 2026-02-25 (Factory Dashboard LuCI)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -61,6 +61,74 @@ _Last updated: 2026-02-21 (v0.24.1 - KISS UI Regeneration)_
   - First Peek auto-registration of services
   - Gossip-based exposure config sync via secubox-p2p
   - Created `luci-app-vortex-dns` dashboard
+
+### Just Completed (2026-02-25)
+
+- **Factory Dashboard LuCI** — DONE (2026-02-25)
+  - Added Factory tab to Cloning Station (`luci-app-cloner/overview.js`)
+  - Discovery Mode Toggle with visual status (🟢 ON / 🔴 OFF)
+  - Pending Devices list with approve/reject and profile assignment
+  - Bulk Token Generator with profile selection
+  - Hardware Inventory table (MAC, Model, CPU, RAM, Storage)
+  - 8 RPC declarations, 5 state properties, 5 render functions, 6 event handlers
+  - Polling: Factory data included in 5-second refresh when on tab
+  - UI Pattern: KISS theme components (stat boxes, cards, tables, buttons)
+
+- **Factory Auto-Provisioning Backend** — DONE (2026-02-24)
+  - Zero-touch provisioning for new mesh devices without pre-shared tokens
+  - Hardware inventory collection (MAC, serial, model, CPU, RAM, storage)
+  - Profile-based configuration (7 profiles: default, enterprise, home-*, media-server, smart-home)
+  - Discovery mode with pending queue and manual/auto approval
+  - Bulk token generation (up to 100 tokens per batch)
+  - Clone provision enhancements for discovery-based join
+  - 9 new RPCD methods in luci.cloner
+  - Files: `inventory.sh`, `profiles.sh`, `default.json` (new)
+  - Modified: `master-link.sh`, `50-secubox-clone-provision`, `luci.cloner`, `p2p-mesh.sh`
+  - Tested: All methods working via ubus
+
+- **ZKP Mesh Authentication** — DONE (2026-02-24)
+  - Zero-Knowledge Proof integration for cryptographic mesh authentication
+  - Each node has ZKP identity (public graph + secret Hamiltonian cycle)
+  - New API endpoints: `/api/master-link/zkp-challenge`, `/api/master-link/zkp-verify`, `/api/zkp/graph`
+  - Shell functions: `ml_zkp_init()`, `ml_zkp_challenge()`, `ml_zkp_verify()`, `ml_zkp_trust_peer()`
+  - Blockchain acknowledgment via `peer_zkp_verified` block type
+  - UCI config options: `zkp_enabled`, `zkp_fingerprint`, `zkp_require_on_join`, `zkp_challenge_ttl`
+  - Tested on master (fingerprint: `7c5ead2b4e4b0106`)
+  - Files: `master-link.sh` (ZKP functions), 3 new API endpoints
+
+- **ZKP Join Flow Integration** — DONE (2026-02-24)
+  - Enhanced `ml_join_request()` to accept and verify ZKP proofs during join
+  - Enhanced `ml_join_approve()` to auto-fetch and store peer's ZKP graph
+  - New peer-side `ml_join_with_zkp()` function for ZKP-authenticated joining
+  - `/api/master-link/join` now accepts `zkp_proof` and `zkp_graph` fields
+  - When ZKP proof provided: fingerprint = SHA256(graph)[0:16] (ZKP fingerprint)
+  - Option `zkp_require_on_join` to mandate ZKP for all new joins
+  - Join requests now store `zkp_verified` and `zkp_proof_hash` fields
+  - Tested: Clone joined with `zkp_verified: true`, graph auto-stored on approval
+
+- **LuCI ZKP Dashboard** — DONE (2026-02-24)
+  - Added ZKP Status section to `luci-app-master-link` Overview tab
+  - Cards: ZKP Identity (fingerprint), ZKP Tools status, Trusted Peers count
+  - Color theme: purple gradient for ZKP elements
+  - Added ZKP badge column to peer table (🔐ZKP vs TOKEN)
+  - Helper function `zkpBadge()` for visual auth type indicator
+
+- **MirrorNet Ash Compatibility Fix** — DONE (2026-02-24)
+  - Fixed process substitution `< <(cmd)` incompatibility with BusyBox ash
+  - Converted to pipe-based patterns with temp files for variable persistence
+  - Files fixed: mirror.sh (3), gossip.sh (3), health.sh (1), identity.sh (1)
+  - Tested: `mirrorctl` CLI fully functional on both routers
+  - Mirror features working: add service, add upstream, health check, HAProxy config generation
+
+- **Mesh Blockchain Sync** — DONE (2026-02-24)
+  - Fixed chain.json append logic for proper JSON structure preservation
+  - Fixed `/api/chain/since/<hash>` endpoint to return only new blocks as array
+  - `chain_add_block()`: Uses awk to safely insert before closing `] }`
+  - `chain_merge_block()`: Same awk-based approach for remote block merging
+  - `sync_with_peer()`: Properly merges blocks into local chain
+  - Handles JSON with/without trailing newlines and varying whitespace
+  - Tested bidirectional sync: Master ↔ Clone both at height 70, matching hash
+  - Files: `p2p-mesh.sh` (chain functions), `/www/api/chain` (endpoint)
 
 ### Just Completed (2026-02-20)
 
@@ -864,6 +932,36 @@ _Last updated: 2026-02-21 (v0.24.1 - KISS UI Regeneration)_
   - 4 views: Overview, Devices, Policies, Settings
   - RPCD handler with 11 methods + public ACL for unauthenticated access
 
+### Just Completed (2026-02-24)
+
+- **LuCI ZKP Dashboard** — DONE (2026-02-24)
+  - Web UI for ZKP Hamiltonian cryptographic proofs
+  - Features: keygen, prove, verify, keys management
+  - KISS theme with dark mode
+  - Commit: b60d7fd0
+
+- **MetaBlogizer Upload Workflow Fix** — DONE (2026-02-24)
+  - Sites now work immediately after upload without unpublish + expose cycle
+  - Root cause: mitmproxy never received reload signal after route creation
+  - Fix: `reload_haproxy()` now calls `mitmproxyctl sync-routes`
+  - Commit: ec8e96a7
+
+- **ZKP Hamiltonian Library** — DONE (2026-02-24)
+  - Zero-Knowledge Proof implementation based on Hamiltonian Cycle (Blum 1986)
+  - NIZK via Fiat-Shamir heuristic, SHA3-256 commitments (OpenSSL)
+  - Complete library: prove/verify/serialize + CLI tools (keygen/prover/verifier)
+  - 41 tests passing: completeness, soundness, tamper detection, anti-replay
+  - C99 targeting OpenWrt ARM64, CMake build system
+  - Commit: 65539368
+
+- **Service Stability & LED Pulse Fix** — DONE (2026-02-24)
+  - CrowdSec autostart: Fixed machine registration mismatch, downloaded GeoLite2-City.mmdb
+  - LED pulse: Fixed HAProxy check to run on host instead of non-existent LXC container
+  - Docker: Restored corrupted nextcloud-talk-hpb container
+  - HAProxy: Fixed cloud.gk2.secubox.in 503 (wrong backend)
+  - LXC: Enabled autostart for mailserver and roundcube containers
+  - Verified: All 13 LXC containers + 6 core services running after reboot
+
 ### Just Completed (2026-02-21)
 
 - **SecuBox KISS UI Full Regeneration** — DONE (2026-02-21)
@@ -913,24 +1011,17 @@ _Last updated: 2026-02-21 (v0.24.1 - KISS UI Regeneration)_
 
 ### SysWarden Evolution Plan (2026-02-20)
 
-Implementing 4 evolutions inspired by SysWarden patterns:
+Implementing 3 evolutions inspired by SysWarden patterns:
 
 | # | Module | Priority | Status |
 |---|--------|----------|--------|
 | 1 | `luci-app-ipblocklist` | HIGH | DONE |
 | 2 | AbuseIPDB Reporter | HIGH | DONE |
 | 3 | Log Denoising (System Hub) | MEDIUM | DONE |
-| 4 | SIEM Connector (x86 only) | LOW | TODO |
-
-**Next**: Evolution #4 - SIEM Connector (optional, x86 only)
 
 ### Next Up — Couche 1
 
-1. **Guacamole Pre-built Binaries**
-   - Current LXC build-from-source approach is too slow
-   - Need to find/create pre-built ARM64 binaries for guacd + Tomcat
-
-3. **Multi-Node Mesh Testing**
+1. **Multi-Node Mesh Testing**
    - Deploy second SecuBox node to test real peer-to-peer sync
    - Validate bidirectional threat intelligence sharing
 

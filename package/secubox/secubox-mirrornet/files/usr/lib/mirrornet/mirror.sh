@@ -145,9 +145,10 @@ mirror_check_service() {
     # Parse and check each upstream
     local first=1
     local count=0
+    local tmp_output="/tmp/mirror_check_$$.tmp"
 
-    # Simple line-by-line parsing
-    while read -r line; do
+    # Simple line-by-line parsing (ash-compatible)
+    jsonfilter -i "$upstreams_file" -e '@[*]' 2>/dev/null | while read -r line; do
         local address port peer_id
         address=$(echo "$line" | jsonfilter -e '@.address' 2>/dev/null)
         port=$(echo "$line" | jsonfilter -e '@.port' 2>/dev/null)
@@ -158,11 +159,19 @@ mirror_check_service() {
         local status
         status=$(mirror_check_upstream "$address" "$port")
 
+        echo "{\"peer_id\":\"$peer_id\",\"address\":\"$address\",\"port\":$port,\"status\":\"$status\"}"
+    done > "$tmp_output"
+
+    # Output collected results
+    local count=0
+    local first=1
+    while read -r item; do
         [ "$first" = "1" ] || echo ","
-        echo "    {\"peer_id\":\"$peer_id\",\"address\":\"$address\",\"port\":$port,\"status\":\"$status\"}"
+        echo "    $item"
         first=0
         count=$((count + 1))
-    done < <(jsonfilter -i "$upstreams_file" -e '@[*]' 2>/dev/null)
+    done < "$tmp_output"
+    rm -f "$tmp_output"
 
     echo "  ],"
     echo "  \"total\": $count"
@@ -178,30 +187,34 @@ mirror_get_best_upstream() {
         return 1
     fi
 
-    # Find highest priority healthy upstream
-    local best_address=""
-    local best_port=""
-    local best_priority=0
+    # Find highest priority healthy upstream (ash-compatible)
+    local best_file="/tmp/mirror_best_$$.tmp"
+    echo "0" > "$best_file"
 
-    while read -r line; do
+    jsonfilter -i "$upstreams_file" -e '@[*]' 2>/dev/null | while read -r line; do
         local address port priority status
         address=$(echo "$line" | jsonfilter -e '@.address' 2>/dev/null)
         port=$(echo "$line" | jsonfilter -e '@.port' 2>/dev/null)
         priority=$(echo "$line" | jsonfilter -e '@.priority' 2>/dev/null)
 
         [ -z "$address" ] && continue
+        [ -z "$priority" ] && priority=50
 
         status=$(mirror_check_upstream "$address" "$port")
 
-        if [ "$status" = "ok" ] && [ "$priority" -gt "$best_priority" ]; then
-            best_address="$address"
-            best_port="$port"
-            best_priority="$priority"
+        if [ "$status" = "ok" ]; then
+            local current_best=$(cat "$best_file" | cut -d: -f1)
+            if [ "$priority" -gt "$current_best" ]; then
+                echo "$priority:$address:$port" > "$best_file"
+            fi
         fi
-    done < <(jsonfilter -i "$upstreams_file" -e '@[*]' 2>/dev/null)
+    done
 
-    if [ -n "$best_address" ]; then
-        echo "$best_address:$best_port"
+    local result=$(cat "$best_file")
+    rm -f "$best_file"
+
+    if [ "$result" != "0" ]; then
+        echo "$result" | cut -d: -f2-
     else
         return 1
     fi
@@ -250,21 +263,31 @@ mirror_generate_haproxy_backend() {
     echo "    option httpchk GET /health"
     echo "    http-check expect status 200"
 
-    local server_num=1
-    while read -r line; do
+    # Generate server lines (ash-compatible)
+    local tmp_servers="/tmp/mirror_servers_$$.tmp"
+    jsonfilter -i "$upstreams_file" -e '@[*]' 2>/dev/null | while read -r line; do
         local address port priority
         address=$(echo "$line" | jsonfilter -e '@.address' 2>/dev/null)
         port=$(echo "$line" | jsonfilter -e '@.port' 2>/dev/null)
         priority=$(echo "$line" | jsonfilter -e '@.priority' 2>/dev/null)
 
         [ -z "$address" ] && continue
+        [ -z "$priority" ] && priority=50
 
         local weight=$((priority / 10))
         [ "$weight" -lt 1 ] && weight=1
 
-        echo "    server srv$server_num $address:$port weight $weight check inter 10s fall 3 rise 2"
+        echo "$address:$port:$weight"
+    done > "$tmp_servers"
+
+    local server_num=1
+    while read -r srv_line; do
+        local addr_port=$(echo "$srv_line" | cut -d: -f1-2)
+        local weight=$(echo "$srv_line" | cut -d: -f3)
+        echo "    server srv$server_num $addr_port weight $weight check inter 10s fall 3 rise 2"
         server_num=$((server_num + 1))
-    done < <(jsonfilter -i "$upstreams_file" -e '@[*]' 2>/dev/null)
+    done < "$tmp_servers"
+    rm -f "$tmp_servers"
 
     echo ""
 }

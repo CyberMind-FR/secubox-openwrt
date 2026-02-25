@@ -20,7 +20,7 @@ class HaproxyRouter:
     def __init__(self):
         self.routes = {}
         self._routes_mtime = 0
-        self._check_interval = 10  # Check file every N requests
+        self._check_interval = 1  # Check file every request for immediate route updates
         self._request_count = 0
         self._load_routes()
         ctx.log.info(f"HAProxy Router loaded with {len(self.routes)} routes")

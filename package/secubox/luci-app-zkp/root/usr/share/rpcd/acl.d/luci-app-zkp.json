@@ -1,0 +1,15 @@
+{
+	"luci-app-zkp": {
+		"description": "Grant access to ZKP Hamiltonian dashboard",
+		"read": {
+			"ubus": {
+				"luci.zkp": ["status", "list_keys", "get_graph"]
+			}
+		},
+		"write": {
+			"ubus": {
+				"luci.zkp": ["keygen", "prove", "verify", "delete_key"]
+			}
+		}
+	}
+}

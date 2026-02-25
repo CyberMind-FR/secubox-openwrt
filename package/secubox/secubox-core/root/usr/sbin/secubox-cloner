@@ -6,7 +6,11 @@
 # Cloned devices auto-resize root and join mesh as peers.
 #
 # Usage:
-#   secubox-cloner build [--device TYPE] [--resize SIZE]  Build clone image
+#   secubox-cloner build [OPTIONS]          Build clone image via ASU API
+#     --device TYPE                         Device type (mochabin, x86-64, etc.)
+#     --version VER                         OpenWrt version (24.10.5, 24.10.0, snapshot)
+#     --profile PROFILE                     Package profile (slim, core, full)
+#   secubox-cloner versions                 List available OpenWrt versions
 #   secubox-cloner serve [--start|--stop]   Manage TFTP clone server
 #   secubox-cloner devices                  List supported device types
 #   secubox-cloner token [--auto-approve]   Generate clone join token
@@ -14,8 +18,17 @@
 #   secubox-cloner list                     List pending/joined clones
 #   secubox-cloner export [FILE]            Export clone image to file
 #
+# Package Profiles:
+#   slim  - Minimal OpenWrt (LuCI + network essentials only)
+#   core  - Slim + SecuBox core (mesh, master-link, p2p)
+#   full  - Current device's installed SecuBox packages
+#
 
-VERSION="1.0.0"
+VERSION="1.1.0"
+
+# Available OpenWrt versions (latest first)
+OPENWRT_VERSIONS="24.10.5 24.10.0 23.05.5 23.05.4"
+DEFAULT_VERSION="24.10.5"
 
 # Directories
 CLONE_DIR="/srv/secubox/clone"
@@ -99,6 +112,8 @@ get_device_id() {
 build_image() {
 	local device_type="${1:-}"
 	local resize_target="${2:-}"
+	local openwrt_version="${3:-$DEFAULT_VERSION}"
+	local pkg_profile="${4:-slim}"
 
 	log "Building clone image..."
 
@@ -138,7 +153,7 @@ build_image() {
 		# Try to build via ASU API if curl is available
 		if command -v curl >/dev/null 2>&1; then
 			log "Building image via ASU API..."
-			build_via_asu "$device_type" "$image_path" || {
+			build_via_asu "$device_type" "$image_path" "$openwrt_version" "$pkg_profile" || {
 				warn "ASU build failed, trying local export..."
 				build_local_export "$image_path"
 			}
@@ -197,9 +212,34 @@ list_devices() {
 	echo ""
 }
 
+# List available OpenWrt versions
+list_versions() {
+	echo ""
+	echo -e "${BOLD}Available OpenWrt Versions${NC}"
+	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	local first=1
+	for ver in $OPENWRT_VERSIONS; do
+		if [ "$first" = "1" ]; then
+			echo "  $ver  ← latest (default)"
+			first=0
+		else
+			echo "  $ver"
+		fi
+	done
+	echo ""
+	echo -e "${BOLD}Package Profiles${NC}"
+	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	echo "  slim   Minimal OpenWrt (LuCI + network essentials)"
+	echo "  core   Slim + SecuBox mesh (master-link, p2p)"
+	echo "  full   Current device's SecuBox packages"
+	echo ""
+}
+
 build_via_asu() {
 	local device_type="$1"
 	local output="$2"
+	local openwrt_version="${3:-$DEFAULT_VERSION}"
+	local pkg_profile="${4:-slim}"
 
 	# Map device type to ASU profile
 	local target=""
@@ -228,14 +268,47 @@ build_via_asu() {
 			;;
 	esac
 
-	# Get installed packages (for cloning same config)
-	local packages=$(opkg list-installed 2>/dev/null | awk '{print $1}' | grep -v "^kernel" | tr '\n' ' ')
+	# Build package list based on profile
+	local clone_packages=""
 
-	# Minimal clone packages (core system + SecuBox essentials)
-	# Use -dnsmasq to remove default and replace with dnsmasq-full
-	local clone_packages="-dnsmasq dnsmasq-full luci luci-ssl curl wget-ssl ca-certificates"
-	clone_packages="$clone_packages wireguard-tools luci-proto-wireguard"
-	clone_packages="$clone_packages block-mount e2fsprogs"
+	case "$pkg_profile" in
+		slim)
+			# Minimal: just LuCI + network essentials
+			clone_packages="-dnsmasq dnsmasq-full luci luci-ssl"
+			clone_packages="$clone_packages curl wget-ssl ca-certificates"
+			clone_packages="$clone_packages wireguard-tools luci-proto-wireguard"
+			clone_packages="$clone_packages block-mount e2fsprogs"
+			log "Profile: slim (minimal OpenWrt)"
+			;;
+		core)
+			# Slim + SecuBox core packages
+			clone_packages="-dnsmasq dnsmasq-full luci luci-ssl"
+			clone_packages="$clone_packages curl wget-ssl ca-certificates"
+			clone_packages="$clone_packages wireguard-tools luci-proto-wireguard"
+			clone_packages="$clone_packages block-mount e2fsprogs"
+			clone_packages="$clone_packages luci-app-secubox luci-theme-secubox"
+			clone_packages="$clone_packages secubox-core secubox-master-link secubox-p2p"
+			log "Profile: core (SecuBox mesh essentials)"
+			;;
+		full)
+			# Clone all installed SecuBox packages
+			clone_packages="-dnsmasq dnsmasq-full luci luci-ssl"
+			clone_packages="$clone_packages curl wget-ssl ca-certificates"
+			clone_packages="$clone_packages wireguard-tools luci-proto-wireguard"
+			clone_packages="$clone_packages block-mount e2fsprogs"
+			# Add all installed SecuBox and LuCI packages
+			local secubox_pkgs=$(opkg list-installed 2>/dev/null | awk '{print $1}' | grep -E "^secubox-|^luci-app-secubox|^luci-theme-secubox" | tr '\n' ' ')
+			clone_packages="$clone_packages $secubox_pkgs"
+			log "Profile: full (all SecuBox from current device)"
+			;;
+		*)
+			warn "Unknown profile: $pkg_profile, using slim"
+			clone_packages="-dnsmasq dnsmasq-full luci luci-ssl curl wget-ssl ca-certificates wireguard-tools"
+			;;
+	esac
+
+	log "OpenWrt version: $openwrt_version"
+	log "Target: $target / $profile"
 
 	# Convert packages string to JSON array
 	local packages_json=$(echo "$clone_packages" | tr ' ' '\n' | grep -v '^$' | sed 's/.*/"&"/' | tr '\n' ',' | sed 's/,$//')
@@ -246,10 +319,10 @@ build_via_asu() {
 {
   "profile": "$profile",
   "target": "$target",
-  "version": "24.10.0",
+  "version": "$openwrt_version",
   "packages": [$packages_json],
   "rootfs_size_mb": 512,
-  "client": "secubox-cloner/1.0"
+  "client": "secubox-cloner/$VERSION"
 }
 EOF
 
@@ -859,12 +932,25 @@ SecuBox Cloner - On-device clone image builder and server
 Usage: secubox-cloner <command> [options]
 
 Commands:
-  build [--resize SIZE]     Build clone image for current device type
+  build [OPTIONS]           Build clone image via ASU API
+  versions                  List available OpenWrt versions and profiles
+  devices                   List supported device types
   serve [--start|--stop]    Manage TFTP clone server
   token [--auto-approve]    Generate clone join token (24h TTL)
   status                    Show cloner status (images, tokens, clones)
   list                      List pending and joined clones
   export [FILE]             Export clone image to file
+
+Build Options:
+  --device TYPE             Device type (mochabin, x86-64, etc.)
+  --version VER             OpenWrt version (default: 24.10.5)
+  --profile PROFILE         Package profile: slim, core, full (default: slim)
+  --resize SIZE             Pre-resize image (e.g., 16G for eMMC)
+
+Package Profiles:
+  slim   Minimal OpenWrt (LuCI + network essentials only)
+  core   Slim + SecuBox mesh (master-link, p2p, core)
+  full   All SecuBox packages from current device
 
 Serial Flash Commands:
   flash detect              Detect available serial ports
@@ -874,34 +960,32 @@ Serial Flash Commands:
   flash run [PORT] [IMAGE]  Send U-Boot flash commands
   flash uboot               Print manual U-Boot commands
 
-Options:
-  --resize SIZE             Pre-resize image (e.g., 16G for eMMC)
-  --auto-approve            Token auto-approves clone join (no manual step)
-
 Examples:
-  # Build and serve clone image
-  secubox-cloner build
+  # Build slim image with latest OpenWrt
+  secubox-cloner build --profile slim
+
+  # Build core image with specific version
+  secubox-cloner build --version 24.10.0 --profile core
+
+  # Build full clone (all SecuBox packages)
+  secubox-cloner build --device x86-64 --profile full
+
+  # List available versions
+  secubox-cloner versions
+
+  # Start TFTP server
   secubox-cloner serve --start
 
-  # Flash a clone device via serial
+  # Flash via serial
   secubox-cloner flash break        # Enter U-Boot on target
   secubox-cloner flash run          # Send TFTP flash commands
-  secubox-cloner flash console      # Monitor progress
-
-  # Generate auto-approve token
-  secubox-cloner token --auto-approve
-
-  # Check status
-  secubox-cloner status
-
-  # Export for USB transfer
-  secubox-cloner export /mnt/usb/clone.img.gz
 
 Clone Workflow:
-  1. Master: secubox-cloner build && secubox-cloner serve --start
-  2. Target: Boot via TFTP (U-Boot commands shown after serve)
-  3. Target auto-resizes root and joins mesh
-  4. Master: secubox-cloner list (shows new clone)
+  1. Master: secubox-cloner build --profile core
+  2. Master: secubox-cloner serve --start
+  3. Target: Boot via TFTP (U-Boot commands shown after serve)
+  4. Target auto-resizes root and joins mesh
+  5. Master: secubox-cloner list (shows new clone)
 EOF
 }
 
@@ -914,19 +998,28 @@ case "${1:-}" in
 		shift
 		device_type=""
 		resize=""
+		version="$DEFAULT_VERSION"
+		profile="slim"
 		while [ $# -gt 0 ]; do
 			case "$1" in
 				--device|-d) device_type="$2"; shift 2 ;;
 				--resize) resize="$2"; shift 2 ;;
+				--version|-v) version="$2"; shift 2 ;;
+				--profile|-p) profile="$2"; shift 2 ;;
 				mochabin|espressobin-v7|espressobin-ultra|x86-64) device_type="$1"; shift ;;
+				slim|core|full) profile="$1"; shift ;;
 				*) shift ;;
 			esac
 		done
-		build_image "$device_type" "$resize"
+		build_image "$device_type" "$resize" "$version" "$profile"
 		;;
 
 	devices)
 		list_devices
+		;;
+
+	versions)
+		list_versions
 		;;
 
 	serve)

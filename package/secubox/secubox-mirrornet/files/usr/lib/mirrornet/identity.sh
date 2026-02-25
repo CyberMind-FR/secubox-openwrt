@@ -240,7 +240,7 @@ identity_list_peers() {
 
     echo "["
     local first=1
-    for peer_file in "$peer_dir"/*.json 2>/dev/null; do
+    for peer_file in "$peer_dir"/*.json; do
         [ -f "$peer_file" ] || continue
         [ "$first" = "1" ] || echo ","
         cat "$peer_file"

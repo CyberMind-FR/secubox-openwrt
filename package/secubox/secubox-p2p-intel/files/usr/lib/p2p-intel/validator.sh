@@ -27,21 +27,56 @@ _is_too_old() {
     [ "$age" -gt "$max_age_seconds" ]
 }
 
-# Check if source is trusted
+# Check if peer has ZKP verification on blockchain
+_check_zkp_verified() {
+    local peer_id="$1"
+    local chain_file="/srv/secubox/mesh/chain.json"
+
+    [ -f "$chain_file" ] || { echo "0"; return 1; }
+
+    # Search for peer_zkp_verified block with matching peer_fp
+    local found=0
+    jsonfilter -i "$chain_file" -e '@.blocks[*]' 2>/dev/null | while read -r block; do
+        local btype=$(echo "$block" | jsonfilter -e '@.type' 2>/dev/null)
+        [ "$btype" = "peer_zkp_verified" ] || continue
+
+        local peer_fp=$(echo "$block" | jsonfilter -e '@.data.peer_fp' 2>/dev/null)
+        local result=$(echo "$block" | jsonfilter -e '@.data.result' 2>/dev/null)
+
+        # Match peer_id (could be ZKP fingerprint or node ID)
+        if [ "$peer_fp" = "$peer_id" ] && [ "$result" = "ACCEPT" ]; then
+            echo "1"
+            return 0
+        fi
+    done
+
+    echo "0"
+}
+
+# Check if source is trusted (with ZKP bonus)
 _is_source_trusted() {
     local source_did="$1"
     local min_trust
     min_trust=$(uci -q get p2p-intel.validation.min_source_trust || echo "40")
+    local zkp_bonus
+    zkp_bonus=$(uci -q get p2p-intel.validation.zkp_trust_bonus || echo "20")
 
+    local base_score=50  # Default for new/unknown peers
+
+    # Get score from identity trust system if available
     if [ -f /usr/lib/secubox-identity/trust.sh ]; then
         . /usr/lib/secubox-identity/trust.sh
-        local score
-        score=$(trust_get_score "$source_did")
-        [ "$score" -ge "$min_trust" ]
-    else
-        # No trust system, accept all
-        return 0
+        base_score=$(trust_get_score "$source_did" 2>/dev/null || echo "50")
     fi
+
+    # Add ZKP bonus if peer is ZKP-verified on blockchain
+    local zkp_verified=$(_check_zkp_verified "$source_did")
+    if [ "$zkp_verified" = "1" ]; then
+        base_score=$((base_score + zkp_bonus))
+        logger -t p2p-intel "ZKP trust bonus applied for $source_did (score: $base_score)"
+    fi
+
+    [ "$base_score" -ge "$min_trust" ]
 }
 
 # Check if IP is in local subnet (whitelist)
@@ -225,7 +260,7 @@ process_received() {
 get_validated() {
     echo "["
     local first=1
-    for f in "$VALIDATED_DIR"/*.json 2>/dev/null; do
+    for f in "$VALIDATED_DIR"/*.json; do
         [ -f "$f" ] || continue
         [ "$first" = "1" ] || echo ","
         cat "$f"

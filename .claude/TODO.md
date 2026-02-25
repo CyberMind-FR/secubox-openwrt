@@ -31,7 +31,6 @@ _Last updated: 2026-02-06_
 
 | Package | Status | Notes |
 |---------|--------|-------|
-| `secubox-app-guacamole` | DEFERRED | LXC build-from-source too slow; needs pre-built binaries |
 | `secubox-app-rustdesk` | DONE | Native hbbs/hbbr binaries, auto-key generation |
 | `secubox-app-ksmbd` | DONE | Mesh media server with pre-configured shares |
 | `secubox-app-domoticz` | DONE | LXC Debian, MQTT bridge, Zigbee2MQTT |
@@ -164,7 +163,6 @@ All cloud providers are **opt-in**. Offline resilience: local tier always active
 - [x] Threat Analyst agent (Done 2026-02-05)
 - [x] DNS Guard AI migration (Done 2026-02-06)
 - [x] LocalAI multi-channel emancipation (Done 2026-02-06)
-- [ ] Guacamole pre-built binaries (DEFERRED)
 
 ### v0.19.0 — AI Expansion + MirrorNet
 

@@ -215,6 +215,13 @@ BOT_SIGNATURES = [
     'seznambot', 'yandexbot', 'baiduspider', 'sogou',
     'bytespider', 'petalbot', 'dataforseo', 'serpstatbot',
 
+    # ==== IOT BOTNET SCANNERS (Mirai variants) ====
+    'mirai', 'hajime', 'mozi', 'botenago', 'gafgyt', 'bashlite',
+    'tsunami', 'xorddos', 'dofloo', 'enemybot', 'fodcha',
+    'zerobot', 'rondodox', 'satori', 'okiru', 'omni', 'owari',
+    'hello, world',  # common Mirai scanner probe
+    'iot_reaper', 'iot-reaper', 'reaper',
+
     # ==== EMPTY/SUSPICIOUS USER AGENTS ====
     # Note: Do NOT include 'mozilla/5.0' here - it's the standard prefix for ALL modern browsers!
     # Only flag clearly suspicious minimal/empty user agents
@@ -538,6 +545,50 @@ CVE_PATTERNS = {
     'CVE-2025-68645': [
         r'/zimbraAdmin/', r'/zimlet/', r'/service/soap',
         r'\.php\?.*include', r'\.php\?.*require',
+    ],
+    # CVE-2025-14528 (D-Link DIR-803 getcfg.php credential leak - Active Botnet Exploitation)
+    'CVE-2025-14528': [
+        r'/getcfg\.php.*AUTHORIZED_GROUP',
+        r'/getcfg\.php.*SERVICES=DEVICE\.ACCOUNT',
+        r'/getcfg\.php.*(%0a|%0d|\n|\r)',  # newline injection
+        r'/getcfg\.php\?',  # general probe
+    ],
+
+    # ============================================================================
+    # Router/IoT Botnet Vulnerabilities (Mirai, Mozi, BotenaGo variants)
+    # ============================================================================
+    'dlink_getcfg': [
+        r'/getcfg\.php',
+        r'/hedwig\.cgi',
+        r'/HNAP1/',
+        r'/service\.cgi.*(exec|system|passthru)',
+    ],
+    'router_rce': [
+        r'/goform/.*(cmd|system|exec)',
+        r'/cgi-bin/(firmwareupgrade|syscmd|syslog)',
+        r'/cgi-bin/zhttpd/.*shell',
+        r'/(setup|apply|syscmd).*wget.*\|',
+        r'/(setup|apply|syscmd).*curl.*\|',
+        r'/(setup|apply|syscmd).*telnetd',
+    ],
+    'upnp_soap': [
+        r'/(upnp|UPnP)/.*SOAP',
+        r'/soap\.cgi.*<SOAP-ENV',
+        r'/igd\.xml',
+    ],
+    'asus_router': [
+        r'/infosvr/',
+        r'/apply\.cgi.*action_mode',
+        r'/appGet\.cgi',
+    ],
+    'tplink_router': [
+        r'/userRpm/.*admin',
+        r'/cgi-bin/luci.*admin',
+    ],
+    'netgear_router': [
+        r'/cgi-bin/setup\.cgi.*syscmd',
+        r'/currentsetting\.htm',
+        r'/BRS_netgear_success\.html',
     ],
 
     # ============================================================================

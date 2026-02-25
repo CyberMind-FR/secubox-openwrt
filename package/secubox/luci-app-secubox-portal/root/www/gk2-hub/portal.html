@@ -108,6 +108,7 @@
     text-decoration: none;
     color: inherit;
     transition: all 0.2s;
+    cursor: pointer;
   }
   .service-card:hover {
     border-color: var(--accent);
@@ -126,6 +127,101 @@
     font-size: 0.85rem;
   }
   .footer a { color: var(--accent); text-decoration: none; }
+
+  /* Modal styles */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+  .modal-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    width: 90%;
+    max-width: 500px;
+    box-shadow: 0 20px 60px rgba(0,95,158,0.3);
+  }
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .modal-header h3 { margin: 0; color: #fff; }
+  .modal-close {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 1.5rem;
+    cursor: pointer;
+  }
+  .modal-close:hover { color: #fff; }
+  .modal-body { padding: 20px; }
+  .modal-footer {
+    padding: 15px 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+  .form-group { margin-bottom: 15px; }
+  .form-group label { display: block; margin-bottom: 5px; color: var(--text); font-size: 0.9rem; }
+  .modal-input {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 0.95rem;
+  }
+  .modal-input:focus { outline: none; border-color: var(--accent); }
+  .checkbox-group { display: flex; flex-wrap: wrap; gap: 15px; }
+  .checkbox-label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+  .checkbox-label input { accent-color: var(--accent); }
+  .btn-primary {
+    background: var(--accent);
+    border: none;
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .btn-primary:hover { background: #007acc; }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-secondary {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .btn-secondary:hover { border-color: var(--accent); }
+  .progress-bar {
+    background: var(--bg);
+    border-radius: 4px;
+    height: 8px;
+    overflow: hidden;
+    margin-bottom: 10px;
+  }
+  .progress-fill {
+    background: var(--accent);
+    height: 100%;
+    width: 0%;
+    transition: width 0.3s;
+  }
+  .progress-status { font-size: 0.85rem; color: var(--muted); }
+  .result-success { color: #2ecc71; padding: 15px; background: rgba(46,204,113,0.1); border-radius: 6px; }
+  .result-success a { color: var(--accent); }
+  .result-error { color: #e74c3c; padding: 15px; background: rgba(231,76,60,0.1); border-radius: 6px; }
 </style>
 </head>
 <body>
@@ -203,14 +299,24 @@
   <h2 class="section-title">Intelligence & Analyse</h2>
   <div class="services-grid">
     <a href="https://analyse.gk2.secubox.in/" class="service-card" target="_blank">
-      <div class="service-icon">🎬</div>
+      <div class="service-icon">🔍</div>
       <div class="service-name">PeerTube Analyse</div>
       <div class="service-url">analyse.gk2.secubox.in</div>
+    </a>
+    <a href="#" class="service-card" id="importVideoCard" onclick="openImportModal(); return false;">
+      <div class="service-icon">📥</div>
+      <div class="service-name">Video Import</div>
+      <div class="service-url">YouTube, Vimeo, 1000+ sites</div>
     </a>
     <a href="https://stream.gk2.secubox.in/" class="service-card" target="_blank">
       <div class="service-icon">📻</div>
       <div class="service-name">Radio Stream</div>
       <div class="service-url">stream.gk2.secubox.in</div>
+    </a>
+    <a href="https://radio.gk2.secubox.in/" class="service-card" target="_blank">
+      <div class="service-icon">🎵</div>
+      <div class="service-name">Lyrion Radio</div>
+      <div class="service-url">radio.gk2.secubox.in</div>
     </a>
   </div>
 
@@ -243,6 +349,50 @@
   </footer>
 </div>
 
+<!-- Video Import Modal -->
+<div class="modal-overlay" id="importModal" style="display:none;">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>📥 Video Import</h3>
+      <button class="modal-close" onclick="closeImportModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Video URL</label>
+        <input type="text" id="importUrl" placeholder="https://youtube.com/watch?v=..." class="modal-input">
+      </div>
+      <div class="form-group">
+        <label>Subtitle Languages</label>
+        <div class="checkbox-group">
+          <label class="checkbox-label"><input type="checkbox" value="fr" checked> Francais</label>
+          <label class="checkbox-label"><input type="checkbox" value="en" checked> English</label>
+          <label class="checkbox-label"><input type="checkbox" value="de"> Deutsch</label>
+          <label class="checkbox-label"><input type="checkbox" value="es"> Espanol</label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Privacy</label>
+        <select id="importPrivacy" class="modal-input">
+          <option value="1">Public</option>
+          <option value="2">Unlisted</option>
+          <option value="3">Private</option>
+        </select>
+      </div>
+      <div id="importProgress" style="display:none;">
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <div class="progress-status" id="progressStatus">Starting...</div>
+      </div>
+      <div id="importResult" style="display:none;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeImportModal()">Cancel</button>
+      <button class="btn-primary" id="startImportBtn" onclick="startImport()">Import Video</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // Check authentication
 var token = sessionStorage.getItem("secubox_token");
@@ -259,6 +409,131 @@ document.getElementById("logoutBtn").onclick = function() {
   sessionStorage.clear();
   window.location.href = "/login.html";
 };
+
+// Video Import Modal
+var importJobId = null;
+var pollInterval = null;
+
+function openImportModal() {
+  document.getElementById("importModal").style.display = "flex";
+  document.getElementById("importUrl").value = "";
+  document.getElementById("importProgress").style.display = "none";
+  document.getElementById("importResult").style.display = "none";
+  document.getElementById("startImportBtn").disabled = false;
+}
+
+function closeImportModal() {
+  document.getElementById("importModal").style.display = "none";
+  if (pollInterval) {
+    clearInterval(pollInterval);
+    pollInterval = null;
+  }
+}
+
+function getSelectedLanguages() {
+  var checkboxes = document.querySelectorAll('.checkbox-group input:checked');
+  var langs = [];
+  checkboxes.forEach(function(cb) { langs.push(cb.value); });
+  return langs.length > 0 ? langs : ["fr", "en"];
+}
+
+function startImport() {
+  var url = document.getElementById("importUrl").value.trim();
+  if (!url) {
+    alert("Please enter a video URL");
+    return;
+  }
+
+  var languages = getSelectedLanguages();
+  var privacy = document.getElementById("importPrivacy").value;
+
+  document.getElementById("startImportBtn").disabled = true;
+  document.getElementById("importProgress").style.display = "block";
+  document.getElementById("importResult").style.display = "none";
+  document.getElementById("progressFill").style.width = "5%";
+  document.getElementById("progressStatus").textContent = "Starting import...";
+
+  fetch("/cgi-bin/peertube-import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      url: url,
+      languages: languages,
+      privacy: parseInt(privacy)
+    })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (data.error) {
+      showImportError(data.error);
+      return;
+    }
+    importJobId = data.job_id;
+    pollImportStatus();
+  })
+  .catch(function(err) {
+    showImportError("Failed to start import: " + err.message);
+  });
+}
+
+function pollImportStatus() {
+  if (!importJobId) return;
+
+  pollInterval = setInterval(function() {
+    fetch("/cgi-bin/peertube-import-status?job_id=" + importJobId)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.error) {
+        clearInterval(pollInterval);
+        showImportError(data.error);
+        return;
+      }
+
+      var progress = data.progress || 0;
+      var status = data.status || "unknown";
+      document.getElementById("progressFill").style.width = progress + "%";
+
+      if (status === "downloading") {
+        document.getElementById("progressStatus").textContent = "Downloading video and subtitles...";
+      } else if (status === "uploading") {
+        document.getElementById("progressStatus").textContent = "Uploading to PeerTube...";
+      } else if (status === "completed") {
+        clearInterval(pollInterval);
+        showImportSuccess(data);
+      } else if (status === "failed") {
+        clearInterval(pollInterval);
+        showImportError(data.error || "Import failed");
+      } else {
+        document.getElementById("progressStatus").textContent = status;
+      }
+    })
+    .catch(function(err) {
+      document.getElementById("progressStatus").textContent = "Checking status...";
+    });
+  }, 3000);
+}
+
+function showImportSuccess(data) {
+  document.getElementById("importProgress").style.display = "none";
+  document.getElementById("importResult").style.display = "block";
+  document.getElementById("importResult").className = "result-success";
+
+  var videoUrl = data.video_url || ("https://tube.gk2.secubox.in/w/" + data.video_uuid);
+  var title = data.title || "Imported Video";
+
+  document.getElementById("importResult").innerHTML =
+    '<strong>Import successful!</strong><br><br>' +
+    'Title: ' + title + '<br>' +
+    '<a href="' + videoUrl + '" target="_blank">Open video on PeerTube</a>';
+}
+
+function showImportError(message) {
+  document.getElementById("importProgress").style.display = "none";
+  document.getElementById("importResult").style.display = "block";
+  document.getElementById("importResult").className = "result-error";
+  document.getElementById("importResult").innerHTML = '<strong>Import failed</strong><br>' + message;
+  document.getElementById("startImportBtn").disabled = false;
+}
 </script>
 
 </body>

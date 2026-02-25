@@ -330,6 +330,13 @@ cmd_publish() {
 
 	log_info "Publishing $name to $domain"
 
+	# Ensure uhttpd instance exists
+	local existing_uhttpd=$(uci -q get uhttpd.metablogizer_${name})
+	if [ -z "$existing_uhttpd" ]; then
+		log_info "Creating uhttpd instance for $name on port $port"
+		_create_uhttpd_site "$name" "$port"
+	fi
+
 	# Create HAProxy backend
 	local backend_name="metablog_${name}"
 	uci set haproxy.${backend_name}=backend
@@ -802,6 +809,13 @@ _emancipate_haproxy() {
 	local port=$(uci_get site_${name}.port)
 
 	log_info "[HAPROXY] Creating vhost for $domain"
+
+	# Ensure uhttpd instance exists
+	local existing_uhttpd=$(uci -q get uhttpd.metablogizer_${name})
+	if [ -z "$existing_uhttpd" ]; then
+		log_info "[HAPROXY] Creating uhttpd instance for $name on port $port"
+		_create_uhttpd_site "$name" "$port"
+	fi
 
 	# Create backend
 	local backend_name="metablog_${name}"

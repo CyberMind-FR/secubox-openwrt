@@ -32,7 +32,8 @@ check_critical_services() {
     local critical=0
 
     # HAProxy must be running (PERMANENT priority)
-    if ! lxc-attach -n haproxy -- pgrep haproxy >/dev/null 2>&1; then
+    # Check host process (HAProxy runs on host, not in LXC)
+    if ! pgrep haproxy >/dev/null 2>&1; then
         critical=1
     fi
 

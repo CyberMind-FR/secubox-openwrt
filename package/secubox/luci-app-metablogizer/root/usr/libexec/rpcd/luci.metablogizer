@@ -91,9 +91,67 @@ reload_haproxy() {
 		return 1
 	fi
 
+	# Generate new config
 	/usr/sbin/haproxyctl generate >/dev/null 2>&1
+
+	# Sync generated config to all locations HAProxy might read from
+	local src_cfg="/srv/haproxy/config/haproxy.cfg"
+	if [ -f "$src_cfg" ]; then
+		cp "$src_cfg" /etc/haproxy.cfg 2>/dev/null
+		[ -d /opt/haproxy/config ] && cp "$src_cfg" /opt/haproxy/config/haproxy.cfg 2>/dev/null
+	fi
+
+	# Sync mitmproxy routes from HAProxy config and trigger reload
+	# This ensures WAF routing is properly configured for new vhosts
+	if command -v mitmproxyctl >/dev/null 2>&1; then
+		mitmproxyctl sync-routes >/dev/null 2>&1
+		logger -t metablogizer "Synced mitmproxy routes"
+	fi
+
+	# Reload HAProxy
 	if [ -x /etc/init.d/haproxy ]; then
 		/etc/init.d/haproxy reload >/dev/null 2>&1
+	fi
+}
+
+# Add mitmproxy route for domain -> backend mapping
+add_mitmproxy_route() {
+	local domain="$1"
+	local address="$2"
+	local port="$3"
+
+	# Add to both mitmproxy and mitmproxy-in routes files
+	for routes_file in /srv/mitmproxy/haproxy-routes.json /srv/mitmproxy-in/haproxy-routes.json; do
+		[ -f "$routes_file" ] || continue
+		python3 - "$routes_file" "$domain" "$address" "$port" 2>/dev/null <<'PYEOF'
+import json, sys
+routes_file, domain, address, port = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
+try:
+    with open(routes_file) as f:
+        routes = json.load(f)
+    routes[domain] = [address, port]
+    with open(routes_file, 'w') as f:
+        json.dump(routes, f, indent=2)
+except Exception as e:
+    pass
+PYEOF
+	done
+}
+
+# Add HAProxy cert entry for wildcard SSL mapping
+add_haproxy_cert() {
+	local domain="$1"
+
+	# Extract base domain for wildcard cert (e.g., gk2.secubox.in from sub.gk2.secubox.in)
+	local base_domain=$(echo "$domain" | sed 's/^[^.]*\.//')
+	local cert_name=$(echo "$domain" | sed 's/[^a-zA-Z0-9]/_/g')
+
+	# Check if wildcard cert exists
+	local wildcard_cert="/opt/haproxy/certs/*.${base_domain}.pem"
+	if lxc-attach -n haproxy -- ls "$wildcard_cert" >/dev/null 2>&1; then
+		uci set "haproxy.cert_${cert_name}=cert"
+		uci set "haproxy.cert_${cert_name}.domain=$domain"
+		uci set "haproxy.cert_${cert_name}.cert_file=$wildcard_cert"
 	fi
 }
 
@@ -423,22 +481,30 @@ EOF
 		uci set "haproxy.$server_name.check=1"
 		uci set "haproxy.$server_name.enabled=1"
 
-		# 8. Create HAProxy vhost
+		# 8. Create HAProxy vhost (route through mitmproxy WAF)
 		local vhost_name=$(echo "$domain" | sed 's/[^a-zA-Z0-9]/_/g')
 		local acme_val="0"
 		[ "$ssl" = "1" ] && acme_val="1"
 
 		uci set "haproxy.$vhost_name=vhost"
 		uci set "haproxy.$vhost_name.domain=$domain"
-		uci set "haproxy.$vhost_name.backend=$backend_name"
+		uci set "haproxy.$vhost_name.backend=mitmproxy_inspector"
+		uci set "haproxy.$vhost_name.original_backend=$backend_name"
 		uci set "haproxy.$vhost_name.ssl=$ssl"
 		uci set "haproxy.$vhost_name.ssl_redirect=$ssl"
 		uci set "haproxy.$vhost_name.acme=$acme_val"
 		uci set "haproxy.$vhost_name.enabled=1"
+		uci set "haproxy.$vhost_name.priority=50"
+
+		# Add cert entry for wildcard SSL
+		add_haproxy_cert "$domain"
 		uci commit haproxy
 
+		# Add mitmproxy route for WAF inspection
+		add_mitmproxy_route "$domain" "$server_address" "$server_port"
+
 		# Regenerate HAProxy config and reload
-		reload_haproxy
+		reload_haproxy &
 		haproxy_configured=1
 	else
 		logger -t metablogizer "HAProxy not available, site created without proxy config"
@@ -522,7 +588,7 @@ method_delete_site() {
 
 		# Only reload if HAProxy is actually running
 		if haproxy_available; then
-			reload_haproxy
+			reload_haproxy &
 		fi
 	fi
 
@@ -760,15 +826,22 @@ method_update_site() {
 		return
 	fi
 
-	# Check site exists
-	local current_name
+	# Check site exists and get current values
+	local current_name current_domain
 	current_name=$(get_uci "$id" name "")
+	current_domain=$(get_uci "$id" domain "")
 	if [ -z "$current_name" ]; then
 		json_init
 		json_add_boolean "success" 0
 		json_add_string "error" "Site not found"
 		json_dump
 		return
+	fi
+
+	# Track if domain changed
+	local domain_changed=0
+	if [ -n "$domain" ] && [ "$domain" != "$current_domain" ]; then
+		domain_changed=1
 	fi
 
 	[ -n "$name" ] && uci set "$UCI_CONFIG.$id.name=$name"
@@ -779,8 +852,44 @@ method_update_site() {
 	[ -n "$description" ] && uci set "$UCI_CONFIG.$id.description=$description"
 	uci commit "$UCI_CONFIG"
 
+	# If domain changed and vhost exists, republish
+	if [ "$domain_changed" = "1" ] && [ -n "$current_domain" ]; then
+		# Remove old vhost
+		local old_vhost_name=$(echo "$current_domain" | sed 's/[^a-zA-Z0-9]/_/g')
+		uci delete "haproxy.$old_vhost_name" 2>/dev/null
+		uci commit haproxy
+
+		# Create new vhost if new domain is set
+		if [ -n "$domain" ]; then
+			local port=$(get_uci "$id" port "")
+			if [ -n "$port" ]; then
+				local site_name="${name:-$current_name}"
+				local backend_name="meta_$(echo "$site_name" | tr -cd 'a-zA-Z0-9_' | head -c 20)"
+				local vhost_name=$(echo "$domain" | sed 's/[^a-zA-Z0-9]/_/g')
+
+				# Create vhost
+				uci set "haproxy.$vhost_name=vhost"
+				uci set "haproxy.$vhost_name.domain=$domain"
+				uci set "haproxy.$vhost_name.backend=$backend_name"
+				uci set "haproxy.$vhost_name.priority=50"
+				uci set "haproxy.$vhost_name.ssl=1"
+				uci set "haproxy.$vhost_name.ssl_redirect=1"
+				uci set "haproxy.$vhost_name.acme=1"
+				uci set "haproxy.$vhost_name.enabled=1"
+
+				# Add cert entry for wildcard SSL
+				add_haproxy_cert "$domain"
+				uci commit haproxy
+
+				# Regenerate and reload HAProxy
+				reload_haproxy
+			fi
+		fi
+	fi
+
 	json_init
 	json_add_boolean "success" 1
+	json_add_boolean "republished" "$domain_changed"
 	json_dump
 }
 
@@ -967,6 +1076,165 @@ method_upload_finalize() {
 		json_add_string "error" "Failed to decode and write file"
 		json_dump
 	fi
+}
+
+# Create site from chunked upload (for large files)
+method_create_site_from_upload() {
+	local tmpinput="/tmp/rpcd_mb_create_upload_$$.json"
+	cat > "$tmpinput"
+
+	local upload_id name domain is_zip
+	upload_id=$(jsonfilter -i "$tmpinput" -e '@.upload_id' 2>/dev/null)
+	name=$(jsonfilter -i "$tmpinput" -e '@.name' 2>/dev/null)
+	domain=$(jsonfilter -i "$tmpinput" -e '@.domain' 2>/dev/null)
+	is_zip=$(jsonfilter -i "$tmpinput" -e '@.is_zip' 2>/dev/null)
+	rm -f "$tmpinput"
+
+	# Sanitize upload_id
+	upload_id=$(echo "$upload_id" | sed 's/[^a-zA-Z0-9_]/_/g; s/^_*//; s/_*$//')
+
+	if [ -z "$upload_id" ] || [ -z "$name" ] || [ -z "$domain" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing upload_id, name, or domain"
+		json_dump
+		return
+	fi
+
+	local staging="/tmp/metablogizer_upload_${upload_id}.b64"
+	if [ ! -s "$staging" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "No upload data found for $upload_id"
+		json_dump
+		return
+	fi
+
+	# Sanitize name
+	local section_id="site_$(echo "$name" | sed 's/[^a-zA-Z0-9]/_/g')"
+
+	# Check if site already exists
+	if uci -q get "$UCI_CONFIG.$section_id" >/dev/null 2>&1; then
+		rm -f "$staging"
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Site with this name already exists"
+		json_dump
+		return
+	fi
+
+	SITES_ROOT=$(get_uci main sites_root "$SITES_ROOT")
+
+	# Create site directory
+	mkdir -p "$SITES_ROOT/$name"
+	umask 022
+
+	# Decode staged content and save
+	if [ "$is_zip" = "1" ]; then
+		local tmpzip="/tmp/metablog_upload_$$.zip"
+		base64 -d < "$staging" > "$tmpzip" 2>/dev/null
+		unzip -o "$tmpzip" -d "$SITES_ROOT/$name" >/dev/null 2>&1
+		rm -f "$tmpzip"
+	else
+		base64 -d < "$staging" > "$SITES_ROOT/$name/index.html" 2>/dev/null
+	fi
+	rm -f "$staging"
+
+	# Fix permissions
+	fix_permissions "$SITES_ROOT/$name"
+
+	# Create default index if none exists
+	if [ ! -f "$SITES_ROOT/$name/index.html" ]; then
+		cat > "$SITES_ROOT/$name/index.html" <<EOF
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>$name</title>
+</head>
+<body>
+    <h1>$name</h1>
+    <p>Site published with MetaBlogizer</p>
+</body>
+</html>
+EOF
+		chmod 644 "$SITES_ROOT/$name/index.html"
+	fi
+
+	# Get next port and create uhttpd instance
+	local port=$(get_next_port)
+	local server_address=$(uci -q get network.lan.ipaddr || echo "192.168.255.1")
+
+	uci set "uhttpd.metablog_${section_id}=uhttpd"
+	uci set "uhttpd.metablog_${section_id}.listen_http=0.0.0.0:$port"
+	uci set "uhttpd.metablog_${section_id}.home=$SITES_ROOT/$name"
+	uci set "uhttpd.metablog_${section_id}.index_page=index.html"
+	uci set "uhttpd.metablog_${section_id}.error_page=/index.html"
+	uci commit uhttpd
+	/etc/init.d/uhttpd reload 2>/dev/null
+
+	# Create UCI site config
+	uci set "$UCI_CONFIG.$section_id=site"
+	uci set "$UCI_CONFIG.$section_id.name=$name"
+	uci set "$UCI_CONFIG.$section_id.domain=$domain"
+	uci set "$UCI_CONFIG.$section_id.ssl=1"
+	uci set "$UCI_CONFIG.$section_id.enabled=1"
+	uci set "$UCI_CONFIG.$section_id.port=$port"
+	uci set "$UCI_CONFIG.$section_id.runtime=uhttpd"
+
+	# Create HAProxy backend if available
+	if haproxy_available; then
+		local backend_name="metablog_$(echo "$name" | sed 's/[^a-zA-Z0-9]/_/g')"
+
+		uci set "haproxy.$backend_name=backend"
+		uci set "haproxy.$backend_name.name=$backend_name"
+		uci set "haproxy.$backend_name.mode=http"
+		uci set "haproxy.$backend_name.balance=roundrobin"
+		uci set "haproxy.$backend_name.enabled=1"
+
+		local server_name="${backend_name}_srv"
+		uci set "haproxy.$server_name=server"
+		uci set "haproxy.$server_name.backend=$backend_name"
+		uci set "haproxy.$server_name.name=srv"
+		uci set "haproxy.$server_name.address=$server_address"
+		uci set "haproxy.$server_name.port=$port"
+		uci set "haproxy.$server_name.weight=100"
+		uci set "haproxy.$server_name.check=1"
+		uci set "haproxy.$server_name.enabled=1"
+
+		# Create HAProxy vhost (route through mitmproxy WAF)
+		local vhost_name=$(echo "$domain" | sed 's/[^a-zA-Z0-9]/_/g')
+		uci set "haproxy.$vhost_name=vhost"
+		uci set "haproxy.$vhost_name.domain=$domain"
+		uci set "haproxy.$vhost_name.backend=mitmproxy_inspector"
+		uci set "haproxy.$vhost_name.original_backend=$backend_name"
+		uci set "haproxy.$vhost_name.ssl=1"
+		uci set "haproxy.$vhost_name.ssl_redirect=1"
+		uci set "haproxy.$vhost_name.acme=1"
+		uci set "haproxy.$vhost_name.enabled=1"
+		uci set "haproxy.$vhost_name.priority=50"
+
+		# Add cert entry for wildcard SSL
+		add_haproxy_cert "$domain"
+		uci commit haproxy
+
+		# Add mitmproxy route for WAF inspection
+		add_mitmproxy_route "$domain" "$server_address" "$port"
+
+		reload_haproxy &
+	fi
+
+	uci commit "$UCI_CONFIG"
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "id" "$section_id"
+	json_add_string "name" "$name"
+	json_add_string "domain" "$domain"
+	json_add_int "port" "$port"
+	json_add_string "url" "https://$domain"
+	json_dump
 }
 
 # List files in a site
@@ -1592,7 +1860,7 @@ EOF
 	fi
 
 	# 4. Reload HAProxy
-	reload_haproxy
+	reload_haproxy &
 	repairs="$repairs haproxy_reloaded"
 
 	json_init
@@ -1725,8 +1993,26 @@ EOF
 		uci set "haproxy.$server_name.check=1"
 		uci set "haproxy.$server_name.enabled=1"
 
+		# Create HAProxy vhost (route through mitmproxy WAF)
+		local vhost_name=$(echo "$domain" | sed 's/[^a-zA-Z0-9]/_/g')
+		uci set "haproxy.$vhost_name=vhost"
+		uci set "haproxy.$vhost_name.domain=$domain"
+		uci set "haproxy.$vhost_name.backend=mitmproxy_inspector"
+		uci set "haproxy.$vhost_name.original_backend=$backend_name"
+		uci set "haproxy.$vhost_name.ssl=1"
+		uci set "haproxy.$vhost_name.ssl_redirect=1"
+		uci set "haproxy.$vhost_name.acme=1"
+		uci set "haproxy.$vhost_name.enabled=1"
+		uci set "haproxy.$vhost_name.priority=50"
+
+		# Add cert entry for wildcard SSL
+		add_haproxy_cert "$domain"
 		uci commit haproxy
-		reload_haproxy
+
+		# Add mitmproxy route for WAF inspection
+		add_mitmproxy_route "$domain" "$server_address" "$port"
+
+		reload_haproxy &
 	fi
 
 	uci commit "$UCI_CONFIG"
@@ -1778,7 +2064,7 @@ method_unpublish_site() {
 		uci delete "haproxy.cert_$vhost_id" 2>/dev/null
 
 		uci commit haproxy
-		reload_haproxy
+		reload_haproxy &
 	fi
 
 	# Mark as unpublished in UCI
@@ -1830,7 +2116,7 @@ method_set_auth_required() {
 		if uci -q get "haproxy.$vhost_id" >/dev/null 2>&1; then
 			uci set "haproxy.$vhost_id.auth_required=$auth_required"
 			uci commit haproxy
-			reload_haproxy
+			reload_haproxy &
 		fi
 	fi
 
@@ -2352,6 +2638,7 @@ case "$1" in
 	"upload_file": { "id": "string", "filename": "string", "content": "string" },
 	"upload_chunk": { "upload_id": "string", "data": "string", "index": 0 },
 	"upload_finalize": { "upload_id": "string", "site_id": "string", "filename": "string" },
+	"create_site_from_upload": { "upload_id": "string", "name": "string", "domain": "string", "is_zip": "string" },
 	"list_files": { "id": "string" },
 	"get_settings": {},
 	"save_settings": { "enabled": "boolean", "nginx_container": "string", "sites_root": "string" },
@@ -2386,6 +2673,7 @@ EOF
 			upload_file)        method_upload_file ;;
 			upload_chunk)       method_upload_chunk ;;
 			upload_finalize)    method_upload_finalize ;;
+			create_site_from_upload) method_create_site_from_upload ;;
 			list_files)         method_list_files ;;
 			get_settings)       method_get_settings ;;
 			save_settings)      method_save_settings ;;

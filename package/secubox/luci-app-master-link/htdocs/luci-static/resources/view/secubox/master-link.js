@@ -75,6 +75,22 @@ function statusBadge(status) {
 	}, status || 'unknown');
 }
 
+function zkpBadge(verified) {
+	if (verified === true || verified === 'true') {
+		return E('span', {
+			'style': 'display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:9999px;font-size:10px;font-weight:600;color:#fff;background:#8b5cf6;',
+			'title': _('Zero-Knowledge Proof verified')
+		}, [
+			E('span', { 'style': 'font-size:12px;' }, '🔐'),
+			'ZKP'
+		]);
+	}
+	return E('span', {
+		'style': 'display:inline-block;padding:2px 8px;border-radius:9999px;font-size:10px;font-weight:500;color:#94a3b8;background:#f1f5f9;',
+		'title': _('Token-based authentication')
+	}, 'TOKEN');
+}
+
 function copyText(text) {
 	if (navigator.clipboard) {
 		navigator.clipboard.writeText(text).then(function() {
@@ -230,6 +246,76 @@ return view.extend({
 		statusSection.appendChild(statusGrid);
 		overviewPanel.appendChild(statusSection);
 
+		// ZKP Status Section
+		var zkp = status.zkp || {};
+		var zkpSection = E('div', { 'class': 'cbi-section' }, [
+			E('h3', { 'class': 'cbi-section-title' }, [
+				E('span', {}, _('Zero-Knowledge Proof Authentication')),
+				zkp.enabled == 1 ?
+					E('span', {
+						'style': 'margin-left:10px;font-size:11px;padding:2px 8px;border-radius:9999px;background:#22c55e;color:#fff;font-weight:600;'
+					}, _('ENABLED')) :
+					E('span', {
+						'style': 'margin-left:10px;font-size:11px;padding:2px 8px;border-radius:9999px;background:#94a3b8;color:#fff;font-weight:600;'
+					}, _('DISABLED'))
+			])
+		]);
+
+		var zkpGrid = E('div', {
+			'style': 'display:flex;gap:20px;flex-wrap:wrap;'
+		});
+
+		// ZKP Fingerprint card
+		zkpGrid.appendChild(E('div', {
+			'style': 'flex:1;min-width:200px;background:#faf5ff;padding:15px;border-radius:8px;border-left:4px solid #8b5cf6;'
+		}, [
+			E('div', { 'style': 'font-size:12px;color:#666;margin-bottom:4px;' }, _('ZKP Identity')),
+			E('div', { 'style': 'display:flex;align-items:center;gap:8px;' }, [
+				zkp.has_identity ?
+					E('code', { 'style': 'font-size:14px;font-weight:600;letter-spacing:0.05em;color:#8b5cf6;' },
+						zkp.fingerprint || '-') :
+					E('span', { 'style': 'color:#94a3b8;font-style:italic;' }, _('Not generated')),
+				zkp.fingerprint ? E('button', {
+					'class': 'cbi-button cbi-button-action',
+					'style': 'padding:2px 8px;font-size:11px;',
+					'click': function() { copyText(zkp.fingerprint); }
+				}, _('Copy')) : E('span')
+			]),
+			E('div', { 'style': 'font-size:11px;color:#94a3b8;margin-top:6px;' },
+				zkp.has_identity ? _('Cryptographic identity based on Hamiltonian cycle') : _('Run zkp-init to generate'))
+		]));
+
+		// ZKP Tools status
+		zkpGrid.appendChild(E('div', {
+			'style': 'flex:1;min-width:200px;background:#faf5ff;padding:15px;border-radius:8px;border-left:4px solid #a855f7;'
+		}, [
+			E('div', { 'style': 'font-size:12px;color:#666;margin-bottom:4px;' }, _('ZKP Tools')),
+			E('div', { 'style': 'display:flex;align-items:center;gap:8px;' }, [
+				zkp.tools_available ?
+					E('span', { 'style': 'color:#22c55e;font-weight:600;' }, '✓ ' + _('Installed')) :
+					E('span', { 'style': 'color:#ef4444;font-weight:600;' }, '✗ ' + _('Not installed'))
+			]),
+			E('div', { 'style': 'font-size:11px;color:#94a3b8;margin-top:6px;' },
+				_('zkp_keygen, zkp_prover, zkp_verifier'))
+		]));
+
+		// Trusted Peers
+		zkpGrid.appendChild(E('div', {
+			'style': 'flex:1;min-width:200px;background:#faf5ff;padding:15px;border-radius:8px;border-left:4px solid #c084fc;'
+		}, [
+			E('div', { 'style': 'font-size:12px;color:#666;margin-bottom:4px;' }, _('Trusted Peers')),
+			E('div', {}, [
+				E('span', { 'style': 'font-size:20px;font-weight:700;color:#8b5cf6;' },
+					String(zkp.trusted_peers || 0)),
+				E('span', { 'style': 'font-size:11px;color:#666;margin-left:4px;' }, _('peer graphs stored'))
+			]),
+			E('div', { 'style': 'font-size:11px;color:#94a3b8;margin-top:6px;' },
+				_('For challenge-response authentication'))
+		]));
+
+		zkpSection.appendChild(zkpGrid);
+		overviewPanel.appendChild(zkpSection);
+
 		// Upstream info (for peers/sub-masters)
 		if (status.upstream) {
 			overviewPanel.appendChild(E('div', { 'class': 'cbi-section' }, [
@@ -347,6 +433,7 @@ return view.extend({
 						E('th', { 'class': 'th' }, _('Hostname')),
 						E('th', { 'class': 'th' }, _('Address')),
 						E('th', { 'class': 'th' }, _('Fingerprint')),
+						E('th', { 'class': 'th' }, _('Auth')),
 						E('th', { 'class': 'th' }, _('Requested')),
 						E('th', { 'class': 'th' }, _('Status')),
 						E('th', { 'class': 'th' }, _('Actions'))
@@ -430,6 +517,7 @@ return view.extend({
 						E('td', { 'class': 'td' }, peer.hostname || '-'),
 						E('td', { 'class': 'td' }, E('code', { 'style': 'font-size:12px;' }, peer.address || '-')),
 						E('td', { 'class': 'td' }, E('code', { 'style': 'font-size:11px;' }, (peer.fingerprint || '').substring(0, 12) + '...')),
+						E('td', { 'class': 'td' }, zkpBadge(peer.zkp_verified)),
 						E('td', { 'class': 'td', 'style': 'font-size:12px;' }, formatTime(peer.timestamp)),
 						E('td', { 'class': 'td' }, statusBadge(peer.status)),
 						actionCell

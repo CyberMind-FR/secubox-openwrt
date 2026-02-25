@@ -57,6 +57,9 @@ load_config() {
 	memory_limit="$(uci_get memory_limit || echo 256M)"
 	lxc_rootfs_url="$(uci_get lxc_rootfs_url || echo '')"
 	wan_access="$(uci_get wan_access || echo 0)"
+	# Extra media paths (space-separated list of host:container pairs or just paths)
+	# Example: /mnt/usb:/mnt/usb /mnt/sdb1
+	extra_media_paths="$(uci_get extra_media_paths || echo '')"
 }
 
 ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
@@ -588,19 +591,49 @@ lxc.uts.name = $LXC_NAME
 # Root filesystem
 lxc.rootfs.path = dir:$LXC_ROOTFS
 
-# Network - inherit host network (no lxc.net = share host namespace)
+# Network - share host network namespace
 # Needed for Squeezebox UDP 3483 broadcast discovery
+lxc.net.0.type = none
 
-# Mounts
-lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+# Mounts (no cgroup:mixed - incompatible with cgroup v2)
+lxc.mount.auto = proc:mixed sys:ro
 lxc.mount.entry = $data_path config none bind,create=dir 0 0
 lxc.mount.entry = $media_path music none bind,ro,create=dir 0 0
+EOF
+
+	# Add extra media paths if configured
+	if [ -n "$extra_media_paths" ]; then
+		for path_spec in $extra_media_paths; do
+			local host_path container_path
+			if echo "$path_spec" | grep -q ':'; then
+				host_path="${path_spec%%:*}"
+				container_path="${path_spec#*:}"
+			else
+				host_path="$path_spec"
+				container_path="$path_spec"
+			fi
+			# Remove leading slash for container path (LXC relative mount)
+			container_path="${container_path#/}"
+			if [ -d "$host_path" ]; then
+				echo "lxc.mount.entry = $host_path $container_path none bind,ro,create=dir 0 0" >> "$LXC_CONFIG"
+				log_info "Added media path: $host_path -> /$container_path"
+			else
+				log_info "Skipping non-existent path: $host_path"
+			fi
+		done
+	fi
+
+	cat >> "$LXC_CONFIG" << EOF
 
 # Capabilities
 lxc.cap.drop = sys_admin sys_module mac_admin mac_override
 
 # cgroups limits (cgroup2 format)
 lxc.cgroup2.memory.max = $mem_bytes
+
+# cgroup v2 compatibility
+lxc.seccomp.profile =
+lxc.autodev = 1
 
 # Run as nobody user (uid/gid 65534) - Lyrion must not run as root
 lxc.init.uid = 65534

@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-02-21_
+_Last updated: 2026-02-24_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -3031,3 +3031,514 @@ git checkout HEAD -- index.html
     - Fix: Added null-coalescing in jq filter: `((.automatic_captions // {}) | keys)`
     - Also fixed `subtitles` field for consistency.
     - Cleaned up duplicate HAProxy vhost entry for cloud.gk2.secubox.in.
+
+29. **Nextcloud nginx 403 Fix (2026-02-21)**
+    - **Issue:** `/apps/dashboard/`, `/apps/files/`, `/apps/spreed/` returning 403 Forbidden
+    - **Root cause:** nginx `try_files $uri $uri/ /index.php$request_uri` was matching directories and failing to serve index
+    - **Fix:** Changed to `try_files $uri /index.php$request_uri` (removed `$uri/`)
+    - **File:** `/etc/nginx/sites-enabled/nextcloud` in nextcloud LXC container
+    - Also reset brute force protection for 192.168.255.1
+    - Reset admin password to `secubox123`
+
+30. **PeerTube Analyse Limitations Documented (2026-02-21)**
+    - Tool requires either existing subtitles OR Whisper installed
+    - YouTube videos blocked by PO token requirement for subtitle access
+    - PeerTube videos on tube.gk2 have no captions uploaded
+    - Metadata extraction works; transcript step fails without subtitles/Whisper
+
+31. **PeerTube Video Import with Multi-Track Subtitles (2026-02-21)**
+    - New `peertube-import` CLI tool for importing videos from YouTube, Vimeo, and 1000+ sites.
+    - **Features:**
+      - Download video via yt-dlp (best quality MP4)
+      - Extract metadata (title, description, tags)
+      - Download subtitles in multiple languages (configurable)
+      - Upload video to PeerTube via API
+      - Upload each subtitle track via `/api/v1/videos/{id}/captions/{lang}`
+    - **CLI Interface:**
+      ```bash
+      peertube-import --lang fr,en,de,es https://youtube.com/watch?v=xxx
+      peertube-import --privacy 2 --channel 1 https://vimeo.com/xxx
+      ```
+    - **Portal Integration:**
+      - New "Video Import" card in Intelligence & Analyse section
+      - Modal dialog with URL input, language selection, privacy options
+      - Progress bar with live status updates
+      - Direct link to imported video on completion
+    - **CGI Endpoints:**
+      - `POST /cgi-bin/peertube-import` — Start import job
+      - `GET /cgi-bin/peertube-import-status?job_id=xxx` — Poll status
+    - **Authentication:**
+      - Supports PEERTUBE_TOKEN env var
+      - UCI config: `peertube.api.username` / `peertube.api.password`
+      - OAuth client credential flow for token acquisition
+    - Package version bumped to 1.2.0
+    - **Files:**
+      - `secubox-app-peertube/files/usr/sbin/peertube-import` (new)
+      - `secubox-app-peertube/files/www/cgi-bin/peertube-import` (new)
+      - `secubox-app-peertube/files/www/cgi-bin/peertube-import-status` (new)
+      - `luci-app-secubox-portal/root/www/gk2-hub/portal.html` (updated)
+      - `secubox-app-peertube/Makefile` (updated)
+
+31. **PeerTube Import Fixes (2026-02-21)**
+    - Fixed stdout/stderr separation in `peertube-import` script
+    - Changed UCI config path from `peertube.api.*` to `peertube.admin.*`
+    - Fixed yt-dlp output redirection to prevent mixing with function return values
+    - Fixed curl response handling in upload functions (use temp file, not 2>&1)
+    - Upgraded yt-dlp to 2026.2.4 for YouTube compatibility
+    - Installed Node.js (20.20.0) for yt-dlp JavaScript runtime support
+    - Verified end-to-end import flow: YouTube → download → subtitles → PeerTube upload
+
+
+32. **MetaBlogizer Vhost Auto-Creation Fix (2026-02-22)**
+    - Fixed `create_site_from_upload` and `upload_and_create_site` methods missing HAProxy vhost creation.
+    - All three site creation methods now:
+      - Create HAProxy backend + server (direct to uhttpd port)
+      - Create HAProxy vhost pointing to `mitmproxy_inspector` (WAF routing)
+      - Add mitmproxy route in `/srv/mitmproxy-in/haproxy-routes.json`
+    - Ensures all MetaBlogizer sites go through WAF inspection (security policy compliance).
+    - Uploaded sites now immediately accessible via HTTPS domain.
+
+33. **GK2 Hub Generator v3 (2026-02-22)**
+    - Complete rewrite of hub-generator with dynamic multi-view portal.
+    - **Features:**
+      - Automatic categorization: Intelligence, Développement, Documentation, Finance, Média, etc.
+      - Iframe thumbnail previews showing real site content
+      - Tag cloud with category counts
+      - Category tabs with emoji indicators
+      - Instant search by domain/name/category
+      - Three view modes: Grid, List, Compact
+      - Auto-refresh every 5 minutes via cron
+    - Created explicit HAProxy vhosts for all 54 MetaBlogizer sites with `waf_bypass=1` and `priority=50`.
+    - Fixed wildcard `.gk2.secubox.in` routing to use `vortex_hub` with `priority=999` (processed last).
+    - Fixed missing mitmproxy routes for `admin.gk2.secubox.in` and `hub.gk2.secubox.in`.
+    - **Files:**
+      - `secubox-app-gk2hub/files/usr/sbin/hub-generator` (new)
+
+34. **Nextcloud Talk High Performance Backend Package (2026-02-22)**
+    - New `secubox-app-talk-hpb` package for Nextcloud Talk signaling server.
+    - **Features:**
+      - TURN/STUN server for WebRTC media relay
+      - Signaling server for presence and call coordination
+      - Auto-generates secure secrets (turn, signaling, internal)
+      - HAProxy vhost auto-creation for signaling domain
+      - Docker-based deployment (ghcr.io/nextcloud-releases/aio-talk)
+    - **CLI Interface:**
+      ```bash
+      talk-hpbctl setup nextcloud.example.com signaling.example.com
+      talk-hpbctl show-config  # Display Nextcloud admin settings
+      talk-hpbctl test         # Verify signaling server
+      ```
+    - **Files:**
+      - `secubox-app-talk-hpb/files/usr/sbin/talk-hpbctl` (new)
+      - `secubox-app-talk-hpb/files/etc/init.d/talk-hpb` (new)
+      - `secubox-app-talk-hpb/files/etc/config/talk-hpb` (new)
+
+35. **MetaBlogizer Reliability Improvements (2026-02-22)**
+    - **Edit button:** Added site edit functionality in LuCI dashboard.
+    - **Domain change handling:** HAProxy vhost republished when domain changes (delete old + create new).
+    - **Mitmproxy route fix:** Replaced fragile sed-based JSON manipulation with Python for reliable JSON parsing.
+    - **SSL cert mapping:** Auto-adds UCI cert entries for wildcard SSL certificates (*.gk2.secubox.in.pem) on site creation.
+    - Sites now work immediately after one-click deploy without manual HAProxy reload.
+
+36. **GK2 Hub Authentication Integration (2026-02-23)**
+    - Protected MetaBlogizer sites (auth_required=1) hidden until user login.
+    - Login banner displayed when unauthenticated with protected content present.
+    - Uses sessionStorage `secubox_token` from secubox-core portal-auth system.
+    - Lock badge icon on protected site cards.
+    - Search and category filters respect authentication state.
+    - **Files:**
+      - `secubox-app-gk2hub/files/usr/sbin/hub-generator` (updated)
+
+37. **HAProxy HTTP/2 Auth Bug Fix (2026-02-23)**
+    - Fixed inconsistent HTTP Basic Auth behavior with HTTP/2 multiplexing.
+    - Protected vhosts randomly returned 200 (bypass) or 401 (auth required) when using HTTP/2.
+    - Root cause: HTTP/2 connection multiplexing caused HAProxy's `http_auth()` to inconsistently evaluate auth rules.
+    - **Fix:** Disabled HTTP/2 ALPN negotiation, reverting to HTTP/1.1 only.
+    - All protected MetaBlogizer sites (sa, ab, dgse, dcb, ccom) now consistently require authentication.
+    - **Files:**
+      - `secubox-app-haproxy/files/usr/sbin/haproxyctl` (alpn h2,http/1.1 → alpn http/1.1)
+      - `secubox-app-haproxy/files/usr/share/haproxy/templates/default.cfg` (updated)
+      - `secubox-app-haproxy/files/etc/config/haproxy` (updated)
+
+38. **Service Stability & LED Pulse Fix (2026-02-24)**
+    - **CrowdSec Autostart Fix:**
+      - Root cause: Machine registration mismatch between credentials file (`secubox-local`) and database (old UUID-style name).
+      - Fix: Re-registered machine with `cscli machines add secubox-local --auto --force`.
+      - Downloaded GeoLite2-City.mmdb (63MB) via `cscli hub update`.
+      - CrowdSec now starts automatically after reboot.
+    - **LED Pulse SPUNK ALERT Fix:**
+      - Root cause: `secubox-led-pulse` was checking `lxc-attach -n haproxy -- pgrep haproxy` but HAProxy runs on host, not in LXC.
+      - Fix: Changed to `pgrep haproxy` (host process check).
+      - Committed: `8a51a3e6 fix(led-pulse): Check HAProxy on host instead of LXC container`.
+    - **Docker nextcloud-talk-hpb Restore:**
+      - Fixed corrupted Docker storage layer (`GetImageBlob: no such file or directory`).
+      - Restarted dockerd, re-pulled image, container now healthy.
+    - **cloud.gk2.secubox.in 503 Fix:**
+      - Changed backend from `mitmproxy_inspector` to `nextcloud` (WAF was disabled for this vhost).
+    - **LXC Autostart Configuration:**
+      - Enabled `lxc.start.auto = 1` for mailserver and roundcube containers.
+    - **Metrics Page Fix:**
+      - Created symlink `/srv/mitmproxy/threats.log` → `/srv/mitmproxy-in/threats.log`.
+      - Metrics page now displays visitor data, traffic stats, and threat analytics.
+    - **Webmail Fix:**
+      - Fixed HAProxy vhost backend: `roundcube` → `webmail` (correct backend name).
+      - Reset password for `ragondin@secubox.in`.
+      - Cleared Roundcube sessions and restarted PHP-FPM to fix cached credentials.
+    - **Verification:** All 14 LXC containers + 6 core services + 6 web endpoints confirmed running.
+    - **Files:**
+      - `secubox-core/root/usr/sbin/secubox-led-pulse` (fixed HAProxy check)
+
+39. **HAProxy Config Sync Fix (2026-02-24)**
+    - Fixed issue where MetaBlogizer uploads resulted in 404 errors.
+    - Root cause: HAProxy config generated to `/srv/haproxy/config/haproxy.cfg` but HAProxy reads from `/etc/haproxy.cfg`.
+    - **Fix in `luci.metablogizer`:**
+      - `reload_haproxy()` now syncs config to `/etc/haproxy.cfg` and `/opt/haproxy/config/` after generation.
+    - **Fix in `haproxyctl`:**
+      - `generate_config()` now copies config to `/etc/haproxy.cfg` after generation.
+    - Sites now work immediately after upload without manual intervention.
+    - **Files:**
+      - `luci-app-metablogizer/root/usr/libexec/rpcd/luci.metablogizer`
+      - `secubox-app-haproxy/files/usr/sbin/haproxyctl`
+
+40. **ZKP Hamiltonian Cryptographic Library (2026-02-24)**
+    - Created `zkp-hamiltonian` package implementing Zero-Knowledge Proofs based on Hamiltonian Cycle problem (Blum 1986).
+    - **Cryptographic Implementation:**
+      - SHA3-256 commitments via OpenSSL EVP API
+      - Fiat-Shamir heuristic for NIZK transformation
+      - Fisher-Yates shuffle for uniform random permutations
+      - Constant-time memory comparison (timing attack resistant)
+      - Secure memory zeroing with compiler barrier
+    - **Library API:**
+      - `zkp_prove()` - Generate NIZK proof of Hamiltonian cycle knowledge
+      - `zkp_verify()` - Verify proof (stateless, O(n²))
+      - `zkp_generate_graph()` - Generate random graphs with guaranteed Hamiltonian cycle
+      - `zkp_serialize_*()` / `zkp_deserialize_*()` - Binary serialization (big-endian, portable)
+    - **CLI Tools:**
+      - `zkp_keygen` - Generate graph + Hamiltonian cycle (prover secret)
+      - `zkp_prover` - Create proof from graph + key
+      - `zkp_verifier` - Verify proof against graph
+    - **Test Coverage:**
+      - 41 tests across 4 test suites (crypto, graph, protocol, serialize)
+      - Completeness, soundness, tamper detection, anti-replay verification
+    - **Specifications:**
+      - C99, targets OpenWrt ARM64 (MochaBin Cortex-A72)
+      - Graph size: 4-50 nodes (configurable MAX_N=50)
+      - Proof size: ~160KB for n=50
+    - **Files:**
+      - `zkp-hamiltonian/src/{zkp_crypto,zkp_graph,zkp_prove,zkp_verify,zkp_serialize}.c`
+      - `zkp-hamiltonian/include/{zkp_hamiltonian,zkp_crypto,zkp_graph,zkp_types}.h`
+      - `zkp-hamiltonian/tools/{zkp_keygen,zkp_prover,zkp_verifier}.c`
+      - `zkp-hamiltonian/tests/{test_crypto,test_graph,test_protocol,test_serialize}.c`
+      - `zkp-hamiltonian/CMakeLists.txt`
+    - **Commit:** `65539368 feat(zkp-hamiltonian): Add Zero-Knowledge Proof library based on Hamiltonian Cycle`
+
+41. **ZKP Mesh Authentication Integration (2026-02-24)**
+    - Integrated Zero-Knowledge Proofs into SecuBox master-link mesh authentication system.
+    - **Architecture:**
+      - Each node has ZKP identity (public graph + secret Hamiltonian cycle)
+      - Challenge-response authentication between mesh peers
+      - Blockchain acknowledgment of successful verifications
+    - **New API Endpoints:**
+      - `GET /api/master-link/zkp-challenge` — Generate authentication challenge with TTL
+      - `POST /api/master-link/zkp-verify` — Verify ZKP proof, record to blockchain
+      - `GET /api/zkp/graph` — Serve node's public ZKP graph (base64)
+    - **New Shell Functions in master-link.sh:**
+      - `ml_zkp_init()` — Initialize ZKP identity on first boot
+      - `ml_zkp_status()` — Return ZKP configuration status
+      - `ml_zkp_challenge()` — Generate challenge with UUID and expiry
+      - `ml_zkp_prove()` — Generate proof for given challenge
+      - `ml_zkp_verify()` — Verify peer's proof against trusted graph
+      - `ml_zkp_trust_peer()` — Store peer's public graph for future verification
+      - `ml_zkp_get_graph()` — Return base64-encoded public graph
+    - **Blockchain Acknowledgment:**
+      - New block type: `peer_zkp_verified`
+      - Records: peer_fp, proof_hash, challenge_id, result, verified_by
+    - **UCI Configuration:**
+      - `zkp_enabled` — Toggle ZKP authentication
+      - `zkp_fingerprint` — Auto-derived from graph hash (SHA256[0:16])
+      - `zkp_require_on_join` — Require ZKP proof for new peers
+      - `zkp_challenge_ttl` — Challenge validity in seconds (default 30)
+    - **Verification Test Results:**
+      - Master (192.168.255.1): ZKP identity initialized, fingerprint `7c5ead2b4e4b0106`
+      - API verification flow tested: challenge → proof → verify → blockchain record
+      - `peer_zkp_verified` block successfully recorded to chain
+    - **Files:**
+      - `secubox-master-link/files/usr/lib/secubox/master-link.sh` (ZKP functions)
+      - `secubox-master-link/files/www/api/zkp/graph` (new)
+      - `secubox-master-link/files/www/api/master-link/zkp-challenge` (new)
+      - `secubox-master-link/files/www/api/master-link/zkp-verify` (new)
+      - `secubox-master-link/files/etc/config/master-link` (ZKP options)
+
+41. **MetaBlogizer Upload Workflow Fix (2026-02-24)**
+    - Sites now work immediately after upload without needing unpublish + expose.
+    - **Root cause:** Upload created HAProxy vhost and mitmproxy route file entry, but mitmproxy never received a reload signal to activate the route.
+    - **Fix:** `reload_haproxy()` now calls `mitmproxyctl sync-routes` to ensure mitmproxy picks up new routes immediately after vhost creation.
+    - **Files:**
+      - `luci-app-metablogizer/root/usr/libexec/rpcd/luci.metablogizer`
+    - **Commit:** `ec8e96a7 fix(metablogizer): Auto-sync mitmproxy routes on HAProxy reload`
+
+42. **LuCI ZKP Dashboard (2026-02-24)**
+    - Created `luci-app-zkp` package for ZKP Hamiltonian cryptographic proofs.
+    - **Dashboard Features:**
+      - Status display: library version, saved keys count, storage paths
+      - Key generation: node count (4-50), edge density selector
+      - Prove/Verify workflow with visual ACCEPT/REJECT results
+      - Keys table with Prove, Verify, Delete actions
+      - KISS theme with dark mode support
+    - **RPCD Methods:** status, keygen, prove, verify, list_keys, delete_key, get_graph
+    - **Menu Location:** Status > ZKP Cryptography
+    - Note: Requires `zkp-hamiltonian` CLI tools to be built for ARM64
+    - **Files:**
+      - `luci-app-zkp/htdocs/luci-static/resources/view/zkp/overview.js`
+      - `luci-app-zkp/root/usr/libexec/rpcd/luci.zkp`
+    - **Commit:** `b60d7fd0 feat(luci-app-zkp): Add ZKP Hamiltonian cryptographic dashboard`
+
+43. **ZKP Hamiltonian ARM64 Build & Deployment (2026-02-24)**
+    - Built `zkp-hamiltonian` package for ARM64 (aarch64_cortex-a72) using full OpenWrt toolchain.
+    - **Build Notes:**
+      - SDK lacks target OpenSSL headers; must use full toolchain in `secubox-tools/openwrt/`
+      - Fixed `ZKP_MAX_N` macro redefinition by adding `#ifndef` guard in `zkp_types.h`
+      - Fixed RPCD script CLI flags: `-r` for ratio (not `-d`), `-o` for output prefix
+    - **Deployed CLI Tools:**
+      - `zkp_keygen` - 75KB binary
+      - `zkp_prover` - 76KB binary
+      - `zkp_verifier` - 75KB binary
+    - **Verification:** Full workflow tested on router (keygen → prove → verify → ACCEPT)
+    - **Files:**
+      - `zkp-hamiltonian/Makefile` (moved from openwrt/ subdirectory)
+      - `zkp-hamiltonian/include/zkp_types.h` (ZKP_MAX_N guard)
+      - `luci-app-zkp/root/usr/libexec/rpcd/luci.zkp` (CLI flag fixes)
+
+
+44. **WAF CVE-2025-14528 Router Botnet Detection (2026-02-24)**
+    - Added new `router_botnet` WAF category for IoT/router exploitation attempts.
+    - **CVE-2025-14528 Detection:**
+      - D-Link DIR-803 getcfg.php credential leak
+      - AUTHORIZED_GROUP parameter manipulation
+      - Newline injection bypass (%0a, %0d)
+      - SERVICES=DEVICE.ACCOUNT enumeration
+    - **Additional Router Exploit Patterns:**
+      - D-Link hedwig.cgi, HNAP, service.cgi RCE
+      - UPnP SOAP injection
+      - Goform command injection
+      - ASUS infosvr/apply.cgi exploits
+      - TP-Link/Netgear command exec patterns
+      - Zyxel zhttpd shell injection
+    - **Mirai-Variant Botnet Scanner Detection:**
+      - User-Agent signatures: Mirai, Hajime, Mozi, BotenaGo, Gafgyt, etc.
+      - Router wget/curl payload injection
+      - Telnet enable attempts
+    - **Files Modified:**
+      - `secubox-app-mitmproxy/files/srv/mitmproxy/waf-rules.json` (19 new patterns)
+      - `secubox-app-mitmproxy/files/srv/mitmproxy/addons/secubox_analytics.py`
+      - `secubox-app-mitmproxy/files/etc/config/mitmproxy`
+      - `secubox-app-mitmproxy/files/usr/sbin/mitmproxy-waf-sync`
+    - **Sources:** [CrowdSec Threat Intel](https://www.crowdsec.net/vulntracking-report/cve-2025-14528), [Global Security Mag](https://www.globalsecuritymag.com/old-routers-new-botnets-active-exploitation-of-cve-2025-14528.html)
+
+
+45. **MetaBlogizer Quick Publish WAF Route Fix (2026-02-24)**
+    - Fixed 404 errors after site upload/publish in MetaBlogizer.
+    - **Root Cause:** HAProxy vhosts created with `backend=mitmproxy_inspector` but no `original_backend` field.
+      - `mitmproxyctl sync-routes` needs `original_backend` to determine where to forward traffic after WAF inspection.
+      - Without it, mitmproxy had no route and returned 404.
+    - **Fix:** Added `original_backend=$backend_name` to all 3 vhost creation locations:
+      - `method_create_site` (line 491)
+      - `method_emancipate_site` (line 1210)
+      - `method_upload_and_create_site` (line 2001)
+    - **Integration:** `reload_haproxy()` calls `mitmproxyctl sync-routes` which now properly syncs all routes.
+    - **Verification:** `rcve.gk2.secubox.in` now returns HTTP 200 with correct content.
+    - **Files Modified:**
+      - `luci-app-metablogizer/root/usr/libexec/rpcd/luci.metablogizer`
+
+
+46. **ZKP Join Flow Integration (2026-02-24)**
+    - Enhanced mesh join protocol to support ZKP (Zero-Knowledge Proof) authentication.
+    - **Join Request Enhancement** (`ml_join_request()`):
+      - Now accepts `zkp_proof` (base64) and `zkp_graph` (base64) parameters
+      - Verifies proof against provided graph using `zkp_verifier`
+      - Validates fingerprint matches SHA256(graph)[0:16]
+      - Auto-stores peer's graph in `/etc/secubox/zkp/peers/` on successful verification
+      - Records `zkp_verified` and `zkp_proof_hash` in request file
+    - **Join Approval Enhancement** (`ml_join_approve()`):
+      - Auto-fetches peer's ZKP graph if not already stored during join
+      - Records `zkp_graph_stored` status in approval response
+      - Blockchain `peer_approved` blocks now include `zkp_verified` field
+    - **Peer-side Join** (`ml_join_with_zkp()`):
+      - New function for ZKP-authenticated mesh joining
+      - Generates ZKP proof using local identity keypair
+      - Uses ZKP fingerprint (from graph hash) instead of factory fingerprint
+      - Auto-stores master's graph for mutual authentication
+    - **API Update** (`/api/master-link/join`):
+      - Accepts `zkp_proof` and `zkp_graph` fields in POST body
+    - **Configuration**:
+      - `zkp_require_on_join`: When set to 1, rejects joins without valid ZKP proof
+    - **Verification:** Clone joined with `zkp_verified: true`, graphs exchanged bidirectionally
+    - **Files Modified:**
+      - `secubox-master-link/files/usr/lib/secubox/master-link.sh`
+      - `secubox-master-link/files/www/api/master-link/join`
+
+
+47. **LuCI ZKP Dashboard (2026-02-24)**
+    - Enhanced `luci-app-master-link` with ZKP authentication status visualization.
+    - **Overview Tab - ZKP Status Section:**
+      - ZKP Identity card: fingerprint display, copy button, generation status
+      - ZKP Tools card: installation status for zkp_keygen/prover/verifier
+      - Trusted Peers card: count of stored peer graphs
+      - Purple theme (violet gradient) for ZKP elements
+      - Enabled/Disabled badge next to section title
+    - **Peer Table Enhancement:**
+      - New "Auth" column showing authentication method
+      - `zkpBadge()` helper function for visual indicators:
+        - 🔐 ZKP badge (purple) for ZKP-verified peers
+        - TOKEN badge (gray) for token-only authentication
+    - **Design:**
+      - Purple accent colors (#8b5cf6, #a855f7, #c084fc) for ZKP elements
+      - Consistent with SecuBox KISS theme guidelines
+    - **Files Modified:**
+      - `luci-app-master-link/htdocs/luci-static/resources/view/secubox/master-link.js`
+
+
+48. **MirrorNet Ash Compatibility Fix (2026-02-24)**
+    - Fixed process substitution (`< <(cmd)`) incompatibility with BusyBox ash shell.
+    - **Pattern replaced:** `while read; do ... done < <(jsonfilter ...)`
+    - **Ash-compatible pattern:** `jsonfilter ... | while read; do ... done` with temp files for variable persistence
+    - **Files fixed:**
+      - `secubox-mirrornet/files/usr/lib/mirrornet/mirror.sh` (3 instances)
+      - `secubox-mirrornet/files/usr/lib/mirrornet/gossip.sh` (3 instances)
+      - `secubox-mirrornet/files/usr/lib/mirrornet/health.sh` (1 instance)
+      - `secubox-mirrornet/files/usr/lib/mirrornet/identity.sh` (1 instance - for loop fix)
+    - **Tested:** `mirrorctl status`, `mirror-add`, `mirror-upstream`, `mirror-check`, `mirror-haproxy` all working
+    - **Deployed:** Both master (192.168.255.1) and clone (192.168.255.156) routers
+
+
+49. **Mesh Blockchain Sync (2026-02-24)**
+    - Fixed blockchain chain synchronization between mesh nodes.
+    - **Chain Append Fix:**
+      - `chain_add_block()`: Uses awk to safely insert new blocks before `] }` ending
+      - Handles JSON with/without trailing newlines and varying whitespace
+      - Compacts multi-line blocks to single line for clean insertion
+    - **Chain Merge Fix:**
+      - `chain_merge_block()`: Same awk-based approach for remote block merging
+      - Validates block structure and prev_hash linkage before merging
+    - **Sync Endpoint Fix:**
+      - `/api/chain/since/<hash>`: Now properly returns only blocks after given hash
+      - Returns JSON array of blocks (not full chain)
+      - Supports partial hash matching
+    - **Sync Function Fix:**
+      - `sync_with_peer()`: Properly fetches and merges missing blocks
+      - Uses `chain_merge_block()` for each received block
+      - Stores block data in blocks directory
+    - **Verification:**
+      - Master→Clone sync: Block 70 synced successfully
+      - Clone→Master sync: Block 69 synced successfully
+      - Both nodes at height 70 with matching hash
+      - JSON validity confirmed via Python parser
+    - **Files Modified:**
+      - `secubox-core/root/usr/lib/secubox/p2p-mesh.sh`
+      - `secubox-core/root/www/api/chain`
+
+
+50. **Factory Auto-Provisioning (2026-02-24)**
+    - Zero-touch provisioning for new mesh devices
+    - **Hardware Inventory Collection:**
+      - `inventory.sh`: Collect serial, MAC, model, CPU, RAM, storage
+      - Store inventories in `/var/lib/secubox-factory/inventory/`
+      - Pre-registered device matching for auto-approval
+    - **Profile-Based Configuration:**
+      - `profiles.sh`: Match devices by MAC prefix, model, or serial pattern
+      - 7 pre-built profiles: default, enterprise, home-basic, home-office, home-security, media-server, smart-home
+      - UCI commands, packages, and services per profile
+    - **Discovery Mode:**
+      - New devices can register without pre-shared tokens
+      - Master maintains pending queue for manual approval
+      - Auto-approve option for pre-registered MAC/serial devices
+      - `discovery_window` option for timed open enrollment
+    - **Bulk Token Generation:**
+      - Generate up to 100 tokens per batch
+      - Profile assignment per token
+      - Batch tracking with `batch_id`
+    - **Clone Provision Enhancements:**
+      - Hardware inventory on first boot
+      - Discovery-based join (poll for approval)
+      - Fallback to legacy token-based join
+    - **RPCD Methods Added:**
+      - `pending_devices`: List devices awaiting approval
+      - `approve_device`: Approve with profile assignment
+      - `reject_device`: Reject with reason
+      - `bulk_tokens`: Generate token batches
+      - `inventory`: List hardware inventories
+      - `list_profiles`: List available profiles
+      - `discovery_status`: Get discovery mode state
+      - `toggle_discovery`: Enable/disable discovery mode
+      - `import_preregistered`: Import MAC/serial list
+    - **UCI Options:**
+      - `discovery_mode`: Enable zero-touch provisioning
+      - `auto_approve_known`: Auto-approve pre-registered devices
+      - `discovery_window`: Time limit for discovery (seconds)
+      - `default_profile`: Profile for auto-approved devices
+    - **Files Modified:**
+      - `master-link.sh`: Added 8 discovery/bulk functions
+      - `master-link` UCI config: Added 4 discovery options
+      - `50-secubox-clone-provision`: Added inventory collection and discovery join
+      - `luci.cloner` RPCD: Added 9 new methods with JSON object responses
+      - `luci-app-cloner.json` ACL: Added permissions for new methods
+    - **Files Created:**
+      - `inventory.sh`: Hardware inventory library
+      - `profiles.sh`: Profile management library
+      - `default.json`: Default peer profile template
+    - **Fix Applied:**
+      - `p2p-mesh.sh`: Silenced usage output when sourced as library
+    - **Tested:** All RPCD methods working via ubus, discovery mode toggle, bulk tokens
+
+27. **Mailserver Dovecot UID/GID Fix (2026-02-25)**
+    - Fixed Roundcube IMAP "Internal error" caused by Dovecot running as wrong user (uid 102 instead of 5000)
+    - **Problem:** Dovecot config had hardcoded uid=102/gid=105 from Alpine defaults, but vmail user is uid=5000/gid=5000
+    - **Files Modified:**
+      - `mailserverctl`: Fixed 7 uid/gid references (102→5000, 105→5000)
+      - `dovecot.conf` template: Changed mail_uid/gid, first_valid_uid/last_valid_uid
+      - `configure_postfix`: Changed virtual_uid_maps/virtual_gid_maps
+      - `cmd_add_user`: Changed passwd file uid:gid entries
+
+28. **Factory Dashboard LuCI Implementation (2026-02-25)**
+    - Added Factory tab to Cloning Station (`luci-app-cloner/overview.js`)
+    - **Features:**
+      - Discovery Mode Toggle: Enable/disable zero-touch provisioning with visual status
+      - Pending Devices: List and approve/reject devices awaiting provisioning with profile assignment
+      - Bulk Token Generator: Generate multiple tokens at once with profile selection
+      - Hardware Inventory: Table view of discovered device specs (MAC, Model, CPU, RAM, Storage)
+    - **RPC Declarations Added:**
+      - `callPendingDevices`, `callApproveDevice`, `callRejectDevice`
+      - `callBulkTokens`, `callInventory`, `callListProfiles`
+      - `callDiscoveryStatus`, `callToggleDiscovery`
+    - **State Properties Added:**
+      - `pendingDevices`, `hwInventory`, `profiles`, `discoveryStatus`, `generatedTokens`
+    - **Render Functions Added:**
+      - `renderFactoryTab()`: Main tab with stats grid and two-column layout
+      - `renderPendingDevices()`: Device cards with approve/reject buttons
+      - `renderGeneratedTokens()`: Token list with copy functionality
+      - `renderInventory()`: Kiss-table with hardware specs
+    - **Event Handlers Added:**
+      - `handleToggleDiscovery()`, `handleApproveDevice()`, `handleRejectDevice()`
+      - `handleGenerateBulkTokens()`, `handleCopyAllTokens()`, `refreshFactory()`
+    - **Polling:** Factory data included in 5-second refresh when on Factory tab
+    - **UI Pattern:** KISS theme components (stat boxes, cards, tables, buttons)
+
+29. **Cloner Image Builder Version/Profile Support (2026-02-25)**
+    - Enhanced `secubox-cloner` CLI with OpenWrt version selection and package profiles
+    - **New CLI Options:**
+      - `--version VER`: Select OpenWrt version (24.10.5, 24.10.0, 23.05.5, 23.05.4)
+      - `--profile PROFILE`: Select package profile (slim, core, full)
+      - `secubox-cloner versions`: List available versions and profiles
+    - **Package Profiles:**
+      - `slim`: Minimal OpenWrt (LuCI + network essentials only)
+      - `core`: Slim + SecuBox mesh (master-link, p2p, secubox-core)
+      - `full`: Clone all installed SecuBox packages from current device
+    - **New RPCD Methods:**
+      - `list_versions`: Returns available OpenWrt versions with latest flag
+      - `list_build_profiles`: Returns available package profiles with descriptions
+      - `build_image`: Now accepts `version` and `profile` parameters
+    - **Files Modified:**
+      - `secubox-core/root/usr/sbin/secubox-cloner`: Added version/profile parsing and build_via_asu profile logic
+      - `luci-app-cloner/root/usr/libexec/rpcd/luci.cloner`: Added list_versions, list_build_profiles, updated build_image
+      - `luci-app-cloner/root/usr/share/rpcd/acl.d/luci-app-cloner.json`: Added permissions for new methods
+    - **Tested:** CLI help, versions command, RPCD methods via ubus all working

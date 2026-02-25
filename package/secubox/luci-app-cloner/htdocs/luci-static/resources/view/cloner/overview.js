@@ -190,6 +190,56 @@ var callScanNetwork = rpc.declare({
 	expect: { devices: [] }
 });
 
+// Factory Auto-Provisioning RPC
+var callPendingDevices = rpc.declare({
+	object: 'luci.cloner',
+	method: 'pending_devices',
+	expect: { devices: [] }
+});
+
+var callApproveDevice = rpc.declare({
+	object: 'luci.cloner',
+	method: 'approve_device',
+	params: ['device_id', 'profile']
+});
+
+var callRejectDevice = rpc.declare({
+	object: 'luci.cloner',
+	method: 'reject_device',
+	params: ['device_id', 'reason']
+});
+
+var callBulkTokens = rpc.declare({
+	object: 'luci.cloner',
+	method: 'bulk_tokens',
+	params: ['count', 'profile', 'ttl'],
+	expect: { tokens: [] }
+});
+
+var callInventory = rpc.declare({
+	object: 'luci.cloner',
+	method: 'inventory',
+	expect: { inventory: [] }
+});
+
+var callListProfiles = rpc.declare({
+	object: 'luci.cloner',
+	method: 'list_profiles',
+	expect: { profiles: [] }
+});
+
+var callDiscoveryStatus = rpc.declare({
+	object: 'luci.cloner',
+	method: 'discovery_status',
+	expect: { }
+});
+
+var callToggleDiscovery = rpc.declare({
+	object: 'luci.cloner',
+	method: 'toggle_discovery',
+	params: ['enabled']
+});
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -248,6 +298,12 @@ return view.extend({
 	buildLogOffset: 0,
 	remotes: [],
 	scannedDevices: [],
+	// Factory state
+	pendingDevices: [],
+	hwInventory: [],
+	profiles: [],
+	discoveryStatus: {},
+	generatedTokens: [],
 
 	load: function() {
 		return Promise.all([
@@ -260,7 +316,12 @@ return view.extend({
 			callStorageInfo().catch(function() { return {}; }),
 			callHistoryList().catch(function() { return []; }),
 			callSerialPorts().catch(function() { return []; }),
-			callListRemotes().catch(function() { return []; })
+			callListRemotes().catch(function() { return []; }),
+			// Factory data
+			callPendingDevices().catch(function() { return []; }),
+			callInventory().catch(function() { return []; }),
+			callListProfiles().catch(function() { return []; }),
+			callDiscoveryStatus().catch(function() { return {}; })
 		]);
 	},
 
@@ -276,9 +337,15 @@ return view.extend({
 		this.history = data[7] || [];
 		this.serialPorts = data[8] || [];
 		this.remotes = data[9] || [];
+		// Factory data
+		this.pendingDevices = data[10] || [];
+		this.hwInventory = data[11] || [];
+		this.profiles = data[12] || [];
+		this.discoveryStatus = data[13] || {};
 
 		var tabs = [
 			{ id: 'overview', label: 'Overview', icon: '🎛️' },
+			{ id: 'factory', label: 'Factory', icon: '🏭' },
 			{ id: 'remotes', label: 'Remotes', icon: '🌐' },
 			{ id: 'build', label: 'Build', icon: '🔨' },
 			{ id: 'console', label: 'Console', icon: '📟' },
@@ -335,6 +402,7 @@ return view.extend({
 
 	renderTabContent: function() {
 		switch (this.currentTab) {
+			case 'factory': return this.renderFactoryTab();
 			case 'remotes': return this.renderRemotesTab();
 			case 'build': return this.renderBuildTab();
 			case 'console': return this.renderConsoleTab();
@@ -513,6 +581,315 @@ return view.extend({
 				]);
 			}))
 		]);
+	},
+
+	// ========================================================================
+	// Factory Tab
+	// ========================================================================
+
+	renderFactoryTab: function() {
+		var self = this;
+		var disco = this.discoveryStatus || {};
+		// Map backend field name to UI expected name
+		disco.enabled = disco.discovery_enabled;
+		var pendingCount = this.pendingDevices.length;
+		var inventoryCount = this.hwInventory.length;
+		var profileCount = this.profiles.length;
+
+		return E('div', {}, [
+			// Stats Grid
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'style': 'margin-bottom:24px;' }, [
+				KissTheme.stat(disco.enabled ? '🟢 ON' : '🔴 OFF', 'Discovery', disco.enabled ? 'var(--kiss-green)' : 'var(--kiss-red)'),
+				KissTheme.stat(pendingCount, 'Pending', pendingCount > 0 ? 'var(--kiss-yellow)' : 'var(--kiss-muted)'),
+				KissTheme.stat(inventoryCount, 'Inventory', 'var(--kiss-blue)'),
+				KissTheme.stat(profileCount, 'Profiles', 'var(--kiss-purple)')
+			]),
+
+			// Two column layout
+			E('div', { 'class': 'kiss-grid kiss-grid-2', 'style': 'margin-bottom:16px;' }, [
+				// Discovery Mode Toggle
+				KissTheme.card([
+					E('span', {}, '🔍 Discovery Mode')
+				], E('div', { 'style': 'display:flex;flex-direction:column;gap:12px;' }, [
+					E('div', { 'style': 'display:flex;align-items:center;gap:12px;' }, [
+						E('span', { 'style': 'font-size:40px;' }, disco.enabled ? '🟢' : '🔴'),
+						E('div', {}, [
+							E('div', { 'style': 'font-weight:600;font-size:16px;' }, disco.enabled ? 'Zero-Touch Active' : 'Discovery Disabled'),
+							E('div', { 'style': 'font-size:12px;color:var(--kiss-muted);' }, disco.enabled ? 'Listening for new devices' : 'No auto-provisioning')
+						])
+					]),
+					E('div', { 'style': 'display:flex;gap:8px;' }, [
+						E('button', {
+							'class': 'kiss-btn kiss-btn-green',
+							'disabled': disco.enabled,
+							'style': disco.enabled ? 'opacity:0.5;' : '',
+							'click': function() { self.handleToggleDiscovery(true); }
+						}, '▶️ Enable'),
+						E('button', {
+							'class': 'kiss-btn kiss-btn-red',
+							'disabled': !disco.enabled,
+							'style': !disco.enabled ? 'opacity:0.5;' : '',
+							'click': function() { self.handleToggleDiscovery(false); }
+						}, '⏹️ Disable')
+					]),
+					disco.last_scan ? E('div', { 'style': 'font-size:11px;color:var(--kiss-muted);' }, 'Last scan: ' + fmtRelative(disco.last_scan)) : null
+				].filter(Boolean))),
+
+				// Bulk Token Generator
+				KissTheme.card([
+					E('span', {}, '🎟️ Bulk Token Generator')
+				], E('div', { 'style': 'display:flex;flex-direction:column;gap:12px;' }, [
+					E('div', { 'style': 'display:flex;gap:12px;align-items:center;flex-wrap:wrap;' }, [
+						E('input', {
+							'id': 'bulk-token-count',
+							'type': 'number',
+							'min': '1',
+							'max': '50',
+							'value': '10',
+							'placeholder': 'Count',
+							'style': 'padding:10px;background:var(--kiss-bg2);border:1px solid var(--kiss-line);border-radius:6px;color:var(--kiss-text);width:80px;'
+						}),
+						E('select', {
+							'id': 'bulk-token-profile',
+							'style': 'padding:10px;background:var(--kiss-bg2);border:1px solid var(--kiss-line);border-radius:6px;color:var(--kiss-text);min-width:150px;'
+						}, this.profiles.length ?
+							this.profiles.map(function(p) { return E('option', { 'value': p.id }, p.name); }) :
+							[E('option', { 'value': 'default' }, 'Default Profile')]
+						),
+						E('button', {
+							'class': 'kiss-btn kiss-btn-blue',
+							'click': function() { self.handleGenerateBulkTokens(); }
+						}, '🎟️ Generate')
+					]),
+					E('div', { 'id': 'generated-tokens-container' }, this.renderGeneratedTokens())
+				]))
+			]),
+
+			// Pending Devices
+			KissTheme.card([
+				E('span', {}, '⏳ Pending Devices'),
+				E('span', { 'style': 'margin-left:auto;font-size:12px;color:var(--kiss-muted);' }, pendingCount + ' awaiting approval')
+			], E('div', { 'id': 'pending-devices-container' }, this.renderPendingDevices())),
+
+			// Hardware Inventory
+			KissTheme.card([
+				E('span', {}, '📦 Hardware Inventory'),
+				E('span', { 'style': 'margin-left:auto;font-size:12px;color:var(--kiss-muted);' }, inventoryCount + ' devices')
+			], E('div', { 'id': 'inventory-container' }, this.renderInventory()))
+		]);
+	},
+
+	renderPendingDevices: function() {
+		var self = this;
+
+		if (!this.pendingDevices.length) {
+			return E('div', { 'style': 'text-align:center;padding:30px;color:var(--kiss-muted);' }, [
+				E('div', { 'style': 'font-size:32px;margin-bottom:8px;' }, '✅'),
+				E('div', {}, 'No pending devices'),
+				E('div', { 'style': 'font-size:12px;margin-top:4px;' }, 'New devices will appear here for approval')
+			]);
+		}
+
+		return E('div', { 'style': 'display:flex;flex-direction:column;gap:8px;' },
+			this.pendingDevices.map(function(dev) {
+				return E('div', {
+					'style': 'display:flex;align-items:center;gap:12px;padding:12px;background:var(--kiss-bg2);border-radius:8px;border:1px solid var(--kiss-line);'
+				}, [
+					E('span', { 'style': 'font-size:24px;' }, '📱'),
+					E('div', { 'style': 'flex:1;' }, [
+						E('div', { 'style': 'font-weight:600;' }, dev.hostname || 'Unknown Device'),
+						E('div', { 'style': 'font-size:12px;color:var(--kiss-muted);display:flex;gap:12px;' }, [
+							E('span', {}, '🔗 ' + (dev.mac || '-')),
+							E('span', {}, '📍 ' + (dev.ip || '-')),
+							E('span', {}, '📱 ' + (dev.model || 'Unknown'))
+						])
+					]),
+					E('select', {
+						'class': 'device-profile-select',
+						'data-device-id': dev.id,
+						'style': 'padding:6px;background:var(--kiss-bg2);border:1px solid var(--kiss-line);border-radius:4px;color:var(--kiss-text);font-size:12px;'
+					}, self.profiles.length ?
+						self.profiles.map(function(p) { return E('option', { 'value': p.id }, p.name); }) :
+						[E('option', { 'value': 'default' }, 'Default')]
+					),
+					E('button', {
+						'class': 'kiss-btn kiss-btn-green',
+						'style': 'padding:6px 12px;font-size:12px;',
+						'data-device-id': dev.id,
+						'click': function(ev) { self.handleApproveDevice(ev); }
+					}, '✅'),
+					E('button', {
+						'class': 'kiss-btn kiss-btn-red',
+						'style': 'padding:6px 12px;font-size:12px;',
+						'data-device-id': dev.id,
+						'click': function(ev) { self.handleRejectDevice(ev); }
+					}, '❌')
+				]);
+			})
+		);
+	},
+
+	renderGeneratedTokens: function() {
+		if (!this.generatedTokens.length) {
+			return E('div', { 'style': 'text-align:center;padding:16px;color:var(--kiss-muted);font-size:12px;' },
+				'Generate tokens to see them here');
+		}
+
+		var self = this;
+		return E('div', { 'style': 'display:flex;flex-direction:column;gap:6px;' }, [
+			E('div', { 'style': 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;' }, [
+				E('span', { 'style': 'font-size:12px;color:var(--kiss-muted);' }, this.generatedTokens.length + ' tokens generated'),
+				E('button', {
+					'class': 'kiss-btn',
+					'style': 'padding:4px 8px;font-size:11px;',
+					'click': function() { self.handleCopyAllTokens(); }
+				}, '📋 Copy All')
+			]),
+			E('div', { 'style': 'max-height:120px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;' },
+				this.generatedTokens.map(function(tok) {
+					return E('div', {
+						'style': 'font-family:monospace;font-size:11px;padding:6px 8px;background:var(--kiss-bg);border-radius:4px;color:var(--kiss-cyan);word-break:break-all;'
+					}, tok);
+				})
+			)
+		]);
+	},
+
+	renderInventory: function() {
+		if (!this.hwInventory.length) {
+			return E('div', { 'style': 'text-align:center;padding:30px;color:var(--kiss-muted);' }, [
+				E('div', { 'style': 'font-size:32px;margin-bottom:8px;' }, '📦'),
+				E('div', {}, 'No devices in inventory'),
+				E('div', { 'style': 'font-size:12px;margin-top:4px;' }, 'Discovered hardware will appear here')
+			]);
+		}
+
+		return E('table', { 'class': 'kiss-table' }, [
+			E('thead', {}, E('tr', {}, [
+				E('th', {}, 'ID'),
+				E('th', {}, 'MAC'),
+				E('th', {}, 'Model'),
+				E('th', {}, 'CPU'),
+				E('th', {}, 'RAM'),
+				E('th', {}, 'Storage'),
+				E('th', {}, 'Collected')
+			])),
+			E('tbody', {}, this.hwInventory.map(function(dev) {
+				return E('tr', {}, [
+					E('td', { 'style': 'font-family:monospace;font-size:11px;' }, dev.id || '-'),
+					E('td', { 'style': 'font-family:monospace;font-size:11px;' }, dev.mac || '-'),
+					E('td', {}, dev.model || '-'),
+					E('td', {}, dev.cpu || '-'),
+					E('td', {}, dev.ram ? fmtSize(dev.ram) : '-'),
+					E('td', {}, dev.storage ? fmtSize(dev.storage) : '-'),
+					E('td', { 'style': 'font-size:11px;' }, dev.collected ? fmtRelative(dev.collected) : '-')
+				]);
+			}))
+		]);
+	},
+
+	handleToggleDiscovery: function(enabled) {
+		var self = this;
+		callToggleDiscovery(enabled).then(function(res) {
+			if (res.success) {
+				ui.addNotification(null, E('p', enabled ? 'Discovery mode enabled' : 'Discovery mode disabled'), 'info');
+				self.refreshFactory();
+			} else {
+				ui.addNotification(null, E('p', res.error || 'Failed to toggle discovery'), 'error');
+			}
+		});
+	},
+
+	handleApproveDevice: function(ev) {
+		var self = this;
+		var deviceId = ev.currentTarget.dataset.deviceId;
+		var row = ev.currentTarget.closest('div[style*="background:var(--kiss-bg2)"]');
+		var profileSelect = row ? row.querySelector('.device-profile-select') : null;
+		var profile = profileSelect ? profileSelect.value : 'default';
+
+		callApproveDevice(deviceId, profile).then(function(res) {
+			if (res.success) {
+				ui.addNotification(null, E('p', 'Device approved and provisioned'), 'info');
+				self.refreshFactory();
+			} else {
+				ui.addNotification(null, E('p', res.error || 'Approval failed'), 'error');
+			}
+		});
+	},
+
+	handleRejectDevice: function(ev) {
+		var self = this;
+		var deviceId = ev.currentTarget.dataset.deviceId;
+
+		if (confirm('Reject this device? It will need to reconnect to request provisioning again.')) {
+			callRejectDevice(deviceId, 'Manual rejection').then(function(res) {
+				if (res.success) {
+					ui.addNotification(null, E('p', 'Device rejected'), 'info');
+					self.refreshFactory();
+				} else {
+					ui.addNotification(null, E('p', res.error || 'Rejection failed'), 'error');
+				}
+			});
+		}
+	},
+
+	handleGenerateBulkTokens: function() {
+		var self = this;
+		var countEl = document.getElementById('bulk-token-count');
+		var profileEl = document.getElementById('bulk-token-profile');
+		var count = parseInt(countEl ? countEl.value : '10', 10);
+		var profile = profileEl ? profileEl.value : 'default';
+
+		if (count < 1 || count > 50) {
+			ui.addNotification(null, E('p', 'Count must be between 1 and 50'), 'warning');
+			return;
+		}
+
+		ui.addNotification(null, E('p', 'Generating ' + count + ' tokens...'), 'info');
+
+		callBulkTokens(count, profile, 86400).then(function(tokens) {
+			self.generatedTokens = tokens || [];
+			var container = document.getElementById('generated-tokens-container');
+			if (container) {
+				dom.content(container, self.renderGeneratedTokens());
+			}
+			if (self.generatedTokens.length) {
+				ui.addNotification(null, E('p', 'Generated ' + self.generatedTokens.length + ' tokens'), 'info');
+			} else {
+				ui.addNotification(null, E('p', 'No tokens generated'), 'warning');
+			}
+		});
+	},
+
+	handleCopyAllTokens: function() {
+		if (!this.generatedTokens.length) return;
+		var text = this.generatedTokens.join('\n');
+		navigator.clipboard.writeText(text).then(function() {
+			ui.addNotification(null, E('p', 'All tokens copied to clipboard'), 'info');
+		});
+	},
+
+	refreshFactory: function() {
+		var self = this;
+		return Promise.all([
+			callPendingDevices().catch(function() { return []; }),
+			callInventory().catch(function() { return []; }),
+			callListProfiles().catch(function() { return []; }),
+			callDiscoveryStatus().catch(function() { return {}; })
+		]).then(function(data) {
+			self.pendingDevices = data[0] || [];
+			self.hwInventory = data[1] || [];
+			self.profiles = data[2] || [];
+			self.discoveryStatus = data[3] || {};
+
+			// Re-render Factory tab if active
+			if (self.currentTab === 'factory') {
+				var tabContent = document.getElementById('tab-content');
+				if (tabContent) {
+					dom.content(tabContent, self.renderFactoryTab());
+				}
+			}
+		});
 	},
 
 	// ========================================================================
@@ -1393,20 +1770,36 @@ return view.extend({
 
 	refresh: function() {
 		var self = this;
-		return Promise.all([
+		var promises = [
 			callGetStatus(),
 			callListImages(),
 			callListTokens(),
 			callListClones(),
 			callGetBuildProgress().catch(function() { return {}; }),
 			callStorageInfo().catch(function() { return {}; })
-		]).then(function(data) {
+		];
+
+		// Include factory data when on factory tab
+		if (self.currentTab === 'factory') {
+			promises.push(
+				callPendingDevices().catch(function() { return []; }),
+				callDiscoveryStatus().catch(function() { return {}; })
+			);
+		}
+
+		return Promise.all(promises).then(function(data) {
 			self.status = data[0] || {};
 			self.images = data[1] || [];
 			self.tokens = data[2] || [];
 			self.clones = data[3] || [];
 			self.buildProgress = data[4] || {};
 			self.storage = data[5] || {};
+
+			// Factory data if available
+			if (self.currentTab === 'factory' && data.length > 6) {
+				self.pendingDevices = data[6] || [];
+				self.discoveryStatus = data[7] || {};
+			}
 
 			// Only update current tab content
 			var tabContent = document.getElementById('tab-content');

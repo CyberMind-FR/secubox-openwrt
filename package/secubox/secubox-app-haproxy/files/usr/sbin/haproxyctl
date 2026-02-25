@@ -486,6 +486,31 @@ generate_certs_list() {
 # Configuration Generation
 # ===========================================
 
+# Helper to print a single userlist from UCI
+_print_uci_userlist() {
+	local section="$1"
+	local name user
+
+	config_get name "$section" name
+	config_get user "$section" user
+
+	[ -z "$name" ] && return
+	[ -z "$user" ] && return
+
+	echo "userlist $name"
+	# user format in UCI: username:password_hash
+	local username="${user%%:*}"
+	local password="${user#*:}"
+	echo "    user $username password $password"
+	echo ""
+}
+
+# Generate all UCI-defined userlists
+_generate_uci_userlists() {
+	config_load haproxy
+	config_foreach _print_uci_userlist userlist
+}
+
 generate_config() {
 	load_config
 
@@ -541,6 +566,9 @@ EOF
 		echo "" >> "$cfg_file"
 	fi
 
+	# Generate UCI-defined userlists
+	_generate_uci_userlists >> "$cfg_file"
+
 	# Stats frontend
 	if [ "$stats_enabled" = "1" ]; then
 		cat >> "$cfg_file" << EOF
@@ -563,6 +591,9 @@ EOF
 	_generate_backends >> "$cfg_file"
 
 	log_info "Configuration generated: $cfg_file"
+
+	# Sync config to all locations HAProxy might read from
+	cp "$cfg_file" /etc/haproxy.cfg 2>/dev/null || true
 }
 
 _generate_frontends() {
@@ -605,19 +636,35 @@ EOF
 		if [ -f "$CERTS_LIST_FILE" ] && [ -s "$CERTS_LIST_FILE" ]; then
 			cat << EOF
 frontend https-in
-    bind *:$https_port,[::]:$https_port ssl crt-list $CONTAINER_CERTS_PATH/certs.list alpn h2,http/1.1
+    bind *:$https_port,[::]:$https_port ssl crt-list $CONTAINER_CERTS_PATH/certs.list alpn http/1.1
     mode http
     http-request set-header X-Forwarded-Proto https
     http-request set-header X-Real-IP %[src]
+
+    # Security: Block access to sensitive paths
+    acl is_sensitive_path path_beg /.git
+    acl is_sensitive_path path_beg /.svn
+    acl is_sensitive_path path_beg /.env
+    acl is_sensitive_path path_beg /.htaccess
+    acl is_sensitive_path path_beg /.htpasswd
+    http-request deny if is_sensitive_path
 EOF
 		else
 			# Fallback to directory mode if no certs.list
 			cat << EOF
 frontend https-in
-    bind *:$https_port,[::]:$https_port ssl crt $CONTAINER_CERTS_PATH/ alpn h2,http/1.1
+    bind *:$https_port,[::]:$https_port ssl crt $CONTAINER_CERTS_PATH/ alpn http/1.1
     mode http
     http-request set-header X-Forwarded-Proto https
     http-request set-header X-Real-IP %[src]
+
+    # Security: Block access to sensitive paths
+    acl is_sensitive_path path_beg /.git
+    acl is_sensitive_path path_beg /.svn
+    acl is_sensitive_path path_beg /.env
+    acl is_sensitive_path path_beg /.htaccess
+    acl is_sensitive_path path_beg /.htpasswd
+    http-request deny if is_sensitive_path
 EOF
 		fi
 		# Add path-based ACLs BEFORE vhost ACLs (path rules take precedence)
@@ -731,6 +778,11 @@ _emit_sorted_path_acls() {
 		local effective_backend="$backend"
 		config_get waf_bypass "$section" waf_bypass "0"
 	[ "$waf_enabled" = "1" ] && [ "$waf_bypass" != "1" ] && effective_backend="$waf_backend"
+	# Set nocache flag during request for checking during response
+	config_get no_cache "$section" no_cache "0"
+	if [ "$no_cache" = "1" ]; then
+		echo "    http-request set-var(txn.nocache) str(yes) if host_${acl_name}"
+	fi
 		if [ -n "$host_acl_name" ]; then
 			echo "    use_backend $effective_backend if host_${host_acl_name} ${acl_name}"
 		else
@@ -795,10 +847,12 @@ _add_vhost_acl() {
 	esac
 
 	# Add auth requirement for private vhosts
-	local auth_enabled
+	local auth_enabled auth_realm auth_userlist
 	config_get auth_enabled "$section" auth_enabled "0"
 	if [ "$auth_enabled" = "1" ]; then
-		echo "    http-request auth realm \"SecuBox\" if host_${acl_name} !{ http_auth(secubox_users) }"
+		config_get auth_realm "$section" auth_realm "SecuBox"
+		config_get auth_userlist "$section" auth_userlist "secubox_users"
+		echo "    http-request auth realm \"$auth_realm\" if host_${acl_name} !{ http_auth($auth_userlist) }"
 		# Log auth user in header for backend (http_auth_user only works after successful auth)
 		echo "    http-request set-header X-Auth-User %[http_auth_user] if host_${acl_name}"
 	fi
@@ -807,7 +861,20 @@ _add_vhost_acl() {
 	local effective_backend="$backend"
 	config_get waf_bypass "$section" waf_bypass "0"
 	[ "$waf_enabled" = "1" ] && [ "$waf_bypass" != "1" ] && effective_backend="$waf_backend"
+	# Set nocache flag during request for checking during response
+	config_get no_cache "$section" no_cache "0"
+	if [ "$no_cache" = "1" ]; then
+		echo "    http-request set-var(txn.nocache) str(yes) if host_${acl_name}"
+	fi
 	echo "    use_backend $effective_backend if host_${acl_name}"
+	# Add no-cache headers if configured
+	config_get no_cache "$section" no_cache "0"
+	if [ "$no_cache" = "1" ]; then
+		echo "    http-response set-header Cache-Control \"no-cache, no-store, must-revalidate\" if { var(txn.nocache) -m str yes }"
+		echo "    http-response set-header Pragma \"no-cache\" if { var(txn.nocache) -m str yes }"
+		echo "    http-response set-header Expires \"0\" if { var(txn.nocache) -m str yes }"
+	fi
+
 }
 
 _generate_backends() {

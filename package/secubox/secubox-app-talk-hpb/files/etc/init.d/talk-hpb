@@ -1,0 +1,100 @@
+#!/bin/sh /etc/rc.common
+
+START=99
+STOP=10
+USE_PROCD=1
+
+CONTAINER_NAME="nextcloud-talk-hpb"
+IMAGE="ghcr.io/nextcloud-releases/aio-talk:latest"
+
+get_config() {
+    local key="$1"
+    local section="$2"
+    local default="$3"
+    uci -q get "talk-hpb.${section}.${key}" || echo "$default"
+}
+
+start_service() {
+    local enabled=$(get_config enabled main 0)
+    [ "$enabled" != "1" ] && return 0
+
+    local nc_domain=$(get_config nc_domain server "")
+    local signaling_domain=$(get_config signaling_domain server "")
+    local signaling_port=$(get_config signaling_port server 8081)
+    local talk_port=$(get_config talk_port server 3478)
+
+    local turn_secret=$(get_config turn_secret secrets "")
+    local signaling_secret=$(get_config signaling_secret secrets "")
+    local internal_secret=$(get_config internal_secret secrets "")
+
+    local turn_enabled=$(get_config enabled turn 1)
+    local turn_udp=$(get_config udp turn 1)
+    local turn_tcp=$(get_config tcp turn 1)
+
+    local container=$(get_config container_name main "$CONTAINER_NAME")
+    local image=$(get_config image main "$IMAGE")
+
+    # Validate required settings
+    if [ -z "$nc_domain" ]; then
+        logger -t talk-hpb "ERROR: nc_domain not configured"
+        return 1
+    fi
+
+    if [ -z "$turn_secret" ] || [ -z "$signaling_secret" ] || [ -z "$internal_secret" ]; then
+        logger -t talk-hpb "ERROR: Secrets not configured. Run: talk-hpbctl generate-secrets"
+        return 1
+    fi
+
+    # Stop existing container
+    docker stop "$container" 2>/dev/null
+    docker rm "$container" 2>/dev/null
+
+    # Build docker run command
+    local docker_cmd="docker run --name=$container --restart=always --detach"
+    docker_cmd="$docker_cmd -e NC_DOMAIN=$nc_domain"
+    docker_cmd="$docker_cmd -e TALK_PORT=$talk_port"
+    docker_cmd="$docker_cmd -e TURN_SECRET=$turn_secret"
+    docker_cmd="$docker_cmd -e SIGNALING_SECRET=$signaling_secret"
+    docker_cmd="$docker_cmd -e INTERNAL_SECRET=$internal_secret"
+
+    # Signaling port
+    docker_cmd="$docker_cmd -p ${signaling_port}:8081"
+
+    # TURN ports if enabled
+    if [ "$turn_enabled" = "1" ]; then
+        [ -n "$signaling_domain" ] && docker_cmd="$docker_cmd -e TALK_HOST=$signaling_domain"
+        [ "$turn_tcp" = "1" ] && docker_cmd="$docker_cmd -p ${talk_port}:3478/tcp"
+        [ "$turn_udp" = "1" ] && docker_cmd="$docker_cmd -p ${talk_port}:3478/udp"
+    fi
+
+    docker_cmd="$docker_cmd $image"
+
+    logger -t talk-hpb "Starting Nextcloud Talk HPB container..."
+    eval $docker_cmd
+
+    if [ $? -eq 0 ]; then
+        logger -t talk-hpb "Container started successfully"
+    else
+        logger -t talk-hpb "ERROR: Failed to start container"
+        return 1
+    fi
+}
+
+stop_service() {
+    local container=$(get_config container_name main "$CONTAINER_NAME")
+
+    logger -t talk-hpb "Stopping container..."
+    docker stop "$container" 2>/dev/null
+    docker rm "$container" 2>/dev/null
+    logger -t talk-hpb "Container stopped"
+}
+
+status_service() {
+    local container=$(get_config container_name main "$CONTAINER_NAME")
+    docker inspect "$container" >/dev/null 2>&1
+}
+
+reload_service() {
+    stop_service
+    start_service
+}

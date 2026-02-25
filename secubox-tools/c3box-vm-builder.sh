@@ -41,6 +41,7 @@ IMG_FILE="$OUTPUT_DIR/c3box-combined-ext4.img"
 VMDK_FILE="$OUTPUT_DIR/$VM_NAME.vmdk"
 OVA_FILE="$OUTPUT_DIR/$VM_NAME.ova"
 VDI_FILE="$OUTPUT_DIR/$VM_NAME.vdi"
+QCOW2_FILE="$OUTPUT_DIR/$VM_NAME.qcow2"
 
 print_header() {
     echo ""
@@ -365,6 +366,23 @@ convert_to_vdi() {
     fi
 }
 
+convert_to_qcow2() {
+    print_header "Converting to QCOW2 (Proxmox/KVM)"
+
+    cd "$OUTPUT_DIR"
+
+    if ! command -v qemu-img &>/dev/null; then
+        print_error "qemu-img not found. Install: sudo apt install qemu-utils"
+        return 1
+    fi
+
+    print_info "Converting to QCOW2 format..."
+    qemu-img convert -f raw -O qcow2 -o preallocation=metadata "$IMG_FILE" "$QCOW2_FILE"
+
+    print_success "QCOW2 created: $QCOW2_FILE"
+    print_info "Size: $(du -h "$QCOW2_FILE" | cut -f1)"
+}
+
 create_vmx_file() {
     print_header "Creating VMware Configuration"
 
@@ -521,7 +539,9 @@ create_package() {
     cp -v "$VMDK_FILE" "$pkg_dir/" 2>/dev/null || true
     cp -v "$OVA_FILE" "$pkg_dir/" 2>/dev/null || true
     cp -v "$VDI_FILE" "$pkg_dir/" 2>/dev/null || true
+    cp -v "$QCOW2_FILE" "$pkg_dir/" 2>/dev/null || true
     cp -v "$OUTPUT_DIR/$VM_NAME.vmx" "$pkg_dir/" 2>/dev/null || true
+    cp -v "$BUILD_DIR/proxmox-import.sh" "$pkg_dir/" 2>/dev/null || true
 
     # Create README
     cat > "$pkg_dir/README.md" << 'README'
@@ -542,6 +562,30 @@ create_package() {
 2. Create new VM and attach `C3Box-SecuBox.vdi`
 3. Configure: Linux 64-bit, 2GB RAM, Bridged Network
 4. Start the VM
+
+### Proxmox VE
+
+**Option 1: GUI Import**
+1. Upload `C3Box-SecuBox.qcow2` to Proxmox storage
+2. Create VM: 2 cores, 2GB RAM, VirtIO SCSI
+3. Import disk via Hardware → Add → Hard Disk
+
+**Option 2: CLI Import**
+```bash
+scp C3Box-SecuBox.qcow2 root@proxmox:/tmp/
+ssh root@proxmox
+./proxmox-import.sh 200 local-lvm
+qm start 200
+```
+
+**Option 3: Manual qm commands**
+```bash
+qm create 200 --name secubox --memory 2048 --cores 2 \
+    --net0 virtio,bridge=vmbr0 --ostype l26
+qm importdisk 200 C3Box-SecuBox.qcow2 local-lvm
+qm set 200 --scsi0 local-lvm:vm-200-disk-0 --boot order=scsi0
+qm start 200
+```
 
 ### Default Credentials
 
@@ -614,6 +658,7 @@ cmd_convert() {
 
     convert_to_vmdk
     convert_to_vdi
+    convert_to_qcow2
     create_vmx_file
     create_ova
 
@@ -659,10 +704,11 @@ Examples:
   ./c3box-vm-builder.sh package
 
 Output:
-  c3box-vm/output/C3Box-SecuBox.vmdk  - VMware disk
-  c3box-vm/output/C3Box-SecuBox.ova   - VMware appliance
-  c3box-vm/output/C3Box-SecuBox.vdi   - VirtualBox disk
-  c3box-vm/output/C3Box-SecuBox.vmx   - VMware config
+  c3box-vm/output/C3Box-SecuBox.vmdk   - VMware disk
+  c3box-vm/output/C3Box-SecuBox.qcow2  - Proxmox/KVM disk
+  c3box-vm/output/C3Box-SecuBox.ova    - VMware appliance
+  c3box-vm/output/C3Box-SecuBox.vdi    - VirtualBox disk
+  c3box-vm/output/C3Box-SecuBox.vmx    - VMware config
 
 USAGE
 }

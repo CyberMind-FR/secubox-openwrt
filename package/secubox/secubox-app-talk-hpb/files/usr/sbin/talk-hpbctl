@@ -1,0 +1,308 @@
+#!/bin/sh
+# talk-hpbctl - Nextcloud Talk High Performance Backend control
+
+UCI_CONFIG="talk-hpb"
+CONTAINER_NAME="nextcloud-talk-hpb"
+
+usage() {
+    cat <<EOF
+Usage: talk-hpbctl <command> [options]
+
+Commands:
+  status              Show service status
+  setup <nc_domain> <signaling_domain>
+                      Configure and start the service
+  generate-secrets    Generate random secrets
+  show-secrets        Display current secrets
+  show-config         Show Nextcloud Talk configuration
+  test                Test signaling server connectivity
+  logs [lines]        Show container logs
+  pull                Pull latest Docker image
+  start               Start the service
+  stop                Stop the service
+  restart             Restart the service
+  enable              Enable autostart
+  disable             Disable autostart
+
+Examples:
+  talk-hpbctl setup nextcloud.example.com signaling.example.com
+  talk-hpbctl status
+  talk-hpbctl logs 50
+EOF
+}
+
+get_config() {
+    uci -q get "$UCI_CONFIG.$1.$2" || echo "$3"
+}
+
+set_config() {
+    uci set "$UCI_CONFIG.$1.$2=$3"
+}
+
+generate_secret() {
+    openssl rand -hex 32
+}
+
+cmd_generate_secrets() {
+    local turn_secret=$(generate_secret)
+    local signaling_secret=$(generate_secret)
+    local internal_secret=$(generate_secret)
+
+    set_config secrets turn_secret "$turn_secret"
+    set_config secrets signaling_secret "$signaling_secret"
+    set_config secrets internal_secret "$internal_secret"
+    uci commit "$UCI_CONFIG"
+
+    echo "Secrets generated and saved to UCI config"
+    echo ""
+    echo "TURN_SECRET:      $turn_secret"
+    echo "SIGNALING_SECRET: $signaling_secret"
+    echo "INTERNAL_SECRET:  $internal_secret"
+}
+
+cmd_show_secrets() {
+    echo "Current secrets:"
+    echo ""
+    echo "TURN_SECRET:      $(get_config secrets turn_secret '')"
+    echo "SIGNALING_SECRET: $(get_config secrets signaling_secret '')"
+    echo "INTERNAL_SECRET:  $(get_config secrets internal_secret '')"
+}
+
+cmd_setup() {
+    local nc_domain="$1"
+    local signaling_domain="$2"
+
+    if [ -z "$nc_domain" ] || [ -z "$signaling_domain" ]; then
+        echo "Usage: talk-hpbctl setup <nc_domain> <signaling_domain>"
+        echo ""
+        echo "Example: talk-hpbctl setup nextcloud.gk2.secubox.in signaling.gk2.secubox.in"
+        return 1
+    fi
+
+    echo "Setting up Nextcloud Talk HPB..."
+    echo ""
+
+    # Check if secrets exist, generate if not
+    local signaling_secret=$(get_config secrets signaling_secret '')
+    if [ -z "$signaling_secret" ]; then
+        echo "Generating secrets..."
+        cmd_generate_secrets
+        echo ""
+    fi
+
+    # Configure domains
+    set_config server nc_domain "$nc_domain"
+    set_config server signaling_domain "$signaling_domain"
+    set_config main enabled 1
+    uci commit "$UCI_CONFIG"
+
+    echo "Configuration saved:"
+    echo "  NC_DOMAIN:        $nc_domain"
+    echo "  SIGNALING_DOMAIN: $signaling_domain"
+    echo ""
+
+    # Create HAProxy vhost if haproxyctl exists
+    if command -v haproxyctl >/dev/null 2>&1; then
+        echo "Creating HAProxy vhost for $signaling_domain..."
+
+        local signaling_port=$(get_config server signaling_port 8081)
+        local backend_name="talk_hpb_signaling"
+
+        # Create backend
+        uci set "haproxy.${backend_name}=backend"
+        uci set "haproxy.${backend_name}.name=$backend_name"
+        uci set "haproxy.${backend_name}.mode=http"
+        uci set "haproxy.${backend_name}.balance=roundrobin"
+        uci set "haproxy.${backend_name}.enabled=1"
+
+        # Create server
+        uci set "haproxy.${backend_name}_srv=server"
+        uci set "haproxy.${backend_name}_srv.backend=$backend_name"
+        uci set "haproxy.${backend_name}_srv.name=signaling"
+        uci set "haproxy.${backend_name}_srv.address=192.168.255.1"
+        uci set "haproxy.${backend_name}_srv.port=$signaling_port"
+        uci set "haproxy.${backend_name}_srv.enabled=1"
+
+        # Create vhost
+        local vhost_name=$(echo "$signaling_domain" | sed 's/[^a-zA-Z0-9]/_/g')
+        uci set "haproxy.${vhost_name}=vhost"
+        uci set "haproxy.${vhost_name}.domain=$signaling_domain"
+        uci set "haproxy.${vhost_name}.backend=$backend_name"
+        uci set "haproxy.${vhost_name}.waf_bypass=1"
+        uci set "haproxy.${vhost_name}.priority=50"
+        uci set "haproxy.${vhost_name}.ssl=1"
+        uci set "haproxy.${vhost_name}.ssl_redirect=1"
+        uci set "haproxy.${vhost_name}.acme=1"
+        uci set "haproxy.${vhost_name}.enabled=1"
+
+        uci commit haproxy
+        haproxyctl generate >/dev/null 2>&1
+        haproxyctl reload >/dev/null 2>&1
+        echo "HAProxy vhost created: https://$signaling_domain"
+    fi
+
+    echo ""
+    echo "Starting service..."
+    /etc/init.d/talk-hpb restart
+
+    echo ""
+    echo "Setup complete!"
+    echo ""
+    cmd_show_config
+}
+
+cmd_show_config() {
+    local nc_domain=$(get_config server nc_domain '')
+    local signaling_domain=$(get_config server signaling_domain '')
+    local signaling_secret=$(get_config secrets signaling_secret '')
+    local turn_secret=$(get_config secrets turn_secret '')
+    local talk_port=$(get_config server talk_port 3478)
+
+    echo "=========================================="
+    echo "Nextcloud Talk Admin Settings"
+    echo "=========================================="
+    echo ""
+    echo "High-performance backend:"
+    echo "  URL:    https://${signaling_domain}"
+    echo "  Secret: ${signaling_secret}"
+    echo ""
+    echo "STUN/TURN servers:"
+    echo "  Mode:   turn: only"
+    echo "  URL:    ${signaling_domain}:${talk_port}"
+    echo "  Secret: ${turn_secret}"
+    echo "  Protocol: UDP and TCP"
+    echo ""
+    echo "=========================================="
+    echo "Verify in Nextcloud: /settings/admin/talk"
+    echo "=========================================="
+}
+
+cmd_status() {
+    local enabled=$(get_config main enabled 0)
+    local container=$(get_config main container_name "$CONTAINER_NAME")
+    local nc_domain=$(get_config server nc_domain '')
+    local signaling_domain=$(get_config server signaling_domain '')
+
+    echo "Nextcloud Talk HPB Status"
+    echo "========================="
+    echo ""
+    echo "Enabled:           $([ "$enabled" = "1" ] && echo "Yes" || echo "No")"
+    echo "NC Domain:         ${nc_domain:-Not configured}"
+    echo "Signaling Domain:  ${signaling_domain:-Not configured}"
+    echo ""
+
+    if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
+        echo "Container:         Running"
+        echo ""
+        docker ps --filter "name=${container}" --format "table {{.Status}}\t{{.Ports}}"
+    elif docker ps -a --format '{{.Names}}' | grep -q "^${container}$"; then
+        echo "Container:         Stopped"
+    else
+        echo "Container:         Not created"
+    fi
+}
+
+cmd_test() {
+    local signaling_domain=$(get_config server signaling_domain '')
+
+    if [ -z "$signaling_domain" ]; then
+        echo "Error: Signaling domain not configured"
+        return 1
+    fi
+
+    echo "Testing signaling server..."
+    echo ""
+
+    local url="https://${signaling_domain}/api/v1/welcome"
+    echo "URL: $url"
+    echo ""
+
+    local response=$(curl -s -m 10 "$url" 2>/dev/null)
+    if [ -n "$response" ]; then
+        echo "Response: $response"
+        if echo "$response" | grep -q "nextcloud-spreed-signaling"; then
+            echo ""
+            echo "SUCCESS: Signaling server is working!"
+        else
+            echo ""
+            echo "WARNING: Unexpected response"
+        fi
+    else
+        echo "ERROR: No response from signaling server"
+        echo ""
+        echo "Check:"
+        echo "  1. Container is running: talk-hpbctl status"
+        echo "  2. HAProxy vhost is configured"
+        echo "  3. SSL certificate is valid"
+        return 1
+    fi
+}
+
+cmd_logs() {
+    local lines="${1:-100}"
+    local container=$(get_config main container_name "$CONTAINER_NAME")
+    docker logs --tail "$lines" "$container" 2>&1
+}
+
+cmd_pull() {
+    local image=$(get_config main image 'ghcr.io/nextcloud-releases/aio-talk:latest')
+    echo "Pulling latest image: $image"
+    docker pull "$image"
+}
+
+# Main
+case "$1" in
+    status)
+        cmd_status
+        ;;
+    setup)
+        cmd_setup "$2" "$3"
+        ;;
+    generate-secrets)
+        cmd_generate_secrets
+        ;;
+    show-secrets)
+        cmd_show_secrets
+        ;;
+    show-config)
+        cmd_show_config
+        ;;
+    test)
+        cmd_test
+        ;;
+    logs)
+        cmd_logs "$2"
+        ;;
+    pull)
+        cmd_pull
+        ;;
+    start)
+        /etc/init.d/talk-hpb start
+        ;;
+    stop)
+        /etc/init.d/talk-hpb stop
+        ;;
+    restart)
+        /etc/init.d/talk-hpb restart
+        ;;
+    enable)
+        /etc/init.d/talk-hpb enable
+        uci set "$UCI_CONFIG.main.enabled=1"
+        uci commit "$UCI_CONFIG"
+        echo "Talk HPB enabled"
+        ;;
+    disable)
+        /etc/init.d/talk-hpb disable
+        uci set "$UCI_CONFIG.main.enabled=0"
+        uci commit "$UCI_CONFIG"
+        echo "Talk HPB disabled"
+        ;;
+    -h|--help|help|"")
+        usage
+        ;;
+    *)
+        echo "Unknown command: $1"
+        usage
+        exit 1
+        ;;
+esac

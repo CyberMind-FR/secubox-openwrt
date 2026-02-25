@@ -1,0 +1,14 @@
+{
+	"admin/status/zkp": {
+		"title": "ZKP Cryptography",
+		"order": 85,
+		"action": {
+			"type": "view",
+			"path": "zkp/overview"
+		},
+		"depends": {
+			"acl": ["luci-app-zkp"],
+			"uci": {}
+		}
+	}
+}

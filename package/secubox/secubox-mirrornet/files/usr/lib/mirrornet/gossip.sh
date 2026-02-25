@@ -206,12 +206,51 @@ gossip_receive() {
     # Process by type
     case "$type" in
         ioc)
-            # Threat intelligence update
-            if [ -f /usr/lib/secubox/threat-intel.sh ]; then
-                . /usr/lib/secubox/threat-intel.sh
-                local ioc_data
-                ioc_data=$(echo "$message" | jsonfilter -e '@.data')
-                threat_intel_receive "$ioc_data" "$origin"
+            # Threat intelligence update - bridge to p2p-intel with ZKP trust
+            local ioc_data
+            ioc_data=$(echo "$message" | jsonfilter -e '@.data')
+
+            if [ -f /usr/lib/p2p-intel/validator.sh ]; then
+                . /usr/lib/p2p-intel/validator.sh
+
+                # Validate IOC with ZKP-enhanced trust
+                if _is_source_trusted "$origin"; then
+                    # Update reputation for valid IOC
+                    if [ -f /usr/lib/mirrornet/reputation.sh ]; then
+                        . /usr/lib/mirrornet/reputation.sh
+                        reputation_valid_ioc "$origin"
+                    fi
+
+                    # Queue for application
+                    if [ -f /usr/lib/p2p-intel/applier.sh ]; then
+                        . /usr/lib/p2p-intel/applier.sh
+                        queue_pending "$ioc_data" "$origin"
+                    fi
+
+                    # Track IOC source for feedback attribution
+                    if [ -f /usr/lib/p2p-intel/feedback.sh ]; then
+                        . /usr/lib/p2p-intel/feedback.sh
+                        local ioc_value ioc_type
+                        ioc_value=$(echo "$ioc_data" | jsonfilter -e '@.value' 2>/dev/null)
+                        ioc_type=$(echo "$ioc_data" | jsonfilter -e '@.type' 2>/dev/null)
+                        [ -n "$ioc_value" ] && feedback_track_ioc "$ioc_value" "$ioc_type" "$origin"
+                    fi
+
+                    logger -t mirrornet "Gossip: valid IOC from ZKP-trusted $origin"
+                else
+                    # Untrusted source
+                    if [ -f /usr/lib/mirrornet/reputation.sh ]; then
+                        . /usr/lib/mirrornet/reputation.sh
+                        reputation_invalid_ioc "$origin"
+                    fi
+                    logger -t mirrornet "Gossip: rejected IOC from untrusted $origin"
+                fi
+            else
+                # Fallback to legacy threat-intel.sh
+                if [ -f /usr/lib/secubox/threat-intel.sh ]; then
+                    . /usr/lib/secubox/threat-intel.sh
+                    threat_intel_receive "$ioc_data" "$origin"
+                fi
             fi
             ;;
         peer_status)
@@ -282,8 +321,8 @@ gossip_forward() {
     local msg_path
     msg_path=$(echo "$message" | jsonfilter -e '@.path[*]' 2>/dev/null)
 
-    # Forward to each peer not in path
-    while read -r peer_line; do
+    # Forward to each peer not in path (ash-compatible)
+    jsonfilter -i "$peers_file" -e '@[*]' 2>/dev/null | while read -r peer_line; do
         local peer_addr peer_id
         peer_addr=$(echo "$peer_line" | jsonfilter -e '@.address' 2>/dev/null)
         peer_id=$(echo "$peer_line" | jsonfilter -e '@.id' 2>/dev/null)
@@ -302,7 +341,7 @@ gossip_forward() {
             --connect-timeout 2 &
 
         _update_stat "forwarded"
-    done < <(jsonfilter -i "$peers_file" -e '@[*]' 2>/dev/null)
+    done
 
     wait  # Wait for all forwards to complete
 }
@@ -328,8 +367,11 @@ gossip_broadcast() {
         return 1
     fi
 
-    local sent_count=0
-    while read -r peer_line; do
+    # Send to all peers (ash-compatible)
+    local sent_count_file="/tmp/gossip_sent_$$.tmp"
+    echo "0" > "$sent_count_file"
+
+    jsonfilter -i "$peers_file" -e '@[*]' 2>/dev/null | while read -r peer_line; do
         local peer_addr
         peer_addr=$(echo "$peer_line" | jsonfilter -e '@.address' 2>/dev/null)
 
@@ -340,11 +382,14 @@ gossip_broadcast() {
             "http://$peer_addr:7332/api/gossip" \
             --connect-timeout 2 &
 
-        sent_count=$((sent_count + 1))
+        local cnt=$(cat "$sent_count_file")
+        echo $((cnt + 1)) > "$sent_count_file"
         _update_stat "sent"
-    done < <(jsonfilter -i "$peers_file" -e '@[*]' 2>/dev/null)
+    done
 
     wait
+    local sent_count=$(cat "$sent_count_file")
+    rm -f "$sent_count_file"
     logger -t mirrornet "Gossip: broadcast $type to $sent_count peers"
 
     echo "$msg_id"
@@ -398,15 +443,22 @@ gossip_process_queue() {
     local batch_size
     batch_size=$(_get_batch_size)
 
-    local count=0
-    while read -r message; do
+    # Process queue (ash-compatible)
+    local count_file="/tmp/gossip_proc_$$.tmp"
+    echo "0" > "$count_file"
+
+    jsonfilter -i "$GOSSIP_QUEUE" -e '@[*]' 2>/dev/null | while read -r message; do
         [ -z "$message" ] && continue
 
-        gossip_forward "$message"
-        count=$((count + 1))
+        local cnt=$(cat "$count_file")
+        [ "$cnt" -ge "$batch_size" ] && break
 
-        [ "$count" -ge "$batch_size" ] && break
-    done < <(jsonfilter -i "$GOSSIP_QUEUE" -e '@[*]' 2>/dev/null)
+        gossip_forward "$message"
+        echo $((cnt + 1)) > "$count_file"
+    done
+
+    local count=$(cat "$count_file")
+    rm -f "$count_file"
 
     # Clear processed messages
     if [ "$count" -gt 0 ]; then

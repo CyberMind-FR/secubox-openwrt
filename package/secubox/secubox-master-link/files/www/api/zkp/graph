@@ -1,0 +1,21 @@
+#!/bin/sh
+# ZKP API - Get node's public graph
+# GET /api/zkp/graph
+# Returns: base64-encoded graph for ZKP authentication
+
+echo "Content-Type: text/plain"
+echo "Access-Control-Allow-Origin: *"
+echo "Access-Control-Allow-Methods: GET, OPTIONS"
+echo "Access-Control-Allow-Headers: Content-Type"
+echo ""
+
+# Handle CORS preflight
+if [ "$REQUEST_METHOD" = "OPTIONS" ]; then
+	exit 0
+fi
+
+# Load library
+. /usr/lib/secubox/master-link.sh >/dev/null 2>&1
+
+# Return public graph (base64 encoded)
+ml_zkp_get_graph

@@ -42,6 +42,7 @@
 					"emancipate",
 					"emancipate_status",
 					"upload_and_create_site",
+					"create_site_from_upload",
 					"unpublish_site",
 					"set_auth_required"
 				],
