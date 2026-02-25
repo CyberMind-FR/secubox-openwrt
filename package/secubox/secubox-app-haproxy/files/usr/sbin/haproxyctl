@@ -523,20 +523,22 @@ generate_certs_list() {
 # Helper to print a single userlist from UCI
 _print_uci_userlist() {
 	local section="$1"
-	local name user
+	local name
 
 	config_get name "$section" name
-	config_get user "$section" user
-
 	[ -z "$name" ] && return
-	[ -z "$user" ] && return
 
 	echo "userlist $name"
-	# user format in UCI: username:password_hash
-	local username="${user%%:*}"
-	local password="${user#*:}"
-	echo "    user $username password $password"
+	# Handle list of users
+	config_list_foreach "$section" user _print_userlist_user
 	echo ""
+}
+
+_print_userlist_user() {
+	local entry="$1"
+	local username="${entry%%:*}"
+	local password="${entry#*:}"
+	echo "    user $username password $password"
 }
 
 # Generate all UCI-defined userlists
