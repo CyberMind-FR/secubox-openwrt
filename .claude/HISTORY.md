@@ -3592,3 +3592,15 @@ git checkout HEAD -- index.html
     - **Files Modified:**
       - `luci-app-streamlit/root/usr/libexec/rpcd/luci.streamlit`: emancipate_instance, rename_app, rename_instance, get_exposure_status
       - `luci-app-streamlit/htdocs/luci-static/resources/view/streamlit/dashboard.js`: WAF badge display
+
+33. **Streamlit CLI Emancipate Fix & Container Reload (2026-02-25)**
+    - **CLI Emancipate UCI Fix:**
+      - `streamlitctl emancipate` now sets `waf_enabled="1"` in instance UCI
+      - Previously only set `emancipated` and `domain`
+    - **Container-Aware Reload:**
+      - `_emancipate_reload()` now uses `haproxyctl reload` (container reload)
+      - Previously used deprecated `/etc/init.d/haproxy restart` (host init script)
+      - Properly verifies LXC container status after reload
+    - **Verified:** test2.gk2.secubox.in emancipation successful with WAF enabled
+    - **Files Modified:**
+      - `secubox-app-streamlit/files/usr/sbin/streamlitctl`: Added waf_enabled UCI field, use haproxyctl reload

@@ -1372,17 +1372,15 @@ _emancipate_mitmproxy() {
 
 _emancipate_reload() {
 	log_info "[RELOAD] Applying HAProxy configuration"
-	# Generate fresh config
+	# Generate fresh config and reload container
 	haproxyctl generate 2>/dev/null
-	# Restart for clean state with new vhosts/certs
-	log_info "[RELOAD] Restarting HAProxy for clean state..."
-	/etc/init.d/haproxy restart 2>/dev/null
-	sleep 1
-	# Verify HAProxy is running
-	if pgrep haproxy >/dev/null 2>&1; then
-		log_info "[RELOAD] HAProxy restarted successfully"
+	log_info "[RELOAD] Reloading HAProxy container..."
+	haproxyctl reload 2>/dev/null
+	# Verify HAProxy container is running
+	if lxc-info -n haproxy -s 2>/dev/null | grep -q RUNNING; then
+		log_info "[RELOAD] HAProxy container reloaded successfully"
 	else
-		log_warn "[RELOAD] HAProxy may not have started properly"
+		log_warn "[RELOAD] HAProxy container may not be running properly"
 	fi
 
 	# Regenerate GK2 Hub landing page if generator exists
@@ -1594,10 +1592,11 @@ cmd_emancipate() {
 	# Step 8: Reload HAProxy
 	_emancipate_reload
 
-	# Mark app as emancipated
+	# Mark instance as emancipated with WAF enabled
 	uci set ${CONFIG}.${name}.emancipated="1"
 	uci set ${CONFIG}.${name}.emancipated_at="$(date -Iseconds)"
 	uci set ${CONFIG}.${name}.domain="$domain"
+	uci set ${CONFIG}.${name}.waf_enabled="1"
 	uci commit ${CONFIG}
 
 	echo ""
