@@ -910,8 +910,9 @@ rename_instance() {
 	local port=$(uci -q get "${CONFIG}.${id}.port")
 
 	if [ "$emancipated" = "1" ] && [ -n "$new_domain" ] && [ "$new_domain" != "$old_domain" ]; then
-		local old_vhost=$(echo "$old_domain" | sed 's/\./_/g')
-		local new_vhost=$(echo "$new_domain" | sed 's/\./_/g')
+		# Use tr '.-' '_' to match streamlitctl vhost naming
+		local old_vhost=$(echo "$old_domain" | tr '.-' '_')
+		local new_vhost=$(echo "$new_domain" | tr '.-' '_')
 		local backend_name="streamlit_${id}"
 
 		# Remove old vhost and cert entries
@@ -935,33 +936,35 @@ rename_instance() {
 
 		uci commit haproxy
 
-		# Update mitmproxy routes
+		# Update instance domain FIRST (before slow operations)
+		uci set "${CONFIG}.${id}.domain=${new_domain}"
+		uci commit "$CONFIG"
+
+		# Update mitmproxy routes (use sed, jq may not be available)
 		local routes_file="/srv/mitmproxy/haproxy-routes.json"
 		if [ -f "$routes_file" ]; then
-			# Remove old route and add new one
-			if command -v jq >/dev/null 2>&1; then
-				jq --arg old "$old_domain" --arg new "$new_domain" --argjson port "$port" \
-					'del(.[$old]) | . + {($new): ["192.168.255.1", $port]}' "$routes_file" > "/tmp/routes_$$.json" && \
-					mv "/tmp/routes_$$.json" "$routes_file"
-			fi
+			# Remove old route
+			sed -i "s/,\"${old_domain}\":\[\"[^\"]*\",[0-9]*\]//g" "$routes_file" 2>/dev/null || true
+			sed -i "s/\"${old_domain}\":\[\"[^\"]*\",[0-9]*\],//g" "$routes_file" 2>/dev/null || true
+			# Add new route
+			sed -i "s/}$/,\"${new_domain}\":[\"192.168.255.1\",${port}]}/" "$routes_file" 2>/dev/null || true
 		fi
 
-		# Reload HAProxy and mitmproxy
-		haproxyctl generate >/dev/null 2>&1
-		haproxyctl reload >/dev/null 2>&1
-		/etc/init.d/mitmproxy restart >/dev/null 2>&1 &
-
-		# Update instance domain
-		uci set "${CONFIG}.${id}.domain=${new_domain}"
-
-		# Request new certificate
-		case "$new_domain" in
-			*.gk2.secubox.in) ;;
-			*) haproxyctl cert add "$new_domain" >/dev/null 2>&1 & ;;
-		esac
+		# Reload HAProxy and mitmproxy in background (don't block RPC)
+		(
+			haproxyctl generate >/dev/null 2>&1
+			haproxyctl reload >/dev/null 2>&1
+			/etc/init.d/mitmproxy restart >/dev/null 2>&1
+			# Request new certificate if not on gk2 wildcard
+			case "$new_domain" in
+				*.gk2.secubox.in) ;;
+				*) haproxyctl cert add "$new_domain" >/dev/null 2>&1 ;;
+			esac
+		) &
 	fi
 
-	uci commit "$CONFIG"
+	# Commit any remaining changes (display name if domain wasn't changed)
+	uci commit "$CONFIG" 2>/dev/null || true
 
 	json_init_obj
 	json_add_boolean "success" 1
