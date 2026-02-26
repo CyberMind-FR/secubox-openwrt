@@ -3750,3 +3750,31 @@ git checkout HEAD -- index.html
       - Both nodes at identical chain height with matching hash
       - Threat intelligence propagates bidirectionally
       - Manual sync via direct chain.json copy (curl/avahi deps missing on clone)
+
+42. **MetaBlogizer & Portal RPC Performance (2026-02-26)**
+    - **MetaBlogizer list_sites Optimization:**
+      - Rewrote `method_list_sites` RPCD handler with single-pass awk parsing
+      - Pre-fetch listening ports, HAProxy backends, and Tor services in one call each
+      - Eliminated 400+ UCI calls per request (78 sites × 5+ calls per site)
+      - Fixed awk `getline` variable corruption producing invalid JSON
+      - Execution time: 30+ seconds → 0.23 seconds
+    - **Portal get_vhosts Optimization:**
+      - Same single-pass awk pattern for 191 vhosts
+      - Execution time: 30+ seconds → 0.24 seconds
+
+43. **Nextcloud Talk Signaling LXC Migration (2026-02-26)**
+    - **Docker → LXC Conversion:**
+      - Built signaling server v2.0.4 (Go 1.24.0) in Debian LXC container
+      - NATS v2.10.22 for message queue (pre-built ARM64 binary)
+      - Custom init script for non-systemd container
+    - **Configuration:**
+      - Signaling server on port 8083 (avoiding Docker 8082 conflict)
+      - Session keys truncated to 16/32 bytes (was 64, caused key length error)
+      - Backend allowed: cloud.gk2.secubox.in
+      - TURN servers: signaling.gk2.secubox.in:3478 (UDP/TCP)
+    - **HAProxy Integration:**
+      - Updated `talk_hpb_signaling` backend server port: 8082 → 8083
+      - SSL certificate issued via ACME webroot
+    - **Nextcloud Configuration:**
+      - Set `spreed.signaling_servers` via occ command
+      - Endpoint: `https://signaling.gk2.secubox.in/standalone-signaling/`
