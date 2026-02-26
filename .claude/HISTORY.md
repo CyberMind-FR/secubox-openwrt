@@ -3779,14 +3779,18 @@ git checkout HEAD -- index.html
       - Set `spreed.signaling_servers` via occ command
       - Endpoint: `https://signaling.gk2.secubox.in/standalone-signaling/`
 
-44. **Nextcloud nginx Static File Fix (2026-02-26)**
-    - **Problem:** Talk app CSS/JS blocked with "incorrect MIME type (text/html)"
-    - **Root Cause:** nginx `/apps/` location block with `^~` modifier was catching all static file requests and routing them to PHP (which returned HTML)
-    - **Fix:** Removed problematic `/apps/` location block from nginx config
-    - Static files now correctly served with proper MIME types:
-      - CSS: `text/css`
-      - JS: `application/javascript`
-    - Talk app loads correctly for video calls
+44. **Nextcloud Talk Full Stack Fix (2026-02-26)**
+    - **MIME Type Fix:**
+      - Problem: CSS/JS blocked with "incorrect MIME type (text/html)"
+      - Fix: Added proper `/apps/` location block serving static assets directly
+    - **403 on /apps/ Fix:**
+      - Problem: /apps/dashboard/ and /apps/spreed/ returning 403
+      - Fix: Route non-static /apps/ requests to `index.php` via rewrite
+    - **Signaling Endpoint Fix:**
+      - Problem: "Failed to send message to signaling server" - 404
+      - Root cause: Nextcloud used `/standalone-signaling/` prefix, server uses `/api/v1/`
+      - Fix: Updated `spreed.signaling_servers` to `https://signaling.gk2.secubox.in/`
+    - Talk conversations and video calls now fully functional
 
 45. **Mail Server Webmail Detection Fix (2026-02-26)**
     - **Problem:** Webmail status showing "Stopped" despite Roundcube LXC running
