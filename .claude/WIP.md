@@ -102,6 +102,17 @@ _Last updated: 2026-02-25 (Factory Dashboard LuCI)_
   - Automatic sync every 5 minutes via SSH-based cron job
   - Deployed p2p-mesh.sh to clone for block generation
 
+- **Nextcloud nginx Static File Fix** — DONE (2026-02-26)
+  - Talk app CSS/JS blocked with "incorrect MIME type (text/html)"
+  - Root cause: `/apps/` location block with `^~` modifier catching static files
+  - Fix: Removed problematic location block, static files now served correctly
+  - Talk video calls now functional
+
+- **Mail Server Webmail Detection Fix** — DONE (2026-02-26)
+  - Webmail status showed "Stopped" despite Roundcube LXC running
+  - Root cause: RPCD only checked Docker, not LXC containers
+  - Fix: Added `webmail.type` UCI check, use `lxc-info` for LXC
+
 ### Just Completed (2026-02-25)
 
 - **MetaBlogizer HAProxy Stability** — DONE (2026-02-25)

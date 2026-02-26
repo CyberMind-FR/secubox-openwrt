@@ -3778,3 +3778,18 @@ git checkout HEAD -- index.html
     - **Nextcloud Configuration:**
       - Set `spreed.signaling_servers` via occ command
       - Endpoint: `https://signaling.gk2.secubox.in/standalone-signaling/`
+
+44. **Nextcloud nginx Static File Fix (2026-02-26)**
+    - **Problem:** Talk app CSS/JS blocked with "incorrect MIME type (text/html)"
+    - **Root Cause:** nginx `/apps/` location block with `^~` modifier was catching all static file requests and routing them to PHP (which returned HTML)
+    - **Fix:** Removed problematic `/apps/` location block from nginx config
+    - Static files now correctly served with proper MIME types:
+      - CSS: `text/css`
+      - JS: `application/javascript`
+    - Talk app loads correctly for video calls
+
+45. **Mail Server Webmail Detection Fix (2026-02-26)**
+    - **Problem:** Webmail status showing "Stopped" despite Roundcube LXC running
+    - **Root Cause:** RPCD handler only checked Docker, not LXC containers
+    - **Fix:** Added `webmail.type` UCI option check, use `lxc-info` for LXC type
+    - Webmail status now correctly shows "Running" for LXC containers

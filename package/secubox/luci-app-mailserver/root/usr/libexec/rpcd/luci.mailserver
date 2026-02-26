@@ -69,9 +69,14 @@ case "$1" in
 
 				# Webmail
 				webmail_container=$(uci -q get $CONFIG.webmail.container)
-				webmail_container="${webmail_container:-secubox-webmail}"
+				webmail_container="${webmail_container:-roundcube}"
+				webmail_type=$(uci -q get $CONFIG.webmail.type)
 				webmail_running=0
-				docker ps 2>/dev/null | grep -q "$webmail_container" && webmail_running=1
+				if [ "$webmail_type" = "lxc" ]; then
+					lxc-info -n "$webmail_container" 2>/dev/null | grep -q "RUNNING" && webmail_running=1
+				else
+					docker ps 2>/dev/null | grep -q "$webmail_container" && webmail_running=1
+				fi
 
 				# Mesh
 				mesh_enabled=$(uci -q get $CONFIG.mesh.enabled)
