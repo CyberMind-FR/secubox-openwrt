@@ -32,7 +32,11 @@ Commands:
   firewall-clear   Remove nftables transparent mode rules
   wan-setup        Setup WAN protection mode (incoming traffic)
   wan-clear        Remove WAN protection mode rules
-  sync-routes      Sync HAProxy backends to mitmproxy routes
+  sync-routes      Sync HAProxy/MetaBlogizer/Streamlit routes
+  route list       List all mitmproxy routes
+  route add <domain> <ip> <port>  Add manual route
+  route remove <domain>  Remove route
+  route check      Check for missing routes
   haproxy-enable   Enable HAProxy backend inspection mode
   haproxy-disable  Disable HAProxy backend inspection mode
   process-autoban  Process auto-ban requests from WAF (run via cron)
@@ -1272,8 +1276,300 @@ cmd_wan_clear() {
 }
 
 # =============================================================================
+# ROUTE MANAGEMENT
+# =============================================================================
+
+cmd_route_list() {
+	load_config
+
+	local routes_file="$data_path/haproxy-routes.json"
+
+	if [ ! -f "$routes_file" ]; then
+		log_warn "Routes file not found: $routes_file"
+		log_info "Run 'mitmproxyctl sync-routes' to generate"
+		return 1
+	fi
+
+	echo "Mitmproxy Routes ($routes_file):"
+	echo "================================="
+
+	# Parse and display routes
+	cat "$routes_file" | grep -E '^\s*"' | while read line; do
+		# Extract domain, ip, port from JSON line
+		local domain=$(echo "$line" | sed 's/.*"\([^"]*\)".*/\1/')
+		local target=$(echo "$line" | sed 's/.*\[\([^]]*\)\].*/\1/' | tr -d '"' | tr ',' ':')
+		echo "  $domain -> $target"
+	done
+
+	local count=$(grep -c '"' "$routes_file" 2>/dev/null || echo 0)
+	count=$((count / 2))
+	echo ""
+	echo "Total: $count routes"
+}
+
+cmd_route_add() {
+	require_root
+	load_config
+
+	local domain="$1"
+	local ip="$2"
+	local port="$3"
+
+	if [ -z "$domain" ] || [ -z "$ip" ] || [ -z "$port" ]; then
+		echo "Usage: mitmproxyctl route add <domain> <ip> <port>" >&2
+		echo "Example: mitmproxyctl route add myapp.gk2.secubox.in 127.0.0.1 8080" >&2
+		return 1
+	fi
+
+	local routes_file="$data_path/haproxy-routes.json"
+
+	# Check if routes file exists
+	if [ ! -f "$routes_file" ]; then
+		echo "{}" > "$routes_file"
+	fi
+
+	# Check if route already exists
+	if grep -q "\"$domain\"" "$routes_file"; then
+		log_warn "Route for $domain already exists, updating..."
+		# Remove existing entry
+		local tmp=$(mktemp)
+		grep -v "\"$domain\"" "$routes_file" | sed 's/,$//' > "$tmp"
+		# Fix JSON (remove trailing comma before })
+		sed -i 's/,\s*}/}/' "$tmp"
+		mv "$tmp" "$routes_file"
+	fi
+
+	# Add new route
+	local tmp=$(mktemp)
+	# Insert before closing brace
+	head -n -1 "$routes_file" > "$tmp"
+
+	# Add comma if not empty
+	if grep -q '"' "$tmp"; then
+		echo "," >> "$tmp"
+	fi
+
+	printf '  "%s": ["%s", %s]\n' "$domain" "$ip" "$port" >> "$tmp"
+	echo "}" >> "$tmp"
+
+	mv "$tmp" "$routes_file"
+	chmod 644 "$routes_file"
+
+	log_info "Added route: $domain -> $ip:$port"
+
+	# Sync to all instances
+	sync_routes_to_instances "$routes_file"
+}
+
+cmd_route_remove() {
+	require_root
+	load_config
+
+	local domain="$1"
+
+	if [ -z "$domain" ]; then
+		echo "Usage: mitmproxyctl route remove <domain>" >&2
+		return 1
+	fi
+
+	local routes_file="$data_path/haproxy-routes.json"
+
+	if [ ! -f "$routes_file" ]; then
+		log_error "Routes file not found"
+		return 1
+	fi
+
+	if ! grep -q "\"$domain\"" "$routes_file"; then
+		log_warn "Route for $domain not found"
+		return 1
+	fi
+
+	# Remove route
+	local tmp=$(mktemp)
+	grep -v "\"$domain\"" "$routes_file" > "$tmp"
+
+	# Fix JSON (remove double commas and trailing comma before })
+	sed -i 's/,,/,/g; s/,\s*}/\n}/g; s/{\s*,/{/g' "$tmp"
+
+	mv "$tmp" "$routes_file"
+	chmod 644 "$routes_file"
+
+	log_info "Removed route: $domain"
+
+	# Sync to all instances
+	sync_routes_to_instances "$routes_file"
+}
+
+cmd_route_check() {
+	load_config
+
+	local routes_file="$data_path/haproxy-routes.json"
+	local missing=0
+
+	log_info "Checking for missing mitmproxy routes..."
+
+	# Check all mitmproxy_inspector vhosts
+	uci show haproxy 2>/dev/null | grep "=vhost$" | cut -d'=' -f1 | cut -d'.' -f2 | while read vhost; do
+		local domain=$(uci -q get haproxy.$vhost.domain)
+		local backend=$(uci -q get haproxy.$vhost.backend)
+		local enabled=$(uci -q get haproxy.$vhost.enabled)
+
+		[ "$enabled" = "0" ] && continue
+		[ "$backend" != "mitmproxy_inspector" ] && continue
+		[ -z "$domain" ] && continue
+
+		# Check if route exists
+		if ! grep -q "\"$domain\"" "$routes_file" 2>/dev/null; then
+			echo "MISSING: $domain"
+			missing=$((missing + 1))
+		fi
+	done
+
+	if [ $missing -eq 0 ]; then
+		log_info "All mitmproxy_inspector vhosts have routes configured"
+	else
+		log_warn "$missing vhosts are missing mitmproxy routes"
+		log_info "Run 'mitmproxyctl sync-routes' to auto-generate, or add manually with 'mitmproxyctl route add'"
+	fi
+}
+
+# Helper: Sync routes to all instance data paths
+sync_routes_to_instances() {
+	local routes_file="$1"
+
+	local instances=$(uci show mitmproxy 2>/dev/null | grep '=instance$' | sed 's/mitmproxy\.\([^=]*\)=instance/\1/')
+	for inst in $instances; do
+		local inst_data_path=$(uci -q get mitmproxy.${inst}.data_path)
+		[ -z "$inst_data_path" ] && inst_data_path="/srv/mitmproxy-${inst}"
+		if [ -d "$inst_data_path" ]; then
+			cp "$routes_file" "$inst_data_path/haproxy-routes.json"
+			log_info "Routes synced to $inst_data_path"
+		fi
+	done
+}
+
+# =============================================================================
 # HAPROXY BACKEND INSPECTION
 # =============================================================================
+
+# Helper: Add route to temp file (used by sync functions)
+add_route_entry() {
+	local tmp_file="$1"
+	local domain="$2"
+	local ip="$3"
+	local port="$4"
+	local source="$5"
+	local count_file="$6"
+
+	local count=$(cat "$count_file" 2>/dev/null || echo 0)
+
+	if [ $count -gt 0 ]; then
+		echo "," >> "$tmp_file"
+	fi
+	count=$((count + 1))
+	echo "$count" > "$count_file"
+
+	printf '  "%s": ["%s", %s]' "$domain" "$ip" "$port" >> "$tmp_file"
+	log_info "  $domain -> $ip:$port ($source)"
+}
+
+# Scan MetaBlogizer sites and add routes (writes to stdout as JSON fragments)
+sync_metablogizer_routes() {
+	local added_file="$1"
+
+	# Check if metablogizer is installed
+	[ -x /usr/sbin/metablogizerctl ] || return 0
+
+	log_info "Scanning MetaBlogizer sites..."
+
+	# Get all metablogizer sites
+	local sites_file="/tmp/mb_sites.tmp"
+	uci show metablogizer 2>/dev/null | grep "=site$" | cut -d'=' -f1 | cut -d'.' -f2 > "$sites_file"
+
+	while read site; do
+		[ -z "$site" ] && continue
+
+		local domain=$(uci -q get metablogizer.$site.domain)
+		local port=$(uci -q get metablogizer.$site.port)
+		local enabled=$(uci -q get metablogizer.$site.enabled)
+
+		[ "$enabled" != "1" ] && continue
+		[ -z "$domain" ] && continue
+		[ -z "$port" ] && continue
+
+		# Check if already added
+		if grep -q "^$domain$" "$added_file" 2>/dev/null; then
+			continue
+		fi
+		echo "$domain" >> "$added_file"
+
+		# Output JSON fragment
+		echo "\"$domain\": [\"127.0.0.1\", $port]"
+		log_info "  $domain -> 127.0.0.1:$port (metablogizer)"
+	done < "$sites_file"
+
+	rm -f "$sites_file"
+}
+
+# Scan Streamlit instances and add routes (writes to stdout as JSON fragments)
+sync_streamlit_routes() {
+	local added_file="$1"
+
+	# Check if streamlit is installed
+	[ -f /etc/config/streamlit ] || return 0
+
+	log_info "Scanning Streamlit instances..."
+
+	# Get all streamlit instances
+	local inst_file="/tmp/st_inst.tmp"
+	uci show streamlit 2>/dev/null | grep "=instance$" | cut -d'=' -f1 | cut -d'.' -f2 > "$inst_file"
+
+	while read inst; do
+		[ -z "$inst" ] && continue
+
+		local port=$(uci -q get streamlit.$inst.port)
+		local enabled=$(uci -q get streamlit.$inst.enabled)
+
+		[ "$enabled" != "1" ] && continue
+		[ -z "$port" ] && continue
+
+		# Check for direct domain mapping (inst.gk2.secubox.in pattern)
+		local default_domain="${inst}.gk2.secubox.in"
+		if uci show haproxy 2>/dev/null | grep -q "domain='$default_domain'"; then
+			if ! grep -q "^$default_domain$" "$added_file" 2>/dev/null; then
+				echo "$default_domain" >> "$added_file"
+				echo "\"$default_domain\": [\"192.168.255.1\", $port]"
+				log_info "  $default_domain -> 192.168.255.1:$port (streamlit:$inst)"
+			fi
+		fi
+	done < "$inst_file"
+
+	rm -f "$inst_file"
+}
+
+# Check for missing routes in mitmproxy_inspector vhosts
+check_missing_routes() {
+	local routes_file="$1"
+	local missing=0
+
+	log_info "Checking for missing routes in mitmproxy_inspector vhosts..."
+
+	uci show haproxy 2>/dev/null | grep "=vhost$" | cut -d'=' -f1 | cut -d'.' -f2 | while read vhost; do
+		local domain=$(uci -q get haproxy.$vhost.domain)
+		local backend=$(uci -q get haproxy.$vhost.backend)
+
+		[ "$backend" != "mitmproxy_inspector" ] && continue
+		[ -z "$domain" ] && continue
+
+		# Check if route exists
+		if ! grep -q "\"$domain\"" "$routes_file" 2>/dev/null; then
+			log_warn "  MISSING ROUTE: $domain (vhost uses mitmproxy_inspector but no route defined)"
+			missing=$((missing + 1))
+		fi
+	done
+
+	return $missing
+}
 
 cmd_sync_routes() {
 	load_config
@@ -1281,11 +1577,12 @@ cmd_sync_routes() {
 	log_info "Syncing HAProxy backends to mitmproxy routes..."
 
 	local routes_file="$data_path/haproxy-routes.json"
-	local tmp_file="/tmp/haproxy-routes.tmp"
-	local count=0
+	local fragments_file="/tmp/haproxy-routes-fragments.tmp"
+	local added_file="/tmp/haproxy-routes.added"
 
-	# Start JSON
-	echo "{" > "$tmp_file"
+	# Initialize
+	> "$fragments_file"
+	> "$added_file"
 
 	# Get all vhosts - avoid subshell by using temp file
 	local vhosts_file="/tmp/haproxy-vhosts.tmp"
@@ -1339,13 +1636,9 @@ cmd_sync_routes() {
 
 			# Only add route if we found valid ip:port
 			if [ -n "$ip" ] && [ -n "$port" ]; then
-				if [ $count -gt 0 ]; then
-					echo "," >> "$tmp_file"
-				fi
-				count=$((count + 1))
-
-				printf '  "%s": ["%s", %s]' "$domain" "$ip" "$port" >> "$tmp_file"
-				log_info "  $domain -> $ip:$port (backend: $backend)"
+				echo "$domain" >> "$added_file"
+				echo "\"$domain\": [\"$ip\", $port]" >> "$fragments_file"
+				log_info "  $domain -> $ip:$port (haproxy:$backend)"
 			else
 				log_warn "  $domain: could not resolve backend '$backend'"
 			fi
@@ -1354,27 +1647,39 @@ cmd_sync_routes() {
 
 	rm -f "$vhosts_file"
 
-	# Close JSON
-	echo "" >> "$tmp_file"
-	echo "}" >> "$tmp_file"
+	# Sync MetaBlogizer routes (appends to fragments_file)
+	sync_metablogizer_routes "$added_file" >> "$fragments_file"
 
-	# Move to final location
-	mv "$tmp_file" "$routes_file"
+	# Sync Streamlit routes (appends to fragments_file)
+	sync_streamlit_routes "$added_file" >> "$fragments_file"
+
+	# Build final JSON from fragments
+	local count=$(wc -l < "$fragments_file" | tr -d ' ')
+	{
+		echo "{"
+		local first=1
+		while read line; do
+			[ -z "$line" ] && continue
+			if [ $first -eq 1 ]; then
+				echo "  $line"
+				first=0
+			else
+				echo ",  $line"
+			fi
+		done < "$fragments_file"
+		echo "}"
+	} > "$routes_file"
+
+	rm -f "$fragments_file" "$added_file"
 	chmod 644 "$routes_file"
 
 	log_info "Generated $routes_file with $count routes"
 
 	# Copy routes to all instance data paths
-	local instances=$(uci show mitmproxy 2>/dev/null | grep '=instance$' | sed 's/mitmproxy\.\([^=]*\)=instance/\1/')
-	for inst in $instances; do
-		local inst_data_path=$(uci -q get mitmproxy.${inst}.data_path)
-		# Default to /srv/mitmproxy-<instance> if not set
-		[ -z "$inst_data_path" ] && inst_data_path="/srv/mitmproxy-${inst}"
-		if [ -d "$inst_data_path" ]; then
-			cp "$routes_file" "$inst_data_path/haproxy-routes.json"
-			log_info "Routes synced to $inst_data_path"
-		fi
-	done
+	sync_routes_to_instances "$routes_file"
+
+	# Check for missing routes and warn
+	check_missing_routes "$routes_file"
 }
 
 cmd_haproxy_enable() {
@@ -1624,6 +1929,16 @@ case "${1:-}" in
 	wan-setup) shift; cmd_wan_setup "$@" ;;
 	wan-clear) shift; cmd_wan_clear "$@" ;;
 	sync-routes) shift; cmd_sync_routes "$@" ;;
+	route)
+		shift
+		case "$1" in
+			list) shift; cmd_route_list "$@" ;;
+			add) shift; cmd_route_add "$@" ;;
+			remove|rm|del) shift; cmd_route_remove "$@" ;;
+			check) shift; cmd_route_check "$@" ;;
+			*) echo "Usage: mitmproxyctl route {list|add|remove|check}" >&2; exit 1 ;;
+		esac
+		;;
 	haproxy-enable) shift; cmd_haproxy_enable "$@" ;;
 	haproxy-disable) shift; cmd_haproxy_disable "$@" ;;
 	process-autoban) shift; cmd_process_autoban "$@" ;;
