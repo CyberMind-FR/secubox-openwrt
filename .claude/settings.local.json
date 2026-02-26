@@ -436,7 +436,31 @@
       "Bash(do if ping -c 1 -W 2 192.168.255.156)",
       "Bash(break)",
       "Bash(if ping -c 1 -W 3 192.168.255.156)",
-      "Bash(else)"
+      "Bash(else)",
+      "Bash(timeout 5 nmap:*)",
+      "Bash(# Check if extension 103 is registered via WebRTC ssh root@192.168.255.1 ''lxc-attach -n voip -- asterisk -rx \"\"pjsip show endpoint 103\"\"'')",
+      "Bash(__NEW_LINE_fbba53781de06448__ echo \"\")",
+      "Bash(__NEW_LINE_7adb9e690b841028__ echo \"\")",
+      "Bash(# Check working handler for comparison ssh root@192.168.255.1 ''grep -B2 -A2 \"\"\\\\\"\"date\\\\\"\"\"\" /usr/libexec/rpcd/luci.*'')",
+      "Bash(__NEW_LINE_ee8b189db819820d__ echo \"=== With today ===\")",
+      "Bash(__NEW_LINE_e1793f41c1d27989__ echo \"\")",
+      "Bash(__NEW_LINE_7e8dc30c01cd1540__ echo \"\")",
+      "Bash(__NEW_LINE_0a0a0b37fa13066b__ echo \"\")",
+      "Bash(__NEW_LINE_d0cebf6ba4912400__ echo \"\")",
+      "Bash(__NEW_LINE_41137796261af220__ echo \"\")",
+      "Bash(__NEW_LINE_8122080078617a43__ echo \"\")",
+      "Bash(__NEW_LINE_8d3e1ffe310240e9__ cat /home/reepost/CyberMindStudio/secubox-openwrt/package/secubox/zkp-hamiltonian/build-x86/zkp_keygen)",
+      "Bash(__NEW_LINE_3381982c6fa3c38b__ cat /home/reepost/CyberMindStudio/secubox-openwrt/package/secubox/zkp-hamiltonian/build-x86/zkp_prover)",
+      "Bash(__NEW_LINE_ffe3f82cb7ee419e__ echo \"\")",
+      "Bash(__NEW_LINE_022e6caf7fe283a0__ echo \"=== Deploy zkp_keygen ===\")",
+      "Bash(__NEW_LINE_cd413f540bbce32c__ echo \"=== Deploy zkp_prover ===\")",
+      "Bash(__NEW_LINE_de05005644963f24__ echo \"\")",
+      "Bash(__NEW_LINE_bdbb5578159f1cea__ echo \"=== Transfer clone proof to master ===\")",
+      "Bash(__NEW_LINE_ccff6a83615ec364__ echo \"\")",
+      "Bash(__NEW_LINE_4ae32f0682f969f7__ echo \"\")",
+      "Bash(__NEW_LINE_9355573ea4eaaf97__ echo \"\")",
+      "Bash(__NEW_LINE_2d1b6ec757fae311__ echo \"\")",
+      "Bash(__NEW_LINE_f8bfff16bb831fd7__ echo \"\")"
     ]
   }
 }

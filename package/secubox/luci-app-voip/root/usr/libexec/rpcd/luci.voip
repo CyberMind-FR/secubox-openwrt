@@ -43,24 +43,28 @@ JSON
                 $VOIPCTL status
                 ;;
             extensions)
-                json_init
-                json_add_array "extensions"
-                
-                uci show voip 2>/dev/null | grep "=extension" | while read -r line; do
-                    section=$(echo "$line" | cut -d'.' -f2 | cut -d'=' -f1)
-                    ext=$(echo "$section" | sed 's/ext_//')
-                    name=$(uci -q get "voip.$section.name")
-                    context=$(uci -q get "voip.$section.context" || echo "internal")
-                    vm=$(uci -q get "voip.$section.voicemail" || echo "0")
-                    
+                . /lib/functions.sh
+
+                _add_ext() {
+                    local section="$1"
+                    local name context vm
+                    config_get name "$section" name
+                    config_get context "$section" context "internal"
+                    config_get vm "$section" voicemail "0"
+                    local number="${section#ext_}"
+
                     json_add_object
-                    json_add_string "number" "$ext"
+                    json_add_string "number" "$number"
                     json_add_string "name" "$name"
                     json_add_string "context" "$context"
                     json_add_boolean "voicemail" "$vm"
                     json_close_object
-                done
-                
+                }
+
+                json_init
+                json_add_array "extensions"
+                config_load voip
+                config_foreach _add_ext extension
                 json_close_array
                 json_dump
                 ;;

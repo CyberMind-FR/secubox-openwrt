@@ -64,6 +64,19 @@ _Last updated: 2026-02-25 (Factory Dashboard LuCI)_
 
 ### Just Completed (2026-02-26)
 
+- **Yggdrasil IPv6 Overlay Network** — DONE (2026-02-26)
+  - Deployed Yggdrasil on both master (aarch64) and clone (x86_64)
+  - Connected to 2 public peers (51.15.204.214, ygg.mkg20001.io)
+  - LAN multicast discovery: clone auto-peered with master via br-lan (1.73ms RTT)
+  - Bidirectional ping6 working:
+    - Master → Clone: ~6.2ms avg
+    - Clone → Master: ~2.2ms avg
+  - SSH over Yggdrasil working bidirectionally
+  - Fixed firewall zones: added `device="ygg0"` to nftables zones on both nodes
+  - IPv6 addresses:
+    - Master: `201:e4d4:9d55:9a02:7427:7081:9cf9:9e46`
+    - Clone: `201:a9d8:5a5:e493:bd0b:2c2f:5e85:34fe`
+
 - **ZKP Cross-Node Verification Testing** — DONE (2026-02-26)
   - Full bidirectional ZKP authentication tested between master (aarch64) and clone (x86_64)
   - Generated 50-node Hamiltonian graphs on both nodes
