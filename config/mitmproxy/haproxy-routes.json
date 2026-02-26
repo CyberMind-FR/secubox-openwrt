@@ -421,7 +421,7 @@
     ],
     "signaling.gk2.secubox.in": [
         "192.168.255.1",
-        8082
+        8083
     ],
     "punk.gk2.secubox.in": [
         "127.0.0.1",
