@@ -38,9 +38,12 @@ _Last updated: 2026-02-06_
 
 ### Testing & Validation
 
-1. **Mesh Onboarding Testing**
-   - master-link dynamic join IPK generation needs end-to-end testing on multi-node mesh.
-   - P2P decentralized threat intelligence sharing needs validation with real CrowdSec alerts.
+1. **Mesh Onboarding Testing** — DONE (2026-02-26)
+   - ~~master-link dynamic join IPK generation needs end-to-end testing on multi-node mesh.~~
+   - ~~P2P decentralized threat intelligence sharing needs validation with real CrowdSec alerts.~~
+   - ZKP cross-node verification tested (bidirectional ACCEPT)
+   - Threat IOC propagation tested (116 blocks synced)
+   - Automatic SSH-based mesh sync configured (5-min cron)
 
 2. **WAF Auto-Ban Tuning**
    - Sensitivity thresholds may need adjustment based on real traffic patterns.
@@ -184,8 +187,8 @@ All cloud providers are **opt-in**. Offline resilience: local tier always active
 ### v1.0.0 — Full Stack
 
 - [x] Config Advisor (ANSSI prep) — Done 2026-02-07
-- [ ] P2P Mesh Intelligence
-- [ ] Factory auto-provisioning
+- [x] P2P Mesh Intelligence — Done 2026-02-26
+- [x] Factory auto-provisioning — Done 2026-02-24
 - [x] VoIP integration — Done 2026-02-19
 - [x] Matrix integration — Done 2026-02-19
 

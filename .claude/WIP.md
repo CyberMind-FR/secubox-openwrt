@@ -81,6 +81,14 @@ _Last updated: 2026-02-25 (Factory Dashboard LuCI)_
   - Both nodes at identical chain height with matching hash
   - Validates threat intel propagation works bidirectionally
 
+- **P2P Threat Intelligence Sharing** — DONE (2026-02-26)
+  - Real CrowdSec/WAF threat IOCs propagate between mesh nodes
+  - Master threat (198.51.100.1) → synced to clone ✓
+  - Clone threat (203.0.113.99) → synced to master ✓
+  - 100+ real threat_ioc blocks shared (waf_bypass, jenkins_rce, sql_injection)
+  - Automatic sync every 5 minutes via SSH-based cron job
+  - Deployed p2p-mesh.sh to clone for block generation
+
 ### Just Completed (2026-02-25)
 
 - **MetaBlogizer HAProxy Stability** — DONE (2026-02-25)
@@ -1047,9 +1055,13 @@ Implementing 3 evolutions inspired by SysWarden patterns:
 
 ### Next Up — Couche 1
 
-1. **Multi-Node Mesh Testing**
-   - Deploy second SecuBox node to test real peer-to-peer sync
-   - Validate bidirectional threat intelligence sharing
+1. ~~**Multi-Node Mesh Testing**~~ — DONE (2026-02-26)
+   - ~~Deploy second SecuBox node to test real peer-to-peer sync~~
+   - ~~Validate bidirectional threat intelligence sharing~~
+   - ZKP, blockchain sync, and threat intel propagation all validated
+
+2. **WAF Auto-Ban Tuning** (if needed)
+   - Sensitivity threshold adjustment based on production traffic
 
 ---
 
