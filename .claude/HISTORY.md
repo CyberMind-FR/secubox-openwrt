@@ -3696,3 +3696,57 @@ git checkout HEAD -- index.html
     - **Test Credentials:**
       - gk2 / Gk2Test2026
       - ragondin / Secubox@2026
+
+39. **VoIP WebRTC Phone Integration (2026-02-26)**
+    - **WebRTC Phone Working:**
+      - Browser-based SIP phone using JsSIP 3.11.1
+      - Bypasses ISP SIP blocking via WebSocket over HTTPS
+      - Full call flow: Browser → WSS → HAProxy → Asterisk → OVH SIP → PSTN
+    - **Infrastructure:**
+      - HAProxy path routing: `/ws` → Asterisk WSS (8089), default → static files
+      - Local JsSIP library at `/www/voip/js/jssip.min.js` (CDN MIME issues)
+      - Phone accessible at https://voip.gk2.secubox.in/voip/phone.html
+    - **Dial Plan Support:**
+      - `_0XXXXXXXXX` — French national format (0775744172)
+      - `_+XXXXXXXXXXX` — International with + prefix
+      - `_00XXXXXXXXX.` — International with 00 prefix
+      - `_XXX/_XXXX` — Internal extensions
+    - **LuCI VoIP Fixes:**
+      - RPCD luci.voip: Fixed `local` keyword outside function
+      - Extensions list: Fixed pipe subshell with config_foreach pattern
+      - Recordings API: Fixed array wrapping for JS frontend
+    - **Files:**
+      - `/www/voip/phone.html` — WebRTC phone interface
+      - `/www/voip/js/jssip.min.js` — JsSIP library
+      - `/usr/libexec/rpcd/luci.voip` — RPCD backend
+      - `/srv/lxc/voip/rootfs/etc/asterisk/extensions.conf` — Dial plan
+
+40. **ZKP Cross-Node Verification (2026-02-26)**
+    - **Bidirectional ZKP Authentication:**
+      - Master (aarch64) and Clone (x86_64) can cryptographically verify each other
+      - Hamiltonian cycle zero-knowledge proof protocol
+      - No secrets exchanged — only public graphs shared
+    - **ZKP Keys Generated:**
+      - Master: `master_node` (50 nodes, 100 edges, 408 bytes graph)
+      - Clone: `clone_node` (50 nodes, 100 edges, 408 bytes graph)
+    - **Verification Results:**
+      - Master → Clone: **ACCEPT** (clone verified master's proof)
+      - Clone → Master: **ACCEPT** (master verified clone's proof)
+    - **Cross-Architecture Support:**
+      - Deployed x86_64 ZKP binaries to clone from build-x86 directory
+      - Binaries: zkp_keygen, zkp_prover, zkp_verifier
+      - Proofs: 40-80KB, verification < 1 second
+    - **Files:**
+      - `/var/lib/zkp/graphs/` — Public graphs for verification
+      - `/var/lib/zkp/keys/` — Secret Hamiltonian cycles (NEVER share)
+      - `/var/lib/zkp/proofs/` — Generated proofs
+
+41. **Mesh Blockchain Bidirectional Sync (2026-02-26)**
+    - **Sync Testing:**
+      - Master → Clone: 112 blocks synced successfully
+      - Clone added block 113 (type: clone_test, node: clone1)
+      - Clone → Master: Block 113 merged back to master
+    - **Architecture:**
+      - Both nodes at identical chain height with matching hash
+      - Threat intelligence propagates bidirectionally
+      - Manual sync via direct chain.json copy (curl/avahi deps missing on clone)

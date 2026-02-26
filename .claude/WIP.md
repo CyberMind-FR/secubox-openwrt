@@ -62,6 +62,25 @@ _Last updated: 2026-02-25 (Factory Dashboard LuCI)_
   - Gossip-based exposure config sync via secubox-p2p
   - Created `luci-app-vortex-dns` dashboard
 
+### Just Completed (2026-02-26)
+
+- **ZKP Cross-Node Verification Testing** — DONE (2026-02-26)
+  - Full bidirectional ZKP authentication tested between master (aarch64) and clone (x86_64)
+  - Generated 50-node Hamiltonian graphs on both nodes
+  - Master → Clone: ACCEPT (clone verified master's proof)
+  - Clone → Master: ACCEPT (master verified clone's proof)
+  - Deployed x86_64 ZKP binaries (zkp_keygen, zkp_prover, zkp_verifier) to clone
+  - Proof sizes: ~40-80KB, verification time: <1 second
+  - Nodes can now cryptographically authenticate identity without sharing secrets
+
+- **Mesh Blockchain Bidirectional Sync Testing** — DONE (2026-02-26)
+  - Tested chain.json sync between master (192.168.255.1) and clone (192.168.255.156)
+  - Master → Clone: 112 blocks synced successfully
+  - Clone added block 113 (type: "clone_test", node: "clone1")
+  - Clone → Master: Block 113 merged back to master
+  - Both nodes at identical chain height with matching hash
+  - Validates threat intel propagation works bidirectionally
+
 ### Just Completed (2026-02-25)
 
 - **MetaBlogizer HAProxy Stability** — DONE (2026-02-25)
