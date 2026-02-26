@@ -284,28 +284,61 @@ method_get_containers() {
 	json_dump
 }
 
-# Method: get_vhosts
+# Method: get_vhosts - optimized single-pass awk parsing
 method_get_vhosts() {
-	json_init
-	json_add_array "vhosts"
-
-	for vh in $(uci show haproxy 2>/dev/null | grep "=vhost" | sed 's/haproxy\.//;s/=vhost//'); do
-		local domain=$(uci -q get haproxy.$vh.domain)
-		local backend=$(uci -q get haproxy.$vh.backend)
-		local enabled=$(uci -q get haproxy.$vh.enabled)
-		local ssl=$(uci -q get haproxy.$vh.ssl)
-
-		json_add_object ""
-		json_add_string "id" "$vh"
-		json_add_string "domain" "$domain"
-		json_add_string "backend" "$backend"
-		json_add_string "enabled" "${enabled:-0}"
-		json_add_string "ssl" "${ssl:-0}"
-		json_close_object
-	done
-
-	json_close_array
-	json_dump
+	uci show haproxy 2>/dev/null | awk '
+	BEGIN {
+		printf "{\"vhosts\":["
+		first = 1
+	}
+	/=vhost$/ {
+		# Output previous vhost if we have one
+		if (current_vh != "") {
+			if (first == 0) printf ","
+			first = 0
+			if (enabled == "") enabled = "0"
+			if (ssl == "") ssl = "0"
+			printf "{\"id\":\"%s\",\"domain\":\"%s\",\"backend\":\"%s\",\"enabled\":\"%s\",\"ssl\":\"%s\"}", current_vh, domain, backend, enabled, ssl
+		}
+		# Start new vhost
+		gsub(/^haproxy\./, "", $0)
+		gsub(/=vhost$/, "", $0)
+		current_vh = $0
+		domain = ""
+		backend = ""
+		enabled = ""
+		ssl = ""
+	}
+	/\.domain=/ {
+		gsub(/.*\.domain=/, "", $0)
+		gsub(/'\''/, "", $0)
+		domain = $0
+	}
+	/\.backend=/ {
+		gsub(/.*\.backend=/, "", $0)
+		gsub(/'\''/, "", $0)
+		backend = $0
+	}
+	/\.enabled=/ {
+		gsub(/.*\.enabled=/, "", $0)
+		gsub(/'\''/, "", $0)
+		enabled = $0
+	}
+	/\.ssl=/ {
+		gsub(/.*\.ssl=/, "", $0)
+		gsub(/'\''/, "", $0)
+		ssl = $0
+	}
+	END {
+		# Output last vhost
+		if (current_vh != "") {
+			if (first == 0) printf ","
+			if (enabled == "") enabled = "0"
+			if (ssl == "") ssl = "0"
+			printf "{\"id\":\"%s\",\"domain\":\"%s\",\"backend\":\"%s\",\"enabled\":\"%s\",\"ssl\":\"%s\"}", current_vh, domain, backend, enabled, ssl
+		}
+		printf "]}"
+	}'
 }
 
 # List available methods
