@@ -571,6 +571,7 @@ global
     ssl-default-bind-ciphersuites TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384
     ssl-default-bind-options ssl-min-ver TLSv1.2 no-tls-tickets
     tune.ssl.default-dh-param 2048
+    lua-load /opt/haproxy/lua/crowdsec.lua
 
 EOF
 
@@ -643,6 +644,10 @@ frontend http-in
     acl is_acme_challenge path_beg /.well-known/acme-challenge/
     use_backend acme_challenge if is_acme_challenge
 
+    # CrowdSec IP blocking (dual-layer WAF with mitmproxy)
+    http-request lua.crowdsec_check if !is_acme_challenge
+    http-request deny deny_status 403 if { var(txn.blocked) -m str 1 }
+
 EOF
 
 	# Add HTTPS redirect rules for vhosts with ssl_redirect
@@ -684,6 +689,10 @@ frontend https-in
     acl is_sensitive_path path_beg /.htaccess
     acl is_sensitive_path path_beg /.htpasswd
     http-request deny if is_sensitive_path
+
+    # CrowdSec IP blocking (dual-layer WAF with mitmproxy)
+    http-request lua.crowdsec_check
+    http-request deny deny_status 403 if { var(txn.blocked) -m str 1 }
 EOF
 		else
 			# Fallback to directory mode if no certs.list
@@ -701,6 +710,10 @@ frontend https-in
     acl is_sensitive_path path_beg /.htaccess
     acl is_sensitive_path path_beg /.htpasswd
     http-request deny if is_sensitive_path
+
+    # CrowdSec IP blocking (dual-layer WAF with mitmproxy)
+    http-request lua.crowdsec_check
+    http-request deny deny_status 403 if { var(txn.blocked) -m str 1 }
 EOF
 		fi
 		# Add path-based ACLs BEFORE vhost ACLs (path rules take precedence)

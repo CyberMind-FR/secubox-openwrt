@@ -3797,3 +3797,22 @@ git checkout HEAD -- index.html
     - **Root Cause:** RPCD handler only checked Docker, not LXC containers
     - **Fix:** Added `webmail.type` UCI option check, use `lxc-info` for LXC type
     - Webmail status now correctly shows "Running" for LXC containers
+
+46. **CrowdSec HAProxy Bouncer - Dual Layer WAF (2026-02-26)**
+    - **Purpose:** IP-level blocking at HAProxy before mitmproxy WAF inspection
+    - **Implementation:**
+      - Created `/srv/haproxy/lua/crowdsec.lua` - Lua bouncer script
+      - Queries CrowdSec LAPI on port 8190 for IP decisions
+      - In-memory cache with 60s TTL (30s negative cache)
+      - Fail-open design: allows traffic if API unreachable
+      - Skips internal IPs (127.x, 192.168.x, 10.x)
+    - **HAProxy Integration:**
+      - `lua-load /opt/haproxy/lua/crowdsec.lua` in global section
+      - `http-request lua.crowdsec_check` in HTTP/HTTPS frontends
+      - `http-request deny deny_status 403 if { var(txn.blocked) -m str 1 }`
+    - **Registered Bouncer:** `haproxy-bouncer` in CrowdSec with API key
+    - **Result:** Dual-layer WAF protection
+      - Layer 1: CrowdSec HAProxy bouncer (IP reputation, 60s cache)
+      - Layer 2: mitmproxy WAF (request inspection, CVE detection)
+    - All 13 MetaBlogizer sites verified working with dual WAF
+    - **CrowdSec MCP:** Added crowdsec-local-mcp for AI-generated WAF rules
