@@ -44,18 +44,28 @@ get_service_category() {
 	esac
 }
 
-# Get HAProxy vhosts as published services
+# Get HAProxy vhosts as published services (optimized single-pass)
 get_haproxy_vhosts() {
 	local count=0
+	local tmpfile="/tmp/haproxy_vhosts_$$"
 
-	# Get all vhosts
-	for vhost in $(uci show haproxy 2>/dev/null | grep "=vhost" | cut -d'=' -f1 | cut -d'.' -f2); do
-		local domain=$(uci -q get haproxy.$vhost.domain)
-		local backend=$(uci -q get haproxy.$vhost.backend)
-		local ssl=$(uci -q get haproxy.$vhost.ssl_enabled || echo "0")
+	# Single UCI call, parse with awk into temp file
+	uci show haproxy 2>/dev/null | awk -F'[.=]' '
+	/=vhost$/ { section=$2; vhosts[section]=1 }
+	/\.domain=/ { gsub(/\047/, "", $NF); domain[$2]=$NF }
+	/\.backend=/ { gsub(/\047/, "", $NF); backend[$2]=$NF }
+	/\.ssl_enabled=/ { gsub(/\047/, "", $NF); ssl[$2]=$NF }
+	END {
+		for (s in vhosts) {
+			if (domain[s] != "") {
+				print s "|" domain[s] "|" backend[s] "|" ssl[s]
+			}
+		}
+	}' > "$tmpfile"
 
+	# Process temp file with jshn
+	while IFS='|' read -r vhost domain backend ssl; do
 		[ -z "$domain" ] && continue
-
 		local proto="http"
 		[ "$ssl" = "1" ] && proto="https"
 
@@ -67,11 +77,12 @@ get_haproxy_vhosts() {
 			json_add_string "backend" "$backend"
 			json_add_string "emoji" "🌐"
 			json_add_string "category" "published"
-			json_add_boolean "ssl" "$ssl"
+			json_add_boolean "ssl" "${ssl:-0}"
 		json_close_object
 		count=$((count + 1))
-	done
+	done < "$tmpfile"
 
+	rm -f "$tmpfile"
 	echo "$count"
 }
 
@@ -139,28 +150,23 @@ get_mitmproxy_instances() {
 	echo "$count"
 }
 
-# Get init.d services with status
+# Get init.d services with status (optimized - skip slow checks)
 get_init_services() {
 	local count=0
 
-	for svc in /etc/init.d/*; do
+	# Only check key SecuBox services (fast list)
+	for name in crowdsec haproxy mitmproxy wireguard tor dnsmasq uhttpd rpcd netifyd sshd; do
+		local svc="/etc/init.d/$name"
 		[ -x "$svc" ] || continue
-		local name=$(basename "$svc")
-
-		# Skip non-secubox services for this list
-		case "$name" in
-			boot|done|gpio_switch|led|log|network|sysctl|system|urandom_seed|watchdog)
-				continue ;;
-		esac
 
 		local enabled=0
 		local running=0
 
-		"$svc" enabled 2>/dev/null && enabled=1
+		# Check enabled via symlink (faster than calling script)
+		[ -L "/etc/rc.d/S"*"$name" ] 2>/dev/null && enabled=1
 
-		# Check if running
-		local pid_name=$(echo "$name" | sed 's/-/_/g')
-		pgrep "$pid_name" >/dev/null 2>&1 && running=1
+		# Check running via pgrep
+		pgrep -x "$name" >/dev/null 2>&1 && running=1
 
 		local emoji=$(get_service_emoji "$name")
 		local category=$(get_service_category "$name")
@@ -211,40 +217,38 @@ get_luci_apps() {
 	echo "$count"
 }
 
-# Get metrics summary
+# Get metrics summary (optimized - skip slow cscli)
 get_metrics_summary() {
 	json_add_object "metrics"
 
-	# System metrics
-	local uptime=$(cat /proc/uptime | cut -d' ' -f1 | cut -d'.' -f1)
-	local load=$(cat /proc/loadavg | cut -d' ' -f1)
-	local mem_total=$(grep MemTotal /proc/meminfo | awk '{print $2}')
-	local mem_free=$(grep MemFree /proc/meminfo | awk '{print $2}')
-	local mem_used=$((mem_total - mem_free))
-	local mem_pct=$((mem_used * 100 / mem_total))
+	# System metrics from /proc (fast)
+	local uptime=$(cut -d' ' -f1 /proc/uptime | cut -d'.' -f1)
+	local load=$(cut -d' ' -f1 /proc/loadavg)
+
+	# Memory from /proc/meminfo in one read
+	eval $(awk '/^MemTotal:/{t=$2} /^MemAvailable:/{a=$2} END{printf "mem_total=%d mem_avail=%d", t, a}' /proc/meminfo)
+	local mem_pct=$(( (mem_total - mem_avail) * 100 / mem_total ))
 
 	json_add_int "uptime" "$uptime"
 	json_add_string "load" "$load"
 	json_add_int "mem_pct" "$mem_pct"
 
-	# Service counts
-	local running=0
-	local total=0
-	for svc in /etc/init.d/*; do
-		[ -x "$svc" ] || continue
-		total=$((total + 1))
-		"$svc" running >/dev/null 2>&1 && running=$((running + 1))
-	done
+	# Service counts from cached data or fast check
+	local running=$(pgrep -c . 2>/dev/null || echo 0)
+	local total=$(ls -1 /etc/init.d/ 2>/dev/null | wc -l)
 
 	json_add_int "services_running" "$running"
 	json_add_int "services_total" "$total"
 
-	# Security metrics (if available)
-	if command -v cscli >/dev/null 2>&1; then
-		local alerts=$(cscli alerts list -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
-		local bans=$(cscli decisions list -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+	# CrowdSec metrics from cache file (fast)
+	if [ -f /tmp/secubox/crowdsec-overview.json ]; then
+		local alerts=$(jsonfilter -i /tmp/secubox/crowdsec-overview.json -e '@.alerts_24h' 2>/dev/null || echo 0)
+		local bans=$(jsonfilter -i /tmp/secubox/crowdsec-overview.json -e '@.active_decisions' 2>/dev/null || echo 0)
 		json_add_int "crowdsec_alerts" "${alerts:-0}"
 		json_add_int "crowdsec_bans" "${bans:-0}"
+	else
+		json_add_int "crowdsec_alerts" 0
+		json_add_int "crowdsec_bans" 0
 	fi
 
 	json_close_object
