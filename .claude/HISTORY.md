@@ -3838,3 +3838,29 @@ git checkout HEAD -- index.html
       - Integrations view: Enable/configure messaging and productivity integrations
       - RPCD backend: 9 ubus methods (status, get_config, set_config, list_models, chat, test_api, get_history, clear_history, install, update)
       - ACL permissions for read/write operations
+
+49. **OpenClaw Gemini API Integration (2026-02-27)**
+    - **Problem:** Gemini 1.5 models deprecated/removed (404 errors)
+    - **Fix:** Updated RPCD handler model list to current Gemini 2.x series:
+      - `gemini-2.0-flash`, `gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-flash-latest`
+    - Tested successfully with `gemini-2.5-flash` (higher rate limits than 2.0)
+    - LuCI chat and settings views working with Gemini provider
+
+50. **WAF Auto-Ban Tuning & False Positive Fix (2026-02-27)**
+    - **Problem:** LuCI static resources flagged as "waf_bypass" (high severity)
+      - Affected URLs: `/luci-static/resources/cbi.js?v=26.021.66732~4b823e3`
+    - **Root Cause:** Different `secubox_analytics.py` versions across mitmproxy instances
+      - `/srv/mitmproxy-in/` had different file hash than `/srv/mitmproxy/`
+      - Stale Python bytecode cache (.pyc files) still loading old code
+    - **Fix:**
+      - Synced identical `secubox_analytics.py` to all three mitmproxy instances
+      - Cleared `__pycache__` directories in all addons folders
+      - Restarted mitmproxy services
+    - **Result:** No more false positives on LuCI/Nextcloud static resources
+    - **Autoban Sensitivity Fix:**
+      - UCI config uses `sensitivity='strict'` but code expected `'aggressive'`
+      - Added `'strict'` as alias for `'aggressive'` in `_should_autoban()` function
+      - Both values now trigger threshold=1 (immediate ban) behavior
+    - **Verified Working:**
+      - `.env` probes correctly detected as `path_scan` / `config_hunting`
+      - Autoban config properly loaded: `sensitivity=strict`, `min_severity=medium`
