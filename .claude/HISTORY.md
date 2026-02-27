@@ -3816,3 +3816,13 @@ git checkout HEAD -- index.html
       - Layer 2: mitmproxy WAF (request inspection, CVE detection)
     - All 13 MetaBlogizer sites verified working with dual WAF
     - **CrowdSec MCP:** Added crowdsec-local-mcp for AI-generated WAF rules
+
+47. **Nextcloud Apps 403 Fix - try_files Directory Match (2026-02-27)**
+    - **Problem:** `/apps/spreed/` and `/apps/dashboard/` returning 403 Forbidden
+    - **Root Cause:** nginx `try_files $uri $uri/ /index.php$request_uri;` checks `$uri/`
+      - `/apps/spreed/` exists as a real directory in filesystem
+      - nginx finds directory, tries to serve index, no index file → 403
+    - **Fix:** Changed to `try_files $uri /index.php$request_uri;`
+      - Removed `$uri/` directory check from try_files
+      - All non-file requests now route directly to PHP front controller
+    - **Result:** Talk (/apps/spreed/) returns 303 redirect, Dashboard returns 401 (auth required)

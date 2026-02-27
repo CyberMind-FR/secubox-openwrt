@@ -68,6 +68,8 @@ return view.extend({
 				'</div>';
 		};
 
-		return KissTheme.wrap([m.render()], 'admin/services/metablogizer/settings');
+		return m.render().then(function(formEl) {
+			return KissTheme.wrap([formEl], 'admin/services/metablogizer/settings');
+		});
 	}
 });

@@ -449,6 +449,8 @@ return view.extend({
 			});
 		};
 
-		return KissTheme.wrap([m.render()], 'admin/services/domoticz');
+		return m.render().then(function(formEl) {
+			return KissTheme.wrap([formEl], 'admin/services/domoticz');
+		});
 	}
 });
