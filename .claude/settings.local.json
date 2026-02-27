@@ -460,7 +460,29 @@
       "Bash(__NEW_LINE_4ae32f0682f969f7__ echo \"\")",
       "Bash(__NEW_LINE_9355573ea4eaaf97__ echo \"\")",
       "Bash(__NEW_LINE_2d1b6ec757fae311__ echo \"\")",
-      "Bash(__NEW_LINE_f8bfff16bb831fd7__ echo \"\")"
+      "Bash(__NEW_LINE_f8bfff16bb831fd7__ echo \"\")",
+      "Bash(__NEW_LINE_c5c381a297636f7e__ echo \"\")",
+      "Bash(__NEW_LINE_f49c6da736d3f42b__ echo \"=== Check master DHT ===\")",
+      "Bash(__NEW_LINE_f49c6da736d3f42b__ echo \"\")",
+      "Bash(__NEW_LINE_ea3ae0dc3d3aaef0__ echo \"\")",
+      "Bash(__NEW_LINE_987d8798582642d8__ echo \"\")",
+      "Bash(__NEW_LINE_e9d215c8ae3f794b__ echo \"\")",
+      "Bash(__NEW_LINE_bf7149c19b0ef674__ echo \"\")",
+      "Bash(__NEW_LINE_a6f7aa1271a4ac1e__ echo \"\")",
+      "Bash(GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build:*)",
+      "Bash(GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build:*)",
+      "Bash(exec bash -c 'cd /home/reepost && pwd')",
+      "Bash(HOME=/home/reepost exec /bin/bash --login -c 'cd /home/reepost/CyberMindStudio/secubox-openwrt && pwd && df -h / | tail -1')",
+      "Bash(/bin/sh -c 'cd /home/reepost/CyberMindStudio/secubox-openwrt && pwd')",
+      "Bash(/bin/sh:*)",
+      "Bash(/usr/bin/whoami:*)",
+      "Bash(/bin/echo:*)",
+      "Bash(git clone:*)",
+      "Bash(/bin/ls:*)",
+      "Bash(pip show:*)",
+      "Bash(uvx:*)",
+      "Bash(claude mcp add:*)",
+      "WebFetch(domain:openclaw.ai)"
     ]
   }
 }

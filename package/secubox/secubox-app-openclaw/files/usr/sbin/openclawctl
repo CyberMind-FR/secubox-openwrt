@@ -1,0 +1,575 @@
+#!/bin/sh
+# SecuBox OpenClaw manager - npm-based AI assistant
+# Copyright (C) 2026 CyberMind.fr
+#
+# OpenClaw is a personal AI assistant that can manage emails, calendar,
+# and integrate with chat platforms like Telegram, Discord, Slack.
+
+CONFIG="openclaw"
+INSTALL_DIR="/srv/openclaw"
+PID_FILE="/var/run/openclaw.pid"
+
+usage() {
+	cat <<'EOF'
+Usage: openclawctl <command>
+
+Commands:
+  install            Install OpenClaw via npm
+  update             Update OpenClaw to latest version
+  check              Run prerequisite checks
+  status             Show service status
+  logs               Show OpenClaw logs (use -f to follow)
+
+Configuration:
+  configure          Interactive setup (API keys, integrations)
+  set-provider       Set LLM provider (anthropic/openai/ollama)
+  set-api-key        Set LLM API key
+  test-api           Test LLM API connection
+
+Integrations:
+  enable <name>      Enable integration (telegram/discord/slack/email)
+  disable <name>     Disable integration
+  list-integrations  List configured integrations
+
+Service Control:
+  service-run        Internal: run under procd
+  service-stop       Stop service
+
+API Endpoints (default port 3333):
+  /api/chat          - Send message to AI
+  /api/status        - Service status
+  /api/integrations  - List active integrations
+
+Configuration: /etc/config/openclaw
+EOF
+}
+
+require_root() { [ "$(id -u)" -eq 0 ] || { echo "Root required" >&2; exit 1; }; }
+
+log_info() { echo "[INFO] $*"; logger -t openclaw "$*"; }
+log_warn() { echo "[WARN] $*" >&2; logger -t openclaw -p warning "$*"; }
+log_error() { echo "[ERROR] $*" >&2; logger -t openclaw -p err "$*"; }
+
+uci_get() { uci -q get ${CONFIG}.$1; }
+uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
+
+# Load configuration
+load_config() {
+	port="$(uci_get main.port || echo 3333)"
+	host="$(uci_get main.host || echo 0.0.0.0)"
+	data_path="$(uci_get main.data_path || echo /srv/openclaw)"
+	log_level="$(uci_get main.log_level || echo info)"
+
+	# LLM settings
+	llm_type="$(uci_get llm.type || echo anthropic)"
+	api_key="$(uci_get llm.api_key || echo '')"
+	ollama_url="$(uci_get llm.ollama_url || echo 'http://127.0.0.1:11434')"
+	model="$(uci_get llm.model || echo 'claude-sonnet-4-20250514')"
+
+	# Ensure paths exist
+	[ -d "$data_path" ] || mkdir -p "$data_path"
+}
+
+# =============================================================================
+# PREREQUISITES
+# =============================================================================
+
+has_node() {
+	command -v node >/dev/null 2>&1
+}
+
+has_npm() {
+	command -v npm >/dev/null 2>&1
+}
+
+get_node_version() {
+	node --version 2>/dev/null | sed 's/^v//'
+}
+
+check_node_version() {
+	local version=$(get_node_version)
+	local major=$(echo "$version" | cut -d. -f1)
+	[ "$major" -ge 18 ] 2>/dev/null
+}
+
+# =============================================================================
+# INSTALLATION
+# =============================================================================
+
+cmd_install() {
+	require_root
+	load_config
+
+	log_info "Installing OpenClaw..."
+
+	# Check prerequisites
+	if ! has_node; then
+		log_error "Node.js not found. Install with: opkg install node"
+		exit 1
+	fi
+
+	if ! check_node_version; then
+		log_warn "Node.js 18+ recommended. Current: $(get_node_version)"
+	fi
+
+	if ! has_npm; then
+		log_error "npm not found. Install with: opkg install node-npm"
+		exit 1
+	fi
+
+	# Create install directory
+	mkdir -p "$INSTALL_DIR"
+	cd "$INSTALL_DIR" || exit 1
+
+	# Initialize npm project if needed
+	if [ ! -f "$INSTALL_DIR/package.json" ]; then
+		log_info "Initializing npm project..."
+		npm init -y >/dev/null 2>&1
+	fi
+
+	# Install OpenClaw
+	log_info "Installing OpenClaw via npm..."
+	log_info "This may take a few minutes..."
+
+	if npm install -g openclaw 2>&1; then
+		log_info "OpenClaw installed successfully!"
+	else
+		log_error "Failed to install OpenClaw"
+		exit 1
+	fi
+
+	log_info ""
+	log_info "Next steps:"
+	log_info "  1. Configure API key: openclawctl set-api-key <your-key>"
+	log_info "  2. Test connection: openclawctl test-api"
+	log_info "  3. Enable service: uci set openclaw.main.enabled=1 && uci commit"
+	log_info "  4. Start: /etc/init.d/openclaw start"
+	log_info ""
+	log_info "API will be available at: http://<router-ip>:$port"
+}
+
+cmd_update() {
+	require_root
+	log_info "Updating OpenClaw..."
+
+	npm update -g openclaw
+
+	if [ "$(uci_get main.enabled)" = "1" ]; then
+		log_info "Restarting service..."
+		/etc/init.d/openclaw restart
+	fi
+}
+
+cmd_check() {
+	load_config
+
+	echo "=== OpenClaw Prerequisite Check ==="
+	echo ""
+
+	# Node.js
+	if has_node; then
+		local version=$(get_node_version)
+		if check_node_version; then
+			echo "[OK] Node.js: v$version"
+		else
+			echo "[WARN] Node.js: v$version (18+ recommended)"
+		fi
+	else
+		echo "[FAIL] Node.js not found"
+		echo "       Install: opkg install node"
+	fi
+
+	# npm
+	if has_npm; then
+		echo "[OK] npm: $(npm --version 2>/dev/null)"
+	else
+		echo "[FAIL] npm not found"
+		echo "       Install: opkg install node-npm"
+	fi
+	echo ""
+
+	# OpenClaw installation
+	if command -v openclaw >/dev/null 2>&1; then
+		echo "[OK] OpenClaw installed"
+		openclaw --version 2>/dev/null || true
+	else
+		echo "[INFO] OpenClaw not installed"
+		echo "       Run: openclawctl install"
+	fi
+	echo ""
+
+	# LLM provider
+	echo "=== LLM Configuration ==="
+	echo "Provider: $llm_type"
+	echo "Model: $model"
+	if [ -n "$api_key" ] && [ "$api_key" != "" ]; then
+		echo "API Key: ***configured***"
+	else
+		if [ "$llm_type" = "ollama" ]; then
+			echo "API Key: (not required for Ollama)"
+			echo "Ollama URL: $ollama_url"
+		else
+			echo "API Key: NOT SET"
+			echo "       Configure with: openclawctl set-api-key <key>"
+		fi
+	fi
+	echo ""
+
+	# Check Ollama if configured
+	if [ "$llm_type" = "ollama" ]; then
+		if wget -q -O /dev/null "$ollama_url" 2>/dev/null; then
+			echo "[OK] Ollama reachable at $ollama_url"
+		else
+			echo "[WARN] Ollama not responding at $ollama_url"
+		fi
+	fi
+
+	# Storage
+	local storage_avail=$(df -h "$data_path" 2>/dev/null | tail -1 | awk '{print $4}')
+	echo "Storage available: $storage_avail (at $data_path)"
+}
+
+# =============================================================================
+# CONFIGURATION
+# =============================================================================
+
+cmd_configure() {
+	require_root
+	load_config
+
+	echo "=== OpenClaw Configuration ==="
+	echo ""
+	echo "Select LLM provider:"
+	echo "  1) Anthropic (Claude)"
+	echo "  2) OpenAI (GPT-4)"
+	echo "  3) Ollama (Local)"
+	echo ""
+	printf "Choice [1-3]: "
+	read choice
+
+	case "$choice" in
+		1)
+			uci_set llm.type 'anthropic'
+			uci_set llm.model 'claude-sonnet-4-20250514'
+			echo "Selected: Anthropic Claude"
+			echo ""
+			printf "Enter Anthropic API key: "
+			read -r api_key
+			[ -n "$api_key" ] && uci_set llm.api_key "$api_key"
+			;;
+		2)
+			uci_set llm.type 'openai'
+			uci_set llm.model 'gpt-4o'
+			echo "Selected: OpenAI GPT-4"
+			echo ""
+			printf "Enter OpenAI API key: "
+			read -r api_key
+			[ -n "$api_key" ] && uci_set llm.api_key "$api_key"
+			;;
+		3)
+			uci_set llm.type 'ollama'
+			uci_set llm.model 'mistral'
+			echo "Selected: Ollama (Local)"
+			echo ""
+			printf "Enter Ollama URL [http://127.0.0.1:11434]: "
+			read url
+			[ -n "$url" ] && uci_set llm.ollama_url "$url"
+			;;
+		*)
+			echo "Invalid choice"
+			return 1
+			;;
+	esac
+
+	echo ""
+	echo "Configuration saved."
+	echo "Test with: openclawctl test-api"
+}
+
+cmd_set_provider() {
+	require_root
+	local provider="$1"
+
+	case "$provider" in
+		anthropic)
+			uci_set llm.type 'anthropic'
+			uci_set llm.model 'claude-sonnet-4-20250514'
+			echo "Provider set to Anthropic"
+			;;
+		openai)
+			uci_set llm.type 'openai'
+			uci_set llm.model 'gpt-4o'
+			echo "Provider set to OpenAI"
+			;;
+		ollama)
+			uci_set llm.type 'ollama'
+			uci_set llm.model 'mistral'
+			echo "Provider set to Ollama"
+			;;
+		*)
+			echo "Usage: openclawctl set-provider <anthropic|openai|ollama>"
+			return 1
+			;;
+	esac
+}
+
+cmd_set_api_key() {
+	require_root
+	local key="$1"
+
+	if [ -z "$key" ]; then
+		echo "Usage: openclawctl set-api-key <api-key>"
+		return 1
+	fi
+
+	uci_set llm.api_key "$key"
+	echo "API key configured"
+}
+
+cmd_test_api() {
+	load_config
+
+	echo "Testing LLM API connection..."
+	echo "Provider: $llm_type"
+	echo "Model: $model"
+	echo ""
+
+	case "$llm_type" in
+		anthropic)
+			if [ -z "$api_key" ]; then
+				log_error "API key not configured"
+				return 1
+			fi
+			# Test Anthropic API
+			local response=$(wget -q -O - \
+				--header="x-api-key: $api_key" \
+				--header="anthropic-version: 2023-06-01" \
+				--header="content-type: application/json" \
+				--post-data='{"model":"'"$model"'","max_tokens":10,"messages":[{"role":"user","content":"Hi"}]}' \
+				"https://api.anthropic.com/v1/messages" 2>&1)
+
+			if echo "$response" | grep -q '"content"'; then
+				echo "[OK] Anthropic API working"
+			else
+				log_error "API test failed: $response"
+				return 1
+			fi
+			;;
+		openai)
+			if [ -z "$api_key" ]; then
+				log_error "API key not configured"
+				return 1
+			fi
+			local response=$(wget -q -O - \
+				--header="Authorization: Bearer $api_key" \
+				--header="content-type: application/json" \
+				--post-data='{"model":"'"$model"'","max_tokens":10,"messages":[{"role":"user","content":"Hi"}]}' \
+				"https://api.openai.com/v1/chat/completions" 2>&1)
+
+			if echo "$response" | grep -q '"choices"'; then
+				echo "[OK] OpenAI API working"
+			else
+				log_error "API test failed: $response"
+				return 1
+			fi
+			;;
+		ollama)
+			if wget -q -O /dev/null "$ollama_url" 2>/dev/null; then
+				echo "[OK] Ollama reachable"
+				# Check if model exists
+				local models=$(wget -q -O - "$ollama_url/api/tags" 2>/dev/null)
+				if echo "$models" | grep -q "$model"; then
+					echo "[OK] Model '$model' available"
+				else
+					log_warn "Model '$model' not found. Pull with: ollamactl pull $model"
+				fi
+			else
+				log_error "Ollama not reachable at $ollama_url"
+				return 1
+			fi
+			;;
+	esac
+}
+
+# =============================================================================
+# INTEGRATIONS
+# =============================================================================
+
+cmd_list_integrations() {
+	load_config
+
+	echo "=== OpenClaw Integrations ==="
+	echo ""
+
+	for int in telegram discord slack email calendar; do
+		local enabled=$(uci_get $int.enabled || echo 0)
+		if [ "$enabled" = "1" ]; then
+			echo "  [ON]  $int"
+		else
+			echo "  [OFF] $int"
+		fi
+	done
+	echo ""
+	echo "Enable with: openclawctl enable <integration>"
+}
+
+cmd_enable_integration() {
+	require_root
+	local name="$1"
+
+	case "$name" in
+		telegram|discord|slack|email|calendar)
+			uci_set $name.enabled '1'
+			echo "Enabled: $name"
+			echo "Configure tokens/credentials in /etc/config/openclaw"
+			;;
+		*)
+			echo "Unknown integration: $name"
+			echo "Available: telegram, discord, slack, email, calendar"
+			return 1
+			;;
+	esac
+}
+
+cmd_disable_integration() {
+	require_root
+	local name="$1"
+
+	case "$name" in
+		telegram|discord|slack|email|calendar)
+			uci_set $name.enabled '0'
+			echo "Disabled: $name"
+			;;
+		*)
+			echo "Unknown integration: $name"
+			return 1
+			;;
+	esac
+}
+
+# =============================================================================
+# SERVICE CONTROL
+# =============================================================================
+
+cmd_status() {
+	load_config
+
+	echo "=== OpenClaw Status ==="
+	echo ""
+
+	# Check if installed
+	if command -v openclaw >/dev/null 2>&1; then
+		echo "Installation: INSTALLED"
+		openclaw --version 2>/dev/null || true
+	else
+		echo "Installation: NOT INSTALLED"
+		echo "Run: openclawctl install"
+		return 0
+	fi
+	echo ""
+
+	# Check if running
+	if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+		echo "Service: RUNNING (PID: $(cat "$PID_FILE"))"
+	else
+		if pgrep -f "openclaw" >/dev/null 2>&1; then
+			echo "Service: RUNNING"
+		else
+			echo "Service: STOPPED"
+		fi
+	fi
+	echo ""
+
+	# API health check
+	if wget -q -O /dev/null "http://127.0.0.1:$port/api/status" 2>/dev/null; then
+		echo "API: HEALTHY (port $port)"
+	else
+		echo "API: NOT RESPONDING"
+	fi
+	echo ""
+
+	# Configuration
+	echo "=== Configuration ==="
+	echo "LLM Provider: $llm_type"
+	echo "Model: $model"
+	echo "Port: $port"
+	echo "Data: $data_path"
+}
+
+cmd_logs() {
+	if [ "$1" = "-f" ]; then
+		logread -f -e openclaw
+	else
+		logread -e openclaw | tail -100
+	fi
+}
+
+cmd_service_run() {
+	require_root
+	load_config
+
+	# Build environment
+	export OPENCLAW_PORT="$port"
+	export OPENCLAW_HOST="$host"
+	export OPENCLAW_DATA_DIR="$data_path"
+	export OPENCLAW_LOG_LEVEL="$log_level"
+
+	# LLM config
+	case "$llm_type" in
+		anthropic)
+			export ANTHROPIC_API_KEY="$api_key"
+			export OPENCLAW_MODEL="$model"
+			;;
+		openai)
+			export OPENAI_API_KEY="$api_key"
+			export OPENCLAW_MODEL="$model"
+			;;
+		ollama)
+			export OLLAMA_HOST="$ollama_url"
+			export OPENCLAW_MODEL="$model"
+			;;
+	esac
+
+	# Store PID
+	echo $$ > "$PID_FILE"
+
+	# Run OpenClaw
+	log_info "Starting OpenClaw on $host:$port"
+	exec openclaw serve --port "$port" --host "$host"
+}
+
+cmd_service_stop() {
+	require_root
+
+	if [ -f "$PID_FILE" ]; then
+		local pid=$(cat "$PID_FILE")
+		if kill -0 "$pid" 2>/dev/null; then
+			log_info "Stopping OpenClaw (PID: $pid)"
+			kill "$pid"
+		fi
+		rm -f "$PID_FILE"
+	fi
+
+	# Also kill any stray processes
+	pkill -f "openclaw serve" 2>/dev/null || true
+}
+
+# Main Entry Point
+case "${1:-}" in
+	install) shift; cmd_install "$@" ;;
+	update) shift; cmd_update "$@" ;;
+	check) shift; cmd_check "$@" ;;
+	status) shift; cmd_status "$@" ;;
+	logs) shift; cmd_logs "$@" ;;
+	configure) shift; cmd_configure "$@" ;;
+	set-provider) shift; cmd_set_provider "$@" ;;
+	set-api-key) shift; cmd_set_api_key "$@" ;;
+	test-api) shift; cmd_test_api "$@" ;;
+	list-integrations) shift; cmd_list_integrations "$@" ;;
+	enable) shift; cmd_enable_integration "$@" ;;
+	disable) shift; cmd_disable_integration "$@" ;;
+	service-run) shift; cmd_service_run "$@" ;;
+	service-stop) shift; cmd_service_stop "$@" ;;
+	help|--help|-h|'') usage ;;
+	*) echo "Unknown command: $1" >&2; usage >&2; exit 1 ;;
+esac
