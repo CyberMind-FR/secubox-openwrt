@@ -67,7 +67,8 @@ return view.extend({
 		var providerSelect = E('select', { 'id': 'provider-select' }, [
 			E('option', { 'value': 'anthropic', 'selected': config.provider === 'anthropic' }, 'Anthropic (Claude)'),
 			E('option', { 'value': 'openai', 'selected': config.provider === 'openai' }, 'OpenAI (GPT)'),
-			E('option', { 'value': 'ollama', 'selected': config.provider === 'ollama' }, 'Ollama (Local)')
+			E('option', { 'value': 'gemini', 'selected': config.provider === 'gemini' }, 'Google (Gemini)'),
+			E('option', { 'value': 'ollama', 'selected': config.provider === 'ollama' }, 'Ollama/LocalAI (Local)')
 		]);
 
 		var modelSelect = E('select', { 'id': 'model-select' });
@@ -154,8 +155,10 @@ return view.extend({
 					E('a', { 'href': 'https://console.anthropic.com/', 'target': '_blank' }, 'Anthropic Console'),
 					' | ',
 					E('a', { 'href': 'https://platform.openai.com/', 'target': '_blank' }, 'OpenAI Platform'),
+				' | ',
+				E('a', { 'href': 'https://aistudio.google.com/apikey', 'target': '_blank' }, 'Google AI Studio'),
 					' | ',
-					E('a', { 'href': 'https://ollama.ai/', 'target': '_blank' }, 'Ollama (Free/Local)')
+					E('a', { 'href': 'https://ollama.ai/', 'target': '_blank' }, 'Ollama/LocalAI')
 				]),
 				E('div', { 'class': 'setting-row' }, [
 					E('label', { 'for': 'provider-select' }, 'Provider'),

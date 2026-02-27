@@ -108,6 +108,12 @@ list_models() {
 	json_add_string "" "codellama"
 	json_close_array
 
+	json_add_array "gemini"
+	json_add_string "" "gemini-1.5-flash"
+	json_add_string "" "gemini-1.5-pro"
+	json_add_string "" "gemini-pro"
+	json_close_array
+
 	json_close_object
 	json_dump
 }
@@ -149,11 +155,18 @@ do_chat() {
 			;;
 		ollama)
 			local ollama_url=$(uci -q get $OPENCLAW_CONFIG.llm.ollama_url)
-			ollama_url="${ollama_url:-http://127.0.0.1:11434}"
+			ollama_url="${ollama_url:-http://127.0.0.1:8091}"
+			# Use OpenAI-compatible endpoint (works with LocalAI)
 			response=$(wget -q -O - \
 				--header="Content-Type: application/json" \
-				--post-data="{\"model\":\"$model\",\"messages\":[{\"role\":\"user\",\"content\":\"$message\"}],\"stream\":false}" \
-				"${ollama_url}/api/chat" 2>/dev/null)
+				--post-data="{\"model\":\"$model\",\"messages\":[{\"role\":\"user\",\"content\":\"$message\"}]}" \
+				"${ollama_url}/v1/chat/completions" 2>/dev/null)
+			;;
+		gemini)
+			response=$(wget -q -O - \
+				--header="Content-Type: application/json" \
+				--post-data="{\"contents\":[{\"parts\":[{\"text\":\"$message\"}]}]}" \
+				"https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${api_key}" 2>/dev/null)
 			;;
 	esac
 
@@ -206,8 +219,14 @@ test_api() {
 			;;
 		ollama)
 			local ollama_url=$(uci -q get $OPENCLAW_CONFIG.llm.ollama_url)
-			ollama_url="${ollama_url:-http://127.0.0.1:11434}"
-			test_result=$(wget -q -O - "${ollama_url}/api/tags" 2>&1)
+			ollama_url="${ollama_url:-http://127.0.0.1:8091}"
+			test_result=$(wget -q -O - "${ollama_url}/v1/models" 2>&1)
+			;;
+		gemini)
+			test_result=$(wget -q -O - \
+				--header="Content-Type: application/json" \
+				--post-data="{\"contents\":[{\"parts\":[{\"text\":\"ping\"}]}]}" \
+				"https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${api_key}" 2>&1)
 			;;
 	esac
 

@@ -102,6 +102,9 @@ return view.extend({
 			} else if (response.message && response.message.content) {
 				// Ollama format
 				aiResponse = response.message.content || '';
+			} else if (response.candidates && response.candidates[0]) {
+				// Gemini format
+				aiResponse = response.candidates[0].content.parts[0].text || '';
 			} else {
 				aiResponse = JSON.stringify(response);
 			}
