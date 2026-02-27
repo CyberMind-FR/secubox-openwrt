@@ -109,9 +109,10 @@ list_models() {
 	json_close_array
 
 	json_add_array "gemini"
-	json_add_string "" "gemini-1.5-flash"
-	json_add_string "" "gemini-1.5-pro"
-	json_add_string "" "gemini-pro"
+	json_add_string "" "gemini-2.0-flash"
+	json_add_string "" "gemini-2.5-flash"
+	json_add_string "" "gemini-2.5-pro"
+	json_add_string "" "gemini-flash-latest"
 	json_close_array
 
 	json_close_object
