@@ -1,0 +1,361 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# RPCD backend for OpenClaw AI Assistant LuCI app
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+OPENCLAW_CONFIG="openclaw"
+OPENCLAW_DATA="/srv/openclaw"
+HISTORY_FILE="$OPENCLAW_DATA/chat_history.json"
+
+log_msg() {
+	logger -t "luci.openclaw" "$1"
+}
+
+# Get service status
+get_status() {
+	local enabled port running pid
+
+	enabled=$(uci -q get $OPENCLAW_CONFIG.main.enabled)
+	port=$(uci -q get $OPENCLAW_CONFIG.main.port)
+
+	# Check if service is running
+	if pgrep -f "openclaw" >/dev/null 2>&1; then
+		running="1"
+		pid=$(pgrep -f "openclaw" | head -1)
+	else
+		running="0"
+		pid=""
+	fi
+
+	json_init
+	json_add_string "enabled" "${enabled:-0}"
+	json_add_string "running" "$running"
+	json_add_string "pid" "$pid"
+	json_add_string "port" "${port:-3333}"
+	json_dump
+}
+
+# Get current configuration
+get_config() {
+	local provider model api_key ollama_url
+
+	provider=$(uci -q get $OPENCLAW_CONFIG.llm.type)
+	model=$(uci -q get $OPENCLAW_CONFIG.llm.model)
+	api_key=$(uci -q get $OPENCLAW_CONFIG.llm.api_key)
+	ollama_url=$(uci -q get $OPENCLAW_CONFIG.llm.ollama_url)
+
+	# Mask API key for security
+	local masked_key=""
+	if [ -n "$api_key" ]; then
+		local key_len=${#api_key}
+		if [ $key_len -gt 8 ]; then
+			masked_key="${api_key:0:4}****${api_key: -4}"
+		else
+			masked_key="****"
+		fi
+	fi
+
+	json_init
+	json_add_string "provider" "${provider:-anthropic}"
+	json_add_string "model" "${model:-claude-sonnet-4-20250514}"
+	json_add_string "api_key_set" "$([ -n "$api_key" ] && echo '1' || echo '0')"
+	json_add_string "api_key_masked" "$masked_key"
+	json_add_string "ollama_url" "${ollama_url:-http://127.0.0.1:11434}"
+	json_dump
+}
+
+# Set configuration
+set_config() {
+	local provider="$1" model="$2" api_key="$3" ollama_url="$4"
+
+	[ -n "$provider" ] && uci set $OPENCLAW_CONFIG.llm.type="$provider"
+	[ -n "$model" ] && uci set $OPENCLAW_CONFIG.llm.model="$model"
+	[ -n "$api_key" ] && uci set $OPENCLAW_CONFIG.llm.api_key="$api_key"
+	[ -n "$ollama_url" ] && uci set $OPENCLAW_CONFIG.llm.ollama_url="$ollama_url"
+
+	uci commit $OPENCLAW_CONFIG
+
+	json_init
+	json_add_string "status" "ok"
+	json_dump
+}
+
+# List available models per provider
+list_models() {
+	json_init
+	json_add_object "models"
+
+	json_add_array "anthropic"
+	json_add_string "" "claude-opus-4-20250514"
+	json_add_string "" "claude-sonnet-4-20250514"
+	json_add_string "" "claude-3-5-haiku-20241022"
+	json_close_array
+
+	json_add_array "openai"
+	json_add_string "" "gpt-4o"
+	json_add_string "" "gpt-4-turbo"
+	json_add_string "" "gpt-4"
+	json_add_string "" "gpt-3.5-turbo"
+	json_close_array
+
+	json_add_array "ollama"
+	json_add_string "" "mistral"
+	json_add_string "" "llama2"
+	json_add_string "" "llama3"
+	json_add_string "" "tinyllama"
+	json_add_string "" "codellama"
+	json_close_array
+
+	json_close_object
+	json_dump
+}
+
+# Chat with AI
+do_chat() {
+	local message="$1"
+	local provider model api_key response
+
+	provider=$(uci -q get $OPENCLAW_CONFIG.llm.type)
+	model=$(uci -q get $OPENCLAW_CONFIG.llm.model)
+	api_key=$(uci -q get $OPENCLAW_CONFIG.llm.api_key)
+
+	if [ -z "$api_key" ] && [ "$provider" != "ollama" ]; then
+		json_init
+		json_add_string "error" "API key not configured"
+		json_dump
+		return
+	fi
+
+	# Ensure data directory exists
+	mkdir -p "$OPENCLAW_DATA"
+
+	case "$provider" in
+		anthropic)
+			response=$(wget -q -O - \
+				--header="Content-Type: application/json" \
+				--header="x-api-key: $api_key" \
+				--header="anthropic-version: 2023-06-01" \
+				--post-data="{\"model\":\"$model\",\"max_tokens\":4096,\"messages\":[{\"role\":\"user\",\"content\":\"$message\"}]}" \
+				"https://api.anthropic.com/v1/messages" 2>/dev/null)
+			;;
+		openai)
+			response=$(wget -q -O - \
+				--header="Content-Type: application/json" \
+				--header="Authorization: Bearer $api_key" \
+				--post-data="{\"model\":\"$model\",\"messages\":[{\"role\":\"user\",\"content\":\"$message\"}]}" \
+				"https://api.openai.com/v1/chat/completions" 2>/dev/null)
+			;;
+		ollama)
+			local ollama_url=$(uci -q get $OPENCLAW_CONFIG.llm.ollama_url)
+			ollama_url="${ollama_url:-http://127.0.0.1:11434}"
+			response=$(wget -q -O - \
+				--header="Content-Type: application/json" \
+				--post-data="{\"model\":\"$model\",\"messages\":[{\"role\":\"user\",\"content\":\"$message\"}],\"stream\":false}" \
+				"${ollama_url}/api/chat" 2>/dev/null)
+			;;
+	esac
+
+	if [ -n "$response" ]; then
+		# Save to history
+		local timestamp=$(date +%s)
+		echo "{\"ts\":$timestamp,\"user\":\"$message\",\"response\":$response}" >> "$HISTORY_FILE"
+
+		# Return response
+		echo "$response"
+	else
+		json_init
+		json_add_string "error" "Failed to get response from AI provider"
+		json_dump
+	fi
+}
+
+# Test API connection
+test_api() {
+	local provider model api_key
+
+	provider=$(uci -q get $OPENCLAW_CONFIG.llm.type)
+	model=$(uci -q get $OPENCLAW_CONFIG.llm.model)
+	api_key=$(uci -q get $OPENCLAW_CONFIG.llm.api_key)
+
+	if [ -z "$api_key" ] && [ "$provider" != "ollama" ]; then
+		json_init
+		json_add_string "success" "0"
+		json_add_string "error" "API key not configured"
+		json_dump
+		return
+	fi
+
+	local test_result
+	case "$provider" in
+		anthropic)
+			test_result=$(wget -q -O - \
+				--header="Content-Type: application/json" \
+				--header="x-api-key: $api_key" \
+				--header="anthropic-version: 2023-06-01" \
+				--post-data="{\"model\":\"$model\",\"max_tokens\":10,\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}]}" \
+				"https://api.anthropic.com/v1/messages" 2>&1)
+			;;
+		openai)
+			test_result=$(wget -q -O - \
+				--header="Content-Type: application/json" \
+				--header="Authorization: Bearer $api_key" \
+				--post-data="{\"model\":\"$model\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_tokens\":10}" \
+				"https://api.openai.com/v1/chat/completions" 2>&1)
+			;;
+		ollama)
+			local ollama_url=$(uci -q get $OPENCLAW_CONFIG.llm.ollama_url)
+			ollama_url="${ollama_url:-http://127.0.0.1:11434}"
+			test_result=$(wget -q -O - "${ollama_url}/api/tags" 2>&1)
+			;;
+	esac
+
+	if echo "$test_result" | grep -qE '(error|Error|ERROR)'; then
+		json_init
+		json_add_string "success" "0"
+		json_add_string "error" "API test failed"
+		json_dump
+	else
+		json_init
+		json_add_string "success" "1"
+		json_add_string "provider" "$provider"
+		json_add_string "model" "$model"
+		json_dump
+	fi
+}
+
+# Get chat history
+get_history() {
+	if [ -f "$HISTORY_FILE" ]; then
+		# Return last 50 entries
+		tail -50 "$HISTORY_FILE" | {
+			echo '{"history":['
+			local first=1
+			while read line; do
+				[ $first -eq 0 ] && echo ","
+				echo "$line"
+				first=0
+			done
+			echo ']}'
+		}
+	else
+		echo '{"history":[]}'
+	fi
+}
+
+# Clear chat history
+clear_history() {
+	rm -f "$HISTORY_FILE"
+	json_init
+	json_add_string "status" "ok"
+	json_dump
+}
+
+# Install/setup OpenClaw
+do_install() {
+	mkdir -p "$OPENCLAW_DATA"
+
+	# Enable and start service
+	uci set $OPENCLAW_CONFIG.main.enabled='1'
+	uci commit $OPENCLAW_CONFIG
+
+	/etc/init.d/openclaw enable 2>/dev/null
+	/etc/init.d/openclaw start 2>/dev/null
+
+	json_init
+	json_add_string "status" "ok"
+	json_dump
+}
+
+# Update OpenClaw
+do_update() {
+	# Restart service
+	/etc/init.d/openclaw restart 2>/dev/null
+
+	json_init
+	json_add_string "status" "ok"
+	json_dump
+}
+
+# Main RPC handler
+case "$1" in
+	list)
+		json_init
+		json_add_object "status"
+		json_close_object
+		json_add_object "get_config"
+		json_close_object
+		json_add_object "set_config"
+			json_add_string "provider" "string"
+			json_add_string "model" "string"
+			json_add_string "api_key" "string"
+			json_add_string "ollama_url" "string"
+		json_close_object
+		json_add_object "list_models"
+		json_close_object
+		json_add_object "chat"
+			json_add_string "message" "string"
+		json_close_object
+		json_add_object "test_api"
+		json_close_object
+		json_add_object "get_history"
+		json_close_object
+		json_add_object "clear_history"
+		json_close_object
+		json_add_object "install"
+		json_close_object
+		json_add_object "update"
+		json_close_object
+		json_dump
+		;;
+	call)
+		case "$2" in
+			status)
+				get_status
+				;;
+			get_config)
+				get_config
+				;;
+			set_config)
+				read input
+				json_load "$input"
+				json_get_var provider provider
+				json_get_var model model
+				json_get_var api_key api_key
+				json_get_var ollama_url ollama_url
+				set_config "$provider" "$model" "$api_key" "$ollama_url"
+				;;
+			list_models)
+				list_models
+				;;
+			chat)
+				read input
+				json_load "$input"
+				json_get_var message message
+				do_chat "$message"
+				;;
+			test_api)
+				test_api
+				;;
+			get_history)
+				get_history
+				;;
+			clear_history)
+				clear_history
+				;;
+			install)
+				do_install
+				;;
+			update)
+				do_update
+				;;
+			*)
+				echo '{"error":"Unknown method"}'
+				;;
+		esac
+		;;
+	*)
+		echo '{"error":"Invalid action"}'
+		;;
+esac
