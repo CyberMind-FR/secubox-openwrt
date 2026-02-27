@@ -3826,3 +3826,15 @@ git checkout HEAD -- index.html
       - Removed `$uri/` directory check from try_files
       - All non-file requests now route directly to PHP front controller
     - **Result:** Talk (/apps/spreed/) returns 303 redirect, Dashboard returns 401 (auth required)
+
+48. **OpenClaw AI Assistant - LuCI Package (2026-02-27)**
+    - **secubox-app-openclaw:** Backend package with UCI config and CLI
+      - Multi-provider support: Anthropic (Claude), OpenAI (GPT), Ollama (local)
+      - `openclawctl` CLI: install, configure, set-provider, set-api-key, test-api
+      - Integrations: Telegram, Discord, Slack, Email, Calendar (CalDAV)
+    - **luci-app-openclaw:** Complete LuCI web interface
+      - Chat view: Real-time AI conversation with markdown rendering
+      - Settings view: Provider/model/API key configuration with connection test
+      - Integrations view: Enable/configure messaging and productivity integrations
+      - RPCD backend: 9 ubus methods (status, get_config, set_config, list_models, chat, test_api, get_history, clear_history, install, update)
+      - ACL permissions for read/write operations
