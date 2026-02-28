@@ -110,6 +110,9 @@ _Last updated: 2026-02-28 (AI Gateway Deployed)_
     - Sanitization working: IPv4, MAC, credentials correctly redacted
     - Proxy running on port 4050 via socat
     - API endpoints responding: /health, /v1/models
+  - **Integrated** with MCP server and threat-analyst:
+    - Both route through AI Gateway (preferred) with LocalAI fallback
+    - Ensures threat data (IPs, MACs, logs) stays LOCAL_ONLY
 
 - **Nextcloud Users List Fix** — DONE (2026-02-28)
   - RPC `expect: { users: [] }` extracted array, render expected object
