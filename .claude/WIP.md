@@ -64,6 +64,15 @@ _Last updated: 2026-02-28 (AI Gateway Deployed)_
 
 ### Just Completed (2026-02-28)
 
+- **Pre-Deploy Lint Script** — DONE (2026-02-28)
+  - Created `secubox-tools/pre-deploy-lint.sh` for syntax validation before deployment
+  - JavaScript: Node.js syntax checking, LuCI-specific pattern validation
+  - JSON: Menu and ACL syntax validation
+  - Shell: bash -n syntax + shellcheck integration
+  - CSS: Brace matching, typo detection
+  - Integrated into `quick-deploy.sh` with `--lint` flag (default for LuCI apps)
+  - Prevents deployment if errors detected, warns on suspicious patterns
+
 - **Yggdrasil Extended Peer Discovery** — DONE (2026-02-28)
   - Created `secubox-app-yggdrasil-discovery` package for mesh peer discovery
   - **yggctl CLI** with commands: status, self, peers, announce, discover, bootstrap

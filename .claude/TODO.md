@@ -59,10 +59,10 @@ _Last updated: 2026-02-06_
 
 ### Docs & Tooling
 
-- Document deployment scripts in `README.md` (what each script copies).
-- Add lint/upload pre-check (LuCI `lua -l luci.dispatcher`) to prevent syntax errors before SCP.
+- ~~Document deployment scripts in `README.md` (what each script copies).~~ — Done (2026-02-28)
+- ~~Add lint/upload pre-check to prevent syntax errors before SCP.~~ — Done (2026-02-28): `pre-deploy-lint.sh` validates JS/JSON/Shell/CSS syntax
 - Capture screenshot baselines for dark/light/cyberpunk themes.
-- Automate browser cache busting (append `?v=<git sha>` to view URLs).
+- ~~Automate browser cache busting (append `?v=<version>` to CSS URLs).~~ — Done (2026-02-28): nav.js cache bust parameter
 
 ---
 

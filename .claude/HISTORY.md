@@ -4018,3 +4018,29 @@ git checkout HEAD -- index.html
     - **Audit Logging:** JSONL format with timestamps, classification decisions, patterns matched
     - All cloud providers opt-in, default LOCAL_ONLY
     - Key ANSSI compliance points: Data sovereignty, EU preference, audit trail, offline capability
+
+58. **Pre-Deploy Lint Script (2026-02-28)**
+    - Created `secubox-tools/pre-deploy-lint.sh` for comprehensive syntax validation before deployment
+    - **JavaScript Validation:**
+      - Full syntax checking via Node.js `--check` (when available)
+      - Fallback pattern-based checks for common errors
+      - Detects: debugger statements, console.log, missing 'use strict'
+      - LuCI-specific: validates require statement format
+    - **JSON Validation:**
+      - Menu.d and acl.d syntax verification
+      - Python json.tool for proper parsing
+    - **Shell Script Validation:**
+      - Bash/sh syntax checking via `-n` flag
+      - shellcheck integration when available
+      - RPCD-specific checks: JSON output, method dispatcher
+    - **CSS Validation:**
+      - Unclosed brace detection
+      - Common typo detection
+    - **Integration with quick-deploy.sh:**
+      - Auto-runs before LuCI app deployment (default)
+      - `--lint` / `--no-lint` flags for control
+      - Prevents deployment if syntax errors detected
+    - **Usage:**
+      - `./secubox-tools/pre-deploy-lint.sh luci-app-system-hub`
+      - `./secubox-tools/pre-deploy-lint.sh --all`
+      - `./secubox-tools/quick-deploy.sh --app system-hub` (lint runs automatically)
