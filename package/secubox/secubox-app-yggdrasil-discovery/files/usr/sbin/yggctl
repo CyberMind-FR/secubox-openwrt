@@ -1,0 +1,491 @@
+#!/bin/sh
+# yggctl - Yggdrasil Extended Peer Discovery CLI
+# Part of SecuBox MirrorNet
+
+VERSION="1.0.0"
+DISCOVERY_LIB="/usr/lib/yggdrasil-discovery"
+PEERS_CACHE="/var/lib/yggdrasil-discovery/peers.json"
+ANNOUNCED_FILE="/var/lib/yggdrasil-discovery/announced.json"
+
+. /lib/functions.sh
+
+# Ensure directories exist
+mkdir -p /var/lib/yggdrasil-discovery
+
+# Load library modules
+[ -f "$DISCOVERY_LIB/core.sh" ] && . "$DISCOVERY_LIB/core.sh"
+
+usage() {
+    cat <<EOF
+yggctl v$VERSION - Yggdrasil Extended Peer Discovery
+
+Usage: yggctl <command> [options]
+
+Peer Discovery:
+  status              Show discovery status and stats
+  announce            Announce this node to mesh peers
+  discover            Discover SecuBox peers on mesh
+  list                List known Yggdrasil peers
+
+Peer Management:
+  add <pubkey> <ip>   Add peer manually
+  remove <pubkey>     Remove peer
+  auto-connect        Auto-connect to trusted discovered peers
+  trust <pubkey>      Mark peer as trusted
+  untrust <pubkey>    Remove peer trust
+
+Yggdrasil Info:
+  self                Show this node's Yggdrasil info
+  peers               Show current Yggdrasil peers
+  routes              Show Yggdrasil routing table
+
+Bootstrap:
+  bootstrap list      List bootstrap peers
+  bootstrap add <uri> Add bootstrap peer
+  bootstrap remove    Remove bootstrap peer
+  bootstrap connect   Connect to bootstrap peers
+
+Settings:
+  config show         Show current configuration
+  config set <k> <v>  Set configuration value
+  enable              Enable auto-discovery
+  disable             Disable auto-discovery
+
+EOF
+    exit 0
+}
+
+# Get Yggdrasil self info
+cmd_self() {
+    echo "=== Yggdrasil Node Info ==="
+
+    # Get IPv6 address
+    local ipv6
+    ipv6=$(ip -6 addr show tun0 2>/dev/null | grep -oP '2[0-9a-f:]+(?=/)')
+
+    if [ -z "$ipv6" ]; then
+        echo "Status: NOT RUNNING"
+        echo "Yggdrasil interface (tun0) not found"
+        return 1
+    fi
+
+    echo "Status: RUNNING"
+    echo "IPv6: $ipv6"
+
+    # Get public key via yggdrasilctl if available
+    if command -v yggdrasilctl >/dev/null 2>&1; then
+        local pubkey
+        pubkey=$(yggdrasilctl -json getSelf 2>/dev/null | jsonfilter -e '@.key' 2>/dev/null)
+        [ -n "$pubkey" ] && echo "Public Key: $pubkey"
+
+        local coords
+        coords=$(yggdrasilctl -json getSelf 2>/dev/null | jsonfilter -e '@.coords' 2>/dev/null)
+        [ -n "$coords" ] && echo "Coords: $coords"
+    fi
+
+    # Get hostname
+    echo "Hostname: $(cat /proc/sys/kernel/hostname)"
+
+    # Check if announced
+    if [ -f "$ANNOUNCED_FILE" ]; then
+        local last_announce
+        last_announce=$(jsonfilter -i "$ANNOUNCED_FILE" -e '@.timestamp' 2>/dev/null)
+        [ -n "$last_announce" ] && echo "Last Announced: $(date -d @$last_announce 2>/dev/null || date -r $last_announce 2>/dev/null || echo $last_announce)"
+    fi
+}
+
+# Show current Yggdrasil peers
+cmd_peers() {
+    echo "=== Yggdrasil Peers ==="
+
+    if ! command -v yggdrasilctl >/dev/null 2>&1; then
+        echo "yggdrasilctl not found"
+        return 1
+    fi
+
+    yggdrasilctl -json getPeers 2>/dev/null | jsonfilter -e '@.peers[*]' 2>/dev/null | while read -r peer; do
+        local addr key uptime
+        addr=$(echo "$peer" | jsonfilter -e '@.remote' 2>/dev/null)
+        key=$(echo "$peer" | jsonfilter -e '@.key' 2>/dev/null)
+        uptime=$(echo "$peer" | jsonfilter -e '@.uptime' 2>/dev/null)
+
+        [ -n "$addr" ] && echo "  $addr"
+        [ -n "$key" ] && echo "    Key: ${key:0:16}..."
+        [ -n "$uptime" ] && echo "    Uptime: ${uptime}s"
+        echo ""
+    done
+}
+
+# Announce this node to mesh
+cmd_announce() {
+    echo "Announcing node to mesh..."
+
+    local ipv6
+    ipv6=$(ip -6 addr show tun0 2>/dev/null | grep -oP '2[0-9a-f:]+(?=/)')
+
+    if [ -z "$ipv6" ]; then
+        echo "Error: Yggdrasil not running (no tun0 interface)"
+        return 1
+    fi
+
+    # Get public key
+    local pubkey=""
+    if command -v yggdrasilctl >/dev/null 2>&1; then
+        pubkey=$(yggdrasilctl -json getSelf 2>/dev/null | jsonfilter -e '@.key' 2>/dev/null)
+    fi
+
+    # Get master-link trust info
+    local ml_fingerprint=""
+    local ml_role=""
+    if [ -f /etc/config/master-link ]; then
+        ml_fingerprint=$(uci -q get master-link.main.fingerprint)
+        ml_role=$(uci -q get master-link.main.role)
+    fi
+
+    # Get ZKP fingerprint if available
+    local zkp_fingerprint=""
+    if [ -f /etc/config/master-link ]; then
+        zkp_fingerprint=$(uci -q get master-link.main.zkp_fingerprint)
+    fi
+
+    local hostname
+    hostname=$(cat /proc/sys/kernel/hostname)
+
+    local timestamp
+    timestamp=$(date +%s)
+
+    # Create announcement data
+    local announce_data
+    announce_data=$(cat <<EOF
+{
+    "ipv6": "$ipv6",
+    "pubkey": "$pubkey",
+    "hostname": "$hostname",
+    "ml_fingerprint": "$ml_fingerprint",
+    "ml_role": "$ml_role",
+    "zkp_fingerprint": "$zkp_fingerprint",
+    "timestamp": $timestamp,
+    "version": "$VERSION",
+    "services": []
+}
+EOF
+)
+
+    # Save announcement locally
+    echo "$announce_data" > "$ANNOUNCED_FILE"
+
+    # Broadcast via gossip
+    if [ -f /usr/lib/mirrornet/gossip.sh ]; then
+        . /usr/lib/mirrornet/gossip.sh
+        local msg_id
+        msg_id=$(gossip_broadcast "yggdrasil_peer" "$announce_data" "$PRIORITY_NORMAL")
+        echo "Announced via gossip (msg_id: $msg_id)"
+    else
+        echo "Warning: gossip.sh not found, announcement not broadcast"
+    fi
+
+    echo "Node announced successfully"
+    echo "  IPv6: $ipv6"
+    echo "  Hostname: $hostname"
+    [ -n "$pubkey" ] && echo "  PubKey: ${pubkey:0:16}..."
+    [ -n "$ml_fingerprint" ] && echo "  ML Fingerprint: $ml_fingerprint"
+}
+
+# Discover peers
+cmd_discover() {
+    echo "=== Discovering SecuBox Yggdrasil Peers ==="
+
+    if [ ! -f "$PEERS_CACHE" ]; then
+        echo "No peers discovered yet."
+        echo "Run 'yggctl announce' to announce yourself first."
+        return 0
+    fi
+
+    local count=0
+    jsonfilter -i "$PEERS_CACHE" -e '@[*]' 2>/dev/null | while read -r peer; do
+        local ipv6 hostname ml_fp timestamp trusted
+        ipv6=$(echo "$peer" | jsonfilter -e '@.ipv6' 2>/dev/null)
+        hostname=$(echo "$peer" | jsonfilter -e '@.hostname' 2>/dev/null)
+        ml_fp=$(echo "$peer" | jsonfilter -e '@.ml_fingerprint' 2>/dev/null)
+        timestamp=$(echo "$peer" | jsonfilter -e '@.timestamp' 2>/dev/null)
+
+        # Check if trusted via master-link
+        trusted="NO"
+        if [ -n "$ml_fp" ] && [ -f /usr/lib/secubox/master-link.sh ]; then
+            . /usr/lib/secubox/master-link.sh
+            if ml_is_peer_approved "$ml_fp" 2>/dev/null; then
+                trusted="YES"
+            fi
+        fi
+
+        count=$((count + 1))
+        echo "[$count] $hostname"
+        echo "    IPv6: $ipv6"
+        [ -n "$ml_fp" ] && echo "    ML Fingerprint: $ml_fp"
+        echo "    Trusted: $trusted"
+        echo "    Last Seen: $(date -d @$timestamp 2>/dev/null || echo $timestamp)"
+        echo ""
+    done
+
+    [ "$count" -eq 0 ] && echo "No peers discovered."
+}
+
+# List known peers
+cmd_list() {
+    cmd_discover
+}
+
+# Auto-connect to trusted peers
+cmd_auto_connect() {
+    echo "Auto-connecting to trusted Yggdrasil peers..."
+
+    local require_trust
+    require_trust=$(uci -q get yggdrasil-discovery.main.require_trust)
+    require_trust="${require_trust:-1}"
+
+    local min_trust
+    min_trust=$(uci -q get yggdrasil-discovery.main.min_trust_score)
+    min_trust="${min_trust:-50}"
+
+    if [ ! -f "$PEERS_CACHE" ]; then
+        echo "No peers to connect to. Run 'yggctl discover' first."
+        return 0
+    fi
+
+    local connected=0
+
+    jsonfilter -i "$PEERS_CACHE" -e '@[*]' 2>/dev/null | while read -r peer; do
+        local ipv6 pubkey ml_fp hostname
+        ipv6=$(echo "$peer" | jsonfilter -e '@.ipv6' 2>/dev/null)
+        pubkey=$(echo "$peer" | jsonfilter -e '@.pubkey' 2>/dev/null)
+        ml_fp=$(echo "$peer" | jsonfilter -e '@.ml_fingerprint' 2>/dev/null)
+        hostname=$(echo "$peer" | jsonfilter -e '@.hostname' 2>/dev/null)
+
+        [ -z "$ipv6" ] && continue
+
+        # Check trust if required
+        if [ "$require_trust" = "1" ]; then
+            local trusted=0
+
+            # Check master-link approval
+            if [ -n "$ml_fp" ] && [ -f /usr/lib/secubox/master-link.sh ]; then
+                . /usr/lib/secubox/master-link.sh
+                ml_is_peer_approved "$ml_fp" 2>/dev/null && trusted=1
+            fi
+
+            # Check reputation score
+            if [ "$trusted" = "0" ] && [ -f /usr/lib/mirrornet/reputation.sh ]; then
+                . /usr/lib/mirrornet/reputation.sh
+                local score
+                score=$(reputation_get_score "$ml_fp" 2>/dev/null || echo 0)
+                [ "$score" -ge "$min_trust" ] && trusted=1
+            fi
+
+            if [ "$trusted" = "0" ]; then
+                echo "Skipping untrusted peer: $hostname ($ipv6)"
+                continue
+            fi
+        fi
+
+        # Add as Yggdrasil peer
+        echo "Connecting to: $hostname ($ipv6)"
+
+        if command -v yggdrasilctl >/dev/null 2>&1; then
+            # Add peer via yggdrasilctl
+            yggdrasilctl addPeer "tcp://[$ipv6]:0" 2>/dev/null && {
+                echo "  Connected!"
+                connected=$((connected + 1))
+            } || {
+                echo "  Failed to connect"
+            }
+        fi
+    done
+
+    echo ""
+    echo "Connected to $connected peers"
+}
+
+# Show discovery status
+cmd_status() {
+    echo "=== Yggdrasil Discovery Status ==="
+
+    # Check if enabled
+    local enabled
+    enabled=$(uci -q get yggdrasil-discovery.main.enabled)
+    echo "Discovery: $([ "$enabled" = "1" ] && echo "ENABLED" || echo "DISABLED")"
+
+    # Yggdrasil status
+    local ipv6
+    ipv6=$(ip -6 addr show tun0 2>/dev/null | grep -oP '2[0-9a-f:]+(?=/)')
+    echo "Yggdrasil: $([ -n "$ipv6" ] && echo "RUNNING ($ipv6)" || echo "STOPPED")"
+
+    # Peer counts
+    local ygg_peers=0
+    if command -v yggdrasilctl >/dev/null 2>&1; then
+        ygg_peers=$(yggdrasilctl -json getPeers 2>/dev/null | jsonfilter -e '@.peers[*]' 2>/dev/null | wc -l)
+    fi
+    echo "Yggdrasil Peers: $ygg_peers"
+
+    # Discovered peers
+    local discovered=0
+    [ -f "$PEERS_CACHE" ] && discovered=$(jsonfilter -i "$PEERS_CACHE" -e '@[*]' 2>/dev/null | wc -l)
+    echo "Discovered SecuBox Nodes: $discovered"
+
+    # Settings
+    echo ""
+    echo "Settings:"
+    echo "  Auto Announce: $(uci -q get yggdrasil-discovery.main.auto_announce || echo 1)"
+    echo "  Auto Peer: $(uci -q get yggdrasil-discovery.main.auto_peer || echo 1)"
+    echo "  Require Trust: $(uci -q get yggdrasil-discovery.main.require_trust || echo 1)"
+    echo "  Min Trust Score: $(uci -q get yggdrasil-discovery.main.min_trust_score || echo 50)"
+
+    # Last announcement
+    if [ -f "$ANNOUNCED_FILE" ]; then
+        local last_ts
+        last_ts=$(jsonfilter -i "$ANNOUNCED_FILE" -e '@.timestamp' 2>/dev/null)
+        [ -n "$last_ts" ] && echo "  Last Announced: $(date -d @$last_ts 2>/dev/null || echo $last_ts)"
+    fi
+}
+
+# Bootstrap commands
+cmd_bootstrap() {
+    local subcmd="${1:-list}"
+    shift 2>/dev/null
+
+    case "$subcmd" in
+        list)
+            echo "=== Bootstrap Peers ==="
+            uci -q get yggdrasil-discovery.bootstrap.peer | tr ' ' '\n' | while read -r peer; do
+                [ -n "$peer" ] && echo "  $peer"
+            done
+            ;;
+        add)
+            local uri="$1"
+            [ -z "$uri" ] && { echo "Usage: yggctl bootstrap add <tcp://host:port>"; return 1; }
+            uci add_list yggdrasil-discovery.bootstrap.peer="$uri"
+            uci commit yggdrasil-discovery
+            echo "Added bootstrap peer: $uri"
+            ;;
+        remove)
+            local uri="$1"
+            [ -z "$uri" ] && { echo "Usage: yggctl bootstrap remove <tcp://host:port>"; return 1; }
+            uci del_list yggdrasil-discovery.bootstrap.peer="$uri"
+            uci commit yggdrasil-discovery
+            echo "Removed bootstrap peer: $uri"
+            ;;
+        connect)
+            echo "Connecting to bootstrap peers..."
+            uci -q get yggdrasil-discovery.bootstrap.peer | tr ' ' '\n' | while read -r peer; do
+                [ -z "$peer" ] && continue
+                echo "  Connecting to $peer..."
+                yggdrasilctl addPeer "$peer" 2>/dev/null && echo "    OK" || echo "    FAILED"
+            done
+            ;;
+        *)
+            echo "Usage: yggctl bootstrap {list|add|remove|connect}"
+            ;;
+    esac
+}
+
+# Enable/disable
+cmd_enable() {
+    uci set yggdrasil-discovery.main.enabled='1'
+    uci commit yggdrasil-discovery
+    echo "Yggdrasil discovery enabled"
+}
+
+cmd_disable() {
+    uci set yggdrasil-discovery.main.enabled='0'
+    uci commit yggdrasil-discovery
+    echo "Yggdrasil discovery disabled"
+}
+
+# Config commands
+cmd_config() {
+    local subcmd="${1:-show}"
+    shift 2>/dev/null
+
+    case "$subcmd" in
+        show)
+            echo "=== Discovery Configuration ==="
+            uci show yggdrasil-discovery
+            ;;
+        set)
+            local key="$1"
+            local value="$2"
+            [ -z "$key" ] || [ -z "$value" ] && { echo "Usage: yggctl config set <key> <value>"; return 1; }
+            uci set "yggdrasil-discovery.main.$key=$value"
+            uci commit yggdrasil-discovery
+            echo "Set $key = $value"
+            ;;
+        *)
+            echo "Usage: yggctl config {show|set}"
+            ;;
+    esac
+}
+
+# Add peer manually
+cmd_add() {
+    local pubkey="$1"
+    local ipv6="$2"
+
+    [ -z "$pubkey" ] || [ -z "$ipv6" ] && {
+        echo "Usage: yggctl add <pubkey> <ipv6>"
+        return 1
+    }
+
+    echo "Adding peer: $ipv6"
+
+    # Add to Yggdrasil
+    if command -v yggdrasilctl >/dev/null 2>&1; then
+        yggdrasilctl addPeer "tcp://[$ipv6]:0" 2>/dev/null && {
+            echo "Added to Yggdrasil"
+        } || {
+            echo "Warning: Could not add to Yggdrasil"
+        }
+    fi
+
+    # Add to peers cache
+    local timestamp
+    timestamp=$(date +%s)
+    local peer_json="{\"pubkey\":\"$pubkey\",\"ipv6\":\"$ipv6\",\"timestamp\":$timestamp,\"manual\":true}"
+
+    if [ ! -f "$PEERS_CACHE" ] || [ "$(cat "$PEERS_CACHE")" = "[]" ]; then
+        echo "[$peer_json]" > "$PEERS_CACHE"
+    else
+        sed "s/]$/,$peer_json]/" "$PEERS_CACHE" > "$PEERS_CACHE.tmp"
+        mv "$PEERS_CACHE.tmp" "$PEERS_CACHE"
+    fi
+
+    echo "Peer added"
+}
+
+# Main command dispatch
+case "${1:-}" in
+    self)           cmd_self ;;
+    peers)          cmd_peers ;;
+    announce)       cmd_announce ;;
+    discover)       cmd_discover ;;
+    list)           cmd_list ;;
+    auto-connect)   cmd_auto_connect ;;
+    status)         cmd_status ;;
+    bootstrap)      shift; cmd_bootstrap "$@" ;;
+    add)            shift; cmd_add "$@" ;;
+    enable)         cmd_enable ;;
+    disable)        cmd_disable ;;
+    config)         shift; cmd_config "$@" ;;
+    routes)
+        if command -v yggdrasilctl >/dev/null 2>&1; then
+            yggdrasilctl getDHT
+        else
+            echo "yggdrasilctl not found"
+        fi
+        ;;
+    -h|--help|help|"")
+        usage
+        ;;
+    *)
+        echo "Unknown command: $1"
+        usage
+        ;;
+esac

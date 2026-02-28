@@ -196,7 +196,7 @@ All cloud providers are **opt-in**. Offline resilience: local tier always active
 
 - [x] Yggdrasil overlay — Done 2026-02-26 (bidirectional IPv6, SSH, LAN multicast discovery)
 - [x] Meshname DNS — Done 2026-02-28 (decentralized .ygg resolution via gossip + dnsmasq)
-- [ ] Extended peer discovery
+- [x] Extended peer discovery — Done 2026-02-28 (yggctl CLI, gossip-based peer announcements, trust-verified auto-peering)
 
 ### Certifications Ciblees
 
@@ -215,11 +215,13 @@ All cloud providers are **opt-in**. Offline resilience: local tier always active
 
 ## Deferred / Backlog
 
-### Tor Shield / opkg Bug
+### ~~Tor Shield / opkg Bug~~ — RESOLVED (2026-02-28)
 
-- opkg downloads fail (`wget returned 4`) when Tor Shield is active.
-- Direct `wget` to full URL works — likely DNS/routing interference.
-- Investigate: opkg proxy settings, Tor split-routing exclusions for package repos.
+- ~~opkg downloads fail (`wget returned 4`) when Tor Shield is active.~~
+- **Root cause**: DNS queries for package repos went through Tor DNS, which is slow/unreliable
+- **Fix**: Added dnsmasq bypass for excluded domains (`/tmp/dnsmasq.d/tor-shield-bypass.conf`)
+- Excluded domains now resolve directly via upstream DNS, bypassing Tor
+- Default exclusions include: openwrt.org, pool.ntp.org, letsencrypt.org, DNS provider APIs
 
 ### v2 Long-term
 

@@ -1,0 +1,16 @@
+config discovery 'main'
+	option enabled '1'
+	option auto_announce '1'
+	option announce_interval '300'
+	option auto_peer '1'
+	option require_trust '1'
+	option min_trust_score '50'
+
+config bootstrap
+	list peer 'tcp://51.15.204.214:12345'
+	list peer 'tcp://ygg.mkg20001.io:443'
+
+config trusted_network 'secubox'
+	option name 'SecuBox Mesh'
+	option description 'Official SecuBox peer network'
+	list bootstrap 'tcp://ygg.secubox.in:443'

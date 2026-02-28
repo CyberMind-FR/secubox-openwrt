@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-25 (Factory Dashboard LuCI)_
+_Last updated: 2026-02-28 (HAProxy Portal Fix)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -61,6 +61,39 @@ _Last updated: 2026-02-25 (Factory Dashboard LuCI)_
   - First Peek auto-registration of services
   - Gossip-based exposure config sync via secubox-p2p
   - Created `luci-app-vortex-dns` dashboard
+
+### Just Completed (2026-02-28)
+
+- **Yggdrasil Extended Peer Discovery** — DONE (2026-02-28)
+  - Created `secubox-app-yggdrasil-discovery` package for mesh peer discovery
+  - **yggctl CLI** with commands: status, self, peers, announce, discover, bootstrap
+  - Gossip protocol integration via mirrornet `yggdrasil_peer` message type
+  - Auto-peering with trust verification (master-link fingerprint)
+  - Daemon for periodic announcements (configurable interval)
+  - UCI config: enabled, auto_announce, announce_interval, auto_peer, require_trust, min_trust_score
+  - Bootstrap peers list for initial network connectivity
+  - Tested on C3BOX: yggctl showing correct IPv6 and peer stats
+  - Files: Makefile, init script, UCI config, core.sh, daemon.sh, gossip-handler.sh, yggctl CLI
+  - Completes v1.1+ Extended Mesh roadmap (all 3 items done)
+
+- **tdahbdss Routing Fix** — DONE (2026-02-28)
+  - AdGuard Home hijacked port 8989 (MetaBlogizer's port)
+  - Changed AdGuard config from port 8989 to 3000
+  - MetaBlogizer routes restored
+
+- **Tor Shield opkg Bug Fix** — DONE (2026-02-28)
+  - Root cause: DNS queries for package repos went through Tor DNS (slow/unreliable)
+  - Fix: Added dnsmasq bypass for excluded domains
+  - `setup_dnsmasq_bypass()` generates `/tmp/dnsmasq.d/tor-shield-bypass.conf`
+  - Excluded domains resolve directly via upstream DNS, bypassing Tor
+  - Default exclusions: openwrt.org, pool.ntp.org, letsencrypt.org, DNS provider APIs
+  - `cleanup_dnsmasq_bypass()` removes config on Tor Shield stop
+
+- **HAProxy Portal 503 Fix** — DONE (2026-02-28)
+  - Root cause: Vhost for 192.168.255.1 had malformed backend: `backend='--backend'`
+  - Container exit: `unable to find required use_backend: '--backend'`
+  - Fix: Corrected UCI to `backend='luci_default'`, disabled ACME, regenerated config
+  - Portal now returns 200 and redirects to LuCI
 
 ### Just Completed (2026-02-27)
 
@@ -1088,13 +1121,23 @@ Implementing 3 evolutions inspired by SysWarden patterns:
 
 ### Next Up — Couche 1
 
+**v1.1+ Extended Mesh — COMPLETE (2026-02-28)**
+
 1. ~~**Multi-Node Mesh Testing**~~ — DONE (2026-02-26)
-   - ~~Deploy second SecuBox node to test real peer-to-peer sync~~
-   - ~~Validate bidirectional threat intelligence sharing~~
    - ZKP, blockchain sync, and threat intel propagation all validated
 
-2. **WAF Auto-Ban Tuning** (if needed)
+2. ~~**Yggdrasil Extended Peer Discovery**~~ — DONE (2026-02-28)
+   - `secubox-app-yggdrasil-discovery` + `yggctl` CLI
+   - Gossip-based peer announcements, trust-verified auto-peering
+
+3. **WAF Auto-Ban Tuning** (optional, as-needed)
    - Sensitivity threshold adjustment based on production traffic
+
+**Backlog / Deferred:**
+- ~~Tor Shield / opkg bug~~ — FIXED (2026-02-28) - dnsmasq bypass for excluded domains
+- Nextcloud self-hosted cloud storage (v2)
+- SSMTP / mail host / MX record management (v2)
+- Reverse MWAN WireGuard peers (v2)
 
 ---
 
@@ -1285,7 +1328,7 @@ Required components:
 
 ## Known Bugs (Deferred)
 
-- **Tor Shield / opkg conflict**: opkg downloads fail (`wget returned 4`) when Tor Shield is active. Likely DNS/routing interference.
+- ~~**Tor Shield / opkg conflict**~~: FIXED (2026-02-28) - Added dnsmasq bypass for excluded domains
 
 ---
 

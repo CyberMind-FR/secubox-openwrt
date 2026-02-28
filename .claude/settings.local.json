@@ -482,7 +482,10 @@
       "Bash(pip show:*)",
       "Bash(uvx:*)",
       "Bash(claude mcp add:*)",
-      "WebFetch(domain:openclaw.ai)"
+      "WebFetch(domain:openclaw.ai)",
+      "Bash(SSH_AUTH_SOCK=/run/user/1000/keyring/ssh ssh:*)",
+      "Bash(unset:*)",
+      "Bash(SSH_ASKPASS=\"\" DISPLAY=\"\" SSH_AUTH_SOCK=/run/user/1000/keyring/ssh ssh:*)"
     ]
   }
 }

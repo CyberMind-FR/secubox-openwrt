@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-02-28_
+_Last updated: 2026-02-28 (HAProxy Portal 503 Fix)_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -3932,3 +3932,65 @@ git checkout HEAD -- index.html
       - Federation enabled with trusted servers (matrix.org)
       - Registration via token: `n5MCOgUH9bmfM7I5uCWfA`
       - E2E cross-signing supported
+
+54. **Yggdrasil Extended Peer Discovery (2026-02-28)**
+    - **Feature:** Automatic peer discovery and trust-verified auto-peering for Yggdrasil mesh
+    - **New Package:** `secubox-app-yggdrasil-discovery`
+    - **CLI Tool:** `yggctl` with 15+ commands:
+      - `yggctl self` - Show node's Yggdrasil info (IPv6, pubkey, hostname)
+      - `yggctl peers` - Show current Yggdrasil peers
+      - `yggctl announce` - Announce node to mesh via gossip
+      - `yggctl discover` - List discovered SecuBox nodes
+      - `yggctl auto-connect` - Connect to trusted discovered peers
+      - `yggctl bootstrap {list|add|remove|connect}` - Manage bootstrap peers
+      - `yggctl status` - Show discovery status and stats
+      - `yggctl enable/disable` - Toggle auto-discovery
+    - **Gossip Integration:**
+      - Added `yggdrasil_peer` message type to mirrornet gossip protocol
+      - `gossip_announce_yggdrasil()` helper function
+      - Gossip handler at `/usr/lib/yggdrasil-discovery/gossip-handler.sh`
+    - **Trust Verification:**
+      - Master-link fingerprint verification for auto-peering
+      - ZKP fingerprint support
+      - Reputation score threshold (default: 50)
+      - Configurable via `require_trust` and `min_trust_score` options
+    - **Auto-Peering:**
+      - Automatic connection to trusted discovered peers
+      - Yggdrasil IPv6 range validation (200::/7)
+      - Duplicate peer prevention
+    - **UCI Configuration:**
+      - `yggdrasil-discovery.main` - enabled, auto_announce, auto_peer, require_trust
+      - `yggdrasil-discovery.bootstrap` - list of bootstrap peer URIs
+    - **Daemon:**
+      - Periodic announcement daemon (`daemon.sh`)
+      - Configurable announce interval (default: 300s)
+
+55. **Tor Shield opkg Bug Fix (2026-02-28)**
+    - **Root Cause:** DNS queries for package repositories went through Tor DNS, which is slow/unreliable
+    - **Symptom:** `opkg update` failed with "wget returned 4" when Tor Shield was active
+    - **Fix:** Added dnsmasq bypass for excluded domains
+    - **Implementation:**
+      - `setup_dnsmasq_bypass()` generates `/tmp/dnsmasq.d/tor-shield-bypass.conf`
+      - Excluded domains resolve directly via upstream DNS (WAN DNS or fallback to 1.1.1.1)
+      - `cleanup_dnsmasq_bypass()` removes config on Tor Shield stop
+    - **Default Exclusions:**
+      - OpenWrt repos: `downloads.openwrt.org`, `openwrt.org`, `mirror.leaseweb.com`
+      - NTP servers: `pool.ntp.org`, `time.google.com`, `time.cloudflare.com`
+      - Let's Encrypt ACME: `acme-v02.api.letsencrypt.org`
+      - DNS provider APIs: `api.gandi.net`, `api.ovh.com`, `api.cloudflare.com`
+      - Security feeds: `services.nvd.nist.gov`, `cve.mitre.org`
+    - Two-level bypass: dnsmasq (DNS resolution) + iptables (traffic routing)
+
+56. **HAProxy Portal 503 Fix (2026-02-28)**
+    - **Root Cause:** Vhost for `192.168.255.1` had malformed backend: `backend='--backend'`
+    - **Symptom:** Portal returned "503 End of Internet" when accessing `https://192.168.255.1`
+    - **Investigation:**
+      - LuCI worked directly on port 8081, HAProxy container was stopped
+      - Container exit logs showed: `unable to find required use_backend: '--backend'`
+      - The `haproxyctl vhost add` command parsing incorrectly captured `--backend` as literal value
+    - **Fix:**
+      - Corrected UCI: `uci set haproxy.vhost_192_168_255_1.backend='luci_default'`
+      - Disabled ACME (certs can't be issued for IP addresses): `acme='0'`
+      - Regenerated HAProxy config: `haproxyctl generate`
+      - Restarted container: `lxc-start -n haproxy`
+    - Portal now returns 200 and redirects to LuCI

@@ -287,6 +287,15 @@ gossip_receive() {
                 logger -t mirrornet "Gossip: meshname announce from $origin"
             fi
             ;;
+        yggdrasil_peer)
+            # Yggdrasil peer discovery announcement
+            if [ -f /usr/lib/yggdrasil-discovery/gossip-handler.sh ]; then
+                local ygg_data
+                ygg_data=$(echo "$message" | jsonfilter -e '@.data')
+                /usr/lib/yggdrasil-discovery/gossip-handler.sh handle announce "$ygg_data" "$origin"
+                logger -t mirrornet "Gossip: yggdrasil peer from $origin"
+            fi
+            ;;
         *)
             logger -t mirrornet "Gossip: unknown type '$type' from $origin"
             ;;
@@ -425,6 +434,12 @@ gossip_peer_status() {
     local status="$1"
     local data="{\"status\":\"$status\"}"
     gossip_broadcast "peer_status" "$data" "$PRIORITY_HIGH"
+}
+
+# Publish Yggdrasil peer announcement
+gossip_announce_yggdrasil() {
+    local ygg_json="$1"
+    gossip_broadcast "yggdrasil_peer" "$ygg_json" "$PRIORITY_NORMAL"
 }
 
 # Get gossip queue (pending messages)

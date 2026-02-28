@@ -41,6 +41,28 @@ torctl killswitch off  # Disable kill switch
 - **DNS over Tor** -- DNS queries resolved through Tor network
 - **Kill switch** -- Blocks all non-Tor traffic if Tor goes down
 
+## Excluded Domains (System Services Bypass)
+
+When Tor Shield is active, certain system services (opkg, NTP, ACME) need direct
+internet access. These domains bypass Tor DNS and routing:
+
+- OpenWrt package repositories (`downloads.openwrt.org`, mirrors)
+- NTP time servers (`pool.ntp.org`, `time.google.com`)
+- Let's Encrypt ACME (`acme-v02.api.letsencrypt.org`)
+- DNS provider APIs (Gandi, OVH, Cloudflare)
+
+Configure additional exclusions in UCI:
+
+```bash
+uci add_list tor-shield.trans.excluded_domains='my.example.com'
+uci commit tor-shield
+/etc/init.d/tor-shield restart
+```
+
+The exclusions are implemented at two levels:
+1. **dnsmasq bypass** -- DNS queries for excluded domains go directly to upstream
+2. **iptables RETURN** -- Traffic to resolved IPs bypasses Tor transparent proxy
+
 ## Dependencies
 
 - `iptables`
