@@ -1,0 +1,249 @@
+#!/bin/sh
+# SecuBox AI Gateway - RPCD Backend for LuCI
+# Copyright (C) 2026 CyberMind.fr
+
+. /usr/share/libubox/jshn.sh
+. /lib/functions.sh
+
+CONFIG="ai-gateway"
+LIB_DIR="/usr/lib/ai-gateway"
+
+# JSON output helpers
+json_init_object() {
+	json_init
+	json_add_object "result"
+}
+
+json_finish_object() {
+	json_close_object
+	json_dump
+}
+
+# Method: status
+method_status() {
+	json_init_object
+
+	# Service status
+	local running="false"
+	pgrep -f "ai-gateway" >/dev/null 2>&1 && running="true"
+	json_add_boolean "running" "$running"
+
+	local enabled=$(uci -q get ${CONFIG}.main.enabled || echo "0")
+	json_add_boolean "enabled" "$([ "$enabled" = "1" ] && echo "true" || echo "false")"
+
+	local port=$(uci -q get ${CONFIG}.main.proxy_port || echo "4000")
+	json_add_string "port" "$port"
+
+	local offline=$(uci -q get ${CONFIG}.main.offline_mode || echo "0")
+	json_add_boolean "offline_mode" "$([ "$offline" = "1" ] && echo "true" || echo "false")"
+
+	# Provider count
+	local enabled_count=0
+	for p in localai mistral claude openai gemini xai; do
+		local e=$(uci -q get ${CONFIG}.${p}.enabled)
+		[ "$e" = "1" ] && enabled_count=$((enabled_count + 1))
+	done
+	json_add_int "providers_enabled" "$enabled_count"
+
+	json_finish_object
+}
+
+# Method: get_config
+method_get_config() {
+	json_init_object
+
+	json_add_boolean "enabled" "$([ "$(uci -q get ${CONFIG}.main.enabled)" = "1" ] && echo "true" || echo "false")"
+	json_add_string "proxy_port" "$(uci -q get ${CONFIG}.main.proxy_port || echo "4000")"
+	json_add_string "proxy_host" "$(uci -q get ${CONFIG}.main.proxy_host || echo "127.0.0.1")"
+	json_add_string "default_classification" "$(uci -q get ${CONFIG}.main.default_classification || echo "local_only")"
+	json_add_boolean "offline_mode" "$([ "$(uci -q get ${CONFIG}.main.offline_mode)" = "1" ] && echo "true" || echo "false")"
+	json_add_boolean "audit_enabled" "$([ "$(uci -q get ${CONFIG}.audit.enabled)" = "1" ] && echo "true" || echo "false")"
+
+	json_finish_object
+}
+
+# Method: get_providers
+method_get_providers() {
+	json_init
+	json_add_array "providers"
+
+	for provider in localai mistral claude openai gemini xai; do
+		json_add_object ""
+
+		json_add_string "name" "$provider"
+		json_add_boolean "enabled" "$([ "$(uci -q get ${CONFIG}.${provider}.enabled)" = "1" ] && echo "true" || echo "false")"
+		json_add_int "priority" "$(uci -q get ${CONFIG}.${provider}.priority || echo 99)"
+		json_add_string "classification" "$(uci -q get ${CONFIG}.${provider}.classification || echo "-")"
+		json_add_string "model" "$(uci -q get ${CONFIG}.${provider}.model || echo "-")"
+
+		# Check availability
+		local status="disabled"
+		if [ "$(uci -q get ${CONFIG}.${provider}.enabled)" = "1" ]; then
+			if [ "$provider" = "localai" ]; then
+				local endpoint=$(uci -q get ${CONFIG}.localai.endpoint || echo "http://127.0.0.1:8081")
+				wget -q -O /dev/null --timeout=2 "${endpoint}/readyz" 2>/dev/null && status="available" || status="unavailable"
+			else
+				local api_key=$(uci -q get ${CONFIG}.${provider}.api_key)
+				[ -n "$api_key" ] && status="configured" || status="no_api_key"
+			fi
+		fi
+		json_add_string "status" "$status"
+
+		json_close_object
+	done
+
+	json_close_array
+	json_dump
+}
+
+# Method: get_audit_stats
+method_get_audit_stats() {
+	. "$LIB_DIR/audit.sh" 2>/dev/null
+	get_audit_stats
+}
+
+# Method: classify
+method_classify() {
+	local text="$1"
+
+	. "$LIB_DIR/classifier.sh"
+	init_patterns
+	classify_with_reason "$text"
+}
+
+# Method: set_provider
+method_set_provider() {
+	local provider="$1"
+	local enabled="$2"
+	local api_key="$3"
+
+	if [ -n "$enabled" ]; then
+		uci set ${CONFIG}.${provider}.enabled="$enabled"
+	fi
+
+	if [ -n "$api_key" ]; then
+		uci set ${CONFIG}.${provider}.api_key="$api_key"
+	fi
+
+	uci commit ${CONFIG}
+
+	json_init
+	json_add_boolean "success" "true"
+	json_dump
+}
+
+# Method: set_offline_mode
+method_set_offline_mode() {
+	local mode="$1"
+
+	uci set ${CONFIG}.main.offline_mode="$mode"
+	uci commit ${CONFIG}
+
+	json_init
+	json_add_boolean "success" "true"
+	json_add_boolean "offline_mode" "$([ "$mode" = "1" ] && echo "true" || echo "false")"
+	json_dump
+}
+
+# Method: test_provider
+method_test_provider() {
+	local provider="$1"
+
+	local adapter="$LIB_DIR/providers/${provider}.sh"
+	if [ ! -f "$adapter" ]; then
+		json_init
+		json_add_boolean "success" "false"
+		json_add_string "error" "Provider not found"
+		json_dump
+		return
+	fi
+
+	. "$adapter"
+	local result=$(provider_test 2>&1)
+	local success="false"
+	echo "$result" | grep -q "AVAILABLE\|CONFIGURED" && success="true"
+
+	json_init
+	json_add_boolean "success" "$success"
+	json_add_string "output" "$result"
+	json_dump
+}
+
+# Method: start
+method_start() {
+	/etc/init.d/ai-gateway start >/dev/null 2>&1
+
+	json_init
+	json_add_boolean "success" "true"
+	json_dump
+}
+
+# Method: stop
+method_stop() {
+	/etc/init.d/ai-gateway stop >/dev/null 2>&1
+
+	json_init
+	json_add_boolean "success" "true"
+	json_dump
+}
+
+# Method: restart
+method_restart() {
+	/etc/init.d/ai-gateway restart >/dev/null 2>&1
+
+	json_init
+	json_add_boolean "success" "true"
+	json_dump
+}
+
+# RPCD interface
+case "$1" in
+	list)
+		echo '{
+			"status": {},
+			"get_config": {},
+			"get_providers": {},
+			"get_audit_stats": {},
+			"classify": {"text": "string"},
+			"set_provider": {"provider": "string", "enabled": "string", "api_key": "string"},
+			"set_offline_mode": {"mode": "string"},
+			"test_provider": {"provider": "string"},
+			"start": {},
+			"stop": {},
+			"restart": {}
+		}'
+		;;
+	call)
+		case "$2" in
+			status) method_status ;;
+			get_config) method_get_config ;;
+			get_providers) method_get_providers ;;
+			get_audit_stats) method_get_audit_stats ;;
+			classify)
+				read -r input
+				text=$(echo "$input" | jsonfilter -e '@.text' 2>/dev/null)
+				method_classify "$text"
+				;;
+			set_provider)
+				read -r input
+				provider=$(echo "$input" | jsonfilter -e '@.provider' 2>/dev/null)
+				enabled=$(echo "$input" | jsonfilter -e '@.enabled' 2>/dev/null)
+				api_key=$(echo "$input" | jsonfilter -e '@.api_key' 2>/dev/null)
+				method_set_provider "$provider" "$enabled" "$api_key"
+				;;
+			set_offline_mode)
+				read -r input
+				mode=$(echo "$input" | jsonfilter -e '@.mode' 2>/dev/null)
+				method_set_offline_mode "$mode"
+				;;
+			test_provider)
+				read -r input
+				provider=$(echo "$input" | jsonfilter -e '@.provider' 2>/dev/null)
+				method_test_provider "$provider"
+				;;
+			start) method_start ;;
+			stop) method_stop ;;
+			restart) method_restart ;;
+		esac
+		;;
+esac

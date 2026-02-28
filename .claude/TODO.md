@@ -68,7 +68,7 @@ _Last updated: 2026-02-06_
 
 ## Couche 2 — AI Gateway
 
-### Data Classifier (Sovereignty Engine)
+### Data Classifier (Sovereignty Engine) — DONE (2026-02-28)
 
 | Classification | Description | Destination |
 |----------------|-------------|-------------|
@@ -76,7 +76,15 @@ _Last updated: 2026-02-06_
 | SANITIZED | IPs scrubbed, anonymized patterns | Mistral EU (opt-in) |
 | CLOUD DIRECT | Generic queries, no sensitive data | Claude/GPT (opt-in) |
 
-**Package**: `secubox-ai-gateway` — LiteLLM Proxy (port 4000) + Data Classifier + MCP Server
+**Package**: `secubox-ai-gateway` — OpenAI-compatible proxy (port 4050) + Data Classifier + Audit Logging
+
+- [x] Data Classifier with 3 tiers (LOCAL_ONLY, SANITIZED, CLOUD_DIRECT)
+- [x] Provider hierarchy: LocalAI > Mistral (EU) > Claude > GPT > Gemini > xAI
+- [x] PII Sanitizer for SANITIZED tier
+- [x] OpenAI-compatible API on port 4050
+- [x] aigatewayctl CLI
+- [x] RPCD backend (11 methods)
+- [x] ANSSI CSPN audit logging
 
 ### 6 Autonomous Agents
 

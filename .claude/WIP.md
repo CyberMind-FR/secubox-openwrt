@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-28 (HAProxy Portal Fix)_
+_Last updated: 2026-02-28 (AI Gateway Deployed)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -94,6 +94,26 @@ _Last updated: 2026-02-28 (HAProxy Portal Fix)_
   - Container exit: `unable to find required use_backend: '--backend'`
   - Fix: Corrected UCI to `backend='luci_default'`, disabled ACME, regenerated config
   - Portal now returns 200 and redirects to LuCI
+
+- **AI Gateway (Sovereignty Engine)** — DONE (2026-02-28)
+  - Created `secubox-ai-gateway` package for ANSSI CSPN compliance
+  - **Data Classifier** with 3 tiers: LOCAL_ONLY, SANITIZED, CLOUD_DIRECT
+  - **Provider hierarchy**: LocalAI > Mistral (EU) > Claude > GPT > Gemini > xAI
+  - **PII Sanitizer**: IPv4/IPv6, MAC, credentials, private keys scrubbing
+  - **OpenAI-compatible proxy** on port 4050
+  - **aigatewayctl CLI**: status, classify, sanitize, provider, audit, offline-mode
+  - **RPCD backend**: 11 ubus methods for LuCI integration
+  - **Audit logging**: JSONL format for compliance review
+  - Files: Makefile, UCI config, init.d, classifier.sh, sanitizer.sh, providers.sh, proxy.sh, audit.sh, 6 provider adapters
+  - **Deployed and tested** on C3BOX:
+    - Classification working: IPs → LOCAL_ONLY, generic → CLOUD_DIRECT
+    - Sanitization working: IPv4, MAC, credentials correctly redacted
+    - Proxy running on port 4050 via socat
+    - API endpoints responding: /health, /v1/models
+
+- **Nextcloud Users List Fix** — DONE (2026-02-28)
+  - RPC `expect: { users: [] }` extracted array, render expected object
+  - Fixed to `expect: {}` for full response
 
 ### Just Completed (2026-02-27)
 

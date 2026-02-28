@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-02-28 (HAProxy Portal 503 Fix)_
+_Last updated: 2026-02-28 (AI Gateway Deployed)_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -1700,7 +1700,7 @@ git checkout HEAD -- index.html
 
 ### 2026-02-14: mitmproxy WAF Wildcard Route Priority Fix
 - **Fixed wildcard route matching in haproxy_router.py**
-  - Issue: `.gk2.secubox.in` wildcard (port 4000) matched before specific routes like `apr.gk2.secubox.in` (port 8928)
+  - Issue: `.gk2.secubox.in` wildcard (port 4050) matched before specific routes like `apr.gk2.secubox.in` (port 8928)
   - Root cause: Python code expected `*.domain` format but HAProxy generates `.domain` format
   - Fix: Support both `*.domain` and `.domain` wildcard formats
   - Fix: Sort wildcards by length (longest/most specific first) to ensure proper priority
@@ -3994,3 +3994,27 @@ git checkout HEAD -- index.html
       - Regenerated HAProxy config: `haproxyctl generate`
       - Restarted container: `lxc-start -n haproxy`
     - Portal now returns 200 and redirects to LuCI
+
+57. **AI Gateway - Data Sovereignty Engine (2026-02-28)**
+    - Created `secubox-ai-gateway` package for ANSSI CSPN compliance
+    - **Data Classifier (Sovereignty Engine):**
+      - `LOCAL_ONLY`: IPs, MACs, credentials, keys, logs → LocalAI only
+      - `SANITIZED`: PII that can be scrubbed → Mistral EU (opt-in)
+      - `CLOUD_DIRECT`: Generic queries → Any provider (opt-in)
+    - **Provider Hierarchy:** LocalAI (P0) > Mistral EU (P1) > Claude (P2) > GPT (P3) > Gemini (P4) > xAI (P5)
+    - **OpenAI-compatible API** on port 4050:
+      - POST /v1/chat/completions
+      - POST /v1/completions
+      - GET /v1/models
+      - GET /health
+    - **CLI (`aigatewayctl`):**
+      - `classify <text>` - Test classification
+      - `sanitize <text>` - Test sanitization
+      - `provider list/enable/disable/test` - Provider management
+      - `audit stats/tail/export` - Compliance logging
+      - `offline-mode on/off` - Force LOCAL_ONLY
+    - **PII Sanitizer:** IPv4/IPv6, MAC addresses, credentials, private keys, hostnames
+    - **RPCD Backend:** 11 ubus methods for LuCI integration
+    - **Audit Logging:** JSONL format with timestamps, classification decisions, patterns matched
+    - All cloud providers opt-in, default LOCAL_ONLY
+    - Key ANSSI compliance points: Data sovereignty, EU preference, audit trail, offline capability
