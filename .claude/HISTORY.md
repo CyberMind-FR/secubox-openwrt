@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-02-24_
+_Last updated: 2026-02-28_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -3865,7 +3865,33 @@ git checkout HEAD -- index.html
       - `.env` probes correctly detected as `path_scan` / `config_hunting`
       - Autoban config properly loaded: `sensitivity=strict`, `min_severity=medium`
 
-51. **Meshname DNS - Decentralized .ygg Domain Resolution (2026-02-28)**
+51. **Centralized WAF Route Management (2026-02-28)**
+    - **Problem:** Multiple services (metablogizerctl, streamlitctl, mitmproxyctl) each
+      managed mitmproxy routes independently, causing mixups and stale routes
+    - **Solution:** Centralized route registry in secubox-core
+    - **New Components:**
+      - `/etc/config/secubox-routes` - UCI config for central route registry
+      - `/usr/sbin/secubox-route` - CLI for route management with source tracking
+    - **CLI Commands:**
+      - `secubox-route add <domain> <host> <port> <source>` - Add route with provenance
+      - `secubox-route remove <domain>` - Remove route
+      - `secubox-route list` - List all routes by source (haproxy/metablogizer/streamlit)
+      - `secubox-route sync` - Generate mitmproxy routes file from registry
+      - `secubox-route import-all` - Import from HAProxy, MetaBlogizer, Streamlit
+      - `secubox-route status` - Show registry status with route counts by source
+    - **Updated Services:**
+      - `metablogizerctl`: Uses `secubox-route add` instead of `mitmproxyctl sync-routes`
+      - `streamlitctl`: Uses `secubox-route add` with explicit domain/port
+      - `peertubectl`: Uses `secubox-route add` for emancipation workflow
+      - `vhost-manager/mitmproxy.sh`: Prefers secubox-route when available
+      - `mitmproxyctl sync-routes`: Delegates to `secubox-route import-all`
+    - **Behaviors:**
+      - Auto-sync to all mitmproxy instances (mitmproxy, mitmproxy-in, mitmproxy-out)
+      - Skip wildcard domains (`.gk2.secubox.in`) - return 404 WAF page
+      - Skip LuCI routes (port 8081) - never route to admin interface
+    - **Result:** Single source of truth, no more route mixups, easy debugging
+
+52. **Meshname DNS - Decentralized .ygg Domain Resolution (2026-02-28)**
     - **Feature:** Decentralized DNS for Yggdrasil mesh networks
     - **New Packages:**
       - `secubox-app-meshname-dns`: Core service with `meshnamectl` CLI
