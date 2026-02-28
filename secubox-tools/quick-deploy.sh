@@ -9,6 +9,7 @@ SSH_OPTS=${SSH_OPTS:--o RequestTTY=no -o ForwardX11=no -o StrictHostKeyChecking=
 SCP_OPTS=${SCP_OPTS:--o ControlPath=$SSH_CONTROL_PATH}
 CACHE_BUST=${CACHE_BUST:-1}
 VERIFY=${VERIFY:-1}
+LINT=${LINT:-1}
 FORCE_ROOT="false"
 INCLUDE_PATHS=()
 VERIFY_ERRORS=0
@@ -55,6 +56,8 @@ Common flags:
   --branch <name>           Git branch/tag when using --git.
   --no-cache-bust           Skip clearing /tmp/luci-* after deploy.
   --no-verify               Skip post-deploy file verification.
+  --no-lint                 Skip pre-deploy syntax validation.
+  --lint                    Force pre-deploy lint (default for LuCI apps).
   --force-root              Allow --src to write directly under /. Use with caution.
   --no-auto-profile         Disable automatic LuCI app detection when using --src.
   --uninstall [backup]      Restore the latest (or specific) quick-deploy backup.
@@ -335,6 +338,31 @@ normalize_app_path() {
 	return 1
 }
 
+# Pre-deploy lint check
+run_lint_check() {
+	local app_dir="$1"
+	local script_dir
+	script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+	local lint_script="$script_dir/pre-deploy-lint.sh"
+
+	if [[ ! -x "$lint_script" ]]; then
+		log "⚠️  Lint script not found, skipping syntax validation"
+		return 0
+	fi
+
+	log "🔍 Running pre-deploy lint check..."
+	if "$lint_script" "$app_dir"; then
+		log "✅ Lint check passed"
+		return 0
+	else
+		log "❌ Lint check failed"
+		log ""
+		log "Fix the errors above before deploying."
+		log "Use --no-lint to skip this check (not recommended)."
+		return 1
+	fi
+}
+
 deploy_profile_theme() {
 	log "🎨 Deploying theme profile to $ROUTER"
 	local files=(
@@ -392,6 +420,14 @@ deploy_profile_luci_app() {
 		exit 1
 	fi
 	local app_name=$(basename "$app_dir")
+
+	# Run lint check before deploying
+	if [[ "$LINT" -eq 1 ]]; then
+		if ! run_lint_check "$app_dir"; then
+			exit 1
+		fi
+	fi
+
 	log "📦 Deploying LuCI app $app_name"
 	local prev_target="$TARGET_PATH"
 	local prev_force="$FORCE_ROOT"
@@ -452,6 +488,10 @@ while [[ $# -gt 0 ]]; do
 			CACHE_BUST=0; shift ;;
 		--no-verify)
 			VERIFY=0; shift ;;
+		--no-lint)
+			LINT=0; shift ;;
+		--lint)
+			LINT=1; shift ;;
 		--force-root)
 			FORCE_ROOT="true"; shift ;;
 		--no-auto-profile)

@@ -1,7 +1,7 @@
 # SecuBox Development Tools
 
-**Version:** 1.1.0
-**Last Updated:** 2026-01-27
+**Version:** 1.2.0
+**Last Updated:** 2026-02-28
 **Status:** Active
 
 This directory contains utilities for validating, debugging, and maintaining SecuBox modules.
@@ -383,6 +383,67 @@ Fast validation of all modules in the repository.
 - After generating a new module
 - Before committing changes to a module
 - When debugging module integration issues
+
+#### pre-deploy-lint.sh
+
+**NEW!** Comprehensive syntax validation before deployment. Catches JavaScript, JSON, shell, and CSS errors before they break production.
+
+**Usage:**
+```bash
+# Validate a single package
+./secubox-tools/pre-deploy-lint.sh luci-app-system-hub
+
+# Validate by short name
+./secubox-tools/pre-deploy-lint.sh system-hub
+
+# Validate all packages
+./secubox-tools/pre-deploy-lint.sh --all
+
+# Automatically via quick-deploy.sh (default for LuCI apps)
+./secubox-tools/quick-deploy.sh --app system-hub
+```
+
+**Checks performed:**
+1. **JavaScript Validation:**
+   - Full syntax checking via Node.js `--check` (when available)
+   - Fallback pattern-based checks for common errors
+   - Detects: debugger statements, console.log, missing 'use strict'
+   - LuCI-specific: validates require statement format
+2. **JSON Validation:**
+   - Menu.d and acl.d syntax verification
+   - Python json.tool for proper parsing
+3. **Shell Script Validation:**
+   - Bash/sh syntax checking via `-n` flag
+   - shellcheck integration (when available)
+   - RPCD-specific checks: JSON output, method dispatcher
+4. **CSS Validation:**
+   - Unclosed brace detection
+   - Common typo detection
+
+**Integration with quick-deploy.sh:**
+```bash
+# Lint runs automatically before deployment (default)
+./secubox-tools/quick-deploy.sh --app cdn-cache
+
+# Skip lint (not recommended)
+./secubox-tools/quick-deploy.sh --app cdn-cache --no-lint
+
+# Force lint even for non-LuCI deployments
+./secubox-tools/quick-deploy.sh --src ./path --lint
+```
+
+**Exit codes:**
+- `0` - All checks passed (or only warnings)
+- `1` - Critical errors found (deployment blocked)
+
+**Example output:**
+```
+✓ luci-app-cdn-cache: All files validated
+
+❌ JS syntax error: htdocs/view/cdn-cache/overview.js
+    SyntaxError: Unexpected token '}'
+⚠️  console.log found in: htdocs/view/cdn-cache/debug.js
+```
 
 #### pre-push-validation.sh
 
