@@ -160,6 +160,139 @@ opkg install /tmp/luci-app-system-hub*.ipk
 /etc/init.d/rpcd restart
 ```
 
+### Image & Deployment Tools
+
+#### secubox-image.sh
+
+Build SecuBox firmware images via the OpenWrt ASU (Attended SysUpgrade) API.
+
+**Usage:**
+```bash
+# Build firmware image for device
+./secubox-tools/secubox-image.sh build mochabin
+
+# Generate firmware-selector config
+./secubox-tools/secubox-image.sh firmware-selector mochabin
+
+# Check build status
+./secubox-tools/secubox-image.sh status <build-hash>
+
+# Download completed build
+./secubox-tools/secubox-image.sh download <build-hash>
+```
+
+**Features:**
+- Uses firmware-selector.openwrt.org backend (ASU API)
+- Supports MOCHAbin, ESPRESSObin V7/Ultra, x86-64
+- Maximum rootfs partition (1024 MB)
+- First-boot script auto-installs SecuBox packages
+- Image resizing for full eMMC utilization
+
+**Output:** Firmware images in `build/images/` with SHA256 checksums
+
+#### secubox-sysupgrade.sh
+
+Upgrade a running SecuBox device in-place while preserving packages.
+
+**Usage:**
+```bash
+# Check current version and available upgrades
+secubox-sysupgrade check
+
+# Build sysupgrade image (without flashing)
+secubox-sysupgrade build
+
+# Build + download + flash (full upgrade)
+secubox-sysupgrade upgrade
+
+# Show device info
+secubox-sysupgrade status
+```
+
+**Features:**
+- Auto-detects device, version, and installed packages
+- Requests custom image with all packages preserved
+- Preserves /etc/config, /etc/secubox, /srv/ across upgrades
+- Uses /etc/board.json for device detection
+
+#### quick-deploy.sh
+
+Fast development deployment to router.
+
+**Usage:**
+```bash
+# Deploy IPK package
+./secubox-tools/quick-deploy.sh --ipk /tmp/package.ipk
+
+# Deploy from source directory
+./secubox-tools/quick-deploy.sh --src package/secubox/luci-app-example
+
+# Shortcut for LuCI apps
+./secubox-tools/quick-deploy.sh --app system-hub
+
+# Deploy from git repo
+./secubox-tools/quick-deploy.sh --git https://github.com/user/repo --branch develop
+
+# List available apps
+./secubox-tools/quick-deploy.sh --list-apps
+```
+
+**Features:**
+- Multiple source modes: IPK, APK, tar, git
+- Automatic LuCI app detection
+- Post-deploy verification and cache busting
+- Backup and restore capability
+- SSH multiplexing for faster transfers
+
+#### c3box-vm-builder.sh
+
+Build portable C3Box VM images for VMware/VirtualBox.
+
+**Usage:**
+```bash
+# Build x86-64 firmware
+./secubox-tools/c3box-vm-builder.sh build
+
+# Convert to VM formats
+./secubox-tools/c3box-vm-builder.sh convert
+
+# Full build + convert
+./secubox-tools/c3box-vm-builder.sh full
+
+# Create distributable archive
+./secubox-tools/c3box-vm-builder.sh package
+```
+
+**Output formats:** VMDK (VMware), OVA, VDI (VirtualBox), QCOW2 (KVM)
+
+#### secubox-clone-station.sh
+
+Orchestrate cloning of SecuBox devices via dual USB serial.
+
+**Usage:**
+```bash
+# Detect serial devices
+./secubox-tools/secubox-clone-station.sh detect
+
+# Extract master config
+./secubox-tools/secubox-clone-station.sh pull --master /dev/ttyUSB0
+
+# Flash target device
+./secubox-tools/secubox-clone-station.sh flash --target /dev/ttyUSB1
+
+# Full clone workflow
+./secubox-tools/secubox-clone-station.sh clone
+```
+
+**Features:**
+- Extract config from master device
+- Build clone image with ASU API
+- Generate join token for mesh
+- U-Boot automation via MOKATOOL
+- TFTP-based flashing
+
+---
+
 ### Logging & Debug Utilities
 
 #### secubox-log.sh

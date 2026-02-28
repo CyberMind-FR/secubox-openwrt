@@ -517,7 +517,7 @@ get_app() {
 	json_close_obj
 }
 
-# Upload app (receive base64 content)
+# Upload app (receive base64 content) - KISS: auto-detects ZIP or .py
 # NOTE: uhttpd-mod-ubus has a 64KB JSON body limit.
 # Small files (<40KB) go through RPC directly.
 # Larger files use chunked upload: upload_chunk + upload_finalize.
@@ -548,27 +548,118 @@ upload_app() {
 	local data_path
 	config_load "$CONFIG"
 	config_get data_path main data_path "/srv/streamlit"
-
-	local app_file="$data_path/apps/${name}.py"
 	mkdir -p "$data_path/apps"
 
-	base64 -d < "$b64file" > "$app_file" 2>/dev/null
+	# Decode content to temp file first
+	local tmpfile="/tmp/upload_${name}_$$.bin"
+	base64 -d < "$b64file" > "$tmpfile" 2>/dev/null
 	local rc=$?
 	rm -f "$b64file"
 
-	if [ $rc -eq 0 ] && [ -s "$app_file" ]; then
-		uci set "${CONFIG}.${name}=app"
-		uci set "${CONFIG}.${name}.name=$name"
-		uci set "${CONFIG}.${name}.path=${name}.py"
-		uci set "${CONFIG}.${name}.enabled=1"
-		uci commit "$CONFIG"
-		# Auto-create Gitea repo and push (background)
-		streamlitctl gitea push "$name" >/dev/null 2>&1 &
-		json_success "App uploaded: $name"
-	else
-		rm -f "$app_file"
-		json_error "Failed to decode app content"
+	if [ $rc -ne 0 ] || [ ! -s "$tmpfile" ]; then
+		rm -f "$tmpfile"
+		json_error "Failed to decode content"
+		return
 	fi
+
+	# KISS: Auto-detect ZIP by magic bytes (PK = 0x504B)
+	local is_zip_file=0
+	local magic=$(head -c2 "$tmpfile" 2>/dev/null)
+	[ "$magic" = "PK" ] && is_zip_file=1
+
+	local app_file="$data_path/apps/${name}.py"
+
+	if [ "$is_zip_file" = "1" ]; then
+		# Extract app.py from ZIP archive
+		local tmpdir="/tmp/extract_${name}_$$"
+		mkdir -p "$tmpdir"
+
+		# Use Python to extract (write script to file to avoid stdin conflict with RPCD)
+		local pyscript="/tmp/extract_$$.py"
+		cat > "$pyscript" << 'PYEOF'
+import zipfile, sys, os
+tmpfile, app_file, tmpdir = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    z = zipfile.ZipFile(tmpfile)
+    app_py = None
+    req_txt = None
+    for n in z.namelist():
+        bn = os.path.basename(n)
+        if bn == "app.py":
+            app_py = n
+        elif bn == "requirements.txt":
+            req_txt = n
+        elif bn.endswith(".py") and not app_py:
+            app_py = n
+    if not app_py:
+        sys.exit(1)
+    content = z.read(app_py).decode("utf-8", errors="replace")
+    if not content.startswith("# -*- coding"):
+        content = "# -*- coding: utf-8 -*-\n" + content
+    with open(app_file, "w") as f:
+        f.write(content)
+    if req_txt:
+        try:
+            z.extract(req_txt, tmpdir)
+        except:
+            pass
+    sys.exit(0)
+except Exception:
+    sys.exit(1)
+PYEOF
+		python3 "$pyscript" "$tmpfile" "$app_file" "$tmpdir" 2>/dev/null
+		rc=$?
+		rm -f "$tmpfile" "$pyscript"
+
+		if [ $rc -ne 0 ] || [ ! -s "$app_file" ]; then
+			rm -rf "$tmpdir"
+			json_error "No Python file found in ZIP"
+			return
+		fi
+
+		# Install requirements if found
+		if [ -f "$tmpdir/requirements.txt" ] && lxc_running; then
+			cp "$tmpdir/requirements.txt" "$data_path/apps/${name}_requirements.txt"
+			lxc-attach -n "$LXC_NAME" -- pip3 install --break-system-packages \
+				-r "/srv/apps/${name}_requirements.txt" >/dev/null 2>&1 &
+		fi
+		rm -rf "$tmpdir"
+	else
+		# Plain .py file - add encoding declaration if needed
+		local first_line=$(head -c 50 "$tmpfile" 2>/dev/null)
+		if ! echo "$first_line" | grep -q "coding"; then
+			printf '# -*- coding: utf-8 -*-\n' > "$app_file"
+			cat "$tmpfile" >> "$app_file"
+		else
+			mv "$tmpfile" "$app_file"
+		fi
+		rm -f "$tmpfile"
+	fi
+
+	if [ ! -s "$app_file" ]; then
+		json_error "Failed to create app file"
+		return
+	fi
+
+	uci set "${CONFIG}.${name}=app"
+	uci set "${CONFIG}.${name}.name=$name"
+	uci set "${CONFIG}.${name}.path=${name}.py"
+	uci set "${CONFIG}.${name}.enabled=1"
+	uci commit "$CONFIG"
+
+	# Restart instance if running (for re-uploads)
+	if lxc_running; then
+		local port=$(uci -q get "${CONFIG}.${name}.port")
+		if [ -n "$port" ]; then
+			lxc-attach -n "$LXC_NAME" -- pkill -f "port=$port" 2>/dev/null
+			sleep 1
+			streamlitctl instance start "$name" >/dev/null 2>&1 &
+		fi
+	fi
+
+	# Auto-create Gitea repo and push (background)
+	streamlitctl gitea push "$name" >/dev/null 2>&1 &
+	json_success "App uploaded: $name"
 }
 
 # Chunked upload: receive a base64 chunk and append to temp file
@@ -796,37 +887,98 @@ remove_instance() {
 	json_success "Instance removed: $id"
 }
 
-# Rename app
+# Rename app (updates both display name and file/folder name)
 rename_app() {
 	read -r input
-	local id name
+	local id new_name new_id
 	id=$(echo "$input" | jsonfilter -e '@.id' 2>/dev/null)
-	name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+	new_name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+	new_id=$(echo "$input" | jsonfilter -e '@.new_id' 2>/dev/null)
 
-	if [ -z "$id" ] || [ -z "$name" ]; then
+	if [ -z "$id" ] || [ -z "$new_name" ]; then
 		json_error "Missing id or name"
 		return
 	fi
 
-	# Create UCI section if it doesn't exist yet
+	# If new_id not provided, sanitize new_name to create it
+	[ -z "$new_id" ] && new_id=$(echo "$new_name" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g')
+
+	local data_path=$(uci -q get "${CONFIG}.main.data_path")
+	[ -z "$data_path" ] && data_path="/srv/streamlit"
+	local apps_path="$data_path/apps"
+
+	# Check if renaming filesystem (folder or file)
+	local old_path=""
+	local new_path=""
+	if [ -d "$apps_path/$id" ]; then
+		old_path="$apps_path/$id"
+		new_path="$apps_path/$new_id"
+	elif [ -f "$apps_path/${id}.py" ]; then
+		old_path="$apps_path/${id}.py"
+		new_path="$apps_path/${new_id}.py"
+	fi
+
+	# Rename filesystem if different
+	if [ -n "$old_path" ] && [ "$id" != "$new_id" ]; then
+		if [ -e "$new_path" ]; then
+			json_error "Destination already exists: $new_id"
+			return
+		fi
+		mv "$old_path" "$new_path"
+	fi
+
+	# Update display name in UCI
 	local existing
 	existing=$(uci -q get "${CONFIG}.${id}")
 	if [ -z "$existing" ]; then
 		uci set "${CONFIG}.${id}=app"
 		uci set "${CONFIG}.${id}.enabled=1"
 	fi
+	uci set "${CONFIG}.${id}.name=$new_name"
 
-	uci set "${CONFIG}.${id}.name=$name"
+	# If id changed, update all instance references
+	if [ "$id" != "$new_id" ]; then
+		config_load "$CONFIG"
+		_update_instance_refs() {
+			local section="$1"
+			local app
+			app=$(uci -q get "${CONFIG}.${section}.app")
+			if [ "$app" = "$id" ] || [ "$app" = "${id}.py" ]; then
+				# Update to new app reference
+				if [ -d "$new_path" ]; then
+					uci set "${CONFIG}.${section}.app=$new_id"
+				else
+					uci set "${CONFIG}.${section}.app=${new_id}.py"
+				fi
+			fi
+		}
+		config_foreach _update_instance_refs instance
+	fi
+
 	uci commit "$CONFIG"
-	json_success "App renamed"
+
+	# Auto-push to Gitea if configured
+	local gitea_enabled=$(uci -q get "${CONFIG}.gitea.enabled")
+	if [ "$gitea_enabled" = "1" ]; then
+		streamlitctl gitea push "$new_id" >/dev/null 2>&1 &
+	fi
+
+	json_init_obj
+	json_add_boolean "success" 1
+	json_add_string "message" "App renamed"
+	json_add_string "old_id" "$id"
+	json_add_string "new_id" "$new_id"
+	json_add_string "name" "$new_name"
+	json_close_obj
 }
 
-# Rename instance
+# Rename instance (updates display name and optionally domain/vhost)
 rename_instance() {
 	read -r input
-	local id name
+	local id name new_domain
 	id=$(echo "$input" | jsonfilter -e '@.id' 2>/dev/null)
 	name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+	new_domain=$(echo "$input" | jsonfilter -e '@.domain' 2>/dev/null)
 
 	if [ -z "$id" ] || [ -z "$name" ]; then
 		json_error "Missing id or name"
@@ -840,9 +992,78 @@ rename_instance() {
 		return
 	fi
 
+	# Update display name
 	uci set "${CONFIG}.${id}.name=$name"
-	uci commit "$CONFIG"
-	json_success "Instance renamed"
+
+	# If new domain provided and instance is emancipated, update vhost
+	local emancipated=$(uci -q get "${CONFIG}.${id}.emancipated")
+	local old_domain=$(uci -q get "${CONFIG}.${id}.domain")
+	local port=$(uci -q get "${CONFIG}.${id}.port")
+
+	if [ "$emancipated" = "1" ] && [ -n "$new_domain" ] && [ "$new_domain" != "$old_domain" ]; then
+		# Use tr '.-' '_' to match streamlitctl vhost naming
+		local old_vhost=$(echo "$old_domain" | tr '.-' '_')
+		local new_vhost=$(echo "$new_domain" | tr '.-' '_')
+		local backend_name="streamlit_${id}"
+
+		# Remove old vhost and cert entries
+		uci delete "haproxy.${old_vhost}" 2>/dev/null
+		uci delete "haproxy.cert_${old_vhost}" 2>/dev/null
+
+		# Create new vhost with WAF routing
+		uci set "haproxy.${new_vhost}=vhost"
+		uci set "haproxy.${new_vhost}.domain=${new_domain}"
+		uci set "haproxy.${new_vhost}.backend=mitmproxy_inspector"
+		uci set "haproxy.${new_vhost}.ssl=1"
+		uci set "haproxy.${new_vhost}.ssl_redirect=1"
+		uci set "haproxy.${new_vhost}.acme=1"
+		uci set "haproxy.${new_vhost}.enabled=1"
+
+		# Create new certificate entry
+		uci set "haproxy.cert_${new_vhost}=certificate"
+		uci set "haproxy.cert_${new_vhost}.domain=${new_domain}"
+		uci set "haproxy.cert_${new_vhost}.type=acme"
+		uci set "haproxy.cert_${new_vhost}.enabled=1"
+
+		uci commit haproxy
+
+		# Update instance domain FIRST (before slow operations)
+		uci set "${CONFIG}.${id}.domain=${new_domain}"
+		uci commit "$CONFIG"
+
+		# Update mitmproxy routes (use sed, jq may not be available)
+		local routes_file="/srv/mitmproxy/haproxy-routes.json"
+		if [ -f "$routes_file" ]; then
+			# Remove old route
+			sed -i "s/,\"${old_domain}\":\[\"[^\"]*\",[0-9]*\]//g" "$routes_file" 2>/dev/null || true
+			sed -i "s/\"${old_domain}\":\[\"[^\"]*\",[0-9]*\],//g" "$routes_file" 2>/dev/null || true
+			# Add new route
+			sed -i "s/}$/,\"${new_domain}\":[\"192.168.255.1\",${port}]}/" "$routes_file" 2>/dev/null || true
+		fi
+
+		# Reload HAProxy and mitmproxy in background (don't block RPC)
+		(
+			haproxyctl generate >/dev/null 2>&1
+			haproxyctl reload >/dev/null 2>&1
+			/etc/init.d/mitmproxy restart >/dev/null 2>&1
+			# Request new certificate if not on gk2 wildcard
+			case "$new_domain" in
+				*.gk2.secubox.in) ;;
+				*) haproxyctl cert add "$new_domain" >/dev/null 2>&1 ;;
+			esac
+		) &
+	fi
+
+	# Commit any remaining changes (display name if domain wasn't changed)
+	uci commit "$CONFIG" 2>/dev/null || true
+
+	json_init_obj
+	json_add_boolean "success" 1
+	json_add_string "message" "Instance renamed"
+	json_add_string "id" "$id"
+	json_add_string "name" "$name"
+	[ -n "$new_domain" ] && json_add_string "domain" "$new_domain"
+	json_close_obj
 }
 
 # Enable instance
@@ -1423,7 +1644,7 @@ get_emancipation() {
 	json_close_obj
 }
 
-# One-click upload with auto instance creation
+# One-click upload with auto instance creation (KISS: handles ZIP or .py)
 upload_and_deploy() {
 	local tmpinput="/tmp/rpcd_deploy_$$.json"
 	cat > "$tmpinput"
@@ -1454,14 +1675,94 @@ upload_and_deploy() {
 	config_get data_path main data_path "/srv/streamlit"
 	mkdir -p "$data_path/apps"
 
-	local app_file="$data_path/apps/${name}.py"
-	base64 -d < "$b64file" > "$app_file" 2>/dev/null
+	# Decode content to temp file first
+	local tmpfile="/tmp/upload_${name}_$$.bin"
+	base64 -d < "$b64file" > "$tmpfile" 2>/dev/null
 	local rc=$?
 	rm -f "$b64file"
 
-	if [ $rc -ne 0 ] || [ ! -s "$app_file" ]; then
-		rm -f "$app_file"
+	if [ $rc -ne 0 ] || [ ! -s "$tmpfile" ]; then
+		rm -f "$tmpfile"
 		json_error "Failed to decode content"
+		return
+	fi
+
+	# KISS: Auto-detect ZIP by magic bytes (PK = 0x504B)
+	local is_zip_file=0
+	local magic=$(head -c2 "$tmpfile" 2>/dev/null)
+	[ "$magic" = "PK" ] && is_zip_file=1
+
+	local app_file="$data_path/apps/${name}.py"
+
+	if [ "$is_zip_file" = "1" ]; then
+		# Extract app.py from ZIP archive
+		local tmpdir="/tmp/extract_${name}_$$"
+		mkdir -p "$tmpdir"
+
+		# Use Python to extract (write script to file to avoid stdin conflict with RPCD)
+		local pyscript="/tmp/extract_$$.py"
+		cat > "$pyscript" << 'PYEOF'
+import zipfile, sys, os
+tmpfile, app_file, tmpdir = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    z = zipfile.ZipFile(tmpfile)
+    app_py = None
+    req_txt = None
+    for n in z.namelist():
+        bn = os.path.basename(n)
+        if bn == "app.py":
+            app_py = n
+        elif bn == "requirements.txt":
+            req_txt = n
+        elif bn.endswith(".py") and not app_py:
+            app_py = n
+    if not app_py:
+        sys.exit(1)
+    content = z.read(app_py).decode("utf-8", errors="replace")
+    if not content.startswith("# -*- coding"):
+        content = "# -*- coding: utf-8 -*-\n" + content
+    with open(app_file, "w") as f:
+        f.write(content)
+    if req_txt:
+        try:
+            z.extract(req_txt, tmpdir)
+        except:
+            pass
+    sys.exit(0)
+except Exception:
+    sys.exit(1)
+PYEOF
+		python3 "$pyscript" "$tmpfile" "$app_file" "$tmpdir" 2>/dev/null
+		rc=$?
+		rm -f "$tmpfile" "$pyscript"
+
+		if [ $rc -ne 0 ] || [ ! -s "$app_file" ]; then
+			rm -rf "$tmpdir"
+			json_error "No Python file found in ZIP"
+			return
+		fi
+
+		# Install requirements if found
+		if [ -f "$tmpdir/requirements.txt" ] && lxc_running; then
+			cp "$tmpdir/requirements.txt" "$data_path/apps/${name}_requirements.txt"
+			lxc-attach -n "$LXC_NAME" -- pip3 install --break-system-packages \
+				-r "/srv/apps/${name}_requirements.txt" >/dev/null 2>&1 &
+		fi
+		rm -rf "$tmpdir"
+	else
+		# Plain .py file - add encoding declaration if needed
+		local first_line=$(head -c 50 "$tmpfile" 2>/dev/null)
+		if ! echo "$first_line" | grep -q "coding"; then
+			printf '# -*- coding: utf-8 -*-\n' > "$app_file"
+			cat "$tmpfile" >> "$app_file"
+		else
+			mv "$tmpfile" "$app_file"
+		fi
+		rm -f "$tmpfile"
+	fi
+
+	if [ ! -s "$app_file" ]; then
+		json_error "Failed to create app file"
 		return
 	fi
 
@@ -1618,7 +1919,7 @@ emancipate_instance() {
 	local vhost_section=$(echo "$domain" | sed 's/\./_/g')
 	local backend_name="streamlit_${id}"
 
-	# Create backend
+	# Create backend for direct routing (used by mitmproxy)
 	uci set "haproxy.${backend_name}=backend"
 	uci set "haproxy.${backend_name}.name=${backend_name}"
 	uci set "haproxy.${backend_name}.mode=http"
@@ -1635,10 +1936,10 @@ emancipate_instance() {
 	uci set "haproxy.${backend_name}_srv.check=1"
 	uci set "haproxy.${backend_name}_srv.enabled=1"
 
-	# Create vhost - NO waf_bypass (all traffic through mitmproxy)
+	# Create vhost - Route through mitmproxy_inspector for WAF protection
 	uci set "haproxy.${vhost_section}=vhost"
 	uci set "haproxy.${vhost_section}.domain=${domain}"
-	uci set "haproxy.${vhost_section}.backend=${backend_name}"
+	uci set "haproxy.${vhost_section}.backend=mitmproxy_inspector"
 	uci set "haproxy.${vhost_section}.ssl=1"
 	uci set "haproxy.${vhost_section}.ssl_redirect=1"
 	uci set "haproxy.${vhost_section}.acme=1"
@@ -1652,14 +1953,38 @@ emancipate_instance() {
 
 	uci commit haproxy
 
-	# Sync mitmproxy routes from HAProxy config
-	if command -v mitmproxyctl >/dev/null 2>&1; then
-		mitmproxyctl sync-routes >/dev/null 2>&1
+	# Add mitmproxy route for this domain -> streamlit backend
+	local routes_file="/srv/mitmproxy/haproxy-routes.json"
+	local routes_file_in="/srv/mitmproxy-in/haproxy-routes.json"
+	if [ -f "$routes_file" ]; then
+		# Add route entry: "domain": ["192.168.255.1", port]
+		local tmp_routes="/tmp/routes_$$.json"
+		if command -v jq >/dev/null 2>&1; then
+			jq --arg domain "$domain" --argjson port "$port" \
+				'. + {($domain): ["192.168.255.1", $port]}' "$routes_file" > "$tmp_routes" 2>/dev/null && \
+				mv "$tmp_routes" "$routes_file"
+		else
+			# Fallback: append using sed (for OpenWrt without jq)
+			sed -i "s/}$/,\"${domain}\":[\"192.168.255.1\",${port}]}/" "$routes_file" 2>/dev/null
+		fi
+	fi
+	# Same for inbound mitmproxy
+	if [ -f "$routes_file_in" ]; then
+		if command -v jq >/dev/null 2>&1; then
+			jq --arg domain "$domain" --argjson port "$port" \
+				'. + {($domain): ["192.168.255.1", $port]}' "$routes_file_in" > "/tmp/routes_in_$$.json" 2>/dev/null && \
+				mv "/tmp/routes_in_$$.json" "$routes_file_in"
+		else
+			sed -i "s/}$/,\"${domain}\":[\"192.168.255.1\",${port}]}/" "$routes_file_in" 2>/dev/null
+		fi
 	fi
 
-	# Regenerate and restart HAProxy for clean state
+	# Restart mitmproxy to pick up routes
+	/etc/init.d/mitmproxy restart >/dev/null 2>&1 &
+
+	# Regenerate and reload HAProxy
 	haproxyctl generate >/dev/null 2>&1
-	/etc/init.d/haproxy restart >/dev/null 2>&1
+	haproxyctl reload >/dev/null 2>&1
 
 	# Request certificate via ACME (wildcard covers *.gk2.secubox.in)
 	case "$domain" in
@@ -1675,14 +2000,22 @@ emancipate_instance() {
 	uci set "${CONFIG}.${id}.emancipated=1"
 	uci set "${CONFIG}.${id}.emancipated_at=$(date -Iseconds)"
 	uci set "${CONFIG}.${id}.domain=${domain}"
+	uci set "${CONFIG}.${id}.waf_enabled=1"
 	uci commit "$CONFIG"
+
+	# Auto-push to Gitea if configured
+	local gitea_enabled=$(uci -q get "${CONFIG}.gitea.enabled")
+	if [ "$gitea_enabled" = "1" ]; then
+		streamlitctl gitea push "$app" >/dev/null 2>&1 &
+	fi
 
 	json_init_obj
 	json_add_boolean "success" 1
-	json_add_string "message" "Instance exposed at https://${domain}"
+	json_add_string "message" "Instance exposed at https://${domain} (WAF protected)"
 	json_add_string "domain" "$domain"
 	json_add_string "url" "https://${domain}"
 	json_add_int "port" "$port"
+	json_add_boolean "waf_enabled" 1
 	json_close_obj
 }
 
@@ -1695,7 +2028,7 @@ get_exposure_status() {
 
 	_add_exposure_json() {
 		local section="$1"
-		local app port enabled domain emancipated auth_required
+		local app port enabled domain emancipated auth_required waf_enabled
 
 		config_get app "$section" app ""
 		config_get port "$section" port ""
@@ -1703,6 +2036,7 @@ get_exposure_status() {
 		config_get domain "$section" domain ""
 		config_get emancipated "$section" emancipated "0"
 		config_get auth_required "$section" auth_required "0"
+		config_get waf_enabled "$section" waf_enabled "0"
 
 		[ -z "$app" ] && return
 
@@ -1713,6 +2047,12 @@ get_exposure_status() {
 			if [ -f "$cert_file" ]; then
 				cert_valid=1
 				cert_expires=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
+			fi
+			# Check WAF status from HAProxy vhost config
+			local vhost_section=$(echo "$domain" | sed 's/\./_/g')
+			local vhost_backend=$(uci -q get "haproxy.${vhost_section}.backend" 2>/dev/null)
+			if [ "$vhost_backend" = "mitmproxy_inspector" ]; then
+				waf_enabled=1
 			fi
 		fi
 
@@ -1726,6 +2066,7 @@ get_exposure_status() {
 		json_add_boolean "auth_required" "$( [ "$auth_required" = "1" ] && echo 1 || echo 0 )"
 		json_add_boolean "cert_valid" "$cert_valid"
 		json_add_string "cert_expires" "$cert_expires"
+		json_add_boolean "waf_enabled" "$( [ "$waf_enabled" = "1" ] && echo 1 || echo 0 )"
 		json_close_object
 	}
 

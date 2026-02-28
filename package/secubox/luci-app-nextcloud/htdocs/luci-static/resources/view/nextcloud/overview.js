@@ -69,7 +69,7 @@ var callRestore = rpc.declare({
 var callListBackups = rpc.declare({
 	object: 'luci.nextcloud',
 	method: 'list_backups',
-	expect: { backups: [] }
+	expect: {}
 });
 
 var callSSLEnable = rpc.declare({
@@ -113,7 +113,7 @@ var callUninstall = rpc.declare({
 var callListUsers = rpc.declare({
 	object: 'luci.nextcloud',
 	method: 'list_users',
-	expect: { users: [] }
+	expect: {}
 });
 
 var callResetPassword = rpc.declare({

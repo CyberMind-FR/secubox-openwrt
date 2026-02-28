@@ -255,20 +255,116 @@ _count_site() {
 	_site_count=$((_site_count + 1))
 }
 
-# List all sites with their status
+# List all sites with their status - OPTIMIZED VERSION
+# Uses single-pass awk parsing instead of multiple UCI calls per site
 method_list_sites() {
 	SITES_ROOT=$(get_uci main sites_root "$SITES_ROOT")
 
-	json_init
-	json_add_array "sites"
+	# Pre-fetch listening ports (single read of /proc/net/tcp)
+	local listening_ports
+	listening_ports=$(awk -F'[ :]+' '$4=="0A"{print toupper($3)}' /proc/net/tcp 2>/dev/null | tr '\n' ' ')
 
-	config_load "$UCI_CONFIG"
-	config_foreach _add_site site
+	# Pre-fetch HAProxy vhost backends (single uci show)
+	local haproxy_backends
+	haproxy_backends=$(uci show haproxy 2>/dev/null | grep '\.backend=' | sed "s/^haproxy\\.//;s/\\.backend='\\(.*\\)'$/=\\1/" | tr '\n' '|')
 
-	json_close_array
-	json_dump
+	# Pre-fetch Tor hidden services (single uci show)
+	local tor_services
+	tor_services=$(uci show tor-shield 2>/dev/null | grep '^tor-shield\.hs_metablog_' | sed 's/^tor-shield\.\(hs_metablog_[^.=]*\).*/\1/' | sort -u | tr '\n' '|')
+
+	# Single-pass awk to generate JSON from metablogizer config
+	uci show "$UCI_CONFIG" 2>/dev/null | awk -v sites_root="$SITES_ROOT" \
+		-v listening_ports=" $listening_ports " \
+		-v haproxy_backends="|$haproxy_backends" \
+		-v tor_services="|$tor_services|" \
+		-v tor_data="$TOR_DATA" '
+	BEGIN {
+		printf "{\"sites\":["
+		first = 1
+	}
+	/=site$/ {
+		if (current_site != "") {
+			output_site()
+		}
+		gsub(/^metablogizer\./, "", $0)
+		gsub(/=site$/, "", $0)
+		current_site = $0
+		name = ""; domain = ""; gitea_repo = ""; ssl = "1"; enabled = "1"
+		description = ""; tor_enabled = "0"; port = ""; runtime = ""; emancipated = "0"
+	}
+	/\.name=/ { gsub(/.*\.name='\''/, "", $0); gsub(/'\''$/, "", $0); name = $0 }
+	/\.domain=/ { gsub(/.*\.domain='\''/, "", $0); gsub(/'\''$/, "", $0); domain = $0 }
+	/\.gitea_repo=/ { gsub(/.*\.gitea_repo='\''/, "", $0); gsub(/'\''$/, "", $0); gitea_repo = $0 }
+	/\.ssl=/ { gsub(/.*\.ssl='\''/, "", $0); gsub(/'\''$/, "", $0); ssl = $0 }
+	/\.enabled=/ { gsub(/.*\.enabled='\''/, "", $0); gsub(/'\''$/, "", $0); enabled = $0 }
+	/\.description=/ { gsub(/.*\.description='\''/, "", $0); gsub(/'\''$/, "", $0); description = $0 }
+	/\.tor_enabled=/ { gsub(/.*\.tor_enabled='\''/, "", $0); gsub(/'\''$/, "", $0); tor_enabled = $0 }
+	/\.port=/ { gsub(/.*\.port='\''/, "", $0); gsub(/'\''$/, "", $0); port = $0 }
+	/\.runtime=/ { gsub(/.*\.runtime='\''/, "", $0); gsub(/'\''$/, "", $0); runtime = $0 }
+	/\.emancipated=/ { gsub(/.*\.emancipated='\''/, "", $0); gsub(/'\''$/, "", $0); emancipated = $0 }
+
+	function output_site(    tmp) {
+		if (first == 0) printf ","
+		first = 0
+
+		# Check has_content (site dir + index.html exists)
+		has_content = 0
+		site_dir = sites_root "/" name
+		idx_file = site_dir "/index.html"
+		if ((getline tmp < idx_file) >= 0) { has_content = 1; close(idx_file) }
+
+		# Check backend_running using pre-fetched listening ports
+		backend_running = 0
+		if (port != "") {
+			hex_port = sprintf("%04X", port)
+			if (index(listening_ports, " " hex_port " ") > 0) backend_running = 1
+		}
+
+		# Check WAF status using pre-fetched haproxy backends
+		waf_enabled = 0
+		gsub(/[^a-zA-Z0-9]/, "_", domain)
+		vhost_pattern = "|" domain "=mitmproxy_inspector|"
+		if (index(haproxy_backends, vhost_pattern) > 0) waf_enabled = 1
+		# Restore domain
+		gsub(/_/, ".", domain)
+
+		# Check Tor service using pre-fetched services
+		hs_name = name
+		gsub(/[^a-zA-Z0-9_]/, "", hs_name)
+		tor_check = "|hs_metablog_" hs_name "|"
+		tor_actual = (tor_enabled == "1" || index(tor_services, tor_check) > 0) ? 1 : 0
+
+		# Get onion address if Tor enabled
+		onion_address = ""
+		if (tor_actual) {
+			onion_file = tor_data "/hidden_service_metablog_" hs_name "/hostname"
+			if ((getline onion_address < onion_file) > 0) {
+				gsub(/[\r\n]/, "", onion_address)
+				close(onion_file)
+			}
+		}
+
+		# Output JSON
+		printf "{\"id\":\"%s\",\"name\":\"%s\",\"domain\":\"%s\"", current_site, name, domain
+		printf ",\"gitea_repo\":\"%s\",\"description\":\"%s\"", gitea_repo, description
+		printf ",\"ssl\":%s,\"enabled\":%s,\"has_content\":%s", (ssl=="1"?"true":"false"), (enabled=="1"?"true":"false"), (has_content?"true":"false")
+		printf ",\"last_sync\":\"\",\"url\":\"https://%s\"", domain
+		if (port != "") printf ",\"port\":%s", port
+		if (runtime != "") printf ",\"runtime\":\"%s\"", runtime
+		printf ",\"backend_running\":%s,\"waf_enabled\":%s,\"emancipated\":%s", (backend_running?"true":"false"), (waf_enabled?"true":"false"), (emancipated=="1"?"true":"false")
+		printf ",\"tor_enabled\":%s", (tor_actual?"true":"false")
+		if (onion_address != "") {
+			printf ",\"onion_address\":\"%s\",\"onion_url\":\"http://%s\"", onion_address, onion_address
+		}
+		printf "}"
+	}
+	END {
+		if (current_site != "") output_site()
+		printf "]}"
+	}'
 }
 
+# Legacy _add_site kept for compatibility but no longer used by method_list_sites
 _add_site() {
 	local section="$1"
 	local name domain gitea_repo ssl enabled description tor_enabled port runtime
@@ -290,11 +386,8 @@ _add_site() {
 		has_content="1"
 	fi
 
-	# Get last sync time
+	# Skip git log for performance (last_sync not critical for listing)
 	last_sync=""
-	if [ -d "$SITES_ROOT/$name/.git" ]; then
-		last_sync=$(cd "$SITES_ROOT/$name" && git log -1 --format="%ci" 2>/dev/null || echo "")
-	fi
 
 	# Get Tor .onion address if available
 	onion_address=""
@@ -305,12 +398,23 @@ _add_site() {
 	# Check if backend is running (uhttpd listening on port)
 	backend_running="0"
 	if [ -n "$port" ]; then
-		# Check if port is listening using /proc/net/tcp (hex port)
 		local hex_port=$(printf '%04X' "$port" 2>/dev/null)
 		if grep -qi ":${hex_port}" /proc/net/tcp 2>/dev/null; then
 			backend_running="1"
 		fi
 	fi
+
+	# Check WAF status
+	local waf_enabled="0"
+	local vhost_name=$(echo "$domain" | sed 's/[^a-zA-Z0-9]/_/g')
+	local vhost_backend=$(uci -q get "haproxy.${vhost_name}.backend" 2>/dev/null)
+	if [ "$vhost_backend" = "mitmproxy_inspector" ]; then
+		waf_enabled="1"
+	fi
+
+	# Check emancipated status
+	local emancipated=$(uci -q get "${UCI_CONFIG}.${section}.emancipated" 2>/dev/null)
+	[ -z "$emancipated" ] && emancipated="0"
 
 	json_add_object
 	json_add_string "id" "$section"
@@ -326,9 +430,14 @@ _add_site() {
 	[ -n "$port" ] && json_add_int "port" "$port"
 	[ -n "$runtime" ] && json_add_string "runtime" "$runtime"
 	json_add_boolean "backend_running" "$backend_running"
+	json_add_boolean "waf_enabled" "$waf_enabled"
+	json_add_boolean "emancipated" "$emancipated"
 
-	# Tor hidden service info
-	json_add_boolean "tor_enabled" "$(has_tor_service "$name" && echo 1 || echo 0)"
+	# Tor hidden service info (use cached value, don't call has_tor_service again)
+	local tor_actual="0"
+	[ "$tor_enabled" = "1" ] && tor_actual="1"
+	[ -n "$onion_address" ] && tor_actual="1"
+	json_add_boolean "tor_enabled" "$tor_actual"
 	[ -n "$onion_address" ] && json_add_string "onion_address" "$onion_address"
 	[ -n "$onion_address" ] && json_add_string "onion_url" "http://$onion_address"
 
@@ -947,10 +1056,19 @@ method_upload_file() {
 	if [ $rc -eq 0 ]; then
 		# Fix permissions for entire site directory
 		fix_permissions "$site_path"
+
+		# Auto-republish if site is emancipated (ensures content is served immediately)
+		local is_emancipated=$(get_uci "$id" emancipated "0")
+		if [ "$is_emancipated" = "1" ]; then
+			# Republish in background to reload HAProxy and push to Gitea if configured
+			metablogizerctl publish "$name" >/dev/null 2>&1 &
+		fi
+
 		json_init
 		json_add_boolean "success" 1
 		json_add_string "filename" "$filename"
 		json_add_string "path" "$file_path"
+		json_add_string "republished" "$is_emancipated"
 		json_dump
 	else
 		json_init
@@ -1065,6 +1183,11 @@ method_upload_finalize() {
 		fix_permissions "$site_path"
 		# Auto-push to Gitea if configured (background, use site name not UCI section id)
 		metablogizerctl gitea push "$name" >/dev/null 2>&1 &
+		# Auto-republish if site is emancipated (ensures HAProxy routing works after upload)
+		local is_emancipated=$(get_uci "$site_id" emancipated "0")
+		if [ "$is_emancipated" = "1" ]; then
+			metablogizerctl publish "$name" >/dev/null 2>&1 &
+		fi
 		json_init
 		json_add_boolean "success" 1
 		json_add_string "filename" "$filename"

@@ -944,8 +944,12 @@ cmd_emancipate() {
 	# Configure HAProxy
 	cmd_configure_haproxy
 
-	# Sync mitmproxy routes
-	if command -v mitmproxyctl >/dev/null 2>&1; then
+	# Register route in centralized registry
+	local port=$(uci_get port server || echo 9000)
+	if command -v secubox-route >/dev/null 2>&1; then
+		secubox-route add "$domain" "192.168.255.1" "$port" "peertube" 2>/dev/null
+		log_info "Route registered: $domain -> 192.168.255.1:$port"
+	elif command -v mitmproxyctl >/dev/null 2>&1; then
 		mitmproxyctl sync-routes 2>/dev/null
 	fi
 

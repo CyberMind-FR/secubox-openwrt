@@ -146,23 +146,64 @@ return view.extend({
 			var isExposed = exp.emancipated;
 			var certValid = exp.cert_valid;
 			var authRequired = exp.auth_required;
-
-			// Status indicator
-			var statusBadge;
-			if (isExposed && certValid) {
-				statusBadge = E('span', { 'style': 'background:#0a0; color:#fff; padding:2px 6px; border-radius:3px; font-size:11px' },
-					'\u2713 ' + (exp.domain || 'Exposed'));
-			} else if (isExposed) {
-				statusBadge = E('span', { 'style': 'background:#f90; color:#fff; padding:2px 6px; border-radius:3px; font-size:11px' },
-					'\u26A0 Cert pending');
-			} else {
-				statusBadge = E('span', { 'style': 'color:#999' }, _('Local only'));
-			}
+			var wafEnabled = exp.waf_enabled;
+			var domain = exp.domain || '';
 
 			// Running indicator
 			var runStatus = inst.enabled ?
 				E('span', { 'style': 'color:#0a0' }, '\u25CF') :
 				E('span', { 'style': 'color:#999' }, '\u25CB');
+
+			// Domain/Vhost column - editable input or link
+			var domainCell;
+			if (isExposed && domain) {
+				// Show clickable link + edit button
+				domainCell = E('div', { 'style': 'display:flex; align-items:center; gap:4px' }, [
+					E('a', {
+						'href': 'https://' + domain,
+						'target': '_blank',
+						'style': 'font-size:12px; color:#007bff'
+					}, domain),
+					E('button', {
+						'class': 'cbi-button',
+						'style': 'padding:2px 6px; font-size:10px',
+						'title': _('Edit domain'),
+						'click': function() { self.editDomain(inst.id, domain); }
+					}, '\u270E')
+				]);
+			} else {
+				// Show input field for setting domain before expose
+				var inputId = 'domain-' + inst.id;
+				var defaultDomain = inst.id + '.gk2.secubox.in';
+				domainCell = E('input', {
+					'type': 'text',
+					'id': inputId,
+					'value': defaultDomain,
+					'style': 'width:160px; font-size:11px; padding:2px 4px',
+					'placeholder': 'domain.example.com'
+				});
+			}
+
+			// Status badges
+			var badges = [];
+			if (isExposed) {
+				if (certValid) {
+					badges.push(E('span', {
+						'style': 'background:#0a0; color:#fff; padding:2px 6px; border-radius:3px; font-size:10px'
+					}, '\u2713 SSL'));
+				} else {
+					badges.push(E('span', {
+						'style': 'background:#f90; color:#fff; padding:2px 6px; border-radius:3px; font-size:10px'
+					}, '\u26A0 Cert'));
+				}
+				if (wafEnabled) {
+					badges.push(E('span', {
+						'style': 'background:#d1ecf1; color:#0c5460; padding:2px 6px; border-radius:3px; font-size:10px; margin-left:2px'
+					}, 'WAF'));
+				}
+			} else {
+				badges.push(E('span', { 'style': 'color:#999; font-size:11px' }, _('Local')));
+			}
 
 			// Action buttons
 			var actions = [];
@@ -194,8 +235,12 @@ return view.extend({
 				actions.push(E('button', {
 					'class': 'cbi-button cbi-button-positive',
 					'style': 'margin-left:4px',
-					'title': _('Expose (one-click)'),
-					'click': function() { self.exposeInstance(inst.id); }
+					'title': _('Expose with domain'),
+					'click': function() {
+						var input = document.getElementById('domain-' + inst.id);
+						var customDomain = input ? input.value.trim() : '';
+						self.exposeInstance(inst.id, customDomain);
+					}
 				}, '\u2197'));
 			}
 
@@ -221,7 +266,8 @@ return view.extend({
 				E('td', {}, [runStatus, ' ', E('strong', {}, inst.id)]),
 				E('td', {}, inst.app || '-'),
 				E('td', {}, ':' + inst.port),
-				E('td', {}, statusBadge),
+				E('td', {}, domainCell),
+				E('td', {}, badges),
 				E('td', {}, actions)
 			]);
 		});
@@ -231,7 +277,8 @@ return view.extend({
 				E('th', { 'class': 'th' }, _('Instance')),
 				E('th', { 'class': 'th' }, _('App')),
 				E('th', { 'class': 'th' }, _('Port')),
-				E('th', { 'class': 'th' }, _('Exposure')),
+				E('th', { 'class': 'th' }, _('Domain')),
+				E('th', { 'class': 'th' }, _('Status')),
 				E('th', { 'class': 'th' }, _('Actions'))
 			])
 		].concat(rows));
@@ -258,6 +305,7 @@ return view.extend({
 
 		var rows = apps.map(function(app) {
 			var id = app.id || app.name;
+			var hasGitea = app.gitea_repo || app.git_url;
 			return E('tr', {}, [
 				E('td', {}, E('strong', {}, app.name)),
 				E('td', {}, app.path ? app.path.split('/').pop() : '-'),
@@ -266,6 +314,16 @@ return view.extend({
 						'class': 'cbi-button',
 						'click': function() { self.createInstanceFromApp(id); }
 					}, _('+ Instance')),
+					E('button', {
+						'class': 'cbi-button',
+						'style': 'margin-left:4px',
+						'click': function() { self.reuploadApp(id); }
+					}, _('Re-upload')),
+					hasGitea ? E('button', {
+						'class': 'cbi-button cbi-button-action',
+						'style': 'margin-left:4px',
+						'click': function() { self.giteaPull(id); }
+					}, _('Gitea Sync')) : '',
 					E('button', {
 						'class': 'cbi-button cbi-button-remove',
 						'style': 'margin-left:4px',
@@ -463,14 +521,15 @@ return view.extend({
 		]);
 	},
 
-	// One-click expose
-	exposeInstance: function(id) {
+	// One-click expose with optional domain
+	exposeInstance: function(id, domain) {
 		var self = this;
+		domain = domain || '';
 		ui.showModal(_('Exposing...'), [
-			E('p', { 'class': 'spinning' }, _('Creating vhost + SSL certificate...'))
+			E('p', { 'class': 'spinning' }, _('Creating vhost + SSL certificate for ') + (domain || id + '.gk2.secubox.in') + '...')
 		]);
 
-		api.emancipateInstance(id, '').then(function(r) {
+		api.emancipateInstance(id, domain).then(function(r) {
 			ui.hideModal();
 			if (r && r.success) {
 				ui.addNotification(null, E('p', {}, _('Exposed at: ') + r.url), 'success');
@@ -479,6 +538,49 @@ return view.extend({
 				ui.addNotification(null, E('p', {}, r.message || _('Failed')), 'error');
 			}
 		});
+	},
+
+	// Edit domain for existing exposed instance
+	editDomain: function(id, currentDomain) {
+		var self = this;
+		ui.showModal(_('Edit Domain'), [
+			E('p', {}, _('Change domain for instance: ') + id),
+			E('input', {
+				'type': 'text',
+				'id': 'edit-domain-input',
+				'value': currentDomain,
+				'style': 'width:100%; margin:8px 0'
+			}),
+			E('p', { 'style': 'color:#666; font-size:12px' },
+				_('Note: Changing domain will request a new SSL certificate.')),
+			E('div', { 'class': 'right', 'style': 'margin-top:16px' }, [
+				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
+				E('button', {
+					'class': 'cbi-button cbi-button-positive',
+					'style': 'margin-left:8px',
+					'click': function() {
+						var newDomain = document.getElementById('edit-domain-input').value.trim();
+						if (!newDomain) {
+							ui.addNotification(null, E('p', {}, _('Domain cannot be empty')), 'error');
+							return;
+						}
+						ui.hideModal();
+						ui.showModal(_('Updating...'), [
+							E('p', { 'class': 'spinning' }, _('Updating domain and certificate...'))
+						]);
+						api.renameInstance(id, id, newDomain).then(function(r) {
+							ui.hideModal();
+							if (r && r.success) {
+								ui.addNotification(null, E('p', {}, _('Domain updated to: ') + newDomain), 'success');
+								self.refresh().then(function() { self.updateStatus(); });
+							} else {
+								ui.addNotification(null, E('p', {}, r.message || _('Failed')), 'error');
+							}
+						});
+					}
+				}, _('Save'))
+			])
+		]);
 	},
 
 	// Unpublish
@@ -554,5 +656,85 @@ return view.extend({
 				}, _('Delete'))
 			])
 		]);
+	},
+
+	// Re-upload app code
+	reuploadApp: function(name) {
+		var self = this;
+		ui.showModal(_('Re-upload App: ') + name, [
+			E('p', {}, _('Select a new .py or .zip file to replace the app code:')),
+			E('input', { 'type': 'file', 'id': 'reupload-file', 'accept': '.py,.zip' }),
+			E('div', { 'class': 'right', 'style': 'margin-top:16px' }, [
+				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
+				E('button', {
+					'class': 'cbi-button cbi-button-positive',
+					'style': 'margin-left:8px',
+					'click': function() {
+						var fileInput = document.getElementById('reupload-file');
+						if (!fileInput || !fileInput.files.length) {
+							ui.addNotification(null, E('p', {}, _('Select a file')), 'error');
+							return;
+						}
+
+						var file = fileInput.files[0];
+						var isZip = file.name.endsWith('.zip');
+						var reader = new FileReader();
+
+						reader.onload = function(e) {
+							var bytes = new Uint8Array(e.target.result);
+							var chunks = [];
+							for (var i = 0; i < bytes.length; i += 8192) {
+								chunks.push(String.fromCharCode.apply(null, bytes.slice(i, i + 8192)));
+							}
+							var content = btoa(chunks.join(''));
+
+							ui.hideModal();
+							poll.stop();
+							ui.showModal(_('Uploading'), [
+								E('p', { 'class': 'spinning' }, _('Uploading app code...'))
+							]);
+
+							api.chunkedUpload(name, content, isZip).then(function(r) {
+								poll.start();
+								ui.hideModal();
+								if (r && r.success) {
+									ui.addNotification(null, E('p', {}, _('App updated: ') + name), 'success');
+									self.refresh().then(function() { self.updateStatus(); });
+								} else {
+									ui.addNotification(null, E('p', {}, r.message || _('Upload failed')), 'error');
+								}
+							}).catch(function(err) {
+								poll.start();
+								ui.hideModal();
+								ui.addNotification(null, E('p', {}, _('Error: ') + (err.message || err)), 'error');
+							});
+						};
+
+						reader.readAsArrayBuffer(file);
+					}
+				}, _('Upload'))
+			])
+		]);
+	},
+
+	// Gitea pull/sync
+	giteaPull: function(name) {
+		var self = this;
+		ui.showModal(_('Syncing...'), [
+			E('p', { 'class': 'spinning' }, _('Pulling from Gitea...'))
+		]);
+
+		api.giteaPull(name).then(function(r) {
+			ui.hideModal();
+			if (r && r.success) {
+				ui.addNotification(null, E('p', {}, _('Synced from Gitea: ') + name), 'success');
+				self.refresh().then(function() { self.updateStatus(); });
+			} else {
+				ui.addNotification(null, E('p', {}, r.message || _('Sync failed')), 'error');
+			}
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', {}, _('Error: ') + (err.message || err)), 'error');
+		});
 	}
 });

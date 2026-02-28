@@ -1,0 +1,548 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# Meshname DNS Controller - Decentralized .ygg domain resolution
+#
+# Copyright (C) 2026 CyberMind.fr
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+CONFIG="meshname-dns"
+LIB_DIR="/usr/lib/meshname-dns"
+STATE_DIR="/var/lib/meshname-dns"
+HOSTS_FILE="/tmp/hosts/meshname"
+DOMAINS_FILE="$STATE_DIR/domains.json"
+LOCAL_FILE="$STATE_DIR/local.json"
+LOG_TAG="meshname-dns"
+
+# Source libraries
+[ -f "$LIB_DIR/announcer.sh" ] && . "$LIB_DIR/announcer.sh"
+[ -f "$LIB_DIR/resolver.sh" ] && . "$LIB_DIR/resolver.sh"
+
+usage() {
+	cat <<'EOF'
+Usage: meshnamectl <command> [options]
+
+Commands:
+  announce <name> [port]        Announce service as <name>.ygg
+  revoke <name>                 Stop announcing service
+  resolve <name>.ygg            Resolve domain to IPv6
+  list                          List known .ygg domains
+  sync                          Force sync with mesh peers
+  status                        Show meshname DNS status
+  daemon                        Run sync daemon (internal)
+
+Examples:
+  meshnamectl announce myapp 8080    # Announces myapp.ygg -> local Ygg IPv6
+  meshnamectl resolve peer.ygg       # Returns peer's Ygg IPv6
+  meshnamectl list                   # Shows all known .ygg domains
+
+Configuration: /etc/config/meshname-dns
+EOF
+}
+
+log_info() { logger -t "$LOG_TAG" "$*"; echo "[INFO] $*"; }
+log_warn() { logger -t "$LOG_TAG" -p warning "$*"; echo "[WARN] $*" >&2; }
+log_error() { logger -t "$LOG_TAG" -p err "$*"; echo "[ERROR] $*" >&2; }
+
+uci_get() { uci -q get "${CONFIG}.$1"; }
+uci_set() { uci set "${CONFIG}.$1=$2"; }
+
+# Get local Yggdrasil IPv6 address
+get_ygg_ipv6() {
+	# Try tun0 first (standard Yggdrasil interface)
+	local ipv6=$(ip -6 addr show tun0 2>/dev/null | grep -oP '(?<=inet6 )2[0-9a-f:]+(?=/)')
+
+	# If not found, try any interface with 200: prefix
+	if [ -z "$ipv6" ]; then
+		ipv6=$(ip -6 addr show 2>/dev/null | grep -oP '(?<=inet6 )2[0-9a-f][0-9a-f]:[0-9a-f:]+(?=/)' | head -1)
+	fi
+
+	echo "$ipv6"
+}
+
+# Initialize state files
+init_state() {
+	mkdir -p "$STATE_DIR"
+	mkdir -p "$(dirname "$HOSTS_FILE")"
+
+	[ -f "$DOMAINS_FILE" ] || echo '{}' > "$DOMAINS_FILE"
+	[ -f "$LOCAL_FILE" ] || echo '{}' > "$LOCAL_FILE"
+	[ -f "$HOSTS_FILE" ] || touch "$HOSTS_FILE"
+}
+
+# Load configuration
+load_config() {
+	enabled=$(uci_get main.enabled)
+	auto_announce=$(uci_get main.auto_announce)
+	sync_interval=$(uci_get main.sync_interval)
+	hosts_file=$(uci_get main.hosts_file)
+
+	resolver_enabled=$(uci_get resolver.enabled)
+	cache_ttl=$(uci_get resolver.cache_ttl)
+
+	gossip_enabled=$(uci_get gossip.enabled)
+	announce_priority=$(uci_get gossip.announce_priority)
+
+	[ -z "$sync_interval" ] && sync_interval=60
+	[ -z "$cache_ttl" ] && cache_ttl=300
+	[ -z "$announce_priority" ] && announce_priority=50
+	[ -n "$hosts_file" ] && HOSTS_FILE="$hosts_file"
+}
+
+# =============================================================================
+# STATUS
+# =============================================================================
+
+cmd_status() {
+	init_state
+	load_config
+
+	local ygg_ipv6=$(get_ygg_ipv6)
+	local local_count=0
+	local domain_count=0
+
+	if [ -f "$LOCAL_FILE" ] && [ -s "$LOCAL_FILE" ]; then
+		local_count=$(jsonfilter -i "$LOCAL_FILE" -e '@' 2>/dev/null | grep -c '"name"' || echo 0)
+	fi
+
+	if [ -f "$DOMAINS_FILE" ] && [ -s "$DOMAINS_FILE" ]; then
+		domain_count=$(jsonfilter -i "$DOMAINS_FILE" -e '@' 2>/dev/null | grep -c '"ipv6"' || echo 0)
+	fi
+
+	echo "=== Meshname DNS Status ==="
+	echo ""
+	echo "Enabled: $([ "$enabled" = "1" ] && echo "Yes" || echo "No")"
+	echo "Yggdrasil IPv6: ${ygg_ipv6:-not available}"
+	echo "Sync Interval: ${sync_interval}s"
+	echo ""
+	echo "=== Services ==="
+	echo "Local Announced: $local_count"
+	echo "Known Domains: $domain_count"
+	echo ""
+	echo "=== Files ==="
+	echo "Hosts File: $HOSTS_FILE"
+	[ -f "$HOSTS_FILE" ] && echo "Hosts Entries: $(wc -l < "$HOSTS_FILE")"
+
+	if [ -f "$STATE_DIR/last_sync" ]; then
+		echo "Last Sync: $(cat "$STATE_DIR/last_sync")"
+	fi
+}
+
+# =============================================================================
+# ANNOUNCE
+# =============================================================================
+
+cmd_announce() {
+	local name="$1"
+	local port="${2:-0}"
+
+	[ -z "$name" ] && {
+		echo "Usage: meshnamectl announce <name> [port]"
+		echo "Example: meshnamectl announce myservice 8080"
+		exit 1
+	}
+
+	# Strip .ygg suffix if present
+	name="${name%.ygg}"
+
+	init_state
+	load_config
+
+	local ygg_ipv6=$(get_ygg_ipv6)
+	[ -z "$ygg_ipv6" ] && {
+		log_error "Yggdrasil IPv6 not available. Is Yggdrasil running?"
+		exit 1
+	}
+
+	local fqdn="${name}.ygg"
+	local timestamp=$(date +%s)
+
+	log_info "Announcing $fqdn -> $ygg_ipv6 (port: $port)"
+
+	# Store locally
+	local tmp_file="/tmp/meshname_local_$$.json"
+	if [ -s "$LOCAL_FILE" ] && [ "$(cat "$LOCAL_FILE")" != "{}" ]; then
+		# Update existing entry or add new
+		python3 -c "
+import json, sys
+name, ipv6, port, ts = sys.argv[1:5]
+try:
+    with open('$LOCAL_FILE') as f:
+        data = json.load(f)
+except:
+    data = {}
+data[name] = {'name': name, 'fqdn': name + '.ygg', 'ipv6': ipv6, 'port': int(port), 'timestamp': int(ts)}
+with open('$tmp_file', 'w') as f:
+    json.dump(data, f, indent=2)
+" "$name" "$ygg_ipv6" "$port" "$timestamp"
+	else
+		python3 -c "
+import json, sys
+name, ipv6, port, ts = sys.argv[1:5]
+data = {name: {'name': name, 'fqdn': name + '.ygg', 'ipv6': ipv6, 'port': int(port), 'timestamp': int(ts)}}
+with open('$tmp_file', 'w') as f:
+    json.dump(data, f, indent=2)
+" "$name" "$ygg_ipv6" "$port" "$timestamp"
+	fi
+	mv "$tmp_file" "$LOCAL_FILE"
+
+	# Update local hosts file
+	update_hosts_entry "$fqdn" "$ygg_ipv6"
+
+	# Broadcast via gossip
+	if [ "$gossip_enabled" = "1" ]; then
+		broadcast_announce "$name" "$fqdn" "$ygg_ipv6" "$port"
+	fi
+
+	log_info "Announced $fqdn"
+}
+
+# =============================================================================
+# REVOKE
+# =============================================================================
+
+cmd_revoke() {
+	local name="$1"
+
+	[ -z "$name" ] && {
+		echo "Usage: meshnamectl revoke <name>"
+		exit 1
+	}
+
+	# Strip .ygg suffix if present
+	name="${name%.ygg}"
+
+	init_state
+	load_config
+
+	local fqdn="${name}.ygg"
+
+	log_info "Revoking $fqdn"
+
+	# Remove from local file
+	if [ -f "$LOCAL_FILE" ]; then
+		python3 -c "
+import json, sys
+name = sys.argv[1]
+try:
+    with open('$LOCAL_FILE') as f:
+        data = json.load(f)
+    if name in data:
+        del data[name]
+        with open('$LOCAL_FILE', 'w') as f:
+            json.dump(data, f, indent=2)
+        print('Removed:', name)
+except Exception as e:
+    print('Error:', e)
+" "$name"
+	fi
+
+	# Remove from hosts file
+	remove_hosts_entry "$fqdn"
+
+	# Broadcast revocation via gossip (with empty IPv6)
+	if [ "$gossip_enabled" = "1" ]; then
+		broadcast_revoke "$name" "$fqdn"
+	fi
+
+	log_info "Revoked $fqdn"
+}
+
+# =============================================================================
+# RESOLVE
+# =============================================================================
+
+cmd_resolve() {
+	local domain="$1"
+
+	[ -z "$domain" ] && {
+		echo "Usage: meshnamectl resolve <name>.ygg"
+		exit 1
+	}
+
+	# Add .ygg suffix if not present
+	echo "$domain" | grep -q '\.ygg$' || domain="${domain}.ygg"
+
+	init_state
+
+	# Check hosts file first
+	local ipv6=$(grep -w "$domain" "$HOSTS_FILE" 2>/dev/null | awk '{print $1}')
+
+	if [ -n "$ipv6" ]; then
+		echo "$ipv6"
+		return 0
+	fi
+
+	# Check domains cache
+	local name="${domain%.ygg}"
+	if [ -f "$DOMAINS_FILE" ]; then
+		ipv6=$(python3 -c "
+import json, sys
+name = sys.argv[1]
+try:
+    with open('$DOMAINS_FILE') as f:
+        data = json.load(f)
+    if name in data:
+        print(data[name].get('ipv6', ''))
+except:
+    pass
+" "$name")
+
+		if [ -n "$ipv6" ]; then
+			echo "$ipv6"
+			return 0
+		fi
+	fi
+
+	log_error "Cannot resolve $domain"
+	return 1
+}
+
+# =============================================================================
+# LIST
+# =============================================================================
+
+cmd_list() {
+	init_state
+
+	echo "=== Local Services ==="
+	if [ -f "$LOCAL_FILE" ] && [ -s "$LOCAL_FILE" ] && [ "$(cat "$LOCAL_FILE")" != "{}" ]; then
+		python3 -c "
+import json
+try:
+    with open('$LOCAL_FILE') as f:
+        data = json.load(f)
+    for name, info in data.items():
+        port = info.get('port', 0)
+        port_str = f' (port {port})' if port > 0 else ''
+        print(f\"  {info['fqdn']} -> {info['ipv6']}{port_str}\")
+except:
+    print('  (none)')
+"
+	else
+		echo "  (none)"
+	fi
+
+	echo ""
+	echo "=== Known Domains ==="
+	if [ -f "$DOMAINS_FILE" ] && [ -s "$DOMAINS_FILE" ] && [ "$(cat "$DOMAINS_FILE")" != "{}" ]; then
+		python3 -c "
+import json
+try:
+    with open('$DOMAINS_FILE') as f:
+        data = json.load(f)
+    for name, info in data.items():
+        origin = info.get('origin', 'unknown')[:16]
+        print(f\"  {info['fqdn']} -> {info['ipv6']} (from {origin})\")
+except:
+    print('  (none)')
+"
+	else
+		echo "  (none)"
+	fi
+
+	echo ""
+	echo "=== Hosts File ($HOSTS_FILE) ==="
+	if [ -f "$HOSTS_FILE" ] && [ -s "$HOSTS_FILE" ]; then
+		sed 's/^/  /' "$HOSTS_FILE"
+	else
+		echo "  (empty)"
+	fi
+}
+
+# =============================================================================
+# SYNC
+# =============================================================================
+
+cmd_sync() {
+	init_state
+	load_config
+
+	log_info "Syncing with mesh peers..."
+
+	# Re-announce all local services
+	if [ -f "$LOCAL_FILE" ] && [ "$gossip_enabled" = "1" ]; then
+		python3 -c "
+import json
+try:
+    with open('$LOCAL_FILE') as f:
+        data = json.load(f)
+    for name, info in data.items():
+        print(f\"{name}|{info['fqdn']}|{info['ipv6']}|{info.get('port', 0)}\")
+except:
+    pass
+" | while IFS='|' read -r name fqdn ipv6 port; do
+			[ -n "$name" ] && broadcast_announce "$name" "$fqdn" "$ipv6" "$port"
+		done
+	fi
+
+	# Regenerate hosts file from domains cache
+	regenerate_hosts
+
+	date -Iseconds > "$STATE_DIR/last_sync"
+	log_info "Sync complete"
+}
+
+# =============================================================================
+# DAEMON
+# =============================================================================
+
+cmd_daemon() {
+	load_config
+
+	[ "$enabled" = "1" ] || {
+		log_error "Meshname DNS is disabled"
+		exit 1
+	}
+
+	log_info "Starting Meshname DNS daemon (interval: ${sync_interval}s)..."
+
+	# Initial sync
+	cmd_sync 2>&1 | while read -r line; do
+		logger -t "$LOG_TAG" "$line"
+	done
+
+	# Periodic sync loop
+	while true; do
+		sleep "$sync_interval"
+
+		cmd_sync 2>&1 | while read -r line; do
+			logger -t "$LOG_TAG" "$line"
+		done
+	done
+}
+
+# =============================================================================
+# HELPER FUNCTIONS
+# =============================================================================
+
+# Update a single entry in hosts file
+update_hosts_entry() {
+	local fqdn="$1"
+	local ipv6="$2"
+
+	[ -z "$fqdn" ] || [ -z "$ipv6" ] && return 1
+
+	# Remove existing entry if present
+	sed -i "/ ${fqdn}$/d" "$HOSTS_FILE" 2>/dev/null
+
+	# Add new entry
+	echo "$ipv6 $fqdn" >> "$HOSTS_FILE"
+
+	# Signal dnsmasq to reload
+	killall -HUP dnsmasq 2>/dev/null
+}
+
+# Remove entry from hosts file
+remove_hosts_entry() {
+	local fqdn="$1"
+
+	sed -i "/ ${fqdn}$/d" "$HOSTS_FILE" 2>/dev/null
+	killall -HUP dnsmasq 2>/dev/null
+}
+
+# Regenerate entire hosts file from caches
+regenerate_hosts() {
+	local tmp_hosts="/tmp/meshname_hosts_$$.tmp"
+	: > "$tmp_hosts"
+
+	# Add local services
+	if [ -f "$LOCAL_FILE" ]; then
+		python3 -c "
+import json
+try:
+    with open('$LOCAL_FILE') as f:
+        data = json.load(f)
+    for name, info in data.items():
+        print(f\"{info['ipv6']} {info['fqdn']}\")
+except:
+    pass
+" >> "$tmp_hosts"
+	fi
+
+	# Add remote domains
+	if [ -f "$DOMAINS_FILE" ]; then
+		python3 -c "
+import json
+try:
+    with open('$DOMAINS_FILE') as f:
+        data = json.load(f)
+    for name, info in data.items():
+        print(f\"{info['ipv6']} {info['fqdn']}\")
+except:
+    pass
+" >> "$tmp_hosts"
+	fi
+
+	# Deduplicate and sort
+	sort -u "$tmp_hosts" > "$HOSTS_FILE"
+	rm -f "$tmp_hosts"
+
+	# Signal dnsmasq
+	killall -HUP dnsmasq 2>/dev/null
+}
+
+# Broadcast announcement via gossip
+broadcast_announce() {
+	local name="$1"
+	local fqdn="$2"
+	local ipv6="$3"
+	local port="${4:-0}"
+
+	# Use mirrornet gossip if available
+	if [ -f /usr/lib/mirrornet/gossip.sh ]; then
+		. /usr/lib/mirrornet/gossip.sh
+
+		local data="{\"name\":\"$name\",\"fqdn\":\"$fqdn\",\"ipv6\":\"$ipv6\",\"port\":$port,\"type\":\"announce\"}"
+		gossip_broadcast "meshname_announce" "$data" "$announce_priority"
+	fi
+}
+
+# Broadcast revocation via gossip
+broadcast_revoke() {
+	local name="$1"
+	local fqdn="$2"
+
+	if [ -f /usr/lib/mirrornet/gossip.sh ]; then
+		. /usr/lib/mirrornet/gossip.sh
+
+		local data="{\"name\":\"$name\",\"fqdn\":\"$fqdn\",\"ipv6\":\"\",\"type\":\"revoke\"}"
+		gossip_broadcast "meshname_announce" "$data" "$announce_priority"
+	fi
+}
+
+# =============================================================================
+# MAIN
+# =============================================================================
+
+case "$1" in
+	status)
+		cmd_status
+		;;
+	announce)
+		cmd_announce "$2" "$3"
+		;;
+	revoke)
+		cmd_revoke "$2"
+		;;
+	resolve)
+		cmd_resolve "$2"
+		;;
+	list)
+		cmd_list
+		;;
+	sync)
+		cmd_sync
+		;;
+	daemon)
+		cmd_daemon
+		;;
+	-h|--help|help)
+		usage
+		;;
+	*)
+		usage
+		exit 1
+		;;
+esac

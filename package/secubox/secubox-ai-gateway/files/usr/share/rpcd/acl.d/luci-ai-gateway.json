@@ -1,0 +1,30 @@
+{
+	"luci-ai-gateway": {
+		"description": "Grant access to AI Gateway",
+		"read": {
+			"ubus": {
+				"luci.ai-gateway": [
+					"status",
+					"get_config",
+					"get_providers",
+					"get_audit_stats",
+					"classify"
+				]
+			},
+			"uci": ["ai-gateway"]
+		},
+		"write": {
+			"ubus": {
+				"luci.ai-gateway": [
+					"set_provider",
+					"set_offline_mode",
+					"test_provider",
+					"start",
+					"stop",
+					"restart"
+				]
+			},
+			"uci": ["ai-gateway"]
+		}
+	}
+}

@@ -1,0 +1,353 @@
+#!/bin/sh
+# SecuBox AI Gateway Controller
+# Copyright (C) 2026 CyberMind.fr
+
+CONFIG="ai-gateway"
+LIB_DIR="/usr/lib/ai-gateway"
+STATE_DIR="/var/lib/ai-gateway"
+AUDIT_DIR="/var/log/ai-gateway"
+
+# Load libraries
+. /lib/functions.sh
+
+usage() {
+	cat <<'EOF'
+SecuBox AI Gateway Controller
+
+Usage: aigatewayctl <command> [options]
+
+Service Commands:
+  status              Show gateway status
+  start               Start the proxy service
+  stop                Stop the proxy service
+  restart             Restart the proxy service
+  service-run         Run proxy in foreground (used by init.d)
+
+Classification:
+  classify <text>     Classify text and show tier
+  sanitize <text>     Sanitize text and show result
+
+Provider Management:
+  provider list       List configured providers
+  provider enable <name>  Enable a provider (prompts for API key)
+  provider disable <name> Disable a provider
+  provider test <name>    Test provider connectivity
+
+Audit & Compliance:
+  audit stats         Show classification statistics
+  audit tail          Follow audit log
+  audit export        Export audit log (ANSSI format)
+  audit rotate        Rotate and compress logs
+
+Configuration:
+  offline-mode [on|off]  Toggle offline mode (forces LOCAL_ONLY)
+  config show            Show current configuration
+
+Configuration: /etc/config/ai-gateway
+Audit logs: /var/log/ai-gateway/audit.jsonl
+EOF
+}
+
+# Status command
+cmd_status() {
+	echo "=== SecuBox AI Gateway Status ==="
+	echo ""
+
+	# Service status
+	if pgrep -f "ai-gateway" >/dev/null 2>&1; then
+		echo "Service:      RUNNING"
+	else
+		echo "Service:      STOPPED"
+	fi
+
+	local enabled=$(uci -q get ${CONFIG}.main.enabled || echo "0")
+	echo "Enabled:      $([ "$enabled" = "1" ] && echo "Yes" || echo "No")"
+
+	local port=$(uci -q get ${CONFIG}.main.proxy_port || echo "4000")
+	local host=$(uci -q get ${CONFIG}.main.proxy_host || echo "127.0.0.1")
+	echo "Endpoint:     http://${host}:${port}"
+
+	# Offline mode
+	local offline=$(uci -q get ${CONFIG}.main.offline_mode || echo "0")
+	echo "Offline Mode: $([ "$offline" = "1" ] && echo "ON (LOCAL_ONLY enforced)" || echo "OFF")"
+
+	echo ""
+	echo "=== Provider Status ==="
+	cmd_provider_list
+
+	echo ""
+	echo "=== Audit Statistics ==="
+	cmd_audit_stats
+}
+
+# Classify command
+cmd_classify() {
+	local text="$*"
+	[ -z "$text" ] && { echo "Usage: aigatewayctl classify <text>"; return 1; }
+
+	. "$LIB_DIR/classifier.sh"
+	init_patterns
+
+	classify_with_reason "$text"
+}
+
+# Sanitize command
+cmd_sanitize() {
+	local text="$*"
+	[ -z "$text" ] && { echo "Usage: aigatewayctl sanitize <text>"; return 1; }
+
+	. "$LIB_DIR/sanitizer.sh"
+
+	echo "=== Original ==="
+	echo "$text"
+	echo ""
+	echo "=== Sanitized ==="
+	sanitize_text "$text"
+}
+
+# Provider list command
+cmd_provider_list() {
+	printf "%-12s | %-9s | %-8s | %-12s | %s\n" "Provider" "Status" "Priority" "Class" "Model"
+	printf "%-12s-+-%-9s-+-%-8s-+-%-12s-+-%s\n" "------------" "---------" "--------" "------------" "--------------------"
+
+	for provider in localai mistral claude openai gemini xai; do
+		local enabled=$(uci -q get ${CONFIG}.${provider}.enabled || echo "0")
+		local priority=$(uci -q get ${CONFIG}.${provider}.priority || echo "-")
+		local class=$(uci -q get ${CONFIG}.${provider}.classification || echo "-")
+		local model=$(uci -q get ${CONFIG}.${provider}.model || echo "-")
+
+		local status="OFF"
+		if [ "$enabled" = "1" ]; then
+			. "$LIB_DIR/providers.sh" 2>/dev/null
+			provider_available "$provider" && status="AVAILABLE" || status="CONFIGURED"
+		fi
+
+		printf "%-12s | %-9s | %-8s | %-12s | %s\n" "$provider" "$status" "$priority" "$class" "$model"
+	done
+}
+
+# Provider enable command
+cmd_provider_enable() {
+	local provider="$1"
+	[ -z "$provider" ] && {
+		echo "Available providers: localai, mistral, claude, openai, gemini, xai"
+		printf "Provider to enable: "
+		read provider
+	}
+
+	case "$provider" in
+		localai)
+			uci set ${CONFIG}.localai.enabled='1'
+			uci commit ${CONFIG}
+			echo "LocalAI enabled (on-device, no API key required)"
+			;;
+		mistral|claude|openai|gemini|xai)
+			printf "Enter API key for $provider: "
+			stty -echo 2>/dev/null
+			read -r api_key
+			stty echo 2>/dev/null
+			echo ""
+
+			[ -z "$api_key" ] && { echo "API key required"; return 1; }
+
+			uci set ${CONFIG}.${provider}.enabled='1'
+			uci set ${CONFIG}.${provider}.api_key="$api_key"
+			uci commit ${CONFIG}
+			echo "$provider enabled"
+
+			# Show classification tier
+			local class=$(uci -q get ${CONFIG}.${provider}.classification)
+			echo "Classification tier: $class"
+			;;
+		*)
+			echo "Unknown provider: $provider"
+			return 1
+			;;
+	esac
+}
+
+# Provider disable command
+cmd_provider_disable() {
+	local provider="$1"
+	[ -z "$provider" ] && { echo "Usage: aigatewayctl provider disable <provider>"; return 1; }
+
+	uci set ${CONFIG}.${provider}.enabled='0'
+	uci commit ${CONFIG}
+	echo "Disabled: $provider"
+}
+
+# Provider test command
+cmd_provider_test() {
+	local provider="$1"
+	[ -z "$provider" ] && { echo "Usage: aigatewayctl provider test <provider>"; return 1; }
+
+	local adapter="$LIB_DIR/providers/${provider}.sh"
+	if [ ! -f "$adapter" ]; then
+		echo "Provider adapter not found: $provider"
+		return 1
+	fi
+
+	. "$adapter"
+	provider_test
+}
+
+# Audit stats command
+cmd_audit_stats() {
+	. "$LIB_DIR/audit.sh"
+	local stats=$(get_audit_stats)
+
+	local total=$(echo "$stats" | jsonfilter -e '@.total' 2>/dev/null || echo 0)
+	local local_only=$(echo "$stats" | jsonfilter -e '@.local_only' 2>/dev/null || echo 0)
+	local sanitized=$(echo "$stats" | jsonfilter -e '@.sanitized' 2>/dev/null || echo 0)
+	local cloud_direct=$(echo "$stats" | jsonfilter -e '@.cloud_direct' 2>/dev/null || echo 0)
+
+	echo "Total Requests:  $total"
+	echo "LOCAL_ONLY:      $local_only"
+	echo "SANITIZED:       $sanitized"
+	echo "CLOUD_DIRECT:    $cloud_direct"
+}
+
+# Audit tail command
+cmd_audit_tail() {
+	local audit_file=$(uci -q get ${CONFIG}.audit.audit_path || echo "/var/log/ai-gateway/audit.jsonl")
+
+	if [ ! -f "$audit_file" ]; then
+		echo "Audit log not found: $audit_file"
+		return 1
+	fi
+
+	tail -f "$audit_file"
+}
+
+# Audit export command
+cmd_audit_export() {
+	. "$LIB_DIR/audit.sh"
+	local export_file=$(export_audit_anssi)
+
+	if [ -n "$export_file" ]; then
+		echo "Exported to: $export_file"
+		echo "Ready for ANSSI CSPN compliance review"
+	else
+		echo "No audit data to export"
+	fi
+}
+
+# Audit rotate command
+cmd_audit_rotate() {
+	. "$LIB_DIR/audit.sh"
+	rotate_audit_logs
+	echo "Audit logs rotated"
+}
+
+# Offline mode command
+cmd_offline_mode() {
+	local mode="$1"
+
+	case "$mode" in
+		on|1)
+			uci set ${CONFIG}.main.offline_mode='1'
+			uci commit ${CONFIG}
+			echo "Offline mode ENABLED"
+			echo "All AI requests will be classified as LOCAL_ONLY"
+			echo "Only LocalAI (on-device) will be used"
+			;;
+		off|0)
+			uci set ${CONFIG}.main.offline_mode='0'
+			uci commit ${CONFIG}
+			echo "Offline mode DISABLED"
+			echo "Classification-based routing active"
+			;;
+		"")
+			local current=$(uci -q get ${CONFIG}.main.offline_mode || echo 0)
+			echo "Offline mode: $([ "$current" = "1" ] && echo "ON" || echo "OFF")"
+			;;
+		*)
+			echo "Usage: aigatewayctl offline-mode [on|off]"
+			return 1
+			;;
+	esac
+}
+
+# Config show command
+cmd_config_show() {
+	uci show ${CONFIG}
+}
+
+# Service run command (called by init.d)
+cmd_service_run() {
+	mkdir -p "$STATE_DIR"
+	mkdir -p "$AUDIT_DIR"
+	mkdir -p /tmp/ai-gateway
+
+	. "$LIB_DIR/proxy.sh"
+	start_proxy
+}
+
+# Main entry point
+case "${1:-}" in
+	status)
+		cmd_status
+		;;
+	start)
+		/etc/init.d/ai-gateway start
+		;;
+	stop)
+		/etc/init.d/ai-gateway stop
+		;;
+	restart)
+		/etc/init.d/ai-gateway restart
+		;;
+	service-run)
+		cmd_service_run
+		;;
+	classify)
+		shift
+		cmd_classify "$@"
+		;;
+	sanitize)
+		shift
+		cmd_sanitize "$@"
+		;;
+	provider)
+		shift
+		case "$1" in
+			list) cmd_provider_list ;;
+			enable) shift; cmd_provider_enable "$@" ;;
+			disable) shift; cmd_provider_disable "$@" ;;
+			test) shift; cmd_provider_test "$@" ;;
+			*) echo "Usage: aigatewayctl provider <list|enable|disable|test>"; exit 1 ;;
+		esac
+		;;
+	audit)
+		shift
+		case "$1" in
+			stats) cmd_audit_stats ;;
+			tail) cmd_audit_tail ;;
+			export) cmd_audit_export ;;
+			rotate) cmd_audit_rotate ;;
+			*) echo "Usage: aigatewayctl audit <stats|tail|export|rotate>"; exit 1 ;;
+		esac
+		;;
+	offline-mode)
+		shift
+		cmd_offline_mode "$@"
+		;;
+	config)
+		shift
+		case "$1" in
+			show) cmd_config_show ;;
+			*) echo "Usage: aigatewayctl config <show>"; exit 1 ;;
+		esac
+		;;
+	help|--help|-h)
+		usage
+		;;
+	"")
+		usage
+		;;
+	*)
+		echo "Unknown command: $1" >&2
+		usage >&2
+		exit 1
+		;;
+esac

@@ -86,8 +86,8 @@ if [ -f "$CERTS_LIST" ]; then
     log_info "Generated certs.list with $count entries"
 fi
 
-# Reload HAProxy if running
-if pgrep haproxy >/dev/null 2>&1 || lxc-info -n haproxy -s 2>/dev/null | grep -q RUNNING; then
-    log_info "Reloading HAProxy..."
-    /etc/init.d/haproxy reload 2>/dev/null || true
+# Reload HAProxy container if running
+if lxc-info -n haproxy -s 2>/dev/null | grep -q RUNNING; then
+    log_info "Reloading HAProxy container..."
+    /usr/sbin/haproxyctl reload 2>/dev/null || true
 fi

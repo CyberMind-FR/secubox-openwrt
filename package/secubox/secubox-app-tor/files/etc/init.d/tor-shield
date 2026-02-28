@@ -136,6 +136,92 @@ add_bridge_line() {
 	echo "Bridge $1" >> "$TORRC"
 }
 
+# Configure dnsmasq to bypass Tor DNS for excluded domains
+# This ensures opkg and system services can resolve domains directly
+setup_dnsmasq_bypass() {
+	local dnsmasq_conf="/tmp/dnsmasq.d/tor-shield-bypass.conf"
+	local upstream_dns=""
+
+	# Get upstream DNS from WAN interface
+	upstream_dns=$(uci -q get network.wan.dns | awk '{print $1}')
+	[ -z "$upstream_dns" ] && upstream_dns=$(cat /tmp/resolv.conf.d/resolv.conf.auto 2>/dev/null | grep nameserver | head -1 | awk '{print $2}')
+	[ -z "$upstream_dns" ] && upstream_dns="1.1.1.1"  # Fallback to Cloudflare
+
+	mkdir -p /tmp/dnsmasq.d
+
+	# Generate dnsmasq server directives for excluded domains
+	# These domains will be resolved directly, bypassing Tor DNS
+	{
+		echo "# Tor Shield DNS bypass - auto-generated"
+		echo "# Domains listed here are resolved directly (not through Tor)"
+		config_load "$CONFIG"
+		config_list_foreach trans excluded_domains _add_dnsmasq_server "$upstream_dns"
+	} > "$dnsmasq_conf"
+
+	# Restart dnsmasq to apply changes
+	if [ -f "$dnsmasq_conf" ] && [ -s "$dnsmasq_conf" ]; then
+		/etc/init.d/dnsmasq restart 2>/dev/null &
+		logger -t tor-shield "DNS bypass configured for excluded domains (upstream: $upstream_dns)"
+	fi
+}
+
+_add_dnsmasq_server() {
+	local domain="$1"
+	local upstream="$2"
+	[ -n "$domain" ] && echo "server=/$domain/$upstream"
+}
+
+cleanup_dnsmasq_bypass() {
+	rm -f /tmp/dnsmasq.d/tor-shield-bypass.conf
+	/etc/init.d/dnsmasq restart 2>/dev/null &
+}
+
+# Exclude public DNS servers when DNS over Tor is disabled
+# This allows DNS resolution to work with the kill switch enabled
+exclude_dns_servers() {
+	local dns_servers="1.1.1.1 1.0.0.1 8.8.8.8 8.8.4.4 9.9.9.9 149.112.112.112"
+
+	# Also get WAN DNS servers
+	local wan_dns=$(uci -q get network.wan.dns)
+	[ -n "$wan_dns" ] && dns_servers="$dns_servers $wan_dns"
+
+	# Get DNS from resolv.conf
+	local resolv_dns=$(grep "^nameserver" /etc/resolv.conf 2>/dev/null | awk '{print $2}' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$')
+	[ -n "$resolv_dns" ] && dns_servers="$dns_servers $resolv_dns"
+
+	# Add each DNS server to iptables exclusion (nat and filter)
+	for dns in $dns_servers; do
+		# Skip private IPs (already excluded)
+		case "$dns" in
+			127.*|10.*|192.168.*|172.1[6-9].*|172.2[0-9].*|172.3[0-1].*) continue ;;
+		esac
+		iptables -t nat -A TOR_SHIELD -d "$dns" -j RETURN 2>/dev/null
+	done
+
+	logger -t tor-shield "DNS servers excluded from Tor routing (dns_over_tor disabled)"
+}
+
+# Add DNS servers to filter chain (for kill switch)
+exclude_dns_servers_filter() {
+	local dns_servers="1.1.1.1 1.0.0.1 8.8.8.8 8.8.4.4 9.9.9.9 149.112.112.112"
+
+	# Also get WAN DNS servers
+	local wan_dns=$(uci -q get network.wan.dns)
+	[ -n "$wan_dns" ] && dns_servers="$dns_servers $wan_dns"
+
+	# Get DNS from resolv.conf
+	local resolv_dns=$(grep "^nameserver" /etc/resolv.conf 2>/dev/null | awk '{print $2}' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$')
+	[ -n "$resolv_dns" ] && dns_servers="$dns_servers $resolv_dns"
+
+	# Add each DNS server to filter ACCEPT
+	for dns in $dns_servers; do
+		case "$dns" in
+			127.*|10.*|192.168.*|172.1[6-9].*|172.2[0-9].*|172.3[0-1].*) continue ;;
+		esac
+		iptables -t filter -A TOR_SHIELD -d "$dns" -j ACCEPT 2>/dev/null
+	done
+}
+
 add_hidden_service() {
 	local cfg="$1"
 	local enabled name local_port virtual_port
@@ -192,6 +278,9 @@ setup_iptables() {
 
 	[ "$mode" = "transparent" ] || return 0
 
+	# Setup dnsmasq bypass for excluded domains (critical fix for opkg)
+	setup_dnsmasq_bypass
+
 	# Create chains (ignore "already exists" errors)
 	iptables -t nat -N TOR_SHIELD 2>/dev/null || true
 	iptables -t filter -N TOR_SHIELD 2>/dev/null || true
@@ -201,6 +290,12 @@ setup_iptables() {
 
 	# Exclude local networks
 	config_list_foreach trans excluded_ips add_excluded_ip
+
+	# When DNS over Tor is disabled, exclude public DNS servers
+	# so the kill switch doesn't block DNS queries
+	if [ "$dns_over_tor" != "1" ]; then
+		exclude_dns_servers
+	fi
 
 	# Exclude domains (resolve to IP and bypass Tor)
 	config_list_foreach trans excluded_domains add_excluded_domain
@@ -223,6 +318,10 @@ setup_iptables() {
 		iptables -t filter -A TOR_SHIELD -d 127.0.0.0/8 -j ACCEPT
 		config_list_foreach trans excluded_ips add_excluded_filter_ip
 		config_list_foreach trans excluded_domains add_excluded_domain_filter
+		# When DNS over Tor is disabled, allow DNS server traffic through kill switch
+		if [ "$dns_over_tor" != "1" ]; then
+			exclude_dns_servers_filter
+		fi
 		# Allow response packets for inbound connections (HAProxy, etc)
 		iptables -t filter -A TOR_SHIELD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 		iptables -t filter -A TOR_SHIELD -j REJECT
@@ -369,6 +468,9 @@ remove_iptables() {
 
 	# Clean up nftables rules for server mode
 	cleanup_nftables_wan
+
+	# Clean up dnsmasq bypass rules
+	cleanup_dnsmasq_bypass
 }
 
 start_service() {

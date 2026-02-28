@@ -38,9 +38,12 @@ _Last updated: 2026-02-06_
 
 ### Testing & Validation
 
-1. **Mesh Onboarding Testing**
-   - master-link dynamic join IPK generation needs end-to-end testing on multi-node mesh.
-   - P2P decentralized threat intelligence sharing needs validation with real CrowdSec alerts.
+1. **Mesh Onboarding Testing** — DONE (2026-02-26)
+   - ~~master-link dynamic join IPK generation needs end-to-end testing on multi-node mesh.~~
+   - ~~P2P decentralized threat intelligence sharing needs validation with real CrowdSec alerts.~~
+   - ZKP cross-node verification tested (bidirectional ACCEPT)
+   - Threat IOC propagation tested (116 blocks synced)
+   - Automatic SSH-based mesh sync configured (5-min cron)
 
 2. **WAF Auto-Ban Tuning**
    - Sensitivity thresholds may need adjustment based on real traffic patterns.
@@ -65,7 +68,7 @@ _Last updated: 2026-02-06_
 
 ## Couche 2 — AI Gateway
 
-### Data Classifier (Sovereignty Engine)
+### Data Classifier (Sovereignty Engine) — DONE (2026-02-28)
 
 | Classification | Description | Destination |
 |----------------|-------------|-------------|
@@ -73,7 +76,15 @@ _Last updated: 2026-02-06_
 | SANITIZED | IPs scrubbed, anonymized patterns | Mistral EU (opt-in) |
 | CLOUD DIRECT | Generic queries, no sensitive data | Claude/GPT (opt-in) |
 
-**Package**: `secubox-ai-gateway` — LiteLLM Proxy (port 4000) + Data Classifier + MCP Server
+**Package**: `secubox-ai-gateway` — OpenAI-compatible proxy (port 4050) + Data Classifier + Audit Logging
+
+- [x] Data Classifier with 3 tiers (LOCAL_ONLY, SANITIZED, CLOUD_DIRECT)
+- [x] Provider hierarchy: LocalAI > Mistral (EU) > Claude > GPT > Gemini > xAI
+- [x] PII Sanitizer for SANITIZED tier
+- [x] OpenAI-compatible API on port 4050
+- [x] aigatewayctl CLI
+- [x] RPCD backend (11 methods)
+- [x] ANSSI CSPN audit logging
 
 ### 6 Autonomous Agents
 
@@ -184,16 +195,16 @@ All cloud providers are **opt-in**. Offline resilience: local tier always active
 ### v1.0.0 — Full Stack
 
 - [x] Config Advisor (ANSSI prep) — Done 2026-02-07
-- [ ] P2P Mesh Intelligence
-- [ ] Factory auto-provisioning
+- [x] P2P Mesh Intelligence — Done 2026-02-26
+- [x] Factory auto-provisioning — Done 2026-02-24
 - [x] VoIP integration — Done 2026-02-19
 - [x] Matrix integration — Done 2026-02-19
 
 ### v1.1+ — Extended Mesh
 
-- [ ] Yggdrasil overlay
-- [ ] Meshname DNS
-- [ ] Extended peer discovery
+- [x] Yggdrasil overlay — Done 2026-02-26 (bidirectional IPv6, SSH, LAN multicast discovery)
+- [x] Meshname DNS — Done 2026-02-28 (decentralized .ygg resolution via gossip + dnsmasq)
+- [x] Extended peer discovery — Done 2026-02-28 (yggctl CLI, gossip-based peer announcements, trust-verified auto-peering)
 
 ### Certifications Ciblees
 
@@ -212,11 +223,13 @@ All cloud providers are **opt-in**. Offline resilience: local tier always active
 
 ## Deferred / Backlog
 
-### Tor Shield / opkg Bug
+### ~~Tor Shield / opkg Bug~~ — RESOLVED (2026-02-28)
 
-- opkg downloads fail (`wget returned 4`) when Tor Shield is active.
-- Direct `wget` to full URL works — likely DNS/routing interference.
-- Investigate: opkg proxy settings, Tor split-routing exclusions for package repos.
+- ~~opkg downloads fail (`wget returned 4`) when Tor Shield is active.~~
+- **Root cause**: DNS queries for package repos went through Tor DNS, which is slow/unreliable
+- **Fix**: Added dnsmasq bypass for excluded domains (`/tmp/dnsmasq.d/tor-shield-bypass.conf`)
+- Excluded domains now resolve directly via upstream DNS, bypassing Tor
+- Default exclusions include: openwrt.org, pool.ntp.org, letsencrypt.org, DNS provider APIs
 
 ### v2 Long-term
 

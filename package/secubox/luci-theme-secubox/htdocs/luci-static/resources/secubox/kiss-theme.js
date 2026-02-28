@@ -10,11 +10,19 @@ var KissThemeClass = baseclass.extend({
 	// Navigation config - organized by category with collapsible sections
 	// Items with `tabs` array show sub-navigation when active
 	nav: [
+		// ═══════════════════════════════════════════════════════════════
+		// DASHBOARD - Main entry points
+		// ═══════════════════════════════════════════════════════════════
 		{ cat: 'Dashboard', icon: '📊', collapsed: false, items: [
 			{ icon: '🏠', name: 'Home', path: 'admin/secubox-home' },
 			{ icon: '📊', name: 'Dashboard', path: 'admin/secubox/dashboard' },
-			{ icon: '🖥️', name: 'System Hub', path: 'admin/secubox/system/system-hub' }
+			{ icon: '🖥️', name: 'System Hub', path: 'admin/secubox/system/system-hub' },
+			{ icon: '📦', name: 'App Store', path: 'admin/secubox/apps' }
 		]},
+
+		// ═══════════════════════════════════════════════════════════════
+		// SECURITY - Threat detection, WAF, firewalls
+		// ═══════════════════════════════════════════════════════════════
 		{ cat: 'Security', icon: '🛡️', collapsed: false, items: [
 			{ icon: '🧙', name: 'InterceptoR', path: 'admin/secubox/interceptor', tabs: [
 				{ name: 'Overview', path: 'admin/secubox/interceptor/overview' },
@@ -25,19 +33,31 @@ var KissThemeClass = baseclass.extend({
 				{ name: 'Decisions', path: 'admin/secubox/security/crowdsec/decisions' },
 				{ name: 'Alerts', path: 'admin/secubox/security/crowdsec/alerts' },
 				{ name: 'Bouncers', path: 'admin/secubox/security/crowdsec/bouncers' },
+				{ name: 'AbuseIPDB', path: 'admin/secubox/security/crowdsec/abuseipdb' },
 				{ name: 'Setup', path: 'admin/secubox/security/crowdsec/setup' }
 			]},
-			{ icon: '🔍', name: 'mitmproxy', path: 'admin/secubox/security/mitmproxy', tabs: [
+			{ icon: '🔍', name: 'mitmproxy WAF', path: 'admin/secubox/security/mitmproxy', tabs: [
 				{ name: 'Status', path: 'admin/secubox/security/mitmproxy/status' },
+				{ name: 'WAF Filters', path: 'admin/secubox/security/mitmproxy/waf-filters' },
 				{ name: 'Settings', path: 'admin/secubox/security/mitmproxy/settings' }
 			]},
-			{ icon: '🚫', name: 'Vortex FW', path: 'admin/secubox/security/vortex-firewall' },
+			{ icon: '🚫', name: 'IP Blocklist', path: 'admin/services/ipblocklist' },
+			{ icon: '🌀', name: 'Vortex FW', path: 'admin/secubox/security/vortex-firewall' },
 			{ icon: '👁️', name: 'Client Guard', path: 'admin/secubox/security/guardian', tabs: [
 				{ name: 'Clients', path: 'admin/secubox/security/guardian/clients' },
 				{ name: 'Settings', path: 'admin/secubox/security/guardian/settings' }
 			]},
-			{ icon: '🍪', name: 'Cookie Track', path: 'admin/secubox/interceptor/cookies' }
+			{ icon: '📡', name: 'MAC Guardian', path: 'admin/services/mac-guardian' },
+			{ icon: '🏠', name: 'IoT Guard', path: 'admin/services/iot-guard' },
+			{ icon: '🍪', name: 'Cookie Track', path: 'admin/secubox/interceptor/cookies' },
+			{ icon: '📋', name: 'Config Advisor', path: 'admin/services/config-advisor' },
+			{ icon: '🔔', name: 'Wazuh SIEM', path: 'admin/services/wazuh' },
+			{ icon: '📊', name: 'Threat Monitor', path: 'admin/services/threat-monitor' }
 		]},
+
+		// ═══════════════════════════════════════════════════════════════
+		// NETWORK - Proxy, VPN, DNS, routing
+		// ═══════════════════════════════════════════════════════════════
 		{ cat: 'Network', icon: '🌐', collapsed: true, items: [
 			{ icon: '⚖️', name: 'HAProxy', path: 'admin/services/haproxy', tabs: [
 				{ name: 'Overview', path: 'admin/services/haproxy/overview' },
@@ -57,33 +77,81 @@ var KissThemeClass = baseclass.extend({
 				{ name: 'Config', path: 'admin/services/wireguard/config' },
 				{ name: 'Settings', path: 'admin/services/wireguard/settings' }
 			]},
-			{ icon: '🌍', name: 'Tor Shield', path: 'admin/services/tor-shield', tabs: [
+			{ icon: '🧅', name: 'Tor Shield', path: 'admin/services/tor-shield', tabs: [
 				{ name: 'Overview', path: 'admin/services/tor-shield/overview' },
 				{ name: 'Circuits', path: 'admin/services/tor-shield/circuits' },
 				{ name: 'Hidden Svc', path: 'admin/services/tor-shield/hidden-services' },
 				{ name: 'Bridges', path: 'admin/services/tor-shield/bridges' },
 				{ name: 'Settings', path: 'admin/services/tor-shield/settings' }
 			]},
+			{ icon: '🌐', name: 'DNS Master', path: 'admin/services/dns-master' },
+			{ icon: '🌀', name: 'Vortex DNS', path: 'admin/services/vortex-dns' },
+			{ icon: '📡', name: 'TURN Server', path: 'admin/services/turn' },
 			{ icon: '💾', name: 'CDN Cache', path: 'admin/services/cdn-cache', tabs: [
 				{ name: 'Overview', path: 'admin/services/cdn-cache/overview' },
 				{ name: 'Cache', path: 'admin/services/cdn-cache/cache' },
 				{ name: 'Policies', path: 'admin/services/cdn-cache/policies' },
-				{ name: 'Stats', path: 'admin/services/cdn-cache/statistics' },
-				{ name: 'Maint.', path: 'admin/services/cdn-cache/maintenance' },
-				{ name: 'Settings', path: 'admin/services/cdn-cache/settings' }
+				{ name: 'Stats', path: 'admin/services/cdn-cache/statistics' }
 			]},
+			{ icon: '📶', name: 'Traffic Shaper', path: 'admin/secubox/network/traffic-shaper' },
 			{ icon: '📡', name: 'Bandwidth', path: 'admin/secubox/network/bandwidth-manager' },
-			{ icon: '📶', name: 'Traffic Shaper', path: 'admin/secubox/network/traffic-shaper', tabs: [
-				{ name: 'Overview', path: 'admin/secubox/network/traffic-shaper/overview' },
-				{ name: 'Classes', path: 'admin/secubox/network/traffic-shaper/classes' },
-				{ name: 'Rules', path: 'admin/secubox/network/traffic-shaper/rules' },
-				{ name: 'Stats', path: 'admin/secubox/network/traffic-shaper/stats' },
-				{ name: 'Presets', path: 'admin/secubox/network/traffic-shaper/presets' }
-			]},
 			{ icon: '🌐', name: 'Network Modes', path: 'admin/secubox/network/network-modes' },
 			{ icon: '🔌', name: 'Interfaces', path: 'admin/network/network' },
-			{ icon: '🌐', name: 'DNS Master', path: 'admin/services/dns-master' }
+			{ icon: '🔧', name: 'Net Diagnostics', path: 'admin/services/network-diagnostics' }
 		]},
+
+		// ═══════════════════════════════════════════════════════════════
+		// MEDIA - Streaming, audio, video
+		// ═══════════════════════════════════════════════════════════════
+		{ cat: 'Media', icon: '🎬', collapsed: true, items: [
+			{ icon: '🎬', name: 'Jellyfin', path: 'admin/services/jellyfin' },
+			{ icon: '📺', name: 'PeerTube', path: 'admin/services/peertube' },
+			{ icon: '🎵', name: 'Lyrion', path: 'admin/services/lyrion' },
+			{ icon: '📻', name: 'WebRadio', path: 'admin/services/webradio' },
+			{ icon: '🎯', name: 'Media Hub', path: 'admin/services/media-hub' },
+			{ icon: '🪞', name: 'MagicMirror', path: 'admin/services/magicmirror2' },
+			{ icon: '📦', name: 'MMPM', path: 'admin/services/mmpm' }
+		]},
+
+		// ═══════════════════════════════════════════════════════════════
+		// COMMUNICATION - Email, chat, video calls
+		// ═══════════════════════════════════════════════════════════════
+		{ cat: 'Communication', icon: '💬', collapsed: true, items: [
+			{ icon: '✉️', name: 'Mail Server', path: 'admin/services/mailserver' },
+			{ icon: '💬', name: 'Jabber/XMPP', path: 'admin/services/jabber' },
+			{ icon: '🔐', name: 'Matrix', path: 'admin/services/matrix' },
+			{ icon: '🔒', name: 'SimpleX', path: 'admin/services/simplex' },
+			{ icon: '📹', name: 'Jitsi Meet', path: 'admin/services/jitsi' },
+			{ icon: '📞', name: 'VoIP PBX', path: 'admin/services/voip' },
+			{ icon: '🐘', name: 'GoToSocial', path: 'admin/services/gotosocial' }
+		]},
+
+		// ═══════════════════════════════════════════════════════════════
+		// APPS - Web apps and publishing platforms
+		// ═══════════════════════════════════════════════════════════════
+		{ cat: 'Apps', icon: '📦', collapsed: true, items: [
+			{ icon: '☁️', name: 'Nextcloud', path: 'admin/secubox/services/nextcloud' },
+			{ icon: '🔀', name: 'Gitea', path: 'admin/services/gitea' },
+			{ icon: '📰', name: 'HexoJS', path: 'admin/services/hexojs', tabs: [
+				{ name: 'Overview', path: 'admin/services/hexojs/overview' },
+				{ name: 'Posts', path: 'admin/services/hexojs/posts' },
+				{ name: 'Upload', path: 'admin/services/hexojs/upload' },
+				{ name: 'Deploy', path: 'admin/services/hexojs/deploy' },
+				{ name: 'Settings', path: 'admin/services/hexojs/settings' }
+			]},
+			{ icon: '📝', name: 'MetaBlogizer', path: 'admin/services/metablogizer', tabs: [
+				{ name: 'Sites', path: 'admin/services/metablogizer/overview' },
+				{ name: 'Settings', path: 'admin/services/metablogizer/settings' }
+			]},
+			{ icon: '🎯', name: 'Streamlit', path: 'admin/services/streamlit' },
+			{ icon: '📰', name: 'CyberFeed', path: 'admin/services/cyberfeed' },
+			{ icon: '🏠', name: 'Domoticz', path: 'admin/services/domoticz' },
+			{ icon: '🍺', name: 'PicoBrew', path: 'admin/services/picobrew' }
+		]},
+
+		// ═══════════════════════════════════════════════════════════════
+		// AI & LLM - Artificial intelligence services
+		// ═══════════════════════════════════════════════════════════════
 		{ cat: 'AI & LLM', icon: '🤖', collapsed: true, items: [
 			{ icon: '🧠', name: 'AI Insights', path: 'admin/secubox/ai/insights' },
 			{ icon: '🦙', name: 'Ollama', path: 'admin/services/ollama', tabs: [
@@ -94,47 +162,31 @@ var KissThemeClass = baseclass.extend({
 			]},
 			{ icon: '🤖', name: 'LocalAI', path: 'admin/services/localai' }
 		]},
-		{ cat: 'Apps', icon: '📦', collapsed: true, items: [
-			{ icon: '✉️', name: 'Mail Server', path: 'admin/services/mailserver' },
-			{ icon: '☁️', name: 'Nextcloud', path: 'admin/secubox/services/nextcloud', tabs: [
-				{ name: 'Overview', path: 'admin/secubox/services/nextcloud/overview' },
-				{ name: 'Settings', path: 'admin/secubox/services/nextcloud/settings' }
-			]},
-			{ icon: '🎬', name: 'Media Flow', path: 'admin/services/media-flow' },
-			{ icon: '🪞', name: 'MagicMirror', path: 'admin/services/magicmirror2' },
-			{ icon: '📰', name: 'HexoJS', path: 'admin/services/hexojs', tabs: [
-				{ name: 'Overview', path: 'admin/services/hexojs/overview' },
-				{ name: 'Posts', path: 'admin/services/hexojs/posts' },
-				{ name: 'Editor', path: 'admin/services/hexojs/editor' },
-				{ name: 'Media', path: 'admin/services/hexojs/media' },
-				{ name: 'Deploy', path: 'admin/services/hexojs/deploy' },
-				{ name: 'Sync', path: 'admin/services/hexojs/sync' },
-				{ name: 'Theme', path: 'admin/services/hexojs/theme' },
-				{ name: 'Settings', path: 'admin/services/hexojs/settings' }
-			]},
-			{ icon: '📺', name: 'Netdata', path: 'admin/services/netdata-dashboard' },
-			{ icon: '🏠', name: 'Vhost Manager', path: 'admin/services/vhost-manager' },
-			{ icon: '📦', name: 'App Store', path: 'admin/secubox/apps' }
-		]},
-		{ cat: 'Streamlit', icon: '🎯', collapsed: true, items: [
-			{ icon: '📺', name: 'France TV', url: 'http://192.168.255.1:8522/' },
-			{ icon: '🔮', name: 'Yijing Oracle', url: 'http://192.168.255.1:8501/' },
-			{ icon: '🏭', name: 'Fabricator', url: 'http://192.168.255.1:8520/' },
-			{ icon: '☯️', name: 'Bazi Complete', url: 'http://192.168.255.1:8509/' },
-			{ icon: '🎛️', name: 'SecuBox Control', url: 'http://192.168.255.1:8511/' }
-		]},
+
+		// ═══════════════════════════════════════════════════════════════
+		// P2P & MESH - Distributed networking
+		// ═══════════════════════════════════════════════════════════════
 		{ cat: 'P2P & Mesh', icon: '🔗', collapsed: true, items: [
-			{ icon: '🔗', name: 'P2P Network', path: 'admin/services/secubox-p2p' },
-			{ icon: '🌳', name: 'Netifyd', path: 'admin/services/secubox-netifyd' },
-			{ icon: '📡', name: 'Exposure', path: 'admin/services/exposure' }
+			{ icon: '🔗', name: 'Master Link', path: 'admin/secubox/master-link' },
+			{ icon: '🌐', name: 'P2P Network', path: 'admin/services/secubox-p2p' },
+			{ icon: '🔗', name: 'Mesh Network', path: 'admin/services/secubox-mesh' },
+			{ icon: '📡', name: 'Exposure', path: 'admin/services/exposure' },
+			{ icon: '📋', name: 'Service Registry', path: 'admin/services/service-registry' },
+			{ icon: '☁️', name: 'SaaS Relay', path: 'admin/services/saas-relay' },
+			{ icon: '🌳', name: 'Netifyd', path: 'admin/services/secubox-netifyd' }
 		]},
+
+		// ═══════════════════════════════════════════════════════════════
+		// SYSTEM - Administration and maintenance
+		// ═══════════════════════════════════════════════════════════════
 		{ cat: 'System', icon: '⚙️', collapsed: true, items: [
 			{ icon: '⚙️', name: 'Settings', path: 'admin/system' },
 			{ icon: '📊', name: 'Status', path: 'admin/status/overview' },
-			{ icon: '🛠️', name: 'KSM Manager', path: 'admin/services/ksm-manager' },
 			{ icon: '🔄', name: 'Cloner', path: 'admin/secubox/system/cloner' },
+			{ icon: '📁', name: 'File Sharing', path: 'admin/services/ksmbd' },
 			{ icon: '🌳', name: 'LuCI Menu', path: 'admin/secubox/luci-tree' },
-			{ icon: '🔧', name: 'Software', path: 'admin/system/opkg' }
+			{ icon: '🔧', name: 'Software', path: 'admin/system/opkg' },
+			{ icon: '🖥️', name: 'uhttpd', path: 'admin/services/uhttpd' }
 		]}
 	],
 

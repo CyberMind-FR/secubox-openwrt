@@ -809,7 +809,7 @@ class SecuBoxAnalytics:
         severity_order = {'low': 0, 'medium': 1, 'high': 2, 'critical': 3}
 
         # Get threshold settings based on sensitivity
-        if sensitivity == 'aggressive':
+        if sensitivity in ('aggressive', 'strict'):
             threshold = 1  # Immediate ban
             window = 60
         elif sensitivity == 'permissive':

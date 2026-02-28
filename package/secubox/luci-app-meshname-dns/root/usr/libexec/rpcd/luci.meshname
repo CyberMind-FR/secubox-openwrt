@@ -1,0 +1,334 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# RPCD backend for Meshname DNS LuCI app
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+CONFIG="meshname-dns"
+STATE_DIR="/var/lib/meshname-dns"
+DOMAINS_FILE="$STATE_DIR/domains.json"
+LOCAL_FILE="$STATE_DIR/local.json"
+HOSTS_FILE="/tmp/hosts/meshname"
+
+log_msg() {
+	logger -t "luci.meshname" "$1"
+}
+
+# Get Yggdrasil IPv6
+get_ygg_ipv6() {
+	ip -6 addr show tun0 2>/dev/null | grep -oP '(?<=inet6 )2[0-9a-f:]+(?=/)' || \
+	ip -6 addr show 2>/dev/null | grep -oP '(?<=inet6 )2[0-9a-f][0-9a-f]:[0-9a-f:]+(?=/)' | head -1
+}
+
+# Get service status
+get_status() {
+	local enabled running ygg_ipv6 local_count domain_count last_sync
+
+	enabled=$(uci -q get $CONFIG.main.enabled)
+	ygg_ipv6=$(get_ygg_ipv6)
+
+	# Check if daemon is running
+	if pgrep -f "meshnamectl daemon" >/dev/null 2>&1; then
+		running="1"
+	else
+		running="0"
+	fi
+
+	# Count services
+	local_count=0
+	domain_count=0
+
+	if [ -f "$LOCAL_FILE" ] && [ -s "$LOCAL_FILE" ]; then
+		local_count=$(python3 -c "import json; print(len(json.load(open('$LOCAL_FILE'))))" 2>/dev/null || echo 0)
+	fi
+
+	if [ -f "$DOMAINS_FILE" ] && [ -s "$DOMAINS_FILE" ]; then
+		domain_count=$(python3 -c "import json; print(len(json.load(open('$DOMAINS_FILE'))))" 2>/dev/null || echo 0)
+	fi
+
+	# Last sync time
+	if [ -f "$STATE_DIR/last_sync" ]; then
+		last_sync=$(cat "$STATE_DIR/last_sync")
+	else
+		last_sync=""
+	fi
+
+	json_init
+	json_add_string "enabled" "${enabled:-0}"
+	json_add_string "running" "$running"
+	json_add_string "ygg_ipv6" "${ygg_ipv6:-}"
+	json_add_int "local_count" "$local_count"
+	json_add_int "domain_count" "$domain_count"
+	json_add_string "last_sync" "$last_sync"
+	json_dump
+}
+
+# List all domains (local + remote)
+list_domains() {
+	json_init
+	json_add_array "local"
+
+	if [ -f "$LOCAL_FILE" ] && [ -s "$LOCAL_FILE" ]; then
+		python3 -c "
+import json, sys
+try:
+    with open('$LOCAL_FILE') as f:
+        data = json.load(f)
+    for name, info in data.items():
+        print(json.dumps(info))
+except:
+    pass
+" | while read -r line; do
+			json_add_object ""
+			local name=$(echo "$line" | jsonfilter -e '@.name')
+			local fqdn=$(echo "$line" | jsonfilter -e '@.fqdn')
+			local ipv6=$(echo "$line" | jsonfilter -e '@.ipv6')
+			local port=$(echo "$line" | jsonfilter -e '@.port')
+			json_add_string "name" "$name"
+			json_add_string "fqdn" "$fqdn"
+			json_add_string "ipv6" "$ipv6"
+			json_add_int "port" "${port:-0}"
+			json_add_boolean "local" 1
+			json_close_object
+		done
+	fi
+	json_close_array
+
+	json_add_array "remote"
+	if [ -f "$DOMAINS_FILE" ] && [ -s "$DOMAINS_FILE" ]; then
+		python3 -c "
+import json, sys
+try:
+    with open('$DOMAINS_FILE') as f:
+        data = json.load(f)
+    for name, info in data.items():
+        print(json.dumps(info))
+except:
+    pass
+" | while read -r line; do
+			json_add_object ""
+			local name=$(echo "$line" | jsonfilter -e '@.name')
+			local fqdn=$(echo "$line" | jsonfilter -e '@.fqdn')
+			local ipv6=$(echo "$line" | jsonfilter -e '@.ipv6')
+			local port=$(echo "$line" | jsonfilter -e '@.port')
+			local origin=$(echo "$line" | jsonfilter -e '@.origin')
+			json_add_string "name" "$name"
+			json_add_string "fqdn" "$fqdn"
+			json_add_string "ipv6" "$ipv6"
+			json_add_int "port" "${port:-0}"
+			json_add_string "origin" "$origin"
+			json_add_boolean "local" 0
+			json_close_object
+		done
+	fi
+	json_close_array
+
+	json_dump
+}
+
+# Announce a service
+do_announce() {
+	local name="$1"
+	local port="${2:-0}"
+
+	if [ -z "$name" ]; then
+		json_init
+		json_add_string "error" "Name is required"
+		json_dump
+		return
+	fi
+
+	local result
+	result=$(/usr/sbin/meshnamectl announce "$name" "$port" 2>&1)
+
+	json_init
+	if echo "$result" | grep -q "Announced"; then
+		json_add_string "status" "ok"
+		json_add_string "fqdn" "${name}.ygg"
+	else
+		json_add_string "status" "error"
+		json_add_string "error" "$result"
+	fi
+	json_dump
+}
+
+# Revoke a service
+do_revoke() {
+	local name="$1"
+
+	if [ -z "$name" ]; then
+		json_init
+		json_add_string "error" "Name is required"
+		json_dump
+		return
+	fi
+
+	local result
+	result=$(/usr/sbin/meshnamectl revoke "$name" 2>&1)
+
+	json_init
+	if echo "$result" | grep -q "Revoked"; then
+		json_add_string "status" "ok"
+	else
+		json_add_string "status" "error"
+		json_add_string "error" "$result"
+	fi
+	json_dump
+}
+
+# Resolve a domain
+do_resolve() {
+	local domain="$1"
+
+	if [ -z "$domain" ]; then
+		json_init
+		json_add_string "error" "Domain is required"
+		json_dump
+		return
+	fi
+
+	local ipv6
+	ipv6=$(/usr/sbin/meshnamectl resolve "$domain" 2>/dev/null)
+
+	json_init
+	if [ -n "$ipv6" ]; then
+		json_add_string "status" "ok"
+		json_add_string "domain" "$domain"
+		json_add_string "ipv6" "$ipv6"
+	else
+		json_add_string "status" "error"
+		json_add_string "error" "Cannot resolve $domain"
+	fi
+	json_dump
+}
+
+# Force sync
+do_sync() {
+	/usr/sbin/meshnamectl sync >/dev/null 2>&1 &
+
+	json_init
+	json_add_string "status" "ok"
+	json_add_string "message" "Sync initiated"
+	json_dump
+}
+
+# Get configuration
+get_config() {
+	local enabled auto_announce sync_interval cache_ttl gossip_enabled
+
+	enabled=$(uci -q get $CONFIG.main.enabled)
+	auto_announce=$(uci -q get $CONFIG.main.auto_announce)
+	sync_interval=$(uci -q get $CONFIG.main.sync_interval)
+	cache_ttl=$(uci -q get $CONFIG.resolver.cache_ttl)
+	gossip_enabled=$(uci -q get $CONFIG.gossip.enabled)
+
+	json_init
+	json_add_string "enabled" "${enabled:-0}"
+	json_add_string "auto_announce" "${auto_announce:-0}"
+	json_add_string "sync_interval" "${sync_interval:-60}"
+	json_add_string "cache_ttl" "${cache_ttl:-300}"
+	json_add_string "gossip_enabled" "${gossip_enabled:-1}"
+	json_dump
+}
+
+# Set configuration
+set_config() {
+	local enabled="$1" auto_announce="$2" sync_interval="$3" gossip_enabled="$4"
+
+	[ -n "$enabled" ] && uci set $CONFIG.main.enabled="$enabled"
+	[ -n "$auto_announce" ] && uci set $CONFIG.main.auto_announce="$auto_announce"
+	[ -n "$sync_interval" ] && uci set $CONFIG.main.sync_interval="$sync_interval"
+	[ -n "$gossip_enabled" ] && uci set $CONFIG.gossip.enabled="$gossip_enabled"
+
+	uci commit $CONFIG
+
+	# Restart service if config changed
+	/etc/init.d/meshname-dns restart >/dev/null 2>&1 &
+
+	json_init
+	json_add_string "status" "ok"
+	json_dump
+}
+
+# Main RPC handler
+case "$1" in
+	list)
+		json_init
+		json_add_object "status"
+		json_close_object
+		json_add_object "list"
+		json_close_object
+		json_add_object "announce"
+			json_add_string "name" "string"
+			json_add_string "port" "int"
+		json_close_object
+		json_add_object "revoke"
+			json_add_string "name" "string"
+		json_close_object
+		json_add_object "resolve"
+			json_add_string "domain" "string"
+		json_close_object
+		json_add_object "sync"
+		json_close_object
+		json_add_object "get_config"
+		json_close_object
+		json_add_object "set_config"
+			json_add_string "enabled" "string"
+			json_add_string "auto_announce" "string"
+			json_add_string "sync_interval" "string"
+			json_add_string "gossip_enabled" "string"
+		json_close_object
+		json_dump
+		;;
+	call)
+		case "$2" in
+			status)
+				get_status
+				;;
+			list)
+				list_domains
+				;;
+			announce)
+				read input
+				json_load "$input"
+				json_get_var name name
+				json_get_var port port
+				do_announce "$name" "$port"
+				;;
+			revoke)
+				read input
+				json_load "$input"
+				json_get_var name name
+				do_revoke "$name"
+				;;
+			resolve)
+				read input
+				json_load "$input"
+				json_get_var domain domain
+				do_resolve "$domain"
+				;;
+			sync)
+				do_sync
+				;;
+			get_config)
+				get_config
+				;;
+			set_config)
+				read input
+				json_load "$input"
+				json_get_var enabled enabled
+				json_get_var auto_announce auto_announce
+				json_get_var sync_interval sync_interval
+				json_get_var gossip_enabled gossip_enabled
+				set_config "$enabled" "$auto_announce" "$sync_interval" "$gossip_enabled"
+				;;
+			*)
+				echo '{"error":"Unknown method"}'
+				;;
+		esac
+		;;
+	*)
+		echo '{"error":"Invalid action"}'
+		;;
+esac

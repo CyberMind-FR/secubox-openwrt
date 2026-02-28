@@ -1301,17 +1301,20 @@ _emancipate_haproxy() {
 	uci set haproxy.${server_name}.check="1"
 	uci set haproxy.${server_name}.enabled="1"
 
-	# Create vhost with SSL
+	# Create vhost with SSL - Route through mitmproxy_inspector for WAF protection
 	local vhost_name=$(echo "$domain" | tr '.-' '_')
 	uci set haproxy.${vhost_name}=vhost
 	uci set haproxy.${vhost_name}.domain="$domain"
-	uci set haproxy.${vhost_name}.backend="$backend_name"
+	uci set haproxy.${vhost_name}.backend="mitmproxy_inspector"
 	uci set haproxy.${vhost_name}.ssl="1"
 	uci set haproxy.${vhost_name}.ssl_redirect="1"
 	uci set haproxy.${vhost_name}.acme="1"
 	uci set haproxy.${vhost_name}.enabled="1"
 
 	uci commit haproxy
+
+	# Register route in centralized registry (route sync happens in _emancipate_mitmproxy)
+	# Note: Route registration moved to _emancipate_mitmproxy() for centralized management
 
 	# Generate HAProxy config
 	if command -v haproxyctl >/dev/null 2>&1; then
@@ -1344,34 +1347,47 @@ _emancipate_ssl() {
 }
 
 _emancipate_mitmproxy() {
-	log_info "[MITMPROXY] Syncing routes to mitmproxy WAF"
+	local domain="$1"
+	local port="$2"
 
-	# Sync HAProxy backends to mitmproxy routes
+	log_info "[MITMPROXY] Registering route in centralized registry"
+
+	# Use centralized secubox-route for route management (preferred)
+	if command -v secubox-route >/dev/null 2>&1; then
+		if secubox-route add "$domain" "192.168.255.1" "$port" "streamlit" 2>&1; then
+			log_info "[MITMPROXY] Route registered: $domain -> 192.168.255.1:$port"
+		else
+			log_warn "[MITMPROXY] Failed to register route"
+		fi
+		return 0
+	fi
+
+	# Fallback: Sync via mitmproxyctl
 	if command -v mitmproxyctl >/dev/null 2>&1; then
+		log_warn "[MITMPROXY] secubox-route not found, using mitmproxyctl"
 		if mitmproxyctl sync-routes >/dev/null 2>&1; then
 			log_info "[MITMPROXY] Routes synced successfully"
 		else
 			log_warn "[MITMPROXY] Route sync failed - manual sync may be required"
 			log_warn "[MITMPROXY] Run: mitmproxyctl sync-routes"
 		fi
-	else
-		log_warn "[MITMPROXY] mitmproxyctl not found - routes not synced"
+		return 0
 	fi
+
+	log_warn "[MITMPROXY] No route manager found - routes not synced"
 }
 
 _emancipate_reload() {
 	log_info "[RELOAD] Applying HAProxy configuration"
-	# Generate fresh config
+	# Generate fresh config and reload container
 	haproxyctl generate 2>/dev/null
-	# Restart for clean state with new vhosts/certs
-	log_info "[RELOAD] Restarting HAProxy for clean state..."
-	/etc/init.d/haproxy restart 2>/dev/null
-	sleep 1
-	# Verify HAProxy is running
-	if pgrep haproxy >/dev/null 2>&1; then
-		log_info "[RELOAD] HAProxy restarted successfully"
+	log_info "[RELOAD] Reloading HAProxy container..."
+	haproxyctl reload 2>/dev/null
+	# Verify HAProxy container is running
+	if lxc-info -n haproxy -s 2>/dev/null | grep -q RUNNING; then
+		log_info "[RELOAD] HAProxy container reloaded successfully"
 	else
-		log_warn "[RELOAD] HAProxy may not have started properly"
+		log_warn "[RELOAD] HAProxy container may not be running properly"
 	fi
 
 	# Regenerate GK2 Hub landing page if generator exists
@@ -1577,16 +1593,17 @@ cmd_emancipate() {
 	# Step 6: Mesh P2P distribution to peers
 	_emancipate_mesh "$name" "$domain" "$port"
 
-	# Step 7: Sync mitmproxy routes (WAF routing)
-	_emancipate_mitmproxy
+	# Step 7: Register mitmproxy route (WAF routing)
+	_emancipate_mitmproxy "$domain" "$port"
 
 	# Step 8: Reload HAProxy
 	_emancipate_reload
 
-	# Mark app as emancipated
+	# Mark instance as emancipated with WAF enabled
 	uci set ${CONFIG}.${name}.emancipated="1"
 	uci set ${CONFIG}.${name}.emancipated_at="$(date -Iseconds)"
 	uci set ${CONFIG}.${name}.domain="$domain"
+	uci set ${CONFIG}.${name}.waf_enabled="1"
 	uci commit ${CONFIG}
 
 	echo ""

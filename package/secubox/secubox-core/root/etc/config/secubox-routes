@@ -1,0 +1,25 @@
+#
+# SecuBox Centralized Route Registry
+# All services register their routes here for mitmproxy WAF routing
+#
+# Usage:
+#   secubox-route add <domain> <host> <port> <source>
+#   secubox-route remove <domain>
+#   secubox-route list
+#   secubox-route sync   (generates mitmproxy routes file)
+#
+
+config registry 'main'
+	option enabled '1'
+	option auto_sync '1'
+	# Output file for mitmproxy routes
+	option routes_file '/srv/mitmproxy/haproxy-routes.json'
+
+# Example route format:
+# config route '<unique_id>'
+#     option domain 'app.example.com'
+#     option host '127.0.0.1'
+#     option port '8080'
+#     option source 'metablogizer'   # Origin service: haproxy, metablogizer, streamlit, manual
+#     option enabled '1'
+

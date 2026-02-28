@@ -4,7 +4,9 @@
 config tor-shield 'main'
 	option enabled '0'
 	option mode 'transparent'
-	option dns_over_tor '1'
+	# DNS over Tor disabled by default - enables opkg/system DNS to work
+	# When disabled, public DNS servers are automatically excluded from kill switch
+	option dns_over_tor '0'
 	option kill_switch '1'
 	option auto_bridges '0'
 
@@ -12,7 +14,8 @@ config preset 'anonymous'
 	option name 'Full Anonymity'
 	option icon 'shield'
 	option mode 'transparent'
-	option dns_over_tor '1'
+	# DNS over Tor disabled for compatibility - traffic still routes through Tor
+	option dns_over_tor '0'
 	option kill_switch '1'
 
 config preset 'selective'
@@ -50,10 +53,26 @@ config transparent 'trans'
 	list excluded_ips '10.0.0.0/8'
 	list excluded_ips '172.16.0.0/12'
 	list excluded_ips '127.0.0.0/8'
-	# Domains excluded from Tor routing (for opkg, NTP, etc)
+	# Domains excluded from Tor routing (DNS bypasses Tor for these)
+	# OpenWrt package repositories
 	list excluded_domains 'downloads.openwrt.org'
 	list excluded_domains 'openwrt.org'
+	list excluded_domains 'mirror.leaseweb.com'
+	list excluded_domains 'mirror1.openwrt.org'
+	# NTP time servers
+	list excluded_domains 'pool.ntp.org'
+	list excluded_domains 'time.google.com'
+	list excluded_domains 'time.cloudflare.com'
+	# Security feeds (CVE, threat intel)
 	list excluded_domains 'services.nvd.nist.gov'
+	list excluded_domains 'cve.mitre.org'
+	# Let's Encrypt ACME (for SSL certificates)
+	list excluded_domains 'acme-v02.api.letsencrypt.org'
+	list excluded_domains 'letsencrypt.org'
+	# DNS verification (optional, for own domains)
+	list excluded_domains 'api.gandi.net'
+	list excluded_domains 'api.ovh.com'
+	list excluded_domains 'api.cloudflare.com'
 
 config bridges 'bridges'
 	option enabled '0'

@@ -136,6 +136,15 @@ return view.extend({
 			}, 'Auth');
 		}
 
+		// WAF badge (from site.waf_enabled returned by list_sites)
+		var wafBadge = '';
+		if (site.waf_enabled) {
+			wafBadge = E('span', {
+				'style': 'display:inline-block; padding:2px 6px; border-radius:4px; font-size:0.85em; background:#d1ecf1; color:#0c5460; margin-left:4px',
+				'title': _('Traffic inspected by WAF (mitmproxy)')
+			}, 'WAF');
+		}
+
 		// Domain link
 		var domainEl;
 		if (site.domain) {
@@ -166,7 +175,8 @@ return view.extend({
 			// Exposure column
 			E('td', { 'class': 'td' }, [
 				exposureBadge,
-				authBadge
+				authBadge,
+				wafBadge
 			]),
 			// Actions column
 			E('td', { 'class': 'td', 'style': 'text-align:center; white-space:nowrap' }, [
@@ -191,8 +201,8 @@ return view.extend({
 					'title': _('Upload content'),
 					'click': ui.createHandlerFn(self, 'showUploadModal', site)
 				}, _('Upload')),
-				// Expose/Unpublish button
-				exp.vhost_exists ?
+				// Expose/Unpublish button - use emancipated flag, not vhost_exists
+				exp.emancipated ?
 					E('button', {
 						'class': 'cbi-button cbi-button-remove',
 						'style': 'padding:0.25em 0.5em; margin:2px',
@@ -298,10 +308,18 @@ return view.extend({
 					])
 				]),
 				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, _('Set as index')),
+					E('div', { 'class': 'cbi-value-field' }, [
+						E('input', { 'type': 'checkbox', 'id': 'upload-as-index', 'checked': true }),
+						E('span', { 'style': 'margin-left:0.5em' }, _('Replace index.html (main page)')),
+						E('div', { 'class': 'cbi-value-description' }, _('Uncheck to keep original filename'))
+					])
+				]),
+				E('div', { 'class': 'cbi-value', 'id': 'upload-dest-row', 'style': 'display:none' }, [
 					E('label', { 'class': 'cbi-value-title' }, _('Destination')),
 					E('div', { 'class': 'cbi-value-field' }, [
 						E('input', { 'type': 'text', 'id': 'upload-dest', 'class': 'cbi-input-text',
-							'placeholder': 'index.html' }),
+							'placeholder': 'filename.html' }),
 						E('div', { 'class': 'cbi-value-description' }, _('Leave empty to use original filename'))
 					])
 				])
@@ -314,6 +332,7 @@ return view.extend({
 					'click': function() {
 						var fileInput = document.getElementById('upload-file-input');
 						var destInput = document.getElementById('upload-dest');
+						var asIndexCheckbox = document.getElementById('upload-as-index');
 						var file = fileInput.files[0];
 
 						if (!file) {
@@ -321,7 +340,7 @@ return view.extend({
 							return;
 						}
 
-						var dest = destInput.value.trim() || file.name;
+						var dest = asIndexCheckbox.checked ? 'index.html' : (destInput.value.trim() || file.name);
 
 						ui.hideModal();
 						ui.showModal(_('Uploading'), [E('p', { 'class': 'spinning' }, _('Uploading file...'))]);
@@ -360,6 +379,13 @@ return view.extend({
 				}, _('Upload'))
 			])
 		]);
+
+		// Toggle destination field based on checkbox
+		var checkbox = document.getElementById('upload-as-index');
+		var destRow = document.getElementById('upload-dest-row');
+		checkbox.onchange = function() {
+			destRow.style.display = this.checked ? 'none' : '';
+		};
 	},
 
 	handleEmancipate: function(site) {

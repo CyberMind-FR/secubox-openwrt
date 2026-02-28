@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-02-24_
+_Last updated: 2026-02-28 (AI Gateway Deployed)_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -1700,7 +1700,7 @@ git checkout HEAD -- index.html
 
 ### 2026-02-14: mitmproxy WAF Wildcard Route Priority Fix
 - **Fixed wildcard route matching in haproxy_router.py**
-  - Issue: `.gk2.secubox.in` wildcard (port 4000) matched before specific routes like `apr.gk2.secubox.in` (port 8928)
+  - Issue: `.gk2.secubox.in` wildcard (port 4050) matched before specific routes like `apr.gk2.secubox.in` (port 8928)
   - Root cause: Python code expected `*.domain` format but HAProxy generates `.domain` format
   - Fix: Support both `*.domain` and `.domain` wildcard formats
   - Fix: Sort wildcards by length (longest/most specific first) to ensure proper priority
@@ -3542,3 +3542,479 @@ git checkout HEAD -- index.html
       - `luci-app-cloner/root/usr/libexec/rpcd/luci.cloner`: Added list_versions, list_build_profiles, updated build_image
       - `luci-app-cloner/root/usr/share/rpcd/acl.d/luci-app-cloner.json`: Added permissions for new methods
     - **Tested:** CLI help, versions command, RPCD methods via ubus all working
+
+30. **MetaBlogizer HAProxy Stability Fix (2026-02-25)**
+    - **Root Cause Identified:** Multiple HAProxy instances (container + host) were both listening on ports 80/443, causing random routing and intermittent 404 errors for all sites
+    - **Fix Applied:**
+      - Disabled host HAProxy service (`/etc/init.d/haproxy disable`)
+      - Container HAProxy is now the sole handler for web traffic
+    - **Auto-Republish Feature Added:**
+      - When files are uploaded to an emancipated site, `metablogizerctl publish` is now called automatically
+      - This ensures uhttpd and HAProxy routing stay in sync after content updates
+    - **Files Modified:**
+      - `luci-app-metablogizer/root/usr/libexec/rpcd/luci.metablogizer`: Added auto-republish in `method_upload_finalize()`
+    - **Sites Fixed:** rfg, form, facb, plainte all returning HTTP 200 consistently
+    - **Verified:** 20 consecutive tests all returned 200 (previously ~50% failure rate)
+
+31. **HAProxy Host/Container Architecture Permanent Fix (2026-02-25)**
+    - **Problem:** Host HAProxy kept restarting alongside container HAProxy due to:
+      - `haproxyctl` called `/etc/init.d/haproxy start|reload` which started host HAProxy
+      - ACME cron jobs and certificate scripts also called host init script
+      - ACME triggers in procd could restart host HAProxy
+    - **Permanent Fix Applied:**
+      - Renamed `/etc/init.d/haproxy` to `/etc/init.d/haproxy.host-disabled` to prevent any trigger
+      - Added `lxc_start_bg()` function to `haproxyctl` for starting container in background
+      - Added `lxc_reload()` function for reloading container HAProxy
+      - Replaced all `/etc/init.d/haproxy start|reload` calls with container-aware functions
+      - Fixed `haproxy-sync-certs` script to use `haproxyctl reload` instead of init script
+    - **Files Modified:**
+      - `secubox-app-haproxy/files/usr/sbin/haproxyctl`: Added lxc_start_bg, lxc_reload; fixed ACME cert handling
+      - `secubox-app-haproxy/files/usr/sbin/haproxy-sync-certs`: Uses haproxyctl reload instead of init script
+    - **Verified:** 20 consecutive tests all returned HTTP 200 across all sites
+
+32. **Streamlit Gitea Integration & WAF Enhancements (2026-02-25)**
+    - **Auto Gitea Push on Emancipate:**
+      - Added automatic Gitea push when instance is emancipated
+      - Also pushes on app rename (keeps code in sync with Gitea)
+    - **WAF (mitmproxy) Integration:**
+      - Emancipate now routes through `mitmproxy_inspector` backend by default (all traffic WAF-protected)
+      - Adds mitmproxy route entry for domain → streamlit port
+      - Restarts mitmproxy to pick up new routes
+      - Uses `haproxyctl reload` instead of restart for smooth reloads
+    - **Enhanced Rename Functions:**
+      - `rename_app()` now actually renames app folder/file (not just display name)
+      - Updates all instance references when app ID changes
+      - `rename_instance()` can now change domain, updates HAProxy vhost and mitmproxy routes
+    - **WAF Status Display:**
+      - Dashboard shows WAF badge for exposed instances
+      - `get_exposure_status()` returns `waf_enabled` field
+      - Blue "WAF" badge displayed next to exposure status
+    - **Files Modified:**
+      - `luci-app-streamlit/root/usr/libexec/rpcd/luci.streamlit`: emancipate_instance, rename_app, rename_instance, get_exposure_status
+      - `luci-app-streamlit/htdocs/luci-static/resources/view/streamlit/dashboard.js`: WAF badge display
+
+33. **Streamlit CLI Emancipate Fix & Container Reload (2026-02-25)**
+    - **CLI Emancipate UCI Fix:**
+      - `streamlitctl emancipate` now sets `waf_enabled="1"` in instance UCI
+      - Previously only set `emancipated` and `domain`
+    - **Container-Aware Reload:**
+      - `_emancipate_reload()` now uses `haproxyctl reload` (container reload)
+      - Previously used deprecated `/etc/init.d/haproxy restart` (host init script)
+      - Properly verifies LXC container status after reload
+    - **Verified:** test2.gk2.secubox.in emancipation successful with WAF enabled
+    - **Files Modified:**
+      - `secubox-app-streamlit/files/usr/sbin/streamlitctl`: Added waf_enabled UCI field, use haproxyctl reload
+
+34. **Portal Password Change & MetaBlogizer Upload Fix (2026-02-25)**
+    - **Portal Password Change:**
+      - New "Account" section with "Change Password" and "My Services" cards
+      - Password change modal with current/new/confirm fields
+      - RPC method `change_password` verifies current password, syncs to all services
+      - Syncs to: email (mailserver), jabber, nextcloud
+      - Matrix/PeerTube noted as manual update required
+    - **MetaBlogizer Upload Fix:**
+      - `method_upload_file` now auto-republishes emancipated sites (was only in finalize)
+      - `cmd_publish` now auto-pushes to Gitea if enabled
+      - Uses `haproxyctl reload` (container-aware)
+    - **Files Modified:**
+      - `luci-app-secubox-users/root/usr/libexec/rpcd/luci.secubox-users`: New change_password method
+      - `luci-app-secubox-portal/root/www/gk2-hub/portal.html`: Account section + password modal
+      - `luci-app-metablogizer/root/usr/libexec/rpcd/luci.metablogizer`: Auto-republish on upload
+      - `secubox-app-metablogizer/files/usr/sbin/metablogizerctl`: Gitea push on publish
+
+35. **Streamlit KISS Upload & Service Fixes (2026-02-25)**
+    - **Streamlit KISS Upload:**
+      - Auto-detects ZIP files by magic bytes (PK header)
+      - Extracts app.py from ZIP archives automatically
+      - Adds UTF-8 encoding declaration to Python files
+      - Installs requirements.txt dependencies in background
+      - Restarts instance on re-upload for immediate update
+      - Matches MetaBlogizer KISS pattern
+    - **Mailserver POP3S Fix:**
+      - Added `pop3` to dovecot protocols (was only imap lmtp)
+      - POP3S (995) now listening alongside IMAPS (993)
+    - **Alerte Streamlit Fix:**
+      - Extracted app.py from incorrectly saved ZIP file
+      - Installed missing qrcode/python-dotenv dependencies
+      - Added route to mitmproxy-in for WAF inspection
+    - **Files Modified:**
+      - `luci-app-streamlit/root/usr/libexec/rpcd/luci.streamlit`: upload_app, upload_and_deploy with KISS ZIP handling
+
+36. **ALERTE.DEPOT Whistleblower Platform (2026-02-25)**
+    - **Anonymous Whistleblower Application (Loi Waserman compliant):**
+      - Pseudonymized submissions - no personal data required
+      - Token-based tracking (16-char alphanumeric tokens)
+      - Three modes: Submit / Track / Admin
+      - SecuBox Users authentication for investigators
+      - Gitea backend (private repo: gandalf/alertes-depot)
+      - QR code generation for attestations
+    - **Tracking Portal:**
+      - Token lookup searches Gitea issues
+      - Status display with visual badges
+      - Two-way communication with investigators
+      - Add supplementary information capability
+    - **Admin Dashboard:**
+      - SecuBox Users RPCD authentication
+      - Case management with status workflow
+      - Internal notes vs public responses
+      - Statistics overview
+    - **Security & Compliance:**
+      - Audit trail blockchain (/srv/secubox/mesh/alertes-chain.json)
+      - Deadline monitoring cron (7-day ack, 3-month response)
+      - Immutable hash chain for all actions
+    - **Dual-Channel Access:**
+      - HTTPS: alerte.gk2.secubox.in (production SSL cert)
+      - Tor: i7j46m67zvdksfhddbq273yydpuo5xvewsl2fjl5zlycjyo4qelysnid.onion
+    - **Files:**
+      - `/srv/streamlit/apps/alerte_depot/app.py`: Full whistleblower platform
+      - `/srv/secubox/mesh/alertes-chain.json`: Audit blockchain
+      - `/usr/sbin/alerte-depot-cron`: Deadline monitor
+
+37. **VoIP Voice Recorder Configuration (2026-02-25)**
+    - **Voice Recorder Mode:**
+      - All incoming calls sent directly to voicemail
+      - Automatic email notification with WAV attachment
+      - OVH SIP trunk integration for official number
+    - **Email Integration:**
+      - Created voicemail@secubox.in account in mailserver
+      - Configured msmtp in VoIP container
+      - Email subject template with caller ID
+    - **Files:**
+      - `/srv/lxc/voip/rootfs/etc/asterisk/voicemail.conf`
+      - `/srv/lxc/voip/rootfs/etc/asterisk/extensions.conf`
+      - `/srv/lxc/voip/rootfs/etc/msmtprc`
+
+38. **ALERTE.DEPOT Authentication Fix (2026-02-25)**
+    - **Container HTTP Auth:**
+      - Streamlit container cannot access host `ubus` directly
+      - Changed authenticate_admin() from subprocess to HTTP API
+      - Uses http://127.0.0.1/ubus JSON-RPC endpoint
+    - **SecuBox Users Integration:**
+      - Admin login validates via luci.secubox-users RPCD
+      - Session tokens stored in /tmp/secubox-sessions/
+      - 24-hour token expiry
+    - **Test Credentials:**
+      - gk2 / Gk2Test2026
+      - ragondin / Secubox@2026
+
+39. **VoIP WebRTC Phone Integration (2026-02-26)**
+    - **WebRTC Phone Working:**
+      - Browser-based SIP phone using JsSIP 3.11.1
+      - Bypasses ISP SIP blocking via WebSocket over HTTPS
+      - Full call flow: Browser → WSS → HAProxy → Asterisk → OVH SIP → PSTN
+    - **Infrastructure:**
+      - HAProxy path routing: `/ws` → Asterisk WSS (8089), default → static files
+      - Local JsSIP library at `/www/voip/js/jssip.min.js` (CDN MIME issues)
+      - Phone accessible at https://voip.gk2.secubox.in/voip/phone.html
+    - **Dial Plan Support:**
+      - `_0XXXXXXXXX` — French national format (0775744172)
+      - `_+XXXXXXXXXXX` — International with + prefix
+      - `_00XXXXXXXXX.` — International with 00 prefix
+      - `_XXX/_XXXX` — Internal extensions
+    - **LuCI VoIP Fixes:**
+      - RPCD luci.voip: Fixed `local` keyword outside function
+      - Extensions list: Fixed pipe subshell with config_foreach pattern
+      - Recordings API: Fixed array wrapping for JS frontend
+    - **Files:**
+      - `/www/voip/phone.html` — WebRTC phone interface
+      - `/www/voip/js/jssip.min.js` — JsSIP library
+      - `/usr/libexec/rpcd/luci.voip` — RPCD backend
+      - `/srv/lxc/voip/rootfs/etc/asterisk/extensions.conf` — Dial plan
+
+40. **ZKP Cross-Node Verification (2026-02-26)**
+    - **Bidirectional ZKP Authentication:**
+      - Master (aarch64) and Clone (x86_64) can cryptographically verify each other
+      - Hamiltonian cycle zero-knowledge proof protocol
+      - No secrets exchanged — only public graphs shared
+    - **ZKP Keys Generated:**
+      - Master: `master_node` (50 nodes, 100 edges, 408 bytes graph)
+      - Clone: `clone_node` (50 nodes, 100 edges, 408 bytes graph)
+    - **Verification Results:**
+      - Master → Clone: **ACCEPT** (clone verified master's proof)
+      - Clone → Master: **ACCEPT** (master verified clone's proof)
+    - **Cross-Architecture Support:**
+      - Deployed x86_64 ZKP binaries to clone from build-x86 directory
+      - Binaries: zkp_keygen, zkp_prover, zkp_verifier
+      - Proofs: 40-80KB, verification < 1 second
+    - **Files:**
+      - `/var/lib/zkp/graphs/` — Public graphs for verification
+      - `/var/lib/zkp/keys/` — Secret Hamiltonian cycles (NEVER share)
+      - `/var/lib/zkp/proofs/` — Generated proofs
+
+41. **Mesh Blockchain Bidirectional Sync (2026-02-26)**
+    - **Sync Testing:**
+      - Master → Clone: 112 blocks synced successfully
+      - Clone added block 113 (type: clone_test, node: clone1)
+      - Clone → Master: Block 113 merged back to master
+    - **Architecture:**
+      - Both nodes at identical chain height with matching hash
+      - Threat intelligence propagates bidirectionally
+      - Manual sync via direct chain.json copy (curl/avahi deps missing on clone)
+
+42. **MetaBlogizer & Portal RPC Performance (2026-02-26)**
+    - **MetaBlogizer list_sites Optimization:**
+      - Rewrote `method_list_sites` RPCD handler with single-pass awk parsing
+      - Pre-fetch listening ports, HAProxy backends, and Tor services in one call each
+      - Eliminated 400+ UCI calls per request (78 sites × 5+ calls per site)
+      - Fixed awk `getline` variable corruption producing invalid JSON
+      - Execution time: 30+ seconds → 0.23 seconds
+    - **Portal get_vhosts Optimization:**
+      - Same single-pass awk pattern for 191 vhosts
+      - Execution time: 30+ seconds → 0.24 seconds
+
+43. **Nextcloud Talk Signaling LXC Migration (2026-02-26)**
+    - **Docker → LXC Conversion:**
+      - Built signaling server v2.0.4 (Go 1.24.0) in Debian LXC container
+      - NATS v2.10.22 for message queue (pre-built ARM64 binary)
+      - Custom init script for non-systemd container
+    - **Configuration:**
+      - Signaling server on port 8083 (avoiding Docker 8082 conflict)
+      - Session keys truncated to 16/32 bytes (was 64, caused key length error)
+      - Backend allowed: cloud.gk2.secubox.in
+      - TURN servers: signaling.gk2.secubox.in:3478 (UDP/TCP)
+    - **HAProxy Integration:**
+      - Updated `talk_hpb_signaling` backend server port: 8082 → 8083
+      - SSL certificate issued via ACME webroot
+    - **Nextcloud Configuration:**
+      - Set `spreed.signaling_servers` via occ command
+      - Endpoint: `https://signaling.gk2.secubox.in/standalone-signaling/`
+
+44. **Nextcloud Talk Full Stack Fix (2026-02-26)**
+    - **MIME Type Fix:**
+      - Problem: CSS/JS blocked with "incorrect MIME type (text/html)"
+      - Fix: Added proper `/apps/` location block serving static assets directly
+    - **403 on /apps/ Fix:**
+      - Problem: /apps/dashboard/ and /apps/spreed/ returning 403
+      - Fix: Route non-static /apps/ requests to `index.php` via rewrite
+    - **Signaling Endpoint Fix:**
+      - Problem: "Failed to send message to signaling server" - 404
+      - Root cause: Nextcloud used `/standalone-signaling/` prefix, server uses `/api/v1/`
+      - Fix: Updated `spreed.signaling_servers` to `https://signaling.gk2.secubox.in/`
+    - Talk conversations and video calls now fully functional
+
+45. **Mail Server Webmail Detection Fix (2026-02-26)**
+    - **Problem:** Webmail status showing "Stopped" despite Roundcube LXC running
+    - **Root Cause:** RPCD handler only checked Docker, not LXC containers
+    - **Fix:** Added `webmail.type` UCI option check, use `lxc-info` for LXC type
+    - Webmail status now correctly shows "Running" for LXC containers
+
+46. **CrowdSec HAProxy Bouncer - Dual Layer WAF (2026-02-26)**
+    - **Purpose:** IP-level blocking at HAProxy before mitmproxy WAF inspection
+    - **Implementation:**
+      - Created `/srv/haproxy/lua/crowdsec.lua` - Lua bouncer script
+      - Queries CrowdSec LAPI on port 8190 for IP decisions
+      - In-memory cache with 60s TTL (30s negative cache)
+      - Fail-open design: allows traffic if API unreachable
+      - Skips internal IPs (127.x, 192.168.x, 10.x)
+    - **HAProxy Integration:**
+      - `lua-load /opt/haproxy/lua/crowdsec.lua` in global section
+      - `http-request lua.crowdsec_check` in HTTP/HTTPS frontends
+      - `http-request deny deny_status 403 if { var(txn.blocked) -m str 1 }`
+    - **Registered Bouncer:** `haproxy-bouncer` in CrowdSec with API key
+    - **Result:** Dual-layer WAF protection
+      - Layer 1: CrowdSec HAProxy bouncer (IP reputation, 60s cache)
+      - Layer 2: mitmproxy WAF (request inspection, CVE detection)
+    - All 13 MetaBlogizer sites verified working with dual WAF
+    - **CrowdSec MCP:** Added crowdsec-local-mcp for AI-generated WAF rules
+
+47. **Nextcloud Apps 403 Fix - try_files Directory Match (2026-02-27)**
+    - **Problem:** `/apps/spreed/` and `/apps/dashboard/` returning 403 Forbidden
+    - **Root Cause:** nginx `try_files $uri $uri/ /index.php$request_uri;` checks `$uri/`
+      - `/apps/spreed/` exists as a real directory in filesystem
+      - nginx finds directory, tries to serve index, no index file → 403
+    - **Fix:** Changed to `try_files $uri /index.php$request_uri;`
+      - Removed `$uri/` directory check from try_files
+      - All non-file requests now route directly to PHP front controller
+    - **Result:** Talk (/apps/spreed/) returns 303 redirect, Dashboard returns 401 (auth required)
+
+48. **OpenClaw AI Assistant - LuCI Package (2026-02-27)**
+    - **secubox-app-openclaw:** Backend package with UCI config and CLI
+      - Multi-provider support: Anthropic (Claude), OpenAI (GPT), Ollama (local)
+      - `openclawctl` CLI: install, configure, set-provider, set-api-key, test-api
+      - Integrations: Telegram, Discord, Slack, Email, Calendar (CalDAV)
+    - **luci-app-openclaw:** Complete LuCI web interface
+      - Chat view: Real-time AI conversation with markdown rendering
+      - Settings view: Provider/model/API key configuration with connection test
+      - Integrations view: Enable/configure messaging and productivity integrations
+      - RPCD backend: 9 ubus methods (status, get_config, set_config, list_models, chat, test_api, get_history, clear_history, install, update)
+      - ACL permissions for read/write operations
+
+49. **OpenClaw Gemini API Integration (2026-02-27)**
+    - **Problem:** Gemini 1.5 models deprecated/removed (404 errors)
+    - **Fix:** Updated RPCD handler model list to current Gemini 2.x series:
+      - `gemini-2.0-flash`, `gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-flash-latest`
+    - Tested successfully with `gemini-2.5-flash` (higher rate limits than 2.0)
+    - LuCI chat and settings views working with Gemini provider
+
+50. **WAF Auto-Ban Tuning & False Positive Fix (2026-02-27)**
+    - **Problem:** LuCI static resources flagged as "waf_bypass" (high severity)
+      - Affected URLs: `/luci-static/resources/cbi.js?v=26.021.66732~4b823e3`
+    - **Root Cause:** Different `secubox_analytics.py` versions across mitmproxy instances
+      - `/srv/mitmproxy-in/` had different file hash than `/srv/mitmproxy/`
+      - Stale Python bytecode cache (.pyc files) still loading old code
+    - **Fix:**
+      - Synced identical `secubox_analytics.py` to all three mitmproxy instances
+      - Cleared `__pycache__` directories in all addons folders
+      - Restarted mitmproxy services
+    - **Result:** No more false positives on LuCI/Nextcloud static resources
+    - **Autoban Sensitivity Fix:**
+      - UCI config uses `sensitivity='strict'` but code expected `'aggressive'`
+      - Added `'strict'` as alias for `'aggressive'` in `_should_autoban()` function
+      - Both values now trigger threshold=1 (immediate ban) behavior
+    - **Verified Working:**
+      - `.env` probes correctly detected as `path_scan` / `config_hunting`
+      - Autoban config properly loaded: `sensitivity=strict`, `min_severity=medium`
+
+51. **Centralized WAF Route Management (2026-02-28)**
+    - **Problem:** Multiple services (metablogizerctl, streamlitctl, mitmproxyctl) each
+      managed mitmproxy routes independently, causing mixups and stale routes
+    - **Solution:** Centralized route registry in secubox-core
+    - **New Components:**
+      - `/etc/config/secubox-routes` - UCI config for central route registry
+      - `/usr/sbin/secubox-route` - CLI for route management with source tracking
+    - **CLI Commands:**
+      - `secubox-route add <domain> <host> <port> <source>` - Add route with provenance
+      - `secubox-route remove <domain>` - Remove route
+      - `secubox-route list` - List all routes by source (haproxy/metablogizer/streamlit)
+      - `secubox-route sync` - Generate mitmproxy routes file from registry
+      - `secubox-route import-all` - Import from HAProxy, MetaBlogizer, Streamlit
+      - `secubox-route status` - Show registry status with route counts by source
+    - **Updated Services:**
+      - `metablogizerctl`: Uses `secubox-route add` instead of `mitmproxyctl sync-routes`
+      - `streamlitctl`: Uses `secubox-route add` with explicit domain/port
+      - `peertubectl`: Uses `secubox-route add` for emancipation workflow
+      - `vhost-manager/mitmproxy.sh`: Prefers secubox-route when available
+      - `mitmproxyctl sync-routes`: Delegates to `secubox-route import-all`
+    - **Behaviors:**
+      - Auto-sync to all mitmproxy instances (mitmproxy, mitmproxy-in, mitmproxy-out)
+      - Skip wildcard domains (`.gk2.secubox.in`) - return 404 WAF page
+      - Skip LuCI routes (port 8081) - never route to admin interface
+    - **Result:** Single source of truth, no more route mixups, easy debugging
+
+52. **Meshname DNS - Decentralized .ygg Domain Resolution (2026-02-28)**
+    - **Feature:** Decentralized DNS for Yggdrasil mesh networks
+    - **New Packages:**
+      - `secubox-app-meshname-dns`: Core service with `meshnamectl` CLI
+      - `luci-app-meshname-dns`: LuCI dashboard for service management
+    - **Architecture:**
+      - Services announce `.ygg` domains via existing gossip protocol (`meshname_announce` type)
+      - dnsmasq integration via `/tmp/hosts/meshname` dynamic hosts file
+      - Cross-node resolution: master announces → clone can resolve via gossip
+    - **CLI Commands:**
+      - `meshnamectl announce <name> [port]` - Announce service as <name>.ygg
+      - `meshnamectl revoke <name>` - Stop announcing service
+      - `meshnamectl resolve <domain>.ygg` - Resolve domain to IPv6
+      - `meshnamectl list` - List known .ygg domains
+      - `meshnamectl sync` - Force sync with mesh peers
+      - `meshnamectl status` - Show meshname DNS status
+    - **RPCD Methods:** status, list, announce, revoke, resolve, sync, get_config, set_config
+    - **LuCI Dashboard:** Status card, local services table, remote domains table, resolve test
+    - **Integration:** Added `meshname_announce` handler to mirrornet gossip.sh
+
+53. **Matrix/Element Self-Hosted Chat (2026-02-28)**
+    - **Feature:** E2E encrypted federated chat via Conduit Matrix homeserver + Element Web client
+    - **Infrastructure:**
+      - Matrix homeserver: Conduit (Rust, lightweight) in LXC container
+      - Matrix API: `https://matrix.gk2.secubox.in` (port 8008 internal)
+      - Element Web: `https://chat.gk2.secubox.in` (uhttpd on port 8088)
+    - **Configuration:**
+      - Conduit config at `/etc/conduit/conduit.toml` inside `matrix` LXC
+      - Element config at `/srv/matrix/element/config.json` (brand: "SecuBox Chat")
+      - UCI config: `/etc/config/matrix` with server, federation, mesh settings
+    - **HAProxy Integration:**
+      - Both domains routed through mitmproxy WAF inspector
+      - SSL certificates via ACME (Let's Encrypt production)
+      - Routes added to central secubox-route registry
+    - **uhttpd Instance:**
+      - Dedicated `element` instance serving `/srv/matrix/element/`
+      - Listen on `192.168.255.1:8088`
+    - **Features:**
+      - Federation enabled with trusted servers (matrix.org)
+      - Registration via token: `n5MCOgUH9bmfM7I5uCWfA`
+      - E2E cross-signing supported
+
+54. **Yggdrasil Extended Peer Discovery (2026-02-28)**
+    - **Feature:** Automatic peer discovery and trust-verified auto-peering for Yggdrasil mesh
+    - **New Package:** `secubox-app-yggdrasil-discovery`
+    - **CLI Tool:** `yggctl` with 15+ commands:
+      - `yggctl self` - Show node's Yggdrasil info (IPv6, pubkey, hostname)
+      - `yggctl peers` - Show current Yggdrasil peers
+      - `yggctl announce` - Announce node to mesh via gossip
+      - `yggctl discover` - List discovered SecuBox nodes
+      - `yggctl auto-connect` - Connect to trusted discovered peers
+      - `yggctl bootstrap {list|add|remove|connect}` - Manage bootstrap peers
+      - `yggctl status` - Show discovery status and stats
+      - `yggctl enable/disable` - Toggle auto-discovery
+    - **Gossip Integration:**
+      - Added `yggdrasil_peer` message type to mirrornet gossip protocol
+      - `gossip_announce_yggdrasil()` helper function
+      - Gossip handler at `/usr/lib/yggdrasil-discovery/gossip-handler.sh`
+    - **Trust Verification:**
+      - Master-link fingerprint verification for auto-peering
+      - ZKP fingerprint support
+      - Reputation score threshold (default: 50)
+      - Configurable via `require_trust` and `min_trust_score` options
+    - **Auto-Peering:**
+      - Automatic connection to trusted discovered peers
+      - Yggdrasil IPv6 range validation (200::/7)
+      - Duplicate peer prevention
+    - **UCI Configuration:**
+      - `yggdrasil-discovery.main` - enabled, auto_announce, auto_peer, require_trust
+      - `yggdrasil-discovery.bootstrap` - list of bootstrap peer URIs
+    - **Daemon:**
+      - Periodic announcement daemon (`daemon.sh`)
+      - Configurable announce interval (default: 300s)
+
+55. **Tor Shield opkg Bug Fix (2026-02-28)**
+    - **Root Cause:** DNS queries for package repositories went through Tor DNS, which is slow/unreliable
+    - **Symptom:** `opkg update` failed with "wget returned 4" when Tor Shield was active
+    - **Fix:** Added dnsmasq bypass for excluded domains
+    - **Implementation:**
+      - `setup_dnsmasq_bypass()` generates `/tmp/dnsmasq.d/tor-shield-bypass.conf`
+      - Excluded domains resolve directly via upstream DNS (WAN DNS or fallback to 1.1.1.1)
+      - `cleanup_dnsmasq_bypass()` removes config on Tor Shield stop
+    - **Default Exclusions:**
+      - OpenWrt repos: `downloads.openwrt.org`, `openwrt.org`, `mirror.leaseweb.com`
+      - NTP servers: `pool.ntp.org`, `time.google.com`, `time.cloudflare.com`
+      - Let's Encrypt ACME: `acme-v02.api.letsencrypt.org`
+      - DNS provider APIs: `api.gandi.net`, `api.ovh.com`, `api.cloudflare.com`
+      - Security feeds: `services.nvd.nist.gov`, `cve.mitre.org`
+    - Two-level bypass: dnsmasq (DNS resolution) + iptables (traffic routing)
+
+56. **HAProxy Portal 503 Fix (2026-02-28)**
+    - **Root Cause:** Vhost for `192.168.255.1` had malformed backend: `backend='--backend'`
+    - **Symptom:** Portal returned "503 End of Internet" when accessing `https://192.168.255.1`
+    - **Investigation:**
+      - LuCI worked directly on port 8081, HAProxy container was stopped
+      - Container exit logs showed: `unable to find required use_backend: '--backend'`
+      - The `haproxyctl vhost add` command parsing incorrectly captured `--backend` as literal value
+    - **Fix:**
+      - Corrected UCI: `uci set haproxy.vhost_192_168_255_1.backend='luci_default'`
+      - Disabled ACME (certs can't be issued for IP addresses): `acme='0'`
+      - Regenerated HAProxy config: `haproxyctl generate`
+      - Restarted container: `lxc-start -n haproxy`
+    - Portal now returns 200 and redirects to LuCI
+
+57. **AI Gateway - Data Sovereignty Engine (2026-02-28)**
+    - Created `secubox-ai-gateway` package for ANSSI CSPN compliance
+    - **Data Classifier (Sovereignty Engine):**
+      - `LOCAL_ONLY`: IPs, MACs, credentials, keys, logs → LocalAI only
+      - `SANITIZED`: PII that can be scrubbed → Mistral EU (opt-in)
+      - `CLOUD_DIRECT`: Generic queries → Any provider (opt-in)
+    - **Provider Hierarchy:** LocalAI (P0) > Mistral EU (P1) > Claude (P2) > GPT (P3) > Gemini (P4) > xAI (P5)
+    - **OpenAI-compatible API** on port 4050:
+      - POST /v1/chat/completions
+      - POST /v1/completions
+      - GET /v1/models
+      - GET /health
+    - **CLI (`aigatewayctl`):**
+      - `classify <text>` - Test classification
+      - `sanitize <text>` - Test sanitization
+      - `provider list/enable/disable/test` - Provider management
+      - `audit stats/tail/export` - Compliance logging
+      - `offline-mode on/off` - Force LOCAL_ONLY
+    - **PII Sanitizer:** IPv4/IPv6, MAC addresses, credentials, private keys, hostnames
+    - **RPCD Backend:** 11 ubus methods for LuCI integration
+    - **Audit Logging:** JSONL format with timestamps, classification decisions, patterns matched
+    - All cloud providers opt-in, default LOCAL_ONLY
+    - Key ANSSI compliance points: Data sovereignty, EU preference, audit trail, offline capability

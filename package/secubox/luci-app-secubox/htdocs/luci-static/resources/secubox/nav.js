@@ -47,6 +47,10 @@ var mainTabs = [
 var _themeInitialized = false;
 var _cssLoaded = false;
 
+// Cache busting version - updated during build or can use timestamp
+// Format: YYMMDD.HHMM or git short SHA
+var _cacheBustVersion = '260228.1200';
+
 return baseclass.extend({
 	/**
 	 * Get main SecuBox tabs
@@ -95,7 +99,8 @@ return baseclass.extend({
 			link.id = id;
 			link.rel = 'stylesheet';
 			link.type = 'text/css';
-			link.href = L.resource(file);
+			// Add cache busting version parameter
+			link.href = L.resource(file) + '?v=' + _cacheBustVersion;
 			document.head.appendChild(link);
 		});
 

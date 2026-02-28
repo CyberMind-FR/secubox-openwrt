@@ -1,0 +1,15 @@
+{
+	"luci-app-meshname-dns": {
+		"description": "Grant access to Meshname DNS functions",
+		"read": {
+			"ubus": {
+				"luci.meshname": ["status", "list", "resolve", "get_config"]
+			}
+		},
+		"write": {
+			"ubus": {
+				"luci.meshname": ["announce", "revoke", "sync", "set_config"]
+			}
+		}
+	}
+}

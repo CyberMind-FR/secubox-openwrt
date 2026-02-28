@@ -87,6 +87,8 @@ return view.extend({
 		o.default = 'vulkan';
 		o.depends('enabled', '1');
 
-		return KissTheme.wrap([m.render()], 'admin/services/localai/settings');
+		return m.render().then(function(formEl) {
+			return KissTheme.wrap([formEl], 'admin/services/localai/settings');
+		});
 	}
 });

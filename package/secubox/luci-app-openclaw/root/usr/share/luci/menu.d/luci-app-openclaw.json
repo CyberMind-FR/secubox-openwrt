@@ -1,0 +1,36 @@
+{
+	"admin/services/openclaw": {
+		"title": "OpenClaw AI",
+		"order": 75,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-openclaw"]
+		}
+	},
+	"admin/services/openclaw/chat": {
+		"title": "AI Chat",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "openclaw/chat"
+		}
+	},
+	"admin/services/openclaw/settings": {
+		"title": "Settings",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "openclaw/settings"
+		}
+	},
+	"admin/services/openclaw/integrations": {
+		"title": "Integrations",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "openclaw/integrations"
+		}
+	}
+}

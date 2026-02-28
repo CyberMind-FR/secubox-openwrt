@@ -1,0 +1,50 @@
+config main 'main'
+	option enabled '0'
+	option port '3333'
+	option host '0.0.0.0'
+	option data_path '/srv/openclaw'
+	option log_level 'info'
+
+# LLM Provider configuration
+config provider 'llm'
+	option type 'anthropic'
+	# Types: anthropic, openai, ollama, local
+	option api_key ''
+	# For ollama: set to 'local' and configure ollama_url
+	option ollama_url 'http://127.0.0.1:11434'
+	option model 'claude-sonnet-4-20250514'
+	# Models by provider:
+	#   anthropic: claude-sonnet-4-20250514, claude-opus-4-20250514
+	#   openai: gpt-4o, gpt-4-turbo
+	#   ollama: mistral, llama2, tinyllama
+
+# Chat integrations (enable as needed)
+config integration 'telegram'
+	option enabled '0'
+	option bot_token ''
+
+config integration 'discord'
+	option enabled '0'
+	option bot_token ''
+
+config integration 'slack'
+	option enabled '0'
+	option bot_token ''
+	option app_token ''
+
+# Email integration (for inbox management)
+config integration 'email'
+	option enabled '0'
+	option imap_host ''
+	option imap_port '993'
+	option smtp_host ''
+	option smtp_port '587'
+	option email ''
+	option password ''
+
+# Calendar integration
+config integration 'calendar'
+	option enabled '0'
+	option caldav_url ''
+	option username ''
+	option password ''

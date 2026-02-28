@@ -9,7 +9,7 @@
 		},
 		"write": {
 			"ubus": {
-				"luci.secubox-users": ["add", "delete", "passwd"]
+				"luci.secubox-users": ["add", "delete", "passwd", "authenticate", "recover", "reset_password", "change_password"]
 			},
 			"uci": ["secubox-users"]
 		}

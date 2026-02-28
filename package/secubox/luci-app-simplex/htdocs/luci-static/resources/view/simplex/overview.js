@@ -454,6 +454,8 @@ return view.extend({
 				'</div>';
 		};
 
-		return KissTheme.wrap([m.render()], 'admin/services/simplex');
+		return m.render().then(function(formEl) {
+			return KissTheme.wrap([formEl], 'admin/services/simplex');
+		});
 	}
 });

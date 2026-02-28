@@ -1,5 +1,5 @@
 # SecuBox Threat Analyst - Analyzer Module
-# Collects and analyzes threats using LocalAI
+# Collects and analyzes threats using AI Gateway (or LocalAI fallback)
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -143,9 +143,9 @@ merge_json_arrays() {
 analyze_threats() {
 	local threats="$1"
 
-	# Check LocalAI availability
-	if ! wget -q -O /dev/null --timeout=3 "${localai_url}/v1/models" 2>/dev/null; then
-		log_warn "LocalAI not available at $localai_url"
+	# Check AI availability (ai_url set by load_config: Gateway or LocalAI)
+	if ! wget -q -O /dev/null --timeout=3 "${ai_url}/models" 2>/dev/null; then
+		log_warn "AI not available at $ai_url"
 		return 1
 	fi
 
@@ -176,7 +176,7 @@ Provide actionable, specific recommendations. Format filter patterns as code sni
 
 	local response=$(echo "$request" | wget -q -O - --post-data=- \
 		--header="Content-Type: application/json" \
-		"${localai_url}/v1/chat/completions" 2>/dev/null)
+		"${ai_url}/chat/completions" 2>/dev/null)
 
 	if [ -n "$response" ]; then
 		echo "$response" | jsonfilter -e '@.choices[0].message.content' 2>/dev/null

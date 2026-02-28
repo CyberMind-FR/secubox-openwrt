@@ -1,0 +1,17 @@
+{
+	"luci-app-openclaw": {
+		"description": "OpenClaw AI Assistant",
+		"read": {
+			"ubus": {
+				"luci.openclaw": ["status", "get_config", "list_models", "get_history"]
+			},
+			"uci": ["openclaw"]
+		},
+		"write": {
+			"ubus": {
+				"luci.openclaw": ["chat", "set_config", "install", "update", "test_api", "clear_history"]
+			},
+			"uci": ["openclaw"]
+		}
+	}
+}

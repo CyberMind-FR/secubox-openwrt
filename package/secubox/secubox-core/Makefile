@@ -40,6 +40,7 @@ endef
 define Package/secubox-core/conffiles
 /etc/config/secubox
 /etc/config/secubox-appstore
+/etc/config/secubox-routes
 /etc/secubox/profiles/
 /etc/secubox/templates/
 /etc/secubox/macros/
@@ -52,6 +53,7 @@ define Package/secubox-core/install
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./root/etc/config/secubox $(1)/etc/config/
 	$(INSTALL_CONF) ./root/etc/config/secubox-appstore $(1)/etc/config/
+	$(INSTALL_CONF) ./root/etc/config/secubox-routes $(1)/etc/config/
 
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./root/etc/init.d/secubox-core $(1)/etc/init.d/
@@ -88,6 +90,7 @@ define Package/secubox-core/install
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-feedback $(1)/usr/sbin/
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-tftp-recovery $(1)/usr/sbin/
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-vhost $(1)/usr/sbin/
+	$(INSTALL_BIN) ./root/usr/sbin/secubox-route $(1)/usr/sbin/
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-stats-persist $(1)/usr/sbin/
 
 	$(INSTALL_DIR) $(1)/usr/bin

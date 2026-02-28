@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-25 (Factory Dashboard LuCI)_
+_Last updated: 2026-02-28 (AI Gateway Deployed)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -62,7 +62,130 @@ _Last updated: 2026-02-25 (Factory Dashboard LuCI)_
   - Gossip-based exposure config sync via secubox-p2p
   - Created `luci-app-vortex-dns` dashboard
 
+### Just Completed (2026-02-28)
+
+- **Yggdrasil Extended Peer Discovery** — DONE (2026-02-28)
+  - Created `secubox-app-yggdrasil-discovery` package for mesh peer discovery
+  - **yggctl CLI** with commands: status, self, peers, announce, discover, bootstrap
+  - Gossip protocol integration via mirrornet `yggdrasil_peer` message type
+  - Auto-peering with trust verification (master-link fingerprint)
+  - Daemon for periodic announcements (configurable interval)
+  - UCI config: enabled, auto_announce, announce_interval, auto_peer, require_trust, min_trust_score
+  - Bootstrap peers list for initial network connectivity
+  - Tested on C3BOX: yggctl showing correct IPv6 and peer stats
+  - Files: Makefile, init script, UCI config, core.sh, daemon.sh, gossip-handler.sh, yggctl CLI
+  - Completes v1.1+ Extended Mesh roadmap (all 3 items done)
+
+- **tdahbdss Routing Fix** — DONE (2026-02-28)
+  - AdGuard Home hijacked port 8989 (MetaBlogizer's port)
+  - Changed AdGuard config from port 8989 to 3000
+  - MetaBlogizer routes restored
+
+- **Tor Shield opkg Bug Fix** — DONE (2026-02-28)
+  - Root cause: DNS queries for package repos went through Tor DNS (slow/unreliable)
+  - Fix: Added dnsmasq bypass for excluded domains
+  - `setup_dnsmasq_bypass()` generates `/tmp/dnsmasq.d/tor-shield-bypass.conf`
+  - Excluded domains resolve directly via upstream DNS, bypassing Tor
+  - Default exclusions: openwrt.org, pool.ntp.org, letsencrypt.org, DNS provider APIs
+  - `cleanup_dnsmasq_bypass()` removes config on Tor Shield stop
+
+- **HAProxy Portal 503 Fix** — DONE (2026-02-28)
+  - Root cause: Vhost for 192.168.255.1 had malformed backend: `backend='--backend'`
+  - Container exit: `unable to find required use_backend: '--backend'`
+  - Fix: Corrected UCI to `backend='luci_default'`, disabled ACME, regenerated config
+  - Portal now returns 200 and redirects to LuCI
+
+- **AI Gateway (Sovereignty Engine)** — DONE (2026-02-28)
+  - Created `secubox-ai-gateway` package for ANSSI CSPN compliance
+  - **Data Classifier** with 3 tiers: LOCAL_ONLY, SANITIZED, CLOUD_DIRECT
+  - **Provider hierarchy**: LocalAI > Mistral (EU) > Claude > GPT > Gemini > xAI
+  - **PII Sanitizer**: IPv4/IPv6, MAC, credentials, private keys scrubbing
+  - **OpenAI-compatible proxy** on port 4050
+  - **aigatewayctl CLI**: status, classify, sanitize, provider, audit, offline-mode
+  - **RPCD backend**: 11 ubus methods for LuCI integration
+  - **Audit logging**: JSONL format for compliance review
+  - Files: Makefile, UCI config, init.d, classifier.sh, sanitizer.sh, providers.sh, proxy.sh, audit.sh, 6 provider adapters
+  - **Deployed and tested** on C3BOX:
+    - Classification working: IPs → LOCAL_ONLY, generic → CLOUD_DIRECT
+    - Sanitization working: IPv4, MAC, credentials correctly redacted
+    - Proxy running on port 4050 via socat
+    - API endpoints responding: /health, /v1/models
+  - **Integrated** with MCP server and threat-analyst:
+    - Both route through AI Gateway (preferred) with LocalAI fallback
+    - Ensures threat data (IPs, MACs, logs) stays LOCAL_ONLY
+
+- **Nextcloud Users List Fix** — DONE (2026-02-28)
+  - RPC `expect: { users: [] }` extracted array, render expected object
+  - Fixed to `expect: {}` for full response
+
+### Just Completed (2026-02-27)
+
+- **OpenClaw AI Assistant LuCI Package** — DONE (2026-02-27)
+  - Created `luci-app-openclaw` with 3 views: Chat, Settings, Integrations
+  - RPCD backend with 9 ubus methods
+  - Multi-provider support: Claude, GPT, Ollama
+  - Chat interface with markdown rendering and history
+  - Integrations: Telegram, Discord, Slack, Email, Calendar
+
+### Just Completed (2026-02-26)
+
+- **Yggdrasil IPv6 Overlay Network** — DONE (2026-02-26)
+  - Deployed Yggdrasil on both master (aarch64) and clone (x86_64)
+  - Connected to 2 public peers (51.15.204.214, ygg.mkg20001.io)
+  - LAN multicast discovery: clone auto-peered with master via br-lan (1.73ms RTT)
+  - Bidirectional ping6 working:
+    - Master → Clone: ~6.2ms avg
+    - Clone → Master: ~2.2ms avg
+  - SSH over Yggdrasil working bidirectionally
+  - Fixed firewall zones: added `device="ygg0"` to nftables zones on both nodes
+  - IPv6 addresses:
+    - Master: `201:e4d4:9d55:9a02:7427:7081:9cf9:9e46`
+    - Clone: `201:a9d8:5a5:e493:bd0b:2c2f:5e85:34fe`
+
+- **ZKP Cross-Node Verification Testing** — DONE (2026-02-26)
+  - Full bidirectional ZKP authentication tested between master (aarch64) and clone (x86_64)
+  - Generated 50-node Hamiltonian graphs on both nodes
+  - Master → Clone: ACCEPT (clone verified master's proof)
+  - Clone → Master: ACCEPT (master verified clone's proof)
+  - Deployed x86_64 ZKP binaries (zkp_keygen, zkp_prover, zkp_verifier) to clone
+  - Proof sizes: ~40-80KB, verification time: <1 second
+  - Nodes can now cryptographically authenticate identity without sharing secrets
+
+- **Mesh Blockchain Bidirectional Sync Testing** — DONE (2026-02-26)
+  - Tested chain.json sync between master (192.168.255.1) and clone (192.168.255.156)
+  - Master → Clone: 112 blocks synced successfully
+  - Clone added block 113 (type: "clone_test", node: "clone1")
+  - Clone → Master: Block 113 merged back to master
+  - Both nodes at identical chain height with matching hash
+  - Validates threat intel propagation works bidirectionally
+
+- **P2P Threat Intelligence Sharing** — DONE (2026-02-26)
+  - Real CrowdSec/WAF threat IOCs propagate between mesh nodes
+  - Master threat (198.51.100.1) → synced to clone ✓
+  - Clone threat (203.0.113.99) → synced to master ✓
+  - 100+ real threat_ioc blocks shared (waf_bypass, jenkins_rce, sql_injection)
+  - Automatic sync every 5 minutes via SSH-based cron job
+  - Deployed p2p-mesh.sh to clone for block generation
+
+- **Nextcloud nginx Static File Fix** — DONE (2026-02-26)
+  - Talk app CSS/JS blocked with "incorrect MIME type (text/html)"
+  - Root cause: `/apps/` location block with `^~` modifier catching static files
+  - Fix: Removed problematic location block, static files now served correctly
+  - Talk video calls now functional
+
+- **Mail Server Webmail Detection Fix** — DONE (2026-02-26)
+  - Webmail status showed "Stopped" despite Roundcube LXC running
+  - Root cause: RPCD only checked Docker, not LXC containers
+  - Fix: Added `webmail.type` UCI check, use `lxc-info` for LXC
+
 ### Just Completed (2026-02-25)
+
+- **MetaBlogizer HAProxy Stability** — DONE (2026-02-25)
+  - Fixed random 404 errors caused by multiple HAProxy instances
+  - Root cause: Both host and container HAProxy were listening on ports 80/443
+  - Fix: Disabled host HAProxy service, container HAProxy is now sole handler
+  - Added auto-republish on upload for emancipated sites
+  - All sites (rfg, form, facb, plainte) now consistently return HTTP 200
 
 - **Factory Dashboard LuCI** — DONE (2026-02-25)
   - Added Factory tab to Cloning Station (`luci-app-cloner/overview.js`)
@@ -1021,9 +1144,23 @@ Implementing 3 evolutions inspired by SysWarden patterns:
 
 ### Next Up — Couche 1
 
-1. **Multi-Node Mesh Testing**
-   - Deploy second SecuBox node to test real peer-to-peer sync
-   - Validate bidirectional threat intelligence sharing
+**v1.1+ Extended Mesh — COMPLETE (2026-02-28)**
+
+1. ~~**Multi-Node Mesh Testing**~~ — DONE (2026-02-26)
+   - ZKP, blockchain sync, and threat intel propagation all validated
+
+2. ~~**Yggdrasil Extended Peer Discovery**~~ — DONE (2026-02-28)
+   - `secubox-app-yggdrasil-discovery` + `yggctl` CLI
+   - Gossip-based peer announcements, trust-verified auto-peering
+
+3. **WAF Auto-Ban Tuning** (optional, as-needed)
+   - Sensitivity threshold adjustment based on production traffic
+
+**Backlog / Deferred:**
+- ~~Tor Shield / opkg bug~~ — FIXED (2026-02-28) - dnsmasq bypass for excluded domains
+- Nextcloud self-hosted cloud storage (v2)
+- SSMTP / mail host / MX record management (v2)
+- Reverse MWAN WireGuard peers (v2)
 
 ---
 
@@ -1214,7 +1351,7 @@ Required components:
 
 ## Known Bugs (Deferred)
 
-- **Tor Shield / opkg conflict**: opkg downloads fail (`wget returned 4`) when Tor Shield is active. Likely DNS/routing interference.
+- ~~**Tor Shield / opkg conflict**~~: FIXED (2026-02-28) - Added dnsmasq bypass for excluded domains
 
 ---
 
