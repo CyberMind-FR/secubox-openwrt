@@ -3910,3 +3910,25 @@ git checkout HEAD -- index.html
     - **RPCD Methods:** status, list, announce, revoke, resolve, sync, get_config, set_config
     - **LuCI Dashboard:** Status card, local services table, remote domains table, resolve test
     - **Integration:** Added `meshname_announce` handler to mirrornet gossip.sh
+
+53. **Matrix/Element Self-Hosted Chat (2026-02-28)**
+    - **Feature:** E2E encrypted federated chat via Conduit Matrix homeserver + Element Web client
+    - **Infrastructure:**
+      - Matrix homeserver: Conduit (Rust, lightweight) in LXC container
+      - Matrix API: `https://matrix.gk2.secubox.in` (port 8008 internal)
+      - Element Web: `https://chat.gk2.secubox.in` (uhttpd on port 8088)
+    - **Configuration:**
+      - Conduit config at `/etc/conduit/conduit.toml` inside `matrix` LXC
+      - Element config at `/srv/matrix/element/config.json` (brand: "SecuBox Chat")
+      - UCI config: `/etc/config/matrix` with server, federation, mesh settings
+    - **HAProxy Integration:**
+      - Both domains routed through mitmproxy WAF inspector
+      - SSL certificates via ACME (Let's Encrypt production)
+      - Routes added to central secubox-route registry
+    - **uhttpd Instance:**
+      - Dedicated `element` instance serving `/srv/matrix/element/`
+      - Listen on `192.168.255.1:8088`
+    - **Features:**
+      - Federation enabled with trusted servers (matrix.org)
+      - Registration via token: `n5MCOgUH9bmfM7I5uCWfA`
+      - E2E cross-signing supported
