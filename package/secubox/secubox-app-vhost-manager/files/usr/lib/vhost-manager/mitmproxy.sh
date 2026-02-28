@@ -1,5 +1,6 @@
 #!/bin/sh
 # SecuBox VHost Manager - Mitmproxy WAF Adapter
+# Uses centralized secubox-route registry when available
 
 ROUTES_FILE="/srv/mitmproxy/haproxy-routes.json"
 
@@ -8,10 +9,17 @@ mitmproxy_add_route() {
 	local domain="$1"
 	local host="$2"
 	local port="$3"
+	local source="${4:-vhost-manager}"
 
+	# Prefer centralized route registry
+	if command -v secubox-route >/dev/null 2>&1; then
+		secubox-route add "$domain" "$host" "$port" "$source" 2>/dev/null
+		return $?
+	fi
+
+	# Fallback: Direct file manipulation
 	[ ! -f "$ROUTES_FILE" ] && echo '{}' > "$ROUTES_FILE"
 
-	# Use jsonfilter to update (or fallback to sed)
 	local temp_file="/tmp/routes_update_$$.json"
 
 	if command -v jq >/dev/null 2>&1; then
@@ -19,13 +27,10 @@ mitmproxy_add_route() {
 			'.[$d] = [$h, $p]' "$ROUTES_FILE" > "$temp_file" && \
 			mv "$temp_file" "$ROUTES_FILE"
 	else
-		# Manual JSON update (basic)
 		local current=$(cat "$ROUTES_FILE")
 		if echo "$current" | grep -q "\"$domain\""; then
-			# Update existing
 			sed -i "s|\"$domain\": \\[[^]]*\\]|\"$domain\": [\"$host\", $port]|" "$ROUTES_FILE"
 		else
-			# Add new entry
 			if [ "$current" = "{}" ]; then
 				echo "{\"$domain\": [\"$host\", $port]}" > "$ROUTES_FILE"
 			else
@@ -41,6 +46,13 @@ mitmproxy_add_route() {
 mitmproxy_remove_route() {
 	local domain="$1"
 
+	# Prefer centralized route registry
+	if command -v secubox-route >/dev/null 2>&1; then
+		secubox-route remove "$domain" 2>/dev/null
+		return $?
+	fi
+
+	# Fallback: Direct file manipulation
 	[ ! -f "$ROUTES_FILE" ] && return 0
 
 	if command -v jq >/dev/null 2>&1; then
@@ -48,7 +60,6 @@ mitmproxy_remove_route() {
 		jq --arg d "$domain" 'del(.[$d])' "$ROUTES_FILE" > "$temp_file" && \
 			mv "$temp_file" "$ROUTES_FILE"
 	else
-		# Basic removal (may leave trailing commas)
 		sed -i "/\"$domain\":/d" "$ROUTES_FILE"
 	fi
 
@@ -57,6 +68,12 @@ mitmproxy_remove_route() {
 
 # Sync all routes from vhosts config
 mitmproxy_sync_routes() {
+	# Prefer centralized route registry
+	if command -v secubox-route >/dev/null 2>&1; then
+		secubox-route sync 2>/dev/null
+		return $?
+	fi
+
 	if command -v mitmproxyctl >/dev/null 2>&1; then
 		mitmproxyctl sync-routes 2>/dev/null
 		return $?

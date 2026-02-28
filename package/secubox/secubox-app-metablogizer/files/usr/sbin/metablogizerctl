@@ -864,36 +864,44 @@ _emancipate_haproxy() {
 _emancipate_mitmproxy() {
 	local name="$1"
 	local domain="$2"
+	local port=$(uci_get site_${name}.port)
 
-	log_info "[WAF] Syncing mitmproxy routes from HAProxy config"
+	log_info "[WAF] Registering route in centralized registry"
 
-	# Use mitmproxyctl to sync routes from HAProxy UCI config
-	# This ensures all routes are in sync and mitmproxy will auto-reload
+	# Use centralized secubox-route for route management (preferred)
+	if command -v secubox-route >/dev/null 2>&1; then
+		secubox-route add "$domain" "127.0.0.1" "$port" "metablogizer" 2>&1 | while read -r line; do
+			log_info "[WAF] $line"
+		done
+		log_info "[WAF] Route registered in central registry"
+		return 0
+	fi
+
+	# Fallback: Use mitmproxyctl sync-routes
 	if command -v mitmproxyctl >/dev/null 2>&1; then
+		log_warn "[WAF] secubox-route not found, using mitmproxyctl"
 		mitmproxyctl sync-routes 2>&1 | while read -r line; do
 			log_info "[WAF] $line"
 		done
-		log_info "[WAF] Routes synced - mitmproxy will auto-reload on next request"
-	else
-		log_warn "[WAF] mitmproxyctl not found, manually adding route"
-		# Fallback: directly add route to the routes file
-		local port=$(uci_get site_${name}.port)
-		local routes_file="/srv/mitmproxy-in/haproxy-routes.json"
+		return 0
+	fi
 
-		if [ -f "$routes_file" ]; then
-			python3 -c "
+	# Last resort: Direct file manipulation
+	log_warn "[WAF] No route manager found, directly adding route"
+	local routes_file="/srv/mitmproxy-in/haproxy-routes.json"
+	if [ -f "$routes_file" ]; then
+		python3 -c "
 import json
 try:
     with open('$routes_file') as f:
         data = json.load(f)
-    data['$domain'] = ['192.168.255.1', $port]
+    data['$domain'] = ['127.0.0.1', $port]
     with open('$routes_file', 'w') as f:
         json.dump(data, f, indent=2)
-    print('[WAF] Route added: $domain -> 192.168.255.1:$port')
+    print('[WAF] Route added: $domain -> 127.0.0.1:$port')
 except Exception as e:
     print(f'[WAF] Error: {e}')
 " 2>/dev/null
-		fi
 	fi
 }
 

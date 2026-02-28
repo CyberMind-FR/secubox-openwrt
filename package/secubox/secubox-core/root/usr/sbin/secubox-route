@@ -1,0 +1,537 @@
+#!/bin/sh
+#
+# SecuBox Centralized Route Manager
+# Single source of truth for mitmproxy WAF routing
+#
+# All services (metablogizer, streamlit, haproxy) register routes here.
+# Routes are synced to mitmproxy instances on change.
+#
+
+. /lib/functions.sh
+
+UCI_CONFIG="secubox-routes"
+ROUTES_FILE="/srv/mitmproxy/haproxy-routes.json"
+LOG_TAG="secubox-route"
+
+# =============================================================================
+# LOGGING
+# =============================================================================
+
+log_info() { logger -t "$LOG_TAG" -p daemon.info "$*"; echo "[INFO] $*" >&2; }
+log_warn() { logger -t "$LOG_TAG" -p daemon.warn "$*"; echo "[WARN] $*" >&2; }
+log_error() { logger -t "$LOG_TAG" -p daemon.err "$*"; echo "[ERROR] $*" >&2; }
+
+# =============================================================================
+# HELPERS
+# =============================================================================
+
+# Generate unique section name from domain
+domain_to_section() {
+	echo "$1" | tr '.-' '__' | tr '[:upper:]' '[:lower:]'
+}
+
+# Check if route exists
+route_exists() {
+	local domain="$1"
+	local section=$(domain_to_section "$domain")
+	uci -q get "$UCI_CONFIG.$section" >/dev/null 2>&1
+}
+
+# Get routes file path from config
+get_routes_file() {
+	local file=$(uci -q get "$UCI_CONFIG.main.routes_file")
+	echo "${file:-$ROUTES_FILE}"
+}
+
+# =============================================================================
+# ROUTE MANAGEMENT
+# =============================================================================
+
+cmd_add() {
+	local domain="$1"
+	local host="$2"
+	local port="$3"
+	local source="${4:-manual}"
+
+	if [ -z "$domain" ] || [ -z "$host" ] || [ -z "$port" ]; then
+		echo "Usage: secubox-route add <domain> <host> <port> [source]" >&2
+		echo "  source: haproxy, metablogizer, streamlit, peertube, manual (default)" >&2
+		return 1
+	fi
+
+	# Skip wildcard domains
+	case "$domain" in
+		.*)
+			log_warn "Skipping wildcard domain: $domain"
+			return 0
+			;;
+	esac
+
+	local section=$(domain_to_section "$domain")
+
+	# Check if already exists with same values
+	if route_exists "$domain"; then
+		local existing_host=$(uci -q get "$UCI_CONFIG.$section.host")
+		local existing_port=$(uci -q get "$UCI_CONFIG.$section.port")
+		if [ "$existing_host" = "$host" ] && [ "$existing_port" = "$port" ]; then
+			log_info "Route already exists: $domain -> $host:$port"
+			return 0
+		fi
+		log_info "Updating route: $domain -> $host:$port ($source)"
+	else
+		log_info "Adding route: $domain -> $host:$port ($source)"
+	fi
+
+	# Add or update the route
+	uci set "$UCI_CONFIG.$section=route"
+	uci set "$UCI_CONFIG.$section.domain=$domain"
+	uci set "$UCI_CONFIG.$section.host=$host"
+	uci set "$UCI_CONFIG.$section.port=$port"
+	uci set "$UCI_CONFIG.$section.source=$source"
+	uci set "$UCI_CONFIG.$section.enabled=1"
+	uci commit "$UCI_CONFIG"
+
+	# Auto-sync if enabled
+	local auto_sync=$(uci -q get "$UCI_CONFIG.main.auto_sync")
+	if [ "$auto_sync" = "1" ]; then
+		cmd_sync
+	fi
+
+	return 0
+}
+
+cmd_remove() {
+	local domain="$1"
+
+	if [ -z "$domain" ]; then
+		echo "Usage: secubox-route remove <domain>" >&2
+		return 1
+	fi
+
+	local section=$(domain_to_section "$domain")
+
+	if ! route_exists "$domain"; then
+		log_warn "Route not found: $domain"
+		return 1
+	fi
+
+	log_info "Removing route: $domain"
+	uci delete "$UCI_CONFIG.$section"
+	uci commit "$UCI_CONFIG"
+
+	# Auto-sync if enabled
+	local auto_sync=$(uci -q get "$UCI_CONFIG.main.auto_sync")
+	if [ "$auto_sync" = "1" ]; then
+		cmd_sync
+	fi
+
+	return 0
+}
+
+cmd_list() {
+	local format="${1:-table}"
+
+	echo "SecuBox Route Registry:"
+	echo "========================"
+
+	local count=0
+	local routes_file="/tmp/routes_list_$$.tmp"
+
+	# Collect routes into temp file to avoid subshell variable issues
+	uci show "$UCI_CONFIG" 2>/dev/null | grep "=route$" | cut -d'=' -f1 | cut -d'.' -f2 > "$routes_file"
+
+	while read section; do
+		[ -z "$section" ] && continue
+
+		local domain=$(uci -q get "$UCI_CONFIG.$section.domain")
+		local host=$(uci -q get "$UCI_CONFIG.$section.host")
+		local port=$(uci -q get "$UCI_CONFIG.$section.port")
+		local source=$(uci -q get "$UCI_CONFIG.$section.source")
+		local enabled=$(uci -q get "$UCI_CONFIG.$section.enabled")
+
+		[ -z "$domain" ] && continue
+
+		local status="[+]"
+		[ "$enabled" != "1" ] && status="[-]"
+
+		if [ "$format" = "json" ]; then
+			echo "  \"$domain\": [\"$host\", $port],"
+		else
+			printf "%s %-40s -> %s:%-5s (%s)\n" "$status" "$domain" "$host" "$port" "$source"
+		fi
+		count=$((count + 1))
+	done < "$routes_file"
+
+	rm -f "$routes_file"
+
+	echo "========================"
+	echo "Total: $count routes"
+}
+
+cmd_sync() {
+	local routes_file=$(get_routes_file)
+	local tmp_file="/tmp/routes_sync_$$.json"
+	local count=0
+
+	log_info "Syncing routes to $routes_file"
+
+	# Start JSON
+	echo "{" > "$tmp_file"
+
+	local first=1
+	local routes_list="/tmp/routes_sync_list_$$.tmp"
+
+	# Collect enabled routes
+	uci show "$UCI_CONFIG" 2>/dev/null | grep "=route$" | cut -d'=' -f1 | cut -d'.' -f2 > "$routes_list"
+
+	while read section; do
+		[ -z "$section" ] && continue
+
+		local enabled=$(uci -q get "$UCI_CONFIG.$section.enabled")
+		[ "$enabled" != "1" ] && continue
+
+		local domain=$(uci -q get "$UCI_CONFIG.$section.domain")
+		local host=$(uci -q get "$UCI_CONFIG.$section.host")
+		local port=$(uci -q get "$UCI_CONFIG.$section.port")
+
+		[ -z "$domain" ] || [ -z "$host" ] || [ -z "$port" ] && continue
+
+		# Skip LuCI routes (port 8081)
+		if [ "$port" = "8081" ]; then
+			log_warn "Skipping LuCI route: $domain -> $host:8081"
+			continue
+		fi
+
+		if [ $first -eq 1 ]; then
+			printf '  "%s": ["%s", %s]' "$domain" "$host" "$port" >> "$tmp_file"
+			first=0
+		else
+			printf ',\n  "%s": ["%s", %s]' "$domain" "$host" "$port" >> "$tmp_file"
+		fi
+		count=$((count + 1))
+	done < "$routes_list"
+
+	rm -f "$routes_list"
+
+	# Close JSON
+	echo "" >> "$tmp_file"
+	echo "}" >> "$tmp_file"
+
+	# Install to target location
+	mkdir -p "$(dirname "$routes_file")"
+	mv "$tmp_file" "$routes_file"
+	chmod 644 "$routes_file"
+
+	log_info "Generated $routes_file with $count routes"
+
+	# Also sync to mitmproxy-in if it exists
+	local routes_file_in="/srv/mitmproxy-in/haproxy-routes.json"
+	if [ -d "/srv/mitmproxy-in" ]; then
+		cp "$routes_file" "$routes_file_in"
+		log_info "Synced to $routes_file_in"
+	fi
+
+	# Sync to all mitmproxy instances
+	if [ -f /etc/config/mitmproxy ]; then
+		local instances=$(uci show mitmproxy 2>/dev/null | grep '=instance$' | sed 's/mitmproxy\.\([^=]*\)=instance/\1/')
+		for inst in $instances; do
+			local inst_path=$(uci -q get mitmproxy.${inst}.data_path)
+			[ -z "$inst_path" ] && inst_path="/srv/mitmproxy-${inst}"
+			if [ -d "$inst_path" ]; then
+				cp "$routes_file" "$inst_path/haproxy-routes.json"
+				log_info "Synced to $inst_path"
+			fi
+		done
+	fi
+
+	echo "$count routes synced"
+	return 0
+}
+
+cmd_import_haproxy() {
+	log_info "Importing routes from HAProxy backends..."
+
+	local vhosts_file="/tmp/haproxy_import_$$.tmp"
+	local imported=0
+
+	# Get all vhosts using mitmproxy_inspector backend
+	uci show haproxy 2>/dev/null | grep "=vhost" | cut -d'=' -f1 | cut -d'.' -f2 > "$vhosts_file"
+
+	while read vhost; do
+		[ -z "$vhost" ] && continue
+
+		local domain=$(uci -q get haproxy.$vhost.domain)
+		local backend=$(uci -q get haproxy.$vhost.backend)
+		local enabled=$(uci -q get haproxy.$vhost.enabled)
+
+		[ -z "$domain" ] && continue
+		[ "$enabled" != "1" ] && continue
+
+		# Skip wildcards
+		case "$domain" in
+			.*) continue ;;
+		esac
+
+		# Get original backend if routed through mitmproxy
+		if [ "$backend" = "mitmproxy_inspector" ]; then
+			backend=$(uci -q get haproxy.$vhost.original_backend)
+
+			# If no original_backend, try to find backend by domain name pattern
+			if [ -z "$backend" ]; then
+				# Extract subdomain (e.g., "alerte" from "alerte.gk2.secubox.in")
+				local subdomain=$(echo "$domain" | cut -d'.' -f1)
+				# Try common patterns: streamlit_<name>_streamlit, metablog_<name>
+				for pattern in "streamlit_${subdomain}" "streamlit_${subdomain}_streamlit" "metablog_${subdomain}"; do
+					if uci -q get haproxy.$pattern >/dev/null 2>&1; then
+						backend="$pattern"
+						break
+					fi
+				done
+			fi
+		fi
+
+		# Skip special backends
+		case "$backend" in
+			fallback|luci|luci_default|mitmproxy_inspector|"") continue ;;
+		esac
+
+		# Find backend server info
+		local ip="" port=""
+
+		# Method 1: Check inline server field
+		local server=$(uci -q get haproxy.$backend.server)
+		if [ -n "$server" ]; then
+			local addr=$(echo "$server" | awk '{print $2}')
+			ip=$(echo "$addr" | cut -d':' -f1)
+			port=$(echo "$addr" | cut -d':' -f2)
+			[ "$ip" = "$port" ] && port="80"
+		fi
+
+		# Method 2: Check separate server section
+		if [ -z "$ip" ]; then
+			local server_section=$(uci show haproxy 2>/dev/null | grep "\.backend='$backend'" | grep "=server" | head -1 | cut -d'=' -f1 | cut -d'.' -f2)
+			if [ -z "$server_section" ]; then
+				server_section=$(uci show haproxy 2>/dev/null | grep "^haproxy\.${backend}_.*=server" | head -1 | cut -d'=' -f1 | cut -d'.' -f2)
+			fi
+			if [ -n "$server_section" ]; then
+				ip=$(uci -q get haproxy.$server_section.address)
+				port=$(uci -q get haproxy.$server_section.port)
+			fi
+		fi
+
+		if [ -n "$ip" ] && [ -n "$port" ]; then
+			cmd_add "$domain" "$ip" "$port" "haproxy"
+			imported=$((imported + 1))
+		fi
+	done < "$vhosts_file"
+
+	rm -f "$vhosts_file"
+
+	log_info "Imported $imported routes from HAProxy"
+}
+
+cmd_import_metablogizer() {
+	log_info "Importing routes from MetaBlogizer..."
+
+	[ -f /etc/config/metablogizer ] || {
+		log_warn "MetaBlogizer not installed"
+		return 0
+	}
+
+	local sites_file="/tmp/mb_import_$$.tmp"
+	local imported=0
+
+	uci show metablogizer 2>/dev/null | grep "=site$" | cut -d'=' -f1 | cut -d'.' -f2 > "$sites_file"
+
+	while read site; do
+		[ -z "$site" ] && continue
+
+		local domain=$(uci -q get metablogizer.$site.domain)
+		local port=$(uci -q get metablogizer.$site.port)
+		local enabled=$(uci -q get metablogizer.$site.enabled)
+
+		[ "$enabled" != "1" ] && continue
+		[ -z "$domain" ] || [ -z "$port" ] && continue
+
+		cmd_add "$domain" "127.0.0.1" "$port" "metablogizer"
+		imported=$((imported + 1))
+	done < "$sites_file"
+
+	rm -f "$sites_file"
+
+	log_info "Imported $imported routes from MetaBlogizer"
+}
+
+cmd_import_streamlit() {
+	log_info "Importing routes from Streamlit..."
+
+	[ -f /etc/config/streamlit ] || {
+		log_warn "Streamlit not installed"
+		return 0
+	}
+
+	local inst_file="/tmp/st_import_$$.tmp"
+	local imported=0
+
+	uci show streamlit 2>/dev/null | grep "=instance$" | cut -d'=' -f1 | cut -d'.' -f2 > "$inst_file"
+
+	while read inst; do
+		[ -z "$inst" ] && continue
+
+		local port=$(uci -q get streamlit.$inst.port)
+		local enabled=$(uci -q get streamlit.$inst.enabled)
+
+		[ "$enabled" != "1" ] && continue
+		[ -z "$port" ] && continue
+
+		# First check if instance has explicit domain field
+		local domain=$(uci -q get streamlit.$inst.domain)
+
+		# If no explicit domain, try pattern-based matching
+		if [ -z "$domain" ]; then
+			domain="${inst}.gk2.secubox.in"
+		fi
+
+		# Verify domain exists in HAProxy config
+		if uci show haproxy 2>/dev/null | grep -q "domain='$domain'"; then
+			cmd_add "$domain" "192.168.255.1" "$port" "streamlit"
+			imported=$((imported + 1))
+		fi
+	done < "$inst_file"
+
+	rm -f "$inst_file"
+
+	log_info "Imported $imported routes from Streamlit"
+}
+
+cmd_import_all() {
+	log_info "Importing all routes from services..."
+
+	# Disable auto-sync during bulk import
+	local auto_sync=$(uci -q get "$UCI_CONFIG.main.auto_sync")
+	uci set "$UCI_CONFIG.main.auto_sync=0"
+
+	cmd_import_haproxy
+	cmd_import_metablogizer
+	cmd_import_streamlit
+
+	# Restore auto-sync and do final sync
+	uci set "$UCI_CONFIG.main.auto_sync=$auto_sync"
+	uci commit "$UCI_CONFIG"
+
+	cmd_sync
+}
+
+cmd_clear() {
+	local source="${1:-all}"
+
+	if [ "$source" = "all" ]; then
+		log_warn "Clearing ALL routes from registry"
+		# Remove all route sections
+		local routes_file="/tmp/routes_clear_$$.tmp"
+		uci show "$UCI_CONFIG" 2>/dev/null | grep "=route$" | cut -d'=' -f1 | cut -d'.' -f2 > "$routes_file"
+		while read section; do
+			[ -z "$section" ] && continue
+			uci delete "$UCI_CONFIG.$section"
+		done < "$routes_file"
+		rm -f "$routes_file"
+	else
+		log_info "Clearing routes from source: $source"
+		local routes_file="/tmp/routes_clear_$$.tmp"
+		uci show "$UCI_CONFIG" 2>/dev/null | grep "=route$" | cut -d'=' -f1 | cut -d'.' -f2 > "$routes_file"
+		while read section; do
+			[ -z "$section" ] && continue
+			local src=$(uci -q get "$UCI_CONFIG.$section.source")
+			if [ "$src" = "$source" ]; then
+				uci delete "$UCI_CONFIG.$section"
+			fi
+		done < "$routes_file"
+		rm -f "$routes_file"
+	fi
+
+	uci commit "$UCI_CONFIG"
+	cmd_sync
+}
+
+cmd_status() {
+	local routes_file=$(get_routes_file)
+	local enabled=$(uci -q get "$UCI_CONFIG.main.enabled")
+	local auto_sync=$(uci -q get "$UCI_CONFIG.main.auto_sync")
+
+	echo "SecuBox Route Registry Status"
+	echo "=============================="
+	echo "Enabled:     ${enabled:-1}"
+	echo "Auto-sync:   ${auto_sync:-1}"
+	echo "Routes file: $routes_file"
+
+	if [ -f "$routes_file" ]; then
+		local count=$(grep -c '"' "$routes_file" 2>/dev/null || echo 0)
+		count=$((count / 2))  # Each route has 2 quoted strings
+		echo "Routes:      $count"
+		echo "File size:   $(stat -c%s "$routes_file" 2>/dev/null || echo "?") bytes"
+		echo "Modified:    $(stat -c%y "$routes_file" 2>/dev/null | cut -d'.' -f1 || echo "?")"
+	else
+		echo "Routes:      0 (file not found)"
+	fi
+
+	# Count by source
+	echo ""
+	echo "Routes by Source:"
+	for src in haproxy metablogizer streamlit peertube manual; do
+		local count=$(uci show "$UCI_CONFIG" 2>/dev/null | grep "\.source='$src'" | wc -l)
+		[ "$count" -gt 0 ] && echo "  $src: $count"
+	done
+}
+
+usage() {
+	cat <<EOF
+SecuBox Centralized Route Manager
+
+Usage: secubox-route <command> [args]
+
+Commands:
+  add <domain> <host> <port> [source]  Add or update a route
+  remove <domain>                       Remove a route
+  list [json]                          List all routes
+  sync                                 Generate mitmproxy routes file
+  status                               Show registry status
+
+Import Commands (for migration):
+  import-haproxy                       Import from HAProxy backends
+  import-metablogizer                  Import from MetaBlogizer sites
+  import-streamlit                     Import from Streamlit instances
+  import-all                           Import from all services
+
+Maintenance:
+  clear [source]                       Clear routes (all or by source)
+
+Sources: haproxy, metablogizer, streamlit, peertube, manual
+
+Examples:
+  secubox-route add blog.example.com 127.0.0.1 4000 metablogizer
+  secubox-route remove blog.example.com
+  secubox-route list
+  secubox-route import-all
+  secubox-route sync
+  secubox-route clear metablogizer
+EOF
+}
+
+# =============================================================================
+# MAIN
+# =============================================================================
+
+case "$1" in
+	add) shift; cmd_add "$@" ;;
+	remove|rm|del) shift; cmd_remove "$@" ;;
+	list|ls) shift; cmd_list "$@" ;;
+	sync) shift; cmd_sync "$@" ;;
+	status) shift; cmd_status "$@" ;;
+	import-haproxy) shift; cmd_import_haproxy "$@" ;;
+	import-metablogizer) shift; cmd_import_metablogizer "$@" ;;
+	import-streamlit) shift; cmd_import_streamlit "$@" ;;
+	import-all) shift; cmd_import_all "$@" ;;
+	clear) shift; cmd_clear "$@" ;;
+	help|--help|-h|"") usage ;;
+	*) echo "Unknown command: $1" >&2; usage >&2; exit 1 ;;
+esac

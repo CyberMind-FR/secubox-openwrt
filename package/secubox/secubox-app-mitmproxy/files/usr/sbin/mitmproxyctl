@@ -1574,7 +1574,35 @@ check_missing_routes() {
 cmd_sync_routes() {
 	load_config
 
-	log_info "Syncing HAProxy backends to mitmproxy routes..."
+	log_info "Syncing routes to mitmproxy..."
+
+	# Use centralized secubox-route if available (preferred method)
+	if command -v secubox-route >/dev/null 2>&1; then
+		log_info "Using centralized route registry (secubox-route)"
+
+		# Import routes from all sources into central registry
+		secubox-route import-all 2>&1 | while read -r line; do
+			log_info "  $line"
+		done
+
+		local routes_file="$data_path/haproxy-routes.json"
+		log_info "Routes synced to $routes_file"
+
+		# Check for missing routes
+		check_missing_routes "$routes_file"
+		return 0
+	fi
+
+	# Fallback: Legacy direct aggregation (for systems without secubox-route)
+	log_warn "secubox-route not found, using legacy sync method"
+	cmd_sync_routes_legacy
+}
+
+# Legacy sync method - retained for backwards compatibility
+cmd_sync_routes_legacy() {
+	load_config
+
+	log_info "Syncing HAProxy backends to mitmproxy routes (legacy mode)..."
 
 	local routes_file="$data_path/haproxy-routes.json"
 	local fragments_file="/tmp/haproxy-routes-fragments.tmp"

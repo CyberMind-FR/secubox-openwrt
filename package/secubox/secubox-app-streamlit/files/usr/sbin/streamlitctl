@@ -1313,16 +1313,8 @@ _emancipate_haproxy() {
 
 	uci commit haproxy
 
-	# Add mitmproxy route for this domain
-	local routes_file="/srv/mitmproxy/haproxy-routes.json"
-	local routes_file_in="/srv/mitmproxy-in/haproxy-routes.json"
-	if [ -f "$routes_file" ]; then
-		# Add route: "domain": ["192.168.255.1", port]
-		sed -i "s/}$/,\"${domain}\":[\"192.168.255.1\",${port}]}/" "$routes_file" 2>/dev/null || true
-	fi
-	if [ -f "$routes_file_in" ]; then
-		sed -i "s/}$/,\"${domain}\":[\"192.168.255.1\",${port}]}/" "$routes_file_in" 2>/dev/null || true
-	fi
+	# Register route in centralized registry (route sync happens in _emancipate_mitmproxy)
+	# Note: Route registration moved to _emancipate_mitmproxy() for centralized management
 
 	# Generate HAProxy config
 	if command -v haproxyctl >/dev/null 2>&1; then
@@ -1355,19 +1347,34 @@ _emancipate_ssl() {
 }
 
 _emancipate_mitmproxy() {
-	log_info "[MITMPROXY] Syncing routes to mitmproxy WAF"
+	local domain="$1"
+	local port="$2"
 
-	# Sync HAProxy backends to mitmproxy routes
+	log_info "[MITMPROXY] Registering route in centralized registry"
+
+	# Use centralized secubox-route for route management (preferred)
+	if command -v secubox-route >/dev/null 2>&1; then
+		if secubox-route add "$domain" "192.168.255.1" "$port" "streamlit" 2>&1; then
+			log_info "[MITMPROXY] Route registered: $domain -> 192.168.255.1:$port"
+		else
+			log_warn "[MITMPROXY] Failed to register route"
+		fi
+		return 0
+	fi
+
+	# Fallback: Sync via mitmproxyctl
 	if command -v mitmproxyctl >/dev/null 2>&1; then
+		log_warn "[MITMPROXY] secubox-route not found, using mitmproxyctl"
 		if mitmproxyctl sync-routes >/dev/null 2>&1; then
 			log_info "[MITMPROXY] Routes synced successfully"
 		else
 			log_warn "[MITMPROXY] Route sync failed - manual sync may be required"
 			log_warn "[MITMPROXY] Run: mitmproxyctl sync-routes"
 		fi
-	else
-		log_warn "[MITMPROXY] mitmproxyctl not found - routes not synced"
+		return 0
 	fi
+
+	log_warn "[MITMPROXY] No route manager found - routes not synced"
 }
 
 _emancipate_reload() {
@@ -1586,8 +1593,8 @@ cmd_emancipate() {
 	# Step 6: Mesh P2P distribution to peers
 	_emancipate_mesh "$name" "$domain" "$port"
 
-	# Step 7: Sync mitmproxy routes (WAF routing)
-	_emancipate_mitmproxy
+	# Step 7: Register mitmproxy route (WAF routing)
+	_emancipate_mitmproxy "$domain" "$port"
 
 	# Step 8: Reload HAProxy
 	_emancipate_reload
