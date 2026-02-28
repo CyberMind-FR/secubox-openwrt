@@ -17,6 +17,7 @@ ROUTES_FILE = "/data/haproxy-routes.json"
 
 # 404 page HTML - shown when no route is found
 # NEVER fallback to LuCI - return proper 404 instead
+# Note: CSS curly braces must be doubled for Python .format() compatibility
 NOT_FOUND_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -24,8 +25,8 @@ NOT_FOUND_HTML = """<!DOCTYPE html>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WAF Says NO - SecuBox</title>
     <style>
-        * { box-sizing: border-box; }
-        body {
+        * {{ box-sizing: border-box; }}
+        body {{
             font-family: 'Courier New', monospace;
             background: linear-gradient(135deg, #0a0a0a 0%, #1a0a1a 50%, #0a1a0a 100%);
             color: #0f0;
@@ -35,8 +36,8 @@ NOT_FOUND_HTML = """<!DOCTYPE html>
             min-height: 100vh;
             margin: 0;
             overflow: hidden;
-        }
-        .matrix-bg {
+        }}
+        .matrix-bg {{
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
             background: repeating-linear-gradient(
@@ -48,41 +49,41 @@ NOT_FOUND_HTML = """<!DOCTYPE html>
             );
             pointer-events: none;
             animation: scan 8s linear infinite;
-        }
-        @keyframes scan { from { background-position: 0 0; } to { background-position: 0 100vh; } }
-        .container {
+        }}
+        @keyframes scan {{ from {{ background-position: 0 0; }} to {{ background-position: 0 100vh; }} }}
+        .container {{
             text-align: center;
             padding: 2rem;
             max-width: 700px;
             position: relative;
             z-index: 10;
-        }
-        .skull {
+        }}
+        .skull {{
             font-size: 5rem;
             animation: pulse 2s ease-in-out infinite;
             text-shadow: 0 0 20px #f00, 0 0 40px #f00;
-        }
-        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
-        h1 {
+        }}
+        @keyframes pulse {{ 0%, 100% {{ transform: scale(1); }} 50% {{ transform: scale(1.1); }} }}
+        h1 {{
             font-size: 3rem;
             margin: 0.5rem 0;
             color: #f00;
             text-shadow: 0 0 10px #f00, 0 0 20px #800;
             animation: glitch 0.5s infinite;
-        }
-        @keyframes glitch {
-            0%, 90%, 100% { transform: translateX(0); }
-            92% { transform: translateX(-2px); }
-            94% { transform: translateX(2px); }
-            96% { transform: translateX(-1px); }
-            98% { transform: translateX(1px); }
-        }
-        h2 {
+        }}
+        @keyframes glitch {{
+            0%, 90%, 100% {{ transform: translateX(0); }}
+            92% {{ transform: translateX(-2px); }}
+            94% {{ transform: translateX(2px); }}
+            96% {{ transform: translateX(-1px); }}
+            98% {{ transform: translateX(1px); }}
+        }}
+        h2 {{
             font-size: 1.2rem;
             color: #0f0;
             margin: 1rem 0;
-        }
-        .domain {
+        }}
+        .domain {{
             background: rgba(0, 255, 0, 0.1);
             border: 1px solid #0f0;
             padding: 0.8rem 1.5rem;
@@ -92,42 +93,42 @@ NOT_FOUND_HTML = """<!DOCTYPE html>
             display: inline-block;
             margin: 1rem 0;
             color: #ff0;
-        }
-        .waf-layers {
+        }}
+        .waf-layers {{
             display: flex;
             justify-content: center;
             gap: 1rem;
             margin: 1.5rem 0;
             flex-wrap: wrap;
-        }
-        .layer {
+        }}
+        .layer {{
             background: rgba(255, 0, 0, 0.2);
             border: 1px solid #f00;
             padding: 0.5rem 1rem;
             border-radius: 20px;
             font-size: 0.8rem;
             color: #f88;
-        }
-        .message {
+        }}
+        .message {{
             color: #888;
             line-height: 1.8;
             margin: 1rem 0;
-        }
-        .quote {
+        }}
+        .quote {{
             font-style: italic;
             color: #0f0;
             margin: 1.5rem 0;
             padding: 1rem;
             border-left: 3px solid #0f0;
             text-align: left;
-        }
-        .footer {
+        }}
+        .footer {{
             margin-top: 2rem;
             font-size: 0.8rem;
             color: #444;
-        }
-        a { color: #0f0; text-decoration: none; }
-        a:hover { text-decoration: underline; color: #0ff; }
+        }}
+        a {{ color: #0f0; text-decoration: none; }}
+        a:hover {{ text-decoration: underline; color: #0ff; }}
     </style>
 </head>
 <body>

@@ -75,7 +75,7 @@ EOF
 
 require_root() { [ "$(id -u)" -eq 0 ] || { echo "Root required" >&2; exit 1; }; }
 
-log_info() { echo "[INFO] $*"; }
+log_info() { echo "[INFO] $*" >&2; }
 log_warn() { echo "[WARN] $*" >&2; }
 log_error() { echo "[ERROR] $*" >&2; }
 
@@ -1593,6 +1593,15 @@ cmd_sync_routes() {
 
 		local domain=$(uci -q get haproxy.$vhost.domain)
 		local backend=$(uci -q get haproxy.$vhost.backend)
+
+		# Skip wildcard domains (starting with '.') - they should fall through
+		# to the "WAF SAYS NO" 404 page for unknown subdomains, not route to a fallback
+		case "$domain" in
+			.*)
+				log_info "  Skipping wildcard domain: $domain (no route = 404 error page)"
+				continue
+				;;
+		esac
 
 		# If currently using mitmproxy_inspector, use the stored original backend
 		if [ "$backend" = "mitmproxy_inspector" ]; then
