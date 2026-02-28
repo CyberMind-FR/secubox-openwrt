@@ -195,7 +195,7 @@ All cloud providers are **opt-in**. Offline resilience: local tier always active
 ### v1.1+ — Extended Mesh
 
 - [x] Yggdrasil overlay — Done 2026-02-26 (bidirectional IPv6, SSH, LAN multicast discovery)
-- [ ] Meshname DNS
+- [x] Meshname DNS — Done 2026-02-28 (decentralized .ygg resolution via gossip + dnsmasq)
 - [ ] Extended peer discovery
 
 ### Certifications Ciblees

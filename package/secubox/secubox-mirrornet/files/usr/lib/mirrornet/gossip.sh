@@ -278,6 +278,15 @@ gossip_receive() {
             # Reputation score update
             logger -t mirrornet "Gossip: reputation update from $origin"
             ;;
+        meshname_announce)
+            # Meshname DNS announcement (.ygg domains)
+            if [ -f /usr/lib/meshname-dns/gossip-handler.sh ]; then
+                local meshname_data
+                meshname_data=$(echo "$message" | jsonfilter -e '@.data')
+                /usr/lib/meshname-dns/gossip-handler.sh handle "$meshname_data" "$origin"
+                logger -t mirrornet "Gossip: meshname announce from $origin"
+            fi
+            ;;
         *)
             logger -t mirrornet "Gossip: unknown type '$type' from $origin"
             ;;

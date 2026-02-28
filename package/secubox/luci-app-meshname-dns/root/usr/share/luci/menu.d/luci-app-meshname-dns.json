@@ -1,0 +1,14 @@
+{
+	"admin/services/meshname": {
+		"title": "Meshname DNS",
+		"order": 85,
+		"action": {
+			"type": "view",
+			"path": "meshname/overview"
+		},
+		"depends": {
+			"acl": ["luci-app-meshname-dns"],
+			"uci": { "meshname-dns": true }
+		}
+	}
+}

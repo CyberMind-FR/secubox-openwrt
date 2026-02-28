@@ -3864,3 +3864,23 @@ git checkout HEAD -- index.html
     - **Verified Working:**
       - `.env` probes correctly detected as `path_scan` / `config_hunting`
       - Autoban config properly loaded: `sensitivity=strict`, `min_severity=medium`
+
+51. **Meshname DNS - Decentralized .ygg Domain Resolution (2026-02-28)**
+    - **Feature:** Decentralized DNS for Yggdrasil mesh networks
+    - **New Packages:**
+      - `secubox-app-meshname-dns`: Core service with `meshnamectl` CLI
+      - `luci-app-meshname-dns`: LuCI dashboard for service management
+    - **Architecture:**
+      - Services announce `.ygg` domains via existing gossip protocol (`meshname_announce` type)
+      - dnsmasq integration via `/tmp/hosts/meshname` dynamic hosts file
+      - Cross-node resolution: master announces → clone can resolve via gossip
+    - **CLI Commands:**
+      - `meshnamectl announce <name> [port]` - Announce service as <name>.ygg
+      - `meshnamectl revoke <name>` - Stop announcing service
+      - `meshnamectl resolve <domain>.ygg` - Resolve domain to IPv6
+      - `meshnamectl list` - List known .ygg domains
+      - `meshnamectl sync` - Force sync with mesh peers
+      - `meshnamectl status` - Show meshname DNS status
+    - **RPCD Methods:** status, list, announce, revoke, resolve, sync, get_config, set_config
+    - **LuCI Dashboard:** Status card, local services table, remote domains table, resolve test
+    - **Integration:** Added `meshname_announce` handler to mirrornet gossip.sh

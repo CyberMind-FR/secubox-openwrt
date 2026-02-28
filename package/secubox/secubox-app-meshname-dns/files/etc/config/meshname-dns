@@ -1,0 +1,13 @@
+config meshname 'main'
+	option enabled '1'
+	option auto_announce '1'
+	option sync_interval '60'
+	option hosts_file '/tmp/hosts/meshname'
+
+config resolver 'resolver'
+	option enabled '1'
+	option cache_ttl '300'
+
+config gossip 'gossip'
+	option enabled '1'
+	option announce_priority '50'
