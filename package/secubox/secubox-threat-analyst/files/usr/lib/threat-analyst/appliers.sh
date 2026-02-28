@@ -207,9 +207,9 @@ apply_all_pending() {
 chat_query() {
 	local query="$1"
 
-	# Check LocalAI
-	if ! wget -q -O /dev/null --timeout=3 "${localai_url}/v1/models" 2>/dev/null; then
-		echo '{"error":"LocalAI not available"}'
+	# Check AI availability (ai_url set by load_config: Gateway or LocalAI)
+	if ! wget -q -O /dev/null --timeout=3 "${ai_url}/models" 2>/dev/null; then
+		echo '{"error":"AI not available"}'
 		return 1
 	fi
 
@@ -232,7 +232,7 @@ EOF
 
 	local response=$(echo "$request" | wget -q -O - --post-data=- \
 		--header="Content-Type: application/json" \
-		"${localai_url}/v1/chat/completions" 2>/dev/null)
+		"${ai_url}/chat/completions" 2>/dev/null)
 
 	if [ -n "$response" ]; then
 		local content=$(echo "$response" | jsonfilter -e '@.choices[0].message.content' 2>/dev/null)

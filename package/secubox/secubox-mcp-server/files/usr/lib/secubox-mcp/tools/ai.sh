@@ -1,18 +1,37 @@
 # SecuBox MCP Tool: AI-Powered Security Analysis
-# Uses LocalAI for threat analysis, CVE lookups, and filter suggestions
+# Routes through AI Gateway for data classification and sovereignty compliance
 
+# AI Gateway endpoint (handles classification, sanitization, provider routing)
+AI_GATEWAY_API="http://127.0.0.1:4050/v1"
+
+# Fallback to direct LocalAI if gateway unavailable
 LOCALAI_API="http://127.0.0.1:8081/v1"
 LOCALAI_MODEL="tinyllama-1.1b-chat-v1.0.Q4_K_M"
 
-# Check if LocalAI is available
+# Check if AI Gateway is available (preferred)
+ai_gateway_available() {
+	wget -q -O /dev/null --timeout=2 "http://127.0.0.1:4050/health" 2>/dev/null
+}
+
+# Check if LocalAI is available (fallback)
 localai_available() {
 	wget -q -O /dev/null --timeout=2 "${LOCALAI_API}/models" 2>/dev/null
 }
 
-# Call LocalAI for completion
-localai_complete() {
+# Call AI via Gateway (handles classification/sanitization) or direct LocalAI
+ai_complete() {
 	local prompt="$1"
 	local max_tokens="${2:-512}"
+
+	# Determine API endpoint (Gateway preferred, LocalAI fallback)
+	local api_endpoint="$AI_GATEWAY_API"
+	if ! ai_gateway_available; then
+		if localai_available; then
+			api_endpoint="$LOCALAI_API"
+		else
+			return 1
+		fi
+	fi
 
 	local request=$(cat <<EOF
 {"model":"$LOCALAI_MODEL","messages":[{"role":"system","content":"You are a cybersecurity analyst for SecuBox, an OpenWrt-based security appliance. Provide concise, actionable security analysis."},{"role":"user","content":"$prompt"}],"max_tokens":$max_tokens,"temperature":0.3}
@@ -21,11 +40,16 @@ EOF
 
 	local response=$(echo "$request" | wget -q -O - --post-data=- \
 		--header="Content-Type: application/json" \
-		"${LOCALAI_API}/chat/completions" 2>/dev/null)
+		"${api_endpoint}/chat/completions" 2>/dev/null)
 
 	if [ -n "$response" ]; then
 		echo "$response" | jsonfilter -e '@.choices[0].message.content' 2>/dev/null
 	fi
+}
+
+# Backwards compatibility alias
+localai_complete() {
+	ai_complete "$@"
 }
 
 # =============================================================================

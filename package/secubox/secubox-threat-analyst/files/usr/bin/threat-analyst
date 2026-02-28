@@ -48,6 +48,7 @@ uci_get() { uci -q get "${CONFIG}.$1"; }
 load_config() {
 	enabled=$(uci_get main.enabled)
 	interval=$(uci_get main.interval)
+	ai_gateway_url=$(uci_get main.ai_gateway_url)
 	localai_url=$(uci_get main.localai_url)
 	localai_model=$(uci_get main.localai_model)
 	auto_apply_mitmproxy=$(uci_get main.auto_apply_mitmproxy)
@@ -60,6 +61,16 @@ load_config() {
 	[ -z "$interval" ] && interval=300
 	[ -z "$min_confidence" ] && min_confidence=70
 	[ -z "$max_rules" ] && max_rules=5
+	[ -z "$ai_gateway_url" ] && ai_gateway_url="http://127.0.0.1:4050"
+
+	# Select AI endpoint (prefer Gateway, fallback to LocalAI)
+	if wget -q -O /dev/null --timeout=2 "${ai_gateway_url}/health" 2>/dev/null; then
+		ai_url="${ai_gateway_url}/v1"
+		ai_provider="gateway"
+	else
+		ai_url="${localai_url}/v1"
+		ai_provider="localai"
+	fi
 
 	mkdir -p "$STATE_DIR"
 }
@@ -74,16 +85,27 @@ cmd_status() {
 	echo ""
 	echo "Enabled: $([ "$enabled" = "1" ] && echo "Yes" || echo "No")"
 	echo "Interval: ${interval}s"
-	echo "LocalAI: $localai_url"
 	echo "Model: $localai_model"
 	echo ""
 
-	# Check LocalAI availability
+	# Check AI Gateway availability (preferred)
+	echo "AI Gateway: $ai_gateway_url"
+	if wget -q -O /dev/null --timeout=2 "${ai_gateway_url}/health" 2>/dev/null; then
+		echo "Gateway Status: ONLINE"
+	else
+		echo "Gateway Status: OFFLINE"
+	fi
+
+	# Check LocalAI availability (fallback)
+	echo "LocalAI: $localai_url"
 	if wget -q -O /dev/null --timeout=2 "${localai_url}/v1/models" 2>/dev/null; then
 		echo "LocalAI Status: ONLINE"
 	else
 		echo "LocalAI Status: OFFLINE"
 	fi
+
+	echo ""
+	echo "Active AI: $ai_provider ($ai_url)"
 
 	echo ""
 	echo "Auto-apply:"

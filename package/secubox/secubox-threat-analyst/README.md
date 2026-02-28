@@ -59,6 +59,10 @@ UCI config: `/etc/config/threat-analyst`
 config threat-analyst 'main'
     option enabled '1'
     option interval '300'           # Analysis interval (seconds)
+
+    # AI Gateway (preferred) - handles data classification & sovereignty
+    option ai_gateway_url 'http://127.0.0.1:4050'
+    # LocalAI (fallback) - direct connection if gateway unavailable
     option localai_url 'http://127.0.0.1:8081'
     option localai_model 'tinyllama-1.1b-chat-v1.0.Q4_K_M'
 
@@ -70,6 +74,15 @@ config threat-analyst 'main'
     option min_confidence '70'      # Min AI confidence for rules
     option max_rules_per_cycle '5'  # Max rules per cycle
 ```
+
+## AI Gateway Integration
+
+Threat Analyst routes AI requests through the AI Gateway for data sovereignty compliance:
+
+1. **Gateway (preferred)**: Handles data classification and PII sanitization before routing to providers
+2. **LocalAI (fallback)**: Direct on-device inference if gateway is unavailable
+
+The AI Gateway ensures threat data (IPs, MACs, logs) stays LOCAL_ONLY and never leaves the device.
 
 ## LuCI Dashboard
 
