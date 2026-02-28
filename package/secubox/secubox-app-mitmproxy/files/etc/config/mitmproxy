@@ -66,11 +66,11 @@ config wan_protection 'wan_protection'
 # Auto-ban configuration - automatically ban IPs via CrowdSec
 config autoban 'autoban'
 	# Enable automatic banning of detected threats
-	option enabled '0'
+	option enabled '1'
 	# Ban duration (e.g., 1h, 4h, 24h, 7d)
 	option ban_duration '4h'
 	# Minimum severity to trigger auto-ban: critical, high, medium
-	option min_severity 'critical'
+	option min_severity 'high'
 	# Auto-ban on CVE exploit attempts
 	option ban_cve_exploits '1'
 	# Auto-ban SQL injection attempts
@@ -88,7 +88,8 @@ config autoban 'autoban'
 	# Auto-ban XMPP/Jabber attacks
 	option ban_xmpp '1'
 	# Whitelist IPs from auto-ban (comma-separated)
-	option whitelist ''
+	# Default: localhost, router IP, common admin IPs
+	option whitelist '127.0.0.1,192.168.255.1,192.168.1.1'
 	#
 	# Sensitivity level: aggressive, moderate, permissive
 	# - aggressive: Ban immediately on first detection (critical threats only)
