@@ -305,6 +305,7 @@ return view.extend({
 
 		var rows = apps.map(function(app) {
 			var id = app.id || app.name;
+			var hasGitea = app.gitea_repo || app.git_url;
 			return E('tr', {}, [
 				E('td', {}, E('strong', {}, app.name)),
 				E('td', {}, app.path ? app.path.split('/').pop() : '-'),
@@ -313,6 +314,16 @@ return view.extend({
 						'class': 'cbi-button',
 						'click': function() { self.createInstanceFromApp(id); }
 					}, _('+ Instance')),
+					E('button', {
+						'class': 'cbi-button',
+						'style': 'margin-left:4px',
+						'click': function() { self.reuploadApp(id); }
+					}, _('Re-upload')),
+					hasGitea ? E('button', {
+						'class': 'cbi-button cbi-button-action',
+						'style': 'margin-left:4px',
+						'click': function() { self.giteaPull(id); }
+					}, _('Gitea Sync')) : '',
 					E('button', {
 						'class': 'cbi-button cbi-button-remove',
 						'style': 'margin-left:4px',
@@ -645,5 +656,85 @@ return view.extend({
 				}, _('Delete'))
 			])
 		]);
+	},
+
+	// Re-upload app code
+	reuploadApp: function(name) {
+		var self = this;
+		ui.showModal(_('Re-upload App: ') + name, [
+			E('p', {}, _('Select a new .py or .zip file to replace the app code:')),
+			E('input', { 'type': 'file', 'id': 'reupload-file', 'accept': '.py,.zip' }),
+			E('div', { 'class': 'right', 'style': 'margin-top:16px' }, [
+				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
+				E('button', {
+					'class': 'cbi-button cbi-button-positive',
+					'style': 'margin-left:8px',
+					'click': function() {
+						var fileInput = document.getElementById('reupload-file');
+						if (!fileInput || !fileInput.files.length) {
+							ui.addNotification(null, E('p', {}, _('Select a file')), 'error');
+							return;
+						}
+
+						var file = fileInput.files[0];
+						var isZip = file.name.endsWith('.zip');
+						var reader = new FileReader();
+
+						reader.onload = function(e) {
+							var bytes = new Uint8Array(e.target.result);
+							var chunks = [];
+							for (var i = 0; i < bytes.length; i += 8192) {
+								chunks.push(String.fromCharCode.apply(null, bytes.slice(i, i + 8192)));
+							}
+							var content = btoa(chunks.join(''));
+
+							ui.hideModal();
+							poll.stop();
+							ui.showModal(_('Uploading'), [
+								E('p', { 'class': 'spinning' }, _('Uploading app code...'))
+							]);
+
+							api.chunkedUpload(name, content, isZip).then(function(r) {
+								poll.start();
+								ui.hideModal();
+								if (r && r.success) {
+									ui.addNotification(null, E('p', {}, _('App updated: ') + name), 'success');
+									self.refresh().then(function() { self.updateStatus(); });
+								} else {
+									ui.addNotification(null, E('p', {}, r.message || _('Upload failed')), 'error');
+								}
+							}).catch(function(err) {
+								poll.start();
+								ui.hideModal();
+								ui.addNotification(null, E('p', {}, _('Error: ') + (err.message || err)), 'error');
+							});
+						};
+
+						reader.readAsArrayBuffer(file);
+					}
+				}, _('Upload'))
+			])
+		]);
+	},
+
+	// Gitea pull/sync
+	giteaPull: function(name) {
+		var self = this;
+		ui.showModal(_('Syncing...'), [
+			E('p', { 'class': 'spinning' }, _('Pulling from Gitea...'))
+		]);
+
+		api.giteaPull(name).then(function(r) {
+			ui.hideModal();
+			if (r && r.success) {
+				ui.addNotification(null, E('p', {}, _('Synced from Gitea: ') + name), 'success');
+				self.refresh().then(function() { self.updateStatus(); });
+			} else {
+				ui.addNotification(null, E('p', {}, r.message || _('Sync failed')), 'error');
+			}
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', {}, _('Error: ') + (err.message || err)), 'error');
+		});
 	}
 });
