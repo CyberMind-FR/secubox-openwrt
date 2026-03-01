@@ -4044,3 +4044,26 @@ git checkout HEAD -- index.html
       - `./secubox-tools/pre-deploy-lint.sh luci-app-system-hub`
       - `./secubox-tools/pre-deploy-lint.sh --all`
       - `./secubox-tools/quick-deploy.sh --app system-hub` (lint runs automatically)
+
+59. **Nextcloud Integration Enhancements (2026-03-01)**
+    - **WAF-Safe SSL Routing:**
+      - `ssl-enable` now routes through `mitmproxy_inspector` backend
+      - Automatically adds route to `/srv/mitmproxy/haproxy-routes.json`
+      - Traffic flow: Client → HAProxy → mitmproxy (WAF) → Nextcloud
+      - Prevents WAF bypass vulnerability
+    - **Scheduled Backups:**
+      - `nextcloudctl setup-backup-cron` creates cron jobs
+      - Supports hourly, daily, weekly schedules (from UCI config)
+      - Automatic cleanup of old backups (configurable retention)
+    - **Email/SMTP Integration:**
+      - `nextcloudctl setup-mail <host> [port] [user] [pass] [from]`
+      - Supports Gmail, local mailserver, Mailcow configurations
+      - Auto-configures TLS for ports 587/465
+    - **CalDAV/CardDAV Connection Info:**
+      - `nextcloudctl connections` shows all sync URLs
+      - iOS, Android (DAVx5), Thunderbird instructions
+      - Desktop client and mobile app links
+    - **New RPCD Methods:**
+      - `get_connections` - Returns all sync URLs
+      - `setup_mail` - Configure SMTP via LuCI
+      - `setup_backup_cron` - Enable scheduled backups via LuCI

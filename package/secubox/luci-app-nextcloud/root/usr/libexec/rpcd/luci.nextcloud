@@ -438,6 +438,82 @@ delete_backup() {
 	fi
 }
 
+# Get connection URLs (CalDAV, CardDAV, WebDAV)
+get_connections() {
+	local http_port=$(uci_get main.http_port)
+	local ssl_enabled=$(uci_get ssl.enabled)
+	local ssl_domain=$(uci_get ssl.domain)
+
+	# Get LAN IP
+	local lan_ip
+	lan_ip=$(uci -q get network.lan.ipaddr || echo "192.168.255.1")
+
+	local base_url="http://${lan_ip}:${http_port:-8080}"
+	if [ "$ssl_enabled" = "1" ] && [ -n "$ssl_domain" ]; then
+		base_url="https://${ssl_domain}"
+	fi
+
+	cat <<EOF
+{
+	"base_url": "$base_url",
+	"caldav": "${base_url}/remote.php/dav/calendars/<username>/",
+	"carddav": "${base_url}/remote.php/dav/addressbooks/users/<username>/contacts/",
+	"webdav": "${base_url}/remote.php/dav/files/<username>/",
+	"ios_server": "$base_url",
+	"ios_path": "/remote.php/dav",
+	"davx5_url": "${base_url}/remote.php/dav",
+	"desktop_url": "$base_url",
+	"ios_app": "https://apps.apple.com/app/nextcloud/id1125420102",
+	"android_app": "https://play.google.com/store/apps/details?id=com.nextcloud.client"
+}
+EOF
+}
+
+# Setup email/SMTP
+setup_mail() {
+	local input
+	read -r input
+
+	local smtp_host=$(echo "$input" | jsonfilter -e '@.smtp_host' 2>/dev/null)
+	local smtp_port=$(echo "$input" | jsonfilter -e '@.smtp_port' 2>/dev/null)
+	local smtp_user=$(echo "$input" | jsonfilter -e '@.smtp_user' 2>/dev/null)
+	local smtp_pass=$(echo "$input" | jsonfilter -e '@.smtp_pass' 2>/dev/null)
+	local smtp_from=$(echo "$input" | jsonfilter -e '@.smtp_from' 2>/dev/null)
+
+	if [ -z "$smtp_host" ]; then
+		echo '{"success": false, "error": "SMTP host is required"}'
+		return
+	fi
+
+	if ! lxc_running; then
+		echo '{"success": false, "error": "Nextcloud container not running"}'
+		return
+	fi
+
+	# Build command arguments
+	local args="$smtp_host ${smtp_port:-587}"
+	[ -n "$smtp_user" ] && args="$args $smtp_user"
+	[ -n "$smtp_pass" ] && args="$args \"$smtp_pass\""
+	[ -n "$smtp_from" ] && args="$args $smtp_from"
+
+	if nextcloudctl setup-mail $args >/tmp/nextcloud-mail.log 2>&1; then
+		echo '{"success": true, "message": "SMTP configured successfully"}'
+	else
+		local err=$(tail -1 /tmp/nextcloud-mail.log 2>/dev/null || echo "Unknown error")
+		echo "{\"success\": false, \"error\": \"$err\"}"
+	fi
+}
+
+# Setup backup cron job
+setup_backup_cron() {
+	if nextcloudctl setup-backup-cron >/tmp/nextcloud-cron.log 2>&1; then
+		echo '{"success": true, "message": "Backup cron job configured"}'
+	else
+		local err=$(tail -1 /tmp/nextcloud-cron.log 2>/dev/null || echo "Unknown error")
+		echo "{\"success\": false, \"error\": \"$err\"}"
+	fi
+}
+
 # RPCD list method
 list_methods() {
 	cat <<'EOF'
@@ -461,7 +537,10 @@ list_methods() {
 	"logs": {},
 	"list_users": {},
 	"reset_password": {"uid": "string", "password": "string"},
-	"get_storage": {}
+	"get_storage": {},
+	"get_connections": {},
+	"setup_mail": {"smtp_host": "string", "smtp_port": "number", "smtp_user": "string", "smtp_pass": "string", "smtp_from": "string"},
+	"setup_backup_cron": {}
 }
 EOF
 }
@@ -493,6 +572,9 @@ case "$1" in
 			list_users)   list_users ;;
 			reset_password) reset_password ;;
 			get_storage)  get_storage ;;
+			get_connections) get_connections ;;
+			setup_mail)   setup_mail ;;
+			setup_backup_cron) setup_backup_cron ;;
 			*)            echo '{"error": "Unknown method"}' ;;
 		esac
 		;;
