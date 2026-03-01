@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-02-28 (AI Gateway Deployed)_
+_Last updated: 2026-03-01 (Reverse MWAN WireGuard Phase 1)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -61,6 +61,23 @@ _Last updated: 2026-02-28 (AI Gateway Deployed)_
   - First Peek auto-registration of services
   - Gossip-based exposure config sync via secubox-p2p
   - Created `luci-app-vortex-dns` dashboard
+
+### Just Completed (2026-03-01)
+
+- **Reverse MWAN WireGuard v2 - Phase 1** — DONE (2026-03-01)
+  - WireGuard mesh peers as backup internet uplinks via mwan3 failover
+  - `wgctl` CLI: uplink list/add/remove/status/test/failover/priority/offer/withdraw
+  - Uplink library (`/usr/lib/wireguard-dashboard/uplink.sh`) with gossip integration
+  - RPCD backend: 9 new methods for uplink management
+  - UCI config (`/etc/config/wireguard_uplink`) for global and per-uplink settings
+  - Phase 2 pending: LuCI dashboard integration
+
+- **Nextcloud Integration Enhancements** — DONE (2026-03-01)
+  - WAF-safe SSL routing via mitmproxy_inspector
+  - Scheduled backups with cron (hourly/daily/weekly)
+  - SMTP email integration (Gmail, mailserver, Mailcow)
+  - CalDAV/CardDAV/WebDAV connection info display
+  - 3 new RPCD methods: get_connections, setup_mail, setup_backup_cron
 
 ### Just Completed (2026-02-28)
 
@@ -1167,9 +1184,9 @@ Implementing 3 evolutions inspired by SysWarden patterns:
 
 **Backlog / Deferred:**
 - ~~Tor Shield / opkg bug~~ — FIXED (2026-02-28) - dnsmasq bypass for excluded domains
-- Nextcloud self-hosted cloud storage (v2)
+- ~~Nextcloud self-hosted cloud storage (v2)~~ — ENHANCED (2026-03-01) - WAF-safe SSL, scheduled backups, email, connections
 - SSMTP / mail host / MX record management (v2)
-- Reverse MWAN WireGuard peers (v2)
+- ~~Reverse MWAN WireGuard peers (v2)~~ — Phase 1 DONE (2026-03-01) - CLI + library + RPCD; Phase 2 (LuCI) pending
 
 ---
 

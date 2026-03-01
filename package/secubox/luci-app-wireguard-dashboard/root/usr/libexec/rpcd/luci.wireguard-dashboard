@@ -998,6 +998,372 @@ get_peer_descriptions() {
 	json_dump
 }
 
+# ============================================================================
+# Uplink Management (Reverse MWAN WireGuard)
+# ============================================================================
+
+# Source uplink library if available
+UPLINK_LIB="/usr/lib/wireguard-dashboard/uplink.sh"
+
+# Get uplink status
+get_uplink_status() {
+	json_init
+
+	if [ -f "$UPLINK_LIB" ]; then
+		. "$UPLINK_LIB"
+
+		local enabled=$(uci -q get wireguard_uplink.main.enabled)
+		local offering=$(uci -q get wireguard_uplink.local.offering)
+		local auto_failover=$(uci -q get wireguard_uplink.main.auto_failover)
+
+		json_add_boolean "available" 1
+		json_add_boolean "enabled" "${enabled:-0}"
+		json_add_boolean "offering" "${offering:-0}"
+		json_add_boolean "auto_failover" "${auto_failover:-0}"
+
+		# Count active uplinks
+		local uplink_count=0
+		local active_count=0
+		for ifname in $(get_active_uplinks 2>/dev/null); do
+			uplink_count=$((uplink_count + 1))
+			local if_enabled=$(uci -q get wireguard_uplink.$ifname.enabled)
+			[ "$if_enabled" = "1" ] && active_count=$((active_count + 1))
+		done
+
+		json_add_int "uplink_count" "$uplink_count"
+		json_add_int "active_count" "$active_count"
+
+		# Get peer offers from mesh
+		json_add_array "peer_offers"
+		local offers=$(get_peer_uplink_offers 2>/dev/null)
+		echo "$offers" | jsonfilter -e '@[*]' 2>/dev/null | while read -r offer; do
+			json_add_object
+			local node_id=$(echo "$offer" | jsonfilter -e '@.node_id' 2>/dev/null)
+			local bandwidth=$(echo "$offer" | jsonfilter -e '@.bandwidth_mbps' 2>/dev/null)
+			local latency=$(echo "$offer" | jsonfilter -e '@.latency_ms' 2>/dev/null)
+			local endpoint=$(echo "$offer" | jsonfilter -e '@.wg_endpoint' 2>/dev/null)
+			json_add_string "node_id" "$node_id"
+			json_add_int "bandwidth_mbps" "${bandwidth:-0}"
+			json_add_int "latency_ms" "${latency:-0}"
+			json_add_string "endpoint" "$endpoint"
+			json_close_object
+		done
+		json_close_array
+
+		# mwan3 status
+		if command -v mwan3 >/dev/null 2>&1; then
+			json_add_boolean "mwan3_available" 1
+			local mwan3_status=$(mwan3 status 2>/dev/null | head -1)
+			json_add_string "mwan3_status" "$mwan3_status"
+		else
+			json_add_boolean "mwan3_available" 0
+		fi
+	else
+		json_add_boolean "available" 0
+		json_add_string "error" "Uplink library not installed"
+	fi
+
+	json_dump
+}
+
+# List configured uplinks
+get_uplinks() {
+	json_init
+	json_add_array "uplinks"
+
+	if [ -f "$UPLINK_LIB" ]; then
+		. "$UPLINK_LIB"
+
+		for ifname in $(get_active_uplinks 2>/dev/null); do
+			json_add_object
+			json_add_string "interface" "$ifname"
+			json_add_string "peer_pubkey" "$(uci -q get wireguard_uplink.$ifname.peer_pubkey)"
+			json_add_string "endpoint" "$(uci -q get wireguard_uplink.$ifname.endpoint)"
+			json_add_boolean "enabled" "$(uci -q get wireguard_uplink.$ifname.enabled)"
+			json_add_int "priority" "$(uci -q get wireguard_uplink.$ifname.priority || echo 10)"
+			json_add_int "weight" "$(uci -q get wireguard_uplink.$ifname.weight || echo 1)"
+			json_add_string "created" "$(uci -q get wireguard_uplink.$ifname.created)"
+
+			# Check interface state
+			local state="down"
+			if ip link show "$ifname" 2>/dev/null | grep -q "UP"; then
+				state="up"
+			fi
+			json_add_string "state" "$state"
+
+			# Test connectivity
+			local connectivity="unknown"
+			if [ "$state" = "up" ]; then
+				if test_uplink_connectivity "$ifname" >/dev/null 2>&1; then
+					connectivity="ok"
+				else
+					connectivity="failed"
+				fi
+			fi
+			json_add_string "connectivity" "$connectivity"
+
+			json_close_object
+		done
+	fi
+
+	json_close_array
+	json_dump
+}
+
+# Add a new uplink from mesh peer
+add_uplink() {
+	read input
+	json_load "$input"
+	json_get_var node_id node_id
+	json_get_var peer_pubkey peer_pubkey
+	json_get_var endpoint endpoint
+	json_get_var priority priority
+	json_get_var weight weight
+
+	json_init
+
+	if [ ! -f "$UPLINK_LIB" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Uplink library not installed"
+		json_dump
+		return
+	fi
+
+	. "$UPLINK_LIB"
+
+	if [ -z "$peer_pubkey" ] || [ -z "$endpoint" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing required fields: peer_pubkey and endpoint"
+		json_dump
+		return
+	fi
+
+	# Create the uplink interface
+	local ifname
+	ifname=$(create_uplink_interface "$peer_pubkey" "$endpoint")
+	if [ -z "$ifname" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Failed to create uplink interface"
+		json_dump
+		return
+	fi
+
+	# Set priority/weight if provided
+	[ -n "$priority" ] && uci set wireguard_uplink.$ifname.priority="$priority"
+	[ -n "$weight" ] && uci set wireguard_uplink.$ifname.weight="$weight"
+	[ -n "$node_id" ] && uci set wireguard_uplink.$ifname.node_id="$node_id"
+	uci commit wireguard_uplink
+
+	# Add to mwan3
+	add_to_mwan3 "$ifname" "${priority:-100}" "${weight:-1}"
+
+	# Bring up interface
+	ifup "$ifname" 2>/dev/null
+
+	json_add_boolean "success" 1
+	json_add_string "interface" "$ifname"
+	json_add_string "message" "Uplink added successfully"
+	json_dump
+}
+
+# Remove an uplink
+remove_uplink() {
+	read input
+	json_load "$input"
+	json_get_var ifname interface
+
+	json_init
+
+	if [ ! -f "$UPLINK_LIB" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Uplink library not installed"
+		json_dump
+		return
+	fi
+
+	. "$UPLINK_LIB"
+
+	if [ -z "$ifname" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing required field: interface"
+		json_dump
+		return
+	fi
+
+	# Remove from mwan3 first
+	remove_from_mwan3 "$ifname"
+
+	# Remove interface
+	remove_uplink_interface "$ifname"
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Uplink removed successfully"
+	json_dump
+}
+
+# Test uplink connectivity
+test_uplink() {
+	read input
+	json_load "$input"
+	json_get_var ifname interface
+	json_get_var target target
+
+	json_init
+
+	if [ ! -f "$UPLINK_LIB" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Uplink library not installed"
+		json_dump
+		return
+	fi
+
+	. "$UPLINK_LIB"
+
+	if [ -z "$ifname" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing required field: interface"
+		json_dump
+		return
+	fi
+
+	local result
+	result=$(test_uplink_connectivity "$ifname" "${target:-8.8.8.8}")
+	local rc=$?
+
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "result" "OK"
+
+		# Measure latency
+		local latency
+		latency=$(measure_uplink_latency "$ifname" "${target:-8.8.8.8}")
+		json_add_string "latency_ms" "$latency"
+	else
+		json_add_boolean "success" 0
+		json_add_string "result" "FAILED"
+		json_add_string "error" "$result"
+	fi
+
+	json_add_string "interface" "$ifname"
+	json_dump
+}
+
+# Offer this node as uplink provider
+offer_uplink() {
+	read input
+	json_load "$input"
+	json_get_var bandwidth bandwidth
+	json_get_var latency latency
+
+	json_init
+
+	if [ ! -f "$UPLINK_LIB" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Uplink library not installed"
+		json_dump
+		return
+	fi
+
+	. "$UPLINK_LIB"
+
+	advertise_uplink_offer "${bandwidth:-100}" "${latency:-10}"
+	local rc=$?
+
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Now offering uplink to mesh peers"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Failed to advertise uplink offer"
+	fi
+
+	json_dump
+}
+
+# Withdraw uplink offer
+withdraw_uplink() {
+	json_init
+
+	if [ ! -f "$UPLINK_LIB" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Uplink library not installed"
+		json_dump
+		return
+	fi
+
+	. "$UPLINK_LIB"
+
+	withdraw_uplink_offer
+	local rc=$?
+
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Uplink offer withdrawn"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Failed to withdraw offer"
+	fi
+
+	json_dump
+}
+
+# Set uplink priority
+set_uplink_priority() {
+	read input
+	json_load "$input"
+	json_get_var ifname interface
+	json_get_var priority priority
+	json_get_var weight weight
+
+	json_init
+
+	if [ -z "$ifname" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing required field: interface"
+		json_dump
+		return
+	fi
+
+	# Check uplink exists
+	if ! uci -q get wireguard_uplink.$ifname >/dev/null 2>&1; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Uplink not found: $ifname"
+		json_dump
+		return
+	fi
+
+	[ -n "$priority" ] && uci set wireguard_uplink.$ifname.priority="$priority"
+	[ -n "$weight" ] && uci set wireguard_uplink.$ifname.weight="$weight"
+	uci commit wireguard_uplink
+
+	# Update mwan3 if available
+	if [ -f "$UPLINK_LIB" ]; then
+		. "$UPLINK_LIB"
+		remove_from_mwan3 "$ifname"
+		add_to_mwan3 "$ifname" "${priority:-100}" "${weight:-1}"
+	fi
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Priority updated"
+	json_dump
+}
+
+# Enable/disable uplink failover
+set_uplink_failover() {
+	read input
+	json_load "$input"
+	json_get_var enabled enabled
+
+	json_init
+
+	uci set wireguard_uplink.main.auto_failover="${enabled:-0}"
+	uci commit wireguard_uplink
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Failover $([ "$enabled" = "1" ] && echo "enabled" || echo "disabled")"
+	json_dump
+}
+
 # Get current bandwidth rates (requires previous call to calculate delta)
 get_bandwidth_rates() {
 	json_init
@@ -1168,7 +1534,7 @@ delete_endpoint() {
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"status":{},"interfaces":{},"peers":{},"traffic":{},"config":{},"generate_keys":{},"create_interface":{"name":"str","private_key":"str","listen_port":"str","addresses":"str","mtu":"str"},"add_peer":{"interface":"str","name":"str","allowed_ips":"str","public_key":"str","preshared_key":"str","endpoint":"str","persistent_keepalive":"str","private_key":"str"},"remove_peer":{"interface":"str","public_key":"str"},"generate_config":{"interface":"str","peer":"str","private_key":"str","endpoint":"str"},"generate_qr":{"interface":"str","peer":"str","private_key":"str","endpoint":"str"},"bandwidth_history":{},"endpoint_info":{"endpoint":"str"},"ping_peer":{"ip":"str"},"interface_control":{"interface":"str","action":"str"},"peer_descriptions":{},"bandwidth_rates":{},"get_endpoints":{},"set_endpoint":{"id":"str","name":"str","address":"str"},"set_default_endpoint":{"id":"str"},"delete_endpoint":{"id":"str"}}'
+		echo '{"status":{},"interfaces":{},"peers":{},"traffic":{},"config":{},"generate_keys":{},"create_interface":{"name":"str","private_key":"str","listen_port":"str","addresses":"str","mtu":"str"},"add_peer":{"interface":"str","name":"str","allowed_ips":"str","public_key":"str","preshared_key":"str","endpoint":"str","persistent_keepalive":"str","private_key":"str"},"remove_peer":{"interface":"str","public_key":"str"},"generate_config":{"interface":"str","peer":"str","private_key":"str","endpoint":"str"},"generate_qr":{"interface":"str","peer":"str","private_key":"str","endpoint":"str"},"bandwidth_history":{},"endpoint_info":{"endpoint":"str"},"ping_peer":{"ip":"str"},"interface_control":{"interface":"str","action":"str"},"peer_descriptions":{},"bandwidth_rates":{},"get_endpoints":{},"set_endpoint":{"id":"str","name":"str","address":"str"},"set_default_endpoint":{"id":"str"},"delete_endpoint":{"id":"str"},"uplink_status":{},"uplinks":{},"add_uplink":{"node_id":"str","peer_pubkey":"str","endpoint":"str","priority":"int","weight":"int"},"remove_uplink":{"interface":"str"},"test_uplink":{"interface":"str","target":"str"},"offer_uplink":{"bandwidth":"int","latency":"int"},"withdraw_uplink":{},"set_uplink_priority":{"interface":"str","priority":"int","weight":"int"},"set_uplink_failover":{"enabled":"bool"}}'
 		;;
 	call)
 		case "$2" in
@@ -1234,6 +1600,33 @@ case "$1" in
 				;;
 			delete_endpoint)
 				delete_endpoint
+				;;
+			uplink_status)
+				get_uplink_status
+				;;
+			uplinks)
+				get_uplinks
+				;;
+			add_uplink)
+				add_uplink
+				;;
+			remove_uplink)
+				remove_uplink
+				;;
+			test_uplink)
+				test_uplink
+				;;
+			offer_uplink)
+				offer_uplink
+				;;
+			withdraw_uplink)
+				withdraw_uplink
+				;;
+			set_uplink_priority)
+				set_uplink_priority
+				;;
+			set_uplink_failover)
+				set_uplink_failover
 				;;
 			*)
 				echo '{"error": "Unknown method"}'

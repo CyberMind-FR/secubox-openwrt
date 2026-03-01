@@ -1,0 +1,35 @@
+# SecuBox WireGuard Uplink Configuration
+# Reverse MWAN failover via mesh peers
+
+# Global settings
+config settings 'main'
+    option enabled '1'
+    option auto_failover '1'
+    option failover_threshold '3'
+    option ping_interval '10'
+    option ping_targets '8.8.8.8 1.1.1.1'
+    option max_uplinks '5'
+    option prefer_local '1'
+
+# Local provider settings (when offering uplink to others)
+config provider 'local'
+    option offering '0'
+    option public_key ''
+    option private_key ''
+    option endpoint ''
+    option listen_port '51821'
+    option bandwidth '100'
+    option latency '10'
+
+# Example uplink configuration (commented out)
+# config uplink 'wgup0'
+#     option interface 'wgup0'
+#     option peer_pubkey 'PEER_PUBLIC_KEY_HERE'
+#     option endpoint '192.168.1.1:51821'
+#     option local_pubkey 'LOCAL_PUBLIC_KEY_HERE'
+#     option enabled '1'
+#     option priority '10'
+#     option weight '1'
+#     option created '1709312345'
+#     option last_seen '1709312345'
+#     option status 'active'
