@@ -13,15 +13,18 @@
 					"bandwidth_rates",
 					"bandwidth_history",
 					"endpoint_info",
-					"get_endpoints"
+					"get_endpoints",
+					"uplink_status",
+					"uplinks"
 				],
 				"system": [ "info", "board" ],
 				"file": [ "read", "stat", "exec" ]
 			},
-			"uci": [ "network", "wireguard_dashboard" ],
+			"uci": [ "network", "wireguard_dashboard", "wireguard_uplink", "mwan3" ],
 			"file": {
 				"/etc/config/network": [ "read" ],
 				"/etc/config/wireguard_dashboard": [ "read" ],
+				"/etc/config/wireguard_uplink": [ "read" ],
 				"/usr/bin/wg": [ "exec" ]
 			}
 		},
@@ -38,10 +41,17 @@
 					"ping_peer",
 					"set_endpoint",
 					"set_default_endpoint",
-					"delete_endpoint"
+					"delete_endpoint",
+					"add_uplink",
+					"remove_uplink",
+					"test_uplink",
+					"offer_uplink",
+					"withdraw_uplink",
+					"set_uplink_priority",
+					"set_uplink_failover"
 				]
 			},
-			"uci": [ "wireguard_dashboard", "network" ]
+			"uci": [ "wireguard_dashboard", "network", "wireguard_uplink", "mwan3" ]
 		}
 	}
 }

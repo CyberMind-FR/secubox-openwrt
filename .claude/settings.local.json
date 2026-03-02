@@ -486,7 +486,21 @@
       "Bash(SSH_AUTH_SOCK=/run/user/1000/keyring/ssh ssh:*)",
       "Bash(unset:*)",
       "Bash(SSH_ASKPASS=\"\" DISPLAY=\"\" SSH_AUTH_SOCK=/run/user/1000/keyring/ssh ssh:*)",
-      "Bash(./secubox-tools/pre-deploy-lint.sh:*)"
+      "Bash(./secubox-tools/pre-deploy-lint.sh:*)",
+      "Bash(VBoxManage modifyvm:*)",
+      "Bash(# The MAC is 08:00:27:00:93:A6 - let''s search for it in ARP # First get fresh ARP entries by pinging broadcast ping -b -c 2 192.168.255.255 || true sleep 1 # Check ARP for the VM''s MAC arp -a)",
+      "Bash(ip neigh:*)",
+      "Bash(__NEW_LINE_6703df146bf1d278__ echo \"\")",
+      "Bash(# Check latest OpenWrt version from firmware selector API curl -s \"\"https://firmware-selector.openwrt.org/api/v1/overview\"\")",
+      "Bash(# Try with wget instead wget -qO- \"\"https://downloads.openwrt.org/releases/\"\")",
+      "Bash(# Wait for boot and get IP sleep 30 # Take a screenshot to see boot progress VBoxManage controlvm ''C3Box-SecuBox'' screenshotpng /tmp/vbox-boot.png # Check ARP for VM''s MAC echo \"\"=== Checking network ===\"\" arp -a)",
+      "Bash(# Wait more for boot to complete sleep 30 # Take another screenshot VBoxManage controlvm ''C3Box-SecuBox'' screenshotpng /tmp/vbox-boot2.png # Try to find VM on network ip neigh flush all || true ping -b -c 2 192.168.255.255 || true sleep 2 arp -a)",
+      "Bash(# Wait for full boot after GRUB sleep 45 # Take screenshot VBoxManage controlvm ''C3Box-SecuBox'' screenshotpng /tmp/vbox-booted.png # Check network again ip neigh flush all || true ping -b -c 1 192.168.255.255 || true sleep 2 # Look for VM echo \"\"=== ARP table ===\"\" arp -a)",
+      "WebFetch(domain:alerte.gk2.secubox.in)",
+      "WebFetch(domain:matrix.gk2.secubox.in)",
+      "Bash(# Stop the failed VM VBoxManage controlvm ''C3Box-SecuBox'' poweroff || true # Check the c3box-vm-builder for the proper build method grep -A20 \"\"build_firmware\"\" /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/c3box-vm-builder.sh)",
+      "Bash(sudo umount:*)",
+      "Bash(__NEW_LINE_c35a46b8074eb5e8__ sudo losetup -d \"$LOOP_DEV\")"
     ]
   }
 }

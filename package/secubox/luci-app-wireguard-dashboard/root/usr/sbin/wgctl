@@ -1,0 +1,641 @@
+#!/bin/sh
+# SecuBox WireGuard Control CLI
+# Manages WireGuard interfaces and uplink failover
+# Copyright (C) 2026 CyberMind.fr
+
+. /lib/functions.sh
+
+UPLINK_LIB="/usr/lib/wireguard-dashboard/uplink.sh"
+UPLINK_CONFIG="wireguard_uplink"
+RUNTIME_STATE="/var/run/wireguard-uplinks.json"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+log_info() { echo -e "${GREEN}[INFO]${NC} $*"; }
+log_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
+
+# Load uplink library if available
+load_uplink_lib() {
+    if [ -f "$UPLINK_LIB" ]; then
+        . "$UPLINK_LIB"
+        return 0
+    fi
+    return 1
+}
+
+# UCI helpers
+uci_get() { uci -q get ${UPLINK_CONFIG}.$1; }
+uci_set() { uci set ${UPLINK_CONFIG}.$1="$2" && uci commit ${UPLINK_CONFIG}; }
+
+usage() {
+    cat <<'EOF'
+SecuBox WireGuard Control CLI
+
+Usage: wgctl <command> [options]
+
+Interface Commands:
+  status              Show all WireGuard interfaces
+  show <iface>        Show details for interface
+  up <iface>          Bring interface up
+  down <iface>        Bring interface down
+
+Uplink Commands (Multi-WAN Failover):
+  uplink list         List available uplink peers from mesh
+  uplink add <peer>   Add peer as backup uplink
+  uplink remove <peer> Remove peer uplink
+  uplink status       Show uplink failover status
+  uplink test <peer>  Test connectivity through peer
+  uplink failover <enable|disable>
+                      Enable/disable automatic failover
+  uplink priority <peer> <weight>
+                      Set peer priority (lower = less preferred)
+  uplink offer        Advertise this node as uplink provider
+  uplink withdraw     Stop advertising as uplink provider
+
+Examples:
+  wgctl status
+  wgctl uplink list
+  wgctl uplink add nodeA
+  wgctl uplink failover enable
+
+Configuration:
+  /etc/config/wireguard_uplink
+
+EOF
+}
+
+# ============================================================
+# Interface Commands
+# ============================================================
+
+cmd_status() {
+    if ! command -v wg >/dev/null 2>&1; then
+        log_error "wireguard-tools not installed"
+        exit 1
+    fi
+
+    local interfaces=$(wg show interfaces 2>/dev/null)
+
+    if [ -z "$interfaces" ]; then
+        echo "No WireGuard interfaces configured"
+        return 0
+    fi
+
+    echo "WireGuard Interfaces"
+    echo "===================="
+    echo ""
+
+    for iface in $interfaces; do
+        local pubkey=$(wg show "$iface" public-key 2>/dev/null)
+        local port=$(wg show "$iface" listen-port 2>/dev/null)
+        local peers=$(wg show "$iface" peers 2>/dev/null | wc -l)
+        local state="down"
+        ip link show "$iface" 2>/dev/null | grep -q "UP" && state="up"
+
+        local ip=$(ip -4 addr show "$iface" 2>/dev/null | grep -oE 'inet [0-9.]+' | cut -d' ' -f2)
+
+        printf "${BLUE}%s${NC}\n" "$iface"
+        printf "  State:       %s\n" "$([ "$state" = "up" ] && echo -e "${GREEN}UP${NC}" || echo -e "${RED}DOWN${NC}")"
+        printf "  Address:     %s\n" "${ip:-N/A}"
+        printf "  Listen Port: %s\n" "${port:-N/A}"
+        printf "  Public Key:  %s\n" "${pubkey:0:20}..."
+        printf "  Peers:       %d\n" "$peers"
+
+        # Check if this is an uplink interface
+        local is_uplink=$(uci -q get network.${iface}.secubox_uplink)
+        if [ "$is_uplink" = "1" ]; then
+            local peer_id=$(uci -q get network.${iface}.secubox_peer_id)
+            printf "  ${YELLOW}Uplink:${NC}      %s\n" "${peer_id:-yes}"
+        fi
+        echo ""
+    done
+
+    # Show uplink summary if enabled
+    local uplink_enabled=$(uci_get uplink.enabled)
+    if [ "$uplink_enabled" = "1" ]; then
+        echo "Uplink Failover: ${GREEN}ENABLED${NC}"
+        local active_uplinks=$(cat "$RUNTIME_STATE" 2>/dev/null | jsonfilter -e '@.active_uplinks' 2>/dev/null || echo "0")
+        echo "Active Uplinks:  $active_uplinks"
+    fi
+}
+
+cmd_show() {
+    local iface="$1"
+
+    if [ -z "$iface" ]; then
+        log_error "Usage: wgctl show <interface>"
+        exit 1
+    fi
+
+    if ! wg show "$iface" >/dev/null 2>&1; then
+        log_error "Interface $iface not found"
+        exit 1
+    fi
+
+    wg show "$iface"
+}
+
+cmd_up() {
+    local iface="$1"
+
+    if [ -z "$iface" ]; then
+        log_error "Usage: wgctl up <interface>"
+        exit 1
+    fi
+
+    log_info "Bringing up $iface..."
+    ifup "$iface" 2>/dev/null || ip link set "$iface" up
+    log_info "Interface $iface is up"
+}
+
+cmd_down() {
+    local iface="$1"
+
+    if [ -z "$iface" ]; then
+        log_error "Usage: wgctl down <interface>"
+        exit 1
+    fi
+
+    log_info "Bringing down $iface..."
+    ifdown "$iface" 2>/dev/null || ip link set "$iface" down
+    log_info "Interface $iface is down"
+}
+
+# ============================================================
+# Uplink Commands
+# ============================================================
+
+uplink_list() {
+    load_uplink_lib || {
+        log_error "Uplink library not found"
+        exit 1
+    }
+
+    echo "Available Uplink Peers"
+    echo "======================"
+    echo ""
+
+    # Get peers from gossip/P2P discovery
+    local peers_file="/var/run/p2p-uplink-offers.json"
+
+    if [ ! -f "$peers_file" ]; then
+        # Try to fetch from P2P gossip
+        if command -v p2pctl >/dev/null 2>&1; then
+            p2pctl gossip get uplink_offers > "$peers_file" 2>/dev/null
+        fi
+    fi
+
+    if [ -f "$peers_file" ] && [ -s "$peers_file" ]; then
+        # Parse JSON offers
+        local count=0
+        jsonfilter -i "$peers_file" -e '@[*]' 2>/dev/null | while read -r offer; do
+            local peer_id=$(echo "$offer" | jsonfilter -e '@.peer_id' 2>/dev/null)
+            local bandwidth=$(echo "$offer" | jsonfilter -e '@.capabilities.bandwidth_mbps' 2>/dev/null)
+            local latency=$(echo "$offer" | jsonfilter -e '@.capabilities.latency_ms' 2>/dev/null)
+            local wan_type=$(echo "$offer" | jsonfilter -e '@.capabilities.wan_type' 2>/dev/null)
+            local available=$(echo "$offer" | jsonfilter -e '@.capabilities.available' 2>/dev/null)
+
+            [ -z "$peer_id" ] && continue
+            count=$((count + 1))
+
+            local status="${GREEN}available${NC}"
+            [ "$available" != "true" ] && status="${RED}unavailable${NC}"
+
+            printf "%2d. ${BLUE}%s${NC}\n" "$count" "$peer_id"
+            printf "    Status:    %b\n" "$status"
+            printf "    Bandwidth: %s Mbps\n" "${bandwidth:-?}"
+            printf "    Latency:   %s ms\n" "${latency:-?}"
+            printf "    WAN Type:  %s\n" "${wan_type:-unknown}"
+            echo ""
+        done
+    else
+        echo "No uplink offers discovered yet."
+        echo ""
+        echo "Peers advertise uplink capability via gossip protocol."
+        echo "Make sure P2P mesh is connected and peers have enabled uplink sharing."
+    fi
+
+    # Also show locally configured uplinks
+    echo ""
+    echo "Configured Uplinks"
+    echo "=================="
+
+    local found=0
+    config_load network
+    config_foreach _show_uplink_iface interface
+
+    [ $found -eq 0 ] && echo "No uplinks configured. Use: wgctl uplink add <peer_id>"
+}
+
+_show_uplink_iface() {
+    local cfg="$1"
+    local is_uplink
+    config_get is_uplink "$cfg" secubox_uplink "0"
+
+    [ "$is_uplink" != "1" ] && return
+
+    local peer_id proto
+    config_get peer_id "$cfg" secubox_peer_id
+    config_get proto "$cfg" proto
+
+    [ "$proto" != "wireguard" ] && return
+
+    found=1
+    printf "  - %s (peer: %s)\n" "$cfg" "${peer_id:-unknown}"
+}
+
+uplink_add() {
+    local peer_id="$1"
+
+    if [ -z "$peer_id" ]; then
+        log_error "Usage: wgctl uplink add <peer_id>"
+        exit 1
+    fi
+
+    load_uplink_lib || {
+        log_error "Uplink library not found"
+        exit 1
+    }
+
+    log_info "Adding uplink peer: $peer_id"
+
+    # Get peer info from gossip
+    local peer_info
+    peer_info=$(get_peer_uplink_offer "$peer_id")
+
+    if [ -z "$peer_info" ]; then
+        log_error "Peer $peer_id not found in uplink offers"
+        log_info "Make sure the peer is advertising uplink capability"
+        exit 1
+    fi
+
+    # Extract endpoint info
+    local endpoint_host=$(echo "$peer_info" | jsonfilter -e '@.endpoint.host' 2>/dev/null)
+    local endpoint_port=$(echo "$peer_info" | jsonfilter -e '@.endpoint.port' 2>/dev/null)
+    local public_key=$(echo "$peer_info" | jsonfilter -e '@.endpoint.public_key' 2>/dev/null)
+
+    if [ -z "$public_key" ]; then
+        log_error "Could not get public key for peer $peer_id"
+        exit 1
+    fi
+
+    # Create WireGuard interface for uplink
+    local iface_name="wg_uplink_${peer_id}"
+
+    log_info "Creating interface $iface_name..."
+
+    # Generate private key if needed
+    local priv_key=$(wg genkey)
+    local pub_key=$(echo "$priv_key" | wg pubkey)
+
+    # Create network interface
+    uci set network.${iface_name}=interface
+    uci set network.${iface_name}.proto='wireguard'
+    uci set network.${iface_name}.private_key="$priv_key"
+    uci add_list network.${iface_name}.addresses='10.99.0.2/24'
+    uci set network.${iface_name}.secubox_uplink='1'
+    uci set network.${iface_name}.secubox_peer_id="$peer_id"
+
+    # Add peer config
+    local peer_section=$(uci add network wireguard_${iface_name})
+    uci set network.${peer_section}.public_key="$public_key"
+    uci set network.${peer_section}.endpoint_host="$endpoint_host"
+    uci set network.${peer_section}.endpoint_port="${endpoint_port:-51820}"
+    uci add_list network.${peer_section}.allowed_ips='0.0.0.0/0'
+    uci add_list network.${peer_section}.allowed_ips='::/0'
+    uci set network.${peer_section}.persistent_keepalive='25'
+    uci set network.${peer_section}.route_allowed_ips='0'
+
+    uci commit network
+
+    # Add to mwan3 if enabled
+    local auto_failover=$(uci_get uplink.auto_failover)
+    if [ "$auto_failover" = "1" ]; then
+        add_uplink_to_mwan3 "$iface_name" "$peer_id"
+    fi
+
+    # Bring up interface
+    ifup "$iface_name"
+
+    log_info "Uplink $peer_id added successfully"
+    log_info "Your public key (share with peer): $pub_key"
+}
+
+uplink_remove() {
+    local peer_id="$1"
+
+    if [ -z "$peer_id" ]; then
+        log_error "Usage: wgctl uplink remove <peer_id>"
+        exit 1
+    fi
+
+    local iface_name="wg_uplink_${peer_id}"
+
+    log_info "Removing uplink peer: $peer_id"
+
+    # Bring down interface
+    ifdown "$iface_name" 2>/dev/null
+
+    # Remove from mwan3
+    remove_uplink_from_mwan3 "$iface_name"
+
+    # Remove network config
+    uci delete network.${iface_name} 2>/dev/null
+
+    # Remove peer configs
+    local idx=0
+    while uci -q get network.@wireguard_${iface_name}[$idx] >/dev/null 2>&1; do
+        uci delete network.@wireguard_${iface_name}[$idx]
+    done
+
+    uci commit network
+
+    log_info "Uplink $peer_id removed"
+}
+
+uplink_status() {
+    load_uplink_lib || {
+        log_error "Uplink library not found"
+        exit 1
+    }
+
+    echo "Uplink Failover Status"
+    echo "======================"
+    echo ""
+
+    local enabled=$(uci_get uplink.enabled)
+    local auto_failover=$(uci_get uplink.auto_failover)
+    local check_interval=$(uci_get uplink.check_interval)
+
+    printf "Enabled:        %s\n" "$([ "$enabled" = "1" ] && echo -e "${GREEN}yes${NC}" || echo -e "${RED}no${NC}")"
+    printf "Auto Failover:  %s\n" "$([ "$auto_failover" = "1" ] && echo -e "${GREEN}yes${NC}" || echo -e "${RED}no${NC}")"
+    printf "Check Interval: %ss\n" "${check_interval:-30}"
+    echo ""
+
+    # Show primary WAN status
+    echo "Primary WAN:"
+    local wan_status=$(ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1 && echo "up" || echo "down")
+    printf "  Status: %s\n" "$([ "$wan_status" = "up" ] && echo -e "${GREEN}UP${NC}" || echo -e "${RED}DOWN${NC}")"
+    echo ""
+
+    # Show uplink interfaces
+    echo "Uplink Interfaces:"
+    config_load network
+
+    local uplink_count=0
+    for iface in $(uci show network 2>/dev/null | grep 'secubox_uplink=.1' | cut -d'.' -f2); do
+        uplink_count=$((uplink_count + 1))
+        local peer_id=$(uci -q get network.${iface}.secubox_peer_id)
+        local state="down"
+        ip link show "$iface" 2>/dev/null | grep -q "UP" && state="up"
+
+        # Test connectivity through this uplink
+        local reachable="no"
+        if [ "$state" = "up" ]; then
+            # Ping through specific interface
+            local gw=$(ip route show dev "$iface" 2>/dev/null | grep default | awk '{print $3}')
+            if [ -n "$gw" ]; then
+                ping -c 1 -W 2 -I "$iface" 8.8.8.8 >/dev/null 2>&1 && reachable="yes"
+            fi
+        fi
+
+        printf "  %s (%s):\n" "$iface" "${peer_id:-unknown}"
+        printf "    State:     %s\n" "$([ "$state" = "up" ] && echo -e "${GREEN}UP${NC}" || echo -e "${RED}DOWN${NC}")"
+        printf "    Reachable: %s\n" "$([ "$reachable" = "yes" ] && echo -e "${GREEN}yes${NC}" || echo -e "${RED}no${NC}")"
+    done
+
+    [ $uplink_count -eq 0 ] && echo "  No uplinks configured"
+    echo ""
+
+    # Show current routing
+    if command -v mwan3 >/dev/null 2>&1; then
+        echo "mwan3 Status:"
+        mwan3 status 2>/dev/null | head -20
+    fi
+}
+
+uplink_test() {
+    local peer_id="$1"
+
+    if [ -z "$peer_id" ]; then
+        log_error "Usage: wgctl uplink test <peer_id>"
+        exit 1
+    fi
+
+    local iface_name="wg_uplink_${peer_id}"
+
+    log_info "Testing connectivity through $peer_id..."
+
+    # Check interface exists
+    if ! ip link show "$iface_name" >/dev/null 2>&1; then
+        log_error "Interface $iface_name not found"
+        exit 1
+    fi
+
+    # Ping through uplink
+    echo "Pinging 8.8.8.8 through $iface_name..."
+    if ping -c 3 -W 5 -I "$iface_name" 8.8.8.8; then
+        echo ""
+        log_info "Uplink $peer_id is ${GREEN}WORKING${NC}"
+    else
+        echo ""
+        log_error "Uplink $peer_id is ${RED}NOT REACHABLE${NC}"
+        exit 1
+    fi
+}
+
+uplink_failover() {
+    local action="$1"
+
+    case "$action" in
+        enable)
+            log_info "Enabling uplink failover..."
+            uci_set uplink.enabled '1'
+            uci_set uplink.auto_failover '1'
+
+            # Setup mwan3 for all configured uplinks
+            setup_mwan3_failover
+
+            log_info "Uplink failover enabled"
+            ;;
+        disable)
+            log_info "Disabling uplink failover..."
+            uci_set uplink.enabled '0'
+            uci_set uplink.auto_failover '0'
+
+            # Remove mwan3 config for uplinks
+            cleanup_mwan3_failover
+
+            log_info "Uplink failover disabled"
+            ;;
+        *)
+            log_error "Usage: wgctl uplink failover <enable|disable>"
+            exit 1
+            ;;
+    esac
+}
+
+uplink_priority() {
+    local peer_id="$1"
+    local weight="$2"
+
+    if [ -z "$peer_id" ] || [ -z "$weight" ]; then
+        log_error "Usage: wgctl uplink priority <peer_id> <weight>"
+        log_info "Lower weight = lower priority (backup)"
+        exit 1
+    fi
+
+    local iface_name="wg_uplink_${peer_id}"
+
+    # Update mwan3 member weight
+    local member="${iface_name}_member"
+    uci set mwan3.${member}.weight="$weight"
+    uci commit mwan3
+
+    # Reload mwan3
+    /etc/init.d/mwan3 reload 2>/dev/null
+
+    log_info "Priority for $peer_id set to weight $weight"
+}
+
+uplink_offer() {
+    load_uplink_lib || {
+        log_error "Uplink library not found"
+        exit 1
+    }
+
+    log_info "Advertising this node as uplink provider..."
+
+    advertise_uplink_offer
+
+    log_info "Uplink offer advertised via gossip"
+}
+
+uplink_withdraw() {
+    load_uplink_lib || {
+        log_error "Uplink library not found"
+        exit 1
+    }
+
+    log_info "Withdrawing uplink offer..."
+
+    withdraw_uplink_offer
+
+    log_info "Uplink offer withdrawn"
+}
+
+# ============================================================
+# mwan3 Integration Helpers
+# ============================================================
+
+add_uplink_to_mwan3() {
+    local iface="$1"
+    local peer_id="$2"
+
+    # Check if mwan3 is available
+    [ ! -f /etc/config/mwan3 ] && return
+
+    log_info "Adding $iface to mwan3..."
+
+    # Add interface
+    uci set mwan3.${iface}=interface
+    uci set mwan3.${iface}.enabled='1'
+    uci set mwan3.${iface}.family='ipv4'
+    uci set mwan3.${iface}.reliability='1'
+    uci set mwan3.${iface}.track_method='ping'
+    uci add_list mwan3.${iface}.track_ip='8.8.8.8'
+
+    # Add member with low weight (backup)
+    local member="${iface}_member"
+    uci set mwan3.${member}=member
+    uci set mwan3.${member}.interface="$iface"
+    uci set mwan3.${member}.weight='10'
+    uci set mwan3.${member}.metric='10'
+
+    # Add to failover policy
+    uci add_list mwan3.failover_policy.use_member="$member"
+
+    uci commit mwan3
+    /etc/init.d/mwan3 reload 2>/dev/null
+}
+
+remove_uplink_from_mwan3() {
+    local iface="$1"
+
+    [ ! -f /etc/config/mwan3 ] && return
+
+    local member="${iface}_member"
+
+    uci delete mwan3.${iface} 2>/dev/null
+    uci delete mwan3.${member} 2>/dev/null
+    uci del_list mwan3.failover_policy.use_member="$member" 2>/dev/null
+
+    uci commit mwan3
+    /etc/init.d/mwan3 reload 2>/dev/null
+}
+
+setup_mwan3_failover() {
+    [ ! -f /etc/config/mwan3 ] && return
+
+    # Ensure failover policy exists
+    if ! uci -q get mwan3.failover_policy >/dev/null; then
+        uci set mwan3.failover_policy=policy
+        uci add_list mwan3.failover_policy.use_member='wan_member'
+    fi
+
+    # Add all uplink interfaces
+    config_load network
+    for iface in $(uci show network 2>/dev/null | grep 'secubox_uplink=.1' | cut -d'.' -f2); do
+        local peer_id=$(uci -q get network.${iface}.secubox_peer_id)
+        add_uplink_to_mwan3 "$iface" "$peer_id"
+    done
+}
+
+cleanup_mwan3_failover() {
+    [ ! -f /etc/config/mwan3 ] && return
+
+    # Remove all uplink interfaces from mwan3
+    for iface in $(uci show network 2>/dev/null | grep 'secubox_uplink=.1' | cut -d'.' -f2); do
+        remove_uplink_from_mwan3 "$iface"
+    done
+}
+
+# ============================================================
+# Main
+# ============================================================
+
+case "${1:-}" in
+    status)
+        shift; cmd_status "$@" ;;
+    show)
+        shift; cmd_show "$@" ;;
+    up)
+        shift; cmd_up "$@" ;;
+    down)
+        shift; cmd_down "$@" ;;
+    uplink)
+        shift
+        case "${1:-}" in
+            list)     shift; uplink_list "$@" ;;
+            add)      shift; uplink_add "$@" ;;
+            remove)   shift; uplink_remove "$@" ;;
+            status)   shift; uplink_status "$@" ;;
+            test)     shift; uplink_test "$@" ;;
+            failover) shift; uplink_failover "$@" ;;
+            priority) shift; uplink_priority "$@" ;;
+            offer)    shift; uplink_offer "$@" ;;
+            withdraw) shift; uplink_withdraw "$@" ;;
+            *)        log_error "Unknown uplink command: $1"; usage; exit 1 ;;
+        esac
+        ;;
+    -h|--help|help)
+        usage ;;
+    *)
+        usage ;;
+esac

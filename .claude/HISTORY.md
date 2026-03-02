@@ -4044,3 +4044,65 @@ git checkout HEAD -- index.html
       - `./secubox-tools/pre-deploy-lint.sh luci-app-system-hub`
       - `./secubox-tools/pre-deploy-lint.sh --all`
       - `./secubox-tools/quick-deploy.sh --app system-hub` (lint runs automatically)
+
+59. **Nextcloud Integration Enhancements (2026-03-01)**
+    - **WAF-Safe SSL Routing:**
+      - `ssl-enable` now routes through `mitmproxy_inspector` backend
+      - Automatically adds route to `/srv/mitmproxy/haproxy-routes.json`
+      - Traffic flow: Client → HAProxy → mitmproxy (WAF) → Nextcloud
+      - Prevents WAF bypass vulnerability
+    - **Scheduled Backups:**
+      - `nextcloudctl setup-backup-cron` creates cron jobs
+      - Supports hourly, daily, weekly schedules (from UCI config)
+      - Automatic cleanup of old backups (configurable retention)
+    - **Email/SMTP Integration:**
+      - `nextcloudctl setup-mail <host> [port] [user] [pass] [from]`
+      - Supports Gmail, local mailserver, Mailcow configurations
+      - Auto-configures TLS for ports 587/465
+    - **CalDAV/CardDAV Connection Info:**
+      - `nextcloudctl connections` shows all sync URLs
+      - iOS, Android (DAVx5), Thunderbird instructions
+      - Desktop client and mobile app links
+    - **New RPCD Methods:**
+      - `get_connections` - Returns all sync URLs
+      - `setup_mail` - Configure SMTP via LuCI
+      - `setup_backup_cron` - Enable scheduled backups via LuCI
+
+60. **Reverse MWAN WireGuard v2 - Phase 1 (2026-03-01)**
+    - WireGuard mesh peers as backup internet uplinks via mwan3 failover
+    - **CLI (`wgctl`) uplink commands:**
+      - `uplink list` - Discover available uplink peers from mesh
+      - `uplink add <peer>` - Add peer as backup uplink
+      - `uplink remove <peer>` - Remove peer uplink
+      - `uplink status` - Show failover status
+      - `uplink test <peer>` - Test connectivity through peer
+      - `uplink failover enable/disable` - Toggle automatic failover
+      - `uplink priority <peer> <weight>` - Set peer priority
+      - `uplink offer` - Advertise this node as uplink provider
+      - `uplink withdraw` - Stop advertising as uplink
+    - **Uplink Library (`/usr/lib/wireguard-dashboard/uplink.sh`):**
+      - Gossip protocol integration via secubox-p2p
+      - `advertise_uplink_offer()` / `withdraw_uplink_offer()` - Mesh announcement
+      - `get_peer_uplink_offers()` - Query mesh for available uplinks
+      - `create_uplink_interface()` - WireGuard interface creation with IP allocation
+      - `add_to_mwan3()` / `remove_from_mwan3()` - mwan3 failover integration
+      - `test_uplink_connectivity()` / `measure_uplink_latency()` - Health checks
+    - **RPCD Backend (9 new methods):**
+      - Read: `uplink_status`, `uplinks`
+      - Write: `add_uplink`, `remove_uplink`, `test_uplink`, `offer_uplink`, `withdraw_uplink`, `set_uplink_priority`, `set_uplink_failover`
+    - **UCI Config (`/etc/config/wireguard_uplink`):**
+      - Global settings: auto_failover, failover_threshold, ping_interval
+      - Provider settings: offering state, bandwidth/latency advertisement
+      - Per-uplink config: interface, peer_pubkey, endpoint, priority, weight
+    - **Architecture:**
+      - Uplink pool uses 172.31.x.x/16 range
+      - mwan3 policy-based failover with configurable weights
+      - Gossip-based peer discovery via P2P mesh
+    - Phase 2 pending: LuCI dashboard with uplink column in peers table
+
+61. **VirtualBox Image Builder Validation (2026-03-01)**
+    - Fresh OpenWrt 24.10.5 image boots successfully in VirtualBox
+    - Network connectivity confirmed (IPv6 link-local + IPv4)
+    - Fixed mitmproxy routing for matrix.gk2.secubox.in and alerte.gk2.secubox.in
+    - Identified corrupted c3box-vm images from Feb 23 - need rebuild
+    - ASU firmware builder working with MochaBin preseeds embedded

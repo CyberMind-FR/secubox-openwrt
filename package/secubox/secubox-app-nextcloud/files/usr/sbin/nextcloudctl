@@ -101,8 +101,12 @@ Commands:
   restore <name> Restore from backup
   list-backups  List available backups
 
-  ssl-enable <domain>   Register with HAProxy for SSL
+  ssl-enable <domain>   Register with HAProxy for SSL (via WAF)
   ssl-disable           Remove HAProxy registration
+
+  setup-mail <args>     Configure outbound email (SMTP)
+  setup-backup-cron     Setup scheduled backup cron job
+  connections           Show CalDAV/CardDAV/WebDAV URLs
 
   service-run   Start service (used by init)
   service-stop  Stop service (used by init)
@@ -976,7 +980,7 @@ cmd_ssl_enable() {
 		return 1
 	fi
 
-	log_info "Enabling SSL for $domain via HAProxy..."
+	log_info "Enabling SSL for $domain via HAProxy + WAF..."
 
 	# Check if HAProxy is available
 	if [ ! -x /usr/sbin/haproxyctl ]; then
@@ -984,45 +988,83 @@ cmd_ssl_enable() {
 		return 1
 	fi
 
-	# Add vhost to HAProxy
-	local vhost_name="nextcloud_${domain//\./_}"
+	# Use haproxyctl vhost add - routes through mitmproxy_inspector by default
+	log_info "Adding vhost via haproxyctl..."
+	if ! /usr/sbin/haproxyctl vhost add "$domain" --acme; then
+		log_error "Failed to add HAProxy vhost"
+		return 1
+	fi
 
-	uci add haproxy vhost
-	uci set haproxy.@vhost[-1].name="$vhost_name"
-	uci set haproxy.@vhost[-1].domain="$domain"
-	uci set haproxy.@vhost[-1].backend="nextcloud_backend"
-	uci set haproxy.@vhost[-1].ssl='1'
-	uci set haproxy.@vhost[-1].acme='1'
-	uci set haproxy.@vhost[-1].enabled='1'
+	# Add route to mitmproxy for WAF inspection
+	# This ensures traffic is inspected before reaching Nextcloud
+	local routes_file="/srv/mitmproxy/haproxy-routes.json"
+	local routes_file_in="/srv/mitmproxy-in/haproxy-routes.json"
 
-	# Add backend
-	uci add haproxy backend
-	uci set haproxy.@backend[-1].name="nextcloud_backend"
-	uci set haproxy.@backend[-1].mode='http'
+	if [ -f "$routes_file" ]; then
+		log_info "Adding mitmproxy route for WAF inspection..."
+		# Use jsonfilter to check if route exists, then add if not
+		local existing
+		existing=$(jsonfilter -i "$routes_file" -e "@[\"$domain\"]" 2>/dev/null || echo "")
 
-	# Add server
-	uci add haproxy server
-	uci set haproxy.@server[-1].backend="nextcloud_backend"
-	uci set haproxy.@server[-1].address="127.0.0.1"
-	uci set haproxy.@server[-1].port="$http_port"
+		if [ -z "$existing" ]; then
+			# Add route: domain -> [127.0.0.1, port]
+			local tmpfile="/tmp/routes-$$.json"
+			# Read existing routes and add new one
+			if command -v python3 >/dev/null 2>&1; then
+				python3 -c "
+import json
+with open('$routes_file', 'r') as f:
+    routes = json.load(f)
+routes['$domain'] = ['127.0.0.1', $http_port]
+with open('$tmpfile', 'w') as f:
+    json.dump(routes, f, indent=2)
+"
+				mv "$tmpfile" "$routes_file"
+				# Also update the in-container copy
+				[ -f "$routes_file_in" ] && cp "$routes_file" "$routes_file_in"
+				log_info "Added WAF route: $domain -> 127.0.0.1:$http_port"
+			else
+				log_info "Python3 not available, manual route config needed"
+				log_info "Add to $routes_file: \"$domain\": [\"127.0.0.1\", $http_port]"
+			fi
+		else
+			log_info "WAF route already exists for $domain"
+		fi
+	else
+		log_info "mitmproxy routes file not found, creating..."
+		mkdir -p "$(dirname "$routes_file")"
+		echo "{\"$domain\": [\"127.0.0.1\", $http_port]}" > "$routes_file"
+		[ -d "$(dirname "$routes_file_in")" ] && cp "$routes_file" "$routes_file_in"
+	fi
 
-	uci commit haproxy
-
-	# Update Nextcloud config
+	# Update Nextcloud UCI config
 	uci_set ssl.enabled '1'
 	uci_set ssl.domain "$domain"
 
-	# Reload HAProxy
+	# Restart mitmproxy to load new routes
+	if [ -x /etc/init.d/mitmproxy ]; then
+		log_info "Reloading mitmproxy..."
+		/etc/init.d/mitmproxy restart 2>/dev/null || true
+	fi
+
+	# Regenerate HAProxy config and reload
+	log_info "Regenerating HAProxy config..."
+	/usr/sbin/haproxyctl generate 2>/dev/null || true
 	/etc/init.d/haproxy reload 2>/dev/null || true
 
 	# Add trusted domain in Nextcloud
 	if lxc_running; then
+		log_info "Configuring Nextcloud trusted domains..."
 		lxc_occ config:system:set trusted_domains 1 --value="$domain"
 		lxc_occ config:system:set overwriteprotocol --value="https"
+		lxc_occ config:system:set overwrite.cli.url --value="https://$domain"
 	fi
 
-	log_info "SSL enabled for $domain"
+	log_info ""
+	log_info "SSL enabled for $domain (with WAF inspection)"
 	log_info "Access Nextcloud at: https://$domain"
+	log_info ""
+	log_info "Traffic flow: Client -> HAProxy -> mitmproxy (WAF) -> Nextcloud"
 }
 
 cmd_ssl_disable() {
@@ -1035,6 +1077,165 @@ cmd_ssl_disable() {
 	uci_set ssl.enabled '0'
 
 	log_info "SSL disabled"
+}
+
+cmd_setup_mail() {
+	require_root
+	load_config
+
+	local smtp_host="${1:-}"
+	local smtp_port="${2:-587}"
+	local smtp_user="${3:-}"
+	local smtp_pass="${4:-}"
+	local smtp_from="${5:-}"
+
+	if [ -z "$smtp_host" ]; then
+		cat << 'EOF'
+Usage: nextcloudctl setup-mail <smtp_host> [port] [user] [password] [from_address]
+
+Examples:
+  # Gmail SMTP
+  nextcloudctl setup-mail smtp.gmail.com 587 user@gmail.com "app-password" user@gmail.com
+
+  # Local mailserver (secubox-app-mailserver)
+  nextcloudctl setup-mail 127.0.0.1 25
+
+  # Mailcow/Mailinabox
+  nextcloudctl setup-mail mail.example.com 587 noreply@example.com "password" noreply@example.com
+
+Note: For Gmail, use an App Password (not your regular password).
+EOF
+		return 1
+	fi
+
+	if ! lxc_running; then
+		log_error "Nextcloud container not running"
+		return 1
+	fi
+
+	log_info "Configuring SMTP mail settings..."
+
+	# Set mail mode to SMTP
+	lxc_occ config:system:set mail_smtpmode --value="smtp"
+	lxc_occ config:system:set mail_smtphost --value="$smtp_host"
+	lxc_occ config:system:set mail_smtpport --value="$smtp_port"
+
+	# Enable TLS for standard ports
+	if [ "$smtp_port" = "587" ] || [ "$smtp_port" = "465" ]; then
+		lxc_occ config:system:set mail_smtpsecure --value="tls"
+	fi
+
+	# Set authentication if provided
+	if [ -n "$smtp_user" ]; then
+		lxc_occ config:system:set mail_smtpauth --value="1"
+		lxc_occ config:system:set mail_smtpauthtype --value="LOGIN"
+		lxc_occ config:system:set mail_smtpname --value="$smtp_user"
+	fi
+
+	if [ -n "$smtp_pass" ]; then
+		lxc_occ config:system:set mail_smtppassword --value="$smtp_pass"
+	fi
+
+	# Set from address
+	if [ -n "$smtp_from" ]; then
+		lxc_occ config:system:set mail_from_address --value="${smtp_from%@*}"
+		lxc_occ config:system:set mail_domain --value="${smtp_from#*@}"
+	elif [ -n "$smtp_user" ]; then
+		lxc_occ config:system:set mail_from_address --value="${smtp_user%@*}"
+		lxc_occ config:system:set mail_domain --value="${smtp_user#*@}"
+	fi
+
+	log_info "SMTP configured: $smtp_host:$smtp_port"
+	log_info ""
+	log_info "Test with: nextcloudctl occ notification:test-push <username>"
+}
+
+cmd_setup_backup_cron() {
+	require_root
+	load_config
+
+	local schedule="$(uci_get backup.schedule)" || schedule="daily"
+	local cron_file="/etc/cron.d/nextcloud-backup"
+
+	log_info "Setting up scheduled backups: $schedule"
+
+	case "$schedule" in
+		hourly)
+			echo "0 * * * * root /usr/sbin/nextcloudctl backup auto-\$(date +\\%Y\\%m\\%d-\\%H) >/dev/null 2>&1" > "$cron_file"
+			;;
+		daily)
+			echo "0 3 * * * root /usr/sbin/nextcloudctl backup auto-\$(date +\\%Y\\%m\\%d) >/dev/null 2>&1" > "$cron_file"
+			;;
+		weekly)
+			echo "0 3 * * 0 root /usr/sbin/nextcloudctl backup auto-\$(date +\\%Y\\%m\\%d) >/dev/null 2>&1" > "$cron_file"
+			;;
+		disabled|none)
+			rm -f "$cron_file"
+			log_info "Scheduled backups disabled"
+			return 0
+			;;
+		*)
+			log_error "Unknown schedule: $schedule (use: hourly, daily, weekly, disabled)"
+			return 1
+			;;
+	esac
+
+	chmod 644 "$cron_file"
+
+	# Restart cron if running
+	/etc/init.d/cron restart 2>/dev/null || true
+
+	log_info "Backup cron job created: $cron_file"
+	log_info "Backups will run $schedule and keep last $(uci_get backup.keep) copies"
+}
+
+cmd_connections() {
+	load_config
+
+	local lan_ip
+	lan_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
+
+	local base_url="http://${lan_ip}:${http_port}"
+	if [ "$ssl_enabled" = "1" ] && [ -n "$ssl_domain" ]; then
+		base_url="https://${ssl_domain}"
+	fi
+
+	cat << EOF
+Nextcloud Connection URLs
+=========================
+
+Web Interface:
+  $base_url
+
+CalDAV (Calendar):
+  $base_url/remote.php/dav/calendars/<username>/
+
+CardDAV (Contacts):
+  $base_url/remote.php/dav/addressbooks/users/<username>/contacts/
+
+WebDAV (Files):
+  $base_url/remote.php/dav/files/<username>/
+
+iOS/macOS Calendar & Contacts:
+  Server: $base_url
+  Path: /remote.php/dav
+
+Android (DAVx5):
+  Base URL: $base_url/remote.php/dav
+  Login: Your Nextcloud username and password
+
+Thunderbird (TbSync + Provider for CalDAV & CardDAV):
+  Server URL: $base_url
+
+Desktop Sync Client:
+  Download from: https://nextcloud.com/install/#install-clients
+  Server: $base_url
+
+Mobile Apps:
+  iOS: https://apps.apple.com/app/nextcloud/id1125420102
+  Android: https://play.google.com/store/apps/details?id=com.nextcloud.client
+
+EOF
 }
 
 cmd_service_run() {
@@ -1067,6 +1268,9 @@ case "${1:-}" in
 	list-backups) shift; cmd_list_backups "$@" ;;
 	ssl-enable)   shift; cmd_ssl_enable "$@" ;;
 	ssl-disable)  shift; cmd_ssl_disable "$@" ;;
+	setup-mail)   shift; cmd_setup_mail "$@" ;;
+	setup-backup-cron) shift; cmd_setup_backup_cron "$@" ;;
+	connections)  shift; cmd_connections "$@" ;;
 	service-run)  shift; cmd_service_run "$@" ;;
 	service-stop) shift; cmd_service_stop "$@" ;;
 	*)            usage ;;
