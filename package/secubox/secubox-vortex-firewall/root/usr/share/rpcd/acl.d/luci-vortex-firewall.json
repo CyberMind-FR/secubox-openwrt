@@ -3,12 +3,35 @@
 		"description": "Grant access to Vortex DNS Firewall",
 		"read": {
 			"ubus": {
-				"luci.vortex-firewall": ["status", "get_stats", "get_feeds", "get_blocked", "search"]
+				"luci.vortex-firewall": [
+					"status",
+					"get_stats",
+					"get_feeds",
+					"get_blocked",
+					"search",
+					"sinkhole_status",
+					"sinkhole_events",
+					"sinkhole_stats",
+					"dnsguard_status",
+					"dnsguard_alerts",
+					"mesh_status",
+					"mesh_received",
+					"mesh_peers"
+				]
 			}
 		},
 		"write": {
 			"ubus": {
-				"luci.vortex-firewall": ["update_feeds", "block_domain", "unblock_domain"]
+				"luci.vortex-firewall": [
+					"update_feeds",
+					"block_domain",
+					"unblock_domain",
+					"sinkhole_toggle",
+					"sinkhole_clear",
+					"dnsguard_sync",
+					"mesh_publish",
+					"mesh_sync"
+				]
 			}
 		}
 	}

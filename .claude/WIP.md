@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-01 (Reverse MWAN WireGuard Phase 1)_
+_Last updated: 2026-03-03 (Image Builder Validation)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -43,16 +43,18 @@ _Last updated: 2026-03-01 (Reverse MWAN WireGuard Phase 1)_
 
 ### In Progress
 
-- **Vortex DNS Firewall Phase 1** — DONE (2026-02-11)
+- **Vortex DNS Firewall Phases 1-4** — DONE (2026-03-03)
   - Created `secubox-vortex-firewall` package for DNS-level threat blocking
   - Threat intel aggregator (URLhaus, OpenPhish, Malware Domains feeds)
   - SQLite blocklist database with domain deduplication
   - dnsmasq integration via sinkhole hosts file
   - ×47 vitality multiplier concept
-  - CLI tool: `vortex-firewall intel/stats/start/stop`
-  - RPCD handler with 8 methods for LuCI integration
-  - Tested: 765 domains blocked from 3 feeds
-  - **Next phases**: Sinkhole server (Phase 2), DNS Guard integration (Phase 3), Mesh threat sharing (Phase 4), LuCI dashboard (Phase 5)
+  - CLI tool: `vortex-firewall intel/stats/start/stop/sinkhole/dnsguard/mesh`
+  - RPCD handler with 21 methods for LuCI integration
+  - Phase 2: HTTP/HTTPS sinkhole server for infected client detection
+  - Phase 3: DNS Guard AI detection integration with metadata import
+  - Phase 4: Mesh threat sharing via secubox-p2p blockchain
+  - LuCI dashboard with Overview, Sinkhole, DNS Guard, and Mesh tabs
 
 - **Vortex DNS** - Meshed multi-dynamic subdomain delegation (DONE 2026-02-05)
   - Created `secubox-vortex-dns` package with `vortexctl` CLI
@@ -62,6 +64,51 @@ _Last updated: 2026-03-01 (Reverse MWAN WireGuard Phase 1)_
   - Gossip-based exposure config sync via secubox-p2p
   - Created `luci-app-vortex-dns` dashboard
 
+### Just Completed (2026-03-03)
+
+- **Vortex DNS Firewall Phase 3 - DNS Guard Integration** — DONE (2026-03-03)
+  - Integrated DNS Guard AI detection engine with Vortex Firewall
+  - Enhanced import with metadata (type, confidence, reason) from alerts.json
+  - CLI: `dnsguard status/sync/export/alerts`
+  - RPCD: 3 new methods (dnsguard_status/alerts/sync)
+  - LuCI DNS Guard Dashboard: status, detection types, alerts table
+  - Bidirectional feed: Vortex imports DNS Guard, can export back
+
+- **Vortex DNS Firewall Phase 2 - Sinkhole Server** — DONE (2026-03-03)
+  - HTTP/HTTPS sinkhole captures blocked domain connections
+  - Warning page with threat type, client IP, domain, timestamp
+  - CLI: `sinkhole start/stop/status/logs/export/gencert/clear`
+  - RPCD: 5 new methods (sinkhole_status/events/stats/toggle/clear)
+  - LuCI Sinkhole Dashboard: infected clients table, event log, toggle
+  - Transforms Vortex from passive blocker to active threat analyzer
+
+- **AI Gateway LuCI Dashboard** — DONE (2026-03-03)
+  - Created `luci-app-ai-gateway` package with 4 KISS-themed views
+  - Overview: Status cards, provider grid, classification legend, audit stats
+  - Providers: API key management, enable/disable toggles, test buttons
+  - Classifier: Interactive testing tool with example inputs
+  - Audit Log: ANSSI CSPN compliance viewer with distribution chart
+  - Completes AI Gateway full-stack implementation
+
+- **Image Builder Validation** — DONE (2026-03-03)
+  - Validated `secubox-image.sh`, `secubox-sysupgrade.sh`, `resize-openwrt-image.sh`
+  - Confirmed all device profiles valid (mochabin, espressobin, x86-64)
+  - Fixed curl redirect issue: Added `-L` flag to 9 curl calls
+  - First-boot script validated for correct shell syntax
+  - ASU API connectivity tested successfully
+
+### Just Completed (2026-03-02)
+
+- **Reverse MWAN WireGuard v2 - Phase 2** — DONE (2026-03-02)
+  - LuCI Dashboard for Mesh Uplinks (`uplinks.js`)
+  - Status cards: Uplink Status, Active Uplinks, Mesh Offers, Provider Mode
+  - Active Uplinks table with test/priority/remove actions
+  - Peer Offers grid with "Use as Uplink" button
+  - API additions: 9 RPC methods for uplink management
+  - Menu entry: "Mesh Uplinks" tab in WireGuard Dashboard
+  - 10-second live polling for status updates
+  - Completes full Reverse MWAN WireGuard v2 feature
+
 ### Just Completed (2026-03-01)
 
 - **Reverse MWAN WireGuard v2 - Phase 1** — DONE (2026-03-01)
@@ -70,7 +117,6 @@ _Last updated: 2026-03-01 (Reverse MWAN WireGuard Phase 1)_
   - Uplink library (`/usr/lib/wireguard-dashboard/uplink.sh`) with gossip integration
   - RPCD backend: 9 new methods for uplink management
   - UCI config (`/etc/config/wireguard_uplink`) for global and per-uplink settings
-  - Phase 2 pending: LuCI dashboard integration
 
 - **Nextcloud Integration Enhancements** — DONE (2026-03-01)
   - WAF-safe SSL routing via mitmproxy_inspector
@@ -1186,7 +1232,7 @@ Implementing 3 evolutions inspired by SysWarden patterns:
 - ~~Tor Shield / opkg bug~~ — FIXED (2026-02-28) - dnsmasq bypass for excluded domains
 - ~~Nextcloud self-hosted cloud storage (v2)~~ — ENHANCED (2026-03-01) - WAF-safe SSL, scheduled backups, email, connections
 - SSMTP / mail host / MX record management (v2)
-- ~~Reverse MWAN WireGuard peers (v2)~~ — Phase 1 DONE (2026-03-01) - CLI + library + RPCD; Phase 2 (LuCI) pending
+- ~~Reverse MWAN WireGuard peers (v2)~~ — COMPLETE (2026-03-02) - CLI, library, RPCD, LuCI dashboard
 
 ---
 

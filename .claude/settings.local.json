@@ -500,7 +500,13 @@
       "WebFetch(domain:matrix.gk2.secubox.in)",
       "Bash(# Stop the failed VM VBoxManage controlvm ''C3Box-SecuBox'' poweroff || true # Check the c3box-vm-builder for the proper build method grep -A20 \"\"build_firmware\"\" /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/c3box-vm-builder.sh)",
       "Bash(sudo umount:*)",
-      "Bash(__NEW_LINE_c35a46b8074eb5e8__ sudo losetup -d \"$LOOP_DEV\")"
+      "Bash(__NEW_LINE_c35a46b8074eb5e8__ sudo losetup -d \"$LOOP_DEV\")",
+      "Bash(# Test Matrix registration flow curl -s -X POST \"\"https://matrix.gk2.secubox.in/_matrix/client/v3/register\"\" \\\\ -H \"\"Content-Type: application/json\"\" \\\\ -d ''{\"\"username\"\":\"\"testuser123\"\",\"\"password\"\":\"\"TestPass123!\"\",\"\"auth\"\":{\"\"type\"\":\"\"m.login.dummy\"\"}}'')",
+      "Bash(# Step 1: Get registration flows echo \"\"=== Registration Flows ===\"\" curl -s -X POST \"\"https://matrix.gk2.secubox.in/_matrix/client/v3/register\"\" \\\\ -H \"\"Content-Type: application/json\"\" \\\\ -d ''{}'')",
+      "Bash(# Test registration again echo \"\"=== Registration Flows ===\"\" curl -s -X POST \"\"https://matrix.gk2.secubox.in/_matrix/client/v3/register\"\" \\\\ -H \"\"Content-Type: application/json\"\" \\\\ -d ''{}'')",
+      "Bash(# Test registration now echo \"\"=== Registration Flows ===\"\" curl -s -X POST \"\"https://matrix.gk2.secubox.in/_matrix/client/v3/register\"\" \\\\ -H \"\"Content-Type: application/json\"\" \\\\ -d ''{}'')",
+      "Bash(# Final registration test curl -s -X POST \"\"https://matrix.gk2.secubox.in/_matrix/client/v3/register\"\" \\\\ -H \"\"Content-Type: application/json\"\" \\\\ -d ''{}'')",
+      "WebFetch(domain:pf.gk2.secubox.in)"
     ]
   }
 }

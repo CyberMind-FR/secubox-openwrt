@@ -265,7 +265,7 @@ api_build() {
     log_step "Submitting build request to ASU..."
 
     local response
-    response=$(curl -s -w "\n%{http_code}" \
+    response=$(curl -sL -w "\n%{http_code}" \
         -H "Content-Type: application/json" \
         -d "@$json_file" \
         "$ASU_URL/api/v1/build")
@@ -318,7 +318,7 @@ poll_build() {
 
     while [ $elapsed -lt $max_wait ]; do
         local response
-        response=$(curl -s -w "\n%{http_code}" "$ASU_URL/api/v1/build/$request_hash")
+        response=$(curl -sL -w "\n%{http_code}" "$ASU_URL/api/v1/build/$request_hash")
         local http_code
         http_code=$(echo "$response" | tail -1)
         local body
@@ -442,7 +442,7 @@ print(rh, sha)
 
     log_step "Downloading: $filename"
     log_info "URL: $download_url"
-    curl -# -o "$output_file" "$download_url" || {
+    curl -#L -o "$output_file" "$download_url" || {
         log_error "Download failed"
         return 1
     }
@@ -603,7 +603,7 @@ cmd_status() {
     [[ -z "$hash" ]] && { log_error "Usage: $0 status <hash>"; return 1; }
 
     local response
-    response=$(curl -s "$ASU_URL/api/v1/build/$hash")
+    response=$(curl -sL "$ASU_URL/api/v1/build/$hash")
     echo "$response" | python3 -m json.tool 2>/dev/null || echo "$response"
 }
 
@@ -612,7 +612,7 @@ cmd_download() {
     [[ -z "$hash" ]] && { log_error "Usage: $0 download <hash>"; return 1; }
 
     local response
-    response=$(curl -s "$ASU_URL/api/v1/build/$hash")
+    response=$(curl -sL "$ASU_URL/api/v1/build/$hash")
     download_image "$response"
 }
 

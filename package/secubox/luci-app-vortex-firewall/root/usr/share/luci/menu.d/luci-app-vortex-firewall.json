@@ -3,11 +3,42 @@
 		"title": "Vortex Firewall",
 		"order": 40,
 		"action": {
-			"type": "view",
-			"path": "vortex-firewall/overview"
+			"type": "firstchild"
 		},
 		"depends": {
 			"acl": ["luci-app-vortex-firewall"]
+		}
+	},
+	"admin/secubox/security/vortex-firewall/overview": {
+		"title": "Overview",
+		"order": 1,
+		"action": {
+			"type": "view",
+			"path": "vortex-firewall/overview"
+		}
+	},
+	"admin/secubox/security/vortex-firewall/sinkhole": {
+		"title": "Sinkhole",
+		"order": 2,
+		"action": {
+			"type": "view",
+			"path": "vortex-firewall/sinkhole"
+		}
+	},
+	"admin/secubox/security/vortex-firewall/dnsguard": {
+		"title": "DNS Guard",
+		"order": 3,
+		"action": {
+			"type": "view",
+			"path": "vortex-firewall/dnsguard"
+		}
+	},
+	"admin/secubox/security/vortex-firewall/mesh": {
+		"title": "Mesh",
+		"order": 4,
+		"action": {
+			"type": "view",
+			"path": "vortex-firewall/mesh"
 		}
 	}
 }

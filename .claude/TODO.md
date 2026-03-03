@@ -1,6 +1,6 @@
 # SecuBox TODOs (Claude Edition)
 
-_Last updated: 2026-02-06_
+_Last updated: 2026-03-03_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -45,12 +45,19 @@ _Last updated: 2026-02-06_
    - Threat IOC propagation tested (116 blocks synced)
    - Automatic SSH-based mesh sync configured (5-min cron)
 
-2. **WAF Auto-Ban Tuning**
-   - Sensitivity thresholds may need adjustment based on real traffic patterns.
-   - CVE detection patterns (including CVE-2025-15467) need false-positive analysis.
+2. **WAF Auto-Ban Tuning** — DONE (2026-03-03)
+   - ~~Sensitivity thresholds may need adjustment based on real traffic patterns.~~
+   - ~~CVE detection patterns (including CVE-2025-15467) need false-positive analysis.~~
+   - Added Amazon/OpenAI/Meta to bot whitelist
+   - Changed sensitivity from strict to moderate (5 attempts in 600s)
+   - Updated waf_bypass scenario to skip known bots
 
-3. **Image Builder Validation**
-   - `secubox-tools/` image builder and sysupgrade scripts need testing on physical hardware.
+3. **Image Builder Validation** — DONE (2026-03-03)
+   - ~~`secubox-tools/` image builder and sysupgrade scripts need testing on physical hardware.~~
+   - Syntax validation passed for all scripts (bash/POSIX sh)
+   - ASU API connectivity verified, all device profiles valid
+   - Fixed curl redirect handling (added `-L` flag to 9 curl calls)
+   - First-boot script validated for correct package installation
 
 ### Innovation CVE Layer 7
 

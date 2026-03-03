@@ -134,6 +134,67 @@ var callDeleteEndpoint = rpc.declare({
 	expect: { }
 });
 
+// Uplink API calls (Reverse MWAN WireGuard)
+var callUplinkStatus = rpc.declare({
+	object: 'luci.wireguard-dashboard',
+	method: 'uplink_status',
+	expect: { }
+});
+
+var callGetUplinks = rpc.declare({
+	object: 'luci.wireguard-dashboard',
+	method: 'uplinks',
+	expect: { uplinks: [] }
+});
+
+var callAddUplink = rpc.declare({
+	object: 'luci.wireguard-dashboard',
+	method: 'add_uplink',
+	params: ['peer_pubkey', 'endpoint', 'local_pubkey', 'priority', 'weight', 'node_id'],
+	expect: { }
+});
+
+var callRemoveUplink = rpc.declare({
+	object: 'luci.wireguard-dashboard',
+	method: 'remove_uplink',
+	params: ['interface'],
+	expect: { }
+});
+
+var callTestUplink = rpc.declare({
+	object: 'luci.wireguard-dashboard',
+	method: 'test_uplink',
+	params: ['interface', 'target'],
+	expect: { }
+});
+
+var callOfferUplink = rpc.declare({
+	object: 'luci.wireguard-dashboard',
+	method: 'offer_uplink',
+	params: ['bandwidth', 'latency'],
+	expect: { }
+});
+
+var callWithdrawUplink = rpc.declare({
+	object: 'luci.wireguard-dashboard',
+	method: 'withdraw_uplink',
+	expect: { }
+});
+
+var callSetUplinkPriority = rpc.declare({
+	object: 'luci.wireguard-dashboard',
+	method: 'set_uplink_priority',
+	params: ['interface', 'priority', 'weight'],
+	expect: { }
+});
+
+var callSetUplinkFailover = rpc.declare({
+	object: 'luci.wireguard-dashboard',
+	method: 'set_uplink_failover',
+	params: ['enabled'],
+	expect: { }
+});
+
 function buildEndpointSelector(endpointData, inputId) {
 	var endpoints = (endpointData || {}).endpoints || [];
 	var defaultId = (endpointData || {})['default'] || '';
@@ -274,6 +335,16 @@ return baseclass.extend({
 	setEndpoint: callSetEndpoint,
 	setDefaultEndpoint: callSetDefaultEndpoint,
 	deleteEndpoint: callDeleteEndpoint,
+	// Uplink API (Reverse MWAN)
+	getUplinkStatus: callUplinkStatus,
+	getUplinks: callGetUplinks,
+	addUplink: callAddUplink,
+	removeUplink: callRemoveUplink,
+	testUplink: callTestUplink,
+	offerUplink: callOfferUplink,
+	withdrawUplink: callWithdrawUplink,
+	setUplinkPriority: callSetUplinkPriority,
+	setUplinkFailover: callSetUplinkFailover,
 	buildEndpointSelector: buildEndpointSelector,
 	getEndpointValue: getEndpointValue,
 	formatBytes: formatBytes,

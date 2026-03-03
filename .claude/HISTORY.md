@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-02-28 (AI Gateway Deployed)_
+_Last updated: 2026-03-03 (Vortex Sinkhole Server)_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -4106,3 +4106,201 @@ git checkout HEAD -- index.html
     - Fixed mitmproxy routing for matrix.gk2.secubox.in and alerte.gk2.secubox.in
     - Identified corrupted c3box-vm images from Feb 23 - need rebuild
     - ASU firmware builder working with MochaBin preseeds embedded
+
+62. **Reverse MWAN WireGuard v2 - Phase 2 (2026-03-02)**
+    - **LuCI Dashboard for Mesh Uplinks:**
+      - New "Mesh Uplinks" tab in WireGuard Dashboard (`uplinks.js`)
+      - Status cards: Uplink Status, Active Uplinks count, Mesh Offers, Provider Mode
+      - Quick actions: Offer Uplink, Withdraw Uplink, Toggle Auto-Failover
+    - **Active Uplinks Table:**
+      - Interface, Peer, Endpoint, Priority/Weight columns
+      - Status badges (active/testing/unknown)
+      - Actions: Test connectivity, Set priority, Remove uplink
+    - **Peer Offers Grid:**
+      - Card-based display of available mesh uplink offers
+      - Shows node ID, bandwidth (Mbps), latency (ms), public key
+      - "Use as Uplink" button to add peer as backup route
+    - **API Additions (`api.js`):**
+      - `getUplinkStatus`, `getUplinks` - Status retrieval
+      - `addUplink`, `removeUplink` - Uplink management
+      - `testUplink` - Connectivity testing
+      - `offerUplink`, `withdrawUplink` - Provider mode
+      - `setUplinkPriority`, `setUplinkFailover` - Configuration
+    - **Menu Entry:** Added "Mesh Uplinks" at order 45 (after Traffic Stats)
+    - **10-second polling** for live status updates
+    - **Help section** explaining mesh uplink architecture
+    - Completes Reverse MWAN WireGuard v2 feature
+
+63. **AI Gateway LuCI Dashboard (2026-03-03)**
+    - **Created `luci-app-ai-gateway` package** for Data Sovereignty Engine web interface
+    - **4 Views with KISS Theme:**
+      - **Overview:** Status cards (port, providers, requests), classification tier legend, provider hierarchy grid, audit statistics, service controls (start/stop/restart), offline mode toggle
+      - **Providers:** 6 provider cards (LocalAI, Mistral, Claude, OpenAI, Gemini, xAI), enable/disable toggles, API key management, test connectivity buttons, tier badges (LOCAL/EU/CLOUD)
+      - **Classifier:** Interactive classification testing tool, example inputs with expected tiers, real-time classification with pattern matching display, destination routing explanation
+      - **Audit Log:** ANSSI CSPN compliance audit viewer, classification distribution chart, stats grid (LOCAL_ONLY/SANITIZED/CLOUD_DIRECT), JSONL log viewer with color-coded entries
+    - **Menu Structure:** Admin > Services > AI Gateway with 4 tabs
+    - **ACL Permissions:** Read methods (status, config, providers, audit, classify) and write methods (set_provider, offline_mode, test, start/stop/restart)
+    - **Dark Mode Support:** Full dark theme compatibility across all views
+    - **Live Polling:** 10-30 second auto-refresh for status and audit stats
+    - **ANSSI CSPN Emphasis:** Information boxes explaining data sovereignty compliance
+    - Completes AI Gateway full-stack implementation (backend + LuCI)
+
+64. **Vortex DNS Firewall Phase 2 - Sinkhole Server (2026-03-03)**
+    - **Sinkhole HTTP/HTTPS server** for capturing blocked domain connections
+    - **Architecture:**
+      - HTTP handler (`sinkhole-http-handler.sh`) via socat TCP listener
+      - HTTPS support with OpenSSL TLS termination
+      - Extracts domain from Host header
+      - Records events to SQLite database
+      - Returns warning page with block details
+    - **Warning Page Features:**
+      - Modern responsive design with dark gradient theme
+      - Displays: blocked domain, threat type, client IP, timestamp
+      - Explains why connection was blocked
+      - SecuBox branding
+    - **CLI Commands:**
+      - `sinkhole start/stop/status` - Server management
+      - `sinkhole logs [N]` - View last N events
+      - `sinkhole export [file]` - Export events to JSON
+      - `sinkhole gencert` - Generate self-signed HTTPS certificate
+      - `sinkhole clear` - Clear event log
+    - **RPCD Methods (5 new):**
+      - `sinkhole_status` - Server status and event statistics
+      - `sinkhole_events` - Retrieve captured events
+      - `sinkhole_stats` - Top clients, top domains, event types
+      - `sinkhole_toggle` - Enable/disable sinkhole server
+      - `sinkhole_clear` - Clear event database
+    - **LuCI Sinkhole Dashboard:**
+      - Status card with toggle switch for enable/disable
+      - Stats cards: total events, today's events, infected clients, unique domains
+      - Top infected clients table with activity bars
+      - Top blocked domains table
+      - Event log viewer with clear function
+      - 15-second polling for live updates
+    - **Infected Client Detection:**
+      - Clients attempting blocked domain connections are flagged
+      - SOC visibility into compromised devices
+      - Malware behavior analysis capability
+    - **Dependencies added:** socat, openssl-util
+    - Transforms Vortex from passive blocker to active threat analyzer
+
+65. **Vortex DNS Firewall Phase 3 - DNS Guard Integration (2026-03-03)**
+    - Integrated DNS Guard AI detection engine with Vortex Firewall.
+    - **Enhanced Import with Metadata:**
+      - Reads alerts.json with full detection context (type, confidence, reason)
+      - Maps DNS Guard types: dga, tunneling, known_bad, tld_anomaly, rate_anomaly
+      - Preserves confidence scores in blocklist database
+      - Fallback to basic import from threat_domains.txt
+    - **CLI Commands (4 new):**
+      - `dnsguard status` - Show DNS Guard service and integration health
+      - `dnsguard sync` - Force sync detections from DNS Guard
+      - `dnsguard export` - Push Vortex intel back to DNS Guard blocklists
+      - `dnsguard alerts [N]` - View recent DNS Guard alerts
+    - **Bidirectional Feed:**
+      - Vortex imports DNS Guard detections automatically
+      - Vortex can export threat intel back to DNS Guard blocklists
+      - Enables unified threat database across both systems
+    - **RPCD Methods (3 new):**
+      - `dnsguard_status` - Service status, alert/pending counts, detection breakdown
+      - `dnsguard_alerts` - Retrieve recent alerts with metadata
+      - `dnsguard_sync` - Trigger sync from DNS Guard
+    - **LuCI DNS Guard Dashboard:**
+      - Service status card (running/stopped/not installed)
+      - Stats cards: alert count, pending approvals, imported to Vortex
+      - Detection types breakdown with colored badges
+      - Sync button with last sync timestamp
+      - Recent alerts table with confidence bars
+    - Phase 3 completes the integration between DNS Guard (AI detection) and Vortex Firewall (DNS blocking).
+
+66. **Vortex DNS Firewall Phase 4 - Mesh Threat Sharing (2026-03-03)**
+    - Integrated Vortex Firewall with secubox-p2p threat intelligence system.
+    - **Domain IOC Support:**
+      - Extended threat-intel.sh to support domain-based IOCs (not just IPs)
+      - Added `ti_collect_vortex()` function to extract high-confidence domains
+      - Domain IOCs applied to Vortex Firewall blocklist on receipt
+    - **CLI Commands (5 new):**
+      - `mesh status` - Show mesh threat sharing status
+      - `mesh publish` - Publish local domains to mesh
+      - `mesh sync` - Sync and apply threats from mesh
+      - `mesh received [N]` - Show threats received from mesh
+      - `mesh peers` - Show peer contribution statistics
+    - **RPCD Methods (5 new):**
+      - `mesh_status` - Mesh sharing status and stats
+      - `mesh_received` - List received IOCs with trust scores
+      - `mesh_publish` - Trigger publish operation
+      - `mesh_sync` - Trigger sync and apply
+      - `mesh_peers` - Peer contribution data
+    - **LuCI Mesh Dashboard:**
+      - Status cards: local/received/applied IOCs, domains shared, peers
+      - Publish and Sync action buttons
+      - Peer contributors grid with trust badges
+      - Received threats table with severity/trust/status
+    - **Trust Model Integration:**
+      - Direct peers: Full trust, apply all threats
+      - Transitive peers: Apply high severity only
+      - Unknown: Skip (logged for review)
+    - **Collection Criteria:**
+      - Domains with confidence >= 85%
+      - Domains with hit_count > 0 (locally verified)
+      - Excludes private/local domains
+    - Completes the Vortex DNS Firewall 4-phase implementation.
+
+67. **Vortex Sinkhole Server Fix (2026-03-03)**
+    - Fixed sinkhole server startup issues discovered via LuCI dashboard screenshot.
+    - **HAProxy Bind Configuration:**
+      - Changed HAProxy from wildcard `*:80`/`*:443` to specific IP `192.168.255.1:80`/`192.168.255.1:443`
+      - Allows sinkhole to bind to dedicated IP `192.168.255.253:80`/`192.168.255.253:443`
+    - **Missing Scripts Deploy:**
+      - Created `/usr/lib/vortex-firewall/` directory on router
+      - Deployed sinkhole-http.sh, sinkhole-http-handler.sh, sinkhole-https.sh
+    - **Process Detection Fix:**
+      - Changed pgrep patterns from `vortex-sinkhole-http` to `sinkhole-http-handler`
+      - HTTPS detection updated to check PID file + SSL backend availability
+    - **HTTPS Server Limitation:**
+      - Socat package compiled without SSL support on this router
+      - HTTPS sinkhole now shows "Limited (no SSL)" status when full SSL unavailable
+      - Added `https_limited` field to RPCD response
+      - Updated LuCI view to show warning color for limited mode
+    - **Final Status:**
+      - HTTP Server: Running (full functionality)
+      - HTTPS Server: Limited mode (blocked HTTPS domains show browser cert warning)
+
+68. **WAF Auto-Ban Tuning (2026-03-03)**
+    - Identified false positive pattern: Amazonbot (legitimate crawler) being banned for "waf_bypass"
+    - **Root cause**: Gitea URL parameters (`whitespace=ignore-xxx`, `display=source`) incorrectly triggering WAF bypass detection
+    - **Autoban configuration tuning:**
+      - Added Amazon, OpenAI, Meta to `whitelist_bots` (previously only Facebook, Google, Bing, Twitter, LinkedIn)
+      - Changed sensitivity from `strict` to `moderate`
+      - Increased moderate threshold from 3 to 5 attempts
+      - Extended moderate window from 300s to 600s (10 minutes)
+    - **CrowdSec scenario tuning:**
+      - Updated `secubox-mitmproxy-waf-bypass.yaml`:
+        - Added filter `evt.Parsed.is_bot != 'true'` to skip known bots
+        - Increased capacity from 5 to 10
+        - Extended leakspeed from 60s to 120s
+        - Reduced blackhole from 30m to 15m
+    - **Cleared incorrectly banned IPs:** Removed all waf_bypass decisions
+    - **Result:** Legitimate crawlers (Amazon, Meta, OpenAI) no longer banned for normal Gitea browsing
+
+69. **Image Builder Validation (2026-03-03)**
+    - Validated `secubox-tools/secubox-image.sh` and `secubox-sysupgrade.sh` scripts
+    - **Syntax validation:**
+      - `secubox-image.sh`: Bash syntax OK
+      - `secubox-sysupgrade.sh`: POSIX sh compatible (uses jsonfilter, not jq)
+      - `resize-openwrt-image.sh`: Bash syntax OK
+    - **ASU API testing:**
+      - Verified API connectivity to sysupgrade.openwrt.org
+      - Confirmed all device profiles are valid:
+        - `globalscale_mochabin` (mvebu/cortexa72) ✓
+        - `globalscale_espressobin` (mvebu/cortexa53) ✓
+        - `generic` (x86/64) ✓
+      - Successfully queued test builds for all profiles
+    - **Bug fix - Curl redirect handling:**
+      - ASU API returns 301 redirects for some endpoints
+      - Added `-L` flag to all curl calls in both scripts
+      - Fixed: `secubox-image.sh` (5 curl calls)
+      - Fixed: `secubox-sysupgrade.sh` (4 curl calls)
+    - **First-boot script validation:**
+      - Extracted and validated shell syntax
+      - 63 lines, 7 opkg calls, 10 log statements
+    - **Tools available:** All required tools (gunzip, gzip, fdisk, sfdisk, parted, e2fsck, resize2fs, losetup, blkid, truncate) present

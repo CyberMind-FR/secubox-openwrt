@@ -1,5 +1,5 @@
 #!/bin/sh /etc/rc.common
-# Vortex DNS Firewall - DNS-level threat blocking
+# Vortex DNS Firewall - DNS-level threat blocking with sinkhole server
 
 START=95
 STOP=10
@@ -25,4 +25,16 @@ reload_service() {
 
 status() {
     $PROG status
+}
+
+sinkhole_start() {
+    $PROG sinkhole start
+}
+
+sinkhole_stop() {
+    $PROG sinkhole stop
+}
+
+sinkhole_status() {
+    $PROG sinkhole status
 }
