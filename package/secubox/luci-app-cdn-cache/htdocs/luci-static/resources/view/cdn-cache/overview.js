@@ -90,7 +90,7 @@ return view.extend({
 				KissTheme.stat(stats.hit_ratio || 0, 'Hit Ratio %', 'var(--kiss-green)'),
 				KissTheme.stat(formatBytes((cacheSize.used_kb || 0) * 1024), 'Cache Used'),
 				KissTheme.stat((stats.requests || 0).toLocaleString(), 'Requests'),
-				KissTheme.stat(formatBytes(stats.bandwidth_saved_bytes || 0), 'BW Saved', 'var(--kiss-cyan)')
+				KissTheme.stat(formatBytes(stats.bytes_saved || 0), 'BW Saved', 'var(--kiss-cyan)')
 			]),
 
 			// Details Grid
@@ -131,7 +131,7 @@ return view.extend({
 						])
 					]),
 					KissTheme.E('div', { 'style': 'text-align:center;padding:16px;background:rgba(0,200,83,0.05);border-radius:8px;margin-top:12px;' }, [
-						KissTheme.E('div', { 'style': 'font-family:Orbitron,monospace;font-size:24px;color:var(--kiss-green);' }, formatBytes(stats.bandwidth_saved_bytes || 0)),
+						KissTheme.E('div', { 'style': 'font-family:Orbitron,monospace;font-size:24px;color:var(--kiss-green);' }, formatBytes(stats.bytes_saved || 0)),
 						KissTheme.E('div', { 'style': 'font-size:11px;color:var(--kiss-muted);text-transform:uppercase;letter-spacing:1px;' }, 'Bandwidth Saved')
 					])
 				])
@@ -188,7 +188,7 @@ return view.extend({
 			statValues[0].textContent = (stats.hit_ratio || 0);
 			statValues[1].textContent = formatBytes((cacheSize.used_kb || 0) * 1024);
 			statValues[2].textContent = (stats.requests || 0).toLocaleString();
-			statValues[3].textContent = formatBytes(stats.bandwidth_saved_bytes || 0);
+			statValues[3].textContent = formatBytes(stats.bytes_saved || 0);
 		}
 	},
 
