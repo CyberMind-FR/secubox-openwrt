@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-03 (Image Builder Validation)_
+_Last updated: 2026-03-03 (Comprehensive Service Audit)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -65,6 +65,16 @@ _Last updated: 2026-03-03 (Image Builder Validation)_
   - Created `luci-app-vortex-dns` dashboard
 
 ### Just Completed (2026-03-03)
+
+- **Comprehensive Service Audit** — DONE (2026-03-03)
+  - **WAF Enforcement**: Disabled `waf_bypass` on 21 vhosts - all traffic now routes through mitmproxy WAF
+  - **Mitmproxy WAF**: Restarted service, verified port 8889 binding, HAProxy routing working
+  - **Container Autostart**: Enabled `lxc.start.auto=1` on 9 essential containers (haproxy, mitmproxy-in, streamlit, matrix, jabber, voip, gitea, domoticz, glances)
+  - **Glances Fix**: Resolved cgroup mount issue - simplified LXC config to `proc:mixed sys:ro` without cgroup mount
+  - **Service Verification**: All 30 streamlit instances running, 95+ metablogizer sites configured
+  - **Health Checks**: HAProxy backend health checks verified (`check` option on all servers)
+  - **18 LXC Containers Running**: domoticz, gitea, glances, haproxy, jabber, jellyfin, lyrion, mailserver, matrix, mitmproxy-in, mitmproxy-out, nextcloud, peertube, roundcube, streamlit, voip, wazuh
+  - **Core Services Responding**: Nextcloud, Webmail, Jellyfin, Gitea, Matrix, PeerTube (all return HTTP 301 redirect to HTTPS)
 
 - **Vortex DNS Firewall Phase 3 - DNS Guard Integration** — DONE (2026-03-03)
   - Integrated DNS Guard AI detection engine with Vortex Firewall

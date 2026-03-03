@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-03-03 (Vortex Sinkhole Server)_
+_Last updated: 2026-03-03 (Comprehensive Service Audit)_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -4304,3 +4304,30 @@ git checkout HEAD -- index.html
       - Extracted and validated shell syntax
       - 63 lines, 7 opkg calls, 10 log statements
     - **Tools available:** All required tools (gunzip, gzip, fdisk, sfdisk, parted, e2fsck, resize2fs, losetup, blkid, truncate) present
+
+70. **Comprehensive Service Audit (2026-03-03)**
+    - **WAF Enforcement:**
+      - Disabled `waf_bypass='1'` on 21 vhosts that were incorrectly bypassing WAF
+      - All HTTP traffic now routes through mitmproxy WAF for inspection
+      - Regenerated and reloaded HAProxy configuration
+    - **Mitmproxy WAF:**
+      - Fixed service startup - restarted host `/etc/init.d/mitmproxy`
+      - Verified port 8889 binding for mitmproxy-in (WAF inbound)
+      - Confirmed HAProxy backend `mitmproxy_inspector` routing correctly
+    - **Container Autostart:**
+      - Enabled `lxc.start.auto=1` on 9 essential containers:
+        haproxy, mitmproxy-in, streamlit, matrix, jabber, voip, gitea, domoticz, glances
+      - Previously 5 containers had autostart enabled (nextcloud, mailserver, roundcube, jellyfin, peertube)
+    - **Glances Container Fix:**
+      - Root cause: cgroup mount failure with `cgroup:mixed` option
+      - Simplified LXC config to `lxc.mount.auto = proc:mixed sys:ro` (no cgroup)
+      - Container now starts successfully
+    - **Service Inventory:**
+      - 30 streamlit instances running
+      - 95+ metablogizer sites configured
+      - 18 LXC containers running: domoticz, gitea, glances, haproxy, jabber, jellyfin, lyrion, mailserver, matrix, mitmproxy-in, mitmproxy-out, nextcloud, peertube, roundcube, streamlit, voip, wazuh
+    - **Health Verification:**
+      - All core services responding (HTTP 301 redirect to HTTPS as expected):
+        Nextcloud, Webmail, Jellyfin, Gitea, Matrix, PeerTube, Streamlit portal, Metablogizer sites
+      - HAProxy backend health checks verified (`check` option on all servers)
+      - External access requires upstream router port forwarding (82.67.100.75 → 192.168.255.1)
