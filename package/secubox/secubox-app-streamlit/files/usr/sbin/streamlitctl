@@ -1349,32 +1349,51 @@ _emancipate_ssl() {
 _emancipate_mitmproxy() {
 	local domain="$1"
 	local port="$2"
+	local routes_file="/srv/mitmproxy-in/haproxy-routes.json"
 
-	log_info "[MITMPROXY] Registering route in centralized registry"
+	log_info "[MITMPROXY] Adding route: $domain -> 192.168.255.1:$port"
 
-	# Use centralized secubox-route for route management (preferred)
+	# Direct JSON update - most reliable method
+	if [ -f "$routes_file" ] && command -v python3 >/dev/null 2>&1; then
+		python3 -c "
+import json
+import sys
+try:
+    with open('$routes_file', 'r') as f:
+        routes = json.load(f)
+    routes['$domain'] = ['192.168.255.1', $port]
+    with open('$routes_file', 'w') as f:
+        json.dump(routes, f, indent=2)
+    print('Route added successfully')
+except Exception as e:
+    print(f'Error: {e}', file=sys.stderr)
+    sys.exit(1)
+" 2>&1 && {
+			log_info "[MITMPROXY] Route registered in $routes_file"
+			return 0
+		}
+	fi
+
+	# Fallback: Use centralized secubox-route if available
 	if command -v secubox-route >/dev/null 2>&1; then
 		if secubox-route add "$domain" "192.168.255.1" "$port" "streamlit" 2>&1; then
-			log_info "[MITMPROXY] Route registered: $domain -> 192.168.255.1:$port"
-		else
-			log_warn "[MITMPROXY] Failed to register route"
+			log_info "[MITMPROXY] Route registered via secubox-route"
+			return 0
 		fi
-		return 0
 	fi
 
 	# Fallback: Sync via mitmproxyctl
 	if command -v mitmproxyctl >/dev/null 2>&1; then
-		log_warn "[MITMPROXY] secubox-route not found, using mitmproxyctl"
-		if mitmproxyctl sync-routes >/dev/null 2>&1; then
-			log_info "[MITMPROXY] Routes synced successfully"
-		else
-			log_warn "[MITMPROXY] Route sync failed - manual sync may be required"
-			log_warn "[MITMPROXY] Run: mitmproxyctl sync-routes"
-		fi
-		return 0
+		log_warn "[MITMPROXY] Direct update failed, trying mitmproxyctl"
+		mitmproxyctl sync-routes >/dev/null 2>&1 && {
+			log_info "[MITMPROXY] Routes synced via mitmproxyctl"
+			return 0
+		}
 	fi
 
-	log_warn "[MITMPROXY] No route manager found - routes not synced"
+	log_error "[MITMPROXY] Failed to register route - manual intervention required"
+	log_error "[MITMPROXY] Add manually: echo '{\"$domain\": [\"192.168.255.1\", $port]}' to $routes_file"
+	return 1
 }
 
 _emancipate_reload() {

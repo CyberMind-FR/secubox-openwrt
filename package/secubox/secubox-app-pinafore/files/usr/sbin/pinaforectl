@@ -259,10 +259,10 @@ cmd_emancipate() {
 		uci set haproxy.${backend_name}_srv.port="$PORT"
 	fi
 
-	# Add vhost
+	# Add vhost - route through mitmproxy for WAF protection
 	uci set haproxy.$vhost_name=vhost
 	uci set haproxy.$vhost_name.domain="$domain"
-	uci set haproxy.$vhost_name.backend='pinafore'
+	uci set haproxy.$vhost_name.backend='mitmproxy_inspector'
 	uci set haproxy.$vhost_name.ssl='1'
 	uci set haproxy.$vhost_name.ssl_redirect='1'
 	uci set haproxy.$vhost_name.acme='1'
@@ -271,11 +271,25 @@ cmd_emancipate() {
 
 	uci commit haproxy
 
+	# Register route in mitmproxy
+	local routes_file="/srv/mitmproxy-in/haproxy-routes.json"
+	if [ -f "$routes_file" ] && command -v python3 >/dev/null 2>&1; then
+		python3 -c "
+import json
+try:
+    with open('$routes_file', 'r') as f:
+        routes = json.load(f)
+    routes['$domain'] = ['192.168.255.1', $PORT]
+    with open('$routes_file', 'w') as f:
+        json.dump(routes, f, indent=2)
+except: pass
+" 2>/dev/null && log_info "Route registered: $domain -> 192.168.255.1:$PORT"
+	elif command -v mitmproxyctl >/dev/null 2>&1; then
+		mitmproxyctl sync-routes 2>/dev/null
+	fi
+
 	# Reload HAProxy
 	haproxyctl reload 2>/dev/null || /etc/init.d/haproxy reload 2>/dev/null
-
-	# Sync mitmproxy routes
-	mitmproxyctl sync-routes 2>/dev/null
 
 	log_info "Pinafore exposed at https://$domain"
 }
