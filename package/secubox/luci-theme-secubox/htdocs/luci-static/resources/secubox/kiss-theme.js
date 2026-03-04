@@ -68,6 +68,7 @@ var KissThemeClass = baseclass.extend({
 				{ name: 'Stats', path: 'admin/services/haproxy/stats' },
 				{ name: 'Settings', path: 'admin/services/haproxy/settings' }
 			]},
+			{ icon: '🔀', name: 'Routes Status', path: 'admin/status/routes' },
 			{ icon: '🔒', name: 'WireGuard', path: 'admin/services/wireguard', tabs: [
 				{ name: 'Wizard', path: 'admin/services/wireguard/wizard' },
 				{ name: 'Overview', path: 'admin/services/wireguard/overview' },
