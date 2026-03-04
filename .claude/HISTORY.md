@@ -4382,3 +4382,25 @@ git checkout HEAD -- index.html
       - `docs/sbom-pipeline.md` - Architecture, usage, CRA mapping
       - `SECURITY.md` - CRA Art. 13 §6 compliant disclosure policy
       - VEX policy reference
+
+73. **Routes Status Dashboard & User Services (2026-03-04)**
+    - **New Package: `luci-app-routes-status`**
+      - HAProxy vhosts status dashboard
+      - mitmproxy route configuration status (OUT/IN routes)
+      - SSL certificate status indicators
+      - WAF bypass detection (vhosts not using mitmproxy_inspector)
+      - Route sync and add missing route actions
+      - RPCD backend with optimized batch processing for 200+ vhosts
+    - **Shell Scripting Fixes:**
+      - `luci.network-modes`: Removed 60 lines of orphan dead code after `esac`
+      - `luci.netdata-dashboard`: Fixed bash process substitution to POSIX awk
+    - **Service User Extensions:**
+      - `secubox-core-users`: Added gitea and jellyfin service support
+      - `luci-app-secubox-users`: Added Jellyfin checkbox in frontend
+    - **LXC Networking Fix:**
+      - Discovered: LXC containers can't reach host's `127.0.0.1`
+      - Fixed mitmproxy routes in nextcloudctl, metablogizerctl, mitmproxyctl
+      - Use host LAN IP (192.168.255.1) instead of localhost for route targets
+    - **Mailserver Recovery:**
+      - Fixed webmail.gk2.secubox.in login error by starting mailserver container
+      - Verified IMAP/SMTP connectivity (ports 143, 993, 25, 587, 465)

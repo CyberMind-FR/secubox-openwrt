@@ -1,0 +1,205 @@
+#!/bin/sh
+# RPCD handler for Routes Status dashboard
+# Shows HAProxy vhosts and mitmproxy route configuration status
+
+. /usr/share/libubox/jshn.sh
+
+MITMPROXY_ROUTES="/srv/mitmproxy/haproxy-routes.json"
+MITMPROXY_IN_ROUTES="/srv/mitmproxy-in/haproxy-routes.json"
+HAPROXY_CERTS="/srv/haproxy/certs"
+
+# Get host LAN IP for route configuration
+get_host_ip() {
+	uci -q get network.lan.ipaddr || echo "192.168.255.1"
+}
+
+# Main status method - optimized to fetch data once
+method_status() {
+	local host_ip=$(get_host_ip)
+	local haproxy_running=$(pgrep haproxy >/dev/null 2>&1 && echo "true" || echo "false")
+	local mitmproxy_running=$(pgrep -f mitmproxy >/dev/null 2>&1 && echo "true" || echo "false")
+
+	# Fetch vhost list once to temp file
+	local vhost_tmp="/tmp/vhosts_$$"
+	if command -v haproxyctl >/dev/null 2>&1; then
+		haproxyctl vhost list 2>/dev/null | tail -n +3 > "$vhost_tmp"
+	else
+		touch "$vhost_tmp"
+	fi
+
+	json_init
+	json_add_boolean haproxy_running "$haproxy_running"
+	json_add_boolean mitmproxy_running "$mitmproxy_running"
+	json_add_string host_ip "$host_ip"
+
+	json_add_array vhosts
+
+	# Process vhost data line by line (using file redirection to avoid subshell)
+	while IFS= read -r line; do
+		[ -z "$line" ] && continue
+
+		# Parse line: "  domain.com             -> backend_name  [enabled] SSL ..."
+		local domain=$(echo "$line" | awk '{print $1}')
+		local backend=$(echo "$line" | awk '{print $3}')
+		local enabled=$(echo "$line" | grep -qF '[enabled]' && echo "true" || echo "false")
+
+		[ -z "$domain" ] && continue
+
+		# Check mitmproxy routes (grep for domain in JSON)
+		local has_route_out="false"
+		local has_route_in="false"
+		if [ -f "$MITMPROXY_ROUTES" ] && grep -qF "\"$domain\"" "$MITMPROXY_ROUTES" 2>/dev/null; then
+			has_route_out="true"
+		fi
+		if [ -f "$MITMPROXY_IN_ROUTES" ] && grep -qF "\"$domain\"" "$MITMPROXY_IN_ROUTES" 2>/dev/null; then
+			has_route_in="true"
+		fi
+
+		# Check SSL cert
+		local ssl_status="missing"
+		[ -f "$HAPROXY_CERTS/${domain}.pem" ] && ssl_status="valid"
+
+		# WAF bypass check
+		local waf_bypass="false"
+		[ "$backend" != "mitmproxy_inspector" ] && waf_bypass="true"
+
+		json_add_object ""
+		json_add_string domain "$domain"
+		json_add_string backend "$backend"
+		json_add_string backend_port ""
+		json_add_boolean active "$enabled"
+		json_add_string ssl_status "$ssl_status"
+		json_add_boolean has_route_out "$has_route_out"
+		json_add_boolean has_route_in "$has_route_in"
+		json_add_string route_target_out ""
+		json_add_string route_target_in ""
+		json_add_boolean waf_bypass "$waf_bypass"
+		json_close_object
+	done < "$vhost_tmp"
+
+	json_close_array
+	json_dump
+
+	# Cleanup
+	rm -f "$vhost_tmp"
+}
+
+# Sync routes from HAProxy backends to mitmproxy
+method_sync_routes() {
+	local result
+	if [ -x /usr/sbin/mitmproxyctl ]; then
+		result=$(/usr/sbin/mitmproxyctl sync-routes 2>&1)
+		json_init
+		json_add_boolean success true
+		json_add_string output "$result"
+		json_dump
+	else
+		json_init
+		json_add_boolean success false
+		json_add_string error "mitmproxyctl not found"
+		json_dump
+	fi
+}
+
+# Add a missing route for a domain
+method_add_route() {
+	local domain port
+
+	# Read JSON input
+	read -r input
+	json_load "$input"
+	json_get_var domain domain
+	json_get_var port port
+
+	if [ -z "$domain" ] || [ -z "$port" ]; then
+		json_init
+		json_add_boolean success false
+		json_add_string error "Missing domain or port parameter"
+		json_dump
+		return
+	fi
+
+	local host_ip=$(get_host_ip)
+
+	# Add route to both mitmproxy route files
+	local success="true"
+	local errors=""
+
+	for routes_file in "$MITMPROXY_ROUTES" "$MITMPROXY_IN_ROUTES"; do
+		if [ -f "$routes_file" ]; then
+			# Create temp file with new route
+			local tmpfile=$(mktemp)
+			if command -v jq >/dev/null 2>&1; then
+				jq --arg d "$domain" --arg h "$host_ip" --argjson p "$port" \
+					'. + {($d): [$h, $p]}' "$routes_file" > "$tmpfile" 2>/dev/null
+			else
+				# Fallback: manual JSON manipulation
+				# Remove trailing } and add new entry
+				sed 's/}$//' "$routes_file" > "$tmpfile"
+				# Check if file has content (not empty object)
+				if grep -q '": \[' "$routes_file"; then
+					printf ',\n  "%s": ["%s", %s]\n}\n' "$domain" "$host_ip" "$port" >> "$tmpfile"
+				else
+					printf '  "%s": ["%s", %s]\n}\n' "$domain" "$host_ip" "$port" >> "$tmpfile"
+				fi
+			fi
+
+			if [ -s "$tmpfile" ]; then
+				mv "$tmpfile" "$routes_file"
+			else
+				rm -f "$tmpfile"
+				success="false"
+				errors="$errors Failed to update $routes_file."
+			fi
+		fi
+	done
+
+	# Restart mitmproxy to apply changes
+	if [ "$success" = "true" ]; then
+		/etc/init.d/mitmproxy restart >/dev/null 2>&1
+	fi
+
+	json_init
+	json_add_boolean success "$success"
+	[ -n "$errors" ] && json_add_string error "$errors"
+	json_dump
+}
+
+# List available methods
+list_methods() {
+	json_init
+	json_add_object status
+	json_close_object
+	json_add_object sync_routes
+	json_close_object
+	json_add_object add_route
+	json_add_string domain "string"
+	json_add_int port 0
+	json_close_object
+	json_dump
+}
+
+case "$1" in
+	list)
+		list_methods
+		;;
+	call)
+		case "$2" in
+			status)
+				method_status
+				;;
+			sync_routes)
+				method_sync_routes
+				;;
+			add_route)
+				method_add_route
+				;;
+			*)
+				echo '{"error":"Unknown method"}'
+				;;
+		esac
+		;;
+	*)
+		echo '{"error":"Unknown action"}'
+		;;
+esac

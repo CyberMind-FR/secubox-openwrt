@@ -1,0 +1,14 @@
+{
+	"admin/status/routes": {
+		"title": "Routes Status",
+		"order": 15,
+		"action": {
+			"type": "view",
+			"path": "routes-status/overview"
+		},
+		"depends": {
+			"acl": ["luci-app-routes-status"],
+			"uci": {}
+		}
+	}
+}
