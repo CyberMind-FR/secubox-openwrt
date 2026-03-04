@@ -393,17 +393,8 @@ get_stats() {
 	local uptime=$(cat /proc/uptime | cut -d' ' -f1 | cut -d'.' -f1)
 	json_add_int "uptime" "$uptime"
 	
-	# Network totals
-	local net_rx=0
-	local net_tx=0
-	while read line; do
-		local iface=$(echo "$line" | awk -F: '{print $1}' | tr -d ' ')
-		[ "$iface" = "lo" ] && continue
-		local rx=$(echo "$line" | awk -F: '{print $2}' | awk '{print $1}')
-		local tx=$(echo "$line" | awk -F: '{print $2}' | awk '{print $9}')
-		net_rx=$((net_rx + rx))
-		net_tx=$((net_tx + tx))
-	done < <(cat /proc/net/dev | tail -n +3)
+	# Network totals (using awk for POSIX sh compatibility)
+	eval $(awk 'NR>2 && $1!="lo:" {rx+=$2; tx+=$10} END {printf "net_rx=%d net_tx=%d", rx, tx}' /proc/net/dev)
 	
 	json_add_int "network_rx" "$net_rx"
 	json_add_int "network_tx" "$net_tx"
