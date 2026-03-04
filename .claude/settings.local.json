@@ -506,7 +506,12 @@
       "Bash(# Test registration again echo \"\"=== Registration Flows ===\"\" curl -s -X POST \"\"https://matrix.gk2.secubox.in/_matrix/client/v3/register\"\" \\\\ -H \"\"Content-Type: application/json\"\" \\\\ -d ''{}'')",
       "Bash(# Test registration now echo \"\"=== Registration Flows ===\"\" curl -s -X POST \"\"https://matrix.gk2.secubox.in/_matrix/client/v3/register\"\" \\\\ -H \"\"Content-Type: application/json\"\" \\\\ -d ''{}'')",
       "Bash(# Final registration test curl -s -X POST \"\"https://matrix.gk2.secubox.in/_matrix/client/v3/register\"\" \\\\ -H \"\"Content-Type: application/json\"\" \\\\ -d ''{}'')",
-      "WebFetch(domain:pf.gk2.secubox.in)"
+      "WebFetch(domain:pf.gk2.secubox.in)",
+      "Bash(__NEW_LINE_4f688fa65b287613__ echo \"\")",
+      "WebFetch(domain:enhance-app.gk2.secubox.in)",
+      "Bash(openssl dgst:*)",
+      "Bash(# Check the exact field names returned by stats ssh root@192.168.255.1 \"\"ubus call luci.cdn-cache stats\"\")",
+      "Bash(arping:*)"
     ]
   }
 }

@@ -1,12 +1,38 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-03 (Comprehensive Service Audit)_
+_Last updated: 2026-03-04 (SBOM Pipeline + AI Gateway)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
 ---
 
 ## Couche 1 — Core Mesh
+
+### Just Completed (2026-03-04)
+
+- **SBOM Pipeline for CRA Annex I Compliance** — DONE (2026-03-04)
+  - `scripts/check-sbom-prereqs.sh` - Prerequisites validation (OpenWrt version, tools, Kconfig)
+  - `scripts/sbom-generate.sh` - Multi-source SBOM generation (OpenWrt, feed, rootfs, firmware)
+  - `scripts/sbom-audit-feed.sh` - PKG_HASH/PKG_LICENSE feed audit with MANIFEST.md output
+  - `Makefile` - SBOM targets (sbom, sbom-quick, sbom-validate, sbom-scan, sbom-audit, sbom-prereqs)
+  - `.github/workflows/sbom-release.yml` - GitHub Actions with CVE gating and auto-security issues
+  - `docs/sbom-pipeline.md` - Full documentation with CRA mapping and ANSSI CSPN guidance
+  - `SECURITY.md` - CRA Art. 13 §6 compliant vulnerability disclosure policy
+
+- **AI Gateway Full-Stack Implementation** — DONE (2026-03-04)
+  - **Backend** (`secubox-ai-gateway`):
+    - 3-tier data classification: LOCAL_ONLY, SANITIZED, CLOUD_DIRECT
+    - PII sanitizer: IP anonymization, credential scrubbing
+    - Provider routing: LocalAI > Mistral EU > Claude > OpenAI > Gemini > xAI
+    - `aigatewayctl` CLI with classify/sanitize/provider/audit commands
+    - RPCD backend with 11 ubus methods
+    - ANSSI CSPN compliant audit logging
+  - **Frontend** (`luci-app-ai-gateway`):
+    - 4 KISS-themed views: Overview, Providers, Classify, Audit
+    - Provider management with API key storage
+    - Interactive classification testing
+    - Audit log viewer with distribution charts
+  - Deployed and tested on router (classification + sanitization working)
 
 ### Recently Completed (2026-02-04/05)
 

@@ -4331,3 +4331,54 @@ git checkout HEAD -- index.html
         Nextcloud, Webmail, Jellyfin, Gitea, Matrix, PeerTube, Streamlit portal, Metablogizer sites
       - HAProxy backend health checks verified (`check` option on all servers)
       - External access requires upstream router port forwarding (82.67.100.75 → 192.168.255.1)
+
+71. **AI Gateway Implementation (2026-03-04)**
+    - **Data Classification Engine:**
+      - 3-tier classification: `LOCAL_ONLY`, `SANITIZED`, `CLOUD_DIRECT`
+      - Pattern detection: IPv4/IPv6, MAC addresses, private keys, credentials
+      - Security tool references (crowdsec, iptables, nftables) auto-classified
+    - **PII Sanitizer:**
+      - IP anonymization (192.168.1.100 → 192.168.1.XXX)
+      - Credential scrubbing (password=secret → password=[REDACTED])
+    - **Provider Routing:**
+      - LocalAI (priority 0, always enabled, local_only)
+      - Mistral EU (priority 1, opt-in, sanitized)
+      - Claude/OpenAI/Gemini/xAI (priority 2+, opt-in, cloud_direct)
+    - **Package:** `secubox-ai-gateway` with `aigatewayctl` CLI
+    - **RPCD Backend:** 11 methods for LuCI integration
+    - **LuCI Frontend:** `luci-app-ai-gateway` with 4 views (Overview, Providers, Classify, Audit)
+    - **Audit Logging:** ANSSI CSPN compliant JSON logs with timestamps
+
+72. **SBOM Pipeline for CRA Annex I Compliance (2026-03-04)**
+    - **Prerequisites Check (`scripts/check-sbom-prereqs.sh`):**
+      - OpenWrt version validation (>= 22.03)
+      - Auto-detect SDK location if not in buildroot
+      - package-metadata.pl CycloneDX support check
+      - Host tools: jq, sha256sum, git, perl
+      - Optional tools: syft, grype, cyclonedx-cli (auto-install)
+      - Kconfig: CONFIG_JSON_CYCLONEDX_SBOM setting
+    - **SBOM Generator (`scripts/sbom-generate.sh`):**
+      - 4 sources: OpenWrt native, SecuBox feed Makefiles, rootfs scan, firmware image
+      - CycloneDX 1.6 primary output
+      - SPDX 2.3 secondary output
+      - SOURCE_DATE_EPOCH for reproducibility
+      - Component merge and deduplication
+    - **Feed Auditor (`scripts/sbom-audit-feed.sh`):**
+      - PKG_HASH and PKG_LICENSE validation
+      - MANIFEST.md generation
+      - Suggested PKG_HASH from dl/ tarballs
+    - **Makefile Targets:**
+      - `make sbom` - Full generation
+      - `make sbom-quick` - No rebuild
+      - `make sbom-validate` - CycloneDX validation
+      - `make sbom-scan` - Grype CVE scan
+      - `make sbom-audit` - Feed audit
+      - `make sbom-prereqs` - Check prerequisites
+    - **GitHub Actions (`.github/workflows/sbom-release.yml`):**
+      - Trigger: tags, workflow_dispatch, weekly schedule (CVE scan)
+      - Jobs: sbom-generate, sbom-publish, sbom-cve-gate
+      - Auto-create security issues for critical CVEs
+    - **Documentation:**
+      - `docs/sbom-pipeline.md` - Architecture, usage, CRA mapping
+      - `SECURITY.md` - CRA Art. 13 §6 compliant disclosure policy
+      - VEX policy reference

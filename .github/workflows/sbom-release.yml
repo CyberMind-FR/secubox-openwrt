@@ -1,0 +1,261 @@
+name: SBOM Release Pipeline
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to generate SBOM for (e.g., 0.20)'
+        required: true
+        type: string
+  schedule:
+    # Weekly CVE scan on Monday 2 AM UTC
+    - cron: '0 2 * * 1'
+
+env:
+  ARCH: aarch64_cortex-a53
+  SBOM_DIR: dist/sbom
+
+jobs:
+  sbom-generate:
+    name: Generate SBOM
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      sbom_path: ${{ steps.generate.outputs.sbom_path }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for git describe
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ inputs.version }}"
+          elif [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#v}"  # Strip 'v' prefix
+          else
+            VERSION=$(cat version 2>/dev/null || git describe --tags --always)
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Version: ${VERSION}"
+
+      - name: Cache OpenWrt toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/openwrt-toolchain
+            staging_dir
+            build_dir
+          key: openwrt-toolchain-${{ env.ARCH }}-${{ hashFiles('feeds.conf', '.config') }}
+          restore-keys: |
+            openwrt-toolchain-${{ env.ARCH }}-
+
+      - name: Cache SBOM tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/bin/syft
+            ~/.local/bin/grype
+            ~/.local/bin/cyclonedx-cli
+            ~/.cache/grype
+            ~/.cache/syft
+          key: sbom-tools-v1
+          restore-keys: |
+            sbom-tools-
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Install SBOM tools
+        run: |
+          mkdir -p ~/.local/bin
+          export PATH="$HOME/.local/bin:$PATH"
+
+          # Install syft
+          if [[ ! -x ~/.local/bin/syft ]]; then
+            curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b ~/.local/bin
+          fi
+          syft version
+
+          # Install grype
+          if [[ ! -x ~/.local/bin/grype ]]; then
+            curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b ~/.local/bin
+          fi
+          grype version
+
+          # Install cyclonedx-cli
+          if [[ ! -x ~/.local/bin/cyclonedx-cli ]]; then
+            curl -sSfL -o ~/.local/bin/cyclonedx-cli \
+              https://github.com/CycloneDX/cyclonedx-cli/releases/latest/download/cyclonedx-linux-x64
+            chmod +x ~/.local/bin/cyclonedx-cli
+          fi
+          cyclonedx-cli --version
+
+      - name: Update Grype database
+        if: github.event_name != 'schedule' || success()
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          grype db update || true
+
+      - name: Generate SBOM
+        id: generate
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          export VERSION="${{ steps.version.outputs.version }}"
+          export ARCH="${{ env.ARCH }}"
+
+          chmod +x scripts/sbom-generate.sh
+          ./scripts/sbom-generate.sh --version "$VERSION" --arch "$ARCH"
+
+          echo "sbom_path=${SBOM_DIR}/secubox-${VERSION}.cdx.json" >> $GITHUB_OUTPUT
+
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ steps.version.outputs.version }}
+          path: |
+            ${{ env.SBOM_DIR }}/secubox-${{ steps.version.outputs.version }}.*
+            ${{ env.SBOM_DIR }}/checksums.sha256
+            ${{ env.SBOM_DIR }}/sbom-warnings.txt
+          retention-days: 90
+
+  sbom-publish:
+    name: Publish to Release
+    needs: sbom-generate
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download SBOM artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: sbom-${{ needs.sbom-generate.outputs.version }}
+          path: sbom
+
+      - name: Attach to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            sbom/secubox-${{ needs.sbom-generate.outputs.version }}.cdx.json
+            sbom/secubox-${{ needs.sbom-generate.outputs.version }}.spdx.json
+            sbom/secubox-${{ needs.sbom-generate.outputs.version }}-cve-report.json
+            sbom/secubox-${{ needs.sbom-generate.outputs.version }}-cra-summary.txt
+            sbom/checksums.sha256
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  sbom-cve-gate:
+    name: CVE Gate Check
+    needs: sbom-generate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # Don't fail the whole workflow on schedule (weekly scan)
+    continue-on-error: ${{ github.event_name == 'schedule' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download SBOM artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: sbom-${{ needs.sbom-generate.outputs.version }}
+          path: sbom
+
+      - name: Check for critical CVEs
+        id: cve-check
+        run: |
+          CVE_REPORT="sbom/secubox-${{ needs.sbom-generate.outputs.version }}-cve-report.json"
+
+          if [[ ! -f "$CVE_REPORT" ]]; then
+            echo "No CVE report found"
+            exit 0
+          fi
+
+          CRITICAL_COUNT=$(jq '[.matches[]? | select(.vulnerability.severity == "Critical")] | length' "$CVE_REPORT" 2>/dev/null || echo 0)
+          HIGH_COUNT=$(jq '[.matches[]? | select(.vulnerability.severity == "High")] | length' "$CVE_REPORT" 2>/dev/null || echo 0)
+
+          echo "critical_count=${CRITICAL_COUNT}" >> $GITHUB_OUTPUT
+          echo "high_count=${HIGH_COUNT}" >> $GITHUB_OUTPUT
+
+          echo "=== CVE Summary ==="
+          echo "Critical: ${CRITICAL_COUNT}"
+          echo "High: ${HIGH_COUNT}"
+
+          if [[ "$CRITICAL_COUNT" -gt 0 ]]; then
+            echo "critical_cves=true" >> $GITHUB_OUTPUT
+            echo "::warning::Found ${CRITICAL_COUNT} CRITICAL CVEs"
+
+            echo "=== Critical CVEs ==="
+            jq -r '.matches[] | select(.vulnerability.severity == "Critical") | "\(.vulnerability.id): \(.artifact.name)@\(.artifact.version)"' "$CVE_REPORT"
+          fi
+
+      - name: Create security issue for critical CVEs
+        if: steps.cve-check.outputs.critical_cves == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const version = '${{ needs.sbom-generate.outputs.version }}';
+            const criticalCount = '${{ steps.cve-check.outputs.critical_count }}';
+
+            const title = `[Security] ${criticalCount} Critical CVE(s) found in SecuBox ${version}`;
+            const body = `## Automated Security Alert
+
+            The SBOM CVE scan found **${criticalCount} critical vulnerabilities** in SecuBox ${version}.
+
+            ### Action Required
+            1. Review the CVE report attached to the release
+            2. Assess impact and exploitability
+            3. Update affected components or document VEX status
+            4. Update the VEX document if not affected
+
+            ### References
+            - [CVE Report](https://github.com/${{ github.repository }}/releases/download/v${version}/secubox-${version}-cve-report.json)
+            - [CRA Summary](https://github.com/${{ github.repository }}/releases/download/v${version}/secubox-${version}-cra-summary.txt)
+
+            /cc @erdoukki
+            `;
+
+            // Check if issue already exists
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'security'
+            });
+
+            const existing = issues.find(i => i.title.includes(version) && i.title.includes('Critical CVE'));
+            if (existing) {
+              console.log(`Issue already exists: #${existing.number}`);
+              return;
+            }
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: ['security', 'cve', 'priority-critical'],
+              assignees: ['erdoukki']
+            });
+
+      - name: Fail on critical CVEs (release only)
+        if: github.event_name == 'push' && steps.cve-check.outputs.critical_cves == 'true'
+        run: |
+          echo "::error::Critical CVEs found - manual review required before release"
+          echo "See the security issue created for details"
+          exit 1
