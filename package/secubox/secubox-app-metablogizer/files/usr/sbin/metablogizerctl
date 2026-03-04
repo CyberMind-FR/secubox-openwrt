@@ -867,7 +867,11 @@ _emancipate_mitmproxy() {
 	local port=$(uci_get site_${name}.port)
 	local routes_file="/srv/mitmproxy-in/haproxy-routes.json"
 
-	log_info "[WAF] Adding route: $domain -> 127.0.0.1:$port"
+	# Get the host's LAN IP (mitmproxy runs in container, can't reach 127.0.0.1 on host)
+	local host_ip
+	host_ip=$(uci -q get network.lan.ipaddr || echo "192.168.255.1")
+
+	log_info "[WAF] Adding route: $domain -> $host_ip:$port"
 
 	# Direct JSON update - most reliable method
 	if [ -f "$routes_file" ] && command -v python3 >/dev/null 2>&1; then
@@ -877,7 +881,7 @@ import sys
 try:
     with open('$routes_file', 'r') as f:
         routes = json.load(f)
-    routes['$domain'] = ['127.0.0.1', $port]
+    routes['$domain'] = ['$host_ip', $port]
     with open('$routes_file', 'w') as f:
         json.dump(routes, f, indent=2)
     print('Route added successfully')
@@ -892,7 +896,7 @@ except Exception as e:
 
 	# Fallback: Use centralized secubox-route if available
 	if command -v secubox-route >/dev/null 2>&1; then
-		if secubox-route add "$domain" "127.0.0.1" "$port" "metablogizer" 2>&1; then
+		if secubox-route add "$domain" "$host_ip" "$port" "metablogizer" 2>&1; then
 			log_info "[WAF] Route registered via secubox-route"
 			return 0
 		fi

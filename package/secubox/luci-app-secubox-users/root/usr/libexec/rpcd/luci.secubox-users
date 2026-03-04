@@ -17,6 +17,7 @@ check_service() {
 		jabber)    [ -x /usr/sbin/jabberctl ] && lxc-info -n jabber 2>/dev/null | grep -q "RUNNING" && echo "1" || echo "0" ;;
 		email)     [ -x /usr/sbin/mailserverctl ] && lxc-info -n mailserver 2>/dev/null | grep -q "RUNNING" && echo "1" || echo "0" ;;
 		gitea)     [ -x /usr/sbin/giteactl ] && lxc-info -n gitea 2>/dev/null | grep -q "RUNNING" && echo "1" || echo "0" ;;
+		jellyfin)  [ -x /usr/sbin/jellyfinctl ] && lxc-info -n jellyfin 2>/dev/null | grep -q "RUNNING" && echo "1" || echo "0" ;;
 		*) echo "0" ;;
 	esac
 }
@@ -32,6 +33,7 @@ get_status() {
 	local jb_running=$(check_service jabber)
 	local em_running=$(check_service email)
 	local gt_running=$(check_service gitea)
+	local jf_running=$(check_service jellyfin)
 
 	cat <<EOFJ
 {
@@ -44,7 +46,8 @@ get_status() {
 		"matrix": $mx_running,
 		"jabber": $jb_running,
 		"email": $em_running,
-		"gitea": $gt_running
+		"gitea": $gt_running,
+		"jellyfin": $jf_running
 	}
 }
 EOFJ

@@ -1482,6 +1482,10 @@ sync_metablogizer_routes() {
 
 	log_info "Scanning MetaBlogizer sites..."
 
+	# Get host IP (mitmproxy runs in container, can't reach 127.0.0.1 on host)
+	local host_ip
+	host_ip=$(uci -q get network.lan.ipaddr || echo "192.168.255.1")
+
 	# Get all metablogizer sites
 	local sites_file="/tmp/mb_sites.tmp"
 	uci show metablogizer 2>/dev/null | grep "=site$" | cut -d'=' -f1 | cut -d'.' -f2 > "$sites_file"
@@ -1503,9 +1507,9 @@ sync_metablogizer_routes() {
 		fi
 		echo "$domain" >> "$added_file"
 
-		# Output JSON fragment
-		echo "\"$domain\": [\"127.0.0.1\", $port]"
-		log_info "  $domain -> 127.0.0.1:$port (metablogizer)"
+		# Output JSON fragment (use host IP, not 127.0.0.1)
+		echo "\"$domain\": [\"$host_ip\", $port]"
+		log_info "  $domain -> $host_ip:$port (metablogizer)"
 	done < "$sites_file"
 
 	rm -f "$sites_file"

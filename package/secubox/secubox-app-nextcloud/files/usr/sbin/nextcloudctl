@@ -997,8 +997,14 @@ cmd_ssl_enable() {
 
 	# Add route to mitmproxy for WAF inspection
 	# This ensures traffic is inspected before reaching Nextcloud
+	# NOTE: Nextcloud uses host network (lxc.net.0.type=none) so it listens on 192.168.255.1
+	# mitmproxy runs in its own container, so it can't reach 127.0.0.1 on the host
 	local routes_file="/srv/mitmproxy/haproxy-routes.json"
 	local routes_file_in="/srv/mitmproxy-in/haproxy-routes.json"
+
+	# Get the host's LAN IP (where Nextcloud is accessible from mitmproxy container)
+	local host_ip
+	host_ip=$(uci -q get network.lan.ipaddr || echo "192.168.255.1")
 
 	if [ -f "$routes_file" ]; then
 		log_info "Adding mitmproxy route for WAF inspection..."
@@ -1007,7 +1013,7 @@ cmd_ssl_enable() {
 		existing=$(jsonfilter -i "$routes_file" -e "@[\"$domain\"]" 2>/dev/null || echo "")
 
 		if [ -z "$existing" ]; then
-			# Add route: domain -> [127.0.0.1, port]
+			# Add route: domain -> [host_ip, port]
 			local tmpfile="/tmp/routes-$$.json"
 			# Read existing routes and add new one
 			if command -v python3 >/dev/null 2>&1; then
@@ -1015,17 +1021,17 @@ cmd_ssl_enable() {
 import json
 with open('$routes_file', 'r') as f:
     routes = json.load(f)
-routes['$domain'] = ['127.0.0.1', $http_port]
+routes['$domain'] = ['$host_ip', $http_port]
 with open('$tmpfile', 'w') as f:
     json.dump(routes, f, indent=2)
 "
 				mv "$tmpfile" "$routes_file"
 				# Also update the in-container copy
 				[ -f "$routes_file_in" ] && cp "$routes_file" "$routes_file_in"
-				log_info "Added WAF route: $domain -> 127.0.0.1:$http_port"
+				log_info "Added WAF route: $domain -> $host_ip:$http_port"
 			else
 				log_info "Python3 not available, manual route config needed"
-				log_info "Add to $routes_file: \"$domain\": [\"127.0.0.1\", $http_port]"
+				log_info "Add to $routes_file: \"$domain\": [\"$host_ip\", $http_port]"
 			fi
 		else
 			log_info "WAF route already exists for $domain"
@@ -1033,7 +1039,7 @@ with open('$tmpfile', 'w') as f:
 	else
 		log_info "mitmproxy routes file not found, creating..."
 		mkdir -p "$(dirname "$routes_file")"
-		echo "{\"$domain\": [\"127.0.0.1\", $http_port]}" > "$routes_file"
+		echo "{\"$domain\": [\"$host_ip\", $http_port]}" > "$routes_file"
 		[ -d "$(dirname "$routes_file_in")" ] && cp "$routes_file" "$routes_file_in"
 	fi
 
