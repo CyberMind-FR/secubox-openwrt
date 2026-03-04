@@ -51,6 +51,8 @@ check_service() {
 		matrix)    [ -x /usr/sbin/matrixctl ] && lxc-info -n matrix 2>/dev/null | grep -q "RUNNING" ;;
 		jabber)    [ -x /usr/sbin/jabberctl ] && lxc-info -n jabber 2>/dev/null | grep -q "RUNNING" ;;
 		email)     [ -x /usr/sbin/mailserverctl ] && lxc-info -n mailserver 2>/dev/null | grep -q "RUNNING" ;;
+		gitea)     [ -x /usr/sbin/giteactl ] && lxc-info -n gitea 2>/dev/null | grep -q "RUNNING" ;;
+		jellyfin)  [ -x /usr/sbin/jellyfinctl ] && lxc-info -n jellyfin 2>/dev/null | grep -q "RUNNING" ;;
 		*) return 1 ;;
 	esac
 }
@@ -86,6 +88,23 @@ create_on_service() {
 		email)
 			mailserverctl add-user "$email" "$password" 2>/dev/null
 			;;
+		gitea)
+			giteactl admin create-user --username "$username" --password "$password" --email "$email" 2>/dev/null
+			;;
+		jellyfin)
+			# Jellyfin user creation via API
+			local jf_ip=$(uci -q get jellyfin.main.ip_address || echo "192.168.255.31")
+			local jf_port=$(uci -q get jellyfin.main.port || echo "8096")
+			local jf_api_key=$(uci -q get jellyfin.main.api_key)
+			if [ -n "$jf_api_key" ]; then
+				curl -s -X POST "http://${jf_ip}:${jf_port}/Users/New" \
+					-H "X-Emby-Token: ${jf_api_key}" \
+					-H "Content-Type: application/json" \
+					-d "{\"Name\":\"${username}\",\"Password\":\"${password}\"}" 2>/dev/null
+			else
+				log_warn "Jellyfin: No API key configured"
+			fi
+			;;
 	esac
 }
 
@@ -118,6 +137,40 @@ update_password_on_service() {
 			sed -i "/^${email}:/d" /srv/lxc/mailserver/rootfs/etc/dovecot/users 2>/dev/null
 			mailserverctl add-user "$email" "$password" 2>/dev/null
 			;;
+		gitea)
+			# Gitea password update via API
+			local gitea_url=$(uci -q get gitea.main.url 2>/dev/null || echo "http://192.168.255.1:3001")
+			local gitea_token=$(uci -q get gitea.main.token 2>/dev/null)
+			if [ -n "$gitea_token" ]; then
+				curl -s -X PATCH \
+					-H "Authorization: token $gitea_token" \
+					-H "Content-Type: application/json" \
+					-d "{\"login_name\":\"$username\",\"password\":\"$password\"}" \
+					"${gitea_url}/api/v1/admin/users/${username}" 2>/dev/null
+			else
+				log_warn "Gitea: No API token configured"
+			fi
+			;;
+		jellyfin)
+			# Jellyfin password update via API
+			local jf_ip=$(uci -q get jellyfin.main.ip_address || echo "192.168.255.31")
+			local jf_port=$(uci -q get jellyfin.main.port || echo "8096")
+			local jf_api_key=$(uci -q get jellyfin.main.api_key)
+			if [ -n "$jf_api_key" ]; then
+				# Get user ID first
+				local user_id=$(curl -s "http://${jf_ip}:${jf_port}/Users" \
+					-H "X-Emby-Token: ${jf_api_key}" 2>/dev/null | \
+					jsonfilter -e "@[?(@.Name=='${username}')].Id" 2>/dev/null)
+				if [ -n "$user_id" ]; then
+					curl -s -X POST "http://${jf_ip}:${jf_port}/Users/${user_id}/Password" \
+						-H "X-Emby-Token: ${jf_api_key}" \
+						-H "Content-Type: application/json" \
+						-d "{\"NewPw\":\"${password}\"}" 2>/dev/null
+				fi
+			else
+				log_warn "Jellyfin: No API key configured"
+			fi
+			;;
 	esac
 }
 
@@ -147,6 +200,35 @@ delete_from_service() {
 			sed -i "/^${email}:/d" /srv/lxc/mailserver/rootfs/etc/dovecot/users 2>/dev/null
 			sed -i "/${email}/d" /srv/lxc/mailserver/rootfs/etc/postfix/vmailbox 2>/dev/null
 			;;
+		gitea)
+			# Gitea user deletion via API
+			local gitea_url=$(uci -q get gitea.main.url 2>/dev/null || echo "http://192.168.255.1:3001")
+			local gitea_token=$(uci -q get gitea.main.token 2>/dev/null)
+			if [ -n "$gitea_token" ]; then
+				curl -s -X DELETE \
+					-H "Authorization: token $gitea_token" \
+					"${gitea_url}/api/v1/admin/users/${username}" 2>/dev/null
+			else
+				log_warn "Gitea: No API token configured - manual deletion required"
+			fi
+			;;
+		jellyfin)
+			# Jellyfin user deletion via API
+			local jf_ip=$(uci -q get jellyfin.main.ip_address || echo "192.168.255.31")
+			local jf_port=$(uci -q get jellyfin.main.port || echo "8096")
+			local jf_api_key=$(uci -q get jellyfin.main.api_key)
+			if [ -n "$jf_api_key" ]; then
+				local user_id=$(curl -s "http://${jf_ip}:${jf_port}/Users" \
+					-H "X-Emby-Token: ${jf_api_key}" 2>/dev/null | \
+					jsonfilter -e "@[?(@.Name=='${username}')].Id" 2>/dev/null)
+				if [ -n "$user_id" ]; then
+					curl -s -X DELETE "http://${jf_ip}:${jf_port}/Users/${user_id}" \
+						-H "X-Emby-Token: ${jf_api_key}" 2>/dev/null
+				fi
+			else
+				log_warn "Jellyfin: No API key configured - manual deletion required"
+			fi
+			;;
 	esac
 }
 
@@ -172,7 +254,7 @@ cmd_add() {
 
 	# Default to all services if not specified
 	if [ -z "$services" ]; then
-		services=$(uci_get main.default_services || echo "nextcloud peertube jabber matrix email")
+		services=$(uci_get main.default_services || echo "nextcloud peertube jabber matrix email gitea jellyfin")
 	else
 		services=$(echo "$services" | tr ',' ' ')
 	fi
@@ -440,7 +522,7 @@ cmd_status() {
 	echo ""
 
 	echo "Available Services:"
-	for svc in nextcloud peertube jabber matrix email; do
+	for svc in nextcloud peertube jabber matrix email gitea jellyfin; do
 		if check_service "$svc"; then
 			echo -e "  ${GREEN}●${NC} $svc"
 		else
@@ -470,7 +552,7 @@ Commands:
   status                        Show status and available services
 
 Services (comma-separated):
-  nextcloud, peertube, jabber, matrix, email
+  nextcloud, peertube, jabber, matrix, email, gitea, jellyfin
 
 Examples:
   secubox-users add alice                    # All services, generated password

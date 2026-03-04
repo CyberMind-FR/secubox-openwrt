@@ -944,11 +944,25 @@ cmd_emancipate() {
 	# Configure HAProxy
 	cmd_configure_haproxy
 
-	# Register route in centralized registry
+	# Register route in mitmproxy
 	local port=$(uci_get port server || echo 9000)
-	if command -v secubox-route >/dev/null 2>&1; then
+	local routes_file="/srv/mitmproxy-in/haproxy-routes.json"
+
+	# Direct JSON update - most reliable method
+	if [ -f "$routes_file" ] && command -v python3 >/dev/null 2>&1; then
+		python3 -c "
+import json
+try:
+    with open('$routes_file', 'r') as f:
+        routes = json.load(f)
+    routes['$domain'] = ['192.168.255.1', $port]
+    with open('$routes_file', 'w') as f:
+        json.dump(routes, f, indent=2)
+except: pass
+" 2>/dev/null && log_info "Route registered: $domain -> 192.168.255.1:$port"
+	elif command -v secubox-route >/dev/null 2>&1; then
 		secubox-route add "$domain" "192.168.255.1" "$port" "peertube" 2>/dev/null
-		log_info "Route registered: $domain -> 192.168.255.1:$port"
+		log_info "Route registered via secubox-route"
 	elif command -v mitmproxyctl >/dev/null 2>&1; then
 		mitmproxyctl sync-routes 2>/dev/null
 	fi

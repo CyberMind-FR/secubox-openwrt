@@ -865,44 +865,55 @@ _emancipate_mitmproxy() {
 	local name="$1"
 	local domain="$2"
 	local port=$(uci_get site_${name}.port)
-
-	log_info "[WAF] Registering route in centralized registry"
-
-	# Use centralized secubox-route for route management (preferred)
-	if command -v secubox-route >/dev/null 2>&1; then
-		secubox-route add "$domain" "127.0.0.1" "$port" "metablogizer" 2>&1 | while read -r line; do
-			log_info "[WAF] $line"
-		done
-		log_info "[WAF] Route registered in central registry"
-		return 0
-	fi
-
-	# Fallback: Use mitmproxyctl sync-routes
-	if command -v mitmproxyctl >/dev/null 2>&1; then
-		log_warn "[WAF] secubox-route not found, using mitmproxyctl"
-		mitmproxyctl sync-routes 2>&1 | while read -r line; do
-			log_info "[WAF] $line"
-		done
-		return 0
-	fi
-
-	# Last resort: Direct file manipulation
-	log_warn "[WAF] No route manager found, directly adding route"
 	local routes_file="/srv/mitmproxy-in/haproxy-routes.json"
-	if [ -f "$routes_file" ]; then
+
+	# Get the host's LAN IP (mitmproxy runs in container, can't reach 127.0.0.1 on host)
+	local host_ip
+	host_ip=$(uci -q get network.lan.ipaddr || echo "192.168.255.1")
+
+	log_info "[WAF] Adding route: $domain -> $host_ip:$port"
+
+	# Direct JSON update - most reliable method
+	if [ -f "$routes_file" ] && command -v python3 >/dev/null 2>&1; then
 		python3 -c "
 import json
+import sys
 try:
-    with open('$routes_file') as f:
-        data = json.load(f)
-    data['$domain'] = ['127.0.0.1', $port]
+    with open('$routes_file', 'r') as f:
+        routes = json.load(f)
+    routes['$domain'] = ['$host_ip', $port]
     with open('$routes_file', 'w') as f:
-        json.dump(data, f, indent=2)
-    print('[WAF] Route added: $domain -> 127.0.0.1:$port')
+        json.dump(routes, f, indent=2)
+    print('Route added successfully')
 except Exception as e:
-    print(f'[WAF] Error: {e}')
-" 2>/dev/null
+    print(f'Error: {e}', file=sys.stderr)
+    sys.exit(1)
+" 2>&1 && {
+			log_info "[WAF] Route registered in $routes_file"
+			return 0
+		}
 	fi
+
+	# Fallback: Use centralized secubox-route if available
+	if command -v secubox-route >/dev/null 2>&1; then
+		if secubox-route add "$domain" "$host_ip" "$port" "metablogizer" 2>&1; then
+			log_info "[WAF] Route registered via secubox-route"
+			return 0
+		fi
+	fi
+
+	# Fallback: Sync via mitmproxyctl
+	if command -v mitmproxyctl >/dev/null 2>&1; then
+		log_warn "[WAF] Direct update failed, trying mitmproxyctl"
+		mitmproxyctl sync-routes >/dev/null 2>&1 && {
+			log_info "[WAF] Routes synced via mitmproxyctl"
+			return 0
+		}
+	fi
+
+	log_error "[WAF] Failed to register route - manual intervention required"
+	log_error "[WAF] Add manually to $routes_file"
+	return 1
 }
 
 _emancipate_path_acl() {

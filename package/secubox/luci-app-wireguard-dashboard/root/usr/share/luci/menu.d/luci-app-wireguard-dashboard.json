@@ -49,6 +49,14 @@
 			"path": "wireguard-dashboard/traffic"
 		}
 	},
+	"admin/services/wireguard/uplinks": {
+		"title": "Mesh Uplinks",
+		"order": 45,
+		"action": {
+			"type": "view",
+			"path": "wireguard-dashboard/uplinks"
+		}
+	},
 	"admin/services/wireguard/config": {
 		"title": "Configuration",
 		"order": 50,

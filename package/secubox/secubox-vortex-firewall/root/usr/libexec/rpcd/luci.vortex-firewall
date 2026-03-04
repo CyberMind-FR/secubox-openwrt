@@ -237,6 +237,480 @@ do_unblock_domain() {
     json_dump
 }
 
+# ============================================================================
+# Sinkhole Methods
+# ============================================================================
+
+do_sinkhole_status() {
+    json_init
+
+    local enabled=$(uci -q get vortex-firewall.server.enabled || echo 0)
+    local http_port=$(uci -q get vortex-firewall.server.http_port || echo 80)
+    local https_port=$(uci -q get vortex-firewall.server.https_port || echo 443)
+
+    json_add_boolean "enabled" "$enabled"
+    json_add_string "sinkhole_ip" "192.168.255.253"
+    json_add_int "http_port" "$http_port"
+    json_add_int "https_port" "$https_port"
+
+    # Check if servers are running
+    local http_running=0
+    local https_running=0
+    local https_limited=0
+    pgrep -f "sinkhole-http-handler" >/dev/null 2>&1 && http_running=1
+
+    # Check HTTPS by PID file
+    local https_pid_file="/var/run/vortex-sinkhole-https.pid"
+    if [ -f "$https_pid_file" ] && kill -0 "$(cat "$https_pid_file")" 2>/dev/null; then
+        if pgrep -f "OPENSSL-LISTEN\|stunnel\|vortex-stunnel" >/dev/null 2>&1; then
+            https_running=1
+        else
+            https_limited=1
+        fi
+    fi
+
+    json_add_boolean "http_running" "$http_running"
+    json_add_boolean "https_running" "$https_running"
+    json_add_boolean "https_limited" "$https_limited"
+
+    # Event statistics
+    if [ -f "$BLOCKLIST_DB" ]; then
+        local today=$(date +%Y-%m-%d)
+        local total_events=$(sqlite3 "$BLOCKLIST_DB" "SELECT COUNT(*) FROM events;" 2>/dev/null || echo 0)
+        local today_events=$(sqlite3 "$BLOCKLIST_DB" "SELECT COUNT(*) FROM events WHERE timestamp LIKE '$today%';" 2>/dev/null || echo 0)
+        local unique_clients=$(sqlite3 "$BLOCKLIST_DB" "SELECT COUNT(DISTINCT client_ip) FROM events;" 2>/dev/null || echo 0)
+
+        json_add_int "total_events" "$total_events"
+        json_add_int "today_events" "$today_events"
+        json_add_int "unique_clients" "$unique_clients"
+    else
+        json_add_int "total_events" 0
+        json_add_int "today_events" 0
+        json_add_int "unique_clients" 0
+    fi
+
+    json_dump
+}
+
+do_sinkhole_events() {
+    local input limit
+    read input
+    limit=$(echo "$input" | jsonfilter -e '@.limit' 2>/dev/null)
+    [ -z "$limit" ] && limit=100
+
+    json_init
+    json_add_array "events"
+
+    if [ -f "$BLOCKLIST_DB" ]; then
+        sqlite3 "$BLOCKLIST_DB" "SELECT id, timestamp, client_ip, domain, event_type, details FROM events ORDER BY id DESC LIMIT $limit;" 2>/dev/null > /tmp/vf_events.tmp
+        while IFS='|' read -r id ts ip domain type details; do
+            [ -n "$id" ] || continue
+            json_add_object ""
+            json_add_int "id" "$id"
+            json_add_string "timestamp" "$ts"
+            json_add_string "client_ip" "$ip"
+            json_add_string "domain" "$domain"
+            json_add_string "event_type" "$type"
+            json_add_string "details" "$details"
+            json_close_object
+        done < /tmp/vf_events.tmp
+        rm -f /tmp/vf_events.tmp
+    fi
+
+    json_close_array
+    json_dump
+}
+
+do_sinkhole_stats() {
+    json_init
+
+    if [ ! -f "$BLOCKLIST_DB" ]; then
+        json_add_int "total_events" 0
+        json_add_int "unique_clients" 0
+        json_add_int "unique_domains" 0
+        json_dump
+        return
+    fi
+
+    local total_events=$(sqlite3 "$BLOCKLIST_DB" "SELECT COUNT(*) FROM events;" 2>/dev/null || echo 0)
+    local unique_clients=$(sqlite3 "$BLOCKLIST_DB" "SELECT COUNT(DISTINCT client_ip) FROM events;" 2>/dev/null || echo 0)
+    local unique_domains=$(sqlite3 "$BLOCKLIST_DB" "SELECT COUNT(DISTINCT domain) FROM events;" 2>/dev/null || echo 0)
+
+    json_add_int "total_events" "$total_events"
+    json_add_int "unique_clients" "$unique_clients"
+    json_add_int "unique_domains" "$unique_domains"
+
+    # Top clients (infected hosts)
+    json_add_array "top_clients"
+    sqlite3 "$BLOCKLIST_DB" "SELECT client_ip, COUNT(*) as cnt FROM events GROUP BY client_ip ORDER BY cnt DESC LIMIT 10;" 2>/dev/null > /tmp/vf_clients.tmp
+    while IFS='|' read -r ip cnt; do
+        [ -n "$ip" ] || continue
+        json_add_object ""
+        json_add_string "ip" "$ip"
+        json_add_int "events" "$cnt"
+        json_close_object
+    done < /tmp/vf_clients.tmp
+    rm -f /tmp/vf_clients.tmp
+    json_close_array
+
+    # Top blocked domains
+    json_add_array "top_domains"
+    sqlite3 "$BLOCKLIST_DB" "SELECT domain, COUNT(*) as cnt FROM events GROUP BY domain ORDER BY cnt DESC LIMIT 10;" 2>/dev/null > /tmp/vf_domains.tmp
+    while IFS='|' read -r domain cnt; do
+        [ -n "$domain" ] || continue
+        json_add_object ""
+        json_add_string "domain" "$domain"
+        json_add_int "events" "$cnt"
+        json_close_object
+    done < /tmp/vf_domains.tmp
+    rm -f /tmp/vf_domains.tmp
+    json_close_array
+
+    # Events by type
+    json_add_object "by_type"
+    sqlite3 "$BLOCKLIST_DB" "SELECT event_type, COUNT(*) FROM events GROUP BY event_type;" 2>/dev/null | while IFS='|' read -r type cnt; do
+        [ -n "$type" ] && json_add_int "$type" "$cnt"
+    done
+    json_close_object
+
+    json_dump
+}
+
+do_sinkhole_toggle() {
+    local input enabled
+    read input
+    enabled=$(echo "$input" | jsonfilter -e '@.enabled' 2>/dev/null)
+
+    json_init
+
+    if [ -z "$enabled" ]; then
+        json_add_boolean "success" 0
+        json_add_string "message" "Missing enabled parameter"
+        json_dump
+        return
+    fi
+
+    uci set vortex-firewall.server.enabled="$enabled"
+    uci commit vortex-firewall
+
+    if [ "$enabled" = "1" ]; then
+        /usr/sbin/vortex-firewall sinkhole start >/dev/null 2>&1 &
+        json_add_string "message" "Sinkhole server enabled and starting"
+    else
+        /usr/sbin/vortex-firewall sinkhole stop >/dev/null 2>&1 &
+        json_add_string "message" "Sinkhole server disabled and stopping"
+    fi
+
+    json_add_boolean "success" 1
+    json_dump
+}
+
+do_sinkhole_clear() {
+    json_init
+
+    if [ -f "$BLOCKLIST_DB" ]; then
+        sqlite3 "$BLOCKLIST_DB" "DELETE FROM events;" 2>/dev/null
+        json_add_boolean "success" 1
+        json_add_string "message" "Event log cleared"
+    else
+        json_add_boolean "success" 0
+        json_add_string "message" "Database not found"
+    fi
+
+    json_dump
+}
+
+# ============================================================================
+# DNS Guard Integration Methods (Phase 3)
+# ============================================================================
+
+DNSGUARD_DIR="/var/lib/dns-guard"
+
+do_dnsguard_status() {
+    json_init
+
+    # Service running check
+    local running=0
+    pgrep -f "dns-guard" >/dev/null 2>&1 && running=1
+    json_add_boolean "running" "$running"
+
+    # Service enabled check
+    local enabled=0
+    [ -x /etc/init.d/dns-guard ] && /etc/init.d/dns-guard enabled 2>/dev/null && enabled=1
+    json_add_boolean "enabled" "$enabled"
+
+    # Service installed check
+    local installed=0
+    [ -x /usr/bin/dns-guard ] && installed=1
+    json_add_boolean "installed" "$installed"
+
+    # Alert counts
+    local alert_count=0
+    local pending_count=0
+
+    if [ -f "$DNSGUARD_DIR/alerts.json" ]; then
+        alert_count=$(jsonfilter -i "$DNSGUARD_DIR/alerts.json" -e '@[*]' 2>/dev/null | wc -l)
+    fi
+    json_add_int "alert_count" "$alert_count"
+
+    if [ -f "$DNSGUARD_DIR/pending_blocks.json" ]; then
+        pending_count=$(jsonfilter -i "$DNSGUARD_DIR/pending_blocks.json" -e '@[*]' 2>/dev/null | wc -l)
+    fi
+    json_add_int "pending_count" "$pending_count"
+
+    # Domain count
+    local domain_count=0
+    if [ -f "$DNSGUARD_DIR/threat_domains.txt" ]; then
+        domain_count=$(wc -l < "$DNSGUARD_DIR/threat_domains.txt" 2>/dev/null || echo 0)
+    fi
+    json_add_int "domain_count" "$domain_count"
+
+    # Vortex integration stats
+    local vortex_imported=0
+    local vortex_last_sync=""
+    if [ -f "$BLOCKLIST_DB" ]; then
+        vortex_imported=$(sqlite3 "$BLOCKLIST_DB" "SELECT COUNT(*) FROM domains WHERE source='dnsguard';" 2>/dev/null || echo 0)
+        vortex_last_sync=$(sqlite3 "$BLOCKLIST_DB" "SELECT last_update FROM feeds WHERE name='dnsguard';" 2>/dev/null || echo "")
+    fi
+    json_add_int "vortex_imported" "$vortex_imported"
+    json_add_string "vortex_last_sync" "$vortex_last_sync"
+
+    # Detection type breakdown
+    json_add_object "detection_types"
+    if [ -f "$BLOCKLIST_DB" ]; then
+        sqlite3 "$BLOCKLIST_DB" "SELECT threat_type, COUNT(*) FROM domains WHERE source='dnsguard' GROUP BY threat_type;" 2>/dev/null | while IFS='|' read -r type cnt; do
+            [ -n "$type" ] && json_add_int "$type" "$cnt"
+        done
+    fi
+    json_close_object
+
+    json_dump
+}
+
+do_dnsguard_alerts() {
+    local input limit
+    read input
+    limit=$(echo "$input" | jsonfilter -e '@.limit' 2>/dev/null)
+    [ -z "$limit" ] && limit=50
+
+    json_init
+    json_add_array "alerts"
+
+    if [ -f "$DNSGUARD_DIR/alerts.json" ]; then
+        # Get recent alerts
+        local count=0
+        jsonfilter -i "$DNSGUARD_DIR/alerts.json" -e '@[*]' 2>/dev/null | tail -n "$limit" | while read -r alert; do
+            local domain=$(echo "$alert" | jsonfilter -e '@.domain' 2>/dev/null)
+            [ -z "$domain" ] && continue
+            [ "$domain" = "*" ] && continue  # Skip rate anomaly wildcards
+
+            json_add_object ""
+            json_add_string "domain" "$domain"
+
+            local client=$(echo "$alert" | jsonfilter -e '@.client' 2>/dev/null)
+            json_add_string "client" "${client:-unknown}"
+
+            local type=$(echo "$alert" | jsonfilter -e '@.type' 2>/dev/null)
+            json_add_string "type" "${type:-unknown}"
+
+            local confidence=$(echo "$alert" | jsonfilter -e '@.confidence' 2>/dev/null)
+            json_add_int "confidence" "${confidence:-0}"
+
+            local reason=$(echo "$alert" | jsonfilter -e '@.reason' 2>/dev/null)
+            json_add_string "reason" "${reason:-}"
+
+            json_close_object
+        done
+    fi
+
+    json_close_array
+    json_dump
+}
+
+do_dnsguard_sync() {
+    json_init
+
+    if [ -x /usr/sbin/vortex-firewall ]; then
+        /usr/sbin/vortex-firewall dnsguard sync >/dev/null 2>&1 &
+        json_add_boolean "success" 1
+        json_add_string "message" "DNS Guard sync started"
+    else
+        json_add_boolean "success" 0
+        json_add_string "message" "vortex-firewall not installed"
+    fi
+
+    json_dump
+}
+
+# ============================================================================
+# Mesh Threat Sharing Methods (Phase 4)
+# ============================================================================
+
+THREAT_INTEL_SCRIPT="/usr/lib/secubox/threat-intel.sh"
+
+do_mesh_status() {
+    json_init
+
+    # Check if P2P threat intel is available
+    if [ ! -x "$THREAT_INTEL_SCRIPT" ]; then
+        json_add_boolean "available" 0
+        json_add_string "message" "secubox-p2p not installed"
+        json_dump
+        return
+    fi
+
+    json_add_boolean "available" 1
+
+    # Get threat intel status
+    local status=$("$THREAT_INTEL_SCRIPT" status 2>/dev/null)
+
+    if [ -z "$status" ]; then
+        json_add_boolean "enabled" 0
+        json_dump
+        return
+    fi
+
+    local enabled=$(echo "$status" | jsonfilter -e '@.enabled' 2>/dev/null)
+    json_add_boolean "enabled" "$( [ "$enabled" = "true" ] && echo 1 || echo 0)"
+
+    local local_iocs=$(echo "$status" | jsonfilter -e '@.local_iocs' 2>/dev/null || echo 0)
+    local received=$(echo "$status" | jsonfilter -e '@.received_iocs' 2>/dev/null || echo 0)
+    local applied=$(echo "$status" | jsonfilter -e '@.applied_iocs' 2>/dev/null || echo 0)
+    local peers=$(echo "$status" | jsonfilter -e '@.peer_contributors' 2>/dev/null || echo 0)
+    local chain_blocks=$(echo "$status" | jsonfilter -e '@.chain_threat_blocks' 2>/dev/null || echo 0)
+
+    json_add_int "local_iocs" "$local_iocs"
+    json_add_int "received_iocs" "$received"
+    json_add_int "applied_iocs" "$applied"
+    json_add_int "peer_contributors" "$peers"
+    json_add_int "chain_blocks" "$chain_blocks"
+
+    # Count Vortex-sourced IOCs
+    local vortex_count=0
+    local ti_local="/var/lib/secubox/threat-intel/iocs-local.json"
+    if [ -f "$ti_local" ]; then
+        vortex_count=$(jsonfilter -i "$ti_local" -e '@[*].source' 2>/dev/null | grep -c "^vortex$" || echo 0)
+    fi
+    json_add_int "vortex_shared" "$vortex_count"
+
+    json_dump
+}
+
+do_mesh_received() {
+    local input limit
+    read input
+    limit=$(echo "$input" | jsonfilter -e '@.limit' 2>/dev/null)
+    [ -z "$limit" ] && limit=50
+
+    json_init
+    json_add_array "iocs"
+
+    if [ -x "$THREAT_INTEL_SCRIPT" ]; then
+        local received=$("$THREAT_INTEL_SCRIPT" list received 2>/dev/null)
+
+        echo "$received" | jsonfilter -e '@[*]' 2>/dev/null | tail -n "$limit" | while read -r ioc; do
+            [ -z "$ioc" ] && continue
+
+            json_add_object ""
+
+            local domain=$(echo "$ioc" | jsonfilter -e '@.domain' 2>/dev/null)
+            local ip=$(echo "$ioc" | jsonfilter -e '@.ip' 2>/dev/null)
+            local severity=$(echo "$ioc" | jsonfilter -e '@.severity' 2>/dev/null)
+            local trust=$(echo "$ioc" | jsonfilter -e '@.trust' 2>/dev/null)
+            local applied=$(echo "$ioc" | jsonfilter -e '@.applied' 2>/dev/null)
+            local scenario=$(echo "$ioc" | jsonfilter -e '@.scenario' 2>/dev/null)
+            local node=$(echo "$ioc" | jsonfilter -e '@.node' 2>/dev/null)
+
+            [ -n "$domain" ] && json_add_string "domain" "$domain"
+            [ -n "$ip" ] && json_add_string "ip" "$ip"
+            json_add_string "severity" "${severity:-unknown}"
+            json_add_string "trust" "${trust:-unknown}"
+            json_add_boolean "applied" "$( [ "$applied" = "true" ] && echo 1 || echo 0)"
+            json_add_string "scenario" "${scenario:-unknown}"
+            json_add_string "node" "${node:-unknown}"
+
+            json_close_object
+        done
+    fi
+
+    json_close_array
+    json_dump
+}
+
+do_mesh_publish() {
+    json_init
+
+    if [ -x "$THREAT_INTEL_SCRIPT" ]; then
+        "$THREAT_INTEL_SCRIPT" collect >/dev/null 2>&1
+        local result=$("$THREAT_INTEL_SCRIPT" publish 2>/dev/null)
+        local published=$(echo "$result" | jsonfilter -e '@.published' 2>/dev/null || echo 0)
+
+        json_add_boolean "success" 1
+        json_add_int "published" "$published"
+        json_add_string "message" "Published $published IOCs to mesh"
+    else
+        json_add_boolean "success" 0
+        json_add_string "message" "secubox-p2p not installed"
+    fi
+
+    json_dump
+}
+
+do_mesh_sync() {
+    json_init
+
+    if [ -x "$THREAT_INTEL_SCRIPT" ]; then
+        local result=$("$THREAT_INTEL_SCRIPT" apply-pending 2>/dev/null)
+        local applied=$(echo "$result" | jsonfilter -e '@.applied' 2>/dev/null || echo 0)
+        local skipped=$(echo "$result" | jsonfilter -e '@.skipped' 2>/dev/null || echo 0)
+
+        # Regenerate blocklist if any applied
+        if [ "$applied" -gt 0 ] && [ -x /usr/sbin/vortex-firewall ]; then
+            /usr/sbin/vortex-firewall intel update >/dev/null 2>&1 &
+        fi
+
+        json_add_boolean "success" 1
+        json_add_int "applied" "$applied"
+        json_add_int "skipped" "$skipped"
+        json_add_string "message" "Applied $applied, skipped $skipped"
+    else
+        json_add_boolean "success" 0
+        json_add_string "message" "secubox-p2p not installed"
+    fi
+
+    json_dump
+}
+
+do_mesh_peers() {
+    json_init
+    json_add_array "peers"
+
+    if [ -x "$THREAT_INTEL_SCRIPT" ]; then
+        local peers=$("$THREAT_INTEL_SCRIPT" peers 2>/dev/null)
+
+        echo "$peers" | jsonfilter -e '@[*]' 2>/dev/null | while read -r peer; do
+            [ -z "$peer" ] && continue
+
+            json_add_object ""
+
+            local node=$(echo "$peer" | jsonfilter -e '@.node' 2>/dev/null)
+            local trust=$(echo "$peer" | jsonfilter -e '@.trust' 2>/dev/null)
+            local ioc_count=$(echo "$peer" | jsonfilter -e '@.ioc_count' 2>/dev/null)
+            local applied_count=$(echo "$peer" | jsonfilter -e '@.applied_count' 2>/dev/null)
+
+            json_add_string "node" "${node:-unknown}"
+            json_add_string "trust" "${trust:-unknown}"
+            json_add_int "ioc_count" "${ioc_count:-0}"
+            json_add_int "applied_count" "${applied_count:-0}"
+
+            json_close_object
+        done
+    fi
+
+    json_close_array
+    json_dump
+}
+
 case "$1" in
     list)
         echo '{'
@@ -247,7 +721,20 @@ case "$1" in
         echo '"search":{"domain":"String"},'
         echo '"update_feeds":{},'
         echo '"block_domain":{"domain":"String","reason":"String"},'
-        echo '"unblock_domain":{"domain":"String"}'
+        echo '"unblock_domain":{"domain":"String"},'
+        echo '"sinkhole_status":{},'
+        echo '"sinkhole_events":{"limit":"Integer"},'
+        echo '"sinkhole_stats":{},'
+        echo '"sinkhole_toggle":{"enabled":"Integer"},'
+        echo '"sinkhole_clear":{},'
+        echo '"dnsguard_status":{},'
+        echo '"dnsguard_alerts":{"limit":"Integer"},'
+        echo '"dnsguard_sync":{},'
+        echo '"mesh_status":{},'
+        echo '"mesh_received":{"limit":"Integer"},'
+        echo '"mesh_publish":{},'
+        echo '"mesh_sync":{},'
+        echo '"mesh_peers":{}'
         echo '}'
         ;;
     call)
@@ -260,6 +747,19 @@ case "$1" in
             update_feeds) do_update_feeds ;;
             block_domain) do_block_domain ;;
             unblock_domain) do_unblock_domain ;;
+            sinkhole_status) do_sinkhole_status ;;
+            sinkhole_events) do_sinkhole_events ;;
+            sinkhole_stats) do_sinkhole_stats ;;
+            sinkhole_toggle) do_sinkhole_toggle ;;
+            sinkhole_clear) do_sinkhole_clear ;;
+            dnsguard_status) do_dnsguard_status ;;
+            dnsguard_alerts) do_dnsguard_alerts ;;
+            dnsguard_sync) do_dnsguard_sync ;;
+            mesh_status) do_mesh_status ;;
+            mesh_received) do_mesh_received ;;
+            mesh_publish) do_mesh_publish ;;
+            mesh_sync) do_mesh_sync ;;
+            mesh_peers) do_mesh_peers ;;
         esac
         ;;
 esac

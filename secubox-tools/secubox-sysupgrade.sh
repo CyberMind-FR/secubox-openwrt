@@ -132,7 +132,7 @@ asu_build() {
 	echo "$json" > "$tmpfile"
 
 	local response
-	response=$(curl -s -w "\n%{http_code}" \
+	response=$(curl -sL -w "\n%{http_code}" \
 		-H "Content-Type: application/json" \
 		-d "@$tmpfile" \
 		"$ASU_URL/api/v1/build" 2>>"$LOG")
@@ -189,7 +189,7 @@ poll_build() {
 
 	while [ $elapsed -lt $max_wait ]; do
 		local response
-		response=$(curl -s "$ASU_URL/api/v1/build/$hash" 2>/dev/null)
+		response=$(curl -sL "$ASU_URL/api/v1/build/$hash" 2>/dev/null)
 
 		# Check if response has images (= complete)
 		local image_count
@@ -278,7 +278,7 @@ download_image() {
 	fi
 
 	log "Downloading: $image_name"
-	curl -# -o "$IMAGE_FILE" "$download_url" 2>>"$LOG" || {
+	curl -#L -o "$IMAGE_FILE" "$download_url" 2>>"$LOG" || {
 		log_error "Download failed"
 		return 1
 	}
@@ -334,7 +334,7 @@ cmd_check() {
 	# Check ASU for available versions
 	log_info "Checking ASU server for available versions..."
 	local overview
-	overview=$(curl -s "$ASU_URL/api/v1/overview" 2>/dev/null)
+	overview=$(curl -sL "$ASU_URL/api/v1/overview" 2>/dev/null)
 
 	if [ -n "$overview" ]; then
 		# Try to extract version info

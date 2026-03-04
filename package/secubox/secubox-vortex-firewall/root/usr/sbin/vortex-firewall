@@ -160,20 +160,81 @@ feed_update_threatfox() {
 }
 
 feed_import_dnsguard() {
-    local dnsguard_list="/var/lib/dns-guard/threat_domains.txt"
+    local dnsguard_dir="/var/lib/dns-guard"
+    local dnsguard_list="$dnsguard_dir/threat_domains.txt"
+    local dnsguard_alerts="$dnsguard_dir/alerts.json"
     local feed_file="$FEEDS_DIR/dnsguard.txt"
 
-    if [ -f "$dnsguard_list" ]; then
-        log "Importing DNS Guard detections..."
+    log "Importing DNS Guard detections..."
+
+    # Phase 3: Enhanced import with metadata from alerts.json
+    if [ -f "$dnsguard_alerts" ] && [ -s "$dnsguard_alerts" ]; then
+        log "Reading DNS Guard alerts with metadata..."
+
+        # Parse alerts.json and import with proper threat types and confidence
+        local imported=0
+        local now=$(date -Iseconds)
+
+        # Build SQL import from alerts
+        local sql_file="/tmp/vortex-dnsguard-import.sql"
+        echo "BEGIN TRANSACTION;" > "$sql_file"
+
+        # Read each alert and extract domain, type, confidence
+        jsonfilter -i "$dnsguard_alerts" -e '@[*]' 2>/dev/null | while read -r alert; do
+            local domain=$(echo "$alert" | jsonfilter -e '@.domain' 2>/dev/null | tr -d '\n\r')
+            local threat_type=$(echo "$alert" | jsonfilter -e '@.type' 2>/dev/null | tr -d '\n\r')
+            local confidence=$(echo "$alert" | jsonfilter -e '@.confidence' 2>/dev/null | tr -d '\n\r')
+
+            # Skip rate anomalies with wildcard domains
+            [ "$domain" = "*" ] && continue
+            [ -z "$domain" ] && continue
+
+            # Default values
+            [ -z "$threat_type" ] && threat_type="ai_detected"
+            [ -z "$confidence" ] && confidence=80
+
+            # Map DNS Guard types to Vortex threat types
+            case "$threat_type" in
+                dga) threat_type="dga" ;;
+                tunneling) threat_type="dns_tunnel" ;;
+                known_bad) threat_type="malware" ;;
+                tld_anomaly) threat_type="suspicious_tld" ;;
+                rate_anomaly) threat_type="rate_anomaly" ;;
+            esac
+
+            # Escape for SQL
+            domain=$(echo "$domain" | sed "s/'/''/g")
+
+            echo "INSERT OR REPLACE INTO domains (domain, threat_type, confidence, source, first_seen, last_seen, blocked) VALUES ('$domain', '$threat_type', $confidence, 'dnsguard', '$now', '$now', 1);" >> "$sql_file"
+            imported=$((imported + 1))
+        done
+
+        echo "COMMIT;" >> "$sql_file"
+
+        # Execute import
+        sqlite3 "$BLOCKLIST_DB" < "$sql_file" 2>/dev/null
+        rm -f "$sql_file"
+
+        # Also copy plaintext list for dnsmasq
+        [ -f "$dnsguard_list" ] && cp "$dnsguard_list" "$feed_file"
+
+        local count=$(sqlite3 "$BLOCKLIST_DB" "SELECT COUNT(*) FROM domains WHERE source='dnsguard';" 2>/dev/null || echo 0)
+        sqlite3 "$BLOCKLIST_DB" "INSERT OR REPLACE INTO feeds VALUES ('dnsguard', 'local', datetime('now'), $count, 1);"
+        log "DNS Guard: $count domains (with AI metadata)"
+        return 0
+    fi
+
+    # Fallback: basic import from threat_domains.txt
+    if [ -f "$dnsguard_list" ] && [ -s "$dnsguard_list" ]; then
         cp "$dnsguard_list" "$feed_file"
         local count=$(wc -l < "$feed_file")
         sqlite3 "$BLOCKLIST_DB" "INSERT OR REPLACE INTO feeds VALUES ('dnsguard', 'local', datetime('now'), $count, 1);"
-        log "DNS Guard: $count domains"
-        return 0
-    else
-        info "No DNS Guard detections found"
+        log "DNS Guard: $count domains (basic)"
         return 0
     fi
+
+    info "No DNS Guard detections found"
+    return 0
 }
 
 intel_update() {
@@ -557,6 +618,552 @@ show_x47() {
 }
 
 # ============================================================================
+# Sinkhole Server - HTTP/HTTPS Trap for Blocked Domains
+# ============================================================================
+
+SINKHOLE_PID_HTTP="/var/run/vortex-sinkhole-http.pid"
+SINKHOLE_PID_HTTPS="/var/run/vortex-sinkhole-https.pid"
+SINKHOLE_LOG="/var/log/vortex-sinkhole.log"
+SINKHOLE_HTML="/usr/share/vortex-firewall/sinkhole.html"
+
+sinkhole_start() {
+    log "Starting Vortex Sinkhole Server..."
+
+    init_dirs
+    init_db
+
+    # Check if sinkhole is enabled in config
+    local enabled=$(uci -q get vortex-firewall.server.enabled)
+    if [ "$enabled" != "1" ]; then
+        warn "Sinkhole server not enabled in config"
+        info "Enable with: uci set vortex-firewall.server.enabled=1 && uci commit"
+        return 1
+    fi
+
+    local http_port=$(uci -q get vortex-firewall.server.http_port || echo 80)
+    local https_port=$(uci -q get vortex-firewall.server.https_port || echo 443)
+
+    # Create sinkhole IP alias if not exists
+    if ! ip addr show dev br-lan 2>/dev/null | grep -q "$SINKHOLE_IP"; then
+        log "Adding sinkhole IP $SINKHOLE_IP to br-lan..."
+        ip addr add "$SINKHOLE_IP/32" dev br-lan 2>/dev/null || true
+    fi
+
+    # Start HTTP sinkhole
+    if ! pgrep -f "sinkhole-http-handler" >/dev/null 2>&1; then
+        log "Starting HTTP sinkhole on $SINKHOLE_IP:$http_port..."
+        /usr/lib/vortex-firewall/sinkhole-http.sh "$SINKHOLE_IP" "$http_port" &
+        echo $! > "$SINKHOLE_PID_HTTP"
+    fi
+
+    # Start HTTPS sinkhole (if certificates available)
+    if [ -f "/etc/vortex-firewall/sinkhole.key" ] && [ -f "/etc/vortex-firewall/sinkhole.crt" ]; then
+        if ! pgrep -f "OPENSSL-LISTEN" >/dev/null 2>&1; then
+            log "Starting HTTPS sinkhole on $SINKHOLE_IP:$https_port..."
+            /usr/lib/vortex-firewall/sinkhole-https.sh "$SINKHOLE_IP" "$https_port" &
+            echo $! > "$SINKHOLE_PID_HTTPS"
+        fi
+    else
+        info "HTTPS sinkhole skipped (no certificates)"
+        info "Generate with: vortex-firewall sinkhole gencert"
+    fi
+
+    log "Sinkhole server started"
+}
+
+sinkhole_stop() {
+    log "Stopping Vortex Sinkhole Server..."
+
+    # Stop HTTP sinkhole
+    if [ -f "$SINKHOLE_PID_HTTP" ]; then
+        kill $(cat "$SINKHOLE_PID_HTTP") 2>/dev/null
+        rm -f "$SINKHOLE_PID_HTTP"
+    fi
+    pkill -f "sinkhole-http-handler" 2>/dev/null || true
+
+    # Stop HTTPS sinkhole
+    if [ -f "$SINKHOLE_PID_HTTPS" ]; then
+        kill $(cat "$SINKHOLE_PID_HTTPS") 2>/dev/null
+        rm -f "$SINKHOLE_PID_HTTPS"
+    fi
+    pkill -f "OPENSSL-LISTEN" 2>/dev/null || true
+
+    log "Sinkhole server stopped"
+}
+
+sinkhole_status() {
+    echo ""
+    echo -e "${BOLD}Vortex Sinkhole Server${NC}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    local enabled=$(uci -q get vortex-firewall.server.enabled || echo 0)
+    local http_port=$(uci -q get vortex-firewall.server.http_port || echo 80)
+    local https_port=$(uci -q get vortex-firewall.server.https_port || echo 443)
+
+    if [ "$enabled" = "1" ]; then
+        echo -e "Config:       ${GREEN}Enabled${NC}"
+    else
+        echo -e "Config:       ${YELLOW}Disabled${NC}"
+    fi
+
+    echo "Sinkhole IP:  $SINKHOLE_IP"
+    echo "HTTP Port:    $http_port"
+    echo "HTTPS Port:   $https_port"
+    echo ""
+
+    # Check running processes
+    if pgrep -f "sinkhole-http-handler" >/dev/null 2>&1; then
+        echo -e "HTTP Server:  ${GREEN}Running${NC}"
+    else
+        echo -e "HTTP Server:  ${RED}Stopped${NC}"
+    fi
+
+    # Check HTTPS by PID file (supports multiple backends)
+    if [ -f "$SINKHOLE_PID_HTTPS" ] && kill -0 "$(cat "$SINKHOLE_PID_HTTPS")" 2>/dev/null; then
+        if pgrep -f "OPENSSL-LISTEN\|stunnel\|vortex-stunnel" >/dev/null 2>&1; then
+            echo -e "HTTPS Server: ${GREEN}Running${NC}"
+        else
+            echo -e "HTTPS Server: ${YELLOW}Limited (no SSL)${NC}"
+        fi
+    else
+        echo -e "HTTPS Server: ${RED}Stopped${NC}"
+    fi
+
+    # Event stats
+    if [ -f "$BLOCKLIST_DB" ]; then
+        local today=$(date +%Y-%m-%d)
+        local total_events=$(sqlite3 "$BLOCKLIST_DB" "SELECT COUNT(*) FROM events;" 2>/dev/null || echo 0)
+        local today_events=$(sqlite3 "$BLOCKLIST_DB" "SELECT COUNT(*) FROM events WHERE timestamp LIKE '$today%';" 2>/dev/null || echo 0)
+        local unique_clients=$(sqlite3 "$BLOCKLIST_DB" "SELECT COUNT(DISTINCT client_ip) FROM events;" 2>/dev/null || echo 0)
+
+        echo ""
+        echo -e "${BOLD}Capture Statistics:${NC}"
+        echo "  Total Events:     $total_events"
+        echo "  Today's Events:   $today_events"
+        echo "  Unique Clients:   $unique_clients"
+    fi
+    echo ""
+}
+
+sinkhole_logs() {
+    local lines="${1:-50}"
+
+    echo ""
+    echo -e "${BOLD}Sinkhole Event Log (last $lines)${NC}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    if [ -f "$BLOCKLIST_DB" ]; then
+        sqlite3 -column -header "$BLOCKLIST_DB" \
+            "SELECT timestamp, client_ip, domain, event_type FROM events ORDER BY id DESC LIMIT $lines;" 2>/dev/null
+    else
+        warn "No database found"
+    fi
+    echo ""
+}
+
+sinkhole_export() {
+    local output="${1:-/tmp/vortex-sinkhole-events.json}"
+
+    log "Exporting sinkhole events to $output..."
+
+    if [ ! -f "$BLOCKLIST_DB" ]; then
+        error "No database found"
+        return 1
+    fi
+
+    echo "[" > "$output"
+    local first=1
+    sqlite3 "$BLOCKLIST_DB" "SELECT id, timestamp, client_ip, domain, event_type, details FROM events ORDER BY id;" 2>/dev/null | \
+    while IFS='|' read -r id ts ip domain type details; do
+        [ -z "$id" ] && continue
+        [ "$first" = "1" ] && first=0 || echo "," >> "$output"
+        printf '{"id":%d,"timestamp":"%s","client_ip":"%s","domain":"%s","event_type":"%s","details":"%s"}' \
+            "$id" "$ts" "$ip" "$domain" "$type" "$details" >> "$output"
+    done
+    echo "]" >> "$output"
+
+    log "Exported to: $output"
+    log "Events: $(sqlite3 "$BLOCKLIST_DB" "SELECT COUNT(*) FROM events;" 2>/dev/null || echo 0)"
+}
+
+sinkhole_gencert() {
+    local cert_dir="/etc/vortex-firewall"
+    mkdir -p "$cert_dir"
+
+    log "Generating self-signed certificate for HTTPS sinkhole..."
+
+    # Generate private key
+    openssl genrsa -out "$cert_dir/sinkhole.key" 2048 2>/dev/null
+
+    # Generate self-signed certificate
+    openssl req -new -x509 -key "$cert_dir/sinkhole.key" \
+        -out "$cert_dir/sinkhole.crt" \
+        -days 3650 \
+        -subj "/CN=Vortex Sinkhole/O=SecuBox/C=FR" 2>/dev/null
+
+    chmod 600 "$cert_dir/sinkhole.key"
+    chmod 644 "$cert_dir/sinkhole.crt"
+
+    log "Certificate generated:"
+    log "  Key:  $cert_dir/sinkhole.key"
+    log "  Cert: $cert_dir/sinkhole.crt"
+}
+
+sinkhole_clear() {
+    log "Clearing sinkhole event log..."
+
+    if [ -f "$BLOCKLIST_DB" ]; then
+        sqlite3 "$BLOCKLIST_DB" "DELETE FROM events;" 2>/dev/null
+        log "Events cleared"
+    else
+        warn "No database found"
+    fi
+}
+
+# Record a sinkhole hit (called by sinkhole HTTP servers)
+sinkhole_record_event() {
+    local client_ip="$1"
+    local domain="$2"
+    local event_type="${3:-http}"
+    local details="${4:-}"
+
+    [ -z "$client_ip" ] || [ -z "$domain" ] && return 1
+
+    init_db
+
+    local timestamp=$(date -Iseconds)
+
+    # Record event
+    sqlite3 "$BLOCKLIST_DB" \
+        "INSERT INTO events (timestamp, client_ip, domain, event_type, details)
+         VALUES ('$timestamp', '$client_ip', '$domain', '$event_type', '$details');" 2>/dev/null
+
+    # Update hit count on domain
+    sqlite3 "$BLOCKLIST_DB" \
+        "UPDATE domains SET hit_count = hit_count + 1, last_seen = '$timestamp'
+         WHERE domain = '$domain';" 2>/dev/null
+
+    # Log to syslog
+    logger -t vortex-sinkhole "Blocked: $client_ip -> $domain ($event_type)"
+
+    echo "$timestamp"
+}
+
+# ============================================================================
+# Mesh Threat Sharing (Phase 4)
+# ============================================================================
+
+THREAT_INTEL_SCRIPT="/usr/lib/secubox/threat-intel.sh"
+
+mesh_status() {
+    echo ""
+    echo -e "${BOLD}Vortex Mesh Threat Sharing${NC}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    if [ ! -x "$THREAT_INTEL_SCRIPT" ]; then
+        echo -e "Status:       ${RED}Not Available${NC}"
+        echo "Install secubox-p2p for mesh threat sharing"
+        return 1
+    fi
+
+    # Get threat intel status
+    local status=$("$THREAT_INTEL_SCRIPT" status 2>/dev/null)
+
+    if [ -z "$status" ]; then
+        echo -e "Status:       ${YELLOW}Initializing${NC}"
+        return 0
+    fi
+
+    local enabled=$(echo "$status" | jsonfilter -e '@.enabled' 2>/dev/null)
+    local local_iocs=$(echo "$status" | jsonfilter -e '@.local_iocs' 2>/dev/null || echo 0)
+    local received=$(echo "$status" | jsonfilter -e '@.received_iocs' 2>/dev/null || echo 0)
+    local applied=$(echo "$status" | jsonfilter -e '@.applied_iocs' 2>/dev/null || echo 0)
+    local peers=$(echo "$status" | jsonfilter -e '@.peer_contributors' 2>/dev/null || echo 0)
+    local chain_blocks=$(echo "$status" | jsonfilter -e '@.chain_threat_blocks' 2>/dev/null || echo 0)
+
+    if [ "$enabled" = "true" ]; then
+        echo -e "Status:       ${GREEN}Enabled${NC}"
+    else
+        echo -e "Status:       ${YELLOW}Disabled${NC}"
+    fi
+
+    echo ""
+    echo -e "${BOLD}Threat Intelligence:${NC}"
+    echo "  Local IOCs:      $local_iocs (from this node)"
+    echo "  Received IOCs:   $received (from mesh)"
+    echo "  Applied IOCs:    $applied"
+    echo "  Peer Contributors: $peers"
+    echo "  Chain Blocks:    $chain_blocks"
+
+    # Count Vortex-sourced IOCs in local
+    local vortex_local=0
+    local ti_local="/var/lib/secubox/threat-intel/iocs-local.json"
+    if [ -f "$ti_local" ]; then
+        vortex_local=$(jsonfilter -i "$ti_local" -e '@[*].source' 2>/dev/null | grep -c "^vortex$" || echo 0)
+    fi
+    echo ""
+    echo -e "${BOLD}Vortex Contributions:${NC}"
+    echo "  Domains Shared:  $vortex_local"
+    echo ""
+}
+
+mesh_publish() {
+    log "Publishing Vortex domains to mesh..."
+
+    if [ ! -x "$THREAT_INTEL_SCRIPT" ]; then
+        error "secubox-p2p not installed"
+        return 1
+    fi
+
+    # Collect and publish
+    "$THREAT_INTEL_SCRIPT" collect 2>/dev/null
+    local result=$("$THREAT_INTEL_SCRIPT" publish 2>/dev/null)
+
+    local published=$(echo "$result" | jsonfilter -e '@.published' 2>/dev/null || echo 0)
+    log "Published $published IOCs to mesh"
+}
+
+mesh_sync() {
+    log "Syncing threats from mesh..."
+
+    if [ ! -x "$THREAT_INTEL_SCRIPT" ]; then
+        error "secubox-p2p not installed"
+        return 1
+    fi
+
+    # Process pending blocks and apply
+    local result=$("$THREAT_INTEL_SCRIPT" apply-pending 2>/dev/null)
+
+    local applied=$(echo "$result" | jsonfilter -e '@.applied' 2>/dev/null || echo 0)
+    local skipped=$(echo "$result" | jsonfilter -e '@.skipped' 2>/dev/null || echo 0)
+
+    log "Applied: $applied, Skipped: $skipped"
+
+    # Regenerate blocklist with new domains
+    if [ "$applied" -gt 0 ]; then
+        generate_blocklist
+    fi
+}
+
+mesh_received() {
+    local lines="${1:-20}"
+
+    echo ""
+    echo -e "${BOLD}Received Threats from Mesh${NC}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    if [ ! -x "$THREAT_INTEL_SCRIPT" ]; then
+        warn "secubox-p2p not installed"
+        return 1
+    fi
+
+    local received=$("$THREAT_INTEL_SCRIPT" list received 2>/dev/null)
+    local count=$(echo "$received" | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+
+    if [ "$count" -eq 0 ]; then
+        info "No threats received from mesh yet"
+        return 0
+    fi
+
+    echo "Total: $count received IOCs"
+    echo ""
+
+    # Show recent domain IOCs
+    echo "$received" | jsonfilter -e '@[*]' 2>/dev/null | tail -n "$lines" | while read -r ioc; do
+        local domain=$(echo "$ioc" | jsonfilter -e '@.domain' 2>/dev/null)
+        local ip=$(echo "$ioc" | jsonfilter -e '@.ip' 2>/dev/null)
+        local severity=$(echo "$ioc" | jsonfilter -e '@.severity' 2>/dev/null)
+        local trust=$(echo "$ioc" | jsonfilter -e '@.trust' 2>/dev/null)
+        local applied=$(echo "$ioc" | jsonfilter -e '@.applied' 2>/dev/null)
+        local scenario=$(echo "$ioc" | jsonfilter -e '@.scenario' 2>/dev/null)
+
+        local target="${domain:-$ip}"
+        [ -z "$target" ] && continue
+
+        local status_icon="\u2705"
+        [ "$applied" = "false" ] && status_icon="\u23F3"
+
+        printf "%-35s " "$target"
+        printf "%-10s " "$severity"
+        printf "%-12s " "$trust"
+        printf "%-20s " "$scenario"
+        echo -e "$status_icon"
+    done
+
+    echo ""
+}
+
+mesh_peers() {
+    echo ""
+    echo -e "${BOLD}Mesh Peer Contributions${NC}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    if [ ! -x "$THREAT_INTEL_SCRIPT" ]; then
+        warn "secubox-p2p not installed"
+        return 1
+    fi
+
+    local peers=$("$THREAT_INTEL_SCRIPT" peers 2>/dev/null)
+    local count=$(echo "$peers" | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+
+    if [ "$count" -eq 0 ]; then
+        info "No peer contributions yet"
+        return 0
+    fi
+
+    echo "$peers" | jsonfilter -e '@[*]' 2>/dev/null | while read -r peer; do
+        local node=$(echo "$peer" | jsonfilter -e '@.node' 2>/dev/null)
+        local trust=$(echo "$peer" | jsonfilter -e '@.trust' 2>/dev/null)
+        local ioc_count=$(echo "$peer" | jsonfilter -e '@.ioc_count' 2>/dev/null)
+        local applied_count=$(echo "$peer" | jsonfilter -e '@.applied_count' 2>/dev/null)
+
+        printf "%-20s " "${node:0:20}"
+        printf "%-12s " "$trust"
+        printf "IOCs: %-5s " "$ioc_count"
+        printf "Applied: %-5s\n" "$applied_count"
+    done
+
+    echo ""
+}
+
+# ============================================================================
+# DNS Guard Integration (Phase 3)
+# ============================================================================
+
+DNSGUARD_DIR="/var/lib/dns-guard"
+DNSGUARD_BLOCKLIST_DIR="/etc/dns-guard/blocklists"
+
+dnsguard_status() {
+    echo ""
+    echo -e "${BOLD}DNS Guard Integration${NC}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    # Check DNS Guard service
+    if pgrep -f "dns-guard" >/dev/null 2>&1; then
+        echo -e "Service:      ${GREEN}Running${NC}"
+    elif [ -x /etc/init.d/dns-guard ]; then
+        local enabled=$(/etc/init.d/dns-guard enabled && echo yes || echo no)
+        if [ "$enabled" = "yes" ]; then
+            echo -e "Service:      ${YELLOW}Enabled (not running)${NC}"
+        else
+            echo -e "Service:      ${RED}Disabled${NC}"
+        fi
+    else
+        echo -e "Service:      ${RED}Not installed${NC}"
+        return 1
+    fi
+
+    # Data files
+    echo ""
+    echo -e "${BOLD}Data Files:${NC}"
+
+    if [ -f "$DNSGUARD_DIR/alerts.json" ]; then
+        local alert_count=$(jsonfilter -i "$DNSGUARD_DIR/alerts.json" -e '@[*]' 2>/dev/null | wc -l)
+        echo "  Alerts:       $alert_count entries"
+    else
+        echo "  Alerts:       (no file)"
+    fi
+
+    if [ -f "$DNSGUARD_DIR/threat_domains.txt" ]; then
+        local domain_count=$(wc -l < "$DNSGUARD_DIR/threat_domains.txt" 2>/dev/null || echo 0)
+        echo "  Threats:      $domain_count domains"
+    else
+        echo "  Threats:      (no file)"
+    fi
+
+    if [ -f "$DNSGUARD_DIR/pending_blocks.json" ]; then
+        local pending_count=$(jsonfilter -i "$DNSGUARD_DIR/pending_blocks.json" -e '@[*]' 2>/dev/null | wc -l)
+        echo "  Pending:      $pending_count approvals"
+    else
+        echo "  Pending:      (no file)"
+    fi
+
+    # Vortex import stats
+    echo ""
+    echo -e "${BOLD}Vortex Integration:${NC}"
+
+    if [ -f "$BLOCKLIST_DB" ]; then
+        local imported=$(sqlite3 "$BLOCKLIST_DB" "SELECT COUNT(*) FROM domains WHERE source='dnsguard';" 2>/dev/null || echo 0)
+        local last_update=$(sqlite3 "$BLOCKLIST_DB" "SELECT last_update FROM feeds WHERE name='dnsguard';" 2>/dev/null || echo "never")
+        echo "  Imported:     $imported domains"
+        echo "  Last Sync:    $last_update"
+
+        # Threat type breakdown
+        echo ""
+        echo -e "${BOLD}Detection Types from DNS Guard:${NC}"
+        sqlite3 "$BLOCKLIST_DB" \
+            "SELECT '  ' || threat_type || ': ' || COUNT(*) FROM domains WHERE source='dnsguard' GROUP BY threat_type;" 2>/dev/null
+    fi
+
+    echo ""
+}
+
+dnsguard_sync() {
+    log "Syncing with DNS Guard..."
+
+    feed_import_dnsguard
+
+    # Regenerate blocklist with new entries
+    generate_blocklist
+
+    log "DNS Guard sync complete"
+}
+
+dnsguard_export() {
+    # Export Vortex threat intel back to DNS Guard blocklists (bidirectional)
+    log "Exporting Vortex intel to DNS Guard blocklists..."
+
+    mkdir -p "$DNSGUARD_BLOCKLIST_DIR"
+
+    local export_file="$DNSGUARD_BLOCKLIST_DIR/vortex-firewall.txt"
+
+    # Export domains from external feeds (not DNS Guard's own detections)
+    sqlite3 "$BLOCKLIST_DB" \
+        "SELECT domain FROM domains WHERE blocked=1 AND source != 'dnsguard';" 2>/dev/null > "$export_file"
+
+    local count=$(wc -l < "$export_file" 2>/dev/null || echo 0)
+    log "Exported $count domains to: $export_file"
+
+    # Signal DNS Guard to reload if running
+    if pgrep -f "dns-guard" >/dev/null 2>&1; then
+        killall -HUP dns-guard 2>/dev/null || true
+        log "Signaled DNS Guard to reload"
+    fi
+}
+
+dnsguard_alerts() {
+    local lines="${1:-20}"
+
+    echo ""
+    echo -e "${BOLD}Recent DNS Guard Alerts${NC}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    if [ ! -f "$DNSGUARD_DIR/alerts.json" ]; then
+        warn "No alerts file found"
+        return 1
+    fi
+
+    # Parse and display recent alerts
+    jsonfilter -i "$DNSGUARD_DIR/alerts.json" -e '@[*]' 2>/dev/null | tail -n "$lines" | while read -r alert; do
+        local domain=$(echo "$alert" | jsonfilter -e '@.domain' 2>/dev/null)
+        local client=$(echo "$alert" | jsonfilter -e '@.client' 2>/dev/null)
+        local type=$(echo "$alert" | jsonfilter -e '@.type' 2>/dev/null)
+        local confidence=$(echo "$alert" | jsonfilter -e '@.confidence' 2>/dev/null)
+        local reason=$(echo "$alert" | jsonfilter -e '@.reason' 2>/dev/null)
+
+        [ -z "$domain" ] && continue
+
+        printf "${YELLOW}%-30s${NC} " "$domain"
+        printf "%-12s " "$type"
+        printf "${CYAN}%3s%%${NC} " "$confidence"
+        printf "client=%s" "$client"
+        echo ""
+    done
+
+    echo ""
+}
+
+# ============================================================================
 # Service Control
 # ============================================================================
 
@@ -571,6 +1178,10 @@ service_start() {
         intel_update
     fi
 
+    # Start sinkhole if enabled
+    local sinkhole_enabled=$(uci -q get vortex-firewall.server.enabled)
+    [ "$sinkhole_enabled" = "1" ] && sinkhole_start
+
     log "Vortex DNS Firewall active"
     log "Sinkhole IP: $SINKHOLE_IP"
     log "Blocked domains: $(sqlite3 "$BLOCKLIST_DB" "SELECT COUNT(*) FROM domains WHERE blocked=1;")"
@@ -578,6 +1189,9 @@ service_start() {
 
 service_stop() {
     log "Stopping Vortex DNS Firewall..."
+
+    # Stop sinkhole server
+    sinkhole_stop
 
     # Remove dnsmasq config
     rm -f "$DNSMASQ_CONF"
@@ -633,13 +1247,35 @@ Intel Commands:
   intel add <domain>        Manually block a domain
   intel remove <domain>     Unblock a domain
 
+DNS Guard Integration (Phase 3):
+  dnsguard status           Show DNS Guard integration status
+  dnsguard sync             Force sync detections from DNS Guard
+  dnsguard export           Export Vortex intel to DNS Guard blocklists
+  dnsguard alerts [N]       Show recent DNS Guard alerts (default: 20)
+
+Mesh Threat Sharing (Phase 4):
+  mesh status               Show mesh threat sharing status
+  mesh publish              Publish local domains to mesh
+  mesh sync                 Sync and apply threats from mesh
+  mesh received [N]         Show threats received from mesh (default: 20)
+  mesh peers                Show peer contribution statistics
+
+Sinkhole Server:
+  sinkhole start            Start HTTP/HTTPS sinkhole server
+  sinkhole stop             Stop sinkhole server
+  sinkhole status           Show sinkhole status and stats
+  sinkhole logs [N]         Show last N sinkhole events (default: 50)
+  sinkhole export [file]    Export events to JSON file
+  sinkhole gencert          Generate self-signed HTTPS certificate
+  sinkhole clear            Clear event log
+
 Statistics:
   stats                     Show blocking statistics
   stats --x47               Show ×47 impact score
   stats --top-blocked       Top blocked domains
 
 Service:
-  start                     Start firewall
+  start                     Start firewall (includes sinkhole if enabled)
   stop                      Stop firewall
   status                    Show service status
 
@@ -650,6 +1286,10 @@ Examples:
   vortex-firewall intel update
   vortex-firewall intel search evil.com
   vortex-firewall intel add malware.example.com c2
+  vortex-firewall dnsguard status
+  vortex-firewall dnsguard sync
+  vortex-firewall sinkhole start
+  vortex-firewall sinkhole logs 100
   vortex-firewall stats --x47
 EOF
 }
@@ -671,12 +1311,50 @@ case "${1:-}" in
         esac
         ;;
 
+    sinkhole)
+        shift
+        case "${1:-}" in
+            start) sinkhole_start ;;
+            stop) sinkhole_stop ;;
+            status) sinkhole_status ;;
+            logs) shift; sinkhole_logs "$@" ;;
+            export) shift; sinkhole_export "$@" ;;
+            gencert) sinkhole_gencert ;;
+            clear) sinkhole_clear ;;
+            record) shift; sinkhole_record_event "$@" ;;
+            *) error "Unknown sinkhole command. Use: start, stop, status, logs, export, gencert, clear" ;;
+        esac
+        ;;
+
     stats)
         shift
         case "${1:-}" in
             --x47|-x) show_x47 ;;
             --top*) show_stats ;;
             *) show_stats ;;
+        esac
+        ;;
+
+    dnsguard)
+        shift
+        case "${1:-}" in
+            status) dnsguard_status ;;
+            sync) dnsguard_sync ;;
+            export) dnsguard_export ;;
+            alerts) shift; dnsguard_alerts "$@" ;;
+            *) error "Unknown dnsguard command. Use: status, sync, export, alerts" ;;
+        esac
+        ;;
+
+    mesh)
+        shift
+        case "${1:-}" in
+            status) mesh_status ;;
+            publish) mesh_publish ;;
+            sync) mesh_sync ;;
+            received) shift; mesh_received "$@" ;;
+            peers) mesh_peers ;;
+            *) error "Unknown mesh command. Use: status, publish, sync, received, peers" ;;
         esac
         ;;
 

@@ -117,7 +117,8 @@ return view.extend({
 						E('label', { 'style': 'margin-left:10px;' }, [E('input', { 'type': 'checkbox', 'id': 'svc-jabber', 'checked': true }), ' Jabber']),
 						E('label', { 'style': 'margin-left:10px;' }, [E('input', { 'type': 'checkbox', 'id': 'svc-matrix', 'checked': true }), ' Matrix']),
 						E('label', { 'style': 'margin-left:10px;' }, [E('input', { 'type': 'checkbox', 'id': 'svc-email', 'checked': true }), ' Email']),
-						E('label', { 'style': 'margin-left:10px;' }, [E('input', { 'type': 'checkbox', 'id': 'svc-gitea', 'checked': true }), ' Gitea'])
+						E('label', { 'style': 'margin-left:10px;' }, [E('input', { 'type': 'checkbox', 'id': 'svc-gitea', 'checked': true }), ' Gitea']),
+						E('label', { 'style': 'margin-left:10px;' }, [E('input', { 'type': 'checkbox', 'id': 'svc-jellyfin', 'checked': true }), ' Jellyfin'])
 					])
 				])
 			]),
@@ -138,6 +139,7 @@ return view.extend({
 						if (document.getElementById('svc-matrix').checked) services.push('matrix');
 						if (document.getElementById('svc-email').checked) services.push('email');
 						if (document.getElementById('svc-gitea').checked) services.push('gitea');
+						if (document.getElementById('svc-jellyfin').checked) services.push('jellyfin');
 
 						if (!username) {
 							ui.addNotification(null, E('p', {}, _('Username required')), 'error');
@@ -266,7 +268,8 @@ return view.extend({
 				this.renderServiceBadge('Matrix', services.matrix),
 				this.renderServiceBadge('Jabber', services.jabber),
 				this.renderServiceBadge('Email', services.email),
-				this.renderServiceBadge('Gitea', services.gitea)
+				this.renderServiceBadge('Gitea', services.gitea),
+				this.renderServiceBadge('Jellyfin', services.jellyfin)
 			]),
 			E('p', { 'style': 'color:#666;' }, _('Domain: %s | Users: %d').format(status.domain, status.user_count))
 		]));

@@ -12,7 +12,7 @@ define Package/secubox-vortex-firewall
   SECTION:=secubox
   CATEGORY:=SecuBox
   TITLE:=Vortex DNS Firewall
-  DEPENDS:=+dnsmasq-full +curl +sqlite3-cli +ca-certificates
+  DEPENDS:=+dnsmasq-full +curl +sqlite3-cli +ca-certificates +socat +openssl-util
   PKGARCH:=all
 endef
 
@@ -21,6 +21,9 @@ define Package/secubox-vortex-firewall/description
   Blocks malware, phishing, and C2 at DNS resolution before
   any connection is established. Integrates threat feeds from
   abuse.ch, OpenPhish, and local DNS Guard detections.
+
+  Phase 2: Sinkhole server captures blocked connections to
+  analyze malware behavior and identify infected clients.
 endef
 
 define Package/secubox-vortex-firewall/conffiles
@@ -45,6 +48,13 @@ define Package/secubox-vortex-firewall/install
 
 	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
 	$(INSTALL_DATA) ./root/usr/share/rpcd/acl.d/luci-vortex-firewall.json $(1)/usr/share/rpcd/acl.d/
+
+	$(INSTALL_DIR) $(1)/usr/lib/vortex-firewall
+	$(INSTALL_BIN) ./root/usr/lib/vortex-firewall/sinkhole-http.sh $(1)/usr/lib/vortex-firewall/
+	$(INSTALL_BIN) ./root/usr/lib/vortex-firewall/sinkhole-http-handler.sh $(1)/usr/lib/vortex-firewall/
+	$(INSTALL_BIN) ./root/usr/lib/vortex-firewall/sinkhole-https.sh $(1)/usr/lib/vortex-firewall/
+
+	$(INSTALL_DIR) $(1)/etc/vortex-firewall
 endef
 
 define Package/secubox-vortex-firewall/postinst

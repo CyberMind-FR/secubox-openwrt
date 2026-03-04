@@ -200,6 +200,47 @@ ti_collect_mitmproxy() {
 }
 
 # ============================================================================
+# Collection - Vortex Firewall DNS blocklist
+# ============================================================================
+ti_collect_vortex() {
+	local blocklist_db="/var/lib/vortex-firewall/blocklist.db"
+	[ -f "$blocklist_db" ] || return 0
+
+	command -v sqlite3 >/dev/null 2>&1 || return 0
+
+	local now=$(date +%s)
+	local node_id=$(cat "$NODE_ID_FILE" 2>/dev/null || echo "unknown")
+
+	# Query high-confidence domains with recent hits (locally-verified threats)
+	sqlite3 "$blocklist_db" \
+		"SELECT domain, threat_type, confidence FROM domains
+		 WHERE blocked=1 AND confidence >= 85 AND hit_count > 0
+		 ORDER BY hit_count DESC
+		 LIMIT 50;" 2>/dev/null | while IFS='|' read -r domain threat_type confidence; do
+
+		[ -z "$domain" ] && continue
+
+		# Skip private/local domains
+		case "$domain" in
+			*.local|*.lan|localhost*|*internal*|*.home|*.localdomain) continue ;;
+		esac
+
+		# Skip whitelisted
+		grep -q "^${domain}$" "$TI_WHITELIST" 2>/dev/null && continue
+
+		# Map Vortex threat types to IOC severity
+		local severity="high"
+		case "$threat_type" in
+			malware|c2|botnet|dga|dns_tunnel) severity="critical" ;;
+			phishing|scam|known_bad) severity="high" ;;
+			adware|pup|suspicious_tld|tld_anomaly) severity="medium" ;;
+		esac
+
+		echo "{\"domain\":\"$domain\",\"type\":\"block\",\"severity\":\"$severity\",\"source\":\"vortex\",\"scenario\":\"$threat_type\",\"confidence\":$confidence,\"duration\":\"${TI_IOC_TTL}s\",\"ts\":$now,\"node\":\"$node_id\",\"ttl\":$TI_IOC_TTL}"
+	done
+}
+
+# ============================================================================
 # Collection - Aggregate and deduplicate
 # ============================================================================
 ti_collect_all() {
@@ -207,36 +248,50 @@ ti_collect_all() {
 
 	local tmp_file="$TI_DIR/tmp-collect-$$.json"
 	local existing_ips=""
+	local existing_domains=""
 
-	# Gather existing local IOC IPs for dedup
+	# Gather existing local IOC IPs and domains for dedup
 	if [ -f "$IOC_LOCAL" ] && [ "$(cat "$IOC_LOCAL")" != "[]" ]; then
 		existing_ips=$(jsonfilter -i "$IOC_LOCAL" -e '@[*].ip' 2>/dev/null | sort -u)
+		existing_domains=$(jsonfilter -i "$IOC_LOCAL" -e '@[*].domain' 2>/dev/null | sort -u)
 	fi
 
 	# Collect from all sources
 	{
 		ti_collect_crowdsec
 		ti_collect_mitmproxy
+		ti_collect_vortex
 	} > "$tmp_file"
 
-	# Deduplicate by IP against existing and within new results
+	# Deduplicate by IP/domain against existing and within new results
 	local new_iocs="["
 	local first=1
 	local seen_ips=""
+	local seen_domains=""
 
 	while read -r ioc_line; do
 		[ -z "$ioc_line" ] && continue
 
+		# Check for IP-based IOC
 		local ip=$(echo "$ioc_line" | jsonfilter -e '@.ip' 2>/dev/null)
-		[ -z "$ip" ] && continue
-
-		# Skip if already in local IOCs
-		echo "$existing_ips" | grep -q "^${ip}$" && continue
-
-		# Skip if already seen in this batch
-		echo "$seen_ips" | grep -q "^${ip}$" && continue
-		seen_ips="$seen_ips
+		if [ -n "$ip" ]; then
+			# Skip if already in local IOCs
+			echo "$existing_ips" | grep -q "^${ip}$" && continue
+			# Skip if already seen in this batch
+			echo "$seen_ips" | grep -q "^${ip}$" && continue
+			seen_ips="$seen_ips
 $ip"
+		else
+			# Check for domain-based IOC (Vortex)
+			local domain=$(echo "$ioc_line" | jsonfilter -e '@.domain' 2>/dev/null)
+			[ -z "$domain" ] && continue
+			# Skip if already in local IOCs
+			echo "$existing_domains" | grep -q "^${domain}$" && continue
+			# Skip if already seen in this batch
+			echo "$seen_domains" | grep -q "^${domain}$" && continue
+			seen_domains="$seen_domains
+$domain"
+		fi
 
 		[ $first -eq 0 ] && new_iocs="$new_iocs,"
 		first=0
@@ -502,6 +557,7 @@ ti_trust_score() {
 ti_apply_ioc() {
 	local ioc_json="$1"
 	local ip=$(echo "$ioc_json" | jsonfilter -e '@.ip' 2>/dev/null)
+	local domain=$(echo "$ioc_json" | jsonfilter -e '@.domain' 2>/dev/null)
 	local severity=$(echo "$ioc_json" | jsonfilter -e '@.severity' 2>/dev/null)
 	local source_node=$(echo "$ioc_json" | jsonfilter -e '@.node' 2>/dev/null)
 	local scenario=$(echo "$ioc_json" | jsonfilter -e '@.scenario' 2>/dev/null || echo "mesh-shared")
@@ -509,11 +565,14 @@ ti_apply_ioc() {
 	local ttl=$(echo "$ioc_json" | jsonfilter -e '@.ttl' 2>/dev/null || echo "$TI_IOC_TTL")
 	local ts=$(echo "$ioc_json" | jsonfilter -e '@.ts' 2>/dev/null || echo "0")
 
-	[ -z "$ip" ] && return 1
+	# Need either IP or domain
+	[ -z "$ip" ] && [ -z "$domain" ] && return 1
+
+	local target="${ip:-$domain}"
 
 	# Check whitelist
-	grep -q "^${ip}$" "$TI_WHITELIST" 2>/dev/null && {
-		logger -t threat-intel "Skipping whitelisted IP: $ip"
+	grep -q "^${target}$" "$TI_WHITELIST" 2>/dev/null && {
+		logger -t threat-intel "Skipping whitelisted: $target"
 		return 1
 	}
 
@@ -540,7 +599,7 @@ ti_apply_ioc() {
 			;;
 		unknown|*)
 			# Never auto-apply unknown sources
-			logger -t threat-intel "Skipping IOC from unknown node: $source_node ($ip)"
+			logger -t threat-intel "Skipping IOC from unknown node: $source_node ($target)"
 			return 1
 			;;
 	esac
@@ -548,13 +607,25 @@ ti_apply_ioc() {
 	# Check minimum severity
 	_severity_meets_min "$severity" "$TI_MIN_SEVERITY" || return 1
 
-	# Apply via CrowdSec
-	if command -v cscli >/dev/null 2>&1; then
-		cscli decisions add --ip "$ip" --duration "$duration" \
-			--reason "mesh-p2p:$scenario" --type ban 2>/dev/null
-		if [ $? -eq 0 ]; then
-			logger -t threat-intel "Applied IOC: $ip (trust=$trust, severity=$severity, source=$source_node)"
-			return 0
+	# Apply based on IOC type
+	if [ -n "$domain" ]; then
+		# Domain IOC - apply via Vortex Firewall
+		if [ -x /usr/sbin/vortex-firewall ]; then
+			/usr/sbin/vortex-firewall intel add "$domain" "mesh:$scenario" >/dev/null 2>&1
+			if [ $? -eq 0 ]; then
+				logger -t threat-intel "Applied domain IOC: $domain (trust=$trust, severity=$severity, source=$source_node)"
+				return 0
+			fi
+		fi
+	else
+		# IP IOC - apply via CrowdSec
+		if command -v cscli >/dev/null 2>&1; then
+			cscli decisions add --ip "$ip" --duration "$duration" \
+				--reason "mesh-p2p:$scenario" --type ban 2>/dev/null
+			if [ $? -eq 0 ]; then
+				logger -t threat-intel "Applied IP IOC: $ip (trust=$trust, severity=$severity, source=$source_node)"
+				return 0
+			fi
 		fi
 	fi
 
