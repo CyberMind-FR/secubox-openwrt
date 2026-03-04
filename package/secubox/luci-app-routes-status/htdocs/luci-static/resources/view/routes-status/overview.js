@@ -3,7 +3,6 @@
 'require dom';
 'require ui';
 'require rpc';
-'require secubox/kiss-theme';
 
 var callStatus = rpc.declare({
 	object: 'luci.routes-status',
@@ -29,31 +28,66 @@ return view.extend({
 		return callStatus();
 	},
 
-	renderHeaderChip: function(icon, label, value, tone) {
-		var display = (value == null ? '—' : value).toString();
-		return E('div', { 'class': 'sh-header-chip' + (tone ? ' ' + tone : '') }, [
-			E('span', { 'class': 'sh-chip-icon' }, icon),
-			E('div', { 'class': 'sh-chip-text' }, [
-				E('span', { 'class': 'sh-chip-label' }, label),
-				E('strong', {}, display)
-			])
-		]);
+	renderStatusBadge: function(running, label) {
+		var color = running ? '#4CAF50' : '#f44336';
+		return E('span', {
+			'style': 'display:inline-block;padding:4px 12px;margin:4px;border-radius:4px;color:#fff;background:' + color + ';font-size:0.9em;font-weight:500;'
+		}, label + ': ' + (running ? 'Running' : 'Stopped'));
 	},
 
-	renderPill: function(text, type) {
-		var colors = {
-			success: '#4CAF50',
-			warning: '#ff9800',
-			danger: '#f44336',
-			info: '#2196F3',
-			muted: '#9e9e9e'
-		};
+	renderRouteBadge: function(hasRoute, type) {
+		if (hasRoute) {
+			return E('span', {
+				'style': 'display:inline-block;padding:2px 8px;margin:2px;border-radius:3px;color:#fff;background:#4CAF50;font-size:0.8em;'
+			}, type);
+		} else {
+			return E('span', {
+				'style': 'display:inline-block;padding:2px 8px;margin:2px;border-radius:3px;color:#fff;background:#ff9800;font-size:0.8em;'
+			}, type + ' (missing)');
+		}
+	},
+
+	renderSslBadge: function(status) {
+		var color, text;
+		if (status === 'missing') {
+			color = '#9e9e9e';
+			text = 'No SSL';
+		} else if (status === 'expired') {
+			color = '#f44336';
+			text = 'Expired';
+		} else if (status && status.indexOf('expiring:') === 0) {
+			var days = status.split(':')[1];
+			color = '#ff9800';
+			text = 'Expires in ' + days + 'd';
+		} else if (status && status.indexOf('valid:') === 0) {
+			var days = status.split(':')[1];
+			color = '#4CAF50';
+			text = 'Valid (' + days + 'd)';
+		} else {
+			color = '#4CAF50';
+			text = 'Valid';
+		}
+
 		return E('span', {
-			'style': 'display:inline-block;padding:2px 8px;margin:2px;border-radius:4px;color:#fff;background:' + (colors[type] || colors.muted) + ';font-size:0.8em;font-weight:500;'
+			'style': 'display:inline-block;padding:2px 8px;margin:2px;border-radius:3px;color:#fff;background:' + color + ';font-size:0.8em;'
 		}, text);
 	},
 
+	renderWafBadge: function(bypass) {
+		if (bypass) {
+			return E('span', {
+				'style': 'display:inline-block;padding:2px 8px;margin:2px;border-radius:3px;color:#fff;background:#f44336;font-size:0.8em;'
+			}, 'WAF Bypass');
+		} else {
+			return E('span', {
+				'style': 'display:inline-block;padding:2px 8px;margin:2px;border-radius:3px;color:#fff;background:#2196F3;font-size:0.8em;'
+			}, 'WAF Protected');
+		}
+	},
+
 	handleSync: function() {
+		var self = this;
+
 		ui.showModal(_('Syncing Routes...'), [
 			E('p', { 'class': 'spinning' }, _('Please wait...'))
 		]);
@@ -72,31 +106,36 @@ return view.extend({
 	handleAddRoute: function(domain, port) {
 		var self = this;
 
-		ui.showModal(_('Add Route'), [
-			E('div', { 'class': 'cbi-section' }, [
-				E('p', {}, _('Add mitmproxy route for: %s').format(domain)),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Backend Port')),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', { 'type': 'number', 'id': 'route-port', 'value': port || '443', 'style': 'width:100px;' })
+		if (!port) {
+			// Ask for port
+			ui.showModal(_('Add Route'), [
+				E('div', { 'class': 'cbi-section' }, [
+					E('p', {}, _('Add mitmproxy route for: %s').format(domain)),
+					E('div', { 'class': 'cbi-value' }, [
+						E('label', { 'class': 'cbi-value-title' }, _('Backend Port')),
+						E('div', { 'class': 'cbi-value-field' }, [
+							E('input', { 'type': 'number', 'id': 'route-port', 'value': '443', 'style': 'width:100px;' })
+						])
 					])
+				]),
+				E('div', { 'class': 'right' }, [
+					E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')),
+					E('button', {
+						'class': 'btn cbi-button-positive',
+						'click': function() {
+							var port = parseInt(document.getElementById('route-port').value, 10);
+							if (port > 0) {
+								ui.hideModal();
+								self.doAddRoute(domain, port);
+							}
+						},
+						'style': 'margin-left:10px;'
+					}, _('Add Route'))
 				])
-			]),
-			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')),
-				E('button', {
-					'class': 'btn cbi-button-positive',
-					'click': function() {
-						var p = parseInt(document.getElementById('route-port').value, 10);
-						if (p > 0) {
-							ui.hideModal();
-							self.doAddRoute(domain, p);
-						}
-					},
-					'style': 'margin-left:10px;'
-				}, _('Add Route'))
-			])
-		]);
+			]);
+		} else {
+			this.doAddRoute(domain, parseInt(port, 10));
+		}
 	},
 
 	doAddRoute: function(domain, port) {
@@ -119,35 +158,31 @@ return view.extend({
 		var self = this;
 		var missingRoutes = !vhost.has_route_out || !vhost.has_route_in;
 
-		return E('tr', {}, [
+		return E('tr', { 'class': vhost.active ? '' : 'inactive' }, [
 			E('td', {}, [
 				E('a', {
 					'href': 'https://' + vhost.domain,
 					'target': '_blank',
-					'style': 'color:#1976D2;text-decoration:none;font-weight:500;'
+					'style': 'color:#1976D2;text-decoration:none;'
 				}, vhost.domain)
 			]),
 			E('td', {}, vhost.backend || '-'),
+			E('td', { 'style': 'text-align:center;' }, vhost.backend_port || '-'),
 			E('td', {}, [
-				vhost.has_route_out ? this.renderPill('OUT', 'success') : this.renderPill('OUT', 'warning'),
-				vhost.has_route_in ? this.renderPill('IN', 'success') : this.renderPill('IN', 'warning')
+				this.renderRouteBadge(vhost.has_route_out, 'OUT'),
+				this.renderRouteBadge(vhost.has_route_in, 'IN')
 			]),
+			E('td', {}, this.renderSslBadge(vhost.ssl_status)),
+			E('td', {}, this.renderWafBadge(vhost.waf_bypass)),
 			E('td', {}, [
-				vhost.ssl_status === 'valid' ? this.renderPill('SSL', 'success') :
-				vhost.ssl_status === 'expiring' ? this.renderPill('Expiring', 'warning') :
-				vhost.ssl_status === 'expired' ? this.renderPill('Expired', 'danger') :
-				this.renderPill('No SSL', 'muted')
-			]),
-			E('td', {}, [
-				vhost.waf_bypass ? this.renderPill('Bypass', 'danger') : this.renderPill('WAF', 'info')
-			]),
-			E('td', {}, [
-				vhost.active ? this.renderPill('Active', 'success') : this.renderPill('Inactive', 'muted'),
+				vhost.active ?
+					E('span', { 'style': 'color:#4CAF50;font-weight:bold;' }, 'Active') :
+					E('span', { 'style': 'color:#9e9e9e;' }, 'Inactive'),
 				missingRoutes ? E('button', {
-					'class': 'cbi-button cbi-button-action',
+					'class': 'btn cbi-button',
 					'click': function() { self.handleAddRoute(vhost.domain, vhost.backend_port); },
-					'style': 'margin-left:8px;padding:2px 8px;font-size:0.8em;'
-				}, _('+ Route')) : null
+					'style': 'margin-left:10px;font-size:0.8em;padding:2px 8px;'
+				}, _('Add Route')) : null
 			])
 		]);
 	},
@@ -161,94 +196,76 @@ return view.extend({
 			return a.domain.localeCompare(b.domain);
 		});
 
-		// Stats
+		// Count stats
 		var totalVhosts = vhosts.length;
 		var activeVhosts = vhosts.filter(function(v) { return v.active; }).length;
 		var missingRoutes = vhosts.filter(function(v) { return !v.has_route_out || !v.has_route_in; }).length;
 		var wafBypassed = vhosts.filter(function(v) { return v.waf_bypass; }).length;
-		var sslValid = vhosts.filter(function(v) { return v.ssl_status === 'valid'; }).length;
 
+		var content = [];
+
+		// Header
+		content.push(E('h2', {}, _('Routes Status Dashboard')));
+
+		// Service Status
+		content.push(E('div', { 'class': 'cbi-section' }, [
+			E('h3', {}, _('Service Status')),
+			E('div', { 'style': 'margin:10px 0;' }, [
+				this.renderStatusBadge(data.haproxy_running, 'HAProxy'),
+				this.renderStatusBadge(data.mitmproxy_running, 'mitmproxy')
+			]),
+			E('p', { 'style': 'color:#666;' }, _('Host IP: %s').format(data.host_ip || '192.168.255.1'))
+		]));
+
+		// Statistics
+		content.push(E('div', { 'class': 'cbi-section' }, [
+			E('h3', {}, _('Statistics')),
+			E('div', { 'style': 'display:flex;gap:30px;margin:15px 0;' }, [
+				E('div', { 'style': 'text-align:center;' }, [
+					E('div', { 'style': 'font-size:2em;font-weight:bold;color:#1976D2;' }, String(totalVhosts)),
+					E('div', { 'style': 'color:#666;' }, _('Total Vhosts'))
+				]),
+				E('div', { 'style': 'text-align:center;' }, [
+					E('div', { 'style': 'font-size:2em;font-weight:bold;color:#4CAF50;' }, String(activeVhosts)),
+					E('div', { 'style': 'color:#666;' }, _('Active'))
+				]),
+				E('div', { 'style': 'text-align:center;' }, [
+					E('div', { 'style': 'font-size:2em;font-weight:bold;color:' + (missingRoutes > 0 ? '#ff9800' : '#4CAF50') + ';' }, String(missingRoutes)),
+					E('div', { 'style': 'color:#666;' }, _('Missing Routes'))
+				]),
+				E('div', { 'style': 'text-align:center;' }, [
+					E('div', { 'style': 'font-size:2em;font-weight:bold;color:' + (wafBypassed > 0 ? '#f44336' : '#4CAF50') + ';' }, String(wafBypassed)),
+					E('div', { 'style': 'color:#666;' }, _('WAF Bypassed'))
+				])
+			])
+		]));
+
+		// Vhosts Table
 		var vhostRows = vhosts.map(function(v) { return self.renderVhostRow(v); });
 
-		var content = E('div', { 'class': 'routes-status-page' }, [
-			// KISS Header
-			E('div', { 'class': 'sh-page-header sh-page-header-lite' }, [
-				E('div', {}, [
-					E('h2', { 'class': 'sh-page-title' }, [
-						E('span', { 'class': 'sh-page-title-icon' }, '🔀'),
-						_('Routes Status')
-					]),
-					E('p', { 'class': 'sh-page-subtitle' },
-						_('HAProxy vhosts and mitmproxy route configuration overview.'))
-				]),
-				E('div', { 'class': 'sh-header-meta' }, [
-					this.renderHeaderChip('🌐', _('Vhosts'), totalVhosts),
-					this.renderHeaderChip('✅', _('Active'), activeVhosts),
-					this.renderHeaderChip('⚠️', _('Missing Routes'), missingRoutes, missingRoutes > 0 ? 'warn' : ''),
-					this.renderHeaderChip('🛡️', _('WAF Bypass'), wafBypassed, wafBypassed > 0 ? 'warn' : ''),
-					this.renderHeaderChip('🔒', _('SSL Valid'), sslValid)
-				])
-			]),
-
-			// Service Status Cards
-			E('div', { 'class': 'sh-card-grid', 'style': 'display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin:20px 0;' }, [
-				E('div', { 'class': 'sh-card', 'style': 'background:#fff;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.1);' }, [
-					E('div', { 'style': 'display:flex;align-items:center;gap:8px;margin-bottom:8px;' }, [
-						E('span', { 'style': 'font-size:1.5em;' }, '⚖️'),
-						E('strong', {}, 'HAProxy')
-					]),
-					data.haproxy_running ?
-						this.renderPill('Running', 'success') :
-						this.renderPill('Stopped', 'danger')
-				]),
-				E('div', { 'class': 'sh-card', 'style': 'background:#fff;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.1);' }, [
-					E('div', { 'style': 'display:flex;align-items:center;gap:8px;margin-bottom:8px;' }, [
-						E('span', { 'style': 'font-size:1.5em;' }, '🔍'),
-						E('strong', {}, 'mitmproxy')
-					]),
-					data.mitmproxy_running ?
-						this.renderPill('Running', 'success') :
-						this.renderPill('Stopped', 'danger')
-				]),
-				E('div', { 'class': 'sh-card', 'style': 'background:#fff;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.1);' }, [
-					E('div', { 'style': 'display:flex;align-items:center;gap:8px;margin-bottom:8px;' }, [
-						E('span', { 'style': 'font-size:1.5em;' }, '🖥️'),
-						E('strong', {}, _('Host IP'))
-					]),
-					E('code', { 'style': 'background:#f5f5f5;padding:4px 8px;border-radius:4px;' }, data.host_ip || '192.168.255.1')
-				])
-			]),
-
-			// Actions
-			E('div', { 'style': 'margin:20px 0;' }, [
+		content.push(E('div', { 'class': 'cbi-section' }, [
+			E('h3', {}, _('Virtual Hosts')),
+			E('div', { 'class': 'cbi-page-actions', 'style': 'margin-bottom:15px;' }, [
 				E('button', {
-					'class': 'cbi-button cbi-button-action',
-					'click': function() { self.handleSync(); },
-					'style': 'margin-right:10px;'
-				}, '🔄 ' + _('Sync Routes from HAProxy'))
+					'class': 'btn cbi-button-action',
+					'click': function() { self.handleSync(); }
+				}, _('Sync Routes from HAProxy'))
 			]),
+			vhosts.length > 0 ?
+				E('table', { 'class': 'table cbi-section-table' }, [
+					E('tr', { 'class': 'tr table-titles' }, [
+						E('th', { 'class': 'th' }, _('Domain')),
+						E('th', { 'class': 'th' }, _('Backend')),
+						E('th', { 'class': 'th', 'style': 'text-align:center;' }, _('Port')),
+						E('th', { 'class': 'th' }, _('Routes')),
+						E('th', { 'class': 'th' }, _('SSL')),
+						E('th', { 'class': 'th' }, _('WAF')),
+						E('th', { 'class': 'th' }, _('Status'))
+					])
+				].concat(vhostRows)) :
+				E('p', { 'style': 'color:#666;' }, _('No virtual hosts configured.'))
+		]));
 
-			// Vhosts Table
-			E('div', { 'class': 'sh-card', 'style': 'background:#fff;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.1);overflow-x:auto;' }, [
-				E('h3', { 'style': 'margin:0 0 16px 0;' }, '🌐 ' + _('Virtual Hosts (%d)').format(totalVhosts)),
-				vhosts.length > 0 ?
-					E('table', { 'class': 'table', 'style': 'width:100%;border-collapse:collapse;' }, [
-						E('thead', {}, [
-							E('tr', { 'style': 'background:#f5f5f5;' }, [
-								E('th', { 'style': 'padding:10px;text-align:left;' }, _('Domain')),
-								E('th', { 'style': 'padding:10px;text-align:left;' }, _('Backend')),
-								E('th', { 'style': 'padding:10px;text-align:left;' }, _('Routes')),
-								E('th', { 'style': 'padding:10px;text-align:left;' }, _('SSL')),
-								E('th', { 'style': 'padding:10px;text-align:left;' }, _('WAF')),
-								E('th', { 'style': 'padding:10px;text-align:left;' }, _('Status'))
-							])
-						]),
-						E('tbody', {}, vhostRows)
-					]) :
-					E('p', { 'style': 'color:#666;text-align:center;padding:20px;' }, _('No virtual hosts configured.'))
-			])
-		]);
-
-		return KissTheme.wrap([content], 'admin/status/routes');
+		return E('div', { 'class': 'cbi-map' }, content);
 	}
 });
