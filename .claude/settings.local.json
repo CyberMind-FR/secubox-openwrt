@@ -511,7 +511,9 @@
       "WebFetch(domain:enhance-app.gk2.secubox.in)",
       "Bash(openssl dgst:*)",
       "Bash(# Check the exact field names returned by stats ssh root@192.168.255.1 \"\"ubus call luci.cdn-cache stats\"\")",
-      "Bash(arping:*)"
+      "Bash(arping:*)",
+      "Bash(./scripts/check-sbom-prereqs.sh:*)",
+      "Bash(git revert:*)"
     ]
   }
 }
