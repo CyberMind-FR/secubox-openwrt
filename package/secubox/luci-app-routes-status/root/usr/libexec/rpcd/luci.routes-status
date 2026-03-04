@@ -1,6 +1,7 @@
 #!/bin/sh
 # RPCD handler for Routes Status dashboard
 # Shows HAProxy vhosts and mitmproxy route configuration status
+# Optimized with pagination
 
 . /usr/share/libubox/jshn.sh
 
@@ -13,11 +14,24 @@ get_host_ip() {
 	uci -q get network.lan.ipaddr || echo "192.168.255.1"
 }
 
-# Main status method - optimized to fetch data once
+# Main status method - optimized with pagination
 method_status() {
+	local offset=0
+	local limit=50
+
+	# Read JSON input for pagination params
+	read -r input 2>/dev/null
+	if [ -n "$input" ]; then
+		json_load "$input" 2>/dev/null
+		json_get_var offset offset 2>/dev/null
+		json_get_var limit limit 2>/dev/null
+	fi
+	[ -z "$offset" ] && offset=0
+	[ -z "$limit" ] && limit=50
+
 	local host_ip=$(get_host_ip)
-	local haproxy_running=$(pgrep haproxy >/dev/null 2>&1 && echo "true" || echo "false")
-	local mitmproxy_running=$(pgrep -f mitmproxy >/dev/null 2>&1 && echo "true" || echo "false")
+	local haproxy_running=$(pgrep haproxy >/dev/null 2>&1 && echo "1" || echo "0")
+	local mitmproxy_running=$(pgrep -f mitmproxy >/dev/null 2>&1 && echo "1" || echo "0")
 
 	# Fetch vhost list once to temp file
 	local vhost_tmp="/tmp/vhosts_$$"
@@ -27,41 +41,60 @@ method_status() {
 		touch "$vhost_tmp"
 	fi
 
+	# Count total vhosts
+	local total=$(wc -l < "$vhost_tmp" | tr -d ' ')
+
 	json_init
 	json_add_boolean haproxy_running "$haproxy_running"
 	json_add_boolean mitmproxy_running "$mitmproxy_running"
 	json_add_string host_ip "$host_ip"
+	json_add_int total "$total"
+	json_add_int offset "$offset"
+	json_add_int limit "$limit"
 
 	json_add_array vhosts
 
-	# Process vhost data line by line (using file redirection to avoid subshell)
+	# Process vhost data with pagination
+	local count=0
+	local processed=0
 	while IFS= read -r line; do
 		[ -z "$line" ] && continue
+
+		# Skip until offset
+		if [ "$count" -lt "$offset" ]; then
+			count=$((count + 1))
+			continue
+		fi
+
+		# Stop after limit
+		if [ "$processed" -ge "$limit" ]; then
+			break
+		fi
 
 		# Parse line: "  domain.com             -> backend_name  [enabled] SSL ..."
 		local domain=$(echo "$line" | awk '{print $1}')
 		local backend=$(echo "$line" | awk '{print $3}')
-		local enabled=$(echo "$line" | grep -qF '[enabled]' && echo "true" || echo "false")
+		local enabled=$(echo "$line" | grep -qF '[enabled]' && echo "1" || echo "0")
 
 		[ -z "$domain" ] && continue
 
-		# Check mitmproxy routes (grep for domain in JSON)
-		local has_route_out="false"
-		local has_route_in="false"
-		if [ -f "$MITMPROXY_ROUTES" ] && grep -qF "\"$domain\"" "$MITMPROXY_ROUTES" 2>/dev/null; then
-			has_route_out="true"
+		# Check mitmproxy routes (use 1/0 for jshn booleans)
+		local has_route_out="0"
+		local has_route_in="0"
+		if [ -f "$MITMPROXY_ROUTES" ] && grep "$domain" "$MITMPROXY_ROUTES" >/dev/null 2>&1; then
+			has_route_out="1"
 		fi
-		if [ -f "$MITMPROXY_IN_ROUTES" ] && grep -qF "\"$domain\"" "$MITMPROXY_IN_ROUTES" 2>/dev/null; then
-			has_route_in="true"
+		if [ -f "$MITMPROXY_IN_ROUTES" ] && grep "$domain" "$MITMPROXY_IN_ROUTES" >/dev/null 2>&1; then
+			has_route_in="1"
 		fi
 
 		# Check SSL cert
 		local ssl_status="missing"
 		[ -f "$HAPROXY_CERTS/${domain}.pem" ] && ssl_status="valid"
 
-		# WAF bypass check
-		local waf_bypass="false"
-		[ "$backend" != "mitmproxy_inspector" ] && waf_bypass="true"
+		# WAF bypass check (1=bypassed, 0=waf active)
+		local waf_bypass="0"
+		[ "$backend" != "mitmproxy_inspector" ] && waf_bypass="1"
 
 		json_add_object ""
 		json_add_string domain "$domain"
@@ -75,6 +108,9 @@ method_status() {
 		json_add_string route_target_in ""
 		json_add_boolean waf_bypass "$waf_bypass"
 		json_close_object
+
+		count=$((count + 1))
+		processed=$((processed + 1))
 	done < "$vhost_tmp"
 
 	json_close_array
@@ -90,12 +126,12 @@ method_sync_routes() {
 	if [ -x /usr/sbin/mitmproxyctl ]; then
 		result=$(/usr/sbin/mitmproxyctl sync-routes 2>&1)
 		json_init
-		json_add_boolean success true
+		json_add_boolean success 1
 		json_add_string output "$result"
 		json_dump
 	else
 		json_init
-		json_add_boolean success false
+		json_add_boolean success 0
 		json_add_string error "mitmproxyctl not found"
 		json_dump
 	fi
@@ -113,7 +149,7 @@ method_add_route() {
 
 	if [ -z "$domain" ] || [ -z "$port" ]; then
 		json_init
-		json_add_boolean success false
+		json_add_boolean success 0
 		json_add_string error "Missing domain or port parameter"
 		json_dump
 		return
@@ -122,7 +158,7 @@ method_add_route() {
 	local host_ip=$(get_host_ip)
 
 	# Add route to both mitmproxy route files
-	local success="true"
+	local success="1"
 	local errors=""
 
 	for routes_file in "$MITMPROXY_ROUTES" "$MITMPROXY_IN_ROUTES"; do
@@ -134,9 +170,7 @@ method_add_route() {
 					'. + {($d): [$h, $p]}' "$routes_file" > "$tmpfile" 2>/dev/null
 			else
 				# Fallback: manual JSON manipulation
-				# Remove trailing } and add new entry
 				sed 's/}$//' "$routes_file" > "$tmpfile"
-				# Check if file has content (not empty object)
 				if grep -q '": \[' "$routes_file"; then
 					printf ',\n  "%s": ["%s", %s]\n}\n' "$domain" "$host_ip" "$port" >> "$tmpfile"
 				else
@@ -148,14 +182,14 @@ method_add_route() {
 				mv "$tmpfile" "$routes_file"
 			else
 				rm -f "$tmpfile"
-				success="false"
+				success="0"
 				errors="$errors Failed to update $routes_file."
 			fi
 		fi
 	done
 
 	# Restart mitmproxy to apply changes
-	if [ "$success" = "true" ]; then
+	if [ "$success" = "1" ]; then
 		/etc/init.d/mitmproxy restart >/dev/null 2>&1
 	fi
 
@@ -169,6 +203,8 @@ method_add_route() {
 list_methods() {
 	json_init
 	json_add_object status
+	json_add_int offset 0
+	json_add_int limit 50
 	json_close_object
 	json_add_object sync_routes
 	json_close_object

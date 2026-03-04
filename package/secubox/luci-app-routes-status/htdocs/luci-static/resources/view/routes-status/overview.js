@@ -8,6 +8,7 @@
 var callStatus = rpc.declare({
 	object: 'luci.routes-status',
 	method: 'status',
+	params: ['offset', 'limit'],
 	expect: { }
 });
 
@@ -25,46 +26,36 @@ var callAddRoute = rpc.declare({
 });
 
 return view.extend({
+	allVhosts: [],
+	currentOffset: 0,
+	pageSize: 50,
+	totalVhosts: 0,
+	statusData: null,
+
 	load: function() {
-		return callStatus();
+		return callStatus(0, 50);
 	},
 
-	renderHeaderChip: function(icon, label, value, tone) {
-		var display = (value == null ? '—' : value).toString();
-		return E('div', { 'class': 'sh-header-chip' + (tone ? ' ' + tone : '') }, [
-			E('span', { 'class': 'sh-chip-icon' }, icon),
-			E('div', { 'class': 'sh-chip-text' }, [
-				E('span', { 'class': 'sh-chip-label' }, label),
-				E('strong', {}, display)
-			])
-		]);
-	},
-
-	renderPill: function(text, type) {
-		var colors = {
-			success: '#4CAF50',
-			warning: '#ff9800',
-			danger: '#f44336',
-			info: '#2196F3',
-			muted: '#9e9e9e'
-		};
+	// Emoji-based status pill
+	pill: function(emoji, label, ok) {
 		return E('span', {
-			'style': 'display:inline-block;padding:2px 8px;margin:2px;border-radius:4px;color:#fff;background:' + (colors[type] || colors.muted) + ';font-size:0.8em;font-weight:500;'
-		}, text);
+			'class': 'vhost-pill' + (ok ? ' ok' : ' warn'),
+			'title': label
+		}, emoji);
 	},
 
 	handleSync: function() {
-		ui.showModal(_('Syncing Routes...'), [
-			E('p', { 'class': 'spinning' }, _('Please wait...'))
+		ui.showModal(_('Syncing...'), [
+			E('p', { 'class': 'spinning' }, _('Syncing routes from HAProxy...'))
 		]);
 
 		callSyncRoutes().then(function(res) {
 			ui.hideModal();
 			if (res && res.success) {
-				ui.addNotification(null, E('p', {}, _('Routes synchronized successfully')), 'success');
+				ui.addNotification(null, E('p', {}, '✅ ' + _('Routes synchronized')), 'success');
 				location.reload();
 			} else {
-				ui.addNotification(null, E('p', {}, _('Error: ') + (res.error || 'Unknown error')), 'error');
+				ui.addNotification(null, E('p', {}, '❌ ' + (res.error || 'Sync failed')), 'error');
 			}
 		});
 	},
@@ -74,11 +65,11 @@ return view.extend({
 
 		ui.showModal(_('Add Route'), [
 			E('div', { 'class': 'cbi-section' }, [
-				E('p', {}, _('Add mitmproxy route for: %s').format(domain)),
+				E('p', {}, _('Add mitmproxy route for: ') + domain),
 				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Backend Port')),
+					E('label', { 'class': 'cbi-value-title' }, _('Port')),
 					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', { 'type': 'number', 'id': 'route-port', 'value': port || '443', 'style': 'width:100px;' })
+						E('input', { 'type': 'number', 'id': 'route-port', 'value': port || '443', 'style': 'width:80px;' })
 					])
 				])
 			]),
@@ -93,61 +84,102 @@ return view.extend({
 							self.doAddRoute(domain, p);
 						}
 					},
-					'style': 'margin-left:10px;'
-				}, _('Add Route'))
+					'style': 'margin-left:8px;'
+				}, _('Add'))
 			])
 		]);
 	},
 
 	doAddRoute: function(domain, port) {
-		ui.showModal(_('Adding Route...'), [
-			E('p', { 'class': 'spinning' }, _('Please wait...'))
+		ui.showModal(_('Adding...'), [
+			E('p', { 'class': 'spinning' }, _('Adding route...'))
 		]);
 
 		callAddRoute(domain, port).then(function(res) {
 			ui.hideModal();
 			if (res && res.success) {
-				ui.addNotification(null, E('p', {}, _('Route added successfully')), 'success');
+				ui.addNotification(null, E('p', {}, '✅ ' + _('Route added')), 'success');
 				location.reload();
 			} else {
-				ui.addNotification(null, E('p', {}, _('Error: ') + (res.error || 'Unknown error')), 'error');
+				ui.addNotification(null, E('p', {}, '❌ ' + (res.error || 'Failed')), 'error');
 			}
 		});
 	},
 
-	renderVhostRow: function(vhost) {
+	handleLoadMore: function() {
 		var self = this;
-		var missingRoutes = !vhost.has_route_out || !vhost.has_route_in;
+		var btn = document.getElementById('load-more-btn');
+		var spinner = document.getElementById('load-spinner');
 
-		return E('tr', {}, [
+		if (btn) btn.style.display = 'none';
+		if (spinner) spinner.style.display = 'block';
+
+		this.currentOffset += this.pageSize;
+
+		callStatus(this.currentOffset, this.pageSize).then(function(data) {
+			if (spinner) spinner.style.display = 'none';
+
+			var newVhosts = data.vhosts || [];
+			if (newVhosts.length > 0) {
+				self.allVhosts = self.allVhosts.concat(newVhosts);
+
+				var tbody = document.getElementById('vhosts-tbody');
+				if (tbody) {
+					newVhosts.forEach(function(v) {
+						tbody.appendChild(self.renderRow(v));
+					});
+				}
+
+				var counter = document.getElementById('vhosts-count');
+				if (counter) {
+					counter.textContent = self.allVhosts.length + '/' + self.totalVhosts;
+				}
+			}
+
+			if (self.allVhosts.length < self.totalVhosts && btn) {
+				btn.style.display = 'inline-block';
+			}
+		});
+	},
+
+	renderRow: function(v) {
+		var self = this;
+		var needsRoute = !v.has_route_out || !v.has_route_in;
+
+		return E('tr', { 'class': 'vhost-row' }, [
+			// Domain
 			E('td', {}, [
 				E('a', {
-					'href': 'https://' + vhost.domain,
+					'href': 'https://' + v.domain,
 					'target': '_blank',
-					'style': 'color:#1976D2;text-decoration:none;font-weight:500;'
-				}, vhost.domain)
+					'class': 'vhost-domain'
+				}, v.domain)
 			]),
-			E('td', {}, vhost.backend || '-'),
-			E('td', {}, [
-				vhost.has_route_out ? this.renderPill('OUT', 'success') : this.renderPill('OUT', 'warning'),
-				vhost.has_route_in ? this.renderPill('IN', 'success') : this.renderPill('IN', 'warning')
+			// Status indicators (emoji-based)
+			E('td', { 'class': 'vhost-status' }, [
+				// Routes
+				this.pill(v.has_route_out && v.has_route_in ? '🔗' : '⚠️',
+					'Routes: ' + (v.has_route_out ? 'OUT✓' : 'OUT✗') + ' ' + (v.has_route_in ? 'IN✓' : 'IN✗'),
+					v.has_route_out && v.has_route_in),
+				// SSL
+				this.pill(v.ssl_status === 'valid' ? '🔒' : v.ssl_status === 'expiring' ? '⏰' : '🔓',
+					'SSL: ' + v.ssl_status,
+					v.ssl_status === 'valid'),
+				// WAF
+				this.pill(v.waf_bypass ? '🚫' : '🛡️',
+					v.waf_bypass ? 'WAF Bypass' : 'WAF Active',
+					!v.waf_bypass),
+				// Active
+				this.pill(v.active ? '✅' : '⏸️',
+					v.active ? 'Active' : 'Inactive',
+					v.active)
 			]),
+			// Action
 			E('td', {}, [
-				vhost.ssl_status === 'valid' ? this.renderPill('SSL', 'success') :
-				vhost.ssl_status === 'expiring' ? this.renderPill('Expiring', 'warning') :
-				vhost.ssl_status === 'expired' ? this.renderPill('Expired', 'danger') :
-				this.renderPill('No SSL', 'muted')
-			]),
-			E('td', {}, [
-				vhost.waf_bypass ? this.renderPill('Bypass', 'danger') : this.renderPill('WAF', 'info')
-			]),
-			E('td', {}, [
-				vhost.active ? this.renderPill('Active', 'success') : this.renderPill('Inactive', 'muted'),
-				missingRoutes ? E('button', {
-					'class': 'cbi-button cbi-button-action',
-					'click': function() { self.handleAddRoute(vhost.domain, vhost.backend_port); },
-					'style': 'margin-left:8px;padding:2px 8px;font-size:0.8em;'
-				}, _('+ Route')) : null
+				needsRoute ? E('button', {
+					'class': 'btn btn-sm',
+					'click': function() { self.handleAddRoute(v.domain, v.backend_port || 443); }
+				}, '➕') : null
 			])
 		]);
 	},
@@ -155,98 +187,100 @@ return view.extend({
 	render: function(data) {
 		var self = this;
 		var vhosts = data.vhosts || [];
+		this.allVhosts = vhosts;
+		this.totalVhosts = data.total || vhosts.length;
+		this.currentOffset = data.offset || 0;
+		this.statusData = data;
 
-		// Sort by domain
-		vhosts.sort(function(a, b) {
-			return a.domain.localeCompare(b.domain);
-		});
+		// Quick stats from first page
+		var stats = {
+			active: vhosts.filter(function(v) { return v.active; }).length,
+			missing: vhosts.filter(function(v) { return !v.has_route_out || !v.has_route_in; }).length,
+			bypass: vhosts.filter(function(v) { return v.waf_bypass; }).length,
+			ssl: vhosts.filter(function(v) { return v.ssl_status === 'valid'; }).length
+		};
 
-		// Stats
-		var totalVhosts = vhosts.length;
-		var activeVhosts = vhosts.filter(function(v) { return v.active; }).length;
-		var missingRoutes = vhosts.filter(function(v) { return !v.has_route_out || !v.has_route_in; }).length;
-		var wafBypassed = vhosts.filter(function(v) { return v.waf_bypass; }).length;
-		var sslValid = vhosts.filter(function(v) { return v.ssl_status === 'valid'; }).length;
+		var content = E('div', { 'class': 'vhosts-checker' }, [
+			// Inline styles for dark theme compatibility
+			E('style', {}, [
+				'.vhosts-checker { font-family: system-ui, sans-serif; }',
+				'.vhosts-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px; }',
+				'.vhosts-title { font-size: 1.4em; font-weight: 600; display: flex; align-items: center; gap: 8px; }',
+				'.vhosts-stats { display: flex; gap: 16px; font-size: 0.9em; opacity: 0.8; }',
+				'.vhosts-stat { display: flex; align-items: center; gap: 4px; }',
+				'.services { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }',
+				'.service-badge { padding: 6px 12px; border-radius: 6px; display: flex; align-items: center; gap: 6px; font-size: 0.85em; background: rgba(255,255,255,0.1); }',
+				'.service-badge.ok { background: rgba(76, 175, 80, 0.2); }',
+				'.service-badge.err { background: rgba(244, 67, 54, 0.2); }',
+				'.vhosts-table { width: 100%; border-collapse: collapse; }',
+				'.vhosts-table th { text-align: left; padding: 8px; opacity: 0.7; font-weight: 500; border-bottom: 1px solid rgba(255,255,255,0.1); }',
+				'.vhost-row td { padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); }',
+				'.vhost-domain { color: #64b5f6; text-decoration: none; }',
+				'.vhost-domain:hover { text-decoration: underline; }',
+				'.vhost-status { display: flex; gap: 6px; }',
+				'.vhost-pill { font-size: 1.1em; cursor: help; opacity: 0.9; }',
+				'.vhost-pill.warn { opacity: 0.6; }',
+				'.load-more { text-align: center; padding: 16px; }',
+				'.btn-sm { padding: 4px 8px; font-size: 0.9em; }'
+			].join('\n')),
 
-		var vhostRows = vhosts.map(function(v) { return self.renderVhostRow(v); });
-
-		var content = E('div', { 'class': 'routes-status-page' }, [
-			// KISS Header
-			E('div', { 'class': 'sh-page-header sh-page-header-lite' }, [
-				E('div', {}, [
-					E('h2', { 'class': 'sh-page-title' }, [
-						E('span', { 'class': 'sh-page-title-icon' }, '🔀'),
-						_('Routes Status')
-					]),
-					E('p', { 'class': 'sh-page-subtitle' },
-						_('HAProxy vhosts and mitmproxy route configuration overview.'))
+			// Header
+			E('div', { 'class': 'vhosts-header' }, [
+				E('div', { 'class': 'vhosts-title' }, [
+					'🔀 ', _('VHosts Checker')
 				]),
-				E('div', { 'class': 'sh-header-meta' }, [
-					this.renderHeaderChip('🌐', _('Vhosts'), totalVhosts),
-					this.renderHeaderChip('✅', _('Active'), activeVhosts),
-					this.renderHeaderChip('⚠️', _('Missing Routes'), missingRoutes, missingRoutes > 0 ? 'warn' : ''),
-					this.renderHeaderChip('🛡️', _('WAF Bypass'), wafBypassed, wafBypassed > 0 ? 'warn' : ''),
-					this.renderHeaderChip('🔒', _('SSL Valid'), sslValid)
+				E('div', { 'class': 'vhosts-stats' }, [
+					E('span', { 'class': 'vhosts-stat' }, ['📊 ', this.totalVhosts, ' ', _('total')]),
+					E('span', { 'class': 'vhosts-stat' }, ['✅ ', stats.active, '+', ' ', _('active')]),
+					stats.missing > 0 ? E('span', { 'class': 'vhosts-stat' }, ['⚠️ ', stats.missing, ' ', _('missing routes')]) : null,
+					stats.bypass > 0 ? E('span', { 'class': 'vhosts-stat' }, ['🚫 ', stats.bypass, ' ', _('WAF bypass')]) : null
 				])
 			]),
 
-			// Service Status Cards
-			E('div', { 'class': 'sh-card-grid', 'style': 'display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin:20px 0;' }, [
-				E('div', { 'class': 'sh-card', 'style': 'background:#fff;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.1);' }, [
-					E('div', { 'style': 'display:flex;align-items:center;gap:8px;margin-bottom:8px;' }, [
-						E('span', { 'style': 'font-size:1.5em;' }, '⚖️'),
-						E('strong', {}, 'HAProxy')
-					]),
-					data.haproxy_running ?
-						this.renderPill('Running', 'success') :
-						this.renderPill('Stopped', 'danger')
+			// Service status badges
+			E('div', { 'class': 'services' }, [
+				E('span', { 'class': 'service-badge' + (data.haproxy_running ? ' ok' : ' err') }, [
+					data.haproxy_running ? '✅' : '❌', ' HAProxy'
 				]),
-				E('div', { 'class': 'sh-card', 'style': 'background:#fff;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.1);' }, [
-					E('div', { 'style': 'display:flex;align-items:center;gap:8px;margin-bottom:8px;' }, [
-						E('span', { 'style': 'font-size:1.5em;' }, '🔍'),
-						E('strong', {}, 'mitmproxy')
-					]),
-					data.mitmproxy_running ?
-						this.renderPill('Running', 'success') :
-						this.renderPill('Stopped', 'danger')
+				E('span', { 'class': 'service-badge' + (data.mitmproxy_running ? ' ok' : ' err') }, [
+					data.mitmproxy_running ? '✅' : '❌', ' mitmproxy'
 				]),
-				E('div', { 'class': 'sh-card', 'style': 'background:#fff;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.1);' }, [
-					E('div', { 'style': 'display:flex;align-items:center;gap:8px;margin-bottom:8px;' }, [
-						E('span', { 'style': 'font-size:1.5em;' }, '🖥️'),
-						E('strong', {}, _('Host IP'))
-					]),
-					E('code', { 'style': 'background:#f5f5f5;padding:4px 8px;border-radius:4px;' }, data.host_ip || '192.168.255.1')
-				])
-			]),
-
-			// Actions
-			E('div', { 'style': 'margin:20px 0;' }, [
+				E('span', { 'class': 'service-badge' }, ['🖥️ ', data.host_ip || '192.168.255.1']),
 				E('button', {
-					'class': 'cbi-button cbi-button-action',
+					'class': 'btn cbi-button-action',
 					'click': function() { self.handleSync(); },
-					'style': 'margin-right:10px;'
-				}, '🔄 ' + _('Sync Routes from HAProxy'))
+					'style': 'margin-left: auto;'
+				}, '🔄 ' + _('Sync'))
 			]),
 
-			// Vhosts Table
-			E('div', { 'class': 'sh-card', 'style': 'background:#fff;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.1);overflow-x:auto;' }, [
-				E('h3', { 'style': 'margin:0 0 16px 0;' }, '🌐 ' + _('Virtual Hosts (%d)').format(totalVhosts)),
-				vhosts.length > 0 ?
-					E('table', { 'class': 'table', 'style': 'width:100%;border-collapse:collapse;' }, [
-						E('thead', {}, [
-							E('tr', { 'style': 'background:#f5f5f5;' }, [
-								E('th', { 'style': 'padding:10px;text-align:left;' }, _('Domain')),
-								E('th', { 'style': 'padding:10px;text-align:left;' }, _('Backend')),
-								E('th', { 'style': 'padding:10px;text-align:left;' }, _('Routes')),
-								E('th', { 'style': 'padding:10px;text-align:left;' }, _('SSL')),
-								E('th', { 'style': 'padding:10px;text-align:left;' }, _('WAF')),
-								E('th', { 'style': 'padding:10px;text-align:left;' }, _('Status'))
-							])
-						]),
-						E('tbody', {}, vhostRows)
-					]) :
-					E('p', { 'style': 'color:#666;text-align:center;padding:20px;' }, _('No virtual hosts configured.'))
-			])
+			// Table
+			vhosts.length > 0 ?
+				E('table', { 'class': 'vhosts-table' }, [
+					E('thead', {}, [
+						E('tr', {}, [
+							E('th', {}, _('Domain')),
+							E('th', {}, _('Status')),
+							E('th', { 'style': 'width: 50px;' }, '')
+						])
+					]),
+					E('tbody', { 'id': 'vhosts-tbody' }, vhosts.map(function(v) { return self.renderRow(v); }))
+				]) :
+				E('p', { 'style': 'text-align: center; opacity: 0.6; padding: 20px;' }, _('No vhosts found.')),
+
+			// Load more
+			this.totalVhosts > vhosts.length ? E('div', { 'class': 'load-more' }, [
+				E('button', {
+					'id': 'load-more-btn',
+					'class': 'btn cbi-button-neutral',
+					'click': function() { self.handleLoadMore(); }
+				}, [
+					'📥 ', _('Load More'),
+					' (',
+					E('span', { 'id': 'vhosts-count' }, vhosts.length + '/' + this.totalVhosts),
+					')'
+				]),
+				E('p', { 'id': 'load-spinner', 'class': 'spinning', 'style': 'display: none;' }, _('Loading...'))
+			]) : null
 		]);
 
 		return KissTheme.wrap([content], 'admin/status/vhosts-checker');
