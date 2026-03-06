@@ -4470,3 +4470,12 @@ git checkout HEAD -- index.html
     - Rollback on authentication failure
     - RPCD: `login` method for LuCI integration
     - Format warnings for provider-specific API key patterns
+
+76. **PhotoPrism Private Gallery (2026-03-06)**
+    - LXC-based PhotoPrism deployment with SQLite backend
+    - UCI-configurable originals path (`photoprism.main.originals_path`)
+    - LuCI dashboard with KISS dark theme (stats, actions, settings)
+    - Read-only mode support for HFS+ Apple Photos libraries
+    - RPCD methods: status, get_config, set_config, get_stats, start, stop, index, import, emancipate
+    - Sidecar and cache paths redirected to writable storage directory
+    - Environment-aware lxc-attach helper for photoprism commands
