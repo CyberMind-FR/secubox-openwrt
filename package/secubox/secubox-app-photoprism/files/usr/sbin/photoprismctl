@@ -36,6 +36,7 @@ uci_set() { uci set "${CONFIG}.$1=$2" && uci commit "$CONFIG"; }
 defaults() {
 	ENABLED=$(uci_get main.enabled 0)
 	DATA_PATH=$(uci_get main.data_path /srv/photoprism)
+	ORIGINALS_PATH=$(uci_get main.originals_path /srv/photoprism/originals)
 	HTTP_PORT=$(uci_get main.http_port 2342)
 	MEMORY_LIMIT=$(uci_get main.memory_limit 2G)
 	TIMEZONE=$(uci_get main.timezone Europe/Paris)
@@ -123,7 +124,7 @@ lxc.net.0.type = none
 lxc.mount.auto = proc:mixed sys:ro
 
 # Bind mounts for data persistence
-lxc.mount.entry = ${DATA_PATH}/originals opt/photoprism/originals none bind,create=dir 0 0
+lxc.mount.entry = ${ORIGINALS_PATH} opt/photoprism/originals none bind,create=dir 0 0
 lxc.mount.entry = ${DATA_PATH}/storage opt/photoprism/storage none bind,create=dir 0 0
 lxc.mount.entry = ${DATA_PATH}/import opt/photoprism/import none bind,create=dir 0 0
 
@@ -439,6 +440,7 @@ cmd_status() {
 	"videos": $videos,
 	"storage_used": "$storage_used",
 	"data_path": "$DATA_PATH",
+	"originals_path": "$ORIGINALS_PATH",
 	"domain": "$DOMAIN",
 	"admin_user": "$ADMIN_USER",
 	"face_recognition": $([ "$FACE_RECOGNITION" = "1" ] && echo "true" || echo "false"),

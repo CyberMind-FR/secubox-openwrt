@@ -59,6 +59,19 @@ var callEmancipate = rpc.declare({
 	expect: {}
 });
 
+var callGetConfig = rpc.declare({
+	object: 'luci.photoprism',
+	method: 'get_config',
+	expect: {}
+});
+
+var callSetConfig = rpc.declare({
+	object: 'luci.photoprism',
+	method: 'set_config',
+	params: ['originals_path'],
+	expect: {}
+});
+
 return view.extend({
 	css: `
 		:root {
@@ -225,11 +238,13 @@ return view.extend({
 
 	status: null,
 	stats: null,
+	config: null,
 
 	load: function() {
 		return Promise.all([
 			callStatus(),
-			callGetStats()
+			callGetStats(),
+			callGetConfig()
 		]);
 	},
 
@@ -237,6 +252,7 @@ return view.extend({
 		var self = this;
 		this.status = data[0] || {};
 		this.stats = data[1] || {};
+		this.config = data[2] || {};
 
 		var container = E('div', { 'class': 'kiss-container' }, [
 			E('style', {}, this.css),
@@ -245,9 +261,10 @@ return view.extend({
 		]);
 
 		poll.add(function() {
-			return Promise.all([callStatus(), callGetStats()]).then(function(results) {
+			return Promise.all([callStatus(), callGetStats(), callGetConfig()]).then(function(results) {
 				self.status = results[0] || {};
 				self.stats = results[1] || {};
+				self.config = results[2] || {};
 				self.updateView();
 			});
 		}, 10);
@@ -373,6 +390,41 @@ return view.extend({
 					E('span', { 'class': 'kiss-feature ' + (status.face_recognition ? 'active' : '') }, 'Face Recognition'),
 					E('span', { 'class': 'kiss-feature ' + (status.object_detection ? 'active' : '') }, 'Object Detection'),
 					E('span', { 'class': 'kiss-feature ' + (status.places ? 'active' : '') }, 'Places / Maps')
+				])
+			]),
+
+			// Settings
+			E('div', { 'class': 'kiss-section' }, [
+				E('h3', {}, 'Storage Settings'),
+				E('div', { 'class': 'kiss-input-group' }, [
+					E('label', { 'style': 'color: var(--kiss-muted); margin-right: 10px;' }, 'Photos Path:'),
+					E('input', {
+						'class': 'kiss-input',
+						'type': 'text',
+						'id': 'originals-path',
+						'value': self.config.originals_path || '/srv/photoprism/originals',
+						'placeholder': '/mnt/PHOTO'
+					}),
+					E('button', {
+						'class': 'kiss-btn kiss-btn-secondary',
+						'click': function() {
+							var path = document.getElementById('originals-path').value;
+							if (!path) {
+								ui.addNotification(null, E('p', {}, 'Please enter a path'), 'warning');
+								return;
+							}
+							this.disabled = true;
+							this.textContent = 'Saving...';
+							var btn = this;
+							callSetConfig(path).then(function(res) {
+								if (res.success) {
+									ui.addNotification(null, E('p', {}, 'Path updated. Restart PhotoPrism to apply.'), 'success');
+								}
+								btn.disabled = false;
+								btn.textContent = 'Save';
+							});
+						}
+					}, 'Save')
 				])
 			]),
 

@@ -17,6 +17,7 @@ method_get_config() {
 
 	json_add_boolean "enabled" "$([ "$(uci -q get ${CONFIG}.main.enabled)" = "1" ] && echo true || echo false)"
 	json_add_string "data_path" "$(uci -q get ${CONFIG}.main.data_path || echo '/srv/photoprism')"
+	json_add_string "originals_path" "$(uci -q get ${CONFIG}.main.originals_path || echo '/srv/photoprism/originals')"
 	json_add_string "http_port" "$(uci -q get ${CONFIG}.main.http_port || echo '2342')"
 	json_add_string "memory_limit" "$(uci -q get ${CONFIG}.main.memory_limit || echo '2G')"
 	json_add_string "admin_user" "$(uci -q get ${CONFIG}.admin.username || echo 'admin')"
@@ -28,18 +29,33 @@ method_get_config() {
 	json_dump
 }
 
+# Method: set_config
+method_set_config() {
+	local originals_path="$1"
+
+	if [ -n "$originals_path" ]; then
+		uci set ${CONFIG}.main.originals_path="$originals_path"
+		uci commit ${CONFIG}
+	fi
+
+	json_init
+	json_add_boolean "success" true
+	json_dump
+}
+
 # Method: get_stats
 method_get_stats() {
 	local data_path=$(uci -q get ${CONFIG}.main.data_path || echo '/srv/photoprism')
+	local originals_path=$(uci -q get ${CONFIG}.main.originals_path || echo '/srv/photoprism/originals')
 	local originals_size="0"
 	local storage_size="0"
 	local photo_count=0
 	local video_count=0
 
-	if [ -d "${data_path}/originals" ]; then
-		originals_size=$(du -sh "${data_path}/originals" 2>/dev/null | cut -f1 || echo "0")
-		photo_count=$(find "${data_path}/originals" -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.heic" -o -iname "*.raw" -o -iname "*.dng" \) 2>/dev/null | wc -l || echo 0)
-		video_count=$(find "${data_path}/originals" -type f \( -iname "*.mp4" -o -iname "*.mov" -o -iname "*.avi" -o -iname "*.mkv" \) 2>/dev/null | wc -l || echo 0)
+	if [ -d "${originals_path}" ]; then
+		originals_size=$(du -sh "${originals_path}" 2>/dev/null | cut -f1 || echo "0")
+		photo_count=$(find "${originals_path}" -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.heic" -o -iname "*.raw" -o -iname "*.dng" \) 2>/dev/null | wc -l || echo 0)
+		video_count=$(find "${originals_path}" -type f \( -iname "*.mp4" -o -iname "*.mov" -o -iname "*.avi" -o -iname "*.mkv" \) 2>/dev/null | wc -l || echo 0)
 	fi
 
 	if [ -d "${data_path}/storage" ]; then
@@ -162,6 +178,7 @@ case "$1" in
 		echo '{
 			"status": {},
 			"get_config": {},
+			"set_config": {"originals_path": "string"},
 			"get_stats": {},
 			"start": {},
 			"stop": {},
@@ -178,6 +195,11 @@ case "$1" in
 		case "$2" in
 			status) method_status ;;
 			get_config) method_get_config ;;
+			set_config)
+				read -r input
+				originals_path=$(echo "$input" | jsonfilter -e '@.originals_path' 2>/dev/null)
+				method_set_config "$originals_path"
+				;;
 			get_stats) method_get_stats ;;
 			start) method_start ;;
 			stop) method_stop ;;

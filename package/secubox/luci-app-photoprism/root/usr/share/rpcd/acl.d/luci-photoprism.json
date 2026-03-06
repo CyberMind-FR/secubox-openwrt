@@ -22,7 +22,8 @@
 					"uninstall",
 					"index",
 					"import",
-					"emancipate"
+					"emancipate",
+					"set_config"
 				]
 			},
 			"uci": ["photoprism"]
