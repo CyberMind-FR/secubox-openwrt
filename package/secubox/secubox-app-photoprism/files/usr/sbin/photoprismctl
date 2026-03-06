@@ -174,7 +174,10 @@ export PHOTOPRISM_DATABASE_DRIVER=sqlite
 export PHOTOPRISM_DATABASE_DSN=/opt/photoprism/storage/photoprism.db
 export PHOTOPRISM_ORIGINALS_PATH=/opt/photoprism/originals
 export PHOTOPRISM_STORAGE_PATH=/opt/photoprism/storage
+export PHOTOPRISM_READONLY=true
 export PHOTOPRISM_IMPORT_PATH=/opt/photoprism/import
+export PHOTOPRISM_SIDECAR_PATH=/opt/photoprism/storage/sidecar
+export PHOTOPRISM_CACHE_PATH=/opt/photoprism/storage/cache
 export PHOTOPRISM_HTTP_HOST=0.0.0.0
 export PHOTOPRISM_HTTP_PORT=2342
 export PHOTOPRISM_ADMIN_USER=admin
@@ -474,6 +477,23 @@ cmd_shell() {
 	lxc-attach -n "$LXC_NAME" -- /bin/bash
 }
 
+# Run photoprism command with proper environment
+run_photoprism_cmd() {
+	local cmd="$1"
+	shift
+	lxc-attach -n "$LXC_NAME" -- bash -c "
+export PHOTOPRISM_CONFIG_PATH=/opt/photoprism
+export PHOTOPRISM_DATABASE_DRIVER=sqlite
+export PHOTOPRISM_DATABASE_DSN=/opt/photoprism/storage/photoprism.db
+export PHOTOPRISM_ORIGINALS_PATH=/opt/photoprism/originals
+export PHOTOPRISM_STORAGE_PATH=/opt/photoprism/storage
+export PHOTOPRISM_SIDECAR_PATH=/opt/photoprism/storage/sidecar
+export PHOTOPRISM_CACHE_PATH=/opt/photoprism/storage/cache
+export PHOTOPRISM_READONLY=true
+cd /opt/photoprism && ./bin/photoprism $cmd $*
+"
+}
+
 # Trigger indexing
 cmd_index() {
 	defaults
@@ -484,7 +504,7 @@ cmd_index() {
 	fi
 
 	log "Starting photo indexing..."
-	lxc-attach -n "$LXC_NAME" -- /opt/photoprism/bin/photoprism index
+	run_photoprism_cmd index
 	log "Indexing complete"
 }
 
@@ -501,7 +521,7 @@ cmd_import() {
 	[ "$(uci_get import.delete_after_import 0)" = "1" ] && delete_opt="--move"
 
 	log "Importing photos from ${DATA_PATH}/import..."
-	lxc-attach -n "$LXC_NAME" -- /opt/photoprism/bin/photoprism import $delete_opt
+	run_photoprism_cmd import $delete_opt
 	log "Import complete"
 }
 
