@@ -1,0 +1,201 @@
+#!/bin/sh
+# PhotoPrism RPCD Handler for LuCI
+# Copyright (C) 2026 CyberMind.fr
+
+. /usr/share/libubox/jshn.sh
+
+CONFIG="photoprism"
+
+# Method: status
+method_status() {
+	/usr/sbin/photoprismctl status 2>/dev/null || echo '{"installed":false,"running":false}'
+}
+
+# Method: get_config
+method_get_config() {
+	json_init
+
+	json_add_boolean "enabled" "$([ "$(uci -q get ${CONFIG}.main.enabled)" = "1" ] && echo true || echo false)"
+	json_add_string "data_path" "$(uci -q get ${CONFIG}.main.data_path || echo '/srv/photoprism')"
+	json_add_string "http_port" "$(uci -q get ${CONFIG}.main.http_port || echo '2342')"
+	json_add_string "memory_limit" "$(uci -q get ${CONFIG}.main.memory_limit || echo '2G')"
+	json_add_string "admin_user" "$(uci -q get ${CONFIG}.admin.username || echo 'admin')"
+	json_add_string "domain" "$(uci -q get ${CONFIG}.network.domain || echo '')"
+	json_add_boolean "face_recognition" "$([ "$(uci -q get ${CONFIG}.features.face_recognition)" = "1" ] && echo true || echo false)"
+	json_add_boolean "object_detection" "$([ "$(uci -q get ${CONFIG}.features.object_detection)" = "1" ] && echo true || echo false)"
+	json_add_boolean "places" "$([ "$(uci -q get ${CONFIG}.features.places)" = "1" ] && echo true || echo false)"
+
+	json_dump
+}
+
+# Method: get_stats
+method_get_stats() {
+	local data_path=$(uci -q get ${CONFIG}.main.data_path || echo '/srv/photoprism')
+	local originals_size="0"
+	local storage_size="0"
+	local photo_count=0
+	local video_count=0
+
+	if [ -d "${data_path}/originals" ]; then
+		originals_size=$(du -sh "${data_path}/originals" 2>/dev/null | cut -f1 || echo "0")
+		photo_count=$(find "${data_path}/originals" -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.heic" -o -iname "*.raw" -o -iname "*.dng" \) 2>/dev/null | wc -l || echo 0)
+		video_count=$(find "${data_path}/originals" -type f \( -iname "*.mp4" -o -iname "*.mov" -o -iname "*.avi" -o -iname "*.mkv" \) 2>/dev/null | wc -l || echo 0)
+	fi
+
+	if [ -d "${data_path}/storage" ]; then
+		storage_size=$(du -sh "${data_path}/storage" 2>/dev/null | cut -f1 || echo "0")
+	fi
+
+	json_init
+	json_add_int "photo_count" "$photo_count"
+	json_add_int "video_count" "$video_count"
+	json_add_string "originals_size" "$originals_size"
+	json_add_string "storage_size" "$storage_size"
+	json_dump
+}
+
+# Method: start
+method_start() {
+	/etc/init.d/photoprism start >/dev/null 2>&1
+	json_init
+	json_add_boolean "success" true
+	json_dump
+}
+
+# Method: stop
+method_stop() {
+	/etc/init.d/photoprism stop >/dev/null 2>&1
+	json_init
+	json_add_boolean "success" true
+	json_dump
+}
+
+# Method: restart
+method_restart() {
+	/etc/init.d/photoprism restart >/dev/null 2>&1
+	json_init
+	json_add_boolean "success" true
+	json_dump
+}
+
+# Method: install
+method_install() {
+	local result
+	result=$(/usr/sbin/photoprismctl install 2>&1)
+	local success=$?
+
+	json_init
+	json_add_boolean "success" "$([ $success -eq 0 ] && echo true || echo false)"
+	json_add_string "output" "$result"
+	json_dump
+}
+
+# Method: uninstall
+method_uninstall() {
+	local result
+	result=$(/usr/sbin/photoprismctl uninstall 2>&1)
+
+	json_init
+	json_add_boolean "success" true
+	json_add_string "output" "$result"
+	json_dump
+}
+
+# Method: index
+method_index() {
+	local result
+	result=$(/usr/sbin/photoprismctl index 2>&1)
+
+	json_init
+	json_add_boolean "success" true
+	json_add_string "output" "$result"
+	json_dump
+}
+
+# Method: import
+method_import() {
+	local result
+	result=$(/usr/sbin/photoprismctl import 2>&1)
+
+	json_init
+	json_add_boolean "success" true
+	json_add_string "output" "$result"
+	json_dump
+}
+
+# Method: emancipate
+method_emancipate() {
+	local domain="$1"
+
+	if [ -z "$domain" ]; then
+		json_init
+		json_add_boolean "success" false
+		json_add_string "error" "Domain required"
+		json_dump
+		return
+	fi
+
+	local result
+	result=$(/usr/sbin/photoprismctl emancipate "$domain" 2>&1)
+
+	json_init
+	json_add_boolean "success" true
+	json_add_string "output" "$result"
+	json_add_string "url" "https://$domain"
+	json_dump
+}
+
+# Method: logs
+method_logs() {
+	local lines="${1:-50}"
+	local output
+	output=$(/usr/sbin/photoprismctl logs "$lines" 2>&1)
+
+	json_init
+	json_add_string "logs" "$output"
+	json_dump
+}
+
+# RPCD interface
+case "$1" in
+	list)
+		echo '{
+			"status": {},
+			"get_config": {},
+			"get_stats": {},
+			"start": {},
+			"stop": {},
+			"restart": {},
+			"install": {},
+			"uninstall": {},
+			"index": {},
+			"import": {},
+			"emancipate": {"domain": "string"},
+			"logs": {"lines": "number"}
+		}'
+		;;
+	call)
+		case "$2" in
+			status) method_status ;;
+			get_config) method_get_config ;;
+			get_stats) method_get_stats ;;
+			start) method_start ;;
+			stop) method_stop ;;
+			restart) method_restart ;;
+			install) method_install ;;
+			uninstall) method_uninstall ;;
+			index) method_index ;;
+			import) method_import ;;
+			emancipate)
+				read -r input
+				domain=$(echo "$input" | jsonfilter -e '@.domain' 2>/dev/null)
+				method_emancipate "$domain"
+				;;
+			logs)
+				read -r input
+				lines=$(echo "$input" | jsonfilter -e '@.lines' 2>/dev/null)
+				method_logs "$lines"
+				;;
+		esac
+		;;
+esac

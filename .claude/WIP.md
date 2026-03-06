@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-06 (AI Gateway Login)_
+_Last updated: 2026-03-06 (PhotoPrism Gallery)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -9,6 +9,14 @@ _Last updated: 2026-03-06 (AI Gateway Login)_
 ## Recently Completed
 
 ### 2026-03-06
+
+- **PhotoPrism Private Photo Gallery**
+  - Backend: `secubox-app-photoprism` with LXC container (Debian Bookworm)
+  - CLI: `photoprismctl` with install/start/stop/index/import/emancipate commands
+  - LuCI: `luci-app-photoprism` KISS dashboard with stats and actions
+  - Features: AI face recognition, object detection, places/maps
+  - HAProxy integration via mitmproxy (WAF-safe, no bypass)
+  - MariaDB database, FFmpeg transcoding, HEIC support
 
 - **AI Gateway `/login` Command**
   - CLI: `aigatewayctl login [provider]` - Interactive or scripted provider authentication

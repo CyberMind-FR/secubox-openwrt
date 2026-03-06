@@ -1,0 +1,31 @@
+{
+	"luci-app-photoprism": {
+		"description": "Grant access to PhotoPrism Gallery",
+		"read": {
+			"ubus": {
+				"luci.photoprism": [
+					"status",
+					"get_config",
+					"get_stats",
+					"logs"
+				]
+			},
+			"uci": ["photoprism"]
+		},
+		"write": {
+			"ubus": {
+				"luci.photoprism": [
+					"start",
+					"stop",
+					"restart",
+					"install",
+					"uninstall",
+					"index",
+					"import",
+					"emancipate"
+				]
+			},
+			"uci": ["photoprism"]
+		}
+	}
+}

@@ -1,0 +1,35 @@
+# PhotoPrism Private Photo Gallery Configuration
+
+config photoprism 'main'
+	option enabled '0'
+	option data_path '/srv/photoprism'
+	option http_port '2342'
+	option memory_limit '2G'
+	option timezone 'Europe/Paris'
+
+config photoprism 'admin'
+	option username 'admin'
+	option password ''
+
+config photoprism 'features'
+	option face_recognition '1'
+	option object_detection '1'
+	option places '1'
+	option raw_thumbs '1'
+	option experimental '0'
+
+config photoprism 'network'
+	option domain ''
+	option haproxy '0'
+	option haproxy_ssl '1'
+
+config photoprism 'import'
+	option auto_import '0'
+	option import_path '/srv/photoprism/import'
+	option delete_after_import '0'
+
+config photoprism 'database'
+	option type 'mariadb'
+	option name 'photoprism'
+	option user 'photoprism'
+	option password ''
