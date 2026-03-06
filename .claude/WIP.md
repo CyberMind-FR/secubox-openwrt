@@ -16,7 +16,8 @@ _Last updated: 2026-03-06 (PhotoPrism Gallery)_
   - LuCI: `luci-app-photoprism` KISS dashboard with stats and actions
   - Features: AI face recognition, object detection, places/maps
   - HAProxy integration via mitmproxy (WAF-safe, no bypass)
-  - MariaDB database, FFmpeg transcoding, HEIC support
+  - SQLite database (simpler, no external DB), FFmpeg transcoding, HEIC support
+  - Dependencies: libvips42 for image processing
 
 - **AI Gateway `/login` Command**
   - CLI: `aigatewayctl login [provider]` - Interactive or scripted provider authentication
