@@ -350,16 +350,22 @@ lxc_check_prereqs() {
 lxc_create_rootfs() {
 	load_config
 
-	# Check for COMPLETE installation (Lyrion installed, not just Alpine)
-	if [ -d "$LXC_ROOTFS" ] && [ -f "$LXC_ROOTFS/opt/lyrion/slimserver.pl" ] && [ -f "$LXC_CONFIG" ]; then
+	# Check for COMPLETE installation (Lyrion installed via Debian package)
+	if [ -d "$LXC_ROOTFS" ] && [ -x "$LXC_ROOTFS/usr/sbin/squeezeboxserver" ] && [ -f "$LXC_CONFIG" ]; then
 		log_info "LXC rootfs already exists with Lyrion installed"
 		return 0
 	fi
 
-	# Check for incomplete installation (Alpine exists but Lyrion not installed)
-	if [ -d "$LXC_ROOTFS" ] && [ -f "$LXC_ROOTFS/etc/alpine-release" ] && [ ! -f "$LXC_ROOTFS/opt/lyrion/slimserver.pl" ]; then
-		log_warn "Incomplete installation detected (Alpine downloaded but Lyrion not installed)"
+	# Check for incomplete installation (Debian exists but Lyrion not installed)
+	if [ -d "$LXC_ROOTFS" ] && [ -f "$LXC_ROOTFS/etc/debian_version" ] && [ ! -x "$LXC_ROOTFS/usr/sbin/squeezeboxserver" ]; then
+		log_warn "Incomplete installation detected (Debian downloaded but Lyrion not installed)"
 		log_info "Cleaning up incomplete rootfs..."
+		rm -rf "$LXC_PATH/$LXC_NAME"
+	fi
+
+	# Clean up old Alpine-based installation if present
+	if [ -d "$LXC_ROOTFS" ] && [ -f "$LXC_ROOTFS/etc/alpine-release" ]; then
+		log_warn "Old Alpine-based installation detected, replacing with Debian..."
 		rm -rf "$LXC_PATH/$LXC_NAME"
 	fi
 
@@ -370,13 +376,13 @@ lxc_create_rootfs() {
 	if [ -x "$LYRION_ROOTFS_SCRIPT" ]; then
 		"$LYRION_ROOTFS_SCRIPT" "$LXC_ROOTFS" || return 1
 	else
-		# Inline rootfs creation
-		lxc_create_alpine_rootfs || return 1
+		# Inline rootfs creation (Debian-based)
+		lxc_create_debian_rootfs || return 1
 	fi
 
 	# Verify Lyrion was actually installed
-	if [ ! -f "$LXC_ROOTFS/opt/lyrion/slimserver.pl" ]; then
-		log_error "Lyrion installation failed - slimserver.pl not found"
+	if [ ! -x "$LXC_ROOTFS/usr/sbin/squeezeboxserver" ]; then
+		log_error "Lyrion installation failed - squeezeboxserver not found"
 		log_error "Check network connectivity and try again"
 		return 1
 	fi
@@ -387,175 +393,113 @@ lxc_create_rootfs() {
 	log_info "LXC rootfs created successfully"
 }
 
-lxc_create_alpine_rootfs() {
-	local arch="aarch64"
-	local alpine_version="3.19"
-	local mirror="https://dl-cdn.alpinelinux.org/alpine"
+lxc_create_debian_rootfs() {
+	local arch="arm64"
+	local debian_version="bookworm"
 	local rootfs="$LXC_ROOTFS"
 
 	# Detect architecture
 	case "$(uname -m)" in
-		x86_64) arch="x86_64" ;;
-		aarch64) arch="aarch64" ;;
-		armv7l) arch="armv7" ;;
-		*) arch="x86_64" ;;
+		x86_64) arch="amd64" ;;
+		aarch64) arch="arm64" ;;
+		armv7l) arch="armhf" ;;
+		*) arch="amd64" ;;
 	esac
 
-	log_info "Downloading Alpine Linux $alpine_version ($arch)..."
+	log_info "Creating Debian $debian_version ($arch) rootfs..."
 
 	ensure_dir "$rootfs"
-	cd "$rootfs" || return 1
 
-	# Download Alpine minirootfs
-	local rootfs_url="$mirror/v$alpine_version/releases/$arch/alpine-minirootfs-$alpine_version.0-$arch.tar.gz"
-	wget -q -O /tmp/alpine-rootfs.tar.gz "$rootfs_url" || {
-		log_error "Failed to download Alpine rootfs"
+	# Check if debootstrap is available
+	if ! command -v debootstrap >/dev/null 2>&1; then
+		log_info "Installing debootstrap..."
+		ensure_packages debootstrap || return 1
+	fi
+
+	# Create minimal Debian rootfs
+	log_info "Running debootstrap (this may take several minutes)..."
+	debootstrap --arch="$arch" --variant=minbase "$debian_version" "$rootfs" http://deb.debian.org/debian || {
+		log_error "Failed to create Debian rootfs"
 		return 1
 	}
 
-	# Extract rootfs
-	tar xzf /tmp/alpine-rootfs.tar.gz -C "$rootfs" || return 1
-	rm -f /tmp/alpine-rootfs.tar.gz
-
-	# Configure Alpine
+	# Configure DNS
 	echo "nameserver 8.8.8.8" > "$rootfs/etc/resolv.conf"
 
 	# Install Lyrion in the container
 	cat > "$rootfs/tmp/setup-lyrion.sh" << 'SETUP'
-#!/bin/sh
+#!/bin/bash
 set -e
+export DEBIAN_FRONTEND=noninteractive
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
 
-# Update and install dependencies
-apk update
-apk add --no-cache \
-    perl \
-    perl-io-socket-ssl \
-    perl-encode \
-    perl-xml-parser \
-    perl-xml-simple \
-    perl-dbi \
-    perl-dbd-sqlite \
-    perl-json-xs \
-    perl-yaml-libyaml \
-    perl-crypt-openssl-rsa \
-    perl-ev \
-    perl-anyevent \
-    perl-gd \
-    perl-digest-sha1 \
-    perl-sub-name \
-    perl-html-parser \
-    perl-template-toolkit \
-    perl-file-slurp \
-    imagemagick \
+echo "Updating package lists..."
+apt-get update
+
+echo "Installing Lyrion Music Server..."
+# Add Lyrion repository
+apt-get install -y gnupg curl ca-certificates locales
+
+# Generate locale
+echo "en_US.UTF-8 UTF-8" > /etc/locale.gen
+locale-gen
+
+# Add Lyrion repository key and source
+curl -fsSL https://downloads.lms-community.org/LyrionMusicServer.gpg -o /etc/apt/keyrings/lyrionmusicserver.gpg
+echo "deb [signed-by=/etc/apt/keyrings/lyrionmusicserver.gpg] https://downloads.lms-community.org/repo/apt stable main" > /etc/apt/sources.list.d/lyrionmusicserver.list
+
+apt-get update
+apt-get install -y lyrionmusicserver
+
+# Install additional audio codecs
+apt-get install -y --no-install-recommends \
     flac \
-    faad2 \
-    sox \
     lame \
-    curl \
-    wget
+    sox \
+    faad \
+    libio-socket-ssl-perl
 
-# Download and install Lyrion
-cd /tmp
-
-# Detect architecture for appropriate tarball
-LYRION_ARCH=""
-case "$(uname -m)" in
-    aarch64|arm*) LYRION_ARCH="arm-linux" ;;
-esac
-
-# Try ARM-specific tarball first (smaller ~60MB), then fall back to multi-arch (~126MB)
-echo "Downloading Lyrion Music Server..."
-LYRION_URL=""
-if [ -n "$LYRION_ARCH" ]; then
-    LYRION_URL="https://downloads.lms-community.org/LyrionMusicServer_v9.0.3/lyrionmusicserver-9.0.3-${LYRION_ARCH}.tgz"
-else
-    LYRION_URL="https://downloads.lms-community.org/LyrionMusicServer_v9.0.3/lyrionmusicserver-9.0.3.tgz"
-fi
-
-echo "URL: $LYRION_URL"
-wget -O lyrion.tar.gz "$LYRION_URL" || {
-    echo "Primary download failed, trying multi-arch tarball..."
-    LYRION_URL="https://downloads.lms-community.org/LyrionMusicServer_v9.0.3/lyrionmusicserver-9.0.3.tgz"
-    wget -O lyrion.tar.gz "$LYRION_URL" || {
-        echo "ERROR: All download attempts failed"
-        exit 1
-    }
-}
-
-# Verify download succeeded
-if [ ! -f lyrion.tar.gz ] || [ ! -s lyrion.tar.gz ]; then
-    echo "ERROR: Failed to download Lyrion tarball"
-    exit 1
-fi
-
-mkdir -p /opt/lyrion
-tar xzf lyrion.tar.gz -C /opt/lyrion --strip-components=1 || {
-    echo "ERROR: Failed to extract Lyrion tarball"
-    exit 1
-}
-rm -f lyrion.tar.gz
-
-# Remove conflicting bundled CPAN modules (use system modules instead)
-rm -rf /opt/lyrion/CPAN/arch
-rm -rf /opt/lyrion/CPAN/XML/Parser*
-rm -rf /opt/lyrion/CPAN/Image
-rm -rf /opt/lyrion/CPAN/DBD
-rm -rf /opt/lyrion/CPAN/DBI /opt/lyrion/CPAN/DBI.pm
-rm -rf /opt/lyrion/CPAN/YAML
-rm -rf /opt/lyrion/CPAN/Template /opt/lyrion/CPAN/Template.pm
-
-# Create stub Image::Scale module (artwork resizing - optional)
-mkdir -p /opt/lyrion/CPAN/Image
-cat > /opt/lyrion/CPAN/Image/Scale.pm << 'STUB'
-package Image::Scale;
-our $VERSION = '0.08';
-sub new { return bless {}, shift }
-sub resize { return 1 }
-sub width { return 0 }
-sub height { return 0 }
-1;
-STUB
-
-# Create stub Devel::Peek module (runtime inspection - optional)
-mkdir -p /opt/lyrion/CPAN/Devel
-cat > /opt/lyrion/CPAN/Devel/Peek.pm << 'STUB'
-package Devel::Peek;
-use strict;
-our $VERSION = '1.32';
-our $ANON_GV;
-{ no strict 'refs'; $ANON_GV = \*{'Devel::Peek::ANON'}; }
-sub Dump { }
-sub DumpArray { }
-sub SvREFCNT { return 1 }
-sub DeadCode { }
-sub mstat { }
-sub fill_mstats { }
-sub SvROK { return 0 }
-sub CvGV { return $ANON_GV }
-1;
-STUB
-
-# Create directories with proper permissions for nobody user (uid 65534)
+# Create directories with proper permissions
 mkdir -p /config/prefs/plugin /config/cache /music /var/log/lyrion
-chown -R 65534:65534 /config /var/log/lyrion /opt/lyrion
+chown -R nobody:nogroup /config /var/log/lyrion
 
-# Create startup script (runs as nobody via LXC init.uid/gid)
-cat > /opt/lyrion/start.sh << 'START'
-#!/bin/sh
-cd /opt/lyrion
+# Create startup script
+cat > /opt/init.sh << 'START'
+#!/bin/bash
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
 
-# Ensure directories exist (ownership set during LXC config creation)
-mkdir -p /config/prefs/plugin /config/cache /var/log/lyrion 2>/dev/null || true
+# Ensure directories exist with proper permissions
+mkdir -p /config/prefs /config/cache /var/log/lyrion /music
+chown -R nobody:nogroup /config /var/log/lyrion
+chmod -R 777 /config /var/log/lyrion
 
-# Run Lyrion (already running as nobody via LXC init.uid/gid settings)
-exec perl slimserver.pl \
+# Create default prefs if not exists
+if [ ! -f /config/prefs/server.prefs ]; then
+    cat > /config/prefs/server.prefs << PREFS
+---
+mediadirs:
+  - /music
+httpport: 9000
+cliport: 9090
+PREFS
+    chown nobody:nogroup /config/prefs/server.prefs
+fi
+
+# Run Lyrion (squeezeboxserver drops privileges to nobody when run as root)
+exec /usr/sbin/squeezeboxserver \
     --prefsdir /config/prefs \
     --cachedir /config/cache \
     --logdir /var/log/lyrion \
     --httpport 9000 \
     --cliport 9090
 START
-chmod +x /opt/lyrion/start.sh
+chmod +x /opt/init.sh
+
+# Clean up
+apt-get clean
+rm -rf /var/lib/apt/lists/*
 
 echo "Lyrion installed successfully"
 SETUP
@@ -564,7 +508,7 @@ SETUP
 
 	# Run setup in chroot
 	log_info "Installing Lyrion in container (this may take a while)..."
-	chroot "$rootfs" /tmp/setup-lyrion.sh || {
+	chroot "$rootfs" /bin/bash /tmp/setup-lyrion.sh || {
 		log_error "Failed to install Lyrion in container"
 		return 1
 	}
@@ -635,12 +579,8 @@ lxc.cgroup2.memory.max = $mem_bytes
 lxc.seccomp.profile =
 lxc.autodev = 1
 
-# Run as nobody user (uid/gid 65534) - Lyrion must not run as root
-lxc.init.uid = 65534
-lxc.init.gid = 65534
-
-# Init
-lxc.init.cmd = /opt/lyrion/start.sh
+# Init - Debian-based with squeezeboxserver (drops privileges to nobody internally)
+lxc.init.cmd = /opt/init.sh
 
 # Console
 lxc.console.size = 1024

@@ -3,13 +3,13 @@
 		"description": "Grant access to Lyrion Music Server",
 		"read": {
 			"ubus": {
-				"luci.lyrion": ["status", "get_config", "logs"]
+				"luci.lyrion": ["status", "get_config", "logs", "get_library_stats"]
 			},
 			"uci": ["lyrion"]
 		},
 		"write": {
 			"ubus": {
-				"luci.lyrion": ["install", "start", "stop", "restart", "update", "save_config"]
+				"luci.lyrion": ["install", "start", "stop", "restart", "update", "save_config", "rescan"]
 			},
 			"uci": ["lyrion"]
 		}

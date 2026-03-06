@@ -222,6 +222,13 @@ return view.extend({
 					'title': exp.auth_required ? _('Authentication required - click to disable') : _('No authentication - click to enable'),
 					'click': ui.createHandlerFn(self, 'handleToggleAuth', site, exp)
 				}, exp.auth_required ? _('Unlock') : _('Lock')),
+				// Health/Repair button
+				E('button', {
+					'class': 'cbi-button',
+					'style': 'padding:0.25em 0.5em; margin:2px',
+					'title': _('Check health and repair'),
+					'click': ui.createHandlerFn(self, 'handleHealthCheck', site)
+				}, _('Health')),
 				// Delete button
 				E('button', {
 					'class': 'cbi-button cbi-button-remove',
@@ -545,6 +552,141 @@ return view.extend({
 				}, _('Delete'))
 			])
 		]);
+	},
+
+	handleHealthCheck: function(site) {
+		var self = this;
+
+		ui.showModal(_('Health Check'), [
+			E('p', { 'class': 'spinning' }, _('Checking site health...'))
+		]);
+
+		api.checkSiteHealth(site.id).then(function(health) {
+			var statusItems = [];
+			var hasIssues = false;
+
+			// Backend status
+			if (health.backend_status === 'ok') {
+				statusItems.push(E('div', { 'style': 'color:#155724; margin:0.5em 0' },
+					'✓ Backend: Running (port ' + (health.port || site.port || '?') + ')'));
+			} else {
+				hasIssues = true;
+				statusItems.push(E('div', { 'style': 'color:#721c24; margin:0.5em 0' },
+					'✗ Backend: ' + (health.backend_status || 'Not responding')));
+			}
+
+			// Frontend status
+			if (health.frontend_status === 'ok') {
+				statusItems.push(E('div', { 'style': 'color:#155724; margin:0.5em 0' },
+					'✓ Frontend: Accessible via HAProxy'));
+			} else if (health.frontend_status === 'not_configured') {
+				statusItems.push(E('div', { 'style': 'color:#856404; margin:0.5em 0' },
+					'○ Frontend: Not exposed (private)'));
+			} else {
+				hasIssues = true;
+				statusItems.push(E('div', { 'style': 'color:#721c24; margin:0.5em 0' },
+					'✗ Frontend: ' + (health.frontend_status || 'Error')));
+			}
+
+			// SSL status
+			if (health.ssl_status === 'valid') {
+				statusItems.push(E('div', { 'style': 'color:#155724; margin:0.5em 0' },
+					'✓ SSL: Valid' + (health.ssl_days_remaining ? ' (' + health.ssl_days_remaining + ' days)' : '')));
+			} else if (health.ssl_status === 'expiring') {
+				statusItems.push(E('div', { 'style': 'color:#856404; margin:0.5em 0' },
+					'! SSL: Expiring soon (' + (health.ssl_days_remaining || '?') + ' days)'));
+			} else if (health.ssl_status === 'not_configured') {
+				statusItems.push(E('div', { 'style': 'color:#888; margin:0.5em 0' },
+					'○ SSL: Not configured'));
+			} else if (health.ssl_status) {
+				hasIssues = true;
+				statusItems.push(E('div', { 'style': 'color:#721c24; margin:0.5em 0' },
+					'✗ SSL: ' + health.ssl_status));
+			}
+
+			// Content check
+			if (health.has_content) {
+				statusItems.push(E('div', { 'style': 'color:#155724; margin:0.5em 0' },
+					'✓ Content: index.html exists'));
+			} else {
+				hasIssues = true;
+				statusItems.push(E('div', { 'style': 'color:#721c24; margin:0.5em 0' },
+					'✗ Content: No index.html'));
+			}
+
+			ui.hideModal();
+
+			var modalContent = [
+				E('h4', { 'style': 'margin-top:0' }, site.name + ' (' + (site.domain || 'no domain') + ')'),
+				E('div', { 'style': 'padding:1em; background:#f8f8f8; border-radius:4px' }, statusItems),
+				E('div', { 'class': 'right', 'style': 'margin-top:1em' }, [
+					E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Close')),
+					' ',
+					E('button', {
+						'class': 'cbi-button cbi-button-action',
+						'click': function() {
+							ui.hideModal();
+							self.handleRepair(site);
+						}
+					}, _('Repair'))
+				])
+			];
+
+			if (hasIssues) {
+				modalContent.splice(1, 0, E('p', { 'style': 'color:#721c24; font-weight:bold' },
+					_('Issues detected - click Repair to fix')));
+			} else {
+				modalContent.splice(1, 0, E('p', { 'style': 'color:#155724' },
+					_('All checks passed')));
+			}
+
+			ui.showModal(_('Health Check Results'), modalContent);
+		}).catch(function(e) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', _('Health check failed: ') + e.message), 'error');
+		});
+	},
+
+	handleRepair: function(site) {
+		var self = this;
+
+		ui.showModal(_('Repairing Site'), [
+			E('p', { 'class': 'spinning' }, _('Fixing permissions and restarting services...'))
+		]);
+
+		api.repairSite(site.id).then(function(result) {
+			ui.hideModal();
+
+			if (result.success) {
+				var repairList = (result.repairs || '').split(' ').filter(function(r) { return r; });
+				var repairMsg = repairList.length > 0 ?
+					_('Repairs performed: ') + repairList.join(', ') :
+					_('No repairs needed');
+
+				ui.showModal(_('Repair Complete'), [
+					E('p', { 'style': 'color:#155724' }, '✓ ' + repairMsg),
+					E('div', { 'class': 'right', 'style': 'margin-top:1em' }, [
+						E('button', {
+							'class': 'cbi-button',
+							'click': function() {
+								ui.hideModal();
+								self.handleHealthCheck(site);
+							}
+						}, _('Re-check')),
+						' ',
+						E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() {
+							ui.hideModal();
+							window.location.reload();
+						}}, _('Done'))
+					])
+				]);
+			} else {
+				ui.addNotification(null, E('p', _('Repair failed: ') + (result.error || 'Unknown error')), 'error');
+			}
+		}).catch(function(e) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', _('Repair error: ') + e.message), 'error');
+		});
 	},
 
 	showEditModal: function(site) {

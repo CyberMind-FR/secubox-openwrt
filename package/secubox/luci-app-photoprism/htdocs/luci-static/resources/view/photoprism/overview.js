@@ -16,6 +16,12 @@ var callGetStats = rpc.declare({
 	expect: {}
 });
 
+var callGetIndexProgress = rpc.declare({
+	object: 'luci.photoprism',
+	method: 'get_index_progress',
+	expect: {}
+});
+
 var callStart = rpc.declare({
 	object: 'luci.photoprism',
 	method: 'start',
@@ -113,6 +119,76 @@ return view.extend({
 		.kiss-badge-success { background: var(--kiss-success); color: #000; }
 		.kiss-badge-danger { background: var(--kiss-accent); color: #fff; }
 		.kiss-badge-warning { background: var(--kiss-warning); color: #000; }
+
+		.kiss-stats-grid {
+			display: grid;
+			grid-template-columns: repeat(4, 1fr);
+			gap: 15px;
+			margin-bottom: 25px;
+		}
+		@media (max-width: 768px) { .kiss-stats-grid { grid-template-columns: repeat(2, 1fr); } }
+		.kiss-stat-card {
+			background: var(--kiss-card);
+			border: 1px solid var(--kiss-border);
+			border-radius: 12px;
+			padding: 20px;
+			text-align: center;
+		}
+		.kiss-stat-value {
+			font-size: 2em;
+			font-weight: 700;
+			color: var(--kiss-accent);
+		}
+		.kiss-stat-label {
+			font-size: 0.85rem;
+			color: var(--kiss-muted);
+			margin-top: 5px;
+		}
+
+		.kiss-index-bar {
+			background: var(--kiss-card);
+			border: 1px solid var(--kiss-border);
+			border-radius: 12px;
+			padding: 15px 20px;
+			margin-bottom: 25px;
+		}
+		.kiss-index-header {
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			margin-bottom: 10px;
+		}
+		.kiss-index-title {
+			font-weight: 600;
+			display: flex;
+			align-items: center;
+			gap: 8px;
+		}
+		.kiss-index-file {
+			font-size: 0.8rem;
+			color: var(--kiss-muted);
+			font-family: monospace;
+		}
+		.kiss-progress-track {
+			height: 8px;
+			background: #333;
+			border-radius: 4px;
+			overflow: hidden;
+		}
+		.kiss-progress-bar {
+			height: 100%;
+			background: linear-gradient(90deg, var(--kiss-accent), #8b5cf6);
+			border-radius: 4px;
+			transition: width 0.5s;
+		}
+		.kiss-index-idle {
+			color: var(--kiss-success);
+		}
+		.kiss-pulse {
+			animation: pulse 1.5s infinite;
+		}
+		@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
 		.kiss-grid {
 			display: grid;
 			grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -239,12 +315,14 @@ return view.extend({
 	status: null,
 	stats: null,
 	config: null,
+	indexProgress: null,
 
 	load: function() {
 		return Promise.all([
 			callStatus(),
 			callGetStats(),
-			callGetConfig()
+			callGetConfig(),
+			callGetIndexProgress()
 		]);
 	},
 
@@ -253,6 +331,7 @@ return view.extend({
 		this.status = data[0] || {};
 		this.stats = data[1] || {};
 		this.config = data[2] || {};
+		this.indexProgress = data[3] || {};
 
 		var container = E('div', { 'class': 'kiss-container' }, [
 			E('style', {}, this.css),
@@ -261,13 +340,14 @@ return view.extend({
 		]);
 
 		poll.add(function() {
-			return Promise.all([callStatus(), callGetStats(), callGetConfig()]).then(function(results) {
+			return Promise.all([callStatus(), callGetStats(), callGetConfig(), callGetIndexProgress()]).then(function(results) {
 				self.status = results[0] || {};
 				self.stats = results[1] || {};
 				self.config = results[2] || {};
+				self.indexProgress = results[3] || {};
 				self.updateView();
 			});
-		}, 10);
+		}, 5);
 
 		return container;
 	},
@@ -310,22 +390,51 @@ return view.extend({
 		]);
 	},
 
+	formatNumber: function(n) {
+		if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+		if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+		return n.toString();
+	},
+
 	renderDashboard: function() {
 		var self = this;
 		var status = this.status;
 		var stats = this.stats;
+		var idx = this.indexProgress;
 
 		return E('div', {}, [
-			// Stats Grid
-			E('div', { 'class': 'kiss-grid', 'id': 'stats-grid' }, [
-				E('div', { 'class': 'kiss-card' }, [
-					E('h4', {}, 'Photos'),
-					E('div', { 'class': 'value accent', 'data-stat': 'photos' }, stats.photo_count || '0')
+			// Live Stats Grid
+			E('div', { 'class': 'kiss-stats-grid', 'id': 'stats-grid' }, [
+				E('div', { 'class': 'kiss-stat-card' }, [
+					E('div', { 'class': 'kiss-stat-value', 'data-stat': 'sidecars' }, this.formatNumber(idx.sidecar_count || 0)),
+					E('div', { 'class': 'kiss-stat-label' }, 'Indexed')
 				]),
-				E('div', { 'class': 'kiss-card' }, [
-					E('h4', {}, 'Videos'),
-					E('div', { 'class': 'value', 'data-stat': 'videos' }, stats.video_count || '0')
+				E('div', { 'class': 'kiss-stat-card' }, [
+					E('div', { 'class': 'kiss-stat-value', 'data-stat': 'thumbnails' }, this.formatNumber(idx.thumbnail_count || 0)),
+					E('div', { 'class': 'kiss-stat-label' }, 'Thumbnails')
 				]),
+				E('div', { 'class': 'kiss-stat-card' }, [
+					E('div', { 'class': 'kiss-stat-value', 'data-stat': 'photos' }, this.formatNumber(stats.photo_count || 0)),
+					E('div', { 'class': 'kiss-stat-label' }, 'Photos')
+				]),
+				E('div', { 'class': 'kiss-stat-card' }, [
+					E('div', { 'class': 'kiss-stat-value', 'data-stat': 'videos' }, this.formatNumber(stats.video_count || 0)),
+					E('div', { 'class': 'kiss-stat-label' }, 'Videos')
+				])
+			]),
+
+			// Index Progress Bar
+			E('div', { 'class': 'kiss-index-bar', 'id': 'index-bar' },
+				idx.indexing ?
+					this.renderIndexProgress(idx) :
+					E('div', { 'class': 'kiss-index-header' }, [
+						E('span', { 'class': 'kiss-index-title kiss-index-idle' }, ['✓ ', 'Ready']),
+						E('span', { 'class': 'kiss-index-file' }, 'DB: ' + (idx.db_size || '0'))
+					])
+			),
+
+			// Storage Stats
+			E('div', { 'class': 'kiss-grid' }, [
 				E('div', { 'class': 'kiss-card' }, [
 					E('h4', {}, 'Originals Size'),
 					E('div', { 'class': 'value', 'data-stat': 'originals' }, stats.originals_size || '0')
@@ -358,8 +467,7 @@ return view.extend({
 							this.disabled = true;
 							this.textContent = 'Indexing...';
 							callIndex().then(function(res) {
-								ui.addNotification(null, E('p', {}, 'Indexing complete'), 'success');
-								window.location.reload();
+								ui.addNotification(null, E('p', {}, 'Indexing started'), 'success');
 							});
 						}
 					}, 'Index Photos'),
@@ -480,18 +588,50 @@ return view.extend({
 		]);
 	},
 
+	renderIndexProgress: function(idx) {
+		return E('div', {}, [
+			E('div', { 'class': 'kiss-index-header' }, [
+				E('span', { 'class': 'kiss-index-title' }, [
+					E('span', { 'class': 'kiss-pulse' }, '⏳'),
+					' Indexing...'
+				]),
+				E('span', { 'class': 'kiss-index-file' }, idx.current_file || 'Processing...')
+			]),
+			E('div', { 'class': 'kiss-progress-track' }, [
+				E('div', { 'class': 'kiss-progress-bar', 'style': 'width: 100%' })
+			])
+		]);
+	},
+
 	updateView: function() {
 		var stats = this.stats;
+		var idx = this.indexProgress;
 
+		// Update stat cards
+		var sidecarEl = document.querySelector('[data-stat="sidecars"]');
+		var thumbEl = document.querySelector('[data-stat="thumbnails"]');
 		var photosEl = document.querySelector('[data-stat="photos"]');
 		var videosEl = document.querySelector('[data-stat="videos"]');
 		var originalsEl = document.querySelector('[data-stat="originals"]');
 		var cacheEl = document.querySelector('[data-stat="cache"]');
 
-		if (photosEl) photosEl.textContent = stats.photo_count || '0';
-		if (videosEl) videosEl.textContent = stats.video_count || '0';
+		if (sidecarEl) sidecarEl.textContent = this.formatNumber(idx.sidecar_count || 0);
+		if (thumbEl) thumbEl.textContent = this.formatNumber(idx.thumbnail_count || 0);
+		if (photosEl) photosEl.textContent = this.formatNumber(stats.photo_count || 0);
+		if (videosEl) videosEl.textContent = this.formatNumber(stats.video_count || 0);
 		if (originalsEl) originalsEl.textContent = stats.originals_size || '0';
 		if (cacheEl) cacheEl.textContent = stats.storage_size || '0';
+
+		// Update index bar
+		var indexBar = document.getElementById('index-bar');
+		if (indexBar) {
+			if (idx.indexing) {
+				indexBar.innerHTML = '';
+				indexBar.appendChild(this.renderIndexProgress(idx));
+			} else {
+				indexBar.innerHTML = '<div class="kiss-index-header"><span class="kiss-index-title kiss-index-idle">✓ Ready</span><span class="kiss-index-file">DB: ' + (idx.db_size || '0') + '</span></div>';
+			}
+		}
 	},
 
 	handleSaveApply: null,
