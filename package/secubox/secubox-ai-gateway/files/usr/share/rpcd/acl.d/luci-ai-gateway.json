@@ -16,6 +16,7 @@
 		"write": {
 			"ubus": {
 				"luci.ai-gateway": [
+					"login",
 					"set_provider",
 					"set_offline_mode",
 					"test_provider",

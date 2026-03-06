@@ -169,6 +169,97 @@ method_test_provider() {
 	json_dump
 }
 
+# Method: login - validate credentials and save on success
+method_login() {
+	local provider="$1"
+	local api_key="$2"
+
+	# Validate provider name
+	case "$provider" in
+		localai|mistral|claude|openai|gemini|xai)
+			;;
+		*)
+			json_init
+			json_add_boolean "success" "false"
+			json_add_string "error" "Unknown provider: $provider"
+			json_dump
+			return
+			;;
+	esac
+
+	# LocalAI doesn't need API key
+	if [ "$provider" = "localai" ]; then
+		uci set ${CONFIG}.localai.enabled='1'
+		uci commit ${CONFIG}
+
+		json_init
+		json_add_boolean "success" "true"
+		json_add_string "provider" "localai"
+		json_add_string "message" "LocalAI enabled (on-device)"
+		json_dump
+		return
+	fi
+
+	# API key required for cloud providers
+	if [ -z "$api_key" ]; then
+		json_init
+		json_add_boolean "success" "false"
+		json_add_string "error" "API key required"
+		json_dump
+		return
+	fi
+
+	# Save old values for rollback on failure
+	local old_key=$(uci -q get ${CONFIG}.${provider}.api_key)
+	local old_enabled=$(uci -q get ${CONFIG}.${provider}.enabled)
+
+	# Temporarily set credentials for testing
+	uci set ${CONFIG}.${provider}.api_key="$api_key"
+	uci set ${CONFIG}.${provider}.enabled='1'
+
+	# Test the credentials
+	local adapter="$LIB_DIR/providers/${provider}.sh"
+	local test_failed="false"
+
+	if [ -f "$adapter" ]; then
+		. "$adapter"
+		local result=$(provider_test 2>&1)
+
+		if echo "$result" | grep -qi "error\|fail\|unauthorized\|invalid"; then
+			test_failed="true"
+
+			# Rollback
+			if [ -n "$old_key" ]; then
+				uci set ${CONFIG}.${provider}.api_key="$old_key"
+			else
+				uci -q delete ${CONFIG}.${provider}.api_key
+			fi
+			uci set ${CONFIG}.${provider}.enabled="${old_enabled:-0}"
+			uci commit ${CONFIG}
+
+			json_init
+			json_add_boolean "success" "false"
+			json_add_string "error" "Authentication failed"
+			json_add_string "details" "$result"
+			json_dump
+			return
+		fi
+	fi
+
+	# Commit working credentials
+	uci commit ${CONFIG}
+
+	local class=$(uci -q get ${CONFIG}.${provider}.classification)
+	local model=$(uci -q get ${CONFIG}.${provider}.model)
+
+	json_init
+	json_add_boolean "success" "true"
+	json_add_string "provider" "$provider"
+	json_add_string "model" "$model"
+	json_add_string "classification" "$class"
+	json_dump
+}
+
 # Method: start
 method_start() {
 	/etc/init.d/ai-gateway start >/dev/null 2>&1
@@ -205,6 +296,7 @@ case "$1" in
 			"get_providers": {},
 			"get_audit_stats": {},
 			"classify": {"text": "string"},
+			"login": {"provider": "string", "api_key": "string"},
 			"set_provider": {"provider": "string", "enabled": "string", "api_key": "string"},
 			"set_offline_mode": {"mode": "string"},
 			"test_provider": {"provider": "string"},
@@ -223,6 +315,12 @@ case "$1" in
 				read -r input
 				text=$(echo "$input" | jsonfilter -e '@.text' 2>/dev/null)
 				method_classify "$text"
+				;;
+			login)
+				read -r input
+				provider=$(echo "$input" | jsonfilter -e '@.provider' 2>/dev/null)
+				api_key=$(echo "$input" | jsonfilter -e '@.api_key' 2>/dev/null)
+				method_login "$provider" "$api_key"
 				;;
 			set_provider)
 				read -r input
