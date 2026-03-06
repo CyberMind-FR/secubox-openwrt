@@ -28,6 +28,7 @@ Classification:
   sanitize <text>     Sanitize text and show result
 
 Provider Management:
+  login [provider]    Authenticate with a provider (validates before saving)
   provider list       List configured providers
   provider enable <name>  Enable a provider (prompts for API key)
   provider disable <name> Disable a provider
@@ -191,6 +192,136 @@ cmd_provider_test() {
 	provider_test
 }
 
+# Login command - validates credentials before saving
+cmd_login() {
+	local provider="$1"
+	local api_key="$2"
+
+	# Interactive provider selection if not provided
+	if [ -z "$provider" ]; then
+		echo "Available providers:"
+		echo "  localai   - On-device AI (no API key required)"
+		echo "  mistral   - Mistral AI (EU sovereign, GDPR compliant)"
+		echo "  claude    - Anthropic Claude"
+		echo "  openai    - OpenAI GPT"
+		echo "  gemini    - Google Gemini"
+		echo "  xai       - xAI Grok"
+		echo ""
+		printf "Provider: "
+		read provider
+	fi
+
+	# Validate provider name
+	case "$provider" in
+		localai|mistral|claude|openai|gemini|xai)
+			;;
+		*)
+			echo "Error: Unknown provider '$provider'"
+			echo "Valid providers: localai, mistral, claude, openai, gemini, xai"
+			return 1
+			;;
+	esac
+
+	# LocalAI doesn't need API key
+	if [ "$provider" = "localai" ]; then
+		echo "LocalAI runs on-device - no API key required"
+		uci set ${CONFIG}.localai.enabled='1'
+		uci commit ${CONFIG}
+		echo "✓ LocalAI enabled"
+		return 0
+	fi
+
+	# Interactive API key input if not provided
+	if [ -z "$api_key" ]; then
+		printf "API key for $provider: "
+		stty -echo 2>/dev/null
+		read -r api_key
+		stty echo 2>/dev/null
+		echo ""
+	fi
+
+	[ -z "$api_key" ] && { echo "Error: API key required"; return 1; }
+
+	# Validate API key format based on provider
+	case "$provider" in
+		mistral)
+			# Mistral keys are alphanumeric, typically 32+ chars
+			if [ ${#api_key} -lt 20 ]; then
+				echo "Warning: Mistral API key seems too short"
+			fi
+			;;
+		claude)
+			# Anthropic keys start with sk-ant-
+			if ! echo "$api_key" | grep -q "^sk-ant-"; then
+				echo "Warning: Claude API key should start with 'sk-ant-'"
+			fi
+			;;
+		openai)
+			# OpenAI keys start with sk-
+			if ! echo "$api_key" | grep -q "^sk-"; then
+				echo "Warning: OpenAI API key should start with 'sk-'"
+			fi
+			;;
+	esac
+
+	# Test credentials before saving
+	echo "Validating credentials..."
+
+	# Temporarily set credentials for testing
+	local old_key=$(uci -q get ${CONFIG}.${provider}.api_key)
+	local old_enabled=$(uci -q get ${CONFIG}.${provider}.enabled)
+
+	uci set ${CONFIG}.${provider}.api_key="$api_key"
+	uci set ${CONFIG}.${provider}.enabled='1'
+
+	local adapter="$LIB_DIR/providers/${provider}.sh"
+	if [ -f "$adapter" ]; then
+		. "$adapter"
+		local result=$(provider_test 2>&1)
+
+		if echo "$result" | grep -qi "error\|fail\|unauthorized\|invalid"; then
+			# Restore old values on failure
+			if [ -n "$old_key" ]; then
+				uci set ${CONFIG}.${provider}.api_key="$old_key"
+			else
+				uci -q delete ${CONFIG}.${provider}.api_key
+			fi
+			uci set ${CONFIG}.${provider}.enabled="${old_enabled:-0}"
+			uci commit ${CONFIG}
+
+			echo "✗ Authentication failed"
+			echo "$result"
+			return 1
+		fi
+	fi
+
+	# Commit the working credentials
+	uci commit ${CONFIG}
+
+	local class=$(uci -q get ${CONFIG}.${provider}.classification)
+	local model=$(uci -q get ${CONFIG}.${provider}.model)
+
+	echo "✓ Login successful"
+	echo "  Provider: $provider"
+	echo "  Model: $model"
+	echo "  Classification: $class"
+
+	# Show sovereignty info
+	case "$class" in
+		local_only)
+			echo "  Data: Stays on device"
+			;;
+		sanitized)
+			echo "  Data: PII sanitized before sending to EU provider"
+			;;
+		cloud_direct)
+			echo "  Data: May be sent to cloud (non-sensitive queries only)"
+			;;
+	esac
+
+	return 0
+}
+
 # Audit stats command
 cmd_audit_stats() {
 	. "$LIB_DIR/audit.sh"
@@ -307,6 +438,10 @@ case "${1:-}" in
 	sanitize)
 		shift
 		cmd_sanitize "$@"
+		;;
+	login)
+		shift
+		cmd_login "$@"
 		;;
 	provider)
 		shift

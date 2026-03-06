@@ -1,0 +1,14 @@
+{
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "spdxVersion": "SPDX-2.3",
+  "creationInfo": {
+    "comment": "This SPDX document has been converted from CycloneDX format.",
+    "created": "2026-03-03T15:38:30Z",
+    "creators": [
+      "Tool: syft-1.42.1"
+    ]
+  },
+  "name": "SecuBox-0.20",
+  "dataLicense": "CC0-1.0",
+  "documentNamespace": "http://spdx.org/spdxdocs/SecuBox-0.20-7a140c3e-ba05-44e1-aff2-39a028a5b7f1"
+}

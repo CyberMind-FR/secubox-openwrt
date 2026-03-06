@@ -1,0 +1,699 @@
+#!/bin/sh
+# PhotoPrism Private Photo Gallery Controller
+# Copyright (C) 2026 CyberMind.fr
+
+set -e
+
+CONFIG="photoprism"
+LXC_NAME="photoprism"
+LXC_PATH="/srv/lxc"
+LXC_ROOTFS="${LXC_PATH}/${LXC_NAME}/rootfs"
+LXC_CONFIG="${LXC_PATH}/${LXC_NAME}/config"
+DATA_PATH="/srv/photoprism"
+PHOTOPRISM_VERSION="260305-fad9d5395"
+HOST_IP="192.168.255.1"
+
+# Detect architecture
+detect_arch() {
+	case "$(uname -m)" in
+		aarch64) echo "arm64" ;;
+		x86_64) echo "amd64" ;;
+		*) echo "amd64" ;;
+	esac
+}
+
+ARCH=$(detect_arch)
+
+# Logging
+log() { echo "[photoprism] $*"; }
+log_error() { echo "[photoprism] ERROR: $*" >&2; }
+
+# UCI helpers
+uci_get() { uci -q get "${CONFIG}.$1" || echo "$2"; }
+uci_set() { uci set "${CONFIG}.$1=$2" && uci commit "$CONFIG"; }
+
+# Load configuration
+defaults() {
+	ENABLED=$(uci_get main.enabled 0)
+	DATA_PATH=$(uci_get main.data_path /srv/photoprism)
+	ORIGINALS_PATH=$(uci_get main.originals_path /srv/photoprism/originals)
+	HTTP_PORT=$(uci_get main.http_port 2342)
+	MEMORY_LIMIT=$(uci_get main.memory_limit 2G)
+	TIMEZONE=$(uci_get main.timezone Europe/Paris)
+	ADMIN_USER=$(uci_get admin.username admin)
+	ADMIN_PASS=$(uci_get admin.password "")
+	FACE_RECOGNITION=$(uci_get features.face_recognition 1)
+	OBJECT_DETECTION=$(uci_get features.object_detection 1)
+	PLACES=$(uci_get features.places 1)
+	RAW_THUMBS=$(uci_get features.raw_thumbs 1)
+	DOMAIN=$(uci_get network.domain "")
+	DB_NAME=$(uci_get database.name photoprism)
+	DB_USER=$(uci_get database.user photoprism)
+	DB_PASS=$(uci_get database.password "")
+}
+
+# Check if LXC container exists
+lxc_exists() {
+	[ -d "$LXC_ROOTFS" ] && [ -f "$LXC_CONFIG" ]
+}
+
+# Check if LXC container is running
+lxc_running() {
+	lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"
+}
+
+# Generate random password
+generate_password() {
+	head -c 32 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 16
+}
+
+# Download Debian rootfs
+download_rootfs() {
+	local arch="$1"
+	local rootfs_url="https://images.linuxcontainers.org/images/debian/bookworm/${arch}/default/"
+
+	log "Fetching latest rootfs manifest..."
+	local latest=$(wget -qO- "${rootfs_url}" | grep -oE '[0-9]{8}_[0-9]{2}:[0-9]{2}' | sort -r | head -1)
+
+	if [ -z "$latest" ]; then
+		log_error "Failed to find rootfs version"
+		return 1
+	fi
+
+	local tarball_url="${rootfs_url}${latest}/rootfs.tar.xz"
+	log "Downloading rootfs from: $tarball_url"
+
+	mkdir -p "$LXC_ROOTFS"
+	wget -qO /tmp/photoprism-rootfs.tar.xz "$tarball_url" || {
+		log_error "Failed to download rootfs"
+		return 1
+	}
+
+	log "Extracting rootfs..."
+	tar -xJf /tmp/photoprism-rootfs.tar.xz -C "$LXC_ROOTFS"
+	rm -f /tmp/photoprism-rootfs.tar.xz
+
+	log "Rootfs extracted successfully"
+}
+
+# Create LXC configuration
+create_lxc_config() {
+	local mem_bytes
+	case "$MEMORY_LIMIT" in
+		*G) mem_bytes=$(echo "$MEMORY_LIMIT" | tr -d 'G'); mem_bytes=$((mem_bytes * 1073741824)) ;;
+		*M) mem_bytes=$(echo "$MEMORY_LIMIT" | tr -d 'M'); mem_bytes=$((mem_bytes * 1048576)) ;;
+		*) mem_bytes=2147483648 ;;
+	esac
+
+	mkdir -p "${LXC_PATH}/${LXC_NAME}"
+
+	cat > "$LXC_CONFIG" << EOF
+# PhotoPrism LXC Configuration
+lxc.uts.name = ${LXC_NAME}
+lxc.rootfs.path = dir:${LXC_ROOTFS}
+lxc.arch = aarch64
+
+# Auto-start on boot
+lxc.start.auto = 1
+lxc.start.delay = 5
+
+# Network - use host network
+lxc.net.0.type = none
+
+# Mount points
+lxc.mount.auto = proc:mixed sys:ro
+
+# Bind mounts for data persistence
+lxc.mount.entry = ${ORIGINALS_PATH} opt/photoprism/originals none bind,create=dir 0 0
+lxc.mount.entry = ${DATA_PATH}/storage opt/photoprism/storage none bind,create=dir 0 0
+lxc.mount.entry = ${DATA_PATH}/import opt/photoprism/import none bind,create=dir 0 0
+
+# TTY
+lxc.tty.max = 4
+lxc.pty.max = 128
+
+# Character devices
+lxc.cgroup2.devices.allow = c 1:* rwm
+lxc.cgroup2.devices.allow = c 5:* rwm
+lxc.cgroup2.devices.allow = c 136:* rwm
+
+# Resource limits
+lxc.cgroup2.memory.max = ${mem_bytes}
+
+# Security
+lxc.cap.drop = sys_module mac_admin mac_override sys_time sys_rawio
+
+# Startup command (uses SQLite, no external DB)
+lxc.init.cmd = /opt/init.sh
+EOF
+
+	log "LXC config created"
+}
+
+# Create startup script inside container (uses SQLite - no external DB needed)
+create_startup_script() {
+	cat > "${LXC_ROOTFS}/opt/init.sh" << 'SCRIPT'
+#!/bin/bash
+set -e
+
+# Setup environment
+export HOME=/opt/photoprism
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export TERM=linux
+
+# Create directories
+mkdir -p /opt/photoprism/storage/cache
+mkdir -p /opt/photoprism/storage/sidecar
+mkdir -p /opt/photoprism/originals
+mkdir -p /opt/photoprism/import
+mkdir -p /run /var/run
+
+# PhotoPrism environment - SQLite config (no external DB)
+export PHOTOPRISM_CONFIG_PATH=/opt/photoprism
+export PHOTOPRISM_DATABASE_DRIVER=sqlite
+export PHOTOPRISM_DATABASE_DSN=/opt/photoprism/storage/photoprism.db
+export PHOTOPRISM_ORIGINALS_PATH=/opt/photoprism/originals
+export PHOTOPRISM_STORAGE_PATH=/opt/photoprism/storage
+export PHOTOPRISM_READONLY=true
+export PHOTOPRISM_IMPORT_PATH=/opt/photoprism/import
+export PHOTOPRISM_SIDECAR_PATH=/opt/photoprism/storage/sidecar
+export PHOTOPRISM_CACHE_PATH=/opt/photoprism/storage/cache
+export PHOTOPRISM_HTTP_HOST=0.0.0.0
+export PHOTOPRISM_HTTP_PORT=2342
+export PHOTOPRISM_ADMIN_USER=admin
+export PHOTOPRISM_ADMIN_PASSWORD="${PHOTOPRISM_ADMIN_PASSWORD:-secubox123}"
+export PHOTOPRISM_DISABLE_FACES=false
+export PHOTOPRISM_DISABLE_CLASSIFICATION=false
+export PHOTOPRISM_DISABLE_PLACES=false
+
+cd /opt/photoprism
+
+# Start PhotoPrism (foreground to keep container running)
+exec ./bin/photoprism start
+SCRIPT
+	chmod +x "${LXC_ROOTFS}/opt/init.sh"
+}
+
+# Create PhotoPrism directories (config is done via env vars in init script)
+create_photoprism_dirs() {
+	mkdir -p "${LXC_ROOTFS}/opt/photoprism"
+	mkdir -p "${LXC_ROOTFS}/opt/photoprism/storage"
+	mkdir -p "${LXC_ROOTFS}/opt/photoprism/originals"
+	mkdir -p "${LXC_ROOTFS}/opt/photoprism/import"
+}
+
+# Install packages inside container
+install_packages() {
+	log "Installing packages in container..."
+
+	# Fix /dev nodes for chroot
+	[ -e "${LXC_ROOTFS}/dev/null" ] || mknod -m 666 "${LXC_ROOTFS}/dev/null" c 1 3
+	[ -e "${LXC_ROOTFS}/dev/zero" ] || mknod -m 666 "${LXC_ROOTFS}/dev/zero" c 1 5
+	[ -e "${LXC_ROOTFS}/dev/random" ] || mknod -m 666 "${LXC_ROOTFS}/dev/random" c 1 8
+	[ -e "${LXC_ROOTFS}/dev/urandom" ] || mknod -m 666 "${LXC_ROOTFS}/dev/urandom" c 1 9
+	chmod 666 "${LXC_ROOTFS}/dev/null" 2>/dev/null || true
+
+	# Configure apt
+	cat > "${LXC_ROOTFS}/etc/apt/sources.list" << EOF
+deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
+deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
+deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
+EOF
+
+	# Create install script - install gpgv first for apt verification
+	cat > "${LXC_ROOTFS}/tmp/install.sh" << 'INSTALL'
+#!/bin/bash
+set -e
+export DEBIAN_FRONTEND=noninteractive
+
+# Install gpgv first (required for apt signature verification)
+# Use --allow-unauthenticated only for this bootstrap step
+apt-get update --allow-insecure-repositories || true
+apt-get install -y --allow-unauthenticated gpgv gnupg
+
+# Now apt can verify signatures
+apt-get update
+apt-get install -y --no-install-recommends \
+	libvips42 \
+	ffmpeg \
+	exiftool \
+	libheif-examples \
+	ca-certificates \
+	curl \
+	wget
+
+# Clean up
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+INSTALL
+	chmod +x "${LXC_ROOTFS}/tmp/install.sh"
+
+	# Mount /proc for chroot
+	mount -t proc proc "${LXC_ROOTFS}/proc" 2>/dev/null || true
+
+	# Run install via chroot
+	chroot "$LXC_ROOTFS" /tmp/install.sh
+
+	# Unmount /proc
+	umount "${LXC_ROOTFS}/proc" 2>/dev/null || true
+	rm -f "${LXC_ROOTFS}/tmp/install.sh"
+}
+
+# Download and install PhotoPrism binary
+install_photoprism_binary() {
+	log "Downloading PhotoPrism ${PHOTOPRISM_VERSION} for ${ARCH}..."
+
+	local url="https://github.com/photoprism/photoprism/releases/download/${PHOTOPRISM_VERSION}/photoprism_${PHOTOPRISM_VERSION}-linux-${ARCH}.tar.gz"
+
+	mkdir -p "${LXC_ROOTFS}/opt/photoprism"
+
+	wget -qO /tmp/photoprism.tar.gz "$url" || {
+		log_error "Failed to download PhotoPrism"
+		return 1
+	}
+
+	tar -xzf /tmp/photoprism.tar.gz -C "${LXC_ROOTFS}/opt/photoprism"
+	rm -f /tmp/photoprism.tar.gz
+
+	# Binary is in bin/ subdirectory
+	chmod +x "${LXC_ROOTFS}/opt/photoprism/bin/photoprism"
+	log "PhotoPrism binary installed"
+}
+
+# Full installation (uses SQLite - no external database needed)
+cmd_install() {
+	defaults
+
+	if lxc_exists; then
+		log_error "PhotoPrism already installed. Use 'uninstall' first."
+		return 1
+	fi
+
+	log "Installing PhotoPrism..."
+
+	# Create data directories
+	mkdir -p "${DATA_PATH}/originals"
+	mkdir -p "${DATA_PATH}/storage"
+	mkdir -p "${DATA_PATH}/import"
+	chmod -R 755 "$DATA_PATH"
+
+	# Generate admin password if not set
+	if [ -z "$ADMIN_PASS" ]; then
+		ADMIN_PASS=$(generate_password)
+		uci_set admin.password "$ADMIN_PASS"
+		log "Generated admin password: $ADMIN_PASS"
+	fi
+
+	# Download rootfs
+	download_rootfs "$ARCH"
+
+	# Install packages (libvips, ffmpeg, etc.)
+	install_packages
+
+	# Download PhotoPrism binary
+	install_photoprism_binary
+
+	# Create configs and startup script
+	create_lxc_config
+	create_photoprism_dirs
+	create_startup_script
+
+	# Enable service
+	uci_set main.enabled 1
+
+	log "PhotoPrism installed successfully!"
+	log "Admin user: $ADMIN_USER"
+	log "Admin password: $ADMIN_PASS"
+	log "Access URL: http://${HOST_IP}:${HTTP_PORT}"
+	log ""
+	log "Start with: /etc/init.d/photoprism start"
+}
+
+# Uninstall
+cmd_uninstall() {
+	defaults
+
+	if lxc_running; then
+		log "Stopping container..."
+		lxc-stop -n "$LXC_NAME" -k 2>/dev/null || true
+	fi
+
+	if lxc_exists; then
+		log "Removing container..."
+		rm -rf "${LXC_PATH}/${LXC_NAME}"
+	fi
+
+	uci_set main.enabled 0
+
+	log "Container removed. Data preserved at: $DATA_PATH"
+	log "To remove all data: rm -rf $DATA_PATH"
+}
+
+# Start container
+cmd_start() {
+	defaults
+
+	if ! lxc_exists; then
+		log_error "PhotoPrism not installed. Run 'install' first."
+		return 1
+	fi
+
+	if lxc_running; then
+		log "Already running"
+		return 0
+	fi
+
+	log "Starting PhotoPrism..."
+	lxc-start -n "$LXC_NAME" -d
+
+	# Wait for service
+	local i=0
+	while [ $i -lt 30 ]; do
+		if wget -qO /dev/null "http://127.0.0.1:${HTTP_PORT}/api/v1/status" 2>/dev/null; then
+			log "PhotoPrism started on port $HTTP_PORT"
+			return 0
+		fi
+		sleep 1
+		i=$((i + 1))
+	done
+
+	log "PhotoPrism started (API may still be initializing)"
+}
+
+# Stop container
+cmd_stop() {
+	if lxc_running; then
+		log "Stopping PhotoPrism..."
+		lxc-stop -n "$LXC_NAME"
+		log "Stopped"
+	else
+		log "Not running"
+	fi
+}
+
+# Service run (called by init.d)
+cmd_service_run() {
+	defaults
+
+	if ! lxc_exists; then
+		log_error "PhotoPrism not installed"
+		return 1
+	fi
+
+	# Start container in foreground
+	exec lxc-start -n "$LXC_NAME" -F
+}
+
+# Service stop (called by init.d)
+cmd_service_stop() {
+	lxc-stop -n "$LXC_NAME" -k 2>/dev/null || true
+}
+
+# Status output (JSON for RPCD)
+cmd_status() {
+	defaults
+
+	local running="false"
+	local installed="false"
+	local photos=0
+	local videos=0
+	local storage_used="0"
+
+	lxc_exists && installed="true"
+	lxc_running && running="true"
+
+	# Get stats from PhotoPrism API if running
+	if [ "$running" = "true" ]; then
+		local stats=$(wget -qO- "http://127.0.0.1:${HTTP_PORT}/api/v1/status" 2>/dev/null || echo "{}")
+		# API returns photo/video counts - parse if available
+	fi
+
+	# Calculate storage
+	if [ -d "${DATA_PATH}/originals" ]; then
+		storage_used=$(du -sh "${DATA_PATH}/originals" 2>/dev/null | cut -f1 || echo "0")
+	fi
+
+	cat << EOF
+{
+	"installed": $installed,
+	"running": $running,
+	"enabled": $([ "$ENABLED" = "1" ] && echo "true" || echo "false"),
+	"port": $HTTP_PORT,
+	"photos": $photos,
+	"videos": $videos,
+	"storage_used": "$storage_used",
+	"data_path": "$DATA_PATH",
+	"originals_path": "$ORIGINALS_PATH",
+	"domain": "$DOMAIN",
+	"admin_user": "$ADMIN_USER",
+	"face_recognition": $([ "$FACE_RECOGNITION" = "1" ] && echo "true" || echo "false"),
+	"object_detection": $([ "$OBJECT_DETECTION" = "1" ] && echo "true" || echo "false"),
+	"places": $([ "$PLACES" = "1" ] && echo "true" || echo "false")
+}
+EOF
+}
+
+# Logs
+cmd_logs() {
+	local lines="${1:-50}"
+
+	if ! lxc_running; then
+		log_error "Container not running"
+		return 1
+	fi
+
+	lxc-attach -n "$LXC_NAME" -- tail -n "$lines" /opt/photoprism/storage/photoprism.log 2>/dev/null || \
+		lxc-attach -n "$LXC_NAME" -- journalctl -n "$lines" 2>/dev/null || \
+		log "No logs available"
+}
+
+# Shell access
+cmd_shell() {
+	if ! lxc_running; then
+		log_error "Container not running"
+		return 1
+	fi
+
+	lxc-attach -n "$LXC_NAME" -- /bin/bash
+}
+
+# Run photoprism command with proper environment
+run_photoprism_cmd() {
+	local cmd="$1"
+	shift
+	lxc-attach -n "$LXC_NAME" -- bash -c "
+export PHOTOPRISM_CONFIG_PATH=/opt/photoprism
+export PHOTOPRISM_DATABASE_DRIVER=sqlite
+export PHOTOPRISM_DATABASE_DSN=/opt/photoprism/storage/photoprism.db
+export PHOTOPRISM_ORIGINALS_PATH=/opt/photoprism/originals
+export PHOTOPRISM_STORAGE_PATH=/opt/photoprism/storage
+export PHOTOPRISM_SIDECAR_PATH=/opt/photoprism/storage/sidecar
+export PHOTOPRISM_CACHE_PATH=/opt/photoprism/storage/cache
+export PHOTOPRISM_READONLY=true
+cd /opt/photoprism && ./bin/photoprism $cmd $*
+"
+}
+
+# Trigger indexing
+cmd_index() {
+	defaults
+
+	if ! lxc_running; then
+		log_error "Container not running"
+		return 1
+	fi
+
+	log "Starting photo indexing..."
+	run_photoprism_cmd index
+	log "Indexing complete"
+}
+
+# Import from inbox
+cmd_import() {
+	defaults
+
+	if ! lxc_running; then
+		log_error "Container not running"
+		return 1
+	fi
+
+	local delete_opt=""
+	[ "$(uci_get import.delete_after_import 0)" = "1" ] && delete_opt="--move"
+
+	log "Importing photos from ${DATA_PATH}/import..."
+	run_photoprism_cmd import $delete_opt
+	log "Import complete"
+}
+
+# Reset admin password
+cmd_passwd() {
+	local new_pass="${1:-$(generate_password)}"
+	defaults
+
+	if ! lxc_running; then
+		log_error "Container not running"
+		return 1
+	fi
+
+	lxc-attach -n "$LXC_NAME" -- /opt/photoprism/bin/photoprism passwd "$ADMIN_USER" "$new_pass"
+	uci_set admin.password "$new_pass"
+
+	log "Password reset for $ADMIN_USER"
+	log "New password: $new_pass"
+}
+
+# Backup (SQLite database is in storage directory)
+cmd_backup() {
+	defaults
+	local backup_dir="${DATA_PATH}/backups"
+	local timestamp=$(date +%Y%m%d-%H%M%S)
+	local backup_file="${backup_dir}/photoprism-${timestamp}.tar.gz"
+
+	mkdir -p "$backup_dir"
+
+	log "Creating backup archive (includes SQLite database)..."
+	tar -czf "$backup_file" -C "$DATA_PATH" storage
+
+	log "Backup created: $backup_file"
+}
+
+# Configure HAProxy
+cmd_configure_haproxy() {
+	local domain="${1:-$DOMAIN}"
+	defaults
+
+	[ -z "$domain" ] && {
+		log_error "Domain required: photoprismctl configure-haproxy <domain>"
+		return 1
+	}
+
+	log "Configuring HAProxy for $domain..."
+
+	# Add backend
+	uci set haproxy.photoprism_web=backend
+	uci set haproxy.photoprism_web.server="photoprism ${HOST_IP}:${HTTP_PORT} weight 100 check"
+
+	# Add vhost via mitmproxy (WAF-safe)
+	/usr/sbin/haproxyctl vhost add "$domain" --acme 2>/dev/null || {
+		# Manual vhost creation
+		local vhost_name=$(echo "$domain" | tr '.' '_')
+		uci set haproxy.${vhost_name}=vhost
+		uci set haproxy.${vhost_name}.domain="$domain"
+		uci set haproxy.${vhost_name}.backend='mitmproxy_inspector'
+		uci set haproxy.${vhost_name}.ssl='1'
+		uci set haproxy.${vhost_name}.acme='1'
+	}
+
+	uci commit haproxy
+
+	# Add mitmproxy route
+	local routes_file="/srv/mitmproxy-in/haproxy-routes.json"
+	if [ -f "$routes_file" ]; then
+		# Add route using sed (jsonfilter doesn't support writes)
+		local tmp_file="/tmp/routes_$$.json"
+		if grep -q "\"$domain\"" "$routes_file"; then
+			log "Route already exists"
+		else
+			# Insert before closing brace
+			sed -i "s/}$/,\"$domain\": [\"${HOST_IP}\", ${HTTP_PORT}]}/" "$routes_file"
+			log "Added mitmproxy route"
+		fi
+	fi
+
+	# Regenerate and reload
+	/usr/sbin/haproxyctl generate 2>/dev/null || true
+	/usr/sbin/haproxyctl reload 2>/dev/null || true
+	/etc/init.d/mitmproxy restart 2>/dev/null || true
+
+	uci_set network.domain "$domain"
+	uci_set network.haproxy 1
+
+	log "HAProxy configured for https://$domain"
+}
+
+# Emancipate (full exposure)
+cmd_emancipate() {
+	local domain="$1"
+	defaults
+
+	[ -z "$domain" ] && {
+		log_error "Domain required: photoprismctl emancipate <domain>"
+		return 1
+	}
+
+	log "Emancipating PhotoPrism to $domain..."
+
+	# Configure HAProxy + SSL
+	cmd_configure_haproxy "$domain"
+
+	# Add DNS record if dnsctl available
+	if command -v dnsctl >/dev/null 2>&1; then
+		log "Adding DNS record..."
+		dnsctl add "$domain" A "$(uci -q get network.wan.ipaddr)" 2>/dev/null || true
+	fi
+
+	log "PhotoPrism exposed at: https://$domain"
+}
+
+# Usage
+usage() {
+	cat << EOF
+PhotoPrism Private Photo Gallery Controller
+
+Usage: photoprismctl <command> [options]
+
+Installation:
+  install           Install PhotoPrism in LXC container
+  uninstall         Remove container (preserves photos)
+
+Service:
+  start             Start PhotoPrism
+  stop              Stop PhotoPrism
+  restart           Restart PhotoPrism
+  status            Show status (JSON)
+  logs [N]          Show last N log lines (default: 50)
+  shell             Open container shell
+
+Photo Management:
+  index             Trigger photo indexing
+  import            Import from inbox folder
+
+Administration:
+  passwd [pass]     Reset admin password
+  backup            Create backup
+
+Network:
+  configure-haproxy <domain>   Configure HAProxy + SSL
+  emancipate <domain>          Full exposure (HAProxy + DNS)
+
+Internal (called by init.d):
+  service-run       Run in foreground
+  service-stop      Stop service
+
+Configuration: /etc/config/photoprism
+Photos: /srv/photoprism/originals
+EOF
+}
+
+# Main
+case "$1" in
+	install) cmd_install ;;
+	uninstall) cmd_uninstall ;;
+	start) cmd_start ;;
+	stop) cmd_stop ;;
+	restart) cmd_stop; sleep 1; cmd_start ;;
+	status) cmd_status ;;
+	logs) shift; cmd_logs "$@" ;;
+	shell) cmd_shell ;;
+	index) cmd_index ;;
+	import) cmd_import ;;
+	passwd) shift; cmd_passwd "$@" ;;
+	backup) cmd_backup ;;
+	configure-haproxy) shift; cmd_configure_haproxy "$@" ;;
+	emancipate) shift; cmd_emancipate "$@" ;;
+	service-run) cmd_service_run ;;
+	service-stop) cmd_service_stop ;;
+	help|--help|-h) usage ;;
+	"") usage ;;
+	*) log_error "Unknown command: $1"; usage; exit 1 ;;
+esac

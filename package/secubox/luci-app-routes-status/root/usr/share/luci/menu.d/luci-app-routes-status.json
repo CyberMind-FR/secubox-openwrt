@@ -1,0 +1,14 @@
+{
+	"admin/status/vhosts-checker": {
+		"title": "VHosts Checker",
+		"order": 15,
+		"action": {
+			"type": "view",
+			"path": "routes-status/overview"
+		},
+		"depends": {
+			"acl": ["luci-app-routes-status"],
+			"uci": {}
+		}
+	}
+}

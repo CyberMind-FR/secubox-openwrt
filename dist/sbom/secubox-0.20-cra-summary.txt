@@ -1,0 +1,28 @@
+=== SecuBox CRA Compliance Summary ===
+Version     : 0.20
+Generated   : 2026-03-03T16:38:30+01:00
+SOURCE_DATE : 1772552310
+
+--- Software Bill of Materials ---
+SBOM format    : CycloneDX 1.6 + SPDX 2.3
+Total components : 0
+SBOM SHA256    : 1c32d5dcf933dd9ad6f96e6cbabcb14ef0327a048917450d4667599677270c49
+
+--- Licenses ---
+No licenses detected
+
+--- CVE Summary ---
+CRITICAL : 0
+HIGH     : 0
+MEDIUM   : 0
+LOW      : 0
+(See secubox-0.20-cve-report.json for details)
+
+--- Missing Metadata ---
+None
+
+--- CRA Annex I Checklist ---
+[x] SBOM published in machine-readable format
+[x] Vulnerability disclosure contact: security@cybermind.fr
+[ ] CSPN certification : IN PROGRESS (target Q3 2026)
+[x] VCS traceability : https://github.com/cybermind/secubox

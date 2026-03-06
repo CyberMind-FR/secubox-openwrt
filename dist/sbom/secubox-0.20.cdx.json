@@ -1,0 +1,57 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "serialNumber": "urn:uuid:7a140c3e-ba05-44e1-aff2-39a028a5b7f1",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-03-03T16:38:30+01:00",
+    "component": {
+      "type": "firmware",
+      "name": "SecuBox",
+      "version": "0.20",
+      "supplier": {
+        "name": "CyberMind Produits SASU",
+        "contact": [
+          {
+            "email": "secubox@cybermind.fr"
+          }
+        ]
+      },
+      "manufacturer": {
+        "name": "CyberMind Produits SASU",
+        "url": [
+          "https://cybermind.fr"
+        ]
+      },
+      "licenses": [
+        {
+          "license": {
+            "id": "GPL-2.0-only"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "website",
+          "url": "https://secubox.in"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/cybermind/secubox"
+        },
+        {
+          "type": "documentation",
+          "url": "https://secubox.in/docs/cra"
+        }
+      ]
+    },
+    "tools": [
+      {
+        "vendor": "Anchore",
+        "name": "syft",
+        "version": "1.42.1"
+      }
+    ]
+  },
+  "components": []
+}

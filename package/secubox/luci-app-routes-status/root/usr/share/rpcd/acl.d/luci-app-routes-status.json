@@ -1,0 +1,15 @@
+{
+	"luci-app-routes-status": {
+		"description": "Grant access to Routes Status dashboard",
+		"read": {
+			"ubus": {
+				"luci.routes-status": ["status"]
+			}
+		},
+		"write": {
+			"ubus": {
+				"luci.routes-status": ["sync_routes", "add_route"]
+			}
+		}
+	}
+}

@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-03-03 (Comprehensive Service Audit)_
+_Last updated: 2026-03-06 (AI Gateway Login)_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -4382,3 +4382,100 @@ git checkout HEAD -- index.html
       - `docs/sbom-pipeline.md` - Architecture, usage, CRA mapping
       - `SECURITY.md` - CRA Art. 13 §6 compliant disclosure policy
       - VEX policy reference
+
+73. **Routes Status Dashboard & User Services (2026-03-04)**
+    - **New Package: `luci-app-routes-status`**
+      - HAProxy vhosts status dashboard
+      - mitmproxy route configuration status (OUT/IN routes)
+      - SSL certificate status indicators
+      - WAF bypass detection (vhosts not using mitmproxy_inspector)
+      - Route sync and add missing route actions
+      - RPCD backend with optimized batch processing for 200+ vhosts
+    - **Shell Scripting Fixes:**
+      - `luci.network-modes`: Removed 60 lines of orphan dead code after `esac`
+      - `luci.netdata-dashboard`: Fixed bash process substitution to POSIX awk
+    - **Service User Extensions:**
+      - `secubox-core-users`: Added gitea and jellyfin service support
+      - `luci-app-secubox-users`: Added Jellyfin checkbox in frontend
+    - **LXC Networking Fix:**
+      - Discovered: LXC containers can't reach host's `127.0.0.1`
+      - Fixed mitmproxy routes in nextcloudctl, metablogizerctl, mitmproxyctl
+      - Use host LAN IP (192.168.255.1) instead of localhost for route targets
+    - **Mailserver Recovery:**
+      - Fixed webmail.gk2.secubox.in login error by starting mailserver container
+      - Verified IMAP/SMTP connectivity (ports 143, 993, 25, 587, 465)
+
+74. **February 2026 Milestones (2026-02-01 to 2026-02-28)**
+    - **Mesh & P2P:**
+      - ZKP Hamiltonian cryptographic authentication between mesh nodes
+      - Mesh blockchain bidirectional sync (Master ↔ Clone)
+      - P2P threat intelligence sharing (100+ IOC blocks)
+      - Yggdrasil IPv6 overlay network with LAN multicast peering
+      - Yggdrasil Extended Peer Discovery with gossip protocol
+      - MirrorNet core package (identity, reputation, mirror, gossip, health)
+      - Factory auto-provisioning with zero-touch device onboarding
+    - **AI & Security:**
+      - AI Gateway (Sovereignty Engine) with ANSSI CSPN compliance
+      - 3-tier data classification: LOCAL_ONLY, SANITIZED, CLOUD_DIRECT
+      - Provider hierarchy: LocalAI > Mistral EU > Claude > OpenAI > Gemini > xAI
+      - DNS Guard AI migration with 5 detection modules
+      - Threat Analyst autonomous agent with rule generation
+      - MCP Server with 14 tools for Claude Desktop integration
+      - CVE Triage agent with NVD integration
+      - Network Anomaly agent with 5 detection modules
+      - LocalRecall memory system for AI agents
+      - Config Advisor for ANSSI CSPN compliance checking
+    - **Communication:**
+      - Matrix Homeserver (Conduit) with E2EE mesh messaging
+      - VoIP (Asterisk PBX) with OVH trunk auto-provisioning
+      - Jabber integration with Jingle VoIP and SMS relay
+      - Self-hosted Jitsi Meet video conferencing
+    - **Media & Content:**
+      - PeerTube video platform with yt-dlp import
+      - GoToSocial Fediverse server
+      - Nextcloud LXC with nginx, PHP-FPM, Talk app
+      - HexoJS multi-instance with GitHub/Gitea integration
+      - MetaBlogizer KISS ULTIME MODE with one-command emancipation
+      - WebRadio with CrowdSec integration
+    - **Infrastructure:**
+      - HAProxy path-based ACL routing with pattern length sorting
+      - Mitmproxy multi-instance support (out/in)
+      - Vortex Hub wildcard routing
+      - Gandi DNS secondary setup with zone transfers
+      - Custom mailserver (Postfix + Dovecot in LXC)
+      - IoT Guard with OUI-based classification
+      - IP Blocklist with nftables/iptables backends
+      - AbuseIPDB reporter integration
+      - Log denoising for System Hub
+    - **Cloning & Deployment:**
+      - Cloning Station with MOKATOOL integration
+      - Remote device management via SSH
+      - Clone history and image manager
+      - Pre-deploy lint script for syntax validation
+    - **LuCI Dashboards (KISS rewrites):**
+      - SecuBox Dashboard, System Hub, Modules, Monitoring, Alerts, Settings
+      - HAProxy (vhosts, backends, stats)
+      - CrowdSec, Wazuh SIEM, mitmproxy WAF
+      - VM Manager, Cookie Tracker, CDN Cache
+      - InterceptoR Services Registry
+    - **Bug Fixes:**
+      - Tor Shield opkg DNS bypass
+      - HAProxy Portal 503 fix
+      - Mailserver Dovecot permissions
+      - MirrorNet ash compatibility
+      - Various POSIX shell fixes for BusyBox
+
+75. **AI Gateway Login Command (2026-03-06)**
+    - CLI: `aigatewayctl login [provider]` with credential validation
+    - Rollback on authentication failure
+    - RPCD: `login` method for LuCI integration
+    - Format warnings for provider-specific API key patterns
+
+76. **PhotoPrism Private Gallery (2026-03-06)**
+    - LXC-based PhotoPrism deployment with SQLite backend
+    - UCI-configurable originals path (`photoprism.main.originals_path`)
+    - LuCI dashboard with KISS dark theme (stats, actions, settings)
+    - Read-only mode support for HFS+ Apple Photos libraries
+    - RPCD methods: status, get_config, set_config, get_stats, start, stop, index, import, emancipate
+    - Sidecar and cache paths redirected to writable storage directory
+    - Environment-aware lxc-attach helper for photoprism commands
