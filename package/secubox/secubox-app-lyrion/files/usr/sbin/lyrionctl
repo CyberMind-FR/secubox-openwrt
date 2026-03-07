@@ -51,7 +51,7 @@ load_config() {
 	runtime="$(uci_get runtime || echo auto)"
 	image="$(uci_get image || echo ghcr.io/lms-community/lyrionmusicserver:stable)"
 	data_path="$(uci_get data_path || echo /srv/lyrion)"
-	media_path="$(uci_get media_path || echo /srv/media)"
+	media_path="$(uci_get media_path || echo /mnt/MUSIC)"
 	port="$(uci_get port || echo 9000)"
 	timezone="$(uci_get timezone || cat /etc/TZ 2>/dev/null || echo UTC)"
 	memory_limit="$(uci_get memory_limit || echo 256M)"
