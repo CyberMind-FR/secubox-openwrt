@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-07 (Vhosts-Checker Fix, ROADMAP.md Generation)_
+_Last updated: 2026-03-07 (Mitmproxy Port Fix, Vhosts Recovery)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -9,6 +9,18 @@ _Last updated: 2026-03-07 (Vhosts-Checker Fix, ROADMAP.md Generation)_
 ## Recently Completed
 
 ### 2026-03-07
+
+- **Mitmproxy-in Port Conflict Fix**
+  - Changed mitmproxy-in WAF port from 8889 to 8890
+  - Port 8889 conflicted with avatar-tap Streamlit service
+  - Updated HAProxy mitmproxy_inspector backend configuration
+  - Fixed HAProxy runtime state caching via socket command
+
+- **Vhosts Recovery**
+  - Started stopped LXC containers: jellyfin, jitsi, peertube, gotosocial, glances
+  - Fixed glances container cgroup v2 config (cgroup.memory.limit_in_bytes → cgroup2.memory.max)
+  - Fixed mitmproxy route IPs: 127.0.0.1 → 192.168.255.1 (LXC can't reach host localhost)
+  - All 11 key vhosts now operational (jellyfin, social, glances, tube, meet, zoo, portal, cloud, photos, lyrion, streamlit)
 
 - **Vhosts-Checker RPCD Fix**
   - Fixed XHR timeout issue in LuCI dashboard
@@ -27,7 +39,7 @@ _Last updated: 2026-03-07 (Vhosts-Checker Fix, ROADMAP.md Generation)_
   - CLI: `avatar-tapctl` with start/stop/list/replay/label/delete commands
   - LuCI: `luci-app-avatar-tap` KISS dashboard with session table
   - Features: Cookie/auth header capture, session replay, SQLite storage
-  - Runs in Streamlit LXC container on port 8889
+  - Runs in Streamlit LXC container on port 8889 (mitmproxy-in moved to 8890)
   - Future: Nitrokey/GPG integration for secure replay authorization
 
 - **PhotoPrism Photo Gallery Deployment**
