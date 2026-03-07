@@ -143,13 +143,13 @@ curl -sL "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-Country.m
 │                              │                                  │
 │                              ▼                                  │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │ Backend: mitmproxy_inspector (127.0.0.1:8889)            │   │
+│  │ Backend: mitmproxy_inspector (127.0.0.1:8890)            │   │
 │  └─────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  mitmproxy LXC Container (port 8889)                            │
+│  mitmproxy LXC Container (port 8890)                            │
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │ haproxy_router.py: Routes by Host header                 │   │
 │  │ secubox_analytics.py: Threat detection                   │   │
@@ -202,7 +202,7 @@ This generates `/srv/mitmproxy/haproxy-routes.json`:
 mitmproxyctl haproxy-enable
 
 # This will:
-# 1. Create mitmproxy_inspector backend (127.0.0.1:8889)
+# 1. Create mitmproxy_inspector backend (127.0.0.1:8890)
 # 2. Store original backends in UCI (haproxy.$vhost.original_backend)
 # 3. Redirect all vhosts through mitmproxy
 # 4. Sync route mappings

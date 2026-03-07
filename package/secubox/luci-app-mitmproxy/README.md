@@ -134,7 +134,7 @@ Route all HAProxy vhost traffic through mitmproxy for threat detection.
 ### Architecture
 
 ```
-Internet → HAProxy (SSL termination) → mitmproxy :8889 → Actual Backends
+Internet → HAProxy (SSL termination) → mitmproxy :8890 → Actual Backends
                                            ↓
                                     Threat Detection
                                            ↓
