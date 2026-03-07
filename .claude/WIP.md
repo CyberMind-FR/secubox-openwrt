@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-07 (Mitmproxy Port Fix, Vhosts Recovery)_
+_Last updated: 2026-03-07 (lldh360 + cybaxe Vhosts Fix)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -9,6 +9,18 @@ _Last updated: 2026-03-07 (Mitmproxy Port Fix, Vhosts Recovery)_
 ## Recently Completed
 
 ### 2026-03-07
+
+- **lldh360.maegia.tv Routing Fix**
+  - Fixed mitmproxy routes: 127.0.0.1 → 192.168.255.1 (all 187 routes updated)
+  - Disabled SSL redirect (DNS record doesn't exist yet for ACME)
+  - Restored HAProxy config from backup (haproxyctl generate was corrupted)
+  - Site now accessible via HTTP on port 9003
+
+- **cybaxe.gk2.secubox.in Port Conflict Fix**
+  - Changed port from 9000 to 9004 (9000 reserved for Lyrion Music Server)
+  - Updated metablogizer, HAProxy backend, and mitmproxy routes
+  - Created placeholder index.html (site content needs gitea sync)
+  - Site now accessible via HTTPS
 
 - **Mitmproxy-in Port Conflict Fix**
   - Changed mitmproxy-in WAF port from 8889 to 8890
