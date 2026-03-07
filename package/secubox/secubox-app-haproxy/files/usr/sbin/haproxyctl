@@ -528,6 +528,11 @@ _print_uci_userlist() {
 	config_get name "$section" name
 	[ -z "$name" ] && return
 
+	# Skip userlists already defined in AUTH_USERLIST_FILE to avoid duplicates
+	if [ -f "$AUTH_USERLIST_FILE" ] && grep -q "^userlist $name\$" "$AUTH_USERLIST_FILE" 2>/dev/null; then
+		return
+	fi
+
 	echo "userlist $name"
 	# Handle list of users
 	config_list_foreach "$section" user _print_userlist_user
@@ -826,12 +831,19 @@ _emit_sorted_path_acls() {
 		# Generate use_backend rule (use WAF backend if enabled)
 		local effective_backend="$backend"
 		config_get waf_bypass "$section" waf_bypass "0"
-	[ "$waf_enabled" = "1" ] && [ "$waf_bypass" != "1" ] && effective_backend="$waf_backend"
-	# Set nocache flag during request for checking during response
-	config_get no_cache "$section" no_cache "0"
-	if [ "$no_cache" = "1" ]; then
-		echo "    http-request set-var(txn.nocache) str(yes) if host_${acl_name}"
-	fi
+		[ "$waf_enabled" = "1" ] && [ "$waf_bypass" != "1" ] && effective_backend="$waf_backend"
+
+		# Set nocache flag during request for checking during response
+		# Note: http-request rules must come BEFORE use_backend
+		config_get no_cache "$section" no_cache "0"
+		if [ "$no_cache" = "1" ]; then
+			if [ -n "$host_acl_name" ]; then
+				echo "    http-request set-var(txn.nocache) str(yes) if host_${host_acl_name} ${acl_name}"
+			else
+				echo "    http-request set-var(txn.nocache) str(yes) if ${acl_name}"
+			fi
+		fi
+
 		if [ -n "$host_acl_name" ]; then
 			echo "    use_backend $effective_backend if host_${host_acl_name} ${acl_name}"
 		else
