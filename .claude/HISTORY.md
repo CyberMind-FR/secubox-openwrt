@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-03-06 (AI Gateway Login)_
+_Last updated: 2026-03-07 (Avatar-Tap, PhotoPrism, Service Fixes)_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
