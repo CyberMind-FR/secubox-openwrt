@@ -70,6 +70,58 @@ method_get_stats() {
 	json_dump
 }
 
+# Method: get_index_progress - Live indexing stats
+method_get_index_progress() {
+	local data_path=$(uci -q get ${CONFIG}.main.data_path || echo '/srv/photoprism')
+	local storage_path="${data_path}/storage"
+
+	# Count indexed files
+	local sidecar_count=0
+	local thumbnail_count=0
+	local db_size="0"
+	local indexing=false
+	local current_file=""
+	local last_activity=""
+
+	if [ -d "${storage_path}/sidecar" ]; then
+		sidecar_count=$(find "${storage_path}/sidecar" -type f 2>/dev/null | wc -l || echo 0)
+	fi
+
+	if [ -d "${storage_path}/cache/thumbnails" ]; then
+		thumbnail_count=$(find "${storage_path}/cache/thumbnails" -type f 2>/dev/null | wc -l || echo 0)
+	fi
+
+	if [ -f "${storage_path}/photoprism.db" ]; then
+		db_size=$(ls -lh "${storage_path}/photoprism.db" 2>/dev/null | awk '{print $5}')
+	fi
+
+	# Check if indexing process is running
+	if lxc-attach -n photoprism -- ps aux 2>/dev/null | grep -q "photoprism index"; then
+		indexing=true
+	fi
+
+	# Get last log entry
+	local log_file="${storage_path}/index.log"
+	if [ -f "$log_file" ]; then
+		local last_line=$(tail -1 "$log_file" 2>/dev/null)
+		# Extract filename from log
+		current_file=$(echo "$last_line" | grep -oE '[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}\.[a-z]+' | head -1)
+		# Extract timestamp
+		last_activity=$(echo "$last_line" | grep -oE 'time="[^"]+"' | cut -d'"' -f2)
+	fi
+
+	cat <<EOF
+{
+	"indexing": $indexing,
+	"sidecar_count": $sidecar_count,
+	"thumbnail_count": $thumbnail_count,
+	"db_size": "$db_size",
+	"current_file": "$current_file",
+	"last_activity": "$last_activity"
+}
+EOF
+}
+
 # Method: start
 method_start() {
 	/etc/init.d/photoprism start >/dev/null 2>&1
@@ -180,6 +232,7 @@ case "$1" in
 			"get_config": {},
 			"set_config": {"originals_path": "string"},
 			"get_stats": {},
+			"get_index_progress": {},
 			"start": {},
 			"stop": {},
 			"restart": {},
@@ -201,6 +254,7 @@ case "$1" in
 				method_set_config "$originals_path"
 				;;
 			get_stats) method_get_stats ;;
+			get_index_progress) method_get_index_progress ;;
 			start) method_start ;;
 			stop) method_stop ;;
 			restart) method_restart ;;

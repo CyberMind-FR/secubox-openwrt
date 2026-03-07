@@ -1,0 +1,15 @@
+{
+    "luci-app-avatar-tap": {
+        "description": "Grant access to Avatar Tap dashboard",
+        "read": {
+            "ubus": {
+                "luci.avatar-tap": ["status", "get_sessions", "get_session", "stats"]
+            }
+        },
+        "write": {
+            "ubus": {
+                "luci.avatar-tap": ["start", "stop", "replay", "label", "delete", "cleanup"]
+            }
+        }
+    }
+}

@@ -1,0 +1,262 @@
+#!/bin/sh
+# SecuBox Avatar Tap Control Script
+
+. /lib/functions.sh
+
+PROG_NAME="avatar-tapctl"
+CONFIG_FILE="/etc/config/avatar-tap"
+DB_PATH="/srv/avatar-tap/sessions.db"
+TAP_SCRIPT="/usr/share/avatar-tap/tap.py"
+REPLAY_SCRIPT="/usr/share/avatar-tap/replay.py"
+PID_FILE="/var/run/avatar-tap.pid"
+
+# Load config
+config_load avatar-tap
+
+usage() {
+    cat <<EOF
+SecuBox Avatar Tap - Session Capture and Replay
+
+Usage: $PROG_NAME <command> [options]
+
+Commands:
+  start           Start the passive tap
+  stop            Stop the tap
+  restart         Restart the tap
+  status          Show tap status
+  list [domain]   List captured sessions
+  show <id>       Show session details
+  replay <id> <url> [method]  Replay session to URL
+  label <id> <label>  Label a session
+  delete <id>     Delete a session
+  cleanup [days]  Clean up old sessions (default: 7 days)
+  export <id> <file>  Export session to JSON
+  stats           Show capture statistics
+  config          Show configuration
+
+Examples:
+  $PROG_NAME start
+  $PROG_NAME list photos.gk2
+  $PROG_NAME replay 5 https://photos.gk2.secubox.in/api/v1/config
+  $PROG_NAME label 5 "PhotoPrism Admin"
+
+EOF
+}
+
+cmd_start() {
+    local enabled
+    config_get enabled main enabled '0'
+
+    if [ "$enabled" != "1" ]; then
+        echo "Avatar Tap is disabled. Enable with:"
+        echo "  uci set avatar-tap.main.enabled=1"
+        echo "  uci commit avatar-tap"
+        return 1
+    fi
+
+    if pgrep -f "mitmdump.*tap.py" >/dev/null; then
+        echo "Avatar Tap is already running"
+        return 0
+    fi
+
+    local port addr mode
+    config_get port main listen_port '8888'
+    config_get addr main listen_addr '0.0.0.0'
+    config_get mode main mode 'transparent'
+    config_get DB_PATH main db_path '/srv/avatar-tap/sessions.db'
+
+    mkdir -p "$(dirname "$DB_PATH")"
+
+    echo "Starting Avatar Tap on $addr:$port (mode: $mode)"
+    export AVATAR_TAP_DB="$DB_PATH"
+
+    mitmdump -s "$TAP_SCRIPT" -p "$port" --listen-host "$addr" --mode "$mode" \
+        >/var/log/avatar-tap.log 2>&1 &
+
+    echo $! > "$PID_FILE"
+    sleep 1
+
+    if pgrep -f "mitmdump.*tap.py" >/dev/null; then
+        echo "Avatar Tap started (PID: $(cat $PID_FILE))"
+    else
+        echo "Failed to start Avatar Tap"
+        return 1
+    fi
+}
+
+cmd_stop() {
+    if [ -f "$PID_FILE" ]; then
+        kill "$(cat $PID_FILE)" 2>/dev/null
+        rm -f "$PID_FILE"
+    fi
+    pkill -f "mitmdump.*tap.py" 2>/dev/null
+    echo "Avatar Tap stopped"
+}
+
+cmd_restart() {
+    cmd_stop
+    sleep 1
+    cmd_start
+}
+
+cmd_status() {
+    echo "=== Avatar Tap Status ==="
+    echo ""
+
+    if pgrep -f "mitmdump.*tap.py" >/dev/null; then
+        echo "Status: RUNNING"
+        echo "PID: $(pgrep -f 'mitmdump.*tap.py')"
+    else
+        echo "Status: STOPPED"
+    fi
+
+    echo ""
+    local port
+    config_get port main listen_port '8888'
+    echo "Listen Port: $port"
+
+    if [ -f "$DB_PATH" ]; then
+        local count=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions" 2>/dev/null)
+        echo "Sessions: ${count:-0}"
+        local recent=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE captured_at > strftime('%s','now','-1 hour')" 2>/dev/null)
+        echo "Last Hour: ${recent:-0}"
+    else
+        echo "Sessions: (no database)"
+    fi
+}
+
+cmd_list() {
+    export AVATAR_TAP_DB="$DB_PATH"
+    if [ -n "$1" ]; then
+        python3 "$REPLAY_SCRIPT" list -d "$1"
+    else
+        python3 "$REPLAY_SCRIPT" list
+    fi
+}
+
+cmd_show() {
+    [ -z "$1" ] && { echo "Usage: $PROG_NAME show <session_id>"; return 1; }
+    export AVATAR_TAP_DB="$DB_PATH"
+    python3 "$REPLAY_SCRIPT" show "$1"
+}
+
+cmd_replay() {
+    [ -z "$1" ] || [ -z "$2" ] && { echo "Usage: $PROG_NAME replay <session_id> <url> [method]"; return 1; }
+    export AVATAR_TAP_DB="$DB_PATH"
+    if [ -n "$3" ]; then
+        python3 "$REPLAY_SCRIPT" replay "$1" "$2" -m "$3"
+    else
+        python3 "$REPLAY_SCRIPT" replay "$1" "$2"
+    fi
+}
+
+cmd_label() {
+    [ -z "$1" ] || [ -z "$2" ] && { echo "Usage: $PROG_NAME label <session_id> <label>"; return 1; }
+    export AVATAR_TAP_DB="$DB_PATH"
+    python3 "$REPLAY_SCRIPT" label "$1" "$2"
+}
+
+cmd_delete() {
+    [ -z "$1" ] && { echo "Usage: $PROG_NAME delete <session_id>"; return 1; }
+    export AVATAR_TAP_DB="$DB_PATH"
+    python3 "$REPLAY_SCRIPT" delete "$1"
+}
+
+cmd_cleanup() {
+    local days="${1:-7}"
+    export AVATAR_TAP_DB="$DB_PATH"
+    python3 "$REPLAY_SCRIPT" cleanup -d "$days"
+}
+
+cmd_export() {
+    [ -z "$1" ] || [ -z "$2" ] && { echo "Usage: $PROG_NAME export <session_id> <file>"; return 1; }
+    export AVATAR_TAP_DB="$DB_PATH"
+    python3 "$REPLAY_SCRIPT" export "$1" "$2"
+}
+
+cmd_stats() {
+    echo "=== Avatar Tap Statistics ==="
+    echo ""
+
+    if [ ! -f "$DB_PATH" ]; then
+        echo "No database found"
+        return 1
+    fi
+
+    echo "Total Sessions: $(sqlite3 "$DB_PATH" 'SELECT COUNT(*) FROM sessions')"
+    echo "Unique Domains: $(sqlite3 "$DB_PATH" 'SELECT COUNT(DISTINCT domain) FROM sessions')"
+    echo "Total Replays:  $(sqlite3 "$DB_PATH" 'SELECT COUNT(*) FROM replay_log')"
+    echo ""
+    echo "Top Domains:"
+    sqlite3 "$DB_PATH" "SELECT domain, COUNT(*) as cnt FROM sessions GROUP BY domain ORDER BY cnt DESC LIMIT 10" | \
+        while IFS='|' read domain count; do
+            printf "  %-35s %d\n" "$domain" "$count"
+        done
+    echo ""
+    echo "Recent Activity:"
+    sqlite3 "$DB_PATH" "SELECT domain, datetime(captured_at,'unixepoch') FROM sessions ORDER BY captured_at DESC LIMIT 5" | \
+        while IFS='|' read domain ts; do
+            printf "  %-35s %s\n" "$domain" "$ts"
+        done
+}
+
+cmd_config() {
+    echo "=== Avatar Tap Configuration ==="
+    uci show avatar-tap
+}
+
+# JSON output for RPCD
+cmd_json_status() {
+    local running=0
+    pgrep -f "mitmdump.*tap.py" >/dev/null && running=1
+
+    local sessions=0
+    local recent=0
+    if [ -f "$DB_PATH" ]; then
+        sessions=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions" 2>/dev/null || echo 0)
+        recent=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE captured_at > strftime('%s','now','-1 hour')" 2>/dev/null || echo 0)
+    fi
+
+    local port
+    config_get port main listen_port '8888'
+
+    cat <<EOF
+{
+    "running": $running,
+    "port": $port,
+    "sessions": $sessions,
+    "recent": $recent,
+    "db_path": "$DB_PATH"
+}
+EOF
+}
+
+cmd_json_list() {
+    if [ ! -f "$DB_PATH" ]; then
+        echo "[]"
+        return
+    fi
+
+    sqlite3 -json "$DB_PATH" \
+        "SELECT id, domain, path, method, captured_at, last_used, use_count, label, avatar_id FROM sessions ORDER BY captured_at DESC LIMIT 50" 2>/dev/null || echo "[]"
+}
+
+# Main
+case "$1" in
+    start)   cmd_start ;;
+    stop)    cmd_stop ;;
+    restart) cmd_restart ;;
+    status)  cmd_status ;;
+    list)    cmd_list "$2" ;;
+    show)    cmd_show "$2" ;;
+    replay)  cmd_replay "$2" "$3" "$4" ;;
+    label)   cmd_label "$2" "$3" ;;
+    delete)  cmd_delete "$2" ;;
+    cleanup) cmd_cleanup "$2" ;;
+    export)  cmd_export "$2" "$3" ;;
+    stats)   cmd_stats ;;
+    config)  cmd_config ;;
+    json-status) cmd_json_status ;;
+    json-list)   cmd_json_list ;;
+    *)       usage ;;
+esac

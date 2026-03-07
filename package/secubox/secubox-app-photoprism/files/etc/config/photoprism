@@ -3,6 +3,7 @@
 config photoprism 'main'
 	option enabled '0'
 	option data_path '/srv/photoprism'
+	option originals_path '/mnt/PHOTO'
 	option http_port '2342'
 	option memory_limit '2G'
 	option timezone 'Europe/Paris'

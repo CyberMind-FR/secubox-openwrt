@@ -1,0 +1,14 @@
+{
+    "admin/services/avatar-tap": {
+        "title": "Avatar Tap",
+        "order": 85,
+        "action": {
+            "type": "view",
+            "path": "avatar-tap/dashboard"
+        },
+        "depends": {
+            "acl": ["luci-app-avatar-tap"],
+            "uci": {"avatar-tap": true}
+        }
+    }
+}

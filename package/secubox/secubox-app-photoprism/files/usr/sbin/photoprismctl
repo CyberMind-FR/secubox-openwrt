@@ -36,7 +36,7 @@ uci_set() { uci set "${CONFIG}.$1=$2" && uci commit "$CONFIG"; }
 defaults() {
 	ENABLED=$(uci_get main.enabled 0)
 	DATA_PATH=$(uci_get main.data_path /srv/photoprism)
-	ORIGINALS_PATH=$(uci_get main.originals_path /srv/photoprism/originals)
+	ORIGINALS_PATH=$(uci_get main.originals_path /mnt/PHOTO)
 	HTTP_PORT=$(uci_get main.http_port 2342)
 	MEMORY_LIMIT=$(uci_get main.memory_limit 2G)
 	TIMEZONE=$(uci_get main.timezone Europe/Paris)

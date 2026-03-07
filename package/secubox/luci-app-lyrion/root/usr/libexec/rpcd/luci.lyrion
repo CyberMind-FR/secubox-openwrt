@@ -193,6 +193,67 @@ get_logs() {
 	echo "{\"logs\": \"$log_content\"}"
 }
 
+# Get library stats from Lyrion API
+get_library_stats() {
+	local port=$(uci_get port)
+	port=${port:-9000}
+
+	# Query Lyrion JSON-RPC API for server status
+	local response=$(curl -s --max-time 3 "http://127.0.0.1:${port}/jsonrpc.js" \
+		-H "Content-Type: application/json" \
+		-d '{"id":1,"method":"slim.request","params":["", ["serverstatus", 0, 0]]}' 2>/dev/null)
+
+	if [ -z "$response" ]; then
+		echo '{"songs":0,"albums":0,"artists":0,"genres":0,"scanning":false,"scan_progress":0,"scan_total":0,"scan_phase":""}'
+		return
+	fi
+
+	# Parse response using jsonfilter
+	local songs=$(echo "$response" | jsonfilter -e '@.result["info total songs"]' 2>/dev/null || echo 0)
+	local albums=$(echo "$response" | jsonfilter -e '@.result["info total albums"]' 2>/dev/null || echo 0)
+	local artists=$(echo "$response" | jsonfilter -e '@.result["info total artists"]' 2>/dev/null || echo 0)
+	local genres=$(echo "$response" | jsonfilter -e '@.result["info total genres"]' 2>/dev/null || echo 0)
+	local rescan=$(echo "$response" | jsonfilter -e '@.result.rescan' 2>/dev/null || echo 0)
+	local progress_done=$(echo "$response" | jsonfilter -e '@.result.progressdone' 2>/dev/null || echo 0)
+	local progress_total=$(echo "$response" | jsonfilter -e '@.result.progresstotal' 2>/dev/null || echo 0)
+	local progress_name=$(echo "$response" | jsonfilter -e '@.result.progressname' 2>/dev/null || echo "")
+
+	# Get database size
+	local db_size="0"
+	if [ -f /srv/lyrion/cache/library.db ]; then
+		db_size=$(ls -lh /srv/lyrion/cache/library.db 2>/dev/null | awk '{print $5}')
+	fi
+
+	local scanning="false"
+	[ "$rescan" = "1" ] && scanning="true"
+
+	cat <<EOF
+{
+	"songs": ${songs:-0},
+	"albums": ${albums:-0},
+	"artists": ${artists:-0},
+	"genres": ${genres:-0},
+	"scanning": $scanning,
+	"scan_progress": ${progress_done:-0},
+	"scan_total": ${progress_total:-0},
+	"scan_phase": "$progress_name",
+	"db_size": "$db_size"
+}
+EOF
+}
+
+# Trigger library rescan
+do_rescan() {
+	local port=$(uci_get port)
+	port=${port:-9000}
+
+	curl -s --max-time 5 "http://127.0.0.1:${port}/jsonrpc.js" \
+		-H "Content-Type: application/json" \
+		-d '{"id":1,"method":"slim.request","params":["", ["rescan", "full"]]}' >/dev/null 2>&1
+
+	echo '{"success": true, "message": "Rescan started"}'
+}
+
 # RPCD list method
 list_methods() {
 	cat <<'EOF'
@@ -205,7 +266,9 @@ list_methods() {
 	"stop": {},
 	"restart": {},
 	"update": {},
-	"logs": {}
+	"logs": {},
+	"get_library_stats": {},
+	"rescan": {}
 }
 EOF
 }
@@ -217,16 +280,18 @@ case "$1" in
 		;;
 	call)
 		case "$2" in
-			status)      get_status ;;
-			get_config)  get_config ;;
-			save_config) save_config ;;
-			install)     do_install ;;
-			start)       do_start ;;
-			stop)        do_stop ;;
-			restart)     do_restart ;;
-			update)      do_update ;;
-			logs)        get_logs ;;
-			*)           echo '{"error": "Unknown method"}' ;;
+			status)           get_status ;;
+			get_config)       get_config ;;
+			save_config)      save_config ;;
+			install)          do_install ;;
+			start)            do_start ;;
+			stop)             do_stop ;;
+			restart)          do_restart ;;
+			update)           do_update ;;
+			logs)             get_logs ;;
+			get_library_stats) get_library_stats ;;
+			rescan)           do_rescan ;;
+			*)                echo '{"error": "Unknown method"}' ;;
 		esac
 		;;
 	*)

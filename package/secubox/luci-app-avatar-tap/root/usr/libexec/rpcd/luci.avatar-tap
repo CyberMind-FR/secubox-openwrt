@@ -1,0 +1,163 @@
+#!/bin/sh
+# RPCD handler for Avatar Tap
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+DB_PATH="/srv/avatar-tap/sessions.db"
+
+case "$1" in
+    list)
+        echo '{"status":{},"get_sessions":{"domain":"str","limit":"int"},"get_session":{"id":"int"},"replay":{"id":"int","url":"str","method":"str"},"label":{"id":"int","label":"str"},"delete":{"id":"int"},"start":{},"stop":{},"cleanup":{"days":"int"},"stats":{}}'
+        ;;
+    call)
+        case "$2" in
+            status)
+                /usr/sbin/avatar-tapctl json-status
+                ;;
+
+            get_sessions)
+                read -r input
+                json_load "$input"
+                json_get_var domain domain
+                json_get_var limit limit
+
+                [ -z "$limit" ] && limit=50
+
+                if [ ! -f "$DB_PATH" ]; then
+                    echo '{"sessions":[]}'
+                    exit 0
+                fi
+
+                if [ -n "$domain" ]; then
+                    sessions=$(sqlite3 -json "$DB_PATH" \
+                        "SELECT id, domain, path, method, captured_at, last_used, use_count, label, avatar_id
+                         FROM sessions WHERE domain LIKE '%$domain%'
+                         ORDER BY captured_at DESC LIMIT $limit" 2>/dev/null)
+                else
+                    sessions=$(sqlite3 -json "$DB_PATH" \
+                        "SELECT id, domain, path, method, captured_at, last_used, use_count, label, avatar_id
+                         FROM sessions ORDER BY captured_at DESC LIMIT $limit" 2>/dev/null)
+                fi
+
+                [ -z "$sessions" ] && sessions="[]"
+                echo "{\"sessions\":$sessions}"
+                ;;
+
+            get_session)
+                read -r input
+                json_load "$input"
+                json_get_var id id
+
+                [ -z "$id" ] && { echo '{"error":"Missing session id"}'; exit 1; }
+
+                if [ ! -f "$DB_PATH" ]; then
+                    echo '{"error":"No database"}'
+                    exit 1
+                fi
+
+                session=$(sqlite3 -json "$DB_PATH" \
+                    "SELECT * FROM sessions WHERE id = $id" 2>/dev/null)
+
+                [ -z "$session" ] && session="null"
+                # Extract first element from array
+                echo "{\"session\":${session}}"
+                ;;
+
+            replay)
+                read -r input
+                json_load "$input"
+                json_get_var id id
+                json_get_var url url
+                json_get_var method method
+
+                [ -z "$id" ] || [ -z "$url" ] && { echo '{"error":"Missing id or url"}'; exit 1; }
+
+                export AVATAR_TAP_DB="$DB_PATH"
+                if [ -n "$method" ]; then
+                    result=$(python3 /usr/share/avatar-tap/replay.py replay "$id" "$url" -m "$method" 2>&1)
+                else
+                    result=$(python3 /usr/share/avatar-tap/replay.py replay "$id" "$url" 2>&1)
+                fi
+
+                # Extract status code from output
+                status_code=$(echo "$result" | grep -o "Status: [0-9]*" | grep -o "[0-9]*")
+                [ -z "$status_code" ] && status_code=0
+
+                json_init
+                json_add_int "status_code" "$status_code"
+                json_add_string "output" "$result"
+                json_dump
+                ;;
+
+            label)
+                read -r input
+                json_load "$input"
+                json_get_var id id
+                json_get_var label label
+
+                [ -z "$id" ] || [ -z "$label" ] && { echo '{"error":"Missing id or label"}'; exit 1; }
+
+                sqlite3 "$DB_PATH" "UPDATE sessions SET label = '$label' WHERE id = $id"
+                echo '{"success":true}'
+                ;;
+
+            delete)
+                read -r input
+                json_load "$input"
+                json_get_var id id
+
+                [ -z "$id" ] && { echo '{"error":"Missing session id"}'; exit 1; }
+
+                sqlite3 "$DB_PATH" "DELETE FROM replay_log WHERE session_id = $id"
+                sqlite3 "$DB_PATH" "DELETE FROM sessions WHERE id = $id"
+                echo '{"success":true}'
+                ;;
+
+            start)
+                /usr/sbin/avatar-tapctl start >/dev/null 2>&1
+                sleep 1
+                /usr/sbin/avatar-tapctl json-status
+                ;;
+
+            stop)
+                /usr/sbin/avatar-tapctl stop >/dev/null 2>&1
+                sleep 1
+                /usr/sbin/avatar-tapctl json-status
+                ;;
+
+            cleanup)
+                read -r input
+                json_load "$input"
+                json_get_var days days
+                [ -z "$days" ] && days=7
+
+                export AVATAR_TAP_DB="$DB_PATH"
+                result=$(python3 /usr/share/avatar-tap/replay.py cleanup -d "$days" 2>&1)
+                echo "{\"result\":\"$result\"}"
+                ;;
+
+            stats)
+                if [ ! -f "$DB_PATH" ]; then
+                    echo '{"total":0,"domains":0,"replays":0}'
+                    exit 0
+                fi
+
+                total=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions" 2>/dev/null || echo 0)
+                domains=$(sqlite3 "$DB_PATH" "SELECT COUNT(DISTINCT domain) FROM sessions" 2>/dev/null || echo 0)
+                replays=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM replay_log" 2>/dev/null || echo 0)
+                recent=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE captured_at > strftime('%s','now','-1 hour')" 2>/dev/null || echo 0)
+
+                top_domains=$(sqlite3 -json "$DB_PATH" \
+                    "SELECT domain, COUNT(*) as count FROM sessions GROUP BY domain ORDER BY count DESC LIMIT 5" 2>/dev/null)
+                [ -z "$top_domains" ] && top_domains="[]"
+
+                echo "{\"total\":$total,\"domains\":$domains,\"replays\":$replays,\"recent\":$recent,\"top_domains\":$top_domains}"
+                ;;
+
+            *)
+                echo '{"error":"Unknown method"}'
+                ;;
+        esac
+        ;;
+esac
