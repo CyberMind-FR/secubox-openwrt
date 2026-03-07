@@ -1,12 +1,51 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-06 (PhotoPrism Gallery)_
+_Last updated: 2026-03-07 (Vhosts-Checker Fix, ROADMAP.md Generation)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
 ---
 
 ## Recently Completed
+
+### 2026-03-07
+
+- **Vhosts-Checker RPCD Fix**
+  - Fixed XHR timeout issue in LuCI dashboard
+  - Root cause: jshn overhead for 226 vhosts + subshell issues with pipes
+  - Solution: Direct JSON output with printf, temp file instead of pipes
+  - Deployed ACL file for authentication
+
+- **ROADMAP.md Generation**
+  - Created comprehensive roadmap from WIP and HISTORY analysis
+  - Version milestones: v0.19 → v0.20 → v0.21 → v0.22 → v1.0
+  - Critical path analysis and dependency graph
+  - Resource requirements and risk register
+
+- **Avatar-Tap Session Capture & Replay**
+  - Backend: `secubox-avatar-tap` - passive network tap via mitmproxy
+  - CLI: `avatar-tapctl` with start/stop/list/replay/label/delete commands
+  - LuCI: `luci-app-avatar-tap` KISS dashboard with session table
+  - Features: Cookie/auth header capture, session replay, SQLite storage
+  - Runs in Streamlit LXC container on port 8889
+  - Future: Nitrokey/GPG integration for secure replay authorization
+
+- **PhotoPrism Photo Gallery Deployment**
+  - Linked /mnt/PHOTO (673GB, 391k photos) to PhotoPrism originals
+  - Fixed HFS+ read-only mount issue (sidecar writes to storage/)
+  - Indexing in progress: HEIC conversion, thumbnail generation, AI labels
+  - HAProxy vhost + SSL cert for photos.gk2.secubox.in
+
+- **Service Fixes & HAProxy Vhosts**
+  - Fixed Lyrion music mount: /mnt/MUSIC (1.6TB) now accessible
+  - Fixed Portal routing (was 503, now working)
+  - Added missing vhosts: lyrion.gk2.secubox.in, streamlit.gk2.secubox.in
+  - Requested and installed SSL certs for all 3 new domains
+  - Fixed ACME webroot configuration (uhttpd home path)
+
+- **Source Code Updates**
+  - Updated default paths: Lyrion→/mnt/MUSIC, PhotoPrism→/mnt/PHOTO
+  - Committed and pushed to master
 
 ### 2026-03-06
 
