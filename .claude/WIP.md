@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-07 (lldh360 + cybaxe Vhosts Fix)_
+_Last updated: 2026-03-07 (HAProxy mitmproxy_inspector Fix)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -9,6 +9,20 @@ _Last updated: 2026-03-07 (lldh360 + cybaxe Vhosts Fix)_
 ## Recently Completed
 
 ### 2026-03-07
+
+- **HAProxy mitmproxy_inspector Backend Fix**
+  - mitmproxy_inspector backend had NO server section (causing 503 for all WAF vhosts)
+  - Added UCI server section: `mitmproxy_inspector_srv` pointing to 192.168.255.1:8890
+  - Fixed haproxyctl duplicate userlist warning and _emit_sorted_path_acls indentation
+  - All vhosts now correctly routing through WAF
+
+- **Lyrion Routing Fix**
+  - Changed lyrion vhost backend from `lyrion_web` to `mitmproxy_inspector`
+  - Was bypassing WAF, now properly routed through mitmproxy-in
+
+- **Jellyfin Route IP Fix**
+  - Fixed mitmproxy route: 192.168.255.1 → 192.168.255.31 (container's actual IP)
+  - Jellyfin container has dedicated veth interface on br-lan
 
 - **lldh360.maegia.tv Routing Fix**
   - Fixed mitmproxy routes: 127.0.0.1 → 192.168.255.1 (all 187 routes updated)
