@@ -124,23 +124,20 @@ method_rpc_call() {
     local result=$($RTTYCTL rpc "$node_id" "$object" "$method" "$params" 2>&1)
     local rc=$?
 
-    json_init
-    if [ $rc -eq 0 ]; then
-        json_add_boolean "success" 1
-        # Try to parse result as JSON
+    if [ $rc -eq 0 ] && [ -n "$result" ]; then
+        # Check if result is valid JSON
         if echo "$result" | jsonfilter -e '@' >/dev/null 2>&1; then
-            json_add_object "result"
-            # Add result fields
-            echo "$result" | jsonfilter -e '@' 2>/dev/null
-            json_close_object
+            # Output success with embedded JSON result
+            printf '{"success":true,"result":%s}' "$result"
         else
-            json_add_string "result" "$result"
+            # Result is not JSON, wrap as string
+            printf '{"success":true,"result":"%s"}' "$(echo "$result" | sed 's/"/\\"/g')"
         fi
     else
-        json_add_boolean "success" 0
-        json_add_string "error" "$result"
+        # Error case
+        local err_msg=$(echo "$result" | sed 's/"/\\"/g' | tr '\n' ' ')
+        printf '{"success":false,"error":"%s"}' "$err_msg"
     fi
-    json_dump
 }
 
 # List remote RPCD objects
