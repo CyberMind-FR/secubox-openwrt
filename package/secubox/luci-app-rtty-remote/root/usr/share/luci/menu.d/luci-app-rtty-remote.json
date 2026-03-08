@@ -1,19 +1,18 @@
 {
-    "admin/services/rtty-remote": {
-        "title": "RTTY Remote",
-        "order": 85,
+    "admin/secubox/system/system-hub/rtty-remote": {
+        "title": "Remote Control",
+        "order": 15,
         "action": {
             "type": "view",
             "path": "rtty-remote/dashboard"
         },
         "depends": {
-            "acl": ["luci-app-rtty-remote"],
-            "uci": { "rtty-remote": true }
+            "acl": ["luci-app-rtty-remote"]
         }
     },
-    "admin/services/rtty-remote/support": {
-        "title": "Support Panel",
-        "order": 10,
+    "admin/secubox/system/system-hub/support": {
+        "title": "Remote Support",
+        "order": 16,
         "action": {
             "type": "view",
             "path": "rtty-remote/support"

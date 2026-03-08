@@ -432,12 +432,14 @@ return view.extend({
 
     appendTerminal: function(text) {
         var output = document.getElementById('terminal-output');
+        if (!output) return;
         output.textContent += text;
         output.scrollTop = output.scrollHeight;
     },
 
     updateSessionsList: function() {
         var container = document.getElementById('active-sessions-list');
+        if (!container) return;
         container.innerHTML = '';
 
         var codes = Object.keys(supportSessions);
