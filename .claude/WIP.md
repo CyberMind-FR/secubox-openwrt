@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-07 (HAProxy mitmproxy_inspector Fix)_
+_Last updated: 2026-03-07 (lldh360 SSL Certificate)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -24,10 +24,12 @@ _Last updated: 2026-03-07 (HAProxy mitmproxy_inspector Fix)_
   - Fixed mitmproxy route: 192.168.255.1 → 192.168.255.31 (container's actual IP)
   - Jellyfin container has dedicated veth interface on br-lan
 
-- **lldh360.maegia.tv Routing Fix**
+- **lldh360.maegia.tv Routing Fix + SSL**
   - Fixed mitmproxy routes: 127.0.0.1 → 192.168.255.1 (all 187 routes updated)
-  - Disabled SSL redirect (DNS record doesn't exist yet for ACME)
   - Restored HAProxy config from backup (haproxyctl generate was corrupted)
+  - Installed Let's Encrypt SSL certificate (valid until 2026-06-05)
+  - Enabled HTTP→HTTPS redirect
+  - Site now accessible via HTTPS
   - Site now accessible via HTTP on port 9003
 
 - **cybaxe.gk2.secubox.in Port Conflict Fix**
