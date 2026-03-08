@@ -16,6 +16,7 @@ VERSION="0.1.0"
 CONFIG_FILE="/etc/config/rtty-remote"
 SESSION_DB="/srv/rtty-remote/sessions.db"
 CACHE_DIR="/tmp/rtty-remote"
+TOKEN_DIR="/tmp/rtty-remote/tokens"
 LOG_FILE="/var/log/rtty-remote.log"
 
 # Load libraries
@@ -44,7 +45,232 @@ die() {
 
 ensure_dirs() {
     mkdir -p "$CACHE_DIR" 2>/dev/null
+    mkdir -p "$TOKEN_DIR" 2>/dev/null
     mkdir -p "$(dirname "$SESSION_DB")" 2>/dev/null
+}
+
+#------------------------------------------------------------------------------
+# Token-Based Shared Access
+#------------------------------------------------------------------------------
+
+generate_token_code() {
+    # Generate 6-character alphanumeric code
+    # Use hexdump if available, fallback to awk-based pseudo-random
+    local chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    local code=""
+
+    if command -v hexdump >/dev/null 2>&1; then
+        # Use hexdump for true randomness
+        local hex=$(head -c 6 /dev/urandom | hexdump -e '6/1 "%02x"')
+        local i=0
+        while [ $i -lt 6 ]; do
+            local byte=$(printf "%d" "0x$(echo "$hex" | cut -c$((i*2+1))-$((i*2+2)))")
+            local idx=$((byte % 32))
+            code="${code}$(echo "$chars" | cut -c$((idx + 1)))"
+            i=$((i + 1))
+        done
+    else
+        # Fallback: use awk with pseudo-random seed from /proc/sys/kernel/random/uuid
+        local seed=$(cat /proc/sys/kernel/random/uuid 2>/dev/null | tr -d '-' | cut -c1-8)
+        seed=$(printf "%d" "0x$seed" 2>/dev/null || echo $(($(date +%s) % 65536)))
+        code=$(awk -v seed="$seed" -v chars="$chars" 'BEGIN {
+            srand(seed)
+            for (i=1; i<=6; i++) {
+                idx = int(rand() * 32) + 1
+                printf "%s", substr(chars, idx, 1)
+            }
+            print ""
+        }')
+    fi
+
+    echo "$code"
+}
+
+cmd_token_generate() {
+    local ttl="${1:-3600}"  # Default 1 hour
+    local permissions="${2:-rpc,terminal}"
+
+    local code=$(generate_token_code)
+    local now=$(date +%s)
+    local expires=$((now + ttl))
+    local node_name=$(uci -q get system.@system[0].hostname || echo "secubox")
+    local node_ip=$(uci -q get network.lan.ipaddr || echo "192.168.255.1")
+
+    # Store token
+    cat > "$TOKEN_DIR/$code" << EOF
+{
+    "code": "$code",
+    "created": $now,
+    "expires": $expires,
+    "ttl": $ttl,
+    "node_id": "$node_name",
+    "node_ip": "$node_ip",
+    "permissions": "$permissions",
+    "used": 0
+}
+EOF
+
+    log "info" "Generated token $code (expires in ${ttl}s)"
+
+    echo "Support Access Token Generated"
+    echo "=============================="
+    echo ""
+    echo "  Code:    $code"
+    echo "  Expires: $(date -d "@$expires" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || date -r $expires "+%Y-%m-%d %H:%M:%S")"
+    echo "  TTL:     ${ttl}s"
+    echo "  Access:  $permissions"
+    echo ""
+    echo "Share this code with the support person."
+}
+
+cmd_token_validate() {
+    local code="$1"
+    [ -z "$code" ] && { echo '{"valid":false,"error":"Missing code"}'; return 1; }
+
+    # Normalize code (uppercase, remove spaces)
+    code=$(echo "$code" | tr 'a-z' 'A-Z' | tr -d ' -')
+
+    local token_file="$TOKEN_DIR/$code"
+
+    if [ ! -f "$token_file" ]; then
+        echo '{"valid":false,"error":"Invalid code"}'
+        return 1
+    fi
+
+    local now=$(date +%s)
+    local expires=$(jsonfilter -i "$token_file" -e '@.expires')
+
+    if [ "$now" -gt "$expires" ]; then
+        rm -f "$token_file"
+        echo '{"valid":false,"error":"Token expired"}'
+        return 1
+    fi
+
+    # Mark as used
+    local used=$(jsonfilter -i "$token_file" -e '@.used')
+    used=$((used + 1))
+    local tmp_file="${token_file}.tmp"
+    jsonfilter -i "$token_file" -e '@' | sed "s/\"used\": [0-9]*/\"used\": $used/" > "$tmp_file"
+    mv "$tmp_file" "$token_file"
+
+    # Return token info
+    cat "$token_file"
+}
+
+cmd_token_list() {
+    echo "Active Support Tokens"
+    echo "====================="
+    echo ""
+
+    local now=$(date +%s)
+    local count=0
+
+    for token_file in "$TOKEN_DIR"/*; do
+        [ -f "$token_file" ] || continue
+
+        local code=$(basename "$token_file")
+        local expires=$(jsonfilter -i "$token_file" -e '@.expires' 2>/dev/null)
+        local created=$(jsonfilter -i "$token_file" -e '@.created' 2>/dev/null)
+        local used=$(jsonfilter -i "$token_file" -e '@.used' 2>/dev/null)
+        local perms=$(jsonfilter -i "$token_file" -e '@.permissions' 2>/dev/null)
+
+        [ -z "$expires" ] && continue
+
+        if [ "$now" -gt "$expires" ]; then
+            rm -f "$token_file"
+            continue
+        fi
+
+        local remaining=$((expires - now))
+        local mins=$((remaining / 60))
+
+        printf "  %-8s  %3dm left  used:%d  [%s]\n" "$code" "$mins" "$used" "$perms"
+        count=$((count + 1))
+    done
+
+    [ $count -eq 0 ] && echo "  No active tokens"
+    echo ""
+}
+
+cmd_token_revoke() {
+    local code="$1"
+    [ -z "$code" ] && die "Usage: rttyctl token revoke <code>"
+
+    code=$(echo "$code" | tr 'a-z' 'A-Z' | tr -d ' -')
+
+    if [ -f "$TOKEN_DIR/$code" ]; then
+        rm -f "$TOKEN_DIR/$code"
+        echo "Token $code revoked"
+        log "info" "Token $code revoked"
+    else
+        echo "Token $code not found"
+    fi
+}
+
+cmd_token_json_list() {
+    local now=$(date +%s)
+
+    printf '{"tokens":['
+    local first=1
+
+    for token_file in "$TOKEN_DIR"/*; do
+        [ -f "$token_file" ] || continue
+
+        local expires=$(jsonfilter -i "$token_file" -e '@.expires' 2>/dev/null)
+        [ -z "$expires" ] && continue
+
+        if [ "$now" -gt "$expires" ]; then
+            rm -f "$token_file"
+            continue
+        fi
+
+        [ $first -eq 0 ] && printf ','
+        cat "$token_file"
+        first=0
+    done
+
+    printf ']}'
+}
+
+# Token-authenticated RPC call (for support access)
+cmd_token_rpc() {
+    local code="$1"
+    local object="$2"
+    local method="$3"
+    shift 3
+    local params="$*"
+
+    [ -z "$code" ] || [ -z "$object" ] || [ -z "$method" ] && {
+        echo "Usage: rttyctl token-rpc <code> <object> <method> [params]"
+        return 1
+    }
+
+    # Validate token
+    local validation=$(cmd_token_validate "$code")
+    local valid=$(echo "$validation" | jsonfilter -e '@.valid' 2>/dev/null)
+
+    if [ "$valid" = "false" ]; then
+        echo "Error: $(echo "$validation" | jsonfilter -e '@.error')"
+        return 1
+    fi
+
+    # Check permissions
+    local perms=$(echo "$validation" | jsonfilter -e '@.permissions' 2>/dev/null)
+    case "$perms" in
+        *rpc*) ;;
+        *) echo "Error: Token does not have RPC permission"; return 1 ;;
+    esac
+
+    # Execute RPC locally (token grants local access)
+    local result=$(ubus call "$object" "$method" "${params:-{}}" 2>&1)
+    local rc=$?
+
+    if [ $rc -eq 0 ]; then
+        echo "$result"
+    else
+        echo "Error: $result"
+        return 1
+    fi
 }
 
 get_config() {
@@ -576,6 +802,13 @@ Authentication:
   auth <node_id>           Authenticate to remote node
   revoke <node_id>         Revoke authentication
 
+Shared Access Tokens:
+  token generate [ttl] [perms]  Generate support token (default: 3600s, rpc,terminal)
+  token list                    List active tokens
+  token validate <code>         Validate a token
+  token revoke <code>           Revoke a token
+  token-rpc <code> <obj> <method> [params]  Execute RPC with token auth
+
 JSON Output (for RPCD):
   json-status              Status as JSON
   json-nodes               Nodes as JSON
@@ -645,6 +878,32 @@ case "$1" in
         ;;
     json-nodes)
         cmd_json_nodes
+        ;;
+    json-tokens)
+        cmd_token_json_list
+        ;;
+    token)
+        case "$2" in
+            generate)
+                cmd_token_generate "$3" "$4"
+                ;;
+            list)
+                cmd_token_list
+                ;;
+            validate)
+                cmd_token_validate "$3"
+                ;;
+            revoke)
+                cmd_token_revoke "$3"
+                ;;
+            *)
+                echo "Usage: rttyctl token generate|list|validate|revoke"
+                ;;
+        esac
+        ;;
+    token-rpc)
+        shift
+        cmd_token_rpc "$@"
         ;;
     -h|--help|help)
         show_help

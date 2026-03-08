@@ -32,37 +32,76 @@ var callRpcCall = rpc.declare({
     expect: {}
 });
 
-// Support session management
-var supportSessions = {};
+// Token-based shared access
+var callTokenGenerate = rpc.declare({
+    object: 'luci.rtty-remote',
+    method: 'token_generate',
+    params: ['ttl', 'permissions'],
+    expect: {}
+});
+
+var callTokenValidate = rpc.declare({
+    object: 'luci.rtty-remote',
+    method: 'token_validate',
+    params: ['code'],
+    expect: {}
+});
+
+var callTokenList = rpc.declare({
+    object: 'luci.rtty-remote',
+    method: 'token_list',
+    expect: {}
+});
+
+var callTokenRevoke = rpc.declare({
+    object: 'luci.rtty-remote',
+    method: 'token_revoke',
+    params: ['code'],
+    expect: {}
+});
+
+var callTokenRpc = rpc.declare({
+    object: 'luci.rtty-remote',
+    method: 'token_rpc',
+    params: ['code', 'object', 'method', 'params'],
+    expect: {}
+});
 
 return view.extend({
     handleSaveApply: null,
     handleSave: null,
     handleReset: null,
 
+    currentToken: null,
+    currentNode: null,
+    isProvider: false,  // true if we're providing support (connected via token)
+
     load: function() {
         return Promise.all([
             callStatus(),
-            callGetNodes()
+            callGetNodes(),
+            callTokenList()
         ]);
     },
 
     render: function(data) {
         var status = data[0] || {};
         var nodesData = data[1] || {};
+        var tokenData = data[2] || {};
         var nodes = nodesData.nodes || [];
+        var tokens = tokenData.tokens || [];
 
         var view = E('div', { 'class': 'cbi-map' }, [
             this.renderHeader(),
-            this.renderSupportCodeSection(),
-            this.renderActiveSessionsSection(),
+            this.renderSupportCodeSection(tokens),
+            this.renderActiveTokensSection(tokens),
             this.renderRemoteNodesSection(nodes),
             this.renderTerminalSection(),
             this.renderSharedControlsSection()
         ]);
 
-        // Start polling for session updates
-        poll.add(L.bind(this.pollSessions, this), 5);
+        // Start polling for token updates
+        poll.add(L.bind(this.pollTokens, this), 5);
 
         return view;
     },
@@ -71,20 +110,17 @@ return view.extend({
         return E('div', { 'class': 'cbi-section' }, [
             E('h2', { 'style': 'margin: 0;' }, 'Remote Support Panel'),
             E('p', { 'style': 'color: #666;' },
-                'Provide or receive remote assistance with authenticated console sessions and shared controls.')
+                'Provide or receive remote assistance with token-based access. No authentication needed - just share the code.')
         ]);
     },
 
-    renderSupportCodeSection: function() {
+    renderSupportCodeSection: function(tokens) {
         var self = this;
-
-        // Generate a random support code
-        var supportCode = this.generateSupportCode();
 
         return E('div', { 'class': 'cbi-section', 'style': 'background: #f0f8ff; border: 2px dashed #4a9; padding: 1.5em; border-radius: 8px;' }, [
             E('h3', { 'style': 'margin-top: 0;' }, 'Support Session'),
             E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 2em;' }, [
-                // Provide support section
+                // Provide support section (connect TO someone else)
                 E('div', {}, [
                     E('h4', {}, 'Provide Support'),
                     E('p', { 'style': 'font-size: 0.9em; color: #666;' }, 'Enter the support code shared by the user needing assistance.'),
@@ -92,9 +128,10 @@ return view.extend({
                         E('input', {
                             'type': 'text',
                             'id': 'remote-support-code',
-                            'placeholder': 'Enter support code (e.g., SB-XXXX)',
+                            'placeholder': 'Enter code (e.g., ABC123)',
                             'class': 'cbi-input-text',
-                            'style': 'flex: 1; font-family: monospace; text-transform: uppercase;'
+                            'style': 'flex: 1; font-family: monospace; text-transform: uppercase; letter-spacing: 2px; font-size: 1.2em;',
+                            'maxlength': '6'
                         }),
                         E('button', {
                             'class': 'cbi-button cbi-button-positive',
@@ -102,36 +139,88 @@ return view.extend({
                         }, 'Connect')
                     ])
                 ]),
-                // Request support section
+                // Request support section (let someone connect TO me)
                 E('div', {}, [
                     E('h4', {}, 'Request Support'),
-                    E('p', { 'style': 'font-size: 0.9em; color: #666;' }, 'Share this code with your support technician.'),
+                    E('p', { 'style': 'font-size: 0.9em; color: #666;' }, 'Generate a code and share it with your support technician.'),
                     E('div', { 'style': 'display: flex; gap: 0.5em; align-items: center;' }, [
                         E('code', {
                             'id': 'my-support-code',
-                            'style': 'font-size: 1.5em; padding: 0.5em 1em; background: #fff; border: 1px solid #ccc; border-radius: 4px; font-family: monospace;'
-                        }, supportCode),
-                        E('button', {
-                            'class': 'cbi-button',
-                            'click': L.bind(this.handleCopyCode, this, supportCode)
-                        }, 'Copy'),
+                            'style': 'font-size: 2em; padding: 0.5em 1em; background: #fff; border: 2px solid #4a9; border-radius: 8px; font-family: monospace; letter-spacing: 3px; color: #333;'
+                        }, '------'),
                         E('button', {
                             'class': 'cbi-button cbi-button-action',
-                            'click': L.bind(this.handleStartSupportSession, this, supportCode)
-                        }, 'Start Session')
+                            'id': 'btn-generate-token',
+                            'click': L.bind(this.handleGenerateToken, this)
+                        }, 'Generate Code')
+                    ]),
+                    E('div', { 'style': 'margin-top: 0.5em;' }, [
+                        E('label', { 'style': 'font-size: 0.9em;' }, 'Validity: '),
+                        E('select', { 'id': 'token-ttl', 'class': 'cbi-input-select' }, [
+                            E('option', { 'value': '1800' }, '30 minutes'),
+                            E('option', { 'value': '3600', 'selected': 'selected' }, '1 hour'),
+                            E('option', { 'value': '7200' }, '2 hours'),
+                            E('option', { 'value': '14400' }, '4 hours')
+                        ])
                     ])
                 ])
             ])
         ]);
     },
 
-    renderActiveSessionsSection: function() {
-        return E('div', { 'class': 'cbi-section', 'id': 'active-sessions-section', 'style': 'display: none;' }, [
-            E('h3', {}, 'Active Support Sessions'),
-            E('div', { 'id': 'active-sessions-list' }, [
-                E('p', { 'style': 'color: #666;' }, 'No active sessions')
+    renderActiveTokensSection: function(tokens) {
+        var hasTokens = tokens && tokens.length > 0;
+
+        return E('div', { 'class': 'cbi-section', 'id': 'active-tokens-section', 'style': hasTokens ? '' : 'display: none;' }, [
+            E('h3', {}, 'Active Support Tokens'),
+            E('div', { 'id': 'active-tokens-list' }, [
+                hasTokens ? this.renderTokensTable(tokens) : E('p', { 'style': 'color: #666;' }, 'No active tokens')
             ])
         ]);
+    },
+
+    renderTokensTable: function(tokens) {
+        var self = this;
+
+        var table = E('table', { 'class': 'table' }, [
+            E('tr', { 'class': 'tr table-titles' }, [
+                E('th', { 'class': 'th' }, 'Code'),
+                E('th', { 'class': 'th' }, 'Expires In'),
+                E('th', { 'class': 'th' }, 'Used'),
+                E('th', { 'class': 'th' }, 'Permissions'),
+                E('th', { 'class': 'th' }, 'Actions')
+            ])
+        ]);
+
+        tokens.forEach(function(token) {
+            var now = Math.floor(Date.now() / 1000);
+            var remaining = token.expires - now;
+            var mins = Math.floor(remaining / 60);
+
+            table.appendChild(E('tr', { 'class': 'tr' }, [
+                E('td', { 'class': 'td' }, E('code', { 'style': 'font-size: 1.2em; letter-spacing: 2px;' }, token.code)),
+                E('td', { 'class': 'td' }, mins > 0 ? mins + 'm' : 'expired'),
+                E('td', { 'class': 'td' }, String(token.used || 0)),
+                E('td', { 'class': 'td' }, token.permissions),
+                E('td', { 'class': 'td' }, [
+                    E('button', {
+                        'class': 'cbi-button',
+                        'click': function() {
+                            navigator.clipboard.writeText(token.code).then(function() {
+                                ui.addNotification(null, E('p', 'Code copied: ' + token.code), 'success');
+                            });
+                        }
+                    }, 'Copy'),
+                    E('button', {
+                        'class': 'cbi-button cbi-button-negative',
+                        'style': 'margin-left: 0.5em;',
+                        'click': L.bind(self.handleRevokeToken, self, token.code)
+                    }, 'Revoke')
+                ])
+            ]));
+        });
+
+        return table;
     },
 
     renderRemoteNodesSection: function(nodes) {
@@ -139,7 +228,7 @@ return view.extend({
 
         if (nodes.length === 0) {
             return E('div', { 'class': 'cbi-section' }, [
-                E('h3', {}, 'Quick Connect'),
+                E('h3', {}, 'Direct Connect'),
                 E('p', { 'style': 'color: #666;' }, 'No mesh nodes available. Enter IP address manually:'),
                 E('div', { 'style': 'display: flex; gap: 0.5em;' }, [
                     E('input', {
@@ -169,7 +258,7 @@ return view.extend({
         });
 
         return E('div', { 'class': 'cbi-section' }, [
-            E('h3', {}, 'Quick Connect'),
+            E('h3', {}, 'Direct Connect'),
             E('div', { 'style': 'display: flex; flex-wrap: wrap;' }, nodeButtons)
         ]);
     },
@@ -182,14 +271,9 @@ return view.extend({
                     E('span', { 'id': 'terminal-target' }, 'Not connected')
                 ]),
                 E('div', {}, [
-                    E('button', {
-                        'class': 'cbi-button',
-                        'id': 'btn-share-control',
-                        'click': L.bind(this.handleShareControl, this)
-                    }, 'Share Control'),
+                    E('span', { 'id': 'connection-mode', 'style': 'margin-right: 1em; padding: 0.25em 0.5em; border-radius: 4px; font-size: 0.9em;' }, ''),
                     E('button', {
                         'class': 'cbi-button cbi-button-negative',
-                        'style': 'margin-left: 0.5em;',
                         'click': L.bind(this.handleDisconnect, this)
                     }, 'Disconnect')
                 ])
@@ -215,74 +299,100 @@ return view.extend({
 
     renderSharedControlsSection: function() {
         return E('div', { 'class': 'cbi-section', 'id': 'shared-controls-section', 'style': 'display: none;' }, [
-            E('h3', {}, 'Shared Controls'),
-            E('p', { 'style': 'color: #666;' }, 'Quick actions for remote node management.'),
+            E('h3', {}, 'Quick Actions'),
+            E('p', { 'style': 'color: #666;' }, 'Common diagnostic commands.'),
             E('div', { 'style': 'display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.5em;' }, [
                 E('button', { 'class': 'cbi-button', 'click': L.bind(this.handleQuickAction, this, 'system', 'board') }, 'System Info'),
-                E('button', { 'class': 'cbi-button', 'click': L.bind(this.handleQuickAction, this, 'network.interface', 'dump') }, 'Network Info'),
-                E('button', { 'class': 'cbi-button', 'click': L.bind(this.handleQuickAction, this, 'luci.system-hub', 'status') }, 'Service Status'),
+                E('button', { 'class': 'cbi-button', 'click': L.bind(this.handleQuickAction, this, 'network.interface', 'dump') }, 'Network'),
+                E('button', { 'class': 'cbi-button', 'click': L.bind(this.handleQuickAction, this, 'luci.system-hub', 'status') }, 'Services'),
                 E('button', { 'class': 'cbi-button', 'click': L.bind(this.handleQuickAction, this, 'luci.haproxy', 'vhost_list') }, 'Vhosts'),
-                E('button', { 'class': 'cbi-button cbi-button-action', 'click': L.bind(this.handleQuickAction, this, 'system', 'info') }, 'Memory/Load'),
+                E('button', { 'class': 'cbi-button', 'click': L.bind(this.handleQuickAction, this, 'system', 'info') }, 'Memory'),
                 E('button', { 'class': 'cbi-button cbi-button-negative', 'click': L.bind(this.handleReboot, this) }, 'Reboot')
             ])
         ]);
     },
 
-    // Utility functions
-    generateSupportCode: function() {
-        var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-        var code = 'SB-';
-        for (var i = 0; i < 4; i++) {
-            code += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-        return code;
-    },
+    // Token generation
+    handleGenerateToken: function() {
+        var self = this;
+        var ttl = parseInt(document.getElementById('token-ttl').value) || 3600;
 
-    // Event handlers
-    handleCopyCode: function(code) {
-        navigator.clipboard.writeText(code).then(function() {
-            ui.addNotification(null, E('p', 'Support code copied to clipboard'), 'success');
+        callTokenGenerate(ttl, 'rpc,terminal').then(function(result) {
+            if (result.success && result.code) {
+                document.getElementById('my-support-code').textContent = result.code;
+                document.getElementById('active-tokens-section').style.display = 'block';
+
+                ui.addNotification(null, E('p', [
+                    'Support code generated: ',
+                    E('strong', { 'style': 'font-size: 1.2em; letter-spacing: 2px;' }, result.code),
+                    E('br'),
+                    'Valid for ' + Math.floor(ttl / 60) + ' minutes. Share this code with your support technician.'
+                ]), 'success');
+
+                // Refresh token list
+                self.pollTokens();
+            } else {
+                ui.addNotification(null, E('p', 'Failed to generate token: ' + (result.error || 'Unknown error')), 'error');
+            }
+        }).catch(function(err) {
+            ui.addNotification(null, E('p', 'Error: ' + err.message), 'error');
         });
     },
 
-    handleStartSupportSession: function(code) {
-        supportSessions[code] = {
-            started: Date.now(),
-            node: 'local',
-            status: 'waiting'
-        };
-
-        document.getElementById('active-sessions-section').style.display = 'block';
-        this.updateSessionsList();
-
-        ui.addNotification(null, E('p', [
-            'Support session started with code: ',
-            E('strong', {}, code),
-            E('br'),
-            'Share this code with your support technician.'
-        ]), 'info');
-    },
-
+    // Join session with token
     handleJoinSession: function() {
+        var self = this;
         var code = document.getElementById('remote-support-code').value.toUpperCase().trim();
 
-        if (!code || !code.match(/^SB-[A-Z0-9]{4}$/)) {
-            ui.addNotification(null, E('p', 'Invalid support code format. Use SB-XXXX'), 'error');
+        if (!code || code.length !== 6) {
+            ui.addNotification(null, E('p', 'Invalid code format. Enter 6-character code.'), 'error');
             return;
         }
 
-        ui.addNotification(null, E('p', 'Connecting to support session: ' + code), 'info');
+        ui.addNotification(null, E('p', 'Validating token: ' + code + '...'), 'info');
 
-        // In a real implementation, this would connect via WebSocket/RTTY
-        // For now, simulate connection
-        supportSessions[code] = {
-            started: Date.now(),
-            node: 'remote',
-            status: 'connected'
-        };
+        callTokenValidate(code).then(function(result) {
+            if (result.valid !== false && result.code) {
+                self.currentToken = code;
+                self.isProvider = true;
 
-        document.getElementById('active-sessions-section').style.display = 'block';
-        this.updateSessionsList();
+                // Show terminal and connect
+                document.getElementById('terminal-section').style.display = 'block';
+                document.getElementById('shared-controls-section').style.display = 'block';
+                document.getElementById('terminal-target').textContent = result.node_id + ' (' + result.node_ip + ')';
+                document.getElementById('terminal-output').textContent = '';
+
+                var modeSpan = document.getElementById('connection-mode');
+                modeSpan.textContent = 'TOKEN: ' + code;
+                modeSpan.style.background = '#4a9';
+                modeSpan.style.color = '#fff';
+
+                self.currentNode = result.node_ip;
+                self.appendTerminal('Connected via token: ' + code + '\n');
+                self.appendTerminal('Node: ' + result.node_id + ' (' + result.node_ip + ')\n');
+                self.appendTerminal('Permissions: ' + result.permissions + '\n\n');
+                self.appendTerminal('Type commands or use Quick Actions below.\n');
+
+                document.getElementById('terminal-input').focus();
+
+                ui.addNotification(null, E('p', 'Connected to ' + result.node_id + ' via token'), 'success');
+            } else {
+                ui.addNotification(null, E('p', 'Invalid or expired token: ' + (result.error || 'Unknown error')), 'error');
+            }
+        }).catch(function(err) {
+            ui.addNotification(null, E('p', 'Validation error: ' + err.message), 'error');
+        });
+    },
+
+    handleRevokeToken: function(code) {
+        var self = this;
+
+        if (!confirm('Revoke token ' + code + '?')) return;
+
+        callTokenRevoke(code).then(function(result) {
+            ui.addNotification(null, E('p', 'Token ' + code + ' revoked'), 'info');
+            self.pollTokens();
+        });
     },
 
     handleQuickConnect: function() {
@@ -301,15 +411,20 @@ return view.extend({
     connectToNode: function(address, name) {
         var self = this;
 
+        this.currentNode = address;
+        this.currentToken = null;
+        this.isProvider = false;
+
         document.getElementById('terminal-section').style.display = 'block';
         document.getElementById('shared-controls-section').style.display = 'block';
         document.getElementById('terminal-target').textContent = name + ' (' + address + ')';
         document.getElementById('terminal-output').textContent = '';
 
-        // Store current connection
-        this.currentNode = address;
+        var modeSpan = document.getElementById('connection-mode');
+        modeSpan.textContent = 'DIRECT';
+        modeSpan.style.background = '#369';
+        modeSpan.style.color = '#fff';
 
-        // Test connection with system board call
         this.appendTerminal('Connecting to ' + address + '...\n');
 
         callRpcCall(address, 'system', 'board', '{}').then(function(result) {
@@ -327,30 +442,11 @@ return view.extend({
 
     handleDisconnect: function() {
         this.currentNode = null;
+        this.currentToken = null;
+        this.isProvider = false;
         document.getElementById('terminal-section').style.display = 'none';
         document.getElementById('shared-controls-section').style.display = 'none';
-        ui.addNotification(null, E('p', 'Disconnected from remote node'), 'info');
-    },
-
-    handleShareControl: function() {
-        if (!this.currentNode) return;
-
-        var code = this.generateSupportCode();
-        supportSessions[code] = {
-            started: Date.now(),
-            node: this.currentNode,
-            status: 'sharing'
-        };
-
-        document.getElementById('active-sessions-section').style.display = 'block';
-        this.updateSessionsList();
-
-        ui.addNotification(null, E('p', [
-            'Shared control session created: ',
-            E('strong', {}, code),
-            E('br'),
-            'Others can join using this code.'
-        ]), 'success');
+        ui.addNotification(null, E('p', 'Disconnected'), 'info');
     },
 
     handleTerminalKeydown: function(ev) {
@@ -364,8 +460,8 @@ return view.extend({
 
         this.appendTerminal('$ ' + cmd + '\n');
 
-        if (!this.currentNode) {
-            this.appendTerminal('Error: Not connected to any node\n');
+        if (!this.currentNode && !this.currentToken) {
+            this.appendTerminal('Error: Not connected\n');
             return;
         }
 
@@ -384,7 +480,21 @@ return view.extend({
         var object = objMethod.slice(0, -1).join('.');
         var method = objMethod[objMethod.length - 1];
 
-        callRpcCall(this.currentNode, object, method, params).then(function(result) {
+        this.executeRpc(object, method, params);
+    },
+
+    executeRpc: function(object, method, params) {
+        var self = this;
+
+        // Use token-based RPC if we connected via token
+        var rpcCall;
+        if (this.isProvider && this.currentToken) {
+            rpcCall = callTokenRpc(this.currentToken, object, method, params);
+        } else {
+            rpcCall = callRpcCall(this.currentNode, object, method, params);
+        }
+
+        rpcCall.then(function(result) {
             if (result.success) {
                 self.appendTerminal(JSON.stringify(result.result, null, 2) + '\n\n');
             } else {
@@ -396,96 +506,54 @@ return view.extend({
     },
 
     handleQuickAction: function(object, method) {
-        if (!this.currentNode) {
-            ui.addNotification(null, E('p', 'Not connected to any node'), 'error');
+        if (!this.currentNode && !this.currentToken) {
+            ui.addNotification(null, E('p', 'Not connected'), 'error');
             return;
         }
 
-        var self = this;
         this.appendTerminal('$ ' + object + '.' + method + '\n');
-
-        callRpcCall(this.currentNode, object, method, '{}').then(function(result) {
-            if (result.success) {
-                self.appendTerminal(JSON.stringify(result.result, null, 2) + '\n\n');
-            } else {
-                self.appendTerminal('Error: ' + (result.error || 'Unknown error') + '\n\n');
-            }
-        }).catch(function(err) {
-            self.appendTerminal('Error: ' + err.message + '\n\n');
-        });
+        this.executeRpc(object, method, '{}');
     },
 
     handleReboot: function() {
-        if (!this.currentNode) {
-            ui.addNotification(null, E('p', 'Not connected to any node'), 'error');
+        if (!this.currentNode && !this.currentToken) {
+            ui.addNotification(null, E('p', 'Not connected'), 'error');
             return;
         }
 
         if (!confirm('Are you sure you want to reboot the remote node?')) return;
 
         var self = this;
-        callRpcCall(this.currentNode, 'system', 'reboot', '{}').then(function() {
-            self.appendTerminal('Reboot command sent. Node will restart.\n');
-            ui.addNotification(null, E('p', 'Reboot command sent'), 'warning');
-        });
+        this.executeRpc('system', 'reboot', '{}');
+        this.appendTerminal('Reboot command sent. Node will restart.\n');
+        ui.addNotification(null, E('p', 'Reboot command sent'), 'warning');
     },
 
     appendTerminal: function(text) {
         var output = document.getElementById('terminal-output');
         if (!output) return;
         output.textContent += text;
-        output.scrollTop = output.scrollHeight;
+        var container = document.getElementById('terminal-container');
+        if (container) container.scrollTop = container.scrollHeight;
     },
 
-    updateSessionsList: function() {
-        var container = document.getElementById('active-sessions-list');
-        if (!container) return;
-        container.innerHTML = '';
-
-        var codes = Object.keys(supportSessions);
-        if (codes.length === 0) {
-            container.appendChild(E('p', { 'style': 'color: #666;' }, 'No active sessions'));
-            return;
-        }
-
-        var table = E('table', { 'class': 'table' }, [
-            E('tr', { 'class': 'tr table-titles' }, [
-                E('th', { 'class': 'th' }, 'Code'),
-                E('th', { 'class': 'th' }, 'Node'),
-                E('th', { 'class': 'th' }, 'Status'),
-                E('th', { 'class': 'th' }, 'Duration'),
-                E('th', { 'class': 'th' }, 'Actions')
-            ])
-        ]);
-
+    pollTokens: function() {
         var self = this;
-        codes.forEach(function(code) {
-            var session = supportSessions[code];
-            var duration = Math.floor((Date.now() - session.started) / 1000);
-            var minutes = Math.floor(duration / 60);
-            var seconds = duration % 60;
 
-            table.appendChild(E('tr', { 'class': 'tr' }, [
-                E('td', { 'class': 'td' }, E('code', {}, code)),
-                E('td', { 'class': 'td' }, session.node),
-                E('td', { 'class': 'td' }, session.status),
-                E('td', { 'class': 'td' }, minutes + 'm ' + seconds + 's'),
-                E('td', { 'class': 'td' }, [
-                    E('button', {
-                        'class': 'cbi-button cbi-button-negative',
-                        'click': function() {
-                            delete supportSessions[code];
-                            self.updateSessionsList();
-                        }
-                    }, 'End')
-                ])
-            ]));
+        callTokenList().then(function(result) {
+            var tokens = result.tokens || [];
+            var container = document.getElementById('active-tokens-list');
+            var section = document.getElementById('active-tokens-section');
+
+            if (!container || !section) return;
+
+            if (tokens.length > 0) {
+                section.style.display = 'block';
+                container.innerHTML = '';
+                container.appendChild(self.renderTokensTable(tokens));
+            } else {
+                section.style.display = 'none';
+            }
         });
-
-        container.appendChild(table);
-    },
-
-    pollSessions: function() {
-        this.updateSessionsList();
     }
 });

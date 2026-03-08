@@ -293,6 +293,113 @@ method_connect() {
 }
 
 #------------------------------------------------------------------------------
+# Token-Based Shared Access
+#------------------------------------------------------------------------------
+
+# Generate support access token
+method_token_generate() {
+    local ttl permissions
+    read -r input
+    json_load "$input" 2>/dev/null
+    json_get_var ttl ttl
+    json_get_var permissions permissions
+
+    [ -z "$ttl" ] && ttl=3600
+    [ -z "$permissions" ] && permissions="rpc,terminal"
+
+    # Generate token via rttyctl
+    local output=$($RTTYCTL token generate "$ttl" "$permissions" 2>&1)
+
+    # Extract code from output
+    local code=$(echo "$output" | grep "Code:" | awk '{print $2}')
+    local expires=$(echo "$output" | grep "Expires:" | sed 's/.*Expires: //')
+
+    if [ -n "$code" ]; then
+        json_init
+        json_add_boolean "success" 1
+        json_add_string "code" "$code"
+        json_add_int "ttl" "$ttl"
+        json_add_string "permissions" "$permissions"
+        json_add_string "expires" "$expires"
+        json_dump
+    else
+        printf '{"success":false,"error":"Failed to generate token"}'
+    fi
+}
+
+# List active tokens
+method_token_list() {
+    $RTTYCTL json-tokens 2>/dev/null || echo '{"tokens":[]}'
+}
+
+# Validate token (for support access)
+method_token_validate() {
+    local code
+    read -r input
+    json_load "$input"
+    json_get_var code code
+
+    [ -z "$code" ] && {
+        echo '{"valid":false,"error":"Missing code"}'
+        return
+    }
+
+    $RTTYCTL token validate "$code" 2>/dev/null
+}
+
+# Revoke token
+method_token_revoke() {
+    local code
+    read -r input
+    json_load "$input"
+    json_get_var code code
+
+    [ -z "$code" ] && {
+        echo '{"success":false,"error":"Missing code"}'
+        return
+    }
+
+    $RTTYCTL token revoke "$code" >/dev/null 2>&1
+
+    json_init
+    json_add_boolean "success" 1
+    json_dump
+}
+
+# Execute RPC with token authentication (no LuCI session needed)
+method_token_rpc() {
+    local code object method params
+    read -r input
+    json_load "$input"
+    json_get_var code code
+    json_get_var object object
+    json_get_var method method
+    json_get_var params params
+
+    [ -z "$code" ] || [ -z "$object" ] || [ -z "$method" ] && {
+        echo '{"success":false,"error":"Missing required parameters (code, object, method)"}'
+        return
+    }
+
+    [ -z "$params" ] && params="{}"
+
+    # Execute via rttyctl with token auth
+    local result=$($RTTYCTL token-rpc "$code" "$object" "$method" "$params" 2>&1)
+    local rc=$?
+
+    if [ $rc -eq 0 ] && [ -n "$result" ]; then
+        if echo "$result" | jsonfilter -e '@' >/dev/null 2>&1; then
+            printf '{"success":true,"result":%s}' "$result"
+        else
+            printf '{"success":true,"result":"%s"}' "$(echo "$result" | sed 's/"/\\"/g')"
+        fi
+    else
+        local err_msg=$(echo "$result" | sed 's/"/\\"/g' | tr '\n' ' ')
+        printf '{"success":false,"error":"%s"}' "$err_msg"
+    fi
+}
+
+#------------------------------------------------------------------------------
 # Main dispatcher
 #------------------------------------------------------------------------------
 
@@ -311,7 +418,12 @@ case "$1" in
     "get_settings": {},
     "set_settings": {"config": "object"},
     "replay_session": {"session_id": "integer", "target_node": "string"},
-    "connect": {"node_id": "string"}
+    "connect": {"node_id": "string"},
+    "token_generate": {"ttl": 3600, "permissions": "rpc,terminal"},
+    "token_list": {},
+    "token_validate": {"code": "string"},
+    "token_revoke": {"code": "string"},
+    "token_rpc": {"code": "string", "object": "string", "method": "string", "params": "string"}
 }
 EOF
         ;;
@@ -329,6 +441,11 @@ EOF
             set_settings)   method_set_settings ;;
             replay_session) method_replay_session ;;
             connect)        method_connect ;;
+            token_generate) method_token_generate ;;
+            token_list)     method_token_list ;;
+            token_validate) method_token_validate ;;
+            token_revoke)   method_token_revoke ;;
+            token_rpc)      method_token_rpc ;;
             *)
                 echo '{"error":"Unknown method"}'
                 ;;

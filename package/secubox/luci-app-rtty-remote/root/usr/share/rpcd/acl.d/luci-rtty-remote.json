@@ -9,7 +9,9 @@
                     "get_node",
                     "rpc_list",
                     "get_sessions",
-                    "get_settings"
+                    "get_settings",
+                    "token_list",
+                    "token_validate"
                 ]
             },
             "uci": ["rtty-remote"]
@@ -22,7 +24,10 @@
                     "server_stop",
                     "set_settings",
                     "replay_session",
-                    "connect"
+                    "connect",
+                    "token_generate",
+                    "token_revoke",
+                    "token_rpc"
                 ]
             },
             "uci": ["rtty-remote"]
