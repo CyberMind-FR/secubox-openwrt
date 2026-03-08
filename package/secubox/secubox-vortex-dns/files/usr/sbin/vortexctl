@@ -444,7 +444,7 @@ cmd_zone_list() {
 	done
 
 	# Also list zone files not in UCI
-	for zf in "$ZONE_DIR"/*.zone 2>/dev/null; do
+	for zf in "$ZONE_DIR"/*.zone; do
 		[ -f "$zf" ] || continue
 		local domain=$(basename "$zf" .zone)
 		if ! uci show "$CONFIG" 2>/dev/null | grep -q "domain='$domain'"; then
