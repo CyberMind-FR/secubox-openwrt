@@ -366,6 +366,45 @@ method_token_revoke() {
     json_dump
 }
 
+# Start terminal session to remote node
+method_start_terminal() {
+    local node_id
+    read -r input
+    json_load "$input"
+    json_get_var node_id node_id
+
+    [ -z "$node_id" ] && {
+        echo '{"success":false,"error":"Missing node_id"}'
+        return
+    }
+
+    # Get node address
+    local addr=$($RTTYCTL node "$node_id" 2>&1 | grep "Address:" | awk '{print $2}')
+    [ -z "$addr" ] && addr="$node_id"
+
+    # Check if we can reach the remote ttyd directly
+    local remote_port=7681
+    if curl -s -m 2 "http://${addr}:${remote_port}/" >/dev/null 2>&1; then
+        # Remote ttyd is accessible
+        json_init
+        json_add_boolean "success" 1
+        json_add_string "type" "direct"
+        json_add_string "url" "http://${addr}:${remote_port}"
+        json_add_string "node_id" "$node_id"
+        json_add_string "address" "$addr"
+        json_dump
+    else
+        # Remote ttyd not accessible, provide SSH info
+        json_init
+        json_add_boolean "success" 1
+        json_add_string "type" "ssh"
+        json_add_string "ssh_command" "ssh root@${addr}"
+        json_add_string "node_id" "$node_id"
+        json_add_string "address" "$addr"
+        json_dump
+    fi
+}
+
 # Execute RPC with token authentication (no LuCI session needed)
 method_token_rpc() {
     local code object method params
@@ -419,6 +458,7 @@ case "$1" in
     "set_settings": {"config": "object"},
     "replay_session": {"session_id": "integer", "target_node": "string"},
     "connect": {"node_id": "string"},
+    "start_terminal": {"node_id": "string"},
     "token_generate": {"ttl": 3600, "permissions": "rpc,terminal"},
     "token_list": {},
     "token_validate": {"code": "string"},
@@ -441,6 +481,7 @@ EOF
             set_settings)   method_set_settings ;;
             replay_session) method_replay_session ;;
             connect)        method_connect ;;
+            start_terminal) method_start_terminal ;;
             token_generate) method_token_generate ;;
             token_list)     method_token_list ;;
             token_validate) method_token_validate ;;

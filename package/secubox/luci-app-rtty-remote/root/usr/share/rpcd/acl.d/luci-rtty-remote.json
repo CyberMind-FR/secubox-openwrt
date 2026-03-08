@@ -25,6 +25,7 @@
                     "set_settings",
                     "replay_session",
                     "connect",
+                    "start_terminal",
                     "token_generate",
                     "token_revoke",
                     "token_rpc"

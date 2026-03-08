@@ -20,5 +20,16 @@
         "depends": {
             "acl": ["luci-app-rtty-remote"]
         }
+    },
+    "admin/secubox/system/system-hub/terminal": {
+        "title": "Web Terminal",
+        "order": 17,
+        "action": {
+            "type": "view",
+            "path": "rtty-remote/terminal"
+        },
+        "depends": {
+            "acl": ["luci-app-rtty-remote"]
+        }
     }
 }
