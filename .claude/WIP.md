@@ -10,6 +10,15 @@ _Last updated: 2026-03-08 (Maegia Domains Fix)_
 
 ### 2026-03-08
 
+- **Vortex DNS Zone Management & Secondary DNS**
+  - Added zone commands: `vortexctl zone list/dump/import/export/reload`
+  - Added secondary DNS commands: `vortexctl secondary list/add/remove`
+  - Zone dump generates BIND format zone files in `/srv/dns/zones/`
+  - Supports OVH as secondary DNS with AXFR zone transfer
+  - RPCD methods: zone_list, zone_dump, zone_import, zone_export, zone_reload, secondary_list, secondary_add, secondary_remove
+  - ACL permissions updated for all new methods
+  - Enables importing zones from Gandi and becoming authoritative DNS master
+
 - **Maegia Domains Audit & Fix**
   - Fixed 3 broken domains (503 errors): crt.maegia.tv, git.maegia.tv, glances.maegia.tv
   - Created missing vhost UCI configs for all 3 domains

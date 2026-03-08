@@ -4479,3 +4479,13 @@ git checkout HEAD -- index.html
     - RPCD methods: status, get_config, set_config, get_stats, start, stop, index, import, emancipate
     - Sidecar and cache paths redirected to writable storage directory
     - Environment-aware lxc-attach helper for photoprism commands
+
+77. **Vortex DNS Zone Management & Secondary DNS (2026-03-08)**
+    - Zone management commands: `vortexctl zone list/dump/import/export/reload`
+    - Secondary DNS commands: `vortexctl secondary list/add/remove`
+    - Zone dump generates BIND format zone files from external DNS queries (dig)
+    - Import configures dnsmasq as authoritative master with auth-zone
+    - OVH secondary DNS support with AXFR zone transfer configuration
+    - RPCD methods: zone_list, zone_dump, zone_import, zone_export, zone_reload, secondary_list, secondary_add, secondary_remove
+    - ACL permissions updated for all new methods
+    - Enables migration from Gandi/OVH hosted DNS to self-hosted authoritative DNS
