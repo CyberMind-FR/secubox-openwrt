@@ -305,7 +305,7 @@ return view.extend({
                 E('button', { 'class': 'cbi-button', 'click': L.bind(this.handleQuickAction, this, 'system', 'board') }, 'System Info'),
                 E('button', { 'class': 'cbi-button', 'click': L.bind(this.handleQuickAction, this, 'network.interface', 'dump') }, 'Network'),
                 E('button', { 'class': 'cbi-button', 'click': L.bind(this.handleQuickAction, this, 'luci.system-hub', 'status') }, 'Services'),
-                E('button', { 'class': 'cbi-button', 'click': L.bind(this.handleQuickAction, this, 'luci.haproxy', 'vhost_list') }, 'Vhosts'),
+                E('button', { 'class': 'cbi-button', 'click': L.bind(this.handleQuickAction, this, 'luci.haproxy', 'list_vhosts') }, 'Vhosts'),
                 E('button', { 'class': 'cbi-button', 'click': L.bind(this.handleQuickAction, this, 'system', 'info') }, 'Memory'),
                 E('button', { 'class': 'cbi-button cbi-button-negative', 'click': L.bind(this.handleReboot, this) }, 'Reboot')
             ])
