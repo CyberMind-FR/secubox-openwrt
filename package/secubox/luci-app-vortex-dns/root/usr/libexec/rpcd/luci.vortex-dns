@@ -10,7 +10,7 @@ uci_get() { uci -q get "${CONFIG}.$1"; }
 
 case "$1" in
 	list)
-		echo '{"status":{},"get_slaves":{},"get_peers":{},"get_published":{},"master_init":{"domain":"str"},"delegate":{"node":"str","zone":"str"},"revoke":{"zone":"str"},"slave_join":{"master":"str","token":"str"},"mesh_sync":{},"mesh_publish":{"service":"str","domain":"str"}}'
+		echo '{"status":{},"get_slaves":{},"get_peers":{},"get_published":{},"master_init":{"domain":"str"},"delegate":{"node":"str","zone":"str"},"revoke":{"zone":"str"},"slave_join":{"master":"str","token":"str"},"mesh_sync":{},"mesh_publish":{"service":"str","domain":"str"},"zone_list":{},"zone_dump":{"domain":"str"},"zone_import":{"domain":"str"},"zone_export":{"domain":"str"},"zone_reload":{"domain":"str"},"secondary_list":{},"secondary_add":{"provider":"str","domain":"str"},"secondary_remove":{"provider":"str","domain":"str"}}'
 		;;
 	call)
 		case "$2" in
@@ -204,6 +204,168 @@ case "$1" in
 				json_add_boolean "success" 1
 				json_add_string "service" "$service"
 				json_add_string "domain" "$domain"
+				json_dump
+				;;
+
+			zone_list)
+				ZONE_DIR="/srv/dns/zones"
+				json_init
+				json_add_array "zones"
+
+				for section in $(uci show "$CONFIG" 2>/dev/null | grep "=zone" | cut -d= -f1 | cut -d. -f2); do
+					domain=$(uci_get "${section}.domain")
+					[ -z "$domain" ] && continue
+
+					enabled=$(uci_get "${section}.enabled")
+					file=$(uci_get "${section}.file")
+					authoritative=$(uci_get "${section}.authoritative")
+
+					records=0
+					[ -f "$file" ] && records=$(grep -c "^[^;$]" "$file" 2>/dev/null || echo 0)
+
+					json_add_object
+					json_add_string "domain" "$domain"
+					json_add_string "file" "$file"
+					json_add_boolean "enabled" "${enabled:-0}"
+					json_add_boolean "authoritative" "${authoritative:-0}"
+					json_add_int "records" "$records"
+					json_close_object
+				done
+
+				json_close_array
+				json_dump
+				;;
+
+			zone_dump)
+				read -r input
+				domain=$(echo "$input" | jsonfilter -e '@.domain')
+
+				if [ -z "$domain" ]; then
+					echo '{"error":"Domain required"}'
+					exit 1
+				fi
+
+				vortexctl zone dump "$domain" >/dev/null 2>&1
+				zone_file="/srv/dns/zones/${domain}.zone"
+
+				json_init
+				if [ -f "$zone_file" ]; then
+					records=$(grep -c "^[^;$]" "$zone_file" 2>/dev/null || echo 0)
+					json_add_boolean "success" 1
+					json_add_string "domain" "$domain"
+					json_add_string "file" "$zone_file"
+					json_add_int "records" "$records"
+				else
+					json_add_boolean "success" 0
+					json_add_string "error" "Zone dump failed"
+				fi
+				json_dump
+				;;
+
+			zone_import)
+				read -r input
+				domain=$(echo "$input" | jsonfilter -e '@.domain')
+
+				if [ -z "$domain" ]; then
+					echo '{"error":"Domain required"}'
+					exit 1
+				fi
+
+				vortexctl zone import "$domain" >/dev/null 2>&1
+
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "domain" "$domain"
+				json_add_string "message" "Zone imported and configured"
+				json_dump
+				;;
+
+			zone_export)
+				read -r input
+				domain=$(echo "$input" | jsonfilter -e '@.domain')
+
+				if [ -z "$domain" ]; then
+					echo '{"error":"Domain required"}'
+					exit 1
+				fi
+
+				zone_file="/srv/dns/zones/${domain}.zone"
+				if [ -f "$zone_file" ]; then
+					json_init
+					json_add_boolean "success" 1
+					json_add_string "domain" "$domain"
+					json_add_string "content" "$(cat "$zone_file")"
+					json_dump
+				else
+					echo '{"success":false,"error":"Zone file not found"}'
+				fi
+				;;
+
+			zone_reload)
+				read -r input
+				domain=$(echo "$input" | jsonfilter -e '@.domain')
+
+				vortexctl zone reload "$domain" >/dev/null 2>&1
+
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Zone reloaded"
+				json_dump
+				;;
+
+			secondary_list)
+				json_init
+				json_add_array "secondaries"
+
+				for section in $(uci show "$CONFIG" 2>/dev/null | grep "=secondary" | cut -d= -f1 | cut -d. -f2); do
+					provider=$(uci_get "${section}.provider")
+					[ -z "$provider" ] && continue
+
+					enabled=$(uci_get "${section}.enabled")
+
+					json_add_object
+					json_add_string "provider" "$provider"
+					json_add_boolean "enabled" "${enabled:-0}"
+					json_close_object
+				done
+
+				json_close_array
+				json_dump
+				;;
+
+			secondary_add)
+				read -r input
+				provider=$(echo "$input" | jsonfilter -e '@.provider')
+				domain=$(echo "$input" | jsonfilter -e '@.domain')
+
+				if [ -z "$provider" ] || [ -z "$domain" ]; then
+					echo '{"error":"Provider and domain required"}'
+					exit 1
+				fi
+
+				vortexctl secondary add "$provider" "$domain" >/dev/null 2>&1
+
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "provider" "$provider"
+				json_add_string "domain" "$domain"
+				json_dump
+				;;
+
+			secondary_remove)
+				read -r input
+				provider=$(echo "$input" | jsonfilter -e '@.provider')
+				domain=$(echo "$input" | jsonfilter -e '@.domain')
+
+				if [ -z "$provider" ] || [ -z "$domain" ]; then
+					echo '{"error":"Provider and domain required"}'
+					exit 1
+				fi
+
+				vortexctl secondary remove "$provider" "$domain" >/dev/null 2>&1
+
+				json_init
+				json_add_boolean "success" 1
 				json_dump
 				;;
 

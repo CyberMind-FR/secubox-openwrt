@@ -4,13 +4,13 @@
 		"read": {
 			"uci": ["vortex-dns"],
 			"ubus": {
-				"luci.vortex-dns": ["status", "get_slaves", "get_peers", "get_published"]
+				"luci.vortex-dns": ["status", "get_slaves", "get_peers", "get_published", "zone_list", "zone_export", "secondary_list"]
 			}
 		},
 		"write": {
 			"uci": ["vortex-dns"],
 			"ubus": {
-				"luci.vortex-dns": ["master_init", "delegate", "revoke", "slave_join", "mesh_sync", "mesh_publish"]
+				"luci.vortex-dns": ["master_init", "delegate", "revoke", "slave_join", "mesh_sync", "mesh_publish", "zone_dump", "zone_import", "zone_reload", "secondary_add", "secondary_remove"]
 			}
 		}
 	}
