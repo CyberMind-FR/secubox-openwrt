@@ -175,48 +175,62 @@ cmd_rpc() {
     local addr=$(get_node_address "$node_id")
     [ -z "$addr" ] && die "Cannot resolve node address for: $node_id"
 
-    # Get authentication token
-    local auth_token=$(get_auth_token "$addr")
-
-    # Build JSON-RPC request
-    local rpc_id=$(date +%s%N | cut -c1-13)
-
     if [ -z "$params" ] || [ "$params" = "{}" ]; then
         params="{}"
     fi
 
-    # Build request manually for correct format (jshn doesn't handle nested objects in arrays well)
-    local request=$(cat << EOF
+    log "info" "RPC call to $addr: $object.$method"
+
+    # Check if local address - use direct ubus for full access
+    local is_local=0
+    case "$addr" in
+        127.0.0.1|localhost|192.168.255.1|$(uci -q get network.lan.ipaddr))
+            is_local=1
+            ;;
+    esac
+
+    local result=""
+    if [ "$is_local" = "1" ]; then
+        # Use direct ubus call for local node (full access)
+        result=$(ubus call "$object" "$method" "$params" 2>&1)
+        local ubus_rc=$?
+        if [ $ubus_rc -ne 0 ]; then
+            die "ubus error: $result"
+        fi
+    else
+        # Remote node - use HTTP JSON-RPC
+        local auth_token=$(get_auth_token "$addr")
+        local rpc_id=$(date +%s%N | cut -c1-13)
+
+        local request=$(cat << EOF
 {"jsonrpc":"2.0","id":$rpc_id,"method":"call","params":["$auth_token","$object","$method",$params]}
 EOF
 )
 
-    # Make HTTP request to remote ubus
-    local timeout=$(get_config proxy rpc_timeout 30)
-    local http_port=$(get_config proxy http_port 8081)
-    local url="http://${addr}:${http_port}/ubus"
+        local timeout=$(get_config proxy rpc_timeout 30)
+        local http_port=$(get_config proxy http_port 8081)
+        local url="http://${addr}:${http_port}/ubus"
 
-    log "info" "RPC call to $addr: $object.$method"
+        local response=$(curl -s -m "$timeout" \
+            -H "Content-Type: application/json" \
+            -d "$request" \
+            "$url" 2>&1)
 
-    local response=$(curl -s -m "$timeout" \
-        -H "Content-Type: application/json" \
-        -d "$request" \
-        "$url" 2>&1)
+        local curl_rc=$?
 
-    local curl_rc=$?
+        if [ $curl_rc -ne 0 ]; then
+            die "Connection failed to $addr (curl error: $curl_rc)"
+        fi
 
-    if [ $curl_rc -ne 0 ]; then
-        die "Connection failed to $addr (curl error: $curl_rc)"
+        # Check for JSON-RPC error
+        local error=$(echo "$response" | jsonfilter -e '@.error.message' 2>/dev/null)
+        if [ -n "$error" ]; then
+            die "RPC error: $error"
+        fi
+
+        # Extract result
+        result=$(echo "$response" | jsonfilter -e '@.result[1]' 2>/dev/null)
     fi
-
-    # Check for JSON-RPC error
-    local error=$(echo "$response" | jsonfilter -e '@.error.message' 2>/dev/null)
-    if [ -n "$error" ]; then
-        die "RPC error: $error"
-    fi
-
-    # Extract and display result
-    local result=$(echo "$response" | jsonfilter -e '@.result[1]' 2>/dev/null)
     if [ -z "$result" ]; then
         result=$(echo "$response" | jsonfilter -e '@.result' 2>/dev/null)
     fi
