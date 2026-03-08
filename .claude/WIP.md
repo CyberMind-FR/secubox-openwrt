@@ -10,6 +10,15 @@ _Last updated: 2026-03-08 (RTTY Remote Module)_
 
 ### 2026-03-08
 
+- **RTTY Remote Control Module (Phase 2 - Token-Based Shared Access)**
+  - Token authentication: 6-character codes grant RPC/terminal access without LuCI login
+  - CLI commands: `rttyctl token generate/list/validate/revoke`, `rttyctl token-rpc`
+  - RPCD methods: token_generate, token_list, token_validate, token_revoke, token_rpc
+  - Support Panel: Generate code → Share → Support person connects without auth
+  - Configurable TTL (30m/1h/2h/4h), permission tracking, usage counter
+  - Local address detection: Direct ubus for local calls (bypasses HTTP auth limits)
+  - Deployed and tested: Token RPC works for all ubus methods
+
 - **RTTY Remote Control Module (Phase 1 - RPCD Proxy)**
   - Backend: `secubox-app-rtty-remote` with `rttyctl` CLI
   - Frontend: `luci-app-rtty-remote` with KISS dashboard
@@ -195,14 +204,19 @@ _Last updated: 2026-03-08 (RTTY Remote Module)_
 
 ## In Progress
 
-- **Vortex DNS** - Meshed multi-dynamic subdomain delegation (DONE 2026-02-05)
-  - `secubox-vortex-dns` package with `vortexctl` CLI
-  - Master/slave hierarchical DNS delegation
-  - Wildcard domain management
+- **RTTY Remote Control Module (Phase 3 - RTTY Terminal)**
+  - Integrate actual RTTY WebSocket terminal for remote shell
+  - xterm.js integration in LuCI dashboard
+  - Real-time terminal session over WireGuard mesh
 
 ---
 
 ## Next Up
+
+### v1.0 Release Prep
+
+1. **RTTY Terminal Integration** - WebSocket shell via RTTY protocol
+2. **Session Replay** - Avatar-tap integration for session capture/replay
 
 ### v1.1+ Extended Mesh
 
