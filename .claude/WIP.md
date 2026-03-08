@@ -1,12 +1,22 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-07 (lldh360 SSL Certificate)_
+_Last updated: 2026-03-08 (Maegia Domains Fix)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
 ---
 
 ## Recently Completed
+
+### 2026-03-08
+
+- **Maegia Domains Audit & Fix**
+  - Fixed 3 broken domains (503 errors): crt.maegia.tv, git.maegia.tv, glances.maegia.tv
+  - Created missing vhost UCI configs for all 3 domains
+  - Added mitmproxy routes: crt→8503, git→3001, glances→61208
+  - Fixed ganimed.maegia.fr route IP: 127.0.0.1 → 192.168.255.1
+  - Fixed lldh360.maegia.tv WAF bypass: metablog_lldh360 → mitmproxy_inspector
+  - All 27 maegia domains now operational (4 have 404 content issues)
 
 ### 2026-03-07
 
