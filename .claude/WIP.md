@@ -10,6 +10,14 @@ _Last updated: 2026-03-08 (RTTY Remote Module)_
 
 ### 2026-03-08
 
+- **RTTY Remote Control Module (Phase 3 - Web Terminal)**
+  - Web Terminal view: Embeds ttyd (port 7681) via iframe
+  - Node selector: Local/remote target selection
+  - Remote detection: Direct ttyd connection or SSH fallback
+  - RPCD method: start_terminal for remote node terminal info
+  - Menu: Remote Control → Remote Support → Web Terminal
+  - Fullscreen and refresh controls
+
 - **RTTY Remote Control Module (Phase 2 - Token-Based Shared Access)**
   - Token authentication: 6-character codes grant RPC/terminal access without LuCI login
   - CLI commands: `rttyctl token generate/list/validate/revoke`, `rttyctl token-rpc`
@@ -204,10 +212,10 @@ _Last updated: 2026-03-08 (RTTY Remote Module)_
 
 ## In Progress
 
-- **RTTY Remote Control Module (Phase 3 - RTTY Terminal)**
-  - Integrate actual RTTY WebSocket terminal for remote shell
-  - xterm.js integration in LuCI dashboard
-  - Real-time terminal session over WireGuard mesh
+- **RTTY Remote Control Module (Phase 4 - Session Replay)**
+  - Avatar-tap integration for session capture
+  - Replay captured sessions to target nodes
+  - Session export/import functionality
 
 ---
 
@@ -215,8 +223,8 @@ _Last updated: 2026-03-08 (RTTY Remote Module)_
 
 ### v1.0 Release Prep
 
-1. **RTTY Terminal Integration** - WebSocket shell via RTTY protocol
-2. **Session Replay** - Avatar-tap integration for session capture/replay
+1. **Session Replay** - Avatar-tap integration for session capture/replay
+2. **Remote ttyd Deployment** - Auto-install ttyd on mesh nodes
 
 ### v1.1+ Extended Mesh
 
