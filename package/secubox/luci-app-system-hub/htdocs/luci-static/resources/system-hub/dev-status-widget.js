@@ -104,16 +104,16 @@ const DevStatusWidget = {
         { name: 'KSM Manager', version: '0.4.0-r1', note: 'Gestion clés / HSM', id: 'ksm-manager' }
     ],
 
-    // Overall project statistics (as of v0.16.0 - 2026-01-27)
+    // Overall project statistics (as of v0.19.0 - 2026-03-08)
     stats: {
-        get modulesCount() { return DevStatusWidget.moduleStatus.length || 38; },
+        get modulesCount() { return DevStatusWidget.moduleStatus.length || 40; },
         languagesSupported: 12,
         architectures: 13,
-        linesOfCode: 45000,
+        linesOfCode: 52000,
         contributors: 6,
-        commits: 1500,
-        openIssues: 2,
-        closedIssues: 180
+        commits: 1650,
+        openIssues: 3,
+        closedIssues: 195
     },
 
     // Timeline data
@@ -144,7 +144,7 @@ const DevStatusWidget = {
             name: 'Beta Testing',
             period: 'Q1 2026',
             status: 'in-progress',
-            progress: 55
+            progress: 65
         },
         {
             phase: 'Phase 5',

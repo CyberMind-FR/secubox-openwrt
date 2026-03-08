@@ -4489,3 +4489,27 @@ git checkout HEAD -- index.html
     - RPCD methods: zone_list, zone_dump, zone_import, zone_export, zone_reload, secondary_list, secondary_add, secondary_remove
     - ACL permissions updated for all new methods
     - Enables migration from Gandi/OVH hosted DNS to self-hosted authoritative DNS
+
+78. **RTTY Remote Control Module (2026-03-08)**
+    - **Phase 1 - RPCD Proxy:**
+      - Backend: `secubox-app-rtty-remote` with `rttyctl` CLI
+      - RPCD Proxy: Execute remote ubus calls to mesh nodes over HTTP JSON-RPC
+      - CLI commands: `rttyctl nodes/rpc/rpc-list/rpc-batch/auth/sessions`
+      - RPCD methods: status, get_nodes, rpc_call, rpc_list, get_sessions, connect
+      - Local address detection for direct ubus access (bypasses auth limits)
+    - **Phase 2 - Token-Based Shared Access:**
+      - 6-character token codes grant RPC/terminal access without LuCI login
+      - CLI commands: `rttyctl token generate/list/validate/revoke`, `rttyctl token-rpc`
+      - RPCD methods: token_generate, token_list, token_validate, token_revoke, token_rpc
+      - Support Panel: Generate code → Share → Support person connects
+      - Configurable TTL (30m/1h/2h/4h), permission tracking, usage counter
+    - **Phase 3 - Web Terminal:**
+      - Web Terminal view embedding ttyd (port 7681) via iframe
+      - Node selector for local/remote target selection
+      - Remote detection: Direct ttyd connection or SSH fallback
+      - RPCD method: start_terminal
+      - Fullscreen and refresh controls
+    - **LuCI Views:**
+      - Remote Control dashboard (RPC proxy interface)
+      - Remote Support panel (token sharing)
+      - Web Terminal (ttyd shell access)
