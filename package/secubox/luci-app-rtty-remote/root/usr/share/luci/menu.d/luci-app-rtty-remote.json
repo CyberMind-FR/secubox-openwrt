@@ -1,0 +1,25 @@
+{
+    "admin/services/rtty-remote": {
+        "title": "RTTY Remote",
+        "order": 85,
+        "action": {
+            "type": "view",
+            "path": "rtty-remote/dashboard"
+        },
+        "depends": {
+            "acl": ["luci-app-rtty-remote"],
+            "uci": { "rtty-remote": true }
+        }
+    },
+    "admin/services/rtty-remote/support": {
+        "title": "Support Panel",
+        "order": 10,
+        "action": {
+            "type": "view",
+            "path": "rtty-remote/support"
+        },
+        "depends": {
+            "acl": ["luci-app-rtty-remote"]
+        }
+    }
+}

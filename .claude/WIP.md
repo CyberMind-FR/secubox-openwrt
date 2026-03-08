@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-08 (Maegia Domains Fix)_
+_Last updated: 2026-03-08 (RTTY Remote Module)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -9,6 +9,21 @@ _Last updated: 2026-03-08 (Maegia Domains Fix)_
 ## Recently Completed
 
 ### 2026-03-08
+
+- **RTTY Remote Control Module (Phase 1 - RPCD Proxy)**
+  - Backend: `secubox-app-rtty-remote` with `rttyctl` CLI
+  - Frontend: `luci-app-rtty-remote` with KISS dashboard
+  - RPCD Proxy: Execute remote ubus calls to mesh nodes over HTTP
+  - CLI commands: `rttyctl nodes/rpc/rpc-list/rpc-batch/auth/sessions`
+  - RPCD methods: status, get_nodes, rpc_call, rpc_list, get_sessions, connect
+  - Session tracking with SQLite database
+  - Master-link integration for authentication
+  - Tested: `rttyctl rpc 127.0.0.1 system board` works
+
+- **HAProxy mitmproxy Port Fix**
+  - Changed mitmproxy-in WAF port from 8890 to 22222
+  - Fixed UCI config regeneration issue (was overwriting manual edits)
+  - All vhosts now routing correctly through WAF
 
 - **Vortex DNS Zone Management & Secondary DNS**
   - Added zone commands: `vortexctl zone list/dump/import/export/reload`

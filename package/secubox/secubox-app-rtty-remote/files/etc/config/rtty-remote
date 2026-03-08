@@ -1,0 +1,18 @@
+config rtty-remote 'main'
+	option enabled '1'
+	option server_port '7681'
+	option auth_method 'master-link'
+	option session_ttl '3600'
+	option max_sessions '10'
+	option log_level 'info'
+
+config security 'security'
+	option require_wg '1'
+	option allowed_networks '10.100.0.0/24 192.168.255.0/24'
+	option session_encryption '1'
+
+config proxy 'proxy'
+	option rpc_timeout '30'
+	option batch_limit '50'
+	option cache_ttl '60'
+	option http_port '8080'

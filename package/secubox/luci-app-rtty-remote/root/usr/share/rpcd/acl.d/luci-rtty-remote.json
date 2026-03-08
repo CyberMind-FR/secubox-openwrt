@@ -1,0 +1,31 @@
+{
+    "luci-app-rtty-remote": {
+        "description": "Grant access to RTTY Remote Control",
+        "read": {
+            "ubus": {
+                "luci.rtty-remote": [
+                    "status",
+                    "get_nodes",
+                    "get_node",
+                    "rpc_list",
+                    "get_sessions",
+                    "get_settings"
+                ]
+            },
+            "uci": ["rtty-remote"]
+        },
+        "write": {
+            "ubus": {
+                "luci.rtty-remote": [
+                    "rpc_call",
+                    "server_start",
+                    "server_stop",
+                    "set_settings",
+                    "replay_session",
+                    "connect"
+                ]
+            },
+            "uci": ["rtty-remote"]
+        }
+    }
+}

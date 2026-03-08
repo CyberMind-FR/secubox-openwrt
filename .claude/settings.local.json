@@ -515,7 +515,9 @@
       "Bash(./scripts/check-sbom-prereqs.sh:*)",
       "Bash(git revert:*)",
       "Bash(__NEW_LINE_17d05a792c15c52e__ echo \"\")",
-      "Bash(__NEW_LINE_9054b2ef7cdd675f__ echo \"\")"
+      "Bash(__NEW_LINE_9054b2ef7cdd675f__ echo \"\")",
+      "Bash(do echo -n \"$host: \")",
+      "Bash(do echo -n \"$d: \")"
     ]
   }
 }
