@@ -517,7 +517,17 @@
       "Bash(__NEW_LINE_17d05a792c15c52e__ echo \"\")",
       "Bash(__NEW_LINE_9054b2ef7cdd675f__ echo \"\")",
       "Bash(do echo -n \"$host: \")",
-      "Bash(do echo -n \"$d: \")"
+      "Bash(do echo -n \"$d: \")",
+      "WebFetch(domain:www.gandi.net)",
+      "WebFetch(domain:whois.domaintools.com)",
+      "WebFetch(domain:who.is)",
+      "WebFetch(domain:lookup.icann.org)",
+      "Bash(whois:*)",
+      "WebFetch(domain:whois.nic.tv)",
+      "Bash(GIT_SSH_COMMAND=\"ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10\" git push:*)",
+      "Bash(GIT_SSH_COMMAND=\"ssh -o StrictHostKeyChecking=no -p 2222\" git push:*)",
+      "Bash(git remote add:*)",
+      "Bash(git branch:*)"
     ]
   }
 }

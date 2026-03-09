@@ -8,15 +8,21 @@
 
 return view.extend({
 	services: [],
+	serviceHealth: null,
 	activeFilter: 'all',
 	searchQuery: '',
+	healthCheckRunning: false,
 
 	load: function() {
-		return API.listServices();
+		return Promise.all([
+			API.listServices(),
+			API.getServiceHealth(false).catch(function() { return null; })
+		]);
 	},
 
 	render: function(data) {
-		this.services = this.normalizeServices(data);
+		this.services = this.normalizeServices(data[0]);
+		this.serviceHealth = data[1];
 
 		var self = this;
 		poll.add(function() {
@@ -32,12 +38,148 @@ return view.extend({
 
 		var content = [
 			this.renderHeader(),
+			this.renderHealthPanel(),
 			this.renderControls(),
 			E('div', { 'class': 'sh-services-grid', 'id': 'sh-services-grid' },
 				this.getFilteredServices().map(this.renderServiceCard, this))
 		];
 
 		return KissTheme.wrap(content, 'admin/secubox/system/system-hub/services');
+	},
+
+	renderHealthPanel: function() {
+		var self = this;
+		var health = this.serviceHealth;
+		var downServices = [];
+		var upCount = 0;
+		var downCount = 0;
+
+		if (health && health.services) {
+			health.services.forEach(function(svc) {
+				if (svc.s === 'down') {
+					downServices.push(svc);
+					downCount++;
+				} else {
+					upCount++;
+				}
+			});
+		}
+
+		var totalRoutes = upCount + downCount;
+		var healthPercent = totalRoutes > 0 ? Math.round((upCount / totalRoutes) * 100) : 0;
+
+		return E('div', { 'class': 'sh-health-panel', 'id': 'sh-health-panel' }, [
+			E('div', { 'class': 'sh-health-header' }, [
+				E('div', { 'class': 'sh-health-title' }, [
+					E('span', { 'class': 'sh-health-icon' }, '🔍'),
+					E('span', {}, _('HAProxy Routes Health'))
+				]),
+				E('div', { 'class': 'sh-health-actions' }, [
+					E('button', {
+						'class': 'sh-btn sh-btn-action',
+						'id': 'sh-health-refresh-btn',
+						'type': 'button',
+						'click': ui.createHandlerFn(this, 'refreshHealthCheck')
+					}, [
+						E('span', { 'class': 'sh-btn-icon' }, '↻'),
+						_('Refresh')
+					])
+				])
+			]),
+			E('div', { 'class': 'sh-health-stats' }, [
+				E('div', { 'class': 'sh-health-stat success' }, [
+					E('span', { 'class': 'sh-health-stat-value', 'id': 'sh-health-up' }, upCount.toString()),
+					E('span', { 'class': 'sh-health-stat-label' }, _('Up'))
+				]),
+				E('div', { 'class': 'sh-health-stat danger' }, [
+					E('span', { 'class': 'sh-health-stat-value', 'id': 'sh-health-down' }, downCount.toString()),
+					E('span', { 'class': 'sh-health-stat-label' }, _('Down'))
+				]),
+				E('div', { 'class': 'sh-health-stat' }, [
+					E('span', { 'class': 'sh-health-stat-value' }, totalRoutes.toString()),
+					E('span', { 'class': 'sh-health-stat-label' }, _('Total'))
+				]),
+				E('div', { 'class': 'sh-health-stat ' + (healthPercent >= 90 ? 'success' : healthPercent >= 70 ? 'warning' : 'danger') }, [
+					E('span', { 'class': 'sh-health-stat-value' }, healthPercent + '%'),
+					E('span', { 'class': 'sh-health-stat-label' }, _('Health'))
+				])
+			]),
+			downCount > 0 ? E('div', { 'class': 'sh-health-down-list', 'id': 'sh-health-down-list' }, [
+				E('div', { 'class': 'sh-health-down-title' }, _('Down Services:')),
+				E('div', { 'class': 'sh-health-down-items' },
+					downServices.slice(0, 10).map(function(svc) {
+						return E('span', { 'class': 'sh-health-down-item', 'title': svc.ip + ':' + svc.p }, svc.d);
+					})
+				),
+				downCount > 10 ? E('span', { 'class': 'sh-health-down-more' }, '+' + (downCount - 10) + ' more') : null
+			]) : E('div', { 'class': 'sh-health-all-ok' }, [
+				E('span', { 'class': 'sh-health-ok-icon' }, '✅'),
+				_('All routes are healthy')
+			])
+		]);
+	},
+
+	refreshHealthCheck: function() {
+		var self = this;
+		var btn = document.getElementById('sh-health-refresh-btn');
+		if (btn) btn.classList.add('spinning');
+
+		return API.getServiceHealth(true).then(function(health) {
+			self.serviceHealth = health;
+			self.updateHealthPanel();
+			if (btn) btn.classList.remove('spinning');
+		}).catch(function(err) {
+			if (btn) btn.classList.remove('spinning');
+			ui.addNotification(null, E('p', {}, _('Health check failed: ') + (err.message || err)), 'error');
+		});
+	},
+
+	updateHealthPanel: function() {
+		var panel = document.getElementById('sh-health-panel');
+		if (!panel) return;
+
+		var health = this.serviceHealth;
+		var upCount = 0;
+		var downCount = 0;
+		var downServices = [];
+
+		if (health && health.services) {
+			health.services.forEach(function(svc) {
+				if (svc.s === 'down') {
+					downServices.push(svc);
+					downCount++;
+				} else {
+					upCount++;
+				}
+			});
+		}
+
+		var upEl = document.getElementById('sh-health-up');
+		var downEl = document.getElementById('sh-health-down');
+		if (upEl) upEl.textContent = upCount.toString();
+		if (downEl) downEl.textContent = downCount.toString();
+
+		var downList = document.getElementById('sh-health-down-list');
+		if (downList) {
+			if (downCount > 0) {
+				dom.content(downList, [
+					E('div', { 'class': 'sh-health-down-title' }, _('Down Services:')),
+					E('div', { 'class': 'sh-health-down-items' },
+						downServices.slice(0, 10).map(function(svc) {
+							return E('span', { 'class': 'sh-health-down-item', 'title': svc.ip + ':' + svc.p }, svc.d);
+						})
+					),
+					downCount > 10 ? E('span', { 'class': 'sh-health-down-more' }, '+' + (downCount - 10) + ' more') : null
+				]);
+			} else {
+				dom.content(downList, [
+					E('div', { 'class': 'sh-health-all-ok' }, [
+						E('span', { 'class': 'sh-health-ok-icon' }, '✅'),
+						_('All routes are healthy')
+					])
+				]);
+			}
+		}
 	},
 
 	injectStyles: function() {
@@ -85,6 +227,29 @@ return view.extend({
 .sh-empty-icon { font-size: 48px; margin-bottom: 12px; }
 .sh-service-detail { margin-bottom: 16px; }
 .sh-service-detail-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--kiss-line); }
+
+/* Health Panel Styles */
+.sh-health-panel { background: var(--kiss-card); border: 1px solid var(--kiss-line); border-radius: 12px; padding: 16px; margin-bottom: 20px; }
+.sh-health-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.sh-health-title { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; }
+.sh-health-icon { font-size: 20px; }
+.sh-health-stats { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+.sh-health-stat { background: rgba(255,255,255,0.03); border-radius: 8px; padding: 12px 16px; min-width: 80px; text-align: center; }
+.sh-health-stat.success { border-left: 3px solid var(--kiss-green); }
+.sh-health-stat.danger { border-left: 3px solid var(--kiss-red); }
+.sh-health-stat.warning { border-left: 3px solid #f59e0b; }
+.sh-health-stat-value { display: block; font-size: 24px; font-weight: 700; color: var(--kiss-text); }
+.sh-health-stat-label { display: block; font-size: 11px; color: var(--kiss-muted); text-transform: uppercase; margin-top: 4px; }
+.sh-health-down-list { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--kiss-line); }
+.sh-health-down-title { font-size: 12px; color: var(--kiss-muted); margin-bottom: 8px; }
+.sh-health-down-items { display: flex; flex-wrap: wrap; gap: 6px; }
+.sh-health-down-item { background: rgba(255,23,68,0.1); color: var(--kiss-red); padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: help; }
+.sh-health-down-more { font-size: 11px; color: var(--kiss-muted); padding: 4px 8px; }
+.sh-health-all-ok { display: flex; align-items: center; gap: 8px; color: var(--kiss-green); font-size: 13px; padding: 8px 0; }
+.sh-health-ok-icon { font-size: 16px; }
+.sh-btn-icon { margin-right: 4px; }
+.sh-btn.spinning .sh-btn-icon { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 `;
 		document.head.appendChild(style);
 	},

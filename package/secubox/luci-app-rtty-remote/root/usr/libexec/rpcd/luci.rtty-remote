@@ -439,6 +439,132 @@ method_token_rpc() {
 }
 
 #------------------------------------------------------------------------------
+# Avatar-Tap Session Integration
+#------------------------------------------------------------------------------
+
+# Get captured sessions from avatar-tap
+method_get_tap_sessions() {
+    local domain
+    read -r input
+    json_load "$input" 2>/dev/null
+    json_get_var domain domain
+
+    $RTTYCTL json-tap-sessions 2>/dev/null || echo '[]'
+}
+
+# Get single session details
+method_get_tap_session() {
+    local session_id
+    read -r input
+    json_load "$input"
+    json_get_var session_id session_id
+
+    [ -z "$session_id" ] && {
+        echo '{"error":"Missing session_id"}'
+        return
+    }
+
+    $RTTYCTL json-tap-session "$session_id" 2>/dev/null || echo '{"error":"Session not found"}'
+}
+
+# Replay a session to a remote node
+method_replay_to_node() {
+    local session_id target_node
+    read -r input
+    json_load "$input"
+    json_get_var session_id session_id
+    json_get_var target_node target_node
+
+    [ -z "$session_id" ] || [ -z "$target_node" ] && {
+        echo '{"success":false,"error":"Missing session_id or target_node"}'
+        return
+    }
+
+    local result=$($RTTYCTL tap-replay "$session_id" "$target_node" 2>&1)
+    local rc=$?
+
+    json_init
+    if [ $rc -eq 0 ]; then
+        json_add_boolean "success" 1
+        json_add_string "message" "Session replayed successfully"
+        # Extract response preview
+        local preview=$(echo "$result" | tail -20 | head -10)
+        json_add_string "preview" "$preview"
+    else
+        json_add_boolean "success" 0
+        json_add_string "error" "$result"
+    fi
+    json_dump
+}
+
+# Export session
+method_export_session() {
+    local session_id
+    read -r input
+    json_load "$input"
+    json_get_var session_id session_id
+
+    [ -z "$session_id" ] && {
+        echo '{"success":false,"error":"Missing session_id"}'
+        return
+    }
+
+    local export_file="/tmp/export_session_$session_id.json"
+    $RTTYCTL tap-export "$session_id" "$export_file" 2>/dev/null
+
+    if [ -f "$export_file" ]; then
+        json_init
+        json_add_boolean "success" 1
+        json_add_string "file" "$export_file"
+        json_add_int "size" "$(wc -c < "$export_file")"
+        # Include the actual content for download
+        local content=$(cat "$export_file" | base64 -w 0)
+        json_add_string "content" "$content"
+        json_dump
+        rm -f "$export_file"
+    else
+        echo '{"success":false,"error":"Export failed"}'
+    fi
+}
+
+# Import session
+method_import_session() {
+    local content filename
+    read -r input
+    json_load "$input"
+    json_get_var content content
+    json_get_var filename filename
+
+    [ -z "$content" ] && {
+        echo '{"success":false,"error":"Missing content"}'
+        return
+    }
+
+    local import_file="/tmp/import_session_$$.json"
+    echo "$content" | base64 -d > "$import_file" 2>/dev/null
+
+    if [ ! -s "$import_file" ]; then
+        rm -f "$import_file"
+        echo '{"success":false,"error":"Invalid content"}'
+        return
+    fi
+
+    local result=$($RTTYCTL tap-import "$import_file" 2>&1)
+    local rc=$?
+    rm -f "$import_file"
+
+    json_init
+    if [ $rc -eq 0 ]; then
+        json_add_boolean "success" 1
+        json_add_string "message" "$result"
+    else
+        json_add_boolean "success" 0
+        json_add_string "error" "$result"
+    fi
+    json_dump
+}
+
+#------------------------------------------------------------------------------
 # Main dispatcher
 #------------------------------------------------------------------------------
 

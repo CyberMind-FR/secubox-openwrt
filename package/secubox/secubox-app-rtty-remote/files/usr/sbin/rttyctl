@@ -640,7 +640,7 @@ cmd_disconnect() {
 }
 
 #------------------------------------------------------------------------------
-# Session Management (Placeholder)
+# Session Management (RTTY Remote Sessions)
 #------------------------------------------------------------------------------
 
 cmd_sessions() {
@@ -658,22 +658,274 @@ cmd_sessions() {
         echo "Session database not initialized"
 }
 
-cmd_replay() {
+#------------------------------------------------------------------------------
+# Avatar-Tap Integration - Session Capture & Replay
+#------------------------------------------------------------------------------
+
+AVATAR_TAP_DB="/srv/avatar-tap/sessions.db"
+
+cmd_tap_sessions() {
+    local domain_filter="$1"
+
+    echo "Avatar-Tap Captured Sessions"
+    echo "============================"
+    echo ""
+
+    if [ ! -f "$AVATAR_TAP_DB" ]; then
+        echo "No captured sessions (avatar-tap database not found)"
+        return 1
+    fi
+
+    if [ -n "$domain_filter" ]; then
+        echo "Filter: $domain_filter"
+        echo ""
+        sqlite3 "$AVATAR_TAP_DB" "SELECT id, domain, method, path, datetime(captured_at,'unixepoch') as captured, label FROM sessions WHERE domain LIKE '%$domain_filter%' ORDER BY captured_at DESC LIMIT 30" 2>/dev/null | \
+        while IFS='|' read id domain method path captured label; do
+            printf "  [%3d] %-25s %-6s %-30s %s\n" "$id" "$domain" "$method" "${path:0:30}" "${label:-}"
+        done
+    else
+        sqlite3 "$AVATAR_TAP_DB" "SELECT id, domain, method, path, datetime(captured_at,'unixepoch') as captured, label FROM sessions ORDER BY captured_at DESC LIMIT 30" 2>/dev/null | \
+        while IFS='|' read id domain method path captured label; do
+            printf "  [%3d] %-25s %-6s %-30s %s\n" "$id" "$domain" "$method" "${path:0:30}" "${label:-}"
+        done
+    fi
+
+    echo ""
+    local total=$(sqlite3 "$AVATAR_TAP_DB" "SELECT COUNT(*) FROM sessions" 2>/dev/null)
+    echo "Total sessions: ${total:-0}"
+}
+
+cmd_tap_show() {
+    local session_id="$1"
+    [ -z "$session_id" ] && die "Usage: rttyctl tap-show <session_id>"
+
+    if [ ! -f "$AVATAR_TAP_DB" ]; then
+        die "Avatar-tap database not found"
+    fi
+
+    echo "Session Details: #$session_id"
+    echo "=========================="
+
+    local session=$(sqlite3 "$AVATAR_TAP_DB" "SELECT id, domain, method, path, captured_at, last_used, use_count, label, avatar_id FROM sessions WHERE id=$session_id" 2>/dev/null)
+
+    if [ -z "$session" ]; then
+        die "Session not found: $session_id"
+    fi
+
+    echo "$session" | while IFS='|' read id domain method path captured last_used use_count label avatar_id; do
+        echo "  ID:       $id"
+        echo "  Domain:   $domain"
+        echo "  Method:   $method"
+        echo "  Path:     $path"
+        echo "  Captured: $(date -d "@$captured" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || date -r "$captured" "+%Y-%m-%d %H:%M:%S")"
+        echo "  Used:     $use_count times"
+        echo "  Label:    ${label:-(none)}"
+        echo "  Avatar:   ${avatar_id:-(not linked)}"
+    done
+
+    # Show headers
+    echo ""
+    echo "Request Headers:"
+    sqlite3 "$AVATAR_TAP_DB" "SELECT name, value FROM session_headers WHERE session_id=$session_id AND type='request'" 2>/dev/null | \
+    while IFS='|' read name value; do
+        # Mask sensitive values
+        case "$name" in
+            Cookie|Authorization|X-Auth-Token)
+                printf "  %-20s %s...\n" "$name:" "${value:0:30}"
+                ;;
+            *)
+                printf "  %-20s %s\n" "$name:" "$value"
+                ;;
+        esac
+    done
+}
+
+cmd_tap_replay() {
     local session_id="$1"
     local target_node="$2"
 
-    [ -z "$session_id" ] || [ -z "$target_node" ] && die "Usage: rttyctl replay <session_id> <target_node>"
+    [ -z "$session_id" ] || [ -z "$target_node" ] && {
+        echo "Usage: rttyctl tap-replay <session_id> <target_node>"
+        echo ""
+        echo "Replay a captured avatar-tap session to a remote mesh node."
+        echo ""
+        echo "Examples:"
+        echo "  rttyctl tap-replay 5 10.100.0.2"
+        echo "  rttyctl tap-replay 12 sb-office"
+        exit 1
+    }
 
-    echo "Replaying session $session_id to $target_node..."
-    echo "Note: Session replay requires avatar-tap integration (coming soon)"
+    if [ ! -f "$AVATAR_TAP_DB" ]; then
+        die "Avatar-tap database not found"
+    fi
+
+    # Get session info
+    local session=$(sqlite3 "$AVATAR_TAP_DB" "SELECT domain, method, path FROM sessions WHERE id=$session_id" 2>/dev/null)
+    [ -z "$session" ] && die "Session not found: $session_id"
+
+    local domain=$(echo "$session" | cut -d'|' -f1)
+    local method=$(echo "$session" | cut -d'|' -f2)
+    local path=$(echo "$session" | cut -d'|' -f3)
+
+    echo "Replaying Session #$session_id to $target_node"
+    echo "=============================================="
+    echo "  Original: $method $domain$path"
+    echo ""
+
+    # Get target node address
+    local target_addr=$(get_node_address "$target_node")
+    [ -z "$target_addr" ] && die "Cannot resolve target node: $target_node"
+
+    echo "  Target:   $target_addr"
+    echo ""
+
+    # Export session to JSON
+    local export_file="/tmp/replay_session_$$.json"
+    avatar-tapctl export "$session_id" "$export_file" 2>/dev/null || die "Failed to export session"
+
+    # Read session data
+    local headers=$(jsonfilter -i "$export_file" -e '@.headers' 2>/dev/null)
+    local cookies=$(jsonfilter -i "$export_file" -e '@.cookies' 2>/dev/null)
+    local body=$(jsonfilter -i "$export_file" -e '@.body' 2>/dev/null)
+
+    # Build the replay target URL
+    # Replace original domain with target node domain if same path is available
+    local target_url="http://${target_addr}${path}"
+
+    echo "  Replay URL: $target_url"
+    echo ""
+
+    # Execute replay via curl
+    local curl_opts="-s -m 30"
+
+    # Add headers
+    if [ -n "$headers" ]; then
+        echo "$headers" | jsonfilter -e '@[*]' 2>/dev/null | while read header; do
+            local name=$(echo "$header" | jsonfilter -e '@.name')
+            local value=$(echo "$header" | jsonfilter -e '@.value')
+            # Skip host header as we're changing target
+            [ "$name" = "Host" ] && continue
+            curl_opts="$curl_opts -H \"$name: $value\""
+        done
+    fi
+
+    # Add cookies
+    if [ -n "$cookies" ]; then
+        local cookie_str=$(echo "$cookies" | jsonfilter -e '@[*]' 2>/dev/null | while read c; do
+            local n=$(echo "$c" | jsonfilter -e '@.name')
+            local v=$(echo "$c" | jsonfilter -e '@.value')
+            echo -n "$n=$v; "
+        done)
+        [ -n "$cookie_str" ] && curl_opts="$curl_opts -H \"Cookie: $cookie_str\""
+    fi
+
+    echo "Executing replay..."
+
+    case "$method" in
+        GET)
+            local result=$(curl $curl_opts "$target_url" 2>&1)
+            ;;
+        POST)
+            local result=$(curl $curl_opts -X POST -d "$body" "$target_url" 2>&1)
+            ;;
+        PUT)
+            local result=$(curl $curl_opts -X PUT -d "$body" "$target_url" 2>&1)
+            ;;
+        DELETE)
+            local result=$(curl $curl_opts -X DELETE "$target_url" 2>&1)
+            ;;
+        *)
+            local result=$(curl $curl_opts -X "$method" "$target_url" 2>&1)
+            ;;
+    esac
+
+    local rc=$?
+    rm -f "$export_file"
+
+    if [ $rc -eq 0 ]; then
+        echo "Replay successful!"
+        echo ""
+        echo "Response:"
+        echo "$result" | head -50
+    else
+        echo "Replay failed (curl error: $rc)"
+        echo "$result"
+        return 1
+    fi
+
+    # Log replay
+    log "info" "Replayed session #$session_id to $target_node"
 }
 
-cmd_export() {
+cmd_tap_export() {
     local session_id="$1"
-    [ -z "$session_id" ] && die "Usage: rttyctl export <session_id>"
+    local output_file="$2"
 
-    echo "Exporting session $session_id..."
-    echo "Note: Session export requires implementation"
+    [ -z "$session_id" ] && die "Usage: rttyctl tap-export <session_id> [output_file]"
+
+    if [ -z "$output_file" ]; then
+        output_file="/tmp/session_${session_id}.json"
+    fi
+
+    if [ ! -f "$AVATAR_TAP_DB" ]; then
+        die "Avatar-tap database not found"
+    fi
+
+    # Use avatar-tapctl export
+    avatar-tapctl export "$session_id" "$output_file" 2>/dev/null
+
+    if [ -f "$output_file" ]; then
+        echo "Session exported to: $output_file"
+        echo "Size: $(wc -c < "$output_file") bytes"
+    else
+        die "Export failed"
+    fi
+}
+
+cmd_tap_import() {
+    local import_file="$1"
+    [ -z "$import_file" ] && die "Usage: rttyctl tap-import <file.json>"
+    [ ! -f "$import_file" ] && die "Import file not found: $import_file"
+
+    echo "Importing session from: $import_file"
+
+    # Parse and insert into avatar-tap database
+    local domain=$(jsonfilter -i "$import_file" -e '@.domain' 2>/dev/null)
+    local method=$(jsonfilter -i "$import_file" -e '@.method' 2>/dev/null)
+    local path=$(jsonfilter -i "$import_file" -e '@.path' 2>/dev/null)
+    local label=$(jsonfilter -i "$import_file" -e '@.label' 2>/dev/null)
+
+    [ -z "$domain" ] || [ -z "$method" ] || [ -z "$path" ] && die "Invalid session format"
+
+    # Insert into database
+    local now=$(date +%s)
+    sqlite3 "$AVATAR_TAP_DB" "INSERT INTO sessions (domain, method, path, captured_at, label, use_count) VALUES ('$domain', '$method', '$path', $now, '$label', 0)" 2>/dev/null
+
+    local new_id=$(sqlite3 "$AVATAR_TAP_DB" "SELECT last_insert_rowid()" 2>/dev/null)
+
+    echo "Session imported with ID: $new_id"
+}
+
+cmd_tap_json_sessions() {
+    if [ ! -f "$AVATAR_TAP_DB" ]; then
+        echo '{"sessions":[]}'
+        return
+    fi
+
+    sqlite3 -json "$AVATAR_TAP_DB" \
+        "SELECT id, domain, path, method, captured_at, last_used, use_count, label FROM sessions ORDER BY captured_at DESC LIMIT 50" 2>/dev/null || echo '{"sessions":[]}'
+}
+
+cmd_tap_json_session() {
+    local session_id="$1"
+
+    if [ ! -f "$AVATAR_TAP_DB" ] || [ -z "$session_id" ]; then
+        echo '{"error":"Session not found"}'
+        return
+    fi
+
+    sqlite3 -json "$AVATAR_TAP_DB" \
+        "SELECT id, domain, path, method, captured_at, last_used, use_count, label FROM sessions WHERE id=$session_id" 2>/dev/null || echo '{"error":"Session not found"}'
 }
 
 #------------------------------------------------------------------------------
@@ -788,10 +1040,12 @@ RPCD Proxy:
   rpc-list <node>                         List available RPCD objects
   rpc-batch <node> <file.json>           Execute batch RPCD calls
 
-Session Management:
-  sessions [node_id]       List active/recent sessions
-  replay <session_id> <node>  Replay captured session to node
-  export <session_id>      Export session as JSON
+Avatar-Tap Session Replay:
+  tap-sessions [domain]    List captured sessions (filter by domain)
+  tap-show <id>            Show session details (headers, cookies)
+  tap-replay <id> <node>   Replay captured session to remote node
+  tap-export <id> [file]   Export session as JSON
+  tap-import <file>        Import session from JSON file
 
 Server Control:
   server start             Start local RTTY server
@@ -812,12 +1066,14 @@ Shared Access Tokens:
 JSON Output (for RPCD):
   json-status              Status as JSON
   json-nodes               Nodes as JSON
+  json-tap-sessions        Avatar-tap sessions as JSON
 
 Examples:
   rttyctl nodes
   rttyctl rpc 10.100.0.2 luci.system-hub status
-  rttyctl rpc sb-01 luci.haproxy vhost_list
-  rttyctl rpc-list 192.168.255.2
+  rttyctl tap-sessions photos.gk2
+  rttyctl tap-replay 5 10.100.0.3
+  rttyctl tap-export 12 /tmp/session.json
 
 Version: $VERSION
 EOF
@@ -855,11 +1111,21 @@ case "$1" in
     sessions)
         cmd_sessions "$2"
         ;;
-    replay)
-        cmd_replay "$2" "$3"
+    # Avatar-Tap Session Replay
+    tap-sessions)
+        cmd_tap_sessions "$2"
         ;;
-    export)
-        cmd_export "$2"
+    tap-show)
+        cmd_tap_show "$2"
+        ;;
+    tap-replay)
+        cmd_tap_replay "$2" "$3"
+        ;;
+    tap-export)
+        cmd_tap_export "$2" "$3"
+        ;;
+    tap-import)
+        cmd_tap_import "$2"
         ;;
     server)
         cmd_server "$2"
@@ -881,6 +1147,12 @@ case "$1" in
         ;;
     json-tokens)
         cmd_token_json_list
+        ;;
+    json-tap-sessions)
+        cmd_tap_json_sessions
+        ;;
+    json-tap-session)
+        cmd_tap_json_session "$2"
         ;;
     token)
         case "$2" in

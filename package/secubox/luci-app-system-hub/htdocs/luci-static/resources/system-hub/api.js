@@ -30,6 +30,13 @@ var callGetHealth = rpc.declare({
 	expect: {}
 });
 
+var callGetServiceHealth = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'get_service_health',
+	params: ['refresh'],
+	expect: {}
+});
+
 var callListServices = rpc.declare({
 	object: 'luci.system-hub',
 	method: 'list_services',
@@ -257,6 +264,9 @@ return baseclass.extend({
 	getStatus: callStatus,
 	getSystemInfo: callGetSystemInfo,
 	getHealth: callGetHealth,
+	getServiceHealth: function(refresh) {
+		return callGetServiceHealth({ refresh: refresh ? 1 : 0 });
+	},
 	getComponents: callGetComponents,
 	getComponentsByCategory: callGetComponentsByCategory,
 	listServices: callListServices,

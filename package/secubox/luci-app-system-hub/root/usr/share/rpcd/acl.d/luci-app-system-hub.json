@@ -7,6 +7,7 @@
 					"status",
 					"get_system_info",
 					"get_health",
+					"get_service_health",
 					"get_components",
 					"get_components_by_category",
 					"list_services",
