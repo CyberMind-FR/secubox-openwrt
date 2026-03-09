@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecuBox Development Status</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: #0f1019;
+            color: #f1f5f9;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            min-height: 100vh;
+        }
+        .page-header {
+            background: linear-gradient(135deg, #1a1a24 0%, #0f1019 100%);
+            border-bottom: 1px solid #2a2a3a;
+            padding: 24px 32px;
+        }
+        .page-header h1 {
+            font-size: 24px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #10b981, #06b6d4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 4px;
+        }
+        .page-header p {
+            color: #94a3b8;
+            font-size: 14px;
+        }
+        .page-header a {
+            color: #06b6d4;
+            text-decoration: none;
+        }
+        .page-header a:hover {
+            text-decoration: underline;
+        }
+        #dev-status-container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .footer {
+            text-align: center;
+            padding: 24px;
+            color: #64748b;
+            font-size: 12px;
+            border-top: 1px solid #2a2a3a;
+            margin-top: 32px;
+        }
+        .footer a {
+            color: #06b6d4;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="page-header">
+        <h1>SecuBox OpenWrt</h1>
+        <p>Development Status Dashboard &mdash; <a href="https://secubox.in" target="_blank">secubox.in</a></p>
+    </div>
+
+    <div id="dev-status-container"></div>
+
+    <div class="footer">
+        <p>SecuBox OpenWrt &copy; 2024-2026 &mdash; <a href="https://github.com/secubox" target="_blank">GitHub</a></p>
+    </div>
+
+    <script>
+        // Inline the widget for standalone mode
+        var DevStatusWidget = {
+            targetVersion: '1.0.0',
+            lastUpdate: '2026-03-09',
+            totalPackages: 185,
+            refreshInterval: null,
+            refreshSeconds: 60,
+            activeFilters: { layer: null, status: null, category: null },
+
+            layers: {
+                'core': { id: 'core', name: 'Couche 1: Core Mesh', description: 'Infrastructure fondamentale: reverse proxy, WAF, DNS, containers', progress: 85, icon: '🏗️', color: '#10b981', order: 1 },
+                'ai': { id: 'ai', name: 'Couche 2: AI Gateway', description: 'Intelligence artificielle: inference, agents, mémoire contextuelle', progress: 60, icon: '🤖', color: '#8b5cf6', order: 2 },
+                'mirrornet': { id: 'mirrornet', name: 'Couche 3: MirrorNet P2P', description: 'Réseau maillé: identité, gossip, partage IOC, mirroring', progress: 40, icon: '🌐', color: '#06b6d4', order: 3 },
+                'certification': { id: 'certification', name: 'Couche 4: Certification', description: 'Conformité: ANSSI CSPN, CRA, audit sécurité', progress: 20, icon: '🏆', color: '#f59e0b', order: 4 }
+            },
+
+            features: {
+                'intrusion-prevention': { id: 'intrusion-prevention', name: 'Intrusion Prevention', layer: 'core', category: 'security', status: 'production', progress: 95, icon: '🛡️', description: 'Détection et blocage des menaces en temps réel', components: ['crowdsec', 'firewall-bouncer', 'wazuh'], dependsOn: ['network-stack'], usedBy: ['threat-intelligence', 'ai-security'] },
+                'waf': { id: 'waf', name: 'Web Application Firewall', layer: 'core', category: 'security', status: 'production', progress: 90, icon: '🔥', description: 'Inspection HTTP/HTTPS, détection bots, analytics', components: ['mitmproxy', 'haproxy-router', 'analytics'], dependsOn: ['reverse-proxy'], usedBy: ['session-analytics', 'threat-intelligence'] },
+                'dns-firewall': { id: 'dns-firewall', name: 'DNS Firewall', layer: 'core', category: 'security', status: 'production', progress: 85, icon: '🚫', description: 'Blocage DNS (RPZ), threat feeds, mesh DNS', components: ['vortex-dns', 'vortex-firewall', 'rpz-zones'], dependsOn: ['dns-master'], usedBy: ['ai-security', 'mesh-network'] },
+                'access-control': { id: 'access-control', name: 'Access Control', layer: 'core', category: 'security', status: 'production', progress: 90, icon: '🔐', description: 'NAC, portail captif, OAuth2, vouchers', components: ['auth-guardian', 'client-guardian', 'nodogsplash', 'mac-guardian'], dependsOn: ['network-stack'], usedBy: ['user-management'] },
+                'reverse-proxy': { id: 'reverse-proxy', name: 'Reverse Proxy & SSL', layer: 'core', category: 'network', status: 'production', progress: 95, icon: '🔀', description: 'HAProxy SNI routing, ACME SSL, 226 vhosts', components: ['haproxy', 'acme', 'vhost-manager'], dependsOn: ['dns-master'], usedBy: ['waf', 'service-exposure'] },
+                'dns-master': { id: 'dns-master', name: 'DNS Master', layer: 'core', category: 'network', status: 'production', progress: 90, icon: '🌍', description: 'BIND9 authoritative, zone management, 7 zones', components: ['bind9', 'dns-provider', 'zone-editor'], dependsOn: [], usedBy: ['reverse-proxy', 'dns-firewall', 'mesh-network'] },
+                'vpn-mesh': { id: 'vpn-mesh', name: 'VPN & Mesh', layer: 'core', category: 'network', status: 'production', progress: 85, icon: '🔒', description: 'WireGuard tunnels, QR codes, mesh topology', components: ['wireguard', 'mesh-discovery', 'qr-generator'], dependsOn: ['network-stack'], usedBy: ['mirrornet-p2p', 'master-link'] },
+                'bandwidth-qos': { id: 'bandwidth-qos', name: 'Bandwidth & QoS', layer: 'core', category: 'network', status: 'production', progress: 85, icon: '📊', description: 'SQM/CAKE, quotas, traffic shaping', components: ['bandwidth-manager', 'traffic-shaper', 'sqm'], dependsOn: ['network-stack'], usedBy: ['media-services'] },
+                'container-platform': { id: 'container-platform', name: 'Container Platform', layer: 'core', category: 'services', status: 'production', progress: 95, icon: '📦', description: 'LXC containers, 18 running, auto-start', components: ['lxc-manager', 'container-networking', 'resource-limits'], dependsOn: ['network-stack'], usedBy: ['media-services', 'communication', 'cloud-services'] },
+                'media-services': { id: 'media-services', name: 'Media Services', layer: 'core', category: 'services', status: 'production', progress: 90, icon: '🎬', description: 'Streaming, photos, musique', components: ['jellyfin', 'photoprism', 'lyrion', 'peertube'], dependsOn: ['container-platform', 'reverse-proxy'], usedBy: [] },
+                'communication': { id: 'communication', name: 'Communication', layer: 'core', category: 'services', status: 'production', progress: 85, icon: '💬', description: 'Chat, video, federation', components: ['matrix', 'jitsi', 'jabber', 'gotosocial', 'simplex'], dependsOn: ['container-platform', 'reverse-proxy'], usedBy: [] },
+                'cloud-services': { id: 'cloud-services', name: 'Cloud Services', layer: 'core', category: 'services', status: 'production', progress: 85, icon: '☁️', description: 'Files, email, git', components: ['nextcloud', 'mailserver', 'gitea'], dependsOn: ['container-platform', 'reverse-proxy'], usedBy: [] },
+                'remote-access': { id: 'remote-access', name: 'Remote Access', layer: 'core', category: 'services', status: 'production', progress: 80, icon: '🖥️', description: 'Terminal web, RDP, TURN/STUN', components: ['rtty-remote', 'turn-server', 'rustdesk'], dependsOn: ['reverse-proxy'], usedBy: ['master-link'] },
+                'ai-inference': { id: 'ai-inference', name: 'AI Inference', layer: 'ai', category: 'ai', status: 'production', progress: 80, icon: '🧠', description: 'LocalAI, Ollama, embeddings, completions', components: ['localai', 'ollama', 'model-manager'], dependsOn: ['container-platform'], usedBy: ['ai-security', 'ai-agents'] },
+                'ai-security': { id: 'ai-security', name: 'AI Security Agents', layer: 'ai', category: 'ai', status: 'beta', progress: 50, icon: '🤖', description: 'Threat analysis, DNS anomaly, network behavior', components: ['threat-analyst', 'dns-guard-ai', 'network-anomaly'], dependsOn: ['ai-inference', 'intrusion-prevention'], usedBy: [] },
+                'ai-memory': { id: 'ai-memory', name: 'AI Memory & Context', layer: 'ai', category: 'ai', status: 'alpha', progress: 30, icon: '💾', description: 'LocalRecall, RAG, conversation history', components: ['localrecall', 'mcp-server', 'embedding-store'], dependsOn: ['ai-inference'], usedBy: ['ai-security'] },
+                'mesh-network': { id: 'mesh-network', name: 'Mesh Network', layer: 'mirrornet', category: 'p2p', status: 'beta', progress: 50, icon: '🕸️', description: 'P2P mesh, gossip protocol, service discovery', components: ['p2p-core', 'gossip', 'mesh-dns'], dependsOn: ['vpn-mesh', 'dns-master'], usedBy: ['p2p-intel', 'service-mirroring'] },
+                'identity-trust': { id: 'identity-trust', name: 'Identity & Trust', layer: 'mirrornet', category: 'p2p', status: 'alpha', progress: 30, icon: '🪪', description: 'DID identity, reputation, trust hierarchy', components: ['identity-did', 'reputation', 'master-link'], dependsOn: ['mesh-network'], usedBy: ['p2p-intel'] },
+                'p2p-intel': { id: 'p2p-intel', name: 'P2P Intelligence', layer: 'mirrornet', category: 'p2p', status: 'alpha', progress: 25, icon: '🔍', description: 'IOC sharing, signed alerts, collective defense', components: ['p2p-intel-core', 'ioc-signatures', 'alert-propagation'], dependsOn: ['identity-trust', 'intrusion-prevention'], usedBy: [] },
+                'service-exposure': { id: 'service-exposure', name: 'Service Exposure', layer: 'core', category: 'exposure', status: 'production', progress: 80, icon: '🚀', description: 'Peek/Poke/Emancipate, multi-channel exposure', components: ['exposure-engine', 'tor-hidden', 'dns-ssl', 'mesh-publish'], dependsOn: ['reverse-proxy', 'dns-master'], usedBy: ['mesh-network'] },
+                'system-monitoring': { id: 'system-monitoring', name: 'System Monitoring', layer: 'core', category: 'monitoring', status: 'production', progress: 90, icon: '📈', description: 'Glances, Netdata, system health', components: ['glances', 'netdata', 'health-checks'], dependsOn: [], usedBy: ['ai-security'] },
+                'network-analytics': { id: 'network-analytics', name: 'Network Analytics', layer: 'core', category: 'monitoring', status: 'production', progress: 85, icon: '🔬', description: 'DPI, flow analysis, application detection', components: ['netifyd', 'ndpid', 'flow-analyzer'], dependsOn: ['network-stack'], usedBy: ['ai-security', 'bandwidth-qos'] },
+                'session-analytics': { id: 'session-analytics', name: 'Session Analytics', layer: 'core', category: 'monitoring', status: 'production', progress: 85, icon: '👁️', description: 'Avatar-Tap recording, cookie tracking, replay', components: ['avatar-tap', 'cookie-tracker', 'session-replay'], dependsOn: ['waf'], usedBy: ['threat-intelligence'] },
+                'threat-intelligence': { id: 'threat-intelligence', name: 'Threat Intelligence', layer: 'core', category: 'monitoring', status: 'production', progress: 80, icon: '🎯', description: 'CVE triage, cyberfeed, device intel', components: ['cve-triage', 'cyberfeed', 'device-intel'], dependsOn: ['intrusion-prevention'], usedBy: ['ai-security'] },
+                'config-management': { id: 'config-management', name: 'Configuration Management', layer: 'certification', category: 'admin', status: 'beta', progress: 60, icon: '⚙️', description: 'Backup, restore, config advisor, cloning', components: ['backup', 'config-advisor', 'cloner'], dependsOn: [], usedBy: [] },
+                'compliance': { id: 'compliance', name: 'Compliance & Audit', layer: 'certification', category: 'admin', status: 'alpha', progress: 20, icon: '📋', description: 'ANSSI CSPN, CRA, security audit', components: ['anssi-checker', 'sbom-generator', 'audit-log'], dependsOn: ['config-management'], usedBy: [] }
+            },
+
+            components: {
+                'crowdsec': { name: 'CrowdSec', type: 'backend', status: 'production' },
+                'firewall-bouncer': { name: 'Firewall Bouncer', type: 'backend', status: 'production' },
+                'wazuh': { name: 'Wazuh SIEM', type: 'backend', status: 'production' },
+                'mitmproxy': { name: 'Mitmproxy WAF', type: 'backend', status: 'production' },
+                'haproxy-router': { name: 'HAProxy Router', type: 'addon', status: 'production' },
+                'analytics': { name: 'SecuBox Analytics', type: 'addon', status: 'production' },
+                'vortex-dns': { name: 'Vortex DNS', type: 'backend', status: 'production' },
+                'vortex-firewall': { name: 'Vortex Firewall', type: 'backend', status: 'production' },
+                'rpz-zones': { name: 'RPZ Zones', type: 'config', status: 'production' },
+                'auth-guardian': { name: 'Auth Guardian', type: 'luci', status: 'production' },
+                'client-guardian': { name: 'Client Guardian', type: 'luci', status: 'production' },
+                'nodogsplash': { name: 'Nodogsplash', type: 'backend', status: 'production' },
+                'mac-guardian': { name: 'MAC Guardian', type: 'backend', status: 'production' },
+                'haproxy': { name: 'HAProxy', type: 'backend', status: 'production' },
+                'acme': { name: 'ACME SSL', type: 'backend', status: 'production' },
+                'vhost-manager': { name: 'VHost Manager', type: 'luci', status: 'production' },
+                'bind9': { name: 'BIND9', type: 'backend', status: 'production' },
+                'dns-provider': { name: 'DNS Provider API', type: 'backend', status: 'beta' },
+                'zone-editor': { name: 'Zone Editor', type: 'luci', status: 'production' },
+                'wireguard': { name: 'WireGuard', type: 'backend', status: 'production' },
+                'mesh-discovery': { name: 'Mesh Discovery', type: 'backend', status: 'beta' },
+                'qr-generator': { name: 'QR Generator', type: 'addon', status: 'production' },
+                'bandwidth-manager': { name: 'Bandwidth Manager', type: 'luci', status: 'production' },
+                'traffic-shaper': { name: 'Traffic Shaper', type: 'luci', status: 'production' },
+                'sqm': { name: 'SQM/CAKE', type: 'backend', status: 'production' },
+                'lxc-manager': { name: 'LXC Manager', type: 'luci', status: 'production' },
+                'container-networking': { name: 'Container Networking', type: 'backend', status: 'production' },
+                'resource-limits': { name: 'Resource Limits', type: 'config', status: 'production' },
+                'jellyfin': { name: 'Jellyfin', type: 'backend', status: 'production' },
+                'photoprism': { name: 'PhotoPrism', type: 'backend', status: 'production' },
+                'lyrion': { name: 'Lyrion Music', type: 'backend', status: 'production' },
+                'peertube': { name: 'PeerTube', type: 'backend', status: 'beta' },
+                'matrix': { name: 'Matrix', type: 'backend', status: 'production' },
+                'jitsi': { name: 'Jitsi', type: 'backend', status: 'production' },
+                'jabber': { name: 'Prosody XMPP', type: 'backend', status: 'production' },
+                'gotosocial': { name: 'GoToSocial', type: 'backend', status: 'production' },
+                'simplex': { name: 'SimpleX', type: 'backend', status: 'beta' },
+                'nextcloud': { name: 'Nextcloud', type: 'backend', status: 'production' },
+                'mailserver': { name: 'Mail Server', type: 'backend', status: 'production' },
+                'gitea': { name: 'Gitea', type: 'backend', status: 'production' },
+                'rtty-remote': { name: 'RTTY Remote', type: 'backend', status: 'production' },
+                'turn-server': { name: 'TURN Server', type: 'backend', status: 'production' },
+                'rustdesk': { name: 'RustDesk', type: 'backend', status: 'beta' },
+                'localai': { name: 'LocalAI', type: 'backend', status: 'production' },
+                'ollama': { name: 'Ollama', type: 'backend', status: 'beta' },
+                'model-manager': { name: 'Model Manager', type: 'luci', status: 'beta' },
+                'threat-analyst': { name: 'Threat Analyst', type: 'backend', status: 'beta' },
+                'dns-guard-ai': { name: 'DNS Guard AI', type: 'backend', status: 'beta' },
+                'network-anomaly': { name: 'Network Anomaly', type: 'backend', status: 'beta' },
+                'localrecall': { name: 'LocalRecall', type: 'backend', status: 'alpha' },
+                'mcp-server': { name: 'MCP Server', type: 'backend', status: 'beta' },
+                'embedding-store': { name: 'Embedding Store', type: 'backend', status: 'alpha' },
+                'p2p-core': { name: 'P2P Core', type: 'backend', status: 'beta' },
+                'gossip': { name: 'Gossip Protocol', type: 'backend', status: 'beta' },
+                'mesh-dns': { name: 'Mesh DNS', type: 'backend', status: 'beta' },
+                'identity-did': { name: 'Identity DID', type: 'backend', status: 'alpha' },
+                'reputation': { name: 'Reputation System', type: 'backend', status: 'alpha' },
+                'master-link': { name: 'Master Link', type: 'backend', status: 'production' },
+                'p2p-intel-core': { name: 'P2P Intel Core', type: 'backend', status: 'alpha' },
+                'ioc-signatures': { name: 'IOC Signatures', type: 'backend', status: 'alpha' },
+                'alert-propagation': { name: 'Alert Propagation', type: 'backend', status: 'alpha' },
+                'exposure-engine': { name: 'Exposure Engine', type: 'backend', status: 'production' },
+                'tor-hidden': { name: 'Tor Hidden Services', type: 'backend', status: 'production' },
+                'dns-ssl': { name: 'DNS/SSL Channel', type: 'backend', status: 'production' },
+                'mesh-publish': { name: 'Mesh Publish', type: 'backend', status: 'beta' },
+                'glances': { name: 'Glances', type: 'backend', status: 'production' },
+                'netdata': { name: 'Netdata', type: 'backend', status: 'production' },
+                'health-checks': { name: 'Health Checks', type: 'backend', status: 'production' },
+                'netifyd': { name: 'Netifyd', type: 'backend', status: 'production' },
+                'ndpid': { name: 'nDPId', type: 'backend', status: 'production' },
+                'flow-analyzer': { name: 'Flow Analyzer', type: 'backend', status: 'production' },
+                'avatar-tap': { name: 'Avatar-Tap', type: 'backend', status: 'production' },
+                'cookie-tracker': { name: 'Cookie Tracker', type: 'backend', status: 'production' },
+                'session-replay': { name: 'Session Replay', type: 'luci', status: 'production' },
+                'cve-triage': { name: 'CVE Triage', type: 'backend', status: 'beta' },
+                'cyberfeed': { name: 'CyberFeed', type: 'backend', status: 'production' },
+                'device-intel': { name: 'Device Intel', type: 'backend', status: 'production' },
+                'backup': { name: 'Backup', type: 'backend', status: 'production' },
+                'config-advisor': { name: 'Config Advisor', type: 'backend', status: 'beta' },
+                'cloner': { name: 'Station Cloner', type: 'luci', status: 'alpha' },
+                'anssi-checker': { name: 'ANSSI Checker', type: 'backend', status: 'alpha' },
+                'sbom-generator': { name: 'SBOM Generator', type: 'backend', status: 'planned' },
+                'audit-log': { name: 'Audit Log', type: 'backend', status: 'beta' },
+                'network-stack': { name: 'Network Stack', type: 'system', status: 'production' }
+            },
+
+            milestones: [
+                { version: '0.19', name: 'Core Stability', target: '2026-03-15', status: 'in-progress', progress: 85, highlights: ['RTTY Remote Web Terminal', 'DNS Master LuCI sync', 'WAF memory optimization'] },
+                { version: '0.20', name: 'AI Gateway Expansion', target: '2026-03-30', status: 'planned', progress: 20, highlights: ['Threat Analyst auto-rules', 'DNS Guard AI', 'LocalRecall persistence'] },
+                { version: '0.21', name: 'MirrorNet Phase 1', target: '2026-04-15', status: 'planned', progress: 10, highlights: ['DID Identity', 'Gossip protocol', 'IOC sharing'] },
+                { version: '0.22', name: 'Station Cloning', target: '2026-04-30', status: 'planned', progress: 5, highlights: ['Clone image builder', 'Auto-mesh join', 'First-boot provisioning'] },
+                { version: '1.0', name: 'Certification Ready', target: '2026-06-01', status: 'planned', progress: 0, highlights: ['ANSSI CSPN', 'CRA Annex I SBOM', 'Security documentation'] }
+            ],
+
+            stats: { totalPackages: 185, luciApps: 89, backends: 96, lxcContainers: 18, haproxyVhosts: 226, sslCertificates: 92, dnsZones: 7, dnsRecords: 78, mitmproxyRoutes: 150, commits: 1700 },
+
+            loadFiltersFromStorage: function() {
+                try {
+                    var stored = localStorage.getItem('dsw_filters');
+                    if (stored) this.activeFilters = JSON.parse(stored);
+                } catch (e) {}
+            },
+
+            saveFiltersToStorage: function() {
+                try { localStorage.setItem('dsw_filters', JSON.stringify(this.activeFilters)); } catch (e) {}
+            },
+
+            calculateOverallProgress: function() {
+                var self = this;
+                var features = Object.keys(this.features).map(function(k) { return self.features[k]; });
+                var total = features.reduce(function(sum, f) { return sum + f.progress; }, 0);
+                return Math.round(total / features.length);
+            },
+
+            getStatusBadge: function(status) {
+                return { 'production': '✅', 'beta': '🔶', 'alpha': '🔷', 'planned': '⬜' }[status] || '⚪';
+            },
+
+            applyFilters: function() {
+                var self = this;
+                var cards = document.querySelectorAll('.dsw-feature-card');
+                cards.forEach(function(card) {
+                    var feature = self.features[card.dataset.feature];
+                    if (!feature) return;
+                    var visible = true;
+                    if (self.activeFilters.status && self.activeFilters.status !== 'all' && feature.status !== self.activeFilters.status) visible = false;
+                    if (self.activeFilters.category && self.activeFilters.category !== 'all' && feature.category !== self.activeFilters.category) visible = false;
+                    if (self.activeFilters.layer && feature.layer !== self.activeFilters.layer) visible = false;
+                    card.style.opacity = visible ? '1' : '0.2';
+                    card.style.pointerEvents = visible ? 'auto' : 'none';
+                });
+                document.querySelectorAll('.dsw-layer-card').forEach(function(card) {
+                    card.classList.toggle('dsw-layer-active', card.dataset.layer === self.activeFilters.layer);
+                });
+            },
+
+            render: function(containerId) {
+                var self = this;
+                var container = document.getElementById(containerId);
+                if (!container) return;
+                this.loadFiltersFromStorage();
+                var overallProgress = this.calculateOverallProgress();
+
+                // Build layers HTML
+                var sortedLayers = Object.keys(this.layers).map(function(k) { return self.layers[k]; }).sort(function(a,b) { return a.order - b.order; });
+                var layersHtml = sortedLayers.map(function(layer) {
+                    var featureCount = Object.keys(self.features).filter(function(k) { return self.features[k].layer === layer.id; }).length;
+                    return '<div class="dsw-layer-card" data-layer="' + layer.id + '" style="--layer-color: ' + layer.color + '"><div class="dsw-layer-icon">' + layer.icon + '</div><div class="dsw-layer-info"><h3 class="dsw-layer-name">' + layer.name + '</h3><p class="dsw-layer-desc">' + layer.description + '</p></div><div class="dsw-layer-stats"><div class="dsw-layer-progress"><div class="dsw-layer-bar"><div class="dsw-layer-fill" style="width: ' + layer.progress + '%"></div></div><span class="dsw-layer-percent">' + layer.progress + '%</span></div><span class="dsw-layer-features">' + featureCount + ' features</span></div></div>';
+                }).join('');
+
+                // Build features by category
+                var categories = { security: {name:'Security',icon:'🛡️'}, network: {name:'Network',icon:'🌍'}, services: {name:'Services',icon:'📦'}, ai: {name:'AI',icon:'🤖'}, p2p: {name:'P2P/Mesh',icon:'🕸️'}, monitoring: {name:'Monitoring',icon:'📊'}, exposure: {name:'Exposure',icon:'🚀'}, admin: {name:'Admin',icon:'⚙️'} };
+                var featuresHtml = '';
+                Object.keys(categories).forEach(function(catId) {
+                    var cat = categories[catId];
+                    var features = Object.keys(self.features).filter(function(k) { return self.features[k].category === catId; }).map(function(k) { return self.features[k]; });
+                    if (!features.length) return;
+                    featuresHtml += '<div class="dsw-category" data-category="' + catId + '"><h4 class="dsw-category-title">' + cat.icon + ' ' + cat.name + '</h4><div class="dsw-features-grid">';
+                    features.forEach(function(f) {
+                        var layer = self.layers[f.layer];
+                        var compTags = (f.components || []).slice(0,4).map(function(c) {
+                            var comp = self.components[c];
+                            return comp ? '<span class="dsw-component-tag dsw-comp-' + comp.status + '">' + comp.name + '</span>' : '';
+                        }).join('');
+                        featuresHtml += '<div class="dsw-feature-card dsw-status-' + f.status + '" data-feature="' + f.id + '" data-layer="' + f.layer + '" data-status="' + f.status + '"><div class="dsw-feature-header"><span class="dsw-feature-icon">' + f.icon + '</span><span class="dsw-feature-name">' + f.name + '</span><span class="dsw-feature-status">' + self.getStatusBadge(f.status) + '</span></div><p class="dsw-feature-desc">' + f.description + '</p><div class="dsw-feature-progress"><div class="dsw-feature-bar"><div class="dsw-feature-fill" style="width:' + f.progress + '%;background:' + layer.color + '"></div></div><span>' + f.progress + '%</span></div><div class="dsw-feature-components">' + compTags + '</div></div>';
+                    });
+                    featuresHtml += '</div></div>';
+                });
+
+                // Milestones
+                var milestonesHtml = this.milestones.map(function(m,i) {
+                    var isActive = m.status === 'in-progress';
+                    var highlights = m.highlights.map(function(h) { return '<li>' + h + '</li>'; }).join('');
+                    return '<div class="dsw-milestone ' + (isActive?'dsw-milestone-active ':'') + 'dsw-milestone-' + m.status + '"><div class="dsw-milestone-marker"><div class="dsw-milestone-dot"></div>' + (i < self.milestones.length - 1 ? '<div class="dsw-milestone-line"></div>' : '') + '</div><div class="dsw-milestone-content"><div class="dsw-milestone-header"><span class="dsw-milestone-version">v' + m.version + '</span><span class="dsw-milestone-name">' + m.name + '</span><span class="dsw-milestone-date">' + m.target + '</span></div><div class="dsw-milestone-progress"><div class="dsw-milestone-bar"><div class="dsw-milestone-fill" style="width:' + m.progress + '%"></div></div><span>' + m.progress + '%</span></div><ul class="dsw-milestone-highlights">' + highlights + '</ul></div></div>';
+                }).join('');
+
+                // Stats
+                var statsData = [
+                    {label:'Packages',value:this.stats.totalPackages,icon:'📦'},
+                    {label:'LuCI Apps',value:this.stats.luciApps,icon:'🖥️'},
+                    {label:'LXC Running',value:this.stats.lxcContainers,icon:'📦'},
+                    {label:'HAProxy Vhosts',value:this.stats.haproxyVhosts,icon:'🔀'},
+                    {label:'SSL Certs',value:this.stats.sslCertificates,icon:'🔒'},
+                    {label:'DNS Zones',value:this.stats.dnsZones,icon:'🌍'},
+                    {label:'WAF Routes',value:this.stats.mitmproxyRoutes,icon:'🔥'},
+                    {label:'Commits',value:this.stats.commits,icon:'📝'}
+                ];
+                var statsHtml = statsData.map(function(s) {
+                    return '<div class="dsw-stat-card"><span class="dsw-stat-icon">' + s.icon + '</span><span class="dsw-stat-value">' + s.value + '</span><span class="dsw-stat-label">' + s.label + '</span></div>';
+                }).join('');
+
+                container.innerHTML = '<div class="dsw-v2">' + this.renderStyles() +
+                    '<div class="dsw-header"><div class="dsw-header-left"><h2 class="dsw-title">SecuBox Development Status</h2><p class="dsw-subtitle">Architecture: ' + this.totalPackages + ' packages · 4 couches · ' + Object.keys(this.features).length + ' features</p></div><div class="dsw-header-right"><div class="dsw-progress-ring"><svg viewBox="0 0 100 100"><circle class="dsw-ring-bg" cx="50" cy="50" r="45"/><circle class="dsw-ring-fill" cx="50" cy="50" r="45" style="stroke-dasharray:' + (283*overallProgress/100) + ',283"/></svg><span class="dsw-ring-text">' + overallProgress + '%</span></div><div class="dsw-target"><span class="dsw-target-label">Target</span><span class="dsw-target-version">v' + this.targetVersion + '</span></div></div></div>' +
+                    '<div class="dsw-controls"><div class="dsw-control-group"><label>Status:</label><select class="dsw-filter-status"><option value="all">All</option><option value="production">Production</option><option value="beta">Beta</option><option value="alpha">Alpha</option><option value="planned">Planned</option></select></div><div class="dsw-control-group"><label>Category:</label><select class="dsw-filter-category"><option value="all">All</option><option value="security">Security</option><option value="network">Network</option><option value="services">Services</option><option value="ai">AI</option><option value="p2p">P2P</option><option value="monitoring">Monitoring</option><option value="exposure">Exposure</option><option value="admin">Admin</option></select></div><div class="dsw-control-group"><button class="dsw-btn dsw-btn-clear">Clear Filters</button></div></div>' +
+                    '<div class="dsw-section"><h3 class="dsw-section-title">🏛️ Architecture 4 Couches</h3><div class="dsw-layers-grid">' + layersHtml + '</div></div>' +
+                    '<div class="dsw-section"><h3 class="dsw-section-title">📦 Features & Components</h3>' + featuresHtml + '</div>' +
+                    '<div class="dsw-section"><h3 class="dsw-section-title">🎯 Milestones → v' + this.targetVersion + '</h3><div class="dsw-milestones-timeline">' + milestonesHtml + '</div></div>' +
+                    '<div class="dsw-section"><h3 class="dsw-section-title">📈 Production Stats</h3><div class="dsw-stats-grid">' + statsHtml + '</div></div>' +
+                    '</div>';
+
+                this.initInteractions();
+            },
+
+            initInteractions: function() {
+                var self = this;
+                document.querySelectorAll('.dsw-feature-card').forEach(function(card) {
+                    card.addEventListener('click', function() { card.classList.toggle('dsw-expanded'); });
+                });
+                document.querySelectorAll('.dsw-layer-card').forEach(function(card) {
+                    card.addEventListener('click', function() {
+                        var layer = card.dataset.layer;
+                        self.activeFilters.layer = (self.activeFilters.layer === layer) ? null : layer;
+                        self.saveFiltersToStorage();
+                        self.applyFilters();
+                    });
+                });
+                var statusSelect = document.querySelector('.dsw-filter-status');
+                if (statusSelect) statusSelect.addEventListener('change', function() {
+                    self.activeFilters.status = this.value === 'all' ? null : this.value;
+                    self.saveFiltersToStorage();
+                    self.applyFilters();
+                });
+                var categorySelect = document.querySelector('.dsw-filter-category');
+                if (categorySelect) categorySelect.addEventListener('change', function() {
+                    self.activeFilters.category = this.value === 'all' ? null : this.value;
+                    self.saveFiltersToStorage();
+                    self.applyFilters();
+                });
+                var clearBtn = document.querySelector('.dsw-btn-clear');
+                if (clearBtn) clearBtn.addEventListener('click', function() {
+                    self.activeFilters = { layer: null, status: null, category: null };
+                    self.saveFiltersToStorage();
+                    document.querySelector('.dsw-filter-status').value = 'all';
+                    document.querySelector('.dsw-filter-category').value = 'all';
+                    self.applyFilters();
+                });
+            },
+
+            renderStyles: function() {
+                return '<style>.dsw-v2{--dsw-bg:#0f1019;--dsw-card:#1a1a24;--dsw-border:#2a2a3a;--dsw-text:#f1f5f9;--dsw-muted:#94a3b8;--dsw-dim:#64748b;font-family:"Inter",-apple-system,sans-serif;color:var(--dsw-text);padding:24px}.dsw-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:20px}.dsw-title{font-size:28px;font-weight:800;margin:0;background:linear-gradient(135deg,#10b981,#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}.dsw-subtitle{color:var(--dsw-muted);margin:8px 0 0;font-size:14px}.dsw-header-right{display:flex;align-items:center;gap:24px}.dsw-progress-ring{position:relative;width:80px;height:80px}.dsw-progress-ring svg{transform:rotate(-90deg);width:100%;height:100%}.dsw-ring-bg{fill:none;stroke:var(--dsw-border);stroke-width:8}.dsw-ring-fill{fill:none;stroke:#10b981;stroke-width:8;stroke-linecap:round}.dsw-ring-text{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:18px;font-weight:700;color:#10b981}.dsw-target{text-align:center}.dsw-target-label{display:block;font-size:11px;color:var(--dsw-dim);text-transform:uppercase}.dsw-target-version{font-size:20px;font-weight:700;color:#06b6d4}.dsw-controls{display:flex;align-items:center;gap:16px;margin-bottom:24px;flex-wrap:wrap;padding:12px 16px;background:var(--dsw-card);border-radius:8px;border:1px solid var(--dsw-border)}.dsw-control-group{display:flex;align-items:center;gap:8px}.dsw-control-group label{font-size:12px;color:var(--dsw-muted)}.dsw-control-group select{background:var(--dsw-bg);border:1px solid var(--dsw-border);color:var(--dsw-text);padding:6px 10px;border-radius:4px;font-size:12px;cursor:pointer}.dsw-btn{background:var(--dsw-bg);border:1px solid var(--dsw-border);color:var(--dsw-text);padding:6px 12px;border-radius:4px;font-size:12px;cursor:pointer;transition:all .2s}.dsw-btn:hover{border-color:#06b6d4;color:#06b6d4}.dsw-section{margin-bottom:32px}.dsw-section-title{font-size:18px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:8px}.dsw-layers-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}.dsw-layer-card{background:var(--dsw-card);border:1px solid var(--dsw-border);border-radius:12px;padding:20px;display:flex;gap:16px;align-items:flex-start;cursor:pointer;transition:all .2s;border-left:4px solid var(--layer-color)}.dsw-layer-card:hover{transform:translateY(-2px);border-color:var(--layer-color)}.dsw-layer-card.dsw-layer-active{background:rgba(16,185,129,.1);border-color:var(--layer-color)}.dsw-layer-icon{font-size:32px}.dsw-layer-info{flex:1;min-width:0}.dsw-layer-name{font-size:14px;font-weight:700;margin:0 0 4px}.dsw-layer-desc{font-size:12px;color:var(--dsw-muted);margin:0}.dsw-layer-stats{text-align:right}.dsw-layer-progress{display:flex;align-items:center;gap:8px;margin-bottom:4px}.dsw-layer-bar{width:60px;height:6px;background:var(--dsw-bg);border-radius:3px;overflow:hidden}.dsw-layer-fill{height:100%;background:var(--layer-color);border-radius:3px}.dsw-layer-percent{font-size:14px;font-weight:700;color:var(--layer-color);min-width:36px}.dsw-layer-features{font-size:11px;color:var(--dsw-dim)}.dsw-category{margin-bottom:24px}.dsw-category-title{font-size:14px;font-weight:600;color:var(--dsw-muted);margin-bottom:12px}.dsw-features-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}.dsw-feature-card{background:var(--dsw-card);border:1px solid var(--dsw-border);border-radius:12px;padding:16px;cursor:pointer;transition:all .2s}.dsw-feature-card:hover{border-color:#06b6d4;transform:translateY(-2px)}.dsw-feature-card.dsw-expanded{grid-column:span 2}.dsw-feature-header{display:flex;align-items:center;gap:10px;margin-bottom:8px}.dsw-feature-icon{font-size:20px}.dsw-feature-name{font-weight:700;flex:1}.dsw-feature-status{font-size:14px}.dsw-feature-desc{font-size:12px;color:var(--dsw-muted);margin-bottom:12px;line-height:1.4}.dsw-feature-progress{display:flex;align-items:center;gap:8px;margin-bottom:10px}.dsw-feature-bar{flex:1;height:6px;background:var(--dsw-bg);border-radius:3px;overflow:hidden}.dsw-feature-fill{height:100%;border-radius:3px}.dsw-feature-progress span{font-size:12px;font-weight:600;color:var(--dsw-muted);min-width:32px;text-align:right}.dsw-feature-components{display:flex;flex-wrap:wrap;gap:6px}.dsw-component-tag{font-size:10px;padding:3px 8px;border-radius:4px;background:var(--dsw-bg);color:var(--dsw-muted)}.dsw-comp-production{border-left:2px solid #10b981}.dsw-comp-beta{border-left:2px solid #f59e0b}.dsw-comp-alpha{border-left:2px solid #3b82f6}.dsw-status-production{border-left:3px solid #10b981}.dsw-status-beta{border-left:3px solid #f59e0b}.dsw-status-alpha{border-left:3px solid #3b82f6}.dsw-status-planned{border-left:3px solid var(--dsw-dim);opacity:.7}.dsw-milestones-timeline{position:relative}.dsw-milestone{display:flex;gap:20px}.dsw-milestone-marker{display:flex;flex-direction:column;align-items:center;padding-top:6px}.dsw-milestone-dot{width:14px;height:14px;border-radius:50%;background:var(--dsw-border);border:3px solid var(--dsw-card);z-index:1}.dsw-milestone-line{width:2px;flex:1;background:var(--dsw-border);margin:4px 0}.dsw-milestone-in-progress .dsw-milestone-dot{background:#f59e0b;animation:pulse 2s infinite}.dsw-milestone-content{flex:1;padding-bottom:24px}.dsw-milestone-header{display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap}.dsw-milestone-version{font-weight:700;font-size:16px;color:#06b6d4}.dsw-milestone-name{font-weight:600}.dsw-milestone-date{font-size:12px;color:var(--dsw-dim);margin-left:auto}.dsw-milestone-progress{display:flex;align-items:center;gap:8px;margin-bottom:10px}.dsw-milestone-bar{flex:1;max-width:200px;height:6px;background:var(--dsw-bg);border-radius:3px;overflow:hidden}.dsw-milestone-fill{height:100%;background:linear-gradient(90deg,#10b981,#06b6d4);border-radius:3px}.dsw-milestone-progress span{font-size:12px;color:var(--dsw-muted);min-width:32px}.dsw-milestone-highlights{margin:0;padding-left:16px;font-size:12px;color:var(--dsw-muted)}.dsw-milestone-highlights li{margin-bottom:4px}.dsw-milestone-active{background:rgba(6,182,212,.05);margin:-8px;padding:8px;border-radius:8px}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}.dsw-stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px}.dsw-stat-card{background:var(--dsw-card);border:1px solid var(--dsw-border);border-radius:12px;padding:16px;text-align:center;transition:all .2s}.dsw-stat-card:hover{border-color:#06b6d4;transform:translateY(-2px)}.dsw-stat-icon{font-size:20px;display:block;margin-bottom:8px}.dsw-stat-value{font-size:28px;font-weight:800;color:#10b981;display:block}.dsw-stat-label{font-size:11px;color:var(--dsw-dim);text-transform:uppercase}@media(max-width:768px){.dsw-v2{padding:16px}.dsw-header{flex-direction:column;align-items:flex-start}.dsw-controls{flex-direction:column;align-items:stretch}.dsw-features-grid{grid-template-columns:1fr}.dsw-feature-card.dsw-expanded{grid-column:span 1}}</style>';
+            }
+        };
+
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', function() {
+            DevStatusWidget.render('dev-status-container');
+        });
+    </script>
+</body>
+</html>

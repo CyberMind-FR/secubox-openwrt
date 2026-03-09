@@ -1,12 +1,45 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-08 (RTTY Remote Module)_
+_Last updated: 2026-03-09 (Dev Status Widget v2.1)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
 ---
 
 ## Recently Completed
+
+### 2026-03-09
+
+- **Dev Status Widget v2.1 (Dynamic Dashboard)**
+  - Complete redesign with 4-layer architecture visualization
+  - 22+ features with dependency tracking (dependsOn/usedBy)
+  - 80+ components with status indicators
+  - Interactive filters: layer, status, category with localStorage persistence
+  - Feature cards: click to expand, show full dependencies/components
+  - Layer cards: click to filter features by layer
+  - Interconnection graph showing feature dependencies
+  - Milestone timeline to v1.0 with progress tracking
+  - Production stats display (185 packages, 226 vhosts, etc.)
+  - Auto-refresh with live RPCD data (60s interval)
+  - ES5 compatible for older browsers
+  - Standalone HTML page: `/dev-status.html` (no auth required)
+  - Files: `dev-status-widget.js`, `dev-status.js`, `dev-status-standalone.html`
+
+- **DNS Zone Configuration Sync**
+  - Fixed BIND zone path mismatch: `/srv/dns/zones/` → `/etc/bind/zones/`
+  - Added ganimed.fr zone declaration to `named.conf.zones`
+  - Synced zone files between LuCI-managed and BIND-loaded paths
+
+- **Mitmproxy WAF Memory Optimization**
+  - Diagnosed memory leak (687MB RSS)
+  - Added flow limits: `--set flow_detail=0 --set hardlimit=500`
+  - Reduced memory to 77MB
+  - Fixed `/srv/mitmproxy-in/haproxy-routes.json` for git.maegia.tv
+
+- **Config Backups Repository**
+  - Created `config-backups/` directory with BIND zones
+  - Created private `secubox-configs` repo on local Gitea
+  - Git remote: `git@git.maegia.tv:reepost/secubox-configs.git`
 
 ### 2026-03-08
 
@@ -36,6 +69,14 @@ _Last updated: 2026-03-08 (RTTY Remote Module)_
   - Session tracking with SQLite database
   - Master-link integration for authentication
   - Tested: `rttyctl rpc 127.0.0.1 system board` works
+
+- **lldh360.maegia.tv BIND Zone Fix**
+  - DNS was returning NXDOMAIN despite zone file existing
+  - Root cause: BIND (named) is the authoritative DNS, not dnsmasq
+  - Zone file `/srv/dns/zones/maegia.tv.zone` existed but wasn't registered in BIND
+  - Added zone entry to `/etc/bind/named.conf.zones`
+  - Restarted BIND (named), domain now resolves correctly
+  - Site accessible via HTTPS (HTTP 200)
 
 - **HAProxy mitmproxy Port Fix**
   - Changed mitmproxy-in WAF port from 8890 to 22222
