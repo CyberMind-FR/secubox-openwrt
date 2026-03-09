@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-09 (Dev Status Widget v2.1)_
+_Last updated: 2026-03-09 (HAProxy Routes Health Check)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -9,6 +9,20 @@ _Last updated: 2026-03-09 (Dev Status Widget v2.1)_
 ## Recently Completed
 
 ### 2026-03-09
+
+- **HAProxy Routes Health Check Panel**
+  - Backend: `/usr/sbin/service-health-check` script checks all routes in haproxy-routes.json
+  - RPCD method: `get_service_health` with 5-min cache and force-refresh option
+  - LuCI panel: Up/Down/Total stats, health %, down services list
+  - Refresh button for manual health check trigger
+  - CSS styling with KISS theme integration
+  - ACL permission added for read access
+  - Deployed and tested: 174 routes, 21 down (intentionally stopped LXC containers)
+
+- **admin.gk2.secubox.in WAF Routing Fix**
+  - Added route through mitmproxy WAF (port 8081 for LuCI)
+  - Fixed haproxy_router.py blocking 8081 routes
+  - Domain now accessible through WAF with proper access control
 
 - **Dev Status Widget v2.1 (Dynamic Dashboard)**
   - Complete redesign with 4-layer architecture visualization

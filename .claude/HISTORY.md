@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-03-07 (Avatar-Tap, PhotoPrism, Service Fixes)_
+_Last updated: 2026-03-09 (HAProxy Routes Health Check, WAF Routing)_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -4512,4 +4512,22 @@ git checkout HEAD -- index.html
     - **LuCI Views:**
       - Remote Control dashboard (RPC proxy interface)
       - Remote Support panel (token sharing)
+      - Web Terminal (ttyd shell access)
+
+79. **HAProxy Routes Health Check (2026-03-09)**
+    - Backend: `/usr/sbin/service-health-check` script probes all routes in haproxy-routes.json
+    - Modes: `down` (only failures), `all` (color-coded status), `json` (structured output)
+    - RPCD method: `get_service_health` with 5-minute cache and force-refresh option
+    - LuCI panel integration in Services view:
+      - Stats display: Up/Down/Total counts, health percentage
+      - Down services list with IP:port tooltips (shows first 10)
+      - Refresh button for manual health check trigger
+    - CSS styling with KISS theme integration
+    - ACL permission: `get_service_health` added to read access
+
+80. **admin.gk2.secubox.in WAF Routing (2026-03-09)**
+    - Fixed admin panel routing through mitmproxy WAF
+    - Route: admin.gk2.secubox.in → 192.168.255.1:8081 (LuCI internal port)
+    - Modified haproxy_router.py to allow port 8081 routes (was blocked)
+    - Domain now accessible via HTTPS through WAF with proper access control
       - Web Terminal (ttyd shell access)
