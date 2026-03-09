@@ -1,0 +1,24 @@
+$TTL 3600
+@       IN      SOA     ns0.secubox.in. admin.secubox.in. (
+                        2026030301      ; Serial
+                        3600            ; Refresh
+                        1800            ; Retry
+                        604800          ; Expire
+                        3600 )          ; Negative Cache TTL
+
+; Nameservers
+@       IN      NS      ns0.secubox.in.
+
+; Internal IPs for LAN access
+@       IN      A       192.168.255.1
+*       IN      A       192.168.255.1
+gk2     IN      A       192.168.255.1
+*.gk2   IN      A       192.168.255.1
+
+; Mail goes to mail container
+mail    IN      A       192.168.255.30
+mail.gk2 IN     A       192.168.255.30
+
+; Jellyfin
+jellyfin IN     A       192.168.255.31
+jellyfin.gk2 IN A       192.168.255.31
