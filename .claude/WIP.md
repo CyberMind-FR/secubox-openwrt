@@ -1,12 +1,34 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-09 (HAProxy Routes Health Check)_
+_Last updated: 2026-03-10 (Metablogizer Port Conflict Prevention)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
 ---
 
 ## Recently Completed
+
+### 2026-03-10
+
+- **Metablogizer Port Conflict Prevention**
+  - Fixed duplicate port detection in `get_next_port()` to check both uhttpd and metablogizer configs
+  - Added `check-ports` command: Scans all sites for duplicate port assignments
+  - Added `fix-ports` command: Auto-assigns new ports to duplicates
+  - Fixed 4 duplicate port conflicts:
+    - santefr.gk2.secubox.in: 8991 → 9010
+    - ganimed.maegia.fr: 9004 → 9011
+    - magic.maegia.tv: 8991 → 9012
+    - cybaxe.gk2.secubox.in: 9000 → 9004 (earlier fix)
+
+- **magic.maegia.tv Full Publication**
+  - DNS A record added via Gandi API (`dnsctl -z maegia.tv add A magic`)
+  - Fixed ACME webroot path mismatch (`/var/www/acme-challenge`)
+  - SSL certificate issued and installed
+  - Fixed missing `luci_direct` HAProxy backend
+
+- **HAProxy Container Recovery**
+  - Diagnosed container startup failure (missing backend reference)
+  - Added `luci_direct` backend to generated config
 
 ### 2026-03-09
 
