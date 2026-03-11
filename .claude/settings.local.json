@@ -527,7 +527,13 @@
       "Bash(GIT_SSH_COMMAND=\"ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10\" git push:*)",
       "Bash(GIT_SSH_COMMAND=\"ssh -o StrictHostKeyChecking=no -p 2222\" git push:*)",
       "Bash(git remote add:*)",
-      "Bash(git branch:*)"
+      "Bash(git branch:*)",
+      "Bash(nmcli con show:*)",
+      "Bash(ip:*)",
+      "Bash(wg show:*)",
+      "Bash(sudo ip addr:*)",
+      "Bash(ethtool:*)",
+      "Bash(arp-scan:*)"
     ]
   }
 }

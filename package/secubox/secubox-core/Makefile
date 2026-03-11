@@ -6,7 +6,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-core
 PKG_VERSION:=0.10.0
-PKG_RELEASE:=16
+PKG_RELEASE:=17
 PKG_ARCH:=all
 PKG_LICENSE:=GPL-2.0
 PKG_MAINTAINER:=SecuBox Team
@@ -44,12 +44,17 @@ define Package/secubox-core/conffiles
 /etc/secubox/profiles/
 /etc/secubox/templates/
 /etc/secubox/macros/
+/etc/banner
 endef
 
 define Build/Compile
 endef
 
 define Package/secubox-core/install
+	# Install SecuBox banner (replaces OpenWrt default)
+	$(INSTALL_DIR) $(1)/etc
+	$(INSTALL_DATA) ./root/etc/banner $(1)/etc/
+
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./root/etc/config/secubox $(1)/etc/config/
 	$(INSTALL_CONF) ./root/etc/config/secubox-appstore $(1)/etc/config/
