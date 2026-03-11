@@ -63,7 +63,8 @@ return view.extend({
 
 	render: function(data) {
 		var self = this;
-		var s = data || {};
+		// Ensure s is always an object (data could be error code like 5)
+		var s = (data && typeof data === 'object' && !Array.isArray(data)) ? data : {};
 		s.countries = this.parseCountries(s);
 		s.alerts = this.parseAlerts(s);
 
@@ -200,7 +201,9 @@ return view.extend({
 
 	pollData: function() {
 		var self = this;
-		return api.getOverview().then(function(s) {
+		return api.getOverview().then(function(data) {
+			// Ensure s is always an object (data could be error code)
+			var s = (data && typeof data === 'object' && !Array.isArray(data)) ? data : {};
 			s.countries = self.parseCountries(s);
 			s.alerts = self.parseAlerts(s);
 			var el = document.getElementById('cs-stats');

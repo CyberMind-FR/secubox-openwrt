@@ -533,7 +533,14 @@
       "Bash(wg show:*)",
       "Bash(sudo ip addr:*)",
       "Bash(ethtool:*)",
-      "Bash(arp-scan:*)"
+      "Bash(arp-scan:*)",
+      "Bash(if ping -c 1 -W 3 192.168.255.)",
+      "Bash(__NEW_LINE_5d3c44d38e0f0475__ scp /home/reepost/CyberMindStudio/secubox-openwrt/package/secubox/secubox-app-streamlit-control/files/usr/share/streamlit-control/pages/3_📊_Streamlit.py root@192.168.255.1:/srv/streamlit/apps/control/src/pages/)",
+      "Bash(__NEW_LINE_5d3c44d38e0f0475__ ssh root@192.168.255.1 'slforge restart control 2>&1')",
+      "Bash(__NEW_LINE_010faa2e33a60d91__ ssh root@192.168.255.1 'slforge restart control 2>&1')",
+      "Bash(__NEW_LINE_eb1b0ab801ec1afd__ scp /home/reepost/CyberMindStudio/secubox-openwrt/package/secubox/secubox-app-streamlit-control/files/usr/share/streamlit-control/app.py root@192.168.255.1:/srv/streamlit/apps/control/src/)",
+      "Bash(__NEW_LINE_eb1b0ab801ec1afd__ ssh root@192.168.255.1 'slforge restart control 2>&1')",
+      "Bash(__NEW_LINE_066a081550243cc1__ echo \"\")"
     ]
   }
 }

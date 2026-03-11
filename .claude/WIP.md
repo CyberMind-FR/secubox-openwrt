@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-11 (Forge LuCI Apps + Documentation)_
+_Last updated: 2026-03-11 (Streamlit Control Phase 3 + CrowdSec bugfix)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -10,13 +10,47 @@ _Last updated: 2026-03-11 (Forge LuCI Apps + Documentation)_
 
 ### 2026-03-11
 
-- **RezApp Forge - Docker to SecuBox App Converter**
+- **Streamlit Control Dashboard Phase 3 (Complete)**
+  - **Auto-refresh**: Toggle + interval selector on all main pages (10s/30s/60s)
+  - **Permission-aware UI**: Hide/disable action buttons for SecuBox users (limited access)
+  - **Containers page**: Tabs (All/Running/Stopped), search filter, improved info panels
+  - **Security page**: Better CrowdSec status parsing, threat table with columns, raw data expander
+  - **Streamlit apps page**: Restart button, delete confirmation dialog
+  - **Network page**: HAProxy filter, vhost count stats, WireGuard/DNS placeholders
+  - **Auth helpers**: `can_write()`, `is_admin()` functions for permission checks
+
+- **CrowdSec Dashboard Bugfix**
+  - Fixed: `TypeError: can't assign to property "countries" on 5: not an object`
+  - Root cause: RPC error code 5 returned instead of object (transient service state)
+  - Fix: Added type check in `overview.js` to treat non-objects as empty `{}`
+  - Deployed fix to router, cleared LuCI caches
+
+- **Streamlit Control Dashboard Phase 1 & 2 (Complete)**
+  - Package: `secubox-app-streamlit-control` with Python ubus client
+  - KISS-themed UI inspired by metablogizer design
+  - 7 pages: Home, Sites, Streamlit, Containers, Network, Security, System
+  - **Phase 2: RPCD Integration**
+    - HTTPS connection with self-signed cert support
+    - Dual auth: root (full access) + SecuBox users (read-only dashboard)
+    - Updated ACL: `unauthenticated.json` allows dashboard data without login
+    - Fixed LXC via `luci.secubox-portal.get_containers`
+    - Fixed CrowdSec via `luci.crowdsec-dashboard.status`
+    - All service status methods working (HAProxy, WAF, containers)
+  - Deployed on port 8531, exposed at control.gk2.secubox.in
+  - Test user: `testdash` / `Password123`
+
+- **RezApp Forge - Docker to SecuBox App Converter (Complete)**
   - Package: `secubox-app-rezapp` with `rezappctl` CLI
   - UCI config: `/etc/config/rezapp` with catalog sources (Docker Hub, LinuxServer.io, GHCR)
-  - Commands: catalog, search, info, convert, package, publish, list
+  - Commands: catalog, search, info, import, convert, run, stop, package, publish, expose, list, cache
   - Docker to LXC workflow: pull → export → extract → generate LXC config
+  - **Offline mode**: Convert from local tarball (--from-tar) or OCI directory (--from-oci)
+  - **Runtime fallback**: Docker → Podman automatic fallback
+  - **Network modes**: host (shared namespace), bridge (veth), none (isolated)
+  - **ENV extraction**: Docker ENV vars → LXC environment + UCI config
+  - **HAProxy integration**: `expose` command adds vhost + mitmproxy route
   - Templates: Makefile.tpl, init.d.tpl, ctl.tpl, config.tpl, start-lxc.tpl, lxc-config.tpl, manifest.tpl
-  - Plan: `/home/reepost/.claude/plans/tingly-rolling-sky.md`
+  - **Tested**: Offline conversion from cached tarball, container runs successfully
 
 - **Streamlit Forge Phase 1** (implemented)
   - Package: `secubox-app-streamlit-forge` with `slforge` CLI
@@ -354,7 +388,6 @@ _Last updated: 2026-03-11 (Forge LuCI Apps + Documentation)_
 ## In Progress
 
 - **Streamlit Forge Phase 2** - Preview generation, Gitea push/pull
-- **RezApp Forge Full Test** - Test Docker → LXC conversion workflow
 
 - **RTTY Remote Control Module (Phase 4 - Session Replay)**
   - Avatar-tap integration for session capture

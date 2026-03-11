@@ -18,6 +18,67 @@ log_info() { echo "[INFO] $*"; }
 log_warn() { echo "[WARN] $*" >&2; }
 log_error() { echo "[ERROR] $*" >&2; }
 
+# Container runtime (docker or podman)
+CONTAINER_RUNTIME=""
+
+# Detect and initialize container runtime (Docker or Podman fallback)
+init_runtime() {
+	[ -n "$CONTAINER_RUNTIME" ] && return 0
+
+	# Try Docker first
+	if command -v docker >/dev/null 2>&1; then
+		if docker info >/dev/null 2>&1; then
+			CONTAINER_RUNTIME="docker"
+			log_info "Using Docker runtime"
+			return 0
+		fi
+		# Try starting Docker daemon
+		if [ -x /etc/init.d/dockerd ]; then
+			log_info "Starting Docker daemon..."
+			/etc/init.d/dockerd start 2>/dev/null
+			sleep 5
+			if docker info >/dev/null 2>&1; then
+				CONTAINER_RUNTIME="docker"
+				log_info "Using Docker runtime"
+				return 0
+			fi
+		fi
+	fi
+
+	# Fallback to Podman
+	if command -v podman >/dev/null 2>&1; then
+		if podman info >/dev/null 2>&1; then
+			CONTAINER_RUNTIME="podman"
+			log_info "Using Podman runtime (fallback)"
+			return 0
+		fi
+	fi
+
+	log_error "No container runtime available (docker or podman)"
+	return 1
+}
+
+# Runtime wrapper functions
+runtime_pull() {
+	$CONTAINER_RUNTIME pull "$@"
+}
+
+runtime_create() {
+	$CONTAINER_RUNTIME create "$@"
+}
+
+runtime_export() {
+	$CONTAINER_RUNTIME export "$@"
+}
+
+runtime_rm() {
+	$CONTAINER_RUNTIME rm "$@"
+}
+
+runtime_inspect() {
+	$CONTAINER_RUNTIME inspect "$@"
+}
+
 # Load configuration
 load_config() {
 	config_load "$CONFIG"
@@ -163,7 +224,7 @@ cmd_info() {
 }
 
 # ==========================================
-# Convert Command
+# Convert Command (with offline mode support)
 # ==========================================
 
 cmd_convert() {
@@ -174,6 +235,9 @@ cmd_convert() {
 	local network=""
 	local ports=""
 	local mounts=""
+	local from_tar=""
+	local from_oci=""
+	local offline="0"
 
 	# Parse arguments
 	while [ $# -gt 0 ]; do
@@ -184,11 +248,31 @@ cmd_convert() {
 			--network) network="$2"; shift 2 ;;
 			--port) ports="$ports $2"; shift 2 ;;
 			--mount) mounts="$mounts $2"; shift 2 ;;
+			--from-tar) from_tar="$2"; offline="1"; shift 2 ;;
+			--from-oci) from_oci="$2"; offline="1"; shift 2 ;;
+			--offline) offline="1"; shift ;;
 			-*) log_error "Unknown option: $1"; return 1 ;;
 			*) image="$1"; shift ;;
 		esac
 	done
 
+	# Offline mode: convert from local tarball
+	if [ -n "$from_tar" ]; then
+		[ ! -f "$from_tar" ] && { log_error "Tarball not found: $from_tar"; return 1; }
+		[ -z "$name" ] && { log_error "Name required with --from-tar"; return 1; }
+		_convert_from_tarball "$from_tar" "$name" "$memory" "$network"
+		return $?
+	fi
+
+	# Offline mode: convert from OCI directory
+	if [ -n "$from_oci" ]; then
+		[ ! -d "$from_oci" ] && { log_error "OCI directory not found: $from_oci"; return 1; }
+		[ -z "$name" ] && { log_error "Name required with --from-oci"; return 1; }
+		_convert_from_oci "$from_oci" "$name" "$memory" "$network"
+		return $?
+	fi
+
+	# Check cache for existing tarball (offline conversion)
 	[ -z "$image" ] && { log_error "Image name required"; return 1; }
 
 	# Default name from image
@@ -205,27 +289,26 @@ cmd_convert() {
 	local lxc_path="$LXC_DIR/$name"
 	local tarball="$CACHE_DIR/${name}.tar"
 
-	log_info "Converting $full_image -> $name"
-
-	# Step 1: Ensure Docker is running
-	if ! docker info >/dev/null 2>&1; then
-		log_info "Starting Docker daemon..."
-		/etc/init.d/dockerd start 2>/dev/null
-		sleep 5
-		if ! docker info >/dev/null 2>&1; then
-			log_error "Docker is not available"
-			return 1
-		fi
+	# Check if cached tarball exists
+	if [ -f "$tarball" ] && [ "$offline" = "1" ]; then
+		log_info "Using cached tarball: $tarball"
+		_convert_from_tarball "$tarball" "$name" "$memory" "$network"
+		return $?
 	fi
 
+	log_info "Converting $full_image -> $name"
+
+	# Step 1: Initialize container runtime (Docker or Podman)
+	init_runtime || return 1
+
 	# Step 2: Pull image
-	log_info "Pulling Docker image..."
-	docker pull "$full_image" || { log_error "Failed to pull image"; return 1; }
+	log_info "Pulling image via $CONTAINER_RUNTIME..."
+	runtime_pull "$full_image" || { log_error "Failed to pull image"; return 1; }
 
 	# Step 3: Inspect image
 	log_info "Inspecting image metadata..."
 	mkdir -p "$app_dir"
-	docker inspect "$full_image" > "$app_dir/docker-inspect.json"
+	runtime_inspect "$full_image" > "$app_dir/docker-inspect.json"
 
 	# Extract metadata
 	local entrypoint=$(jsonfilter -i "$app_dir/docker-inspect.json" -e '@[0].Config.Entrypoint[*]' 2>/dev/null | tr '\n' ' ')
@@ -234,43 +317,230 @@ cmd_convert() {
 	local user=$(jsonfilter -i "$app_dir/docker-inspect.json" -e '@[0].Config.User' 2>/dev/null)
 	local exposed=$(jsonfilter -i "$app_dir/docker-inspect.json" -e '@[0].Config.ExposedPorts' 2>/dev/null)
 
+	# Extract environment variables
+	local env_vars=""
+	local env_list=$(jsonfilter -i "$app_dir/docker-inspect.json" -e '@[0].Config.Env[*]' 2>/dev/null)
+	if [ -n "$env_list" ]; then
+		# Filter out PATH and other system vars, keep useful ones
+		env_vars=$(echo "$env_list" | grep -vE '^(PATH=|HOME=|HOSTNAME=|TERM=)' | tr '\n' '|')
+	fi
+
+	log_info "Extracted: entrypoint='$entrypoint' cmd='$cmd' workdir='$workdir' user='$user'"
+	[ -n "$exposed" ] && log_info "Exposed ports: $exposed"
+
 	# Step 4: Export filesystem
 	log_info "Exporting container filesystem..."
-	docker create --name rezapp-export-$$ "$full_image" >/dev/null 2>&1
-	docker export rezapp-export-$$ > "$tarball"
-	docker rm rezapp-export-$$ >/dev/null 2>&1
+	runtime_create --name rezapp-export-$$ "$full_image" >/dev/null 2>&1
+	runtime_export rezapp-export-$$ > "$tarball"
+	runtime_rm rezapp-export-$$ >/dev/null 2>&1
 
-	# Step 5: Create LXC rootfs
-	log_info "Creating LXC container..."
+	# Create LXC from tarball
+	_create_lxc_from_tar "$tarball" "$name" "$memory" "$entrypoint" "$cmd" "$workdir" "$user" "$full_image" "$network" "$ports" "$env_vars" "$exposed"
+}
+
+# Convert from local tarball (offline mode)
+_convert_from_tarball() {
+	local tarball="$1"
+	local name="$2"
+	local memory="${3:-$DEFAULT_MEMORY}"
+	local network="${4:-$DEFAULT_NETWORK}"
+
+	log_info "Converting from tarball: $tarball -> $name"
+
+	# Try to extract metadata from tarball
+	local entrypoint=""
+	local cmd="/bin/sh"
+	local workdir="/"
+	local user=""
+
+	# Check for OCI manifest in tarball
+	if tar tf "$tarball" 2>/dev/null | grep -q "manifest.json"; then
+		log_info "Found OCI manifest, extracting metadata..."
+		local manifest_tmp="/tmp/rezapp-manifest-$$.json"
+		tar xf "$tarball" -O manifest.json > "$manifest_tmp" 2>/dev/null
+		# Extract config digest and parse
+		local config_file=$(jsonfilter -i "$manifest_tmp" -e '@[0].Config' 2>/dev/null)
+		if [ -n "$config_file" ] && tar tf "$tarball" 2>/dev/null | grep -q "$config_file"; then
+			tar xf "$tarball" -O "$config_file" > "/tmp/rezapp-config-$$.json" 2>/dev/null
+			entrypoint=$(jsonfilter -i "/tmp/rezapp-config-$$.json" -e '@.config.Entrypoint[*]' 2>/dev/null | tr '\n' ' ')
+			cmd=$(jsonfilter -i "/tmp/rezapp-config-$$.json" -e '@.config.Cmd[*]' 2>/dev/null | tr '\n' ' ')
+			workdir=$(jsonfilter -i "/tmp/rezapp-config-$$.json" -e '@.config.WorkingDir' 2>/dev/null)
+			user=$(jsonfilter -i "/tmp/rezapp-config-$$.json" -e '@.config.User' 2>/dev/null)
+			rm -f "/tmp/rezapp-config-$$.json"
+		fi
+		rm -f "$manifest_tmp"
+	fi
+
+	_create_lxc_from_tar "$tarball" "$name" "$memory" "$entrypoint" "$cmd" "$workdir" "$user" "local:$tarball" "$network" "" "" ""
+}
+
+# Convert from OCI directory (offline mode)
+_convert_from_oci() {
+	local oci_dir="$1"
+	local name="$2"
+	local memory="${3:-$DEFAULT_MEMORY}"
+	local network="${4:-$DEFAULT_NETWORK}"
+
+	log_info "Converting from OCI directory: $oci_dir -> $name"
+
+	local app_dir="$APPS_DIR/$name"
+	local lxc_path="$LXC_DIR/$name"
+
+	# Parse OCI index and config
+	local index_file="$oci_dir/index.json"
+	[ ! -f "$index_file" ] && { log_error "OCI index.json not found"; return 1; }
+
+	local manifest_digest=$(jsonfilter -i "$index_file" -e '@.manifests[0].digest' 2>/dev/null)
+	manifest_digest="${manifest_digest#sha256:}"
+	local manifest_file="$oci_dir/blobs/sha256/$manifest_digest"
+
+	[ ! -f "$manifest_file" ] && { log_error "OCI manifest not found"; return 1; }
+
+	# Get config
+	local config_digest=$(jsonfilter -i "$manifest_file" -e '@.config.digest' 2>/dev/null)
+	config_digest="${config_digest#sha256:}"
+	local config_file="$oci_dir/blobs/sha256/$config_digest"
+
+	local entrypoint=""
+	local cmd="/bin/sh"
+	local workdir="/"
+	local user=""
+
+	if [ -f "$config_file" ]; then
+		entrypoint=$(jsonfilter -i "$config_file" -e '@.config.Entrypoint[*]' 2>/dev/null | tr '\n' ' ')
+		cmd=$(jsonfilter -i "$config_file" -e '@.config.Cmd[*]' 2>/dev/null | tr '\n' ' ')
+		workdir=$(jsonfilter -i "$config_file" -e '@.config.WorkingDir' 2>/dev/null)
+		user=$(jsonfilter -i "$config_file" -e '@.config.User' 2>/dev/null)
+	fi
+
+	# Extract layers
+	mkdir -p "$app_dir" "$lxc_path/rootfs"
+	log_info "Extracting OCI layers..."
+
+	# Get layer digests and extract in order
+	local layers=$(jsonfilter -i "$manifest_file" -e '@.layers[*].digest' 2>/dev/null)
+	for layer_digest in $layers; do
+		layer_digest="${layer_digest#sha256:}"
+		local layer_file="$oci_dir/blobs/sha256/$layer_digest"
+		if [ -f "$layer_file" ]; then
+			log_info "  Extracting layer: ${layer_digest:0:12}..."
+			tar xf "$layer_file" -C "$lxc_path/rootfs" 2>/dev/null
+		fi
+	done
+
+	# Generate LXC config
+	_generate_lxc_config "$name" "$memory" "$entrypoint" "$cmd" "$workdir" "$user" "oci:$oci_dir" "$network" "" "" ""
+}
+
+# Create LXC container from tarball
+_create_lxc_from_tar() {
+	local tarball="$1"
+	local name="$2"
+	local memory="$3"
+	local entrypoint="$4"
+	local cmd="$5"
+	local workdir="$6"
+	local user="$7"
+	local source="$8"
+	local network="$9"
+	local ports="${10}"
+	local env_vars="${11}"
+	local exposed="${12}"
+
+	local app_dir="$APPS_DIR/$name"
+	local lxc_path="$LXC_DIR/$name"
+
+	# Create LXC rootfs
+	log_info "Creating LXC container rootfs..."
 	rm -rf "$lxc_path"
-	mkdir -p "$lxc_path/rootfs"
-	tar xf "$tarball" -C "$lxc_path/rootfs"
+	mkdir -p "$lxc_path/rootfs" "$app_dir"
 
-	# Step 6: Generate start script
+	log_info "Extracting filesystem (this may take a while)..."
+	tar xf "$tarball" -C "$lxc_path/rootfs" 2>/dev/null
+
+	# Ensure /bin/sh exists (some images use busybox or ash)
+	if [ ! -e "$lxc_path/rootfs/bin/sh" ]; then
+		if [ -e "$lxc_path/rootfs/bin/bash" ]; then
+			ln -sf bash "$lxc_path/rootfs/bin/sh"
+		elif [ -e "$lxc_path/rootfs/bin/busybox" ]; then
+			ln -sf busybox "$lxc_path/rootfs/bin/sh"
+		fi
+	fi
+
+	_generate_lxc_config "$name" "$memory" "$entrypoint" "$cmd" "$workdir" "$user" "$source" "$network" "$ports" "$env_vars" "$exposed"
+}
+
+# Generate LXC config and metadata
+_generate_lxc_config() {
+	local name="$1"
+	local memory="$2"
+	local entrypoint="$3"
+	local cmd="$4"
+	local workdir="$5"
+	local user="$6"
+	local source="$7"
+	local network="$8"
+	local ports="$9"
+	local env_vars="${10}"
+	local exposed_ports="${11}"
+
+	local app_dir="$APPS_DIR/$name"
+	local lxc_path="$LXC_DIR/$name"
+
+	# Generate start script
 	log_info "Generating start script..."
 	local start_script="$lxc_path/rootfs/start-lxc.sh"
 
+	# Build the exec command
+	local exec_cmd=""
+	if [ -n "$entrypoint" ]; then
+		exec_cmd="$entrypoint"
+		[ -n "$cmd" ] && exec_cmd="$exec_cmd $cmd"
+	elif [ -n "$cmd" ]; then
+		exec_cmd="$cmd"
+	else
+		exec_cmd="/bin/sh"
+	fi
+
 	cat > "$start_script" << STARTEOF
 #!/bin/sh
-# Auto-generated by RezApp Forge
+# Auto-generated by RezApp Forge from $source
 
+# Set working directory
 cd ${workdir:-/}
 
+# Create common directories
+mkdir -p /config /data /tmp 2>/dev/null
+
+# Export environment
+export HOME=\${HOME:-/root}
+export PATH=\${PATH:-/usr/local/bin:/usr/bin:/bin}
+
 # Run entrypoint/cmd
-exec ${entrypoint:-${cmd:-/bin/sh}}
+exec $exec_cmd
 STARTEOF
 	chmod +x "$start_script"
-
-	# Step 7: Generate LXC config
-	log_info "Generating LXC config..."
 
 	# Parse user for UID/GID
 	local uid="0"
 	local gid="0"
 	if [ -n "$user" ] && [ "$user" != "root" ]; then
-		uid="${user%%:*}"
-		gid="${user#*:}"
-		[ "$gid" = "$user" ] && gid="$uid"
+		# Handle numeric or name:name format
+		case "$user" in
+			*:*)
+				uid="${user%%:*}"
+				gid="${user#*:}"
+				;;
+			[0-9]*)
+				uid="$user"
+				gid="$user"
+				;;
+			*)
+				# Named user - keep as 0 for now
+				uid="0"
+				gid="0"
+				;;
+		esac
 	fi
 
 	# Convert memory to bytes
@@ -278,39 +548,118 @@ STARTEOF
 	case "$memory" in
 		*G) mem_bytes=$(( ${memory%G} * 1073741824 )) ;;
 		*M) mem_bytes=$(( ${memory%M} * 1048576 )) ;;
+		*K) mem_bytes=$(( ${memory%K} * 1024 )) ;;
 		*) mem_bytes="$memory" ;;
 	esac
 
+	log_info "Generating LXC config (network: $network)..."
+
+	# Start LXC config
 	cat > "$lxc_path/config" << LXCEOF
-# LXC config for $name (auto-generated by RezApp Forge)
+# LXC config for $name
+# Auto-generated by RezApp Forge from $source
+
 lxc.uts.name = $name
 lxc.rootfs.path = dir:$lxc_path/rootfs
-lxc.net.0.type = none
+lxc.init.cmd = /start-lxc.sh
+
+# Filesystem mounts
 lxc.mount.auto = proc:mixed sys:ro
-lxc.mount.entry = /srv/$name config none bind,create=dir 0 0
-lxc.cap.drop = sys_admin sys_module mac_admin mac_override
+lxc.mount.entry = /srv/$name data none bind,create=dir 0 0
+
+# Resource limits
 lxc.cgroup2.memory.max = $mem_bytes
+
+# User/Group
 lxc.init.uid = $uid
 lxc.init.gid = $gid
-lxc.init.cmd = /start-lxc.sh
+
+# Drop dangerous capabilities
+lxc.cap.drop = sys_admin sys_module sys_boot sys_rawio mac_admin mac_override
+
+# TTY configuration
 lxc.console.size = 1024
 lxc.pty.max = 1024
+lxc.tty.max = 4
+
+# Device access
 lxc.cgroup2.devices.allow = c 1:* rwm
 lxc.cgroup2.devices.allow = c 5:* rwm
 lxc.cgroup2.devices.allow = c 136:* rwm
+
+# Disable seccomp for compatibility
 lxc.seccomp.profile =
+
+# Autostart disabled by default
 lxc.start.auto = 0
+
 LXCEOF
 
-	# Step 8: Create data directory
-	mkdir -p "/srv/$name"
-	[ "$uid" != "0" ] && chown "$uid:$gid" "/srv/$name"
+	# Add network configuration based on mode
+	case "$network" in
+		host)
+			cat >> "$lxc_path/config" << NETEOF
+# Network: Share host namespace
+lxc.namespace.share.net = 1
+NETEOF
+			;;
+		bridge)
+			cat >> "$lxc_path/config" << NETEOF
+# Network: Bridge mode
+lxc.net.0.type = veth
+lxc.net.0.link = br-lan
+lxc.net.0.flags = up
+lxc.net.0.name = eth0
+NETEOF
+			;;
+		none)
+			cat >> "$lxc_path/config" << NETEOF
+# Network: None (isolated)
+lxc.net.0.type = none
+NETEOF
+			;;
+		*)
+			# Default to host network for simplicity
+			cat >> "$lxc_path/config" << NETEOF
+# Network: Share host namespace (default)
+lxc.namespace.share.net = 1
+NETEOF
+			;;
+	esac
 
-	# Step 9: Save metadata
+	# Add environment variables
+	cat >> "$lxc_path/config" << ENVEOF
+
+# Environment variables
+lxc.environment = PUID=$uid
+lxc.environment = PGID=$gid
+lxc.environment = TZ=Europe/Paris
+ENVEOF
+
+	# Add extracted Docker ENV vars
+	if [ -n "$env_vars" ]; then
+		echo "" >> "$lxc_path/config"
+		echo "# Docker ENV defaults" >> "$lxc_path/config"
+		echo "$env_vars" | tr '|' '\n' | while read -r env; do
+			[ -n "$env" ] && echo "lxc.environment = $env" >> "$lxc_path/config"
+		done
+	fi
+
+	# Create data directory
+	mkdir -p "/srv/$name"
+	[ "$uid" != "0" ] && chown "$uid:$gid" "/srv/$name" 2>/dev/null
+
+	# Auto-detect ports from Docker EXPOSE
+	local detected_ports=""
+	if [ -n "$exposed_ports" ]; then
+		detected_ports=$(echo "$exposed_ports" | sed 's|[{}"]||g' | tr ',' '\n' | sed 's|/tcp||g; s|/udp||g' | tr '\n' ' ')
+	fi
+
+	# Save metadata
 	cat > "$app_dir/metadata.json" << METAEOF
 {
   "name": "$name",
-  "source_image": "$full_image",
+  "source": "$source",
   "converted_at": "$(date -Iseconds)",
   "entrypoint": "$entrypoint",
   "cmd": "$cmd",
@@ -320,6 +669,8 @@ LXCEOF
   "gid": "$gid",
   "memory": "$memory",
   "network": "$network",
+  "ports": "$ports",
+  "exposed_ports": "$detected_ports",
   "lxc_path": "$lxc_path",
   "data_path": "/srv/$name"
 }
@@ -328,11 +679,51 @@ METAEOF
 	log_info "Conversion complete!"
 	echo ""
 	echo "Container: $name"
-	echo "  LXC Path: $lxc_path"
-	echo "  Data Path: /srv/$name"
+	echo "  LXC Path:    $lxc_path"
+	echo "  Data Path:   /srv/$name"
+	echo "  Network:     $network"
+	[ -n "$detected_ports" ] && echo "  Ports:       $detected_ports"
 	echo ""
-	echo "To test: lxc-start -n $name -F"
+	echo "To test:    lxc-start -n $name -F"
 	echo "To package: rezappctl package $name"
+}
+
+# ==========================================
+# Import Command (download image for offline use)
+# ==========================================
+
+cmd_import() {
+	local image="$1"
+	local tag="${2:-latest}"
+
+	[ -z "$image" ] && { log_error "Image name required"; return 1; }
+
+	local name="${image##*/}"
+	name="${name%%:*}"
+	local full_image="${image}:${tag}"
+	local tarball="$CACHE_DIR/${name}.tar"
+
+	log_info "Importing $full_image for offline use..."
+
+	# Initialize container runtime (Docker or Podman)
+	init_runtime || return 1
+
+	# Pull and export
+	log_info "Pulling image via $CONTAINER_RUNTIME..."
+	runtime_pull "$full_image" || { log_error "Failed to pull image"; return 1; }
+
+	log_info "Exporting to cache..."
+	mkdir -p "$CACHE_DIR"
+	runtime_create --name rezapp-import-$$ "$full_image" >/dev/null 2>&1
+	runtime_export rezapp-import-$$ > "$tarball"
+	runtime_rm rezapp-import-$$ >/dev/null 2>&1
+
+	# Save inspect data
+	runtime_inspect "$full_image" > "$CACHE_DIR/${name}.inspect.json"
+
+	log_info "Image cached: $tarball"
+	echo ""
+	echo "To convert offline: rezappctl convert --from-tar $tarball --name $name"
 }
 
 # ==========================================
@@ -592,7 +983,8 @@ cmd_list() {
 			[ -f "$app" ] || continue
 			local name=$(dirname "$app")
 			name="${name##*/}"
-			local image=$(jsonfilter -i "$app" -e '@.source_image')
+			local image=$(jsonfilter -i "$app" -e '@.source_image' 2>/dev/null)
+			[ -z "$image" ] && image=$(jsonfilter -i "$app" -e '@.source' 2>/dev/null)
 			printf "  %-20s %s\n" "$name" "$image"
 		done
 	else
@@ -601,12 +993,163 @@ cmd_list() {
 }
 
 # ==========================================
+# Cache Command (show cached images)
+# ==========================================
+
+cmd_cache() {
+	echo "Cached Images (offline ready):"
+	echo "==============================="
+
+	if [ -d "$CACHE_DIR" ]; then
+		local found=0
+		for tarball in "$CACHE_DIR"/*.tar; do
+			[ -f "$tarball" ] || continue
+			found=1
+			local name=$(basename "$tarball" .tar)
+			local size=$(du -h "$tarball" | cut -f1)
+			local inspect="$CACHE_DIR/${name}.inspect.json"
+			local image=""
+			if [ -f "$inspect" ]; then
+				image=$(jsonfilter -i "$inspect" -e '@[0].RepoTags[0]' 2>/dev/null)
+			fi
+			printf "  %-20s %8s  %s\n" "$name" "$size" "${image:-local}"
+		done
+		[ "$found" = "0" ] && echo "  (none)"
+	else
+		echo "  (none)"
+	fi
+	echo ""
+	echo "Convert offline: rezappctl convert --from-tar <file> --name <name>"
+}
+
+# ==========================================
+# Run Command (start/test container)
+# ==========================================
+
+cmd_run() {
+	local name="$1"
+	local foreground=""
+	local shell=""
+
+	shift
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			-f|--foreground) foreground="1"; shift ;;
+			-s|--shell) shell="1"; shift ;;
+			*) shift ;;
+		esac
+	done
+
+	[ -z "$name" ] && { log_error "App name required"; return 1; }
+
+	local lxc_path="$LXC_DIR/$name"
+	[ ! -d "$lxc_path" ] && { log_error "Container not found: $name"; return 1; }
+
+	# Check if already running
+	if lxc-info -n "$name" 2>/dev/null | grep -q "RUNNING"; then
+		if [ -n "$shell" ]; then
+			log_info "Opening shell in running container..."
+			lxc-attach -n "$name" -- /bin/sh
+			return $?
+		fi
+		log_warn "Container already running"
+		lxc-info -n "$name"
+		return 0
+	fi
+
+	if [ -n "$foreground" ]; then
+		log_info "Starting $name in foreground (Ctrl+C to stop)..."
+		lxc-start -n "$name" -F
+	else
+		log_info "Starting $name..."
+		lxc-start -n "$name" -d
+		sleep 3
+		lxc-info -n "$name"
+	fi
+}
+
+cmd_stop() {
+	local name="$1"
+	[ -z "$name" ] && { log_error "App name required"; return 1; }
+
+	if lxc-info -n "$name" 2>/dev/null | grep -q "RUNNING"; then
+		log_info "Stopping $name..."
+		lxc-stop -n "$name"
+	else
+		log_warn "Container not running"
+	fi
+}
+
+# ==========================================
+# Expose Command (HAProxy integration)
+# ==========================================
+
+cmd_expose() {
+	local name="$1"
+	local domain="$2"
+	local port="$3"
+
+	[ -z "$name" ] && { log_error "App name required"; return 1; }
+
+	local meta_file="$APPS_DIR/$name/metadata.json"
+	[ ! -f "$meta_file" ] && { log_error "App not found: $name"; return 1; }
+
+	# Auto-detect port from metadata if not specified
+	if [ -z "$port" ]; then
+		port=$(jsonfilter -i "$meta_file" -e '@.exposed_ports' 2>/dev/null | awk '{print $1}')
+	fi
+	[ -z "$port" ] && { log_error "Port required (or specify in metadata)"; return 1; }
+
+	# Default domain
+	[ -z "$domain" ] && domain="${name}.gk2.secubox.in"
+
+	log_info "Exposing $name on $domain (port $port)..."
+
+	# Check for haproxyctl
+	if ! command -v haproxyctl >/dev/null 2>&1; then
+		log_warn "haproxyctl not found - manual HAProxy config required"
+		echo ""
+		echo "Add to /srv/haproxy/config/haproxy.cfg:"
+		echo "  acl host_${name} hdr(host) -i $domain"
+		echo "  use_backend ${name}_backend if host_${name}"
+		echo ""
+		echo "  backend ${name}_backend"
+		echo "      mode http"
+		echo "      server ${name} 192.168.255.1:$port check"
+		return 0
+	fi
+
+	# Add vhost via haproxyctl
+	haproxyctl vhost add "$domain"
+
+	# Add route to mitmproxy
+	local routes_file="/srv/mitmproxy-in/haproxy-routes.json"
+	if [ -f "$routes_file" ]; then
+		log_info "Adding mitmproxy route..."
+		# Use Python to safely add to JSON
+		python3 << PYEOF
+import json
+with open('$routes_file', 'r') as f:
+    routes = json.load(f)
+routes['$domain'] = ['192.168.255.1', $port]
+with open('$routes_file', 'w') as f:
+    json.dump(routes, f, indent=2)
+print('Route added: $domain -> 192.168.255.1:$port')
+PYEOF
+	fi
+
+	log_info "Exposed: https://$domain -> 192.168.255.1:$port"
+	echo ""
+	echo "Restart mitmproxy to apply: /etc/init.d/mitmproxy restart"
+}
+
+# ==========================================
 # Help
 # ==========================================
 
 usage() {
 	cat << EOF
-RezApp Forge - Docker to SecuBox Converter
+RezApp Forge - Docker/OCI to SecuBox LXC Converter
 
 Usage: rezappctl <command> [options]
 
@@ -616,26 +1159,55 @@ Catalog Commands:
   catalog remove <name>     Remove catalog
 
 Search:
-  search <query>            Search Docker Hub
-  info <image>              Show image details
+  search <query>            Search Docker Hub (no runtime needed)
+  info <image>              Show image details (no runtime needed)
+
+Import (download for offline use):
+  import <image> [tag]      Download and cache image for offline conversion
 
 Convert:
-  convert <image> [opts]    Convert Docker image to LXC
+  convert <image> [opts]    Convert Docker/OCI image to LXC
     --name <name>           App name (default: from image)
     --tag <tag>             Image tag (default: latest)
     --memory <limit>        Memory limit (default: 512M)
-    --network <type>        Network type (default: host)
+    --network <type>        Network: host, bridge, none (default: host)
 
-Package:
+  Offline mode (no Docker/Podman needed):
+    --from-tar <file>       Convert from local tarball
+    --from-oci <dir>        Convert from OCI image directory
+    --offline               Use cached tarball if available
+
+Run & Manage:
+  run <name> [-f] [-s]      Start container (-f=foreground, -s=shell)
+  stop <name>               Stop container
+  list                      Show converted apps
+  cache                     Show cached images
+
+Package & Publish:
   package <name>            Generate SecuBox package
   publish <name>            Add to app catalog
 
-List:
-  list                      Show converted apps
+Expose (HAProxy integration):
+  expose <name> [domain] [port]   Expose via HAProxy/mitmproxy
+
+Runtime: Uses Docker, falls back to Podman if unavailable.
+For offline conversion, use --from-tar or --from-oci flags.
 
 Examples:
+  # Online workflow
   rezappctl search heimdall
   rezappctl convert linuxserver/heimdall --name heimdall
+  rezappctl run heimdall -f              # Test in foreground
+  rezappctl expose heimdall              # Expose via HAProxy
+
+  # Import for offline use
+  rezappctl import linuxserver/heimdall latest
+  rezappctl cache                        # Show cached images
+
+  # Offline workflow (no Docker needed)
+  rezappctl convert --from-tar /srv/rezapp/cache/heimdall.tar --name heimdall
+
+  # Package for distribution
   rezappctl package heimdall
   rezappctl publish heimdall
 
@@ -660,10 +1232,15 @@ case "$1" in
 		;;
 	search) shift; cmd_search "$@" ;;
 	info) shift; cmd_info "$@" ;;
+	import) shift; cmd_import "$@" ;;
 	convert) shift; cmd_convert "$@" ;;
+	run) shift; cmd_run "$@" ;;
+	stop) shift; cmd_stop "$@" ;;
 	package) shift; cmd_package "$@" ;;
 	publish) shift; cmd_publish "$@" ;;
+	expose) shift; cmd_expose "$@" ;;
 	list) cmd_list ;;
+	cache) cmd_cache ;;
 	help|--help|-h) usage ;;
 	*) usage ;;
 esac

@@ -1,0 +1,22 @@
+[server]
+headless = true
+address = "0.0.0.0"
+port = 8531
+enableCORS = false
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false
+serverAddress = "control.gk2.secubox.in"
+serverPort = 443
+
+[theme]
+base = "dark"
+primaryColor = "#00d4ff"
+backgroundColor = "#0a0a1a"
+secondaryBackgroundColor = "#0f0f2a"
+textColor = "#f0f0f5"
+
+[client]
+toolbarMode = "minimal"
+showSidebarNavigation = true

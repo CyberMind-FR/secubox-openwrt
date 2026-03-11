@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-03-11 (RezApp Forge, Streamlit Forge)_
+_Last updated: 2026-03-11 (Streamlit Control Phase 3, CrowdSec bugfix)_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -4606,3 +4606,75 @@ git checkout HEAD -- index.html
       - Featured as new release
     - Updated `new_releases` section with both apps
     - Total plugins: 37 → 39
+
+87. **Streamlit Control Dashboard Phase 1 (2026-03-11)**
+    - Package: `secubox-app-streamlit-control` - Modern Streamlit-based LuCI replacement
+    - Inspired by metablogizer KISS design patterns
+    - Architecture:
+      - Python ubus client (`lib/ubus_client.py`) - JSON-RPC for RPCD communication
+      - Authentication module (`lib/auth.py`) - LuCI session integration
+      - KISS widgets library (`lib/widgets.py`) - Badges, status cards, QR codes
+    - Pages:
+      - Home (app.py) - System stats, service status, container quick controls
+      - Sites (Metablogizer clone) - One-click deploy, sites table, action buttons
+      - Streamlit - Streamlit Forge apps management
+      - Containers - LXC container status and controls
+      - Network - Interface status, WireGuard peers, mwan3 uplinks
+      - Security - WAF status, CrowdSec decisions, firewall
+      - System - Board info, packages, logs
+    - Deployment:
+      - Registered with Streamlit Forge on port 8531
+      - Exposed via HAProxy at control.gk2.secubox.in
+      - Routed through mitmproxy WAF (security policy compliant)
+    - Fixed mitmproxy-in container startup (cgroup:mixed removal, routes JSON repair)
+
+88. **Streamlit Control Dashboard Phase 2 (2026-03-11)**
+    - RPCD integration for real data access
+    - Authentication:
+      - HTTPS with self-signed cert support (verify=False)
+      - Dual auth: root (full access) + SecuBox users (read-only)
+      - SecuBox users authenticate via `luci.secubox-users.authenticate`
+    - ACL updates (`/usr/share/rpcd/acl.d/unauthenticated.json`):
+      - Added read access: secubox-portal, metablogizer, haproxy, mitmproxy, crowdsec-dashboard, streamlit-forge
+      - Allows dashboard viewing without system login
+    - Fixed methods:
+      - LXC containers: `luci.secubox-portal.get_containers` (luci.lxc doesn't exist)
+      - CrowdSec: `luci.crowdsec-dashboard.status`
+      - Fixed duplicate key error in Streamlit pages (enumerate with index)
+    - Dashboard data verified: containers (11/32 running), HAProxy, WAF (16k threats), CrowdSec
+    - Test user created: `testdash` / `Password123`
+
+89. **Streamlit Control Dashboard Phase 3 (2026-03-11)**
+    - Auto-refresh toggle:
+      - Added to all main pages (Dashboard, Containers, Security, Streamlit, Network)
+      - Configurable intervals: 10s, 30s, 60s
+      - Manual refresh button
+    - Permission-aware UI:
+      - `can_write()` and `is_admin()` helper functions in auth.py
+      - Action buttons hidden/disabled for SecuBox users (read-only access)
+      - "View only" indicators for limited users
+    - Containers page improvements:
+      - Tabs for All/Running/Stopped filtering
+      - Search filter by container name
+      - Improved info panels with metrics display
+      - Raw data expander
+    - Security page improvements:
+      - Better CrowdSec status parsing (handles various response formats)
+      - Threat table with columns (IP, URL, Category, Severity, Time)
+      - Stats tab with raw data viewer
+    - Streamlit apps page:
+      - Added restart button
+      - Delete confirmation dialog
+      - Open link buttons
+    - Network page:
+      - HAProxy search filter
+      - Vhost count stats
+      - WireGuard/DNS placeholders with setup hints
+
+90. **CrowdSec Dashboard Bugfix (2026-03-11)**
+    - Fixed: `TypeError: can't assign to property "countries" on 5: not an object`
+    - Root cause: RPC error code 5 (UBUS_STATUS_NOT_FOUND) returned instead of object
+    - Occurs when CrowdSec service is busy or temporarily unavailable
+    - Fix: Added type check in `overview.js` render() and pollData() functions
+    - `var s = (data && typeof data === 'object' && !Array.isArray(data)) ? data : {}`
+    - Deployed to router, cleared LuCI caches
