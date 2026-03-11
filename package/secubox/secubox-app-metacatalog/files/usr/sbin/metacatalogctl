@@ -509,85 +509,51 @@ EOF
 generate_landing() {
 	log_info "Generating landing page..."
 
-	cat > "$LANDING_PATH/index.html" <<'HTMLEOF'
+	local template="/usr/share/metacatalog/templates/landing.html.tpl"
+	if [ -f "$template" ]; then
+		cp "$template" "$LANDING_PATH/index.html"
+	else
+		# Fallback: generate basic landing page
+		cat > "$LANDING_PATH/index.html" <<'HTMLEOF'
 <!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Bibliotheque Virtuelle SecuBox</title>
+<title>Bibliothèque Virtuelle SecuBox</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-:root{
-  --bg:#05060f;--ink:#f0f2ff;--dim:rgba(240,242,255,.5);
-  --fire:#ff0066;--earth:#ffff00;--water:#0066ff;--wood:#00ff88;--metal:#cc00ff;--yang:#ff9500;
-  --glass:rgba(255,255,255,.04);--border:rgba(255,255,255,.08);
-}
-body{min-height:100vh;background:var(--bg);color:var(--ink);font-family:'Space Mono',monospace;padding:2rem}
-h1{font-size:2rem;margin-bottom:.5rem;background:linear-gradient(90deg,var(--fire),var(--yang),var(--earth),var(--wood),var(--water),var(--metal));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.stats{color:var(--dim);font-size:.75rem;margin-bottom:2rem;letter-spacing:.1em}
-.shelf{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:1.5rem}
-.book{background:var(--glass);border:1px solid var(--border);border-left:4px solid var(--book-color,var(--metal));padding:1.2rem;border-radius:4px}
-.book-head{display:flex;align-items:center;gap:.8rem;margin-bottom:1rem}
-.book-icon{font-size:1.8rem}
-.book-title{font-size:1rem;font-weight:bold}
-.book-desc{font-size:.65rem;color:var(--dim);margin-bottom:1rem}
-.entries{display:flex;flex-direction:column;gap:.4rem}
-.entry{display:flex;align-items:center;gap:.6rem;padding:.5rem;background:rgba(255,255,255,.02);border-radius:2px;text-decoration:none;color:var(--ink);transition:background .15s}
-.entry:hover{background:rgba(255,255,255,.06)}
-.entry-type{font-size:.5rem;padding:.15rem .4rem;border-radius:2px;background:var(--metal);color:#000}
-.entry-type.metablog{background:var(--fire)}
-.entry-type.streamlit{background:var(--wood)}
-.entry-name{font-size:.75rem;flex:1}
-.entry-domain{font-size:.55rem;color:var(--dim)}
-.empty{color:var(--dim);font-style:italic;font-size:.7rem}
-footer{margin-top:3rem;text-align:center;color:var(--dim);font-size:.6rem}
+:root{--bg:#05060f;--ink:#f0f2ff;--dim:rgba(240,242,255,.5);--fire:#ff0066;--wood:#00ff88;--metal:#cc00ff}
+body{min-height:100vh;background:var(--bg);color:var(--ink);font-family:monospace;padding:2rem}
+h1{font-size:2rem;margin-bottom:1rem}
+.stats{color:var(--dim);font-size:.75rem;margin-bottom:2rem}
+.shelf{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1rem}
+.book{background:rgba(255,255,255,.04);border-left:4px solid var(--metal);padding:1rem;border-radius:4px}
+.entry{display:block;padding:.4rem;margin:.2rem 0;text-decoration:none;color:var(--ink)}
+.entry:hover{background:rgba(255,255,255,.05)}
+footer{margin-top:2rem;text-align:center;color:var(--dim);font-size:.6rem}
 </style>
 </head>
 <body>
-<h1>Bibliotheque Virtuelle</h1>
+<h1>Bibliothèque Virtuelle</h1>
 <div class="stats" id="stats">Chargement...</div>
 <div class="shelf" id="shelf"></div>
-<footer>SecuBox Meta Cataloger v1.0</footer>
+<footer>SecuBox Meta Cataloger</footer>
 <script>
-(async()=>{
-  const [idx,bks]=await Promise.all([
-    fetch('/metacatalog/api/index.json').then(r=>r.json()),
-    fetch('/metacatalog/api/books.json').then(r=>r.json())
-  ]);
-  const entries=Object.fromEntries(idx.entries.map(e=>[e.id,e]));
-  document.getElementById('stats').textContent=
-    `${idx.entries.length} contenus | ${bks.books.length} collections | ${idx.generated}`;
-  const shelf=document.getElementById('shelf');
-  bks.books.forEach(book=>{
-    const div=document.createElement('div');
-    div.className='book';
-    div.style.setProperty('--book-color',book.color);
-    div.innerHTML=`
-      <div class="book-head">
-        <span class="book-icon">${book.icon}</span>
-        <span class="book-title">${book.name}</span>
-      </div>
-      <div class="book-desc">${book.description||''}</div>
-      <div class="entries">
-        ${book.entries.length?book.entries.map(eid=>{
-          const e=entries[eid];
-          if(!e)return'';
-          return`<a class="entry" href="${e.url}" target="_blank">
-            <span class="entry-type ${e.type}">${e.type}</span>
-            <span class="entry-name">${e.metadata?.title||e.name}</span>
-            <span class="entry-domain">${e.domain}</span>
-          </a>`;
-        }).join(''):'<div class="empty">Aucun contenu</div>'}
-      </div>
-    `;
-    shelf.appendChild(div);
+fetch("/metacatalog/api/books.json").then(r=>r.json()).then(d=>{
+  document.getElementById("stats").textContent=d.books.length+" collections";
+  d.books.forEach(b=>{
+    const div=document.createElement("div");div.className="book";
+    div.innerHTML="<b>"+b.icon+" "+b.name+"</b><div>"+
+      b.entries.map(e=>"<a class='entry' href='/metacatalog/api/index.json'>"+e+"</a>").join("")+"</div>";
+    document.getElementById("shelf").appendChild(div);
   });
-})();
+});
 </script>
 </body>
 </html>
 HTMLEOF
+	fi
 
 	log_info "Landing page generated at $LANDING_PATH/index.html"
 }
