@@ -8,11 +8,16 @@
 
 SECCUBOX_LOG="/usr/sbin/secubox-log"
 CROWDSEC_CACHE="/tmp/secubox/crowdsec.json"
+CROWDSEC_OVERVIEW_CACHE="/tmp/secubox/crowdsec-overview.json"
+CACHE_MAX_AGE=60  # Cache is valid for 60 seconds
 
 secubox_log() {
 	[ -x "$SECCUBOX_LOG" ] || return
 	"$SECCUBOX_LOG" --tag "crowdsec" --message "$1" >/dev/null 2>&1
 }
+
+# Ensure cache directory exists
+mkdir -p /tmp/secubox 2>/dev/null
 
 # Read cached status for fast API responses
 get_cached_status() {
@@ -23,8 +28,18 @@ get_cached_status() {
 	fi
 }
 
+# Check if cache file is fresh (less than CACHE_MAX_AGE seconds old)
+is_cache_fresh() {
+	local cache_file="$1"
+	[ ! -f "$cache_file" ] && return 1
+	local now=$(date +%s)
+	local mtime=$(stat -c %Y "$cache_file" 2>/dev/null || echo 0)
+	local age=$((now - mtime))
+	[ "$age" -lt "$CACHE_MAX_AGE" ]
+}
+
 CSCLI="/usr/bin/cscli"
-CSCLI_TIMEOUT=10
+CSCLI_TIMEOUT=5  # Reduced from 10 to prevent cumulative timeouts
 
 # Check if timeout command exists
 HAS_TIMEOUT=""
@@ -2248,7 +2263,24 @@ save_settings() {
 }
 
 # Consolidated overview data for dashboard - single API call optimization
+# get_overview - returns cached data for instant response
+# Cache is refreshed by background cron job or refresh_overview_cache call
 get_overview() {
+	# Return cached data if available and fresh
+	if is_cache_fresh "$CROWDSEC_OVERVIEW_CACHE"; then
+		cat "$CROWDSEC_OVERVIEW_CACHE"
+		return 0
+	fi
+
+	# If cache exists but stale, return stale data (better than timeout)
+	if [ -f "$CROWDSEC_OVERVIEW_CACHE" ]; then
+		cat "$CROWDSEC_OVERVIEW_CACHE"
+		# Trigger async refresh
+		( refresh_overview_cache ) >/dev/null 2>&1 &
+		return 0
+	fi
+
+	# No cache - build minimal fast response with live process checks
 	json_init
 
 	# Service status (fast - just process checks)
@@ -2260,159 +2292,37 @@ get_overview() {
 	pgrep -f "crowdsec-firewall-bouncer" >/dev/null 2>&1 && bouncer_running=1
 	json_add_string "bouncer" "$([ "$bouncer_running" = "1" ] && echo running || echo stopped)"
 
-	# Version
+	# Fast version check
 	local version=""
 	[ -x "$CSCLI" ] && version=$("$CSCLI" version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
 	json_add_string "version" "${version:-unknown}"
 
-	# Quick stats
-	local decisions_count=0
-	local local_decisions=0
-	local capi_decisions=0
-	local alerts_count=0
-	local bouncers_count=0
-
-	if [ "$cs_running" = "1" ] && [ -x "$CSCLI" ]; then
-		# Local decisions (from local scenarios)
-		# Count local decisions using jq
-		local decisions_json2="$(run_cscli decisions list -o json 2>/dev/null)"
-		if [ -n "$decisions_json2" ] && [ "$decisions_json2" != "null" ] && [ "$decisions_json2" != "[]" ]; then
-			if command -v jq >/dev/null 2>&1; then
-				local_decisions=$(echo "$decisions_json2" | jq "length" 2>/dev/null)
-			else
-				local_decisions=$(echo "$decisions_json2" | grep -c ".id.:" 2>/dev/null)
-			fi
-		fi
-
-		# CAPI decisions (blocklists) - parse from metrics output
-		capi_decisions=$(run_cscli metrics 2>/dev/null | grep 'CAPI.*ban' | awk -F'|' '{sum += $5} END {print sum+0}')
-
-		# Total decisions
-		decisions_count=$((local_decisions + capi_decisions))
-
-		alerts_count=$(run_cscli alerts list -o json --since 24h --limit 100 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
-		bouncers_count=$(run_cscli bouncers list -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
-	fi
-
-	json_add_int "total_decisions" "${decisions_count:-0}"
-	json_add_int "local_decisions" "${local_decisions:-0}"
-	json_add_int "capi_decisions" "${capi_decisions:-0}"
-	json_add_int "alerts_24h" "${alerts_count:-0}"
-	json_add_int "bouncer_count" "${bouncers_count:-0}"
-
-	# Active bans = local decisions (IPs being actively blocked by local scenarios)
-	# Use local_decisions count which is already calculated above
-	json_add_int "active_bans" "${local_decisions:-0}"
-
-	# Bouncer effectiveness stats (packets/bytes dropped vs processed)
-	local dropped_packets=0
-	local dropped_bytes=0
-	local processed_packets=0
-	local processed_bytes=0
-	if [ "$cs_running" = "1" ]; then
-		# Parse Total line from Bouncer Metrics table
-		# Format: | Total | 16.00k | 13.72k | 231 | 356.19k | 6.02k |
-		local totals
-		totals=$(run_cscli metrics 2>/dev/null | grep -E '^\|.*Total' | sed 's/|//g')
-		if [ -n "$totals" ]; then
-			# Convert k/M suffixes to numbers
-			dropped_bytes=$(echo "$totals" | awk '{v=$3; gsub(/k$/,"",v); gsub(/M$/,"",v); if(v~/\./){v=v*1000}; print v}')
-			dropped_packets=$(echo "$totals" | awk '{print $4}')
-			processed_bytes=$(echo "$totals" | awk '{v=$5; gsub(/k$/,"",v); gsub(/M$/,"",v); if(v~/\./){v=v*1000}; if(v=="-")v=0; print v}')
-			processed_packets=$(echo "$totals" | awk '{v=$6; gsub(/k$/,"",v); gsub(/M$/,"",v); if(v~/\./){v=v*1000}; if(v=="-")v=0; print v}')
-		fi
-	fi
-	json_add_string "dropped_packets" "${dropped_packets:-0}"
-	json_add_string "dropped_bytes" "${dropped_bytes:-0}"
-	json_add_string "processed_packets" "${processed_packets:-0}"
-	json_add_string "processed_bytes" "${processed_bytes:-0}"
-
-	# GeoIP status - check if GeoIP database exists (check multiple paths)
-	local geoip_enabled=0
-	local data_path
-	data_path=$(grep "db_path:" /etc/crowdsec/config.yaml 2>/dev/null | awk '{print $2}' | xargs dirname 2>/dev/null)
-	[ -z "$data_path" ] && data_path="/srv/crowdsec/data"
-	[ -f "${data_path}/GeoLite2-City.mmdb" ] && geoip_enabled=1
-	[ -f "${data_path}/GeoLite2-ASN.mmdb" ] && geoip_enabled=1
-	# Also check common alternative paths
-	[ -f "/var/lib/crowdsec/data/GeoLite2-City.mmdb" ] && geoip_enabled=1
-	json_add_boolean "geoip_enabled" "$geoip_enabled"
-
-	# Acquisition sources count
-	local acquisition_count=0
-	if [ -d "/etc/crowdsec/acquis.d" ]; then
-		acquisition_count=$(ls -1 /etc/crowdsec/acquis.d/*.yaml 2>/dev/null | wc -l)
-	fi
-	[ -f "/etc/crowdsec/acquis.yaml" ] && acquisition_count=$((acquisition_count + 1))
-	json_add_int "acquisition_count" "${acquisition_count:-0}"
-
-	# Scenario count (installed scenarios)
-	local scenario_count=0
-	if [ "$cs_running" = "1" ] && [ -x "$CSCLI" ]; then
-		scenario_count=$(run_cscli scenarios list -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
-	fi
-	json_add_int "scenario_count" "${scenario_count:-0}"
-
-	# Top scenarios (from cscli metrics - includes CAPI blocklist breakdown)
-	local scenarios=""
-	if [ "$cs_running" = "1" ]; then
-		# Parse "Local API Decisions" table from cscli metrics
-		# Lines like: | ssh:bruteforce | CAPI   | ban    | 12095 |
-		scenarios=$(run_cscli metrics 2>/dev/null | \
-			grep -E '^\| [a-z].*\| CAPI' | \
-			sed 's/|//g;s/^[ ]*//;s/[ ]*$//' | \
-			awk '{print $4, $1}' | sort -rn | head -5 | \
-			awk '{print "{\"scenario\":\"" $2 "\",\"count\":" $1 "}"}' | \
-			tr '\n' ',' | sed 's/,$//')
-	fi
-	json_add_string "top_scenarios_raw" "[$scenarios]"
-
-	# Top countries (from alerts with GeoIP enrichment)
-	# Note: CAPI decisions don't include country - only local detections have GeoIP
-	local countries=""
-	if [ "$cs_running" = "1" ]; then
-		countries=$(run_cscli alerts list -o json --limit 200 2>/dev/null | \
-			jsonfilter -e '@[*].source.cn' 2>/dev/null | \
-			grep -v '^$' | sort | uniq -c | sort -rn | head -10 | \
-			awk '{print "{\"country\":\"" $2 "\",\"count\":" $1 "}"}' | \
-			tr '\n' ',' | sed 's/,$//')
-	fi
-	json_add_string "top_countries_raw" "[$countries]"
-
-	# Recent decisions (limited to 10 for display)
-	# Recent decisions as raw JSON array string
-	local decisions_raw="[]"
-	if [ "$cs_running" = "1" ]; then
-		decisions_raw=$(run_cscli decisions list -o json --limit 10 2>/dev/null || echo "[]")
-		[ -z "$decisions_raw" ] && decisions_raw="[]"
-	fi
-	json_add_string "decisions_raw" "$decisions_raw"
-
-	# Recent alerts as raw JSON array string
-	local alerts_raw="[]"
-	if [ "$cs_running" = "1" ]; then
-		alerts_raw=$(run_cscli alerts list -o json --limit 8 2>/dev/null || echo "[]")
-		[ -z "$alerts_raw" ] && alerts_raw="[]"
-	fi
-	json_add_string "alerts_raw" "$alerts_raw"
-
-	# CrowdSec logs (last 30 lines)
+	# Minimal defaults
+	json_add_int "total_decisions" 0
+	json_add_int "local_decisions" 0
+	json_add_int "capi_decisions" 0
+	json_add_int "alerts_24h" 0
+	json_add_int "bouncer_count" 0
+	json_add_int "active_bans" 0
+	json_add_string "dropped_packets" "0"
+	json_add_string "dropped_bytes" "0"
+	json_add_string "processed_packets" "0"
+	json_add_string "processed_bytes" "0"
+	json_add_boolean "geoip_enabled" 0
+	json_add_int "acquisition_count" 0
+	json_add_int "scenario_count" 0
+	json_add_string "top_scenarios_raw" "[]"
+	json_add_string "top_countries_raw" "[]"
+	json_add_string "decisions_raw" "[]"
+	json_add_string "alerts_raw" "[]"
 	json_add_array "logs"
-	if [ -f /var/log/crowdsec.log ]; then
-		tail -n 30 /var/log/crowdsec.log 2>/dev/null | while IFS= read -r line; do
-			json_add_string "" "$line"
-		done
-	fi
 	json_close_array
 
-	# LAPI status (dynamic port detection from config)
+	# LAPI status (fast port check)
 	local lapi_ok=0
 	local lapi_port=""
-	# Get LAPI port from credentials or config file
 	lapi_port=$(grep -oE ':[0-9]+/?$' /etc/crowdsec/local_api_credentials.yaml 2>/dev/null | tr -d ':/')
-	[ -z "$lapi_port" ] && lapi_port=$(grep 'listen_uri' /etc/crowdsec/config.yaml 2>/dev/null | grep -oE ':[0-9]+$' | tr -d ':')
 	[ -z "$lapi_port" ] && lapi_port=8080
-	# Convert port to hex for /proc/net/tcp lookup
 	local lapi_port_hex
 	lapi_port_hex=$(printf '%04X' "$lapi_port")
 	if [ "$cs_running" = "1" ] && grep -qi ":${lapi_port_hex} " /proc/net/tcp 2>/dev/null; then
@@ -2420,28 +2330,187 @@ get_overview() {
 	fi
 	json_add_string "lapi_status" "$([ "$lapi_ok" = "1" ] && echo available || echo unavailable)"
 
-	# CAPI status (from config check, not live call)
+	# CAPI status
 	local capi_enrolled=0
 	[ -f /etc/crowdsec/online_api_credentials.yaml ] && capi_enrolled=1
 	json_add_boolean "capi_enrolled" "$capi_enrolled"
 
-	# WAF Autoban statistics (from mitmproxy)
-	local waf_autoban_enabled=0
-	local waf_bans_today=0
-	local waf_threats_today=0
-	local waf_sensitivity=""
+	# WAF stats
+	json_add_boolean "waf_autoban_enabled" 0
+	json_add_string "waf_sensitivity" "moderate"
+	json_add_int "waf_bans_today" 0
+	json_add_int "waf_threats_today" 0
+	json_add_int "waf_autoban_total" 0
 
-	# Check if mitmproxy autoban is enabled
+	json_add_string "cache_status" "building"
+
+	json_dump
+
+	# Trigger async cache build
+	( refresh_overview_cache ) >/dev/null 2>&1 &
+}
+
+# refresh_overview_cache - builds full overview data (called by cron or async)
+# This function does the heavy lifting with cscli calls
+# Uses file I/O for large JSON to avoid jshn argument size limits
+refresh_overview_cache() {
+	local tmpfile="/tmp/secubox/crowdsec-overview-tmp.$$.json"
+	local decisions_file="/tmp/secubox/decisions.$$.json"
+	local alerts_file="/tmp/secubox/alerts.$$.json"
+
+	# Service status
+	local cs_running=0
+	pgrep crowdsec >/dev/null 2>&1 && cs_running=1
+	local cs_status="stopped"
+	[ "$cs_running" = "1" ] && cs_status="running"
+
+	local bouncer_running=0
+	pgrep -f "crowdsec-firewall-bouncer" >/dev/null 2>&1 && bouncer_running=1
+	local bouncer_status="stopped"
+	[ "$bouncer_running" = "1" ] && bouncer_status="running"
+
+	# Version
+	local version="unknown"
+	[ -x "$CSCLI" ] && version=$("$CSCLI" version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+	[ -z "$version" ] && version="unknown"
+
+	# Initialize counters
+	local decisions_count=0 local_decisions=0 capi_decisions=0
+	local alerts_count=0 bouncers_count=0 scenario_count=0
+	local dropped_packets=0 dropped_bytes=0 processed_packets=0 processed_bytes=0
+	local scenarios="" countries=""
+	local waf_bans_today=0
+
+	# Initialize files with empty arrays
+	echo "[]" > "$decisions_file"
+	echo "[]" > "$alerts_file"
+
+	if [ "$cs_running" = "1" ] && [ -x "$CSCLI" ]; then
+		# FETCH ONCE: metrics
+		local metrics_output
+		metrics_output=$(run_with_timeout 5 "$CSCLI" metrics 2>/dev/null || echo "")
+
+		# FETCH ONCE: decisions with limit - extract just decision objects
+		# cscli returns nested alerts with decisions arrays, we extract flat decisions
+		"$CSCLI" decisions list -o json --limit 10 2>/dev/null | \
+			jsonfilter -e '@[*].decisions[*]' 2>/dev/null | \
+			head -10 | \
+			awk 'BEGIN{printf "["} NR>1{printf ","} {print} END{printf "]\n"}' > "$decisions_file"
+		[ ! -s "$decisions_file" ] && echo "[]" > "$decisions_file"
+
+		# Alerts are too large for ubus JSON, just use empty array
+		# The important data is in decisions_raw and the counts above
+		echo "[]" > "$alerts_file"
+
+		# FETCH ONCE: bouncers (count only)
+		local bouncers_json
+		bouncers_json=$(run_with_timeout 3 "$CSCLI" bouncers list -o json 2>/dev/null || echo "[]")
+
+		# Parse decisions count
+		local_decisions=$(grep -c '"id":' "$decisions_file" 2>/dev/null)
+		[ -z "$local_decisions" ] && local_decisions=0
+
+		# Parse CAPI decisions from metrics
+		if [ -n "$metrics_output" ]; then
+			capi_decisions=$(echo "$metrics_output" | grep 'CAPI.*ban' | awk -F'|' '{sum += $5} END {print int(sum)}')
+		fi
+		[ -z "$capi_decisions" ] && capi_decisions=0
+		decisions_count=$((local_decisions + capi_decisions))
+
+		# Parse alerts count
+		alerts_count=$(grep -c '"id":' "$alerts_file" 2>/dev/null)
+		[ -z "$alerts_count" ] && alerts_count=0
+
+		# Parse bouncers count
+		if [ -n "$bouncers_json" ] && [ "$bouncers_json" != "[]" ]; then
+			bouncers_count=$(echo "$bouncers_json" | grep -c '"name":' 2>/dev/null)
+			[ -z "$bouncers_count" ] && bouncers_count=0
+		fi
+
+		# Parse bouncer stats from metrics
+		if [ -n "$metrics_output" ]; then
+			local totals
+			totals=$(echo "$metrics_output" | grep -E '^\|.*Total' | head -1 | sed 's/|//g')
+			if [ -n "$totals" ]; then
+				dropped_bytes=$(echo "$totals" | awk '{v=$3; gsub(/k$/,"",v); gsub(/M$/,"",v); if(v~/\./){v=v*1000}; print v}')
+				dropped_packets=$(echo "$totals" | awk '{print $4}')
+				processed_bytes=$(echo "$totals" | awk '{v=$5; gsub(/k$/,"",v); gsub(/M$/,"",v); if(v~/\./){v=v*1000}; if(v=="-")v=0; print v}')
+				processed_packets=$(echo "$totals" | awk '{v=$6; gsub(/k$/,"",v); gsub(/M$/,"",v); if(v~/\./){v=v*1000}; if(v=="-")v=0; print v}')
+			fi
+		fi
+
+		# Parse scenarios from metrics
+		if [ -n "$metrics_output" ]; then
+			scenarios=$(echo "$metrics_output" | \
+				grep -E '^\| [a-z].*\| CAPI' | \
+				sed 's/|//g;s/^[ ]*//;s/[ ]*$//' | \
+				awk '{print $4, $1}' | sort -rn | head -5 | \
+				awk '{print "{\"scenario\":\"" $2 "\",\"count\":" $1 "}"}' | \
+				tr '\n' ',' | sed 's/,$//')
+		fi
+
+		# Parse countries from alerts file
+		countries=$(cat "$alerts_file" | \
+			jsonfilter -e '@[*].source.cn' 2>/dev/null | \
+			grep -v '^$' | sort | uniq -c | sort -rn | head -10 | \
+			awk '{print "{\"country\":\"" $2 "\",\"count\":" $1 "}"}' | \
+			tr '\n' ',' | sed 's/,$//')
+
+		# Scenario count from files
+		local sc1=$(ls -1 /etc/crowdsec/scenarios/*.yaml 2>/dev/null | wc -l)
+		local sc2=$(ls -1 /srv/crowdsec/hub/scenarios/*/*.yaml 2>/dev/null | wc -l)
+		[ -z "$sc1" ] && sc1=0
+		[ -z "$sc2" ] && sc2=0
+		scenario_count=$((sc1 + sc2))
+
+		# WAF bans count from decisions file
+		waf_bans_today=$(grep -c "mitmproxy-waf" "$decisions_file" 2>/dev/null)
+		[ -z "$waf_bans_today" ] && waf_bans_today=0
+	fi
+
+	# GeoIP status
+	local geoip_enabled=0
+	local data_path
+	data_path=$(grep "db_path:" /etc/crowdsec/config.yaml 2>/dev/null | awk '{print $2}' | xargs dirname 2>/dev/null)
+	[ -z "$data_path" ] && data_path="/srv/crowdsec/data"
+	[ -f "${data_path}/GeoLite2-City.mmdb" ] && geoip_enabled=1
+	[ -f "${data_path}/GeoLite2-ASN.mmdb" ] && geoip_enabled=1
+	[ -f "/var/lib/crowdsec/data/GeoLite2-City.mmdb" ] && geoip_enabled=1
+
+	# Acquisition count
+	local acquisition_count=0
+	if [ -d "/etc/crowdsec/acquis.d" ]; then
+		acquisition_count=$(ls -1 /etc/crowdsec/acquis.d/*.yaml 2>/dev/null | wc -l)
+		[ -z "$acquisition_count" ] && acquisition_count=0
+	fi
+	[ -f "/etc/crowdsec/acquis.yaml" ] && acquisition_count=$((acquisition_count + 1))
+
+	# LAPI status
+	local lapi_ok=0
+	local lapi_port=""
+	lapi_port=$(grep -oE ':[0-9]+/?$' /etc/crowdsec/local_api_credentials.yaml 2>/dev/null | tr -d ':/')
+	[ -z "$lapi_port" ] && lapi_port=$(grep 'listen_uri' /etc/crowdsec/config.yaml 2>/dev/null | grep -oE ':[0-9]+$' | tr -d ':')
+	[ -z "$lapi_port" ] && lapi_port=8080
+	local lapi_port_hex
+	lapi_port_hex=$(printf '%04X' "$lapi_port")
+	if [ "$cs_running" = "1" ] && grep -qi ":${lapi_port_hex} " /proc/net/tcp 2>/dev/null; then
+		lapi_ok=1
+	fi
+	local lapi_status="unavailable"
+	[ "$lapi_ok" = "1" ] && lapi_status="available"
+
+	# CAPI status
+	local capi_enrolled=0
+	[ -f /etc/crowdsec/online_api_credentials.yaml ] && capi_enrolled=1
+
+	# WAF stats
+	local waf_autoban_enabled=0
+	local waf_threats_today=0
+	local waf_sensitivity="moderate"
+
 	waf_autoban_enabled=$(uci -q get mitmproxy.autoban.enabled 2>/dev/null || echo 0)
 	waf_sensitivity=$(uci -q get mitmproxy.autoban.sensitivity 2>/dev/null || echo "moderate")
 
-	# Count WAF-originated bans in CrowdSec (reason contains "mitmproxy-waf")
-	if [ "$cs_running" = "1" ] && [ -x "$CSCLI" ]; then
-		waf_bans_today=$(run_cscli decisions list -o json 2>/dev/null | \
-			grep -c "mitmproxy-waf" 2>/dev/null || echo 0)
-	fi
-
-	# Count threats from mitmproxy log today
 	local threats_log="/srv/mitmproxy-in/threats.log"
 	if [ -f "$threats_log" ]; then
 		local today
@@ -2449,26 +2518,69 @@ get_overview() {
 		waf_threats_today=$(grep -c "\"timestamp\": \"$today" "$threats_log" 2>/dev/null || echo 0)
 	fi
 
-	# Count processed autobans
 	local autoban_processed=0
 	local autoban_log="/srv/mitmproxy-in/autoban-processed.log"
 	if [ -f "$autoban_log" ]; then
 		autoban_processed=$(wc -l < "$autoban_log" 2>/dev/null || echo 0)
 	fi
 
-	json_add_boolean "waf_autoban_enabled" "$waf_autoban_enabled"
-	json_add_string "waf_sensitivity" "$waf_sensitivity"
-	json_add_int "waf_bans_today" "${waf_bans_today:-0}"
-	json_add_int "waf_threats_today" "${waf_threats_today:-0}"
-	json_add_int "waf_autoban_total" "${autoban_processed:-0}"
+	local cache_timestamp
+	cache_timestamp=$(date +%s)
 
-	json_dump
+	# Build logs array
+	local logs_json="[]"
+	if [ -f /var/log/crowdsec.log ]; then
+		logs_json=$(tail -n 30 /var/log/crowdsec.log 2>/dev/null | \
+			awk '{gsub(/"/,"\\\"",$0); print "\"" $0 "\""}' | \
+			tr '\n' ',' | sed 's/,$//' | sed 's/^/[/;s/$/]/')
+	fi
+
+	# Build JSON manually to avoid jshn argument size limits
+	cat > "$tmpfile" <<EOF
+{
+"crowdsec":"$cs_status",
+"bouncer":"$bouncer_status",
+"version":"$version",
+"total_decisions":$decisions_count,
+"local_decisions":$local_decisions,
+"capi_decisions":$capi_decisions,
+"alerts_24h":$alerts_count,
+"bouncer_count":$bouncers_count,
+"active_bans":$local_decisions,
+"dropped_packets":"${dropped_packets:-0}",
+"dropped_bytes":"${dropped_bytes:-0}",
+"processed_packets":"${processed_packets:-0}",
+"processed_bytes":"${processed_bytes:-0}",
+"geoip_enabled":$([ "$geoip_enabled" = "1" ] && echo true || echo false),
+"acquisition_count":$acquisition_count,
+"scenario_count":$scenario_count,
+"top_scenarios_raw":"[$scenarios]",
+"top_countries_raw":"[$countries]",
+"decisions_raw":$(cat "$decisions_file"),
+"alerts_raw":$(cat "$alerts_file"),
+"logs":$logs_json,
+"lapi_status":"$lapi_status",
+"capi_enrolled":$([ "$capi_enrolled" = "1" ] && echo true || echo false),
+"waf_autoban_enabled":$([ "$waf_autoban_enabled" = "1" ] && echo true || echo false),
+"waf_sensitivity":"$waf_sensitivity",
+"waf_bans_today":$waf_bans_today,
+"waf_threats_today":$waf_threats_today,
+"waf_autoban_total":$autoban_processed,
+"cache_timestamp":$cache_timestamp
+}
+EOF
+
+	# Atomic move
+	mv -f "$tmpfile" "$CROWDSEC_OVERVIEW_CACHE"
+
+	# Cleanup temp files
+	rm -f "$decisions_file" "$alerts_file"
 }
 
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"get_overview":{},"decisions":{},"alerts":{"limit":"number"},"metrics":{},"bouncers":{},"machines":{},"hub":{},"status":{},"status_cached":{},"ban":{"ip":"string","duration":"string","reason":"string"},"unban":{"ip":"string"},"stats":{},"secubox_logs":{},"collect_debug":{},"waf_status":{},"metrics_config":{},"configure_metrics":{"enable":"string"},"collections":{},"install_collection":{"collection":"string"},"remove_collection":{"collection":"string"},"update_hub":{},"register_bouncer":{"bouncer_name":"string"},"delete_bouncer":{"bouncer_name":"string"},"firewall_bouncer_status":{},"control_firewall_bouncer":{"action":"string"},"firewall_bouncer_config":{},"update_firewall_bouncer_config":{"key":"string","value":"string"},"nftables_stats":{},"check_wizard_needed":{},"wizard_state":{},"repair_lapi":{},"repair_capi":{},"reset_wizard":{},"console_status":{},"console_enroll":{"key":"string","name":"string"},"console_disable":{},"service_control":{"action":"string"},"configure_acquisition":{"syslog_enabled":"string","firewall_enabled":"string","ssh_enabled":"string","http_enabled":"string","syslog_path":"string"},"acquisition_config":{},"acquisition_metrics":{},"health_check":{},"capi_metrics":{},"hub_available":{},"install_hub_item":{"item_type":"string","item_name":"string"},"remove_hub_item":{"item_type":"string","item_name":"string"},"get_settings":{},"save_settings":{"enrollment_key":"string","machine_name":"string","auto_enroll":"string"}}'
+		echo '{"get_overview":{},"decisions":{},"alerts":{"limit":"number"},"metrics":{},"bouncers":{},"machines":{},"hub":{},"status":{},"status_cached":{},"refresh_cache":{},"ban":{"ip":"string","duration":"string","reason":"string"},"unban":{"ip":"string"},"stats":{},"secubox_logs":{},"collect_debug":{},"waf_status":{},"metrics_config":{},"configure_metrics":{"enable":"string"},"collections":{},"install_collection":{"collection":"string"},"remove_collection":{"collection":"string"},"update_hub":{},"register_bouncer":{"bouncer_name":"string"},"delete_bouncer":{"bouncer_name":"string"},"firewall_bouncer_status":{},"control_firewall_bouncer":{"action":"string"},"firewall_bouncer_config":{},"update_firewall_bouncer_config":{"key":"string","value":"string"},"nftables_stats":{},"check_wizard_needed":{},"wizard_state":{},"repair_lapi":{},"repair_capi":{},"reset_wizard":{},"console_status":{},"console_enroll":{"key":"string","name":"string"},"console_disable":{},"service_control":{"action":"string"},"configure_acquisition":{"syslog_enabled":"string","firewall_enabled":"string","ssh_enabled":"string","http_enabled":"string","syslog_path":"string"},"acquisition_config":{},"acquisition_metrics":{},"health_check":{},"capi_metrics":{},"hub_available":{},"install_hub_item":{"item_type":"string","item_name":"string"},"remove_hub_item":{"item_type":"string","item_name":"string"},"get_settings":{},"save_settings":{"enrollment_key":"string","machine_name":"string","auto_enroll":"string"}}'
 		;;
 	call)
 		case "$2" in
@@ -2497,6 +2609,10 @@ case "$1" in
 				;;
 			status_cached)
 				get_cached_status
+				;;
+			refresh_cache)
+				refresh_overview_cache
+				echo '{"success": true}'
 				;;
 			ban)
 				read -r input

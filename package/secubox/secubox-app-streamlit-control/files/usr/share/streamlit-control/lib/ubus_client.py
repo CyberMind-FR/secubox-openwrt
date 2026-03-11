@@ -298,3 +298,46 @@ class UbusClient:
     def streamlit_status(self, app_id: str) -> Dict:
         """Get Streamlit app status"""
         return self.call("luci.streamlit-forge", "status", {"id": app_id}) or {}
+
+    def streamlit_templates(self) -> List[Dict]:
+        """Get available templates"""
+        result = self.call("luci.streamlit-forge", "templates")
+        return result.get("templates", []) if result else []
+
+    def streamlit_create(self, name: str, template: str = "basic") -> Dict:
+        """Create new Streamlit app"""
+        return self.call("luci.streamlit-forge", "create", {
+            "name": name,
+            "template": template
+        }) or {}
+
+    def streamlit_start(self, name: str) -> Dict:
+        """Start Streamlit app"""
+        return self.call("luci.streamlit-forge", "start", {"name": name}) or {}
+
+    def streamlit_stop(self, name: str) -> Dict:
+        """Stop Streamlit app"""
+        return self.call("luci.streamlit-forge", "stop", {"name": name}) or {}
+
+    def streamlit_restart(self, name: str) -> Dict:
+        """Restart Streamlit app"""
+        return self.call("luci.streamlit-forge", "restart", {"name": name}) or {}
+
+    def streamlit_delete(self, name: str) -> Dict:
+        """Delete Streamlit app"""
+        return self.call("luci.streamlit-forge", "delete", {"name": name}) or {}
+
+    def streamlit_expose(self, name: str, domain: str) -> Dict:
+        """Expose Streamlit app with HAProxy vhost"""
+        return self.call("luci.streamlit-forge", "expose", {
+            "name": name,
+            "domain": domain
+        }) or {}
+
+    def streamlit_hide(self, name: str) -> Dict:
+        """Hide Streamlit app (remove HAProxy vhost)"""
+        return self.call("luci.streamlit-forge", "hide", {"name": name}) or {}
+
+    def streamlit_info(self, name: str) -> Dict:
+        """Get detailed app info"""
+        return self.call("luci.streamlit-forge", "info", {"name": name}) or {}

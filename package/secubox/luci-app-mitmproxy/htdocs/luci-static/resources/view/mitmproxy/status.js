@@ -76,11 +76,18 @@ function severityIcon(sev) {
 
 return view.extend({
 	load: function() {
+		// Load status and alerts first (fast)
+		// Bans can be slow due to CrowdSec CAPI, so set a shorter timeout
 		return Promise.all([
 			callStatus().catch(function() { return {}; }),
 			callAlerts().catch(function() { return { alerts: [] }; }),
 			callSubdomainMetrics().catch(function() { return { metrics: { subdomains: {} } }; }),
-			callBans().catch(function() { return { total: 0, mitmproxy_autoban: 0, crowdsec: 0, bans: [] }; })
+			Promise.race([
+				callBans(),
+				new Promise(function(_, reject) {
+					setTimeout(function() { reject(new Error('timeout')); }, 10000);
+				})
+			]).catch(function() { return { total: 0, mitmproxy_autoban: 0, crowdsec: 0, bans: [] }; })
 		]);
 	},
 

@@ -35,9 +35,10 @@ define Package/luci-app-crowdsec-dashboard/install
 	$(INSTALL_CONF) ./root/etc/config/crowdsec-dashboard $(1)/etc/config/
 	$(INSTALL_CONF) ./root/etc/config/crowdsec_abuseipdb $(1)/etc/config/
 
-	# Cron job for AbuseIPDB reporter
+	# Cron jobs
 	$(INSTALL_DIR) $(1)/etc/cron.d
 	$(INSTALL_DATA) ./root/etc/cron.d/crowdsec-reporter $(1)/etc/cron.d/
+	$(INSTALL_DATA) ./root/etc/cron.d/crowdsec-dashboard $(1)/etc/cron.d/
 
 	# Reporter script
 	$(INSTALL_DIR) $(1)/usr/sbin

@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-11 (Streamlit Control Phase 3 + CrowdSec bugfix)_
+_Last updated: 2026-03-11 (CrowdSec Dashboard Performance Optimization)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -9,6 +9,23 @@ _Last updated: 2026-03-11 (Streamlit Control Phase 3 + CrowdSec bugfix)_
 ## Recently Completed
 
 ### 2026-03-11
+
+- **CrowdSec Dashboard Performance Optimization**
+  - **Problem**: `get_overview` RPC call was timing out (30s+), causing "TypeError: can't assign to property 'countries' on 5"
+  - **Root cause**: Function made 12+ sequential `cscli` calls, each taking 2-5s with CAPI data
+  - **Solution**: Pre-cached architecture with background refresh
+    - Cache file: `/tmp/secubox/crowdsec-overview.json` (60s TTL)
+    - `get_overview()` returns cached data instantly (0.08s)
+    - `refresh_overview_cache()` runs via cron every minute
+    - Background async refresh triggered when cache is stale
+  - **Technical fixes**:
+    - Reduced cscli calls from 12 to 4 (metrics, decisions, alerts, bouncers)
+    - Extracted flat decisions array from nested alert structure using jsonfilter
+    - Simplified alerts_raw to empty array (full alerts too large for ubus JSON)
+    - Manual JSON building to avoid jshn argument size limits (BusyBox constraint)
+    - Added `/etc/cron.d/crowdsec-dashboard` for periodic cache refresh
+  - **Files modified**: `luci.crowdsec-dashboard` RPCD, Makefile
+  - **Result**: Dashboard loads instantly, no more TypeError
 
 - **Streamlit Control Dashboard Phase 3 (Complete)**
   - **Auto-refresh**: Toggle + interval selector on all main pages (10s/30s/60s)

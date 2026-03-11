@@ -1,0 +1,3 @@
+# CrowdSec Dashboard cache refresh
+# Refresh overview stats every minute to avoid UI timeouts
+* * * * * root /usr/libexec/rpcd/luci.crowdsec-dashboard call refresh_cache >/dev/null 2>&1
