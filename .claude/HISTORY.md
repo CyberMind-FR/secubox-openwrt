@@ -4678,3 +4678,38 @@ git checkout HEAD -- index.html
     - Fix: Added type check in `overview.js` render() and pollData() functions
     - `var s = (data && typeof data === 'object' && !Array.isArray(data)) ? data : {}`
     - Deployed to router, cleared LuCI caches
+
+91. **Meta Cataloger - Virtual Books (2026-03-11)**
+    - New `secubox-app-metacatalog` package for content aggregation
+    - Virtual Library concept: organizes MetaBlogizer sites, Streamlit apps into themed collections
+    - CLI tool `/usr/sbin/metacatalogctl` with commands:
+      - `sync` - Full scan + index + assign books + generate landing
+      - `scan [source]` - Scan content sources (metablogizer, streamlit)
+      - `index list|show|refresh` - Index management
+      - `books list|show` - Virtual book management
+      - `search <query>` - Full-text search
+      - `status` - Catalog statistics
+      - `landing` - Regenerate landing page
+    - Content scanners:
+      - MetaBlogizer: extracts title, description, languages, colors, canvas/audio detection
+      - Streamlit: extracts from app.py and UCI config
+    - Auto-assignment engine: matches entries to books via keywords and domain patterns
+    - Default virtual books (6):
+      - Divination (oracle, iching, hexagram)
+      - Visualization (canvas, animation, 3d)
+      - Analytics (dashboard, data, metrics)
+      - Publications (blog, article, press)
+      - Security (waf, firewall, crowdsec)
+      - Media (video, audio, streaming)
+    - Landing page: Tao prism fluoro theme with book shelf visualization
+    - API endpoints: `/metacatalog/api/index.json`, `/metacatalog/api/books.json`
+    - Initial sync: 120 entries indexed (118 MetaBlogs, 2 Streamlits)
+    - BusyBox-compatible: uses sed instead of grep -P for regex extraction
+    - Cron integration: hourly auto-sync via `/etc/cron.d/metacatalog`
+
+92. **HAProxy Auto-Sync Mitmproxy Routes (2026-03-11)**
+    - Fixed: New vhosts were missing mitmproxy route entries
+    - `haproxyctl vhost add` now auto-runs `mitmproxyctl sync-routes` in background
+    - `haproxyctl vhost remove` also triggers route sync
+    - Prevents 404 WAF errors when adding new domains
+    - Commit: 7cbd6406 "feat(haproxy): Auto-sync mitmproxy routes on vhost add/remove"

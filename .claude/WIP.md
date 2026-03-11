@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-11 (CrowdSec Dashboard Performance Optimization)_
+_Last updated: 2026-03-11 (Meta Cataloger - Virtual Books)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -9,6 +9,25 @@ _Last updated: 2026-03-11 (CrowdSec Dashboard Performance Optimization)_
 ## Recently Completed
 
 ### 2026-03-11
+
+- **Meta Cataloger - Virtual Books (Phase 1 Complete)**
+  - New `secubox-app-metacatalog` package for unified content aggregation
+  - Organizes MetaBlogizer sites, Streamlit apps into themed Virtual Books
+  - CLI: `/usr/sbin/metacatalogctl` with sync/scan/index/books/search/status/landing
+  - Scanners: MetaBlogizer (title, description, languages, colors, canvas/audio)
+  - Scanners: Streamlit (from app.py and UCI config)
+  - Auto-assignment: keyword + domain pattern matching to books
+  - 6 default books: Divination, Visualization, Analytics, Publications, Security, Media
+  - Landing page: Tao prism fluoro theme at `/www/metacatalog/index.html`
+  - APIs: `/metacatalog/api/index.json`, `/metacatalog/api/books.json`
+  - Initial sync: 120 entries (118 MetaBlogs, 2 Streamlits)
+  - BusyBox-compatible: sed-based regex (no grep -P)
+  - Cron: hourly auto-sync via `/etc/cron.d/metacatalog`
+
+- **HAProxy Auto-Sync Mitmproxy Routes**
+  - Fixed: New vhosts missing mitmproxy route entries causing 404 WAF errors
+  - `haproxyctl vhost add/remove` now triggers `mitmproxyctl sync-routes`
+  - Commit: 7cbd6406
 
 - **CrowdSec Dashboard Performance Optimization**
   - **Problem**: `get_overview` RPC call was timing out (30s+), causing "TypeError: can't assign to property 'countries' on 5"
@@ -403,6 +422,8 @@ _Last updated: 2026-03-11 (CrowdSec Dashboard Performance Optimization)_
 ---
 
 ## In Progress
+
+- **Meta Cataloger Phase 2** - RPCD backend, LuCI dashboard, HAProxy source scanner
 
 - **Streamlit Forge Phase 2** - Preview generation, Gitea push/pull
 

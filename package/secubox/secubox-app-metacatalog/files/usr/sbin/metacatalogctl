@@ -1,0 +1,678 @@
+#!/bin/sh
+# SecuBox Meta Cataloger
+# Copyright (C) 2026 CyberMind.fr
+#
+# Aggregates MetaBlogizer sites, Streamlit apps, and services
+# into a unified catalog with Virtual Books organization
+
+. /lib/functions.sh
+
+CONFIG="metacatalog"
+VERSION="1.0.0"
+
+# Paths
+DATA_DIR="/srv/metacatalog"
+ENTRIES_DIR="$DATA_DIR/entries"
+CACHE_DIR="$DATA_DIR/cache"
+INDEX_FILE="$DATA_DIR/index.json"
+BOOKS_FILE="$DATA_DIR/books.json"
+LANDING_PATH="/www/metacatalog"
+
+# Logging
+log_info() { echo "[INFO] $*"; logger -t metacatalog "$*"; }
+log_warn() { echo "[WARN] $*" >&2; logger -t metacatalog -p warning "$*"; }
+log_error() { echo "[ERROR] $*" >&2; logger -t metacatalog -p err "$*"; }
+
+# ═══════════════════════════════════════════════════════════════
+# HELPERS
+# ═══════════════════════════════════════════════════════════════
+
+ensure_dirs() {
+	mkdir -p "$DATA_DIR" "$ENTRIES_DIR" "$CACHE_DIR" "$LANDING_PATH/api"
+}
+
+uci_get() { uci -q get ${CONFIG}.$1; }
+
+json_escape() {
+	printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/	/\\t/g' | tr '\n' ' '
+}
+
+# Generate entry ID from domain
+make_id() {
+	echo "$1" | sed 's/[^a-zA-Z0-9]/-/g' | tr '[:upper:]' '[:lower:]'
+}
+
+# Get current timestamp
+now_iso() {
+	date -u +"%Y-%m-%dT%H:%M:%SZ"
+}
+
+# ═══════════════════════════════════════════════════════════════
+# METABLOGIZER SCANNER
+# ═══════════════════════════════════════════════════════════════
+
+scan_metablogizer() {
+	local sites_root=$(uci_get source_metablogizer.path)
+	[ -z "$sites_root" ] && sites_root="/srv/metablogizer/sites"
+	[ ! -d "$sites_root" ] && return 0
+
+	log_info "Scanning MetaBlogizer sites in $sites_root"
+	local count=0
+
+	for site_dir in "$sites_root"/*/; do
+		[ -d "$site_dir" ] || continue
+		local site=$(basename "$site_dir")
+		local index_html="$site_dir/index.html"
+		[ -f "$index_html" ] || continue
+
+		# Get UCI config for this site
+		local domain=$(uci -q get metablogizer.site_$site.domain 2>/dev/null)
+		[ -z "$domain" ] && domain="$site.gk2.secubox.in"
+		local port=$(uci -q get metablogizer.site_$site.port 2>/dev/null)
+		[ -z "$port" ] && port="80"
+
+		# Extract metadata from HTML (BusyBox-compatible)
+		local title=$(sed -n 's/.*<title>\([^<]*\)<\/title>.*/\1/p' "$index_html" 2>/dev/null | head -1)
+		[ -z "$title" ] && title="$site"
+		local description=$(sed -n 's/.*meta[^>]*description[^>]*content="\([^"]*\)".*/\1/p' "$index_html" 2>/dev/null | head -1)
+
+		# Detect features
+		local has_canvas="false"
+		grep -q '<canvas' "$index_html" && has_canvas="true"
+		local has_audio="false"
+		grep -qE 'AudioContext|new Audio|audio' "$index_html" && has_audio="true"
+
+		# Extract languages (BusyBox-compatible)
+		local languages=""
+		languages=$(sed -n "s/.*setLang(['\"]\\{0,1\\}\\([a-z]\\{2\\}\\).*/\\1/p" "$index_html" 2>/dev/null | sort -u | tr '\n' ',' | sed 's/,$//')
+		[ -z "$languages" ] && languages=$(sed -n 's/.*lang=["\x27]\{0,1\}\([a-z]\{2\}\).*/\1/p' "$index_html" 2>/dev/null | head -1)
+
+		# Extract primary colors from CSS (BusyBox-compatible)
+		local colors=""
+		colors=$(grep -oE '#[0-9a-fA-F]{6}' "$index_html" 2>/dev/null | sort -u | head -5 | tr '\n' ',' | sed 's/,$//')
+
+		# Extract keywords from title/content
+		local keywords=""
+		keywords=$(echo "$title $description" | tr '[:upper:]' '[:lower:]' | grep -oE '[a-z]{4,}' | sort -u | head -10 | tr '\n' ',' | sed 's/,$//')
+
+		# File stats (BusyBox-compatible)
+		local file_count=$(find "$site_dir" -type f 2>/dev/null | wc -l)
+		local size_kb=$(du -sk "$site_dir" 2>/dev/null | cut -f1)
+		local size_bytes=$((${size_kb:-0} * 1024))
+
+		# Check exposure status
+		local ssl="false"
+		local waf="false"
+		uci -q get haproxy.${site//-/_}_*.ssl >/dev/null 2>&1 && ssl="true"
+		local backend=$(uci -q get haproxy.${site//-/_}_*.backend 2>/dev/null)
+		[ "$backend" = "mitmproxy_inspector" ] && waf="true"
+
+		# Generate entry ID
+		local entry_id=$(make_id "$domain")
+
+		# Get timestamps (BusyBox-compatible using ls)
+		local created=$(ls -ld --time-style=+%Y-%m-%dT%H:%M:%SZ "$site_dir" 2>/dev/null | awk '{print $6}')
+		local updated=$(ls -l --time-style=+%Y-%m-%dT%H:%M:%SZ "$index_html" 2>/dev/null | awk '{print $6}')
+
+		# Write entry JSON
+		cat > "$ENTRIES_DIR/$entry_id.json" <<EOF
+{
+  "id": "$entry_id",
+  "type": "metablog",
+  "name": "$(json_escape "$site")",
+  "domain": "$domain",
+  "url": "https://$domain/",
+  "port": $port,
+  "source": "metablogizer",
+  "created": "$created",
+  "updated": "$updated",
+  "metadata": {
+    "title": "$(json_escape "$title")",
+    "description": "$(json_escape "$description")",
+    "languages": "$(json_escape "$languages")",
+    "keywords": "$(json_escape "$keywords")",
+    "colors": "$(json_escape "$colors")",
+    "has_canvas": $has_canvas,
+    "has_audio": $has_audio,
+    "file_count": $file_count,
+    "size_bytes": $size_bytes
+  },
+  "books": [],
+  "status": "published",
+  "exposure": {
+    "ssl": $ssl,
+    "waf": $waf,
+    "tor": false
+  }
+}
+EOF
+		count=$((count + 1))
+		log_info "  Indexed: $site -> $domain"
+	done
+
+	log_info "MetaBlogizer: $count sites indexed"
+}
+
+# ═══════════════════════════════════════════════════════════════
+# STREAMLIT SCANNER
+# ═══════════════════════════════════════════════════════════════
+
+scan_streamlit() {
+	local apps_dir="/srv/streamlit/apps"
+	[ ! -d "$apps_dir" ] && return 0
+
+	log_info "Scanning Streamlit apps in $apps_dir"
+	local count=0
+
+	for app_dir in "$apps_dir"/*/; do
+		[ -d "$app_dir" ] || continue
+		local app=$(basename "$app_dir")
+
+		# Find main Python file
+		local main_py=""
+		for f in "$app_dir/src/app.py" "$app_dir/src/main.py" "$app_dir/src/$app.py"; do
+			[ -f "$f" ] && { main_py="$f"; break; }
+		done
+		[ -z "$main_py" ] && main_py=$(find "$app_dir/src" -name "*.py" -type f 2>/dev/null | head -1)
+		[ -z "$main_py" ] && continue
+
+		# Get UCI config
+		local domain=$(uci -q get streamlit-forge.$app.domain 2>/dev/null)
+		[ -z "$domain" ] && domain="$app.gk2.secubox.in"
+		local port=$(uci -q get streamlit-forge.$app.port 2>/dev/null)
+		[ -z "$port" ] && port="8501"
+		local enabled=$(uci -q get streamlit-forge.$app.enabled 2>/dev/null)
+		[ "$enabled" != "1" ] && continue
+
+		# Extract title from set_page_config (BusyBox-compatible)
+		local title=$(sed -n 's/.*page_title\s*=\s*["\x27]\([^"\x27]*\).*/\1/p' "$main_py" 2>/dev/null | head -1)
+		[ -z "$title" ] && title="$app"
+
+		# Extract page icon (BusyBox-compatible)
+		local icon=$(sed -n 's/.*page_icon\s*=\s*["\x27]\([^"\x27]*\).*/\1/p' "$main_py" 2>/dev/null | head -1)
+
+		# Check requirements
+		local deps=""
+		[ -f "$app_dir/src/requirements.txt" ] && deps=$(cat "$app_dir/src/requirements.txt" | tr '\n' ',' | sed 's/,$//')
+
+		# Generate entry ID
+		local entry_id=$(make_id "$domain")
+
+		# Get timestamps (BusyBox-compatible)
+		local created=$(ls -ld --time-style=+%Y-%m-%dT%H:%M:%SZ "$app_dir" 2>/dev/null | awk '{print $6}')
+		local updated=$(ls -l --time-style=+%Y-%m-%dT%H:%M:%SZ "$main_py" 2>/dev/null | awk '{print $6}')
+
+		# File count
+		local file_count=$(find "$app_dir" -type f 2>/dev/null | wc -l)
+
+		# Check exposure
+		local ssl="false"
+		local waf="false"
+		uci -q get haproxy.*_$app.ssl >/dev/null 2>&1 && ssl="true"
+
+		cat > "$ENTRIES_DIR/$entry_id.json" <<EOF
+{
+  "id": "$entry_id",
+  "type": "streamlit",
+  "name": "$(json_escape "$app")",
+  "domain": "$domain",
+  "url": "https://$domain/",
+  "port": $port,
+  "source": "streamlit-forge",
+  "created": "$created",
+  "updated": "$updated",
+  "metadata": {
+    "title": "$(json_escape "$title")",
+    "icon": "$(json_escape "$icon")",
+    "dependencies": "$(json_escape "$deps")",
+    "file_count": $file_count
+  },
+  "books": [],
+  "status": "published",
+  "exposure": {
+    "ssl": $ssl,
+    "waf": $waf,
+    "tor": false
+  }
+}
+EOF
+		count=$((count + 1))
+		log_info "  Indexed: $app -> $domain"
+	done
+
+	log_info "Streamlit: $count apps indexed"
+}
+
+# ═══════════════════════════════════════════════════════════════
+# BOOK ASSIGNMENT
+# ═══════════════════════════════════════════════════════════════
+
+assign_books() {
+	log_info "Assigning entries to virtual books..."
+
+	# Load book definitions
+	local books_tmp="/tmp/metacatalog_books_$$.json"
+	echo "[" > "$books_tmp"
+	local first_book=1
+
+	config_load metacatalog
+	config_foreach _collect_book book
+
+	# Process each entry
+	for entry_file in "$ENTRIES_DIR"/*.json; do
+		[ -f "$entry_file" ] || continue
+		local entry_id=$(basename "$entry_file" .json)
+
+		# Read entry data
+		local domain=$(jsonfilter -i "$entry_file" -e '@.domain' 2>/dev/null)
+		local title=$(jsonfilter -i "$entry_file" -e '@.metadata.title' 2>/dev/null)
+		local keywords=$(jsonfilter -i "$entry_file" -e '@.metadata.keywords' 2>/dev/null)
+
+		# Combine searchable text
+		local search_text=$(echo "$domain $title $keywords" | tr '[:upper:]' '[:lower:]')
+
+		# Check against each book
+		local matched_books=""
+		config_foreach _match_book book "$entry_id" "$search_text"
+
+		# Update entry with matched books
+		if [ -n "$matched_books" ]; then
+			local books_json=$(echo "$matched_books" | sed 's/,$//' | sed 's/\([^,]*\)/"\1"/g' | tr ',' ',')
+			sed -i "s/\"books\": \[\]/\"books\": [$books_json]/" "$entry_file"
+		fi
+	done
+
+	log_info "Book assignment complete"
+}
+
+_collect_book() {
+	local section="$1"
+	local name=$(uci_get $section.name)
+	local icon=$(uci_get $section.icon)
+	local color=$(uci_get $section.color)
+	local desc=$(uci_get $section.description)
+
+	[ -z "$name" ] && return
+
+	# Collect keywords
+	local keywords=""
+	config_list_foreach "$section" keywords _append_keyword
+
+	# Collect domain patterns
+	local patterns=""
+	config_list_foreach "$section" domain_patterns _append_pattern
+}
+
+_append_keyword() { keywords="$keywords,$1"; }
+_append_pattern() { patterns="$patterns,$1"; }
+
+_match_book() {
+	local section="$1"
+	local entry_id="$2"
+	local search_text="$3"
+
+	local match=0
+
+	# Check keywords
+	local kw
+	config_list_foreach "$section" keywords _check_kw
+
+	# Check domain patterns
+	config_list_foreach "$section" domain_patterns _check_pattern
+
+	if [ $match -gt 0 ]; then
+		matched_books="$matched_books$section,"
+	fi
+}
+
+_check_kw() {
+	echo "$search_text" | grep -qi "$1" && match=1
+}
+
+_check_pattern() {
+	echo "$search_text" | grep -qi "$1" && match=1
+}
+
+# ═══════════════════════════════════════════════════════════════
+# INDEX GENERATION
+# ═══════════════════════════════════════════════════════════════
+
+generate_index() {
+	log_info "Generating index.json..."
+
+	echo "{" > "$INDEX_FILE"
+	echo '  "version": "'$VERSION'",' >> "$INDEX_FILE"
+	echo '  "generated": "'$(now_iso)'",' >> "$INDEX_FILE"
+	echo '  "entries": [' >> "$INDEX_FILE"
+
+	local first=1
+	for entry_file in "$ENTRIES_DIR"/*.json; do
+		[ -f "$entry_file" ] || continue
+		[ $first -eq 0 ] && echo "," >> "$INDEX_FILE"
+		cat "$entry_file" >> "$INDEX_FILE"
+		first=0
+	done
+
+	echo "" >> "$INDEX_FILE"
+	echo "  ]" >> "$INDEX_FILE"
+	echo "}" >> "$INDEX_FILE"
+
+	# Copy to web API
+	cp "$INDEX_FILE" "$LANDING_PATH/api/index.json"
+
+	local count=$(ls -1 "$ENTRIES_DIR"/*.json 2>/dev/null | wc -l)
+	log_info "Index generated: $count entries"
+}
+
+generate_books_json() {
+	log_info "Generating books.json..."
+
+	echo "{" > "$BOOKS_FILE"
+	echo '  "version": "'$VERSION'",' >> "$BOOKS_FILE"
+	echo '  "generated": "'$(now_iso)'",' >> "$BOOKS_FILE"
+	echo '  "books": [' >> "$BOOKS_FILE"
+
+	local first=1
+	config_load metacatalog
+	config_foreach _output_book book
+
+	echo "" >> "$BOOKS_FILE"
+	echo "  ]" >> "$BOOKS_FILE"
+	echo "}" >> "$BOOKS_FILE"
+
+	cp "$BOOKS_FILE" "$LANDING_PATH/api/books.json"
+}
+
+_output_book() {
+	local section="$1"
+	local name=$(uci_get $section.name)
+	local icon=$(uci_get $section.icon)
+	local color=$(uci_get $section.color)
+	local desc=$(uci_get $section.description)
+
+	[ -z "$name" ] && return
+
+	# Find entries in this book
+	local entries=""
+	for entry_file in "$ENTRIES_DIR"/*.json; do
+		[ -f "$entry_file" ] || continue
+		local books=$(jsonfilter -i "$entry_file" -e '@.books[*]' 2>/dev/null)
+		echo "$books" | grep -q "$section" && {
+			local eid=$(jsonfilter -i "$entry_file" -e '@.id')
+			entries="$entries\"$eid\","
+		}
+	done
+	entries=$(echo "$entries" | sed 's/,$//')
+
+	[ $first -eq 0 ] && echo "," >> "$BOOKS_FILE"
+	cat >> "$BOOKS_FILE" <<EOF
+    {
+      "id": "$section",
+      "name": "$(json_escape "$name")",
+      "icon": "$icon",
+      "color": "$color",
+      "description": "$(json_escape "$desc")",
+      "entries": [$entries]
+    }
+EOF
+	first=0
+}
+
+# ═══════════════════════════════════════════════════════════════
+# LANDING PAGE
+# ═══════════════════════════════════════════════════════════════
+
+generate_landing() {
+	log_info "Generating landing page..."
+
+	cat > "$LANDING_PATH/index.html" <<'HTMLEOF'
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bibliotheque Virtuelle SecuBox</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#05060f;--ink:#f0f2ff;--dim:rgba(240,242,255,.5);
+  --fire:#ff0066;--earth:#ffff00;--water:#0066ff;--wood:#00ff88;--metal:#cc00ff;--yang:#ff9500;
+  --glass:rgba(255,255,255,.04);--border:rgba(255,255,255,.08);
+}
+body{min-height:100vh;background:var(--bg);color:var(--ink);font-family:'Space Mono',monospace;padding:2rem}
+h1{font-size:2rem;margin-bottom:.5rem;background:linear-gradient(90deg,var(--fire),var(--yang),var(--earth),var(--wood),var(--water),var(--metal));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.stats{color:var(--dim);font-size:.75rem;margin-bottom:2rem;letter-spacing:.1em}
+.shelf{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:1.5rem}
+.book{background:var(--glass);border:1px solid var(--border);border-left:4px solid var(--book-color,var(--metal));padding:1.2rem;border-radius:4px}
+.book-head{display:flex;align-items:center;gap:.8rem;margin-bottom:1rem}
+.book-icon{font-size:1.8rem}
+.book-title{font-size:1rem;font-weight:bold}
+.book-desc{font-size:.65rem;color:var(--dim);margin-bottom:1rem}
+.entries{display:flex;flex-direction:column;gap:.4rem}
+.entry{display:flex;align-items:center;gap:.6rem;padding:.5rem;background:rgba(255,255,255,.02);border-radius:2px;text-decoration:none;color:var(--ink);transition:background .15s}
+.entry:hover{background:rgba(255,255,255,.06)}
+.entry-type{font-size:.5rem;padding:.15rem .4rem;border-radius:2px;background:var(--metal);color:#000}
+.entry-type.metablog{background:var(--fire)}
+.entry-type.streamlit{background:var(--wood)}
+.entry-name{font-size:.75rem;flex:1}
+.entry-domain{font-size:.55rem;color:var(--dim)}
+.empty{color:var(--dim);font-style:italic;font-size:.7rem}
+footer{margin-top:3rem;text-align:center;color:var(--dim);font-size:.6rem}
+</style>
+</head>
+<body>
+<h1>Bibliotheque Virtuelle</h1>
+<div class="stats" id="stats">Chargement...</div>
+<div class="shelf" id="shelf"></div>
+<footer>SecuBox Meta Cataloger v1.0</footer>
+<script>
+(async()=>{
+  const [idx,bks]=await Promise.all([
+    fetch('/metacatalog/api/index.json').then(r=>r.json()),
+    fetch('/metacatalog/api/books.json').then(r=>r.json())
+  ]);
+  const entries=Object.fromEntries(idx.entries.map(e=>[e.id,e]));
+  document.getElementById('stats').textContent=
+    `${idx.entries.length} contenus | ${bks.books.length} collections | ${idx.generated}`;
+  const shelf=document.getElementById('shelf');
+  bks.books.forEach(book=>{
+    const div=document.createElement('div');
+    div.className='book';
+    div.style.setProperty('--book-color',book.color);
+    div.innerHTML=`
+      <div class="book-head">
+        <span class="book-icon">${book.icon}</span>
+        <span class="book-title">${book.name}</span>
+      </div>
+      <div class="book-desc">${book.description||''}</div>
+      <div class="entries">
+        ${book.entries.length?book.entries.map(eid=>{
+          const e=entries[eid];
+          if(!e)return'';
+          return`<a class="entry" href="${e.url}" target="_blank">
+            <span class="entry-type ${e.type}">${e.type}</span>
+            <span class="entry-name">${e.metadata?.title||e.name}</span>
+            <span class="entry-domain">${e.domain}</span>
+          </a>`;
+        }).join(''):'<div class="empty">Aucun contenu</div>'}
+      </div>
+    `;
+    shelf.appendChild(div);
+  });
+})();
+</script>
+</body>
+</html>
+HTMLEOF
+
+	log_info "Landing page generated at $LANDING_PATH/index.html"
+}
+
+# ═══════════════════════════════════════════════════════════════
+# COMMANDS
+# ═══════════════════════════════════════════════════════════════
+
+cmd_scan() {
+	ensure_dirs
+	local source="$1"
+
+	if [ -n "$source" ]; then
+		case "$source" in
+			metablogizer) scan_metablogizer ;;
+			streamlit) scan_streamlit ;;
+			*) log_error "Unknown source: $source"; return 1 ;;
+		esac
+	else
+		scan_metablogizer
+		scan_streamlit
+	fi
+}
+
+cmd_index() {
+	local subcmd="$1"
+	shift
+
+	case "$subcmd" in
+		list)
+			for f in "$ENTRIES_DIR"/*.json; do
+				[ -f "$f" ] || continue
+				local id=$(basename "$f" .json)
+				local type=$(jsonfilter -i "$f" -e '@.type')
+				local domain=$(jsonfilter -i "$f" -e '@.domain')
+				local title=$(jsonfilter -i "$f" -e '@.metadata.title')
+				printf "%-25s %-10s %-30s %s\n" "$id" "$type" "$domain" "$title"
+			done
+			;;
+		show)
+			local id="$1"
+			[ -f "$ENTRIES_DIR/$id.json" ] && cat "$ENTRIES_DIR/$id.json" | jsonfilter -e '@'
+			;;
+		refresh)
+			cmd_scan
+			assign_books
+			generate_index
+			generate_books_json
+			;;
+		*)
+			echo "Usage: metacatalogctl index [list|show <id>|refresh]"
+			;;
+	esac
+}
+
+cmd_books() {
+	local subcmd="$1"
+	shift
+
+	case "$subcmd" in
+		list)
+			config_load metacatalog
+			config_foreach _print_book book
+			;;
+		show)
+			local book_id="$1"
+			[ -f "$BOOKS_FILE" ] && jsonfilter -i "$BOOKS_FILE" -e "@.books[@.id='$book_id']"
+			;;
+		*)
+			echo "Usage: metacatalogctl books [list|show <id>]"
+			;;
+	esac
+}
+
+_print_book() {
+	local section="$1"
+	local name=$(uci_get $section.name)
+	local icon=$(uci_get $section.icon)
+	local count=0
+
+	for f in "$ENTRIES_DIR"/*.json; do
+		[ -f "$f" ] || continue
+		jsonfilter -i "$f" -e '@.books[*]' 2>/dev/null | grep -q "$section" && count=$((count + 1))
+	done
+
+	printf "%s %-25s %s (%d entries)\n" "$icon" "$name" "$section" "$count"
+}
+
+cmd_search() {
+	local query=$(echo "$*" | tr '[:upper:]' '[:lower:]')
+	[ -z "$query" ] && { echo "Usage: metacatalogctl search <query>"; return 1; }
+
+	for f in "$ENTRIES_DIR"/*.json; do
+		[ -f "$f" ] || continue
+		local content=$(cat "$f" | tr '[:upper:]' '[:lower:]')
+		if echo "$content" | grep -q "$query"; then
+			local id=$(jsonfilter -i "$f" -e '@.id')
+			local type=$(jsonfilter -i "$f" -e '@.type')
+			local domain=$(jsonfilter -i "$f" -e '@.domain')
+			local title=$(jsonfilter -i "$f" -e '@.metadata.title')
+			printf "%-10s %-30s %s\n" "$type" "$domain" "$title"
+		fi
+	done
+}
+
+cmd_sync() {
+	log_info "Full catalog sync..."
+	ensure_dirs
+	cmd_scan
+	assign_books
+	generate_index
+	generate_books_json
+	generate_landing
+	log_info "Sync complete"
+}
+
+cmd_status() {
+	local entries=$(ls -1 "$ENTRIES_DIR"/*.json 2>/dev/null | wc -l)
+	local metablogs=$(grep -l '"type": "metablog"' "$ENTRIES_DIR"/*.json 2>/dev/null | wc -l)
+	local streamlits=$(grep -l '"type": "streamlit"' "$ENTRIES_DIR"/*.json 2>/dev/null | wc -l)
+
+	echo "Meta Cataloger Status"
+	echo "===================="
+	echo "Total entries:  $entries"
+	echo "  MetaBlogs:    $metablogs"
+	echo "  Streamlits:   $streamlits"
+	echo ""
+	echo "Virtual Books:"
+	cmd_books list
+}
+
+cmd_landing() {
+	generate_landing
+}
+
+show_help() {
+	cat <<EOF
+SecuBox Meta Cataloger v$VERSION
+
+Usage: metacatalogctl <command> [options]
+
+Commands:
+  scan [source]           Scan content sources (metablogizer|streamlit)
+  index list              List all indexed entries
+  index show <id>         Show entry details
+  index refresh           Full rescan and reindex
+  books list              List virtual books
+  books show <id>         Show book contents
+  search <query>          Search catalog
+  sync                    Full scan + index + landing
+  landing                 Regenerate landing page
+  status                  Show catalog status
+  help                    Show this help
+
+EOF
+}
+
+# ═══════════════════════════════════════════════════════════════
+# MAIN
+# ═══════════════════════════════════════════════════════════════
+
+case "$1" in
+	scan)      shift; cmd_scan "$@" ;;
+	index)     shift; cmd_index "$@" ;;
+	books)     shift; cmd_books "$@" ;;
+	search)    shift; cmd_search "$@" ;;
+	sync)      cmd_sync ;;
+	landing)   cmd_landing ;;
+	status)    cmd_status ;;
+	help|--help|-h|"") show_help ;;
+	*)         log_error "Unknown command: $1"; show_help; exit 1 ;;
+esac
