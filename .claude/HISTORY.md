@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-03-09 (HAProxy Routes Health Check, WAF Routing)_
+_Last updated: 2026-03-11 (RezApp Forge, Streamlit Forge)_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -4531,3 +4531,78 @@ git checkout HEAD -- index.html
     - Modified haproxy_router.py to allow port 8081 routes (was blocked)
     - Domain now accessible via HTTPS through WAF with proper access control
       - Web Terminal (ttyd shell access)
+
+81. **RezApp Forge - Docker to SecuBox App Converter (2026-03-11)**
+    - Package: `secubox-app-rezapp` with `rezappctl` CLI
+    - UCI configuration: `/etc/config/rezapp` with catalog sources
+    - Supported catalogs: Docker Hub, LinuxServer.io, GitHub Container Registry
+    - CLI commands:
+      - `rezappctl catalog list/add/remove` - Manage catalog sources
+      - `rezappctl search <query>` - Search Docker images across catalogs
+      - `rezappctl info <image>` - Show image details (tags, arch, ENV)
+      - `rezappctl convert <image>` - Docker → LXC conversion
+      - `rezappctl package <app>` - Generate SecuBox package structure
+      - `rezappctl publish <app>` - Add to SecuBox addon catalog
+    - Conversion workflow: pull → export → extract → generate LXC config
+    - Templates: Makefile.tpl, init.d.tpl, ctl.tpl, config.tpl, start-lxc.tpl, lxc-config.tpl, manifest.tpl
+    - Auto-generates procd init scripts, management CLIs, and UCI configs
+    - Enables one-command Docker app deployment: convert → package → install
+
+82. **Streamlit Forge Plan (2026-03-11)**
+    - Comprehensive Streamlit app publishing platform specification
+    - Features planned:
+      - App upload and source management via Gitea
+      - Multiple running instances with isolated configs
+      - Auto-publishing to SecuBox dedicated spaces
+      - Miniature preview/thumbnail generation
+      - UCI configuration synchronization
+      - Mesh AppStore publishing
+      - Author workspace with blog integration
+    - Templates: basic, dashboard, data-viewer, research-paper, slides, portfolio
+    - Integration with: Gitea, HAProxy, Mitmproxy, MetaBlogizer, SecuBox P2P
+    - Plan: `/home/reepost/.claude/plans/streamlit-forge.md`
+
+83. **HAProxy Vhost Rename Feature (2026-03-11)**
+    - Added `haproxyctl vhost rename <old> <new>` command
+    - Renames vhost UCI section and all related configurations
+    - Tested: MC360_Streamlit_BPM_v2.gk2.secubox.in → mc360.gk2.secubox.in
+
+84. **Streamlit Forge - App Publishing Platform (2026-03-11)**
+    - Package: `secubox-app-streamlit-forge` with `slforge` CLI
+    - UCI configuration at `/etc/config/streamlit-forge`
+    - 3 app templates: basic, dashboard, data-viewer
+    - CLI commands:
+      - `slforge create <name> --from-template <tpl>` - Create from template
+      - `slforge start/stop/restart <app>` - Instance control
+      - `slforge status/info/list` - Status and information
+      - `slforge expose <app> --domain <d>` - HAProxy vhost + SSL
+      - `slforge publish/unpublish <app>` - Mesh catalog management
+    - Runs apps in Streamlit LXC container (mount: /srv/apps/)
+    - Port-based status detection (works across LXC namespaces)
+    - Wrapper script approach for reliable container execution
+    - LuCI: `luci-app-streamlit-forge` with RPCD backend
+      - Status dashboard with running/total/LXC cards
+      - Create dialog with template selection
+      - App table with Start/Stop/Open/Expose/Publish/Delete actions
+      - Auto-refresh polling (10s interval)
+
+85. **RezApp Forge LuCI Dashboard (2026-03-11)**
+    - Package: `luci-app-rezapp` with RPCD backend
+    - Menu: Services > RezApp Forge
+    - Features:
+      - Status cards (converted apps, catalogs, Docker status)
+      - Docker Hub search with star ratings and descriptions
+      - Convert dialog (name, tag, memory options)
+      - Converted apps table with Package/Publish/Delete actions
+    - RPCD methods: status, catalogs, apps, search, info, convert, package, publish, delete
+    - ACL permissions for read/write operations
+
+86. **SecuBox KISS Apps Catalog Update (2026-03-11)**
+    - Added `luci-app-streamlit-forge` to catalog (productivity, lxc runtime)
+      - Streamlit app publishing with templates, SSL exposure, mesh publishing
+      - Featured as new release
+    - Added `luci-app-rezapp` to catalog (system, native runtime)
+      - Docker to LXC converter with catalog browsing, package generation
+      - Featured as new release
+    - Updated `new_releases` section with both apps
+    - Total plugins: 37 → 39

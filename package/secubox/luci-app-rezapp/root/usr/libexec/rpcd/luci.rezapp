@@ -1,0 +1,265 @@
+#!/bin/sh
+# RPCD backend for RezApp Forge LuCI app
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+APPS_DIR="/srv/rezapp/apps"
+CACHE_DIR="/srv/rezapp/cache"
+OUTPUT_DIR="/srv/rezapp/generated"
+
+# Get status overview
+get_status() {
+	local apps=0
+	local catalogs=0
+	local docker_status="unknown"
+
+	# Count converted apps
+	[ -d "$APPS_DIR" ] && apps=$(ls -1 "$APPS_DIR" 2>/dev/null | wc -l)
+
+	# Count enabled catalogs
+	config_load rezapp
+	config_foreach count_catalog catalog
+	catalogs=$_catalog_count
+
+	# Check Docker status
+	if pgrep dockerd >/dev/null 2>&1; then
+		docker_status="running"
+	else
+		docker_status="stopped"
+	fi
+
+	json_init
+	json_add_int "apps" "$apps"
+	json_add_int "catalogs" "$catalogs"
+	json_add_string "docker_status" "$docker_status"
+	json_dump
+}
+
+_catalog_count=0
+count_catalog() {
+	local enabled
+	config_get enabled "$1" enabled '0'
+	[ "$enabled" = "1" ] && _catalog_count=$((_catalog_count + 1))
+}
+
+# Get enabled catalogs
+get_catalogs() {
+	json_init
+	json_add_array "catalogs"
+
+	config_load rezapp
+	config_foreach add_catalog catalog
+
+	json_close_array
+	json_dump
+}
+
+add_catalog() {
+	local section="$1"
+	local name type url namespace enabled
+
+	config_get name "$section" name "$section"
+	config_get type "$section" type 'dockerhub'
+	config_get url "$section" url ''
+	config_get namespace "$section" namespace ''
+	config_get enabled "$section" enabled '0'
+
+	[ "$enabled" = "1" ] || return
+
+	json_add_object ""
+	json_add_string "id" "$section"
+	json_add_string "name" "$name"
+	json_add_string "type" "$type"
+	json_add_string "url" "$url"
+	json_add_string "namespace" "$namespace"
+	json_close_object
+}
+
+# Get converted apps
+get_apps() {
+	json_init
+	json_add_array "apps"
+
+	[ -d "$APPS_DIR" ] || { json_close_array; json_dump; return; }
+
+	for app_dir in "$APPS_DIR"/*/; do
+		[ -d "$app_dir" ] || continue
+		local name=$(basename "$app_dir")
+
+		local source_image=""
+		local converted_at=""
+
+		if [ -f "$app_dir/metadata.json" ]; then
+			source_image=$(jsonfilter -i "$app_dir/metadata.json" -e '@.source_image' 2>/dev/null)
+			converted_at=$(jsonfilter -i "$app_dir/metadata.json" -e '@.converted_at' 2>/dev/null)
+		fi
+
+		# Check if package exists
+		local packaged="no"
+		[ -d "$OUTPUT_DIR/secubox-app-$name" ] && packaged="yes"
+
+		# Check if LXC container exists
+		local lxc_status="none"
+		if [ -d "/srv/lxc/$name" ]; then
+			if lxc-info -n "$name" 2>/dev/null | grep -q "RUNNING"; then
+				lxc_status="running"
+			else
+				lxc_status="stopped"
+			fi
+		fi
+
+		json_add_object ""
+		json_add_string "name" "$name"
+		json_add_string "source_image" "$source_image"
+		json_add_string "converted_at" "$converted_at"
+		json_add_string "packaged" "$packaged"
+		json_add_string "lxc_status" "$lxc_status"
+		json_close_object
+	done
+
+	json_close_array
+	json_dump
+}
+
+# Search Docker Hub
+do_search() {
+	local query="$1"
+	[ -z "$query" ] && { echo '{"error":"Query required"}'; return; }
+
+	local output
+	output=$(rezappctl search "$query" 2>&1)
+	local rc=$?
+
+	# Parse output into JSON
+	json_init
+	json_add_int "code" "$rc"
+	json_add_array "results"
+
+	echo "$output" | grep -E "^\s+" | while read -r line; do
+		local image=$(echo "$line" | awk '{print $1}')
+		local stars=$(echo "$line" | awk '{print $2}' | tr -d '*')
+		local desc=$(echo "$line" | cut -d' ' -f3-)
+
+		[ -n "$image" ] || continue
+
+		json_add_object ""
+		json_add_string "image" "$image"
+		json_add_string "stars" "$stars"
+		json_add_string "description" "$desc"
+		json_close_object
+	done
+
+	json_close_array
+	json_dump
+}
+
+# Get image info
+get_info() {
+	local image="$1"
+	[ -z "$image" ] && { echo '{"error":"Image required"}'; return; }
+
+	local output
+	output=$(rezappctl info "$image" 2>&1)
+	local rc=$?
+
+	# Extract tags
+	local tags=""
+	tags=$(echo "$output" | grep -A100 "Available Tags:" | grep "^\s*-" | sed 's/^\s*-\s*//' | head -10 | tr '\n' ',')
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "image" "$image"
+	json_add_string "tags" "$tags"
+	json_add_string "raw_output" "$output"
+	json_dump
+}
+
+# Convert Docker image
+do_convert() {
+	local image="$1"
+	local name="$2"
+	local tag="$3"
+	local memory="$4"
+
+	[ -z "$image" ] && { echo '{"error":"Image required"}'; return; }
+
+	local cmd="rezappctl convert $image"
+	[ -n "$name" ] && cmd="$cmd --name $name"
+	[ -n "$tag" ] && cmd="$cmd --tag $tag"
+	[ -n "$memory" ] && cmd="$cmd --memory $memory"
+
+	local output
+	output=$(eval "$cmd" 2>&1)
+	local rc=$?
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "output" "$output"
+	json_dump
+}
+
+# Generate package
+do_package() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	local output
+	output=$(rezappctl package "$name" 2>&1)
+	local rc=$?
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "output" "$output"
+	json_dump
+}
+
+# Publish to catalog
+do_publish() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	local output
+	output=$(rezappctl publish "$name" 2>&1)
+	local rc=$?
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "output" "$output"
+	json_dump
+}
+
+# Delete converted app
+do_delete() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	# Remove app directory
+	rm -rf "$APPS_DIR/$name"
+	rm -rf "$OUTPUT_DIR/secubox-app-$name"
+	rm -rf "$OUTPUT_DIR/luci-app-$name"
+
+	json_init
+	json_add_int "code" 0
+	json_add_string "message" "Deleted $name"
+	json_dump
+}
+
+case "$1" in
+	list)
+		echo '{"status":{},"catalogs":{},"apps":{},"search":{"query":"String"},"info":{"image":"String"},"convert":{"image":"String","name":"String","tag":"String","memory":"String"},"package":{"name":"String"},"publish":{"name":"String"},"delete":{"name":"String"}}'
+		;;
+	call)
+		case "$2" in
+			status)   get_status ;;
+			catalogs) get_catalogs ;;
+			apps)     get_apps ;;
+			search)   read input; json_load "$input"; json_get_var query query; do_search "$query" ;;
+			info)     read input; json_load "$input"; json_get_var image image; get_info "$image" ;;
+			convert)  read input; json_load "$input"; json_get_var image image; json_get_var name name; json_get_var tag tag; json_get_var memory memory; do_convert "$image" "$name" "$tag" "$memory" ;;
+			package)  read input; json_load "$input"; json_get_var name name; do_package "$name" ;;
+			publish)  read input; json_load "$input"; json_get_var name name; do_publish "$name" ;;
+			delete)   read input; json_load "$input"; json_get_var name name; do_delete "$name" ;;
+		esac
+		;;
+esac

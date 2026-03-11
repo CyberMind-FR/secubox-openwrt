@@ -1,0 +1,669 @@
+#!/bin/sh
+# RezApp Forge - Docker to LXC Converter
+# Copyright (C) 2026 SecuBox
+
+. /lib/functions.sh
+
+CONFIG="rezapp"
+CACHE_DIR=""
+OUTPUT_DIR=""
+APPS_DIR=""
+LXC_DIR=""
+DEFAULT_MEMORY=""
+DEFAULT_NETWORK=""
+TEMPLATES_DIR="/usr/share/rezapp/templates"
+
+# Logging
+log_info() { echo "[INFO] $*"; }
+log_warn() { echo "[WARN] $*" >&2; }
+log_error() { echo "[ERROR] $*" >&2; }
+
+# Load configuration
+load_config() {
+	config_load "$CONFIG"
+	config_get CACHE_DIR main cache_dir "/srv/rezapp/cache"
+	config_get OUTPUT_DIR main output_dir "/srv/rezapp/generated"
+	config_get APPS_DIR main apps_dir "/srv/rezapp/apps"
+	config_get LXC_DIR main lxc_dir "/srv/lxc"
+	config_get DEFAULT_MEMORY main default_memory "512M"
+	config_get DEFAULT_NETWORK main default_network "host"
+}
+
+# Ensure directories exist
+ensure_dirs() {
+	mkdir -p "$CACHE_DIR" "$OUTPUT_DIR" "$APPS_DIR"
+}
+
+# ==========================================
+# Catalog Commands
+# ==========================================
+
+cmd_catalog_list() {
+	echo "Enabled Catalogs:"
+	echo "================="
+
+	_print_catalog() {
+		local section="$1"
+		local name enabled type namespace
+
+		config_get name "$section" name "$section"
+		config_get enabled "$section" enabled "0"
+		config_get type "$section" type "dockerhub"
+		config_get namespace "$section" namespace ""
+
+		[ "$enabled" = "1" ] || return
+
+		if [ -n "$namespace" ]; then
+			printf "  %-15s %-12s %s\n" "$section" "$type" "$namespace/*"
+		else
+			printf "  %-15s %-12s (all)\n" "$section" "$type"
+		fi
+	}
+
+	config_load "$CONFIG"
+	config_foreach _print_catalog catalog
+}
+
+cmd_catalog_add() {
+	local name="$1"
+	local namespace="$2"
+
+	[ -z "$name" ] && { log_error "Catalog name required"; return 1; }
+
+	uci set rezapp.$name=catalog
+	uci set rezapp.$name.name="$name"
+	uci set rezapp.$name.type="dockerhub"
+	[ -n "$namespace" ] && uci set rezapp.$name.namespace="$namespace"
+	uci set rezapp.$name.enabled="1"
+	uci commit rezapp
+
+	log_info "Catalog added: $name"
+}
+
+cmd_catalog_remove() {
+	local name="$1"
+
+	[ -z "$name" ] && { log_error "Catalog name required"; return 1; }
+
+	uci delete rezapp.$name 2>/dev/null
+	uci commit rezapp
+
+	log_info "Catalog removed: $name"
+}
+
+# ==========================================
+# Search Commands
+# ==========================================
+
+cmd_search() {
+	local query="$1"
+	local catalog="$2"
+
+	[ -z "$query" ] && { log_error "Search query required"; return 1; }
+
+	log_info "Searching Docker Hub for: $query"
+
+	local url="https://hub.docker.com/v2/search/repositories/?query=${query}&page_size=25"
+	local result=$(curl -s "$url")
+
+	if [ -z "$result" ]; then
+		log_error "Search failed"
+		return 1
+	fi
+
+	echo ""
+	echo "Search Results:"
+	echo "==============="
+
+	echo "$result" | jsonfilter -e '@.results[*]' | while read -r item; do
+		local name=$(echo "$item" | jsonfilter -e '@.repo_name')
+		local desc=$(echo "$item" | jsonfilter -e '@.short_description' | head -c 60)
+		local stars=$(echo "$item" | jsonfilter -e '@.star_count')
+		local official=$(echo "$item" | jsonfilter -e '@.is_official')
+
+		local badge=""
+		[ "$official" = "true" ] && badge="[official]"
+
+		printf "  %-35s %5s* %s %s\n" "$name" "$stars" "$badge" "$desc"
+	done
+}
+
+cmd_info() {
+	local image="$1"
+
+	[ -z "$image" ] && { log_error "Image name required"; return 1; }
+
+	# Parse image name
+	local namespace="${image%%/*}"
+	local repo="${image#*/}"
+
+	if [ "$namespace" = "$image" ]; then
+		namespace="library"
+		repo="$image"
+	fi
+
+	log_info "Fetching info for: $image"
+
+	# Get tags
+	local tags_url="https://hub.docker.com/v2/repositories/${namespace}/${repo}/tags?page_size=10"
+	local tags=$(curl -s "$tags_url")
+
+	echo ""
+	echo "Image: $image"
+	echo "========================================"
+	echo ""
+	echo "Available Tags:"
+	echo "$tags" | jsonfilter -e '@.results[*].name' | head -10 | while read tag; do
+		echo "  - $tag"
+	done
+
+	# Try to get config for latest
+	echo ""
+	echo "To convert: rezappctl convert $image --name <app-name>"
+}
+
+# ==========================================
+# Convert Command
+# ==========================================
+
+cmd_convert() {
+	local image=""
+	local name=""
+	local tag="latest"
+	local memory=""
+	local network=""
+	local ports=""
+	local mounts=""
+
+	# Parse arguments
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--name) name="$2"; shift 2 ;;
+			--tag) tag="$2"; shift 2 ;;
+			--memory) memory="$2"; shift 2 ;;
+			--network) network="$2"; shift 2 ;;
+			--port) ports="$ports $2"; shift 2 ;;
+			--mount) mounts="$mounts $2"; shift 2 ;;
+			-*) log_error "Unknown option: $1"; return 1 ;;
+			*) image="$1"; shift ;;
+		esac
+	done
+
+	[ -z "$image" ] && { log_error "Image name required"; return 1; }
+
+	# Default name from image
+	if [ -z "$name" ]; then
+		name="${image##*/}"
+		name="${name%%:*}"
+	fi
+
+	[ -z "$memory" ] && memory="$DEFAULT_MEMORY"
+	[ -z "$network" ] && network="$DEFAULT_NETWORK"
+
+	local full_image="${image}:${tag}"
+	local app_dir="$APPS_DIR/$name"
+	local lxc_path="$LXC_DIR/$name"
+	local tarball="$CACHE_DIR/${name}.tar"
+
+	log_info "Converting $full_image -> $name"
+
+	# Step 1: Ensure Docker is running
+	if ! docker info >/dev/null 2>&1; then
+		log_info "Starting Docker daemon..."
+		/etc/init.d/dockerd start 2>/dev/null
+		sleep 5
+		if ! docker info >/dev/null 2>&1; then
+			log_error "Docker is not available"
+			return 1
+		fi
+	fi
+
+	# Step 2: Pull image
+	log_info "Pulling Docker image..."
+	docker pull "$full_image" || { log_error "Failed to pull image"; return 1; }
+
+	# Step 3: Inspect image
+	log_info "Inspecting image metadata..."
+	mkdir -p "$app_dir"
+	docker inspect "$full_image" > "$app_dir/docker-inspect.json"
+
+	# Extract metadata
+	local entrypoint=$(jsonfilter -i "$app_dir/docker-inspect.json" -e '@[0].Config.Entrypoint[*]' 2>/dev/null | tr '\n' ' ')
+	local cmd=$(jsonfilter -i "$app_dir/docker-inspect.json" -e '@[0].Config.Cmd[*]' 2>/dev/null | tr '\n' ' ')
+	local workdir=$(jsonfilter -i "$app_dir/docker-inspect.json" -e '@[0].Config.WorkingDir' 2>/dev/null)
+	local user=$(jsonfilter -i "$app_dir/docker-inspect.json" -e '@[0].Config.User' 2>/dev/null)
+	local exposed=$(jsonfilter -i "$app_dir/docker-inspect.json" -e '@[0].Config.ExposedPorts' 2>/dev/null)
+
+	# Step 4: Export filesystem
+	log_info "Exporting container filesystem..."
+	docker create --name rezapp-export-$$ "$full_image" >/dev/null 2>&1
+	docker export rezapp-export-$$ > "$tarball"
+	docker rm rezapp-export-$$ >/dev/null 2>&1
+
+	# Step 5: Create LXC rootfs
+	log_info "Creating LXC container..."
+	rm -rf "$lxc_path"
+	mkdir -p "$lxc_path/rootfs"
+	tar xf "$tarball" -C "$lxc_path/rootfs"
+
+	# Step 6: Generate start script
+	log_info "Generating start script..."
+	local start_script="$lxc_path/rootfs/start-lxc.sh"
+
+	cat > "$start_script" << STARTEOF
+#!/bin/sh
+# Auto-generated by RezApp Forge
+
+cd ${workdir:-/}
+
+# Run entrypoint/cmd
+exec ${entrypoint:-${cmd:-/bin/sh}}
+STARTEOF
+	chmod +x "$start_script"
+
+	# Step 7: Generate LXC config
+	log_info "Generating LXC config..."
+
+	# Parse user for UID/GID
+	local uid="0"
+	local gid="0"
+	if [ -n "$user" ] && [ "$user" != "root" ]; then
+		uid="${user%%:*}"
+		gid="${user#*:}"
+		[ "$gid" = "$user" ] && gid="$uid"
+	fi
+
+	# Convert memory to bytes
+	local mem_bytes
+	case "$memory" in
+		*G) mem_bytes=$(( ${memory%G} * 1073741824 )) ;;
+		*M) mem_bytes=$(( ${memory%M} * 1048576 )) ;;
+		*) mem_bytes="$memory" ;;
+	esac
+
+	cat > "$lxc_path/config" << LXCEOF
+# LXC config for $name (auto-generated by RezApp Forge)
+lxc.uts.name = $name
+lxc.rootfs.path = dir:$lxc_path/rootfs
+lxc.net.0.type = none
+lxc.mount.auto = proc:mixed sys:ro
+lxc.mount.entry = /srv/$name config none bind,create=dir 0 0
+lxc.cap.drop = sys_admin sys_module mac_admin mac_override
+lxc.cgroup2.memory.max = $mem_bytes
+lxc.init.uid = $uid
+lxc.init.gid = $gid
+lxc.init.cmd = /start-lxc.sh
+lxc.console.size = 1024
+lxc.pty.max = 1024
+lxc.cgroup2.devices.allow = c 1:* rwm
+lxc.cgroup2.devices.allow = c 5:* rwm
+lxc.cgroup2.devices.allow = c 136:* rwm
+lxc.seccomp.profile =
+lxc.start.auto = 0
+LXCEOF
+
+	# Step 8: Create data directory
+	mkdir -p "/srv/$name"
+	[ "$uid" != "0" ] && chown "$uid:$gid" "/srv/$name"
+
+	# Step 9: Save metadata
+	cat > "$app_dir/metadata.json" << METAEOF
+{
+  "name": "$name",
+  "source_image": "$full_image",
+  "converted_at": "$(date -Iseconds)",
+  "entrypoint": "$entrypoint",
+  "cmd": "$cmd",
+  "workdir": "$workdir",
+  "user": "$user",
+  "uid": "$uid",
+  "gid": "$gid",
+  "memory": "$memory",
+  "network": "$network",
+  "lxc_path": "$lxc_path",
+  "data_path": "/srv/$name"
+}
+METAEOF
+
+	log_info "Conversion complete!"
+	echo ""
+	echo "Container: $name"
+	echo "  LXC Path: $lxc_path"
+	echo "  Data Path: /srv/$name"
+	echo ""
+	echo "To test: lxc-start -n $name -F"
+	echo "To package: rezappctl package $name"
+}
+
+# ==========================================
+# Package Command
+# ==========================================
+
+cmd_package() {
+	local name="$1"
+	local install_after=""
+
+	[ "$name" = "--install" ] && { install_after="1"; name="$2"; }
+	[ -z "$name" ] && { log_error "App name required"; return 1; }
+
+	local app_dir="$APPS_DIR/$name"
+	local meta_file="$app_dir/metadata.json"
+	local pkg_dir="$OUTPUT_DIR/secubox-app-$name"
+
+	[ ! -f "$meta_file" ] && { log_error "App not found: $name (run convert first)"; return 1; }
+
+	# Load metadata
+	local source_image=$(jsonfilter -i "$meta_file" -e '@.source_image')
+	local memory=$(jsonfilter -i "$meta_file" -e '@.memory')
+	local uid=$(jsonfilter -i "$meta_file" -e '@.uid')
+	local gid=$(jsonfilter -i "$meta_file" -e '@.gid')
+
+	log_info "Generating package for: $name"
+
+	# Create package structure
+	rm -rf "$pkg_dir"
+	mkdir -p "$pkg_dir/files/etc/config"
+	mkdir -p "$pkg_dir/files/etc/init.d"
+	mkdir -p "$pkg_dir/files/usr/sbin"
+
+	# Generate Makefile
+	cat > "$pkg_dir/Makefile" << MAKEEOF
+include \$(TOPDIR)/rules.mk
+
+PKG_NAME:=secubox-app-$name
+PKG_VERSION:=1.0.0
+PKG_RELEASE:=1
+
+include \$(INCLUDE_DIR)/package.mk
+
+define Package/secubox-app-$name
+  SECTION:=secubox
+  CATEGORY:=SecuBox
+  SUBMENU:=Apps
+  TITLE:=$name (via RezApp Forge)
+  DEPENDS:=+lxc +lxc-common
+  PKGARCH:=all
+endef
+
+define Package/secubox-app-$name/description
+  $name - converted from Docker image $source_image
+  Generated by RezApp Forge.
+endef
+
+define Package/secubox-app-$name/conffiles
+/etc/config/$name
+endef
+
+define Build/Compile
+endef
+
+define Package/secubox-app-$name/install
+	\$(INSTALL_DIR) \$(1)/etc/config
+	\$(INSTALL_CONF) ./files/etc/config/$name \$(1)/etc/config/
+
+	\$(INSTALL_DIR) \$(1)/etc/init.d
+	\$(INSTALL_BIN) ./files/etc/init.d/$name \$(1)/etc/init.d/
+
+	\$(INSTALL_DIR) \$(1)/usr/sbin
+	\$(INSTALL_BIN) ./files/usr/sbin/${name}ctl \$(1)/usr/sbin/
+endef
+
+\$(eval \$(call BuildPackage,secubox-app-$name))
+MAKEEOF
+
+	# Generate UCI config
+	cat > "$pkg_dir/files/etc/config/$name" << UCIEOF
+config main 'main'
+	option enabled '0'
+	option container '$name'
+	option memory '$memory'
+	option data_path '/srv/$name'
+UCIEOF
+
+	# Generate init script
+	cat > "$pkg_dir/files/etc/init.d/$name" << 'INITEOF'
+#!/bin/sh /etc/rc.common
+
+START=95
+STOP=10
+EXTRA_COMMANDS="status"
+EXTRA_HELP="	status	Show container status"
+
+CONF="APPNAME"
+
+load_config() {
+	. /lib/functions.sh
+	config_load "$CONF"
+	config_get ENABLED main enabled "0"
+	config_get CONTAINER main container "APPNAME"
+}
+
+start() {
+	load_config
+	[ "$ENABLED" != "1" ] && { echo "APPNAME disabled"; return 0; }
+
+	if lxc-info -n "$CONTAINER" 2>/dev/null | grep -q "RUNNING"; then
+		echo "APPNAME already running"
+	else
+		echo "Starting APPNAME..."
+		lxc-start -n "$CONTAINER" -d
+		sleep 3
+		lxc-info -n "$CONTAINER" | grep State
+	fi
+}
+
+stop() {
+	load_config
+	if lxc-info -n "$CONTAINER" 2>/dev/null | grep -q "RUNNING"; then
+		echo "Stopping APPNAME..."
+		lxc-stop -n "$CONTAINER"
+	else
+		echo "APPNAME not running"
+	fi
+}
+
+restart() {
+	stop
+	sleep 2
+	start
+}
+
+status() {
+	load_config
+	lxc-info -n "$CONTAINER" 2>/dev/null || echo "Container not found"
+}
+INITEOF
+	sed -i "s/APPNAME/$name/g" "$pkg_dir/files/etc/init.d/$name"
+	chmod +x "$pkg_dir/files/etc/init.d/$name"
+
+	# Generate CLI tool
+	cat > "$pkg_dir/files/usr/sbin/${name}ctl" << 'CTLEOF'
+#!/bin/sh
+# Generated by RezApp Forge
+
+CONF="APPNAME"
+CONTAINER="APPNAME"
+
+. /lib/functions.sh
+
+load_config() {
+	config_load "$CONF"
+	config_get CONTAINER main container "APPNAME"
+}
+
+usage() {
+	cat << EOF
+Usage: APPNAMEctl <command>
+
+Commands:
+  start       Start container
+  stop        Stop container
+  restart     Restart container
+  status      Show status
+  logs        Show logs
+  shell       Open shell
+  enable      Enable autostart
+  disable     Disable autostart
+EOF
+}
+
+case "$1" in
+	start)   /etc/init.d/APPNAME start ;;
+	stop)    /etc/init.d/APPNAME stop ;;
+	restart) /etc/init.d/APPNAME restart ;;
+	status)  /etc/init.d/APPNAME status ;;
+	logs)    load_config; lxc-attach -n "$CONTAINER" -- tail -100 /var/log/*.log 2>/dev/null ;;
+	shell)   load_config; lxc-attach -n "$CONTAINER" -- /bin/sh ;;
+	enable)  uci set APPNAME.main.enabled=1; uci commit APPNAME; echo "Enabled" ;;
+	disable) uci set APPNAME.main.enabled=0; uci commit APPNAME; echo "Disabled" ;;
+	*) usage ;;
+esac
+CTLEOF
+	sed -i "s/APPNAME/$name/g" "$pkg_dir/files/usr/sbin/${name}ctl"
+	chmod +x "$pkg_dir/files/usr/sbin/${name}ctl"
+
+	log_info "Package generated: $pkg_dir"
+	echo ""
+	echo "To build:"
+	echo "  1. rsync -av $pkg_dir/ secubox-tools/local-feed/secubox-app-$name/"
+	echo "  2. ./secubox-tools/local-build.sh build secubox-app-$name"
+}
+
+# ==========================================
+# Publish Command
+# ==========================================
+
+cmd_publish() {
+	local name="$1"
+
+	[ -z "$name" ] && { log_error "App name required"; return 1; }
+
+	local app_dir="$APPS_DIR/$name"
+	local meta_file="$app_dir/metadata.json"
+	local catalog_dir="/usr/share/secubox/plugins/catalog"
+
+	[ ! -f "$meta_file" ] && { log_error "App not found: $name"; return 1; }
+
+	# Load metadata
+	local source_image=$(jsonfilter -i "$meta_file" -e '@.source_image')
+
+	log_info "Publishing $name to catalog..."
+
+	mkdir -p "$catalog_dir"
+
+	cat > "$catalog_dir/$name.json" << CATEOF
+{
+  "id": "$name",
+  "name": "$name",
+  "category": "utilities",
+  "runtime": "lxc",
+  "maturity": "community",
+  "description": "Converted from $source_image via RezApp Forge",
+  "source": {
+    "docker_image": "$source_image"
+  },
+  "packages": ["secubox-app-$name"],
+  "capabilities": ["lxc-container"],
+  "requirements": {
+    "arch": ["aarch64"],
+    "min_ram_mb": 256,
+    "min_storage_mb": 500
+  },
+  "actions": {
+    "install": "${name}ctl enable",
+    "status": "${name}ctl status"
+  }
+}
+CATEOF
+
+	log_info "Published to: $catalog_dir/$name.json"
+}
+
+# ==========================================
+# List Command
+# ==========================================
+
+cmd_list() {
+	echo "Converted Apps:"
+	echo "==============="
+
+	if [ -d "$APPS_DIR" ]; then
+		for app in "$APPS_DIR"/*/metadata.json; do
+			[ -f "$app" ] || continue
+			local name=$(dirname "$app")
+			name="${name##*/}"
+			local image=$(jsonfilter -i "$app" -e '@.source_image')
+			printf "  %-20s %s\n" "$name" "$image"
+		done
+	else
+		echo "  (none)"
+	fi
+}
+
+# ==========================================
+# Help
+# ==========================================
+
+usage() {
+	cat << EOF
+RezApp Forge - Docker to SecuBox Converter
+
+Usage: rezappctl <command> [options]
+
+Catalog Commands:
+  catalog list              List enabled catalogs
+  catalog add <name> [ns]   Add catalog (optional namespace)
+  catalog remove <name>     Remove catalog
+
+Search:
+  search <query>            Search Docker Hub
+  info <image>              Show image details
+
+Convert:
+  convert <image> [opts]    Convert Docker image to LXC
+    --name <name>           App name (default: from image)
+    --tag <tag>             Image tag (default: latest)
+    --memory <limit>        Memory limit (default: 512M)
+    --network <type>        Network type (default: host)
+
+Package:
+  package <name>            Generate SecuBox package
+  publish <name>            Add to app catalog
+
+List:
+  list                      Show converted apps
+
+Examples:
+  rezappctl search heimdall
+  rezappctl convert linuxserver/heimdall --name heimdall
+  rezappctl package heimdall
+  rezappctl publish heimdall
+
+EOF
+}
+
+# ==========================================
+# Main
+# ==========================================
+
+load_config
+ensure_dirs
+
+case "$1" in
+	catalog)
+		case "$2" in
+			list) cmd_catalog_list ;;
+			add) shift 2; cmd_catalog_add "$@" ;;
+			remove) shift 2; cmd_catalog_remove "$@" ;;
+			*) usage ;;
+		esac
+		;;
+	search) shift; cmd_search "$@" ;;
+	info) shift; cmd_info "$@" ;;
+	convert) shift; cmd_convert "$@" ;;
+	package) shift; cmd_package "$@" ;;
+	publish) shift; cmd_publish "$@" ;;
+	list) cmd_list ;;
+	help|--help|-h) usage ;;
+	*) usage ;;
+esac

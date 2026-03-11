@@ -1,0 +1,365 @@
+#!/bin/sh
+# RPCD backend for Streamlit Forge LuCI app
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+APPS_DIR="/srv/streamlit/apps"
+
+# Get list of apps with status
+get_apps() {
+	json_init
+	json_add_array "apps"
+
+	config_load streamlit-forge
+	config_get apps_dir main apps_dir '/srv/streamlit/apps'
+
+	for app_dir in "$apps_dir"/*/; do
+		[ -d "$app_dir" ] || continue
+		local name=$(basename "$app_dir")
+		[ "$name" = "." ] || [ "$name" = ".." ] && continue
+		[ -f "$app_dir/.slforge-start.sh" ] && continue
+
+		local enabled port domain entrypoint memory created status
+
+		config_get enabled "$name" enabled '0'
+		config_get port "$name" port ''
+		config_get domain "$name" domain ''
+		config_get entrypoint "$name" entrypoint 'app.py'
+		config_get memory "$name" memory '512M'
+		config_get created "$name" created ''
+
+		# Check status by port
+		status="stopped"
+		if [ -n "$port" ] && netstat -tln 2>/dev/null | grep -q ":$port "; then
+			status="running"
+		fi
+
+		json_add_object ""
+		json_add_string "name" "$name"
+		json_add_string "enabled" "$enabled"
+		json_add_string "port" "$port"
+		json_add_string "domain" "$domain"
+		json_add_string "entrypoint" "$entrypoint"
+		json_add_string "memory" "$memory"
+		json_add_string "created" "$created"
+		json_add_string "status" "$status"
+		json_close_object
+	done
+
+	json_close_array
+	json_dump
+}
+
+# Get app info
+get_info() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	config_load streamlit-forge
+	config_get apps_dir main apps_dir '/srv/streamlit/apps'
+
+	local app_dir="$apps_dir/$name"
+	[ -d "$app_dir" ] || { echo '{"error":"App not found"}'; return; }
+
+	local enabled port domain entrypoint memory created status
+
+	config_get enabled "$name" enabled '0'
+	config_get port "$name" port ''
+	config_get domain "$name" domain ''
+	config_get entrypoint "$name" entrypoint 'app.py'
+	config_get memory "$name" memory '512M'
+	config_get created "$name" created ''
+
+	status="stopped"
+	if [ -n "$port" ] && netstat -tln 2>/dev/null | grep -q ":$port "; then
+		status="running"
+	fi
+
+	# Get files
+	local files=""
+	if [ -d "$app_dir/src" ]; then
+		files=$(ls -1 "$app_dir/src" 2>/dev/null | head -20 | tr '\n' ',')
+	fi
+
+	json_init
+	json_add_string "name" "$name"
+	json_add_string "enabled" "$enabled"
+	json_add_string "port" "$port"
+	json_add_string "domain" "$domain"
+	json_add_string "entrypoint" "$entrypoint"
+	json_add_string "memory" "$memory"
+	json_add_string "created" "$created"
+	json_add_string "status" "$status"
+	json_add_string "files" "$files"
+	json_add_string "directory" "$app_dir"
+	json_dump
+}
+
+# Get available templates
+get_templates() {
+	json_init
+	json_add_array "templates"
+
+	local tpl_dir="/usr/share/streamlit-forge/templates"
+	for tpl in "$tpl_dir"/*/; do
+		[ -d "$tpl" ] || continue
+		local name=$(basename "$tpl")
+		local desc=""
+		[ -f "$tpl/README.md" ] && desc=$(head -1 "$tpl/README.md" | sed 's/^#\s*//')
+
+		json_add_object ""
+		json_add_string "name" "$name"
+		json_add_string "description" "$desc"
+		json_close_object
+	done
+
+	json_close_array
+	json_dump
+}
+
+# Get global status
+get_status() {
+	local running=0
+	local total=0
+
+	config_load streamlit-forge
+	config_get apps_dir main apps_dir '/srv/streamlit/apps'
+
+	for app_dir in "$apps_dir"/*/; do
+		[ -d "$app_dir" ] || continue
+		local name=$(basename "$app_dir")
+		[ "$name" = "." ] || [ "$name" = ".." ] && continue
+		[ -f "$app_dir/.slforge-start.sh" ] && continue
+
+		total=$((total + 1))
+
+		local port
+		config_get port "$name" port ''
+		if [ -n "$port" ] && netstat -tln 2>/dev/null | grep -q ":$port "; then
+			running=$((running + 1))
+		fi
+	done
+
+	# Check LXC container
+	local lxc_status="stopped"
+	if lxc-info -n streamlit 2>/dev/null | grep -q "RUNNING"; then
+		lxc_status="running"
+	fi
+
+	json_init
+	json_add_int "total" "$total"
+	json_add_int "running" "$running"
+	json_add_string "lxc_status" "$lxc_status"
+	json_dump
+}
+
+# Create app
+do_create() {
+	local name="$1"
+	local template="$2"
+
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+	[ -z "$template" ] && template="basic"
+
+	local output
+	output=$(slforge create "$name" --from-template "$template" 2>&1)
+	local rc=$?
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "output" "$output"
+	json_dump
+}
+
+# Delete app
+do_delete() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	local output
+	output=$(slforge delete "$name" 2>&1)
+	local rc=$?
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "output" "$output"
+	json_dump
+}
+
+# Start app
+do_start() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	local output
+	output=$(slforge start "$name" 2>&1)
+	local rc=$?
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "output" "$output"
+	json_dump
+}
+
+# Stop app
+do_stop() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	local output
+	output=$(slforge stop "$name" 2>&1)
+	local rc=$?
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "output" "$output"
+	json_dump
+}
+
+# Restart app
+do_restart() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	local output
+	output=$(slforge restart "$name" 2>&1)
+	local rc=$?
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "output" "$output"
+	json_dump
+}
+
+# Expose app
+do_expose() {
+	local name="$1"
+	local domain="$2"
+
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	local output
+	if [ -n "$domain" ]; then
+		output=$(slforge expose "$name" --domain "$domain" 2>&1)
+	else
+		output=$(slforge expose "$name" 2>&1)
+	fi
+	local rc=$?
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "output" "$output"
+	json_dump
+}
+
+# Hide app
+do_hide() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	local output
+	output=$(slforge hide "$name" 2>&1)
+	local rc=$?
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "output" "$output"
+	json_dump
+}
+
+# Publish to mesh
+do_publish() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	local output
+	output=$(slforge publish "$name" 2>&1)
+	local rc=$?
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "output" "$output"
+	json_dump
+}
+
+# Unpublish from mesh
+do_unpublish() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	local output
+	output=$(slforge unpublish "$name" 2>&1)
+	local rc=$?
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "output" "$output"
+	json_dump
+}
+
+# Set config
+do_set_config() {
+	local name="$1"
+	local key="$2"
+	local value="$3"
+
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+	[ -z "$key" ] && { echo '{"error":"Key required"}'; return; }
+
+	uci set streamlit-forge."$name"."$key"="$value"
+	uci commit streamlit-forge
+
+	json_init
+	json_add_int "code" 0
+	json_add_string "message" "Config updated"
+	json_dump
+}
+
+# Get config
+get_config() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	json_init
+	config_load streamlit-forge
+
+	local enabled port domain entrypoint memory
+	config_get enabled "$name" enabled '0'
+	config_get port "$name" port ''
+	config_get domain "$name" domain ''
+	config_get entrypoint "$name" entrypoint 'app.py'
+	config_get memory "$name" memory '512M'
+
+	json_add_string "enabled" "$enabled"
+	json_add_string "port" "$port"
+	json_add_string "domain" "$domain"
+	json_add_string "entrypoint" "$entrypoint"
+	json_add_string "memory" "$memory"
+	json_dump
+}
+
+case "$1" in
+	list)
+		echo '{"list":{},"status":{},"info":{"name":"String"},"templates":{},"config":{"name":"String"},"create":{"name":"String","template":"String"},"delete":{"name":"String"},"start":{"name":"String"},"stop":{"name":"String"},"restart":{"name":"String"},"expose":{"name":"String","domain":"String"},"hide":{"name":"String"},"publish":{"name":"String"},"unpublish":{"name":"String"},"set_config":{"name":"String","key":"String","value":"String"}}'
+		;;
+	call)
+		case "$2" in
+			list)      get_apps ;;
+			status)    get_status ;;
+			info)      read input; json_load "$input"; json_get_var name name; get_info "$name" ;;
+			templates) get_templates ;;
+			config)    read input; json_load "$input"; json_get_var name name; get_config "$name" ;;
+			create)    read input; json_load "$input"; json_get_var name name; json_get_var template template; do_create "$name" "$template" ;;
+			delete)    read input; json_load "$input"; json_get_var name name; do_delete "$name" ;;
+			start)     read input; json_load "$input"; json_get_var name name; do_start "$name" ;;
+			stop)      read input; json_load "$input"; json_get_var name name; do_stop "$name" ;;
+			restart)   read input; json_load "$input"; json_get_var name name; do_restart "$name" ;;
+			expose)    read input; json_load "$input"; json_get_var name name; json_get_var domain domain; do_expose "$name" "$domain" ;;
+			hide)      read input; json_load "$input"; json_get_var name name; do_hide "$name" ;;
+			publish)   read input; json_load "$input"; json_get_var name name; do_publish "$name" ;;
+			unpublish) read input; json_load "$input"; json_get_var name name; do_unpublish "$name" ;;
+			set_config) read input; json_load "$input"; json_get_var name name; json_get_var key key; json_get_var value value; do_set_config "$name" "$key" "$value" ;;
+		esac
+		;;
+esac

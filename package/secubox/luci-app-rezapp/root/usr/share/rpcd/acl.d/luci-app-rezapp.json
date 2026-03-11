@@ -1,0 +1,17 @@
+{
+	"luci-app-rezapp": {
+		"description": "Grant access to RezApp Forge",
+		"read": {
+			"ubus": {
+				"luci.rezapp": ["status", "catalogs", "apps", "search", "info"]
+			},
+			"uci": ["rezapp"]
+		},
+		"write": {
+			"ubus": {
+				"luci.rezapp": ["convert", "package", "publish", "delete"]
+			},
+			"uci": ["rezapp"]
+		}
+	}
+}

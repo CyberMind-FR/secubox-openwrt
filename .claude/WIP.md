@@ -1,12 +1,67 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-10 (PeerTube Routing Fix)_
+_Last updated: 2026-03-11 (Forge LuCI Apps + Documentation)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
 ---
 
 ## Recently Completed
+
+### 2026-03-11
+
+- **RezApp Forge - Docker to SecuBox App Converter**
+  - Package: `secubox-app-rezapp` with `rezappctl` CLI
+  - UCI config: `/etc/config/rezapp` with catalog sources (Docker Hub, LinuxServer.io, GHCR)
+  - Commands: catalog, search, info, convert, package, publish, list
+  - Docker to LXC workflow: pull → export → extract → generate LXC config
+  - Templates: Makefile.tpl, init.d.tpl, ctl.tpl, config.tpl, start-lxc.tpl, lxc-config.tpl, manifest.tpl
+  - Plan: `/home/reepost/.claude/plans/tingly-rolling-sky.md`
+
+- **Streamlit Forge Phase 1** (implemented)
+  - Package: `secubox-app-streamlit-forge` with `slforge` CLI
+  - UCI config for app management
+  - 3 templates: basic, dashboard, data-viewer
+  - Commands: create, start, stop, restart, status, list, info, delete, templates
+  - Runs apps in Streamlit LXC container with proper mount paths
+  - Port-based status detection (container PID namespaces)
+  - HAProxy expose integration
+  - Mesh catalog publish
+  - **LuCI dashboard**: `luci-app-streamlit-forge` with create/start/stop/expose/publish
+
+- **RezApp Forge LuCI**
+  - Package: `luci-app-rezapp`
+  - Dashboard with Docker search, conversion dialog
+  - Converted apps table with Package/Publish/Delete
+  - Status cards for apps count, catalogs, Docker status
+
+- **SecuBox KISS Apps Catalog Update**
+  - Added `luci-app-streamlit-forge` and `luci-app-rezapp` to catalog.json
+  - Category: productivity (Streamlit), system (RezApp)
+  - Featured in new_releases section
+  - Total plugins: 37 → 39
+
+- **HAProxy Vhost Rename Feature**
+  - Added `haproxyctl vhost rename <old> <new>` command
+  - Renamed MC360_Streamlit_BPM_v2.gk2.secubox.in → mc360.gk2.secubox.in
+
+- **Lyrion Music Server Upgrade (9.0.3 → 9.1.1)**
+  - Diagnosed library showing 0 tracks (Perl XS module version mismatches)
+  - Root cause: Alpine 3.19 Perl 5.038 incompatible with bundled modules
+  - **Solution**: Rebuilt LXC container from official Docker image
+    - Pulled `lmscommunity/lyrionmusicserver:stable` (Debian Bookworm based)
+    - Exported Docker to tarball, extracted to LXC rootfs
+    - Created `/start-lxc.sh` wrapper for LXC execution
+    - Updated LXC config: UID 499 (squeezeboxserver), new paths
+    - Fixed /srv/lyrion ownership for new UID
+  - Library scan working: 81,430 files discovered
+  - Preserved config in /srv/lyrion (prefs, logs, cache)
+
+- **Metablogizer Package Conflict**
+  - opkg install fails: `/etc/config/metablogizer` file conflict
+  - Both `secubox-app-metablogizer` and `luci-app-metablogizer` provide same file
+  - Workaround: Deploy scripts directly via SCP instead of package install
+  - TODO: Fix package to use conffiles properly
 
 ### 2026-03-10
 
@@ -297,6 +352,9 @@ _Last updated: 2026-03-10 (PeerTube Routing Fix)_
 ---
 
 ## In Progress
+
+- **Streamlit Forge Phase 2** - Preview generation, Gitea push/pull
+- **RezApp Forge Full Test** - Test Docker → LXC conversion workflow
 
 - **RTTY Remote Control Module (Phase 4 - Session Replay)**
   - Avatar-tap integration for session capture
