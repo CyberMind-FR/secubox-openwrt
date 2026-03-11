@@ -1,0 +1,14 @@
+{
+  "admin/secubox/metacatalog": {
+    "title": "Meta Cataloger",
+    "order": 55,
+    "action": {
+      "type": "view",
+      "path": "metacatalog/overview"
+    },
+    "depends": {
+      "acl": ["luci-app-metacatalog"],
+      "uci": {"metacatalog": true}
+    }
+  }
+}
