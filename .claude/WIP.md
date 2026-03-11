@@ -10,6 +10,21 @@ _Last updated: 2026-03-11 (Meta Cataloger - Virtual Books)_
 
 ### 2026-03-11
 
+- **Meta Cataloger Phase 2 & 3 (Complete)**
+  - **Phase 2: RPCD + LuCI**
+    - RPCD backend: `luci.metacatalog` with 10 methods (list_entries, list_books, get_entry, get_book, search, get_stats, sync, scan, assign, unassign)
+    - LuCI dashboard: KISS-themed overview with stats chips, virtual books shelf
+    - HAProxy vhost scanner: Auto-indexes all HAProxy domains
+    - ACL permissions for read/write operations
+  - **Phase 3: Landing Page Enhancements**
+    - Search functionality: Real-time filter across all entries
+    - Tab navigation: Collections view, All entries view, per-book filters
+    - Scrollable book entries with max-height
+    - Link to LuCI dashboard in footer
+    - Responsive grid layout
+  - Deployed at: https://catalog.gk2.secubox.in/metacatalog/
+  - Total entries: 246 (127 MetaBlogs, 14 Streamlits, 105 HAProxy)
+
 - **Meta Cataloger - Virtual Books (Phase 1 Complete)**
   - New `secubox-app-metacatalog` package for unified content aggregation
   - Organizes MetaBlogizer sites, Streamlit apps into themed Virtual Books
@@ -423,7 +438,7 @@ _Last updated: 2026-03-11 (Meta Cataloger - Virtual Books)_
 
 ## In Progress
 
-- **Meta Cataloger Phase 2** - RPCD backend, LuCI dashboard, HAProxy source scanner
+- **Meta Cataloger Phase 3** - Enhanced landing page with search, entry management UI
 
 - **Streamlit Forge Phase 2** - Preview generation, Gitea push/pull
 

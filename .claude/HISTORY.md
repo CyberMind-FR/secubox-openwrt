@@ -4713,3 +4713,33 @@ git checkout HEAD -- index.html
     - `haproxyctl vhost remove` also triggers route sync
     - Prevents 404 WAF errors when adding new domains
     - Commit: 7cbd6406 "feat(haproxy): Auto-sync mitmproxy routes on vhost add/remove"
+
+93. **Meta Cataloger Phase 2 & 3 (2026-03-11)**
+    - **Phase 2: RPCD + LuCI Dashboard**
+      - RPCD backend: `/usr/libexec/rpcd/luci.metacatalog`
+      - 10 methods: list_entries, list_books, get_entry, get_book, search, get_stats, sync, scan, assign, unassign
+      - LuCI view: `metacatalog/overview.js` with KISS theme
+        - Header with stats chips (Entries, MetaBlogs, Streamlits, Books)
+        - Sync Now button, Landing Page link
+        - Virtual books shelf with entry previews
+      - ACL file with read/write permissions
+      - HAProxy vhost scanner: indexes all HAProxy domains as type "haproxy"
+    - **Phase 3: Landing Page Enhancements**
+      - Search functionality: real-time filter across all entries
+      - Tab navigation: Collections (all books), All (full list), per-book filters
+      - Scrollable book entries with max-height:300px
+      - Entry type badges (metablog/red, streamlit/green, haproxy/blue)
+      - Link to LuCI dashboard in footer
+      - Template stored in `/usr/share/metacatalog/templates/landing.html.tpl`
+    - Total entries: 246 (127 MetaBlogs, 14 Streamlits, 105 HAProxy)
+    - Deployed at: https://catalog.gk2.secubox.in/metacatalog/
+    - Persistent routes: `/srv/mitmproxy/manual-routes.json` for catalog/admin domains
+
+94. **RTTY Remote Control Phase 3 (2026-03-08)**
+    - Web Terminal view in LuCI
+    - Embeds ttyd (port 7681) via secure iframe
+    - Node selector for local/remote target selection
+    - Remote detection: direct ttyd or SSH fallback
+    - RPCD method: `start_terminal` returns terminal connection info
+    - Menu entry: Remote Control → Remote Support → Web Terminal
+    - Fullscreen toggle and refresh controls
