@@ -244,6 +244,90 @@ EOF
 }
 
 # ═══════════════════════════════════════════════════════════════
+# HAPROXY SCANNER
+# ═══════════════════════════════════════════════════════════════
+
+scan_haproxy() {
+	log_info "Scanning HAProxy vhosts"
+	local count=0
+
+	# Get all vhost sections
+	local vhosts=$(uci show haproxy 2>/dev/null | grep "=vhost$" | cut -d. -f2 | cut -d= -f1)
+
+	for section in $vhosts; do
+		local domain=$(uci -q get haproxy.$section.domain)
+		[ -z "$domain" ] && continue
+
+		local enabled=$(uci -q get haproxy.$section.enabled)
+		[ "$enabled" != "1" ] && continue
+
+		local backend=$(uci -q get haproxy.$section.backend)
+		local original_backend=$(uci -q get haproxy.$section.original_backend)
+		[ -n "$original_backend" ] && backend="$original_backend"
+
+		# Skip if already indexed from another source
+		local entry_id=$(make_id "$domain")
+		[ -f "$ENTRIES_DIR/$entry_id.json" ] && continue
+
+		# Get backend server info for port
+		local port="80"
+		local server_section=$(uci show haproxy 2>/dev/null | grep "=server$" | grep "backend='$backend'" | head -1 | cut -d. -f2 | cut -d= -f1)
+		if [ -n "$server_section" ]; then
+			port=$(uci -q get haproxy.$server_section.port)
+			[ -z "$port" ] && port="80"
+		fi
+
+		# Check SSL and WAF status
+		local ssl=$(uci -q get haproxy.$section.ssl)
+		[ "$ssl" = "1" ] && ssl="true" || ssl="false"
+		local waf="false"
+		[ "$(uci -q get haproxy.$section.backend)" = "mitmproxy_inspector" ] && waf="true"
+
+		# Determine type based on backend name
+		local type="service"
+		case "$backend" in
+			*streamlit*) type="streamlit" ;;
+			*metablog*|*uhttpd*) type="metablog" ;;
+			*jellyfin*|*peertube*|*lyrion*) type="media" ;;
+			*nextcloud*|*gitea*) type="cloud" ;;
+		esac
+
+		# Generate title from domain
+		local title=$(echo "$domain" | cut -d. -f1 | tr '-' ' ' | sed 's/\b\(.\)/\u\1/g')
+
+		cat > "$ENTRIES_DIR/$entry_id.json" <<EOF
+{
+  "id": "$entry_id",
+  "type": "$type",
+  "name": "$(json_escape "$title")",
+  "domain": "$domain",
+  "url": "https://$domain/",
+  "port": $port,
+  "source": "haproxy",
+  "created": "",
+  "updated": "",
+  "metadata": {
+    "title": "$(json_escape "$title")",
+    "backend": "$backend",
+    "description": ""
+  },
+  "books": [],
+  "status": "published",
+  "exposure": {
+    "ssl": $ssl,
+    "waf": $waf,
+    "tor": false
+  }
+}
+EOF
+		count=$((count + 1))
+		log_info "  Indexed: $domain -> $backend"
+	done
+
+	log_info "HAProxy: $count vhosts indexed"
+}
+
+# ═══════════════════════════════════════════════════════════════
 # BOOK ASSIGNMENT
 # ═══════════════════════════════════════════════════════════════
 
@@ -520,11 +604,13 @@ cmd_scan() {
 		case "$source" in
 			metablogizer) scan_metablogizer ;;
 			streamlit) scan_streamlit ;;
+			haproxy) scan_haproxy ;;
 			*) log_error "Unknown source: $source"; return 1 ;;
 		esac
 	else
 		scan_metablogizer
 		scan_streamlit
+		scan_haproxy
 	fi
 }
 
@@ -646,7 +732,7 @@ SecuBox Meta Cataloger v$VERSION
 Usage: metacatalogctl <command> [options]
 
 Commands:
-  scan [source]           Scan content sources (metablogizer|streamlit)
+  scan [source]           Scan content sources (metablogizer|streamlit|haproxy)
   index list              List all indexed entries
   index show <id>         Show entry details
   index refresh           Full rescan and reindex
