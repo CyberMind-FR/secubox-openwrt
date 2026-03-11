@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-10 (Metablogizer Port Conflict Prevention)_
+_Last updated: 2026-03-10 (PeerTube Routing Fix)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -9,6 +9,14 @@ _Last updated: 2026-03-10 (Metablogizer Port Conflict Prevention)_
 ## Recently Completed
 
 ### 2026-03-10
+
+- **PeerTube Routing Fix**
+  - tube.gk2.secubox.in was serving Lyrion instead of PeerTube (port conflict)
+  - Lyrion moved from port 9001 → 9000 (server.prefs)
+  - PeerTube moved from port 9001 → 9002 (production.yaml)
+  - Fixed PeerTube database hostname: 192.168.255.1 → 127.0.0.1 (internal PostgreSQL)
+  - Updated mitmproxy routes for both services
+  - Both services now accessible: tube.gk2.secubox.in, lyrion.gk2.secubox.in
 
 - **Metablogizer Port Conflict Prevention**
   - Fixed duplicate port detection in `get_next_port()` to check both uhttpd and metablogizer configs
@@ -19,6 +27,7 @@ _Last updated: 2026-03-10 (Metablogizer Port Conflict Prevention)_
     - ganimed.maegia.fr: 9004 → 9011
     - magic.maegia.tv: 8991 → 9012
     - cybaxe.gk2.secubox.in: 9000 → 9004 (earlier fix)
+  - Fixed Makefile: Added empty `Build/Compile` rule for shell-only package
 
 - **magic.maegia.tv Full Publication**
   - DNS A record added via Gandi API (`dnsctl -z maegia.tv add A magic`)
