@@ -1788,6 +1788,7 @@ cmd_vhost_add() {
 
 	local domain="$1"
 	local backend="$2"
+	local nowaf="$3"
 
 	[ -z "$domain" ] && { log_error "Domain required"; return 1; }
 	[ -z "$backend" ] && backend="fallback"
@@ -1796,7 +1797,17 @@ cmd_vhost_add() {
 
 	uci set haproxy.$section=vhost
 	uci set haproxy.$section.domain="$domain"
-	uci set haproxy.$section.backend="$backend"
+
+	# Route through WAF (mitmproxy_inspector) by default unless --nowaf specified
+	# Store original backend for mitmproxy route resolution
+	if [ "$nowaf" != "--nowaf" ] && [ "$backend" != "mitmproxy_inspector" ] && [ "$backend" != "fallback" ]; then
+		uci set haproxy.$section.backend="mitmproxy_inspector"
+		uci set haproxy.$section.original_backend="$backend"
+		log_info "WAF protection enabled: $domain -> mitmproxy_inspector -> $backend"
+	else
+		uci set haproxy.$section.backend="$backend"
+	fi
+
 	uci set haproxy.$section.ssl="1"
 	uci set haproxy.$section.ssl_redirect="1"
 	uci set haproxy.$section.acme="1"
@@ -1804,6 +1815,12 @@ cmd_vhost_add() {
 	uci commit haproxy
 
 	log_info "Virtual host added: $domain -> $backend"
+
+	# Auto-sync mitmproxy routes to ensure WAF routing works
+	if [ -x /usr/sbin/mitmproxyctl ]; then
+		log_info "Syncing mitmproxy routes..."
+		/usr/sbin/mitmproxyctl sync-routes >/dev/null 2>&1 &
+	fi
 
 	# Regenerate GK2 Hub landing page if generator exists
 	[ -x /usr/bin/gk2hub-generate ] && /usr/bin/gk2hub-generate >/dev/null 2>&1 &
@@ -1820,6 +1837,12 @@ cmd_vhost_remove() {
 	uci commit haproxy
 
 	log_info "Virtual host removed: $domain"
+
+	# Auto-sync mitmproxy routes to clean up orphaned routes
+	if [ -x /usr/sbin/mitmproxyctl ]; then
+		log_info "Syncing mitmproxy routes..."
+		/usr/sbin/mitmproxyctl sync-routes >/dev/null 2>&1 &
+	fi
 
 	# Regenerate GK2 Hub landing page if generator exists
 	[ -x /usr/bin/gk2hub-generate ] && /usr/bin/gk2hub-generate >/dev/null 2>&1 &
