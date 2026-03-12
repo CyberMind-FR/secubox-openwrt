@@ -311,16 +311,12 @@ return view.extend({
 		return E('div', { 'style': 'display: flex; gap: 12px; flex-wrap: wrap;' },
 			portList.map(function(p) {
 				var isOpen = ports[p.port];
-				return E('div', {
-					'style': 'padding: 8px 16px; border-radius: 8px; background: ' +
-						(isOpen ? 'rgba(0,200,83,0.1)' : 'rgba(255,23,68,0.1)') +
-						'; border: 1px solid ' +
-						(isOpen ? 'rgba(0,200,83,0.3)' : 'rgba(255,23,68,0.3)') +
-						'; min-width: 100px;'
+				return E('span', {
+					'class': 'kiss-badge ' + (isOpen ? 'kiss-badge-green' : 'kiss-badge-red'),
+					'style': 'padding: 8px 16px; min-width: 100px; text-align: center;'
 				}, [
-					E('div', { 'style': 'font-weight: 600; font-size: 14px; color: ' +
-						(isOpen ? 'var(--kiss-green)' : 'var(--kiss-red)') }, p.name),
-					E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted);' },
+					E('div', { 'style': 'font-weight: 600; font-size: 13px;' }, p.name),
+					E('div', { 'style': 'font-size: 11px; opacity: 0.8;' },
 						'Port ' + p.port + ' ' + (isOpen ? '\u2713' : '\u2717'))
 				]);
 			})
