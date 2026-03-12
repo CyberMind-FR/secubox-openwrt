@@ -120,7 +120,7 @@ return view.extend({
 		return m.render().then(function(mapEl) {
 			// Add custom publish button
 			var publishBtn = E('button', {
-				'class': 'cbi-button cbi-button-apply',
+				'class': 'kiss-btn kiss-btn-cyan',
 				'style': 'margin-top: 20px; font-size: 1.1em; padding: 10px 25px;',
 				'click': ui.createHandlerFn(self, 'handlePublish', m)
 			}, '📤 ' + _('Publish Service'));
@@ -319,14 +319,14 @@ return view.extend({
 
 		content.push(E('div', { 'class': 'right', 'style': 'margin-top: 20px;' }, [
 			E('button', {
-				'class': 'cbi-button',
+				'class': 'kiss-btn',
 				'click': function() {
 					ui.hideModal();
 					window.location.href = L.url('admin/services/service-registry/overview');
 				}
 			}, '📋 ' + _('Go to Overview')),
 			E('button', {
-				'class': 'cbi-button cbi-button-apply',
+				'class': 'kiss-btn kiss-btn-cyan',
 				'style': 'margin-left: 10px;',
 				'click': function() {
 					ui.hideModal();

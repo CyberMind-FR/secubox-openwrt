@@ -1,0 +1,7 @@
+config main 'main'
+	option enabled '1'
+	option name 'SecuBox Control'
+	option port '8531'
+	option path '/usr/share/streamlit-control'
+	option entry 'app.py'
+	option description 'Streamlit-based LuCI replacement dashboard'

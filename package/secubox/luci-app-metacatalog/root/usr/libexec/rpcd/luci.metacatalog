@@ -1,0 +1,236 @@
+#!/bin/sh
+# RPCD handler for Meta Cataloger
+# Copyright (C) 2026 CyberMind.fr
+
+. /lib/functions.sh
+
+DATA_DIR="/srv/metacatalog"
+ENTRIES_DIR="$DATA_DIR/entries"
+INDEX_FILE="$DATA_DIR/index.json"
+BOOKS_FILE="$DATA_DIR/books.json"
+
+# ═══════════════════════════════════════════════════════════════
+# HELPERS
+# ═══════════════════════════════════════════════════════════════
+
+json_escape() {
+	printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/	/\\t/g' | tr '\n' ' '
+}
+
+# ═══════════════════════════════════════════════════════════════
+# METHODS
+# ═══════════════════════════════════════════════════════════════
+
+list_entries() {
+	if [ -f "$INDEX_FILE" ]; then
+		cat "$INDEX_FILE"
+	else
+		echo '{"version":"1.0.0","entries":[]}'
+	fi
+}
+
+list_books() {
+	if [ -f "$BOOKS_FILE" ]; then
+		cat "$BOOKS_FILE"
+	else
+		echo '{"version":"1.0.0","books":[]}'
+	fi
+}
+
+get_entry() {
+	local id="$1"
+	local entry_file="$ENTRIES_DIR/$id.json"
+
+	if [ -f "$entry_file" ]; then
+		cat "$entry_file"
+	else
+		echo '{"error":"Entry not found"}'
+	fi
+}
+
+get_book() {
+	local book_id="$1"
+
+	if [ -f "$BOOKS_FILE" ]; then
+		jsonfilter -i "$BOOKS_FILE" -e "@.books[@.id='$book_id']" 2>/dev/null || echo '{"error":"Book not found"}'
+	else
+		echo '{"error":"Books file not found"}'
+	fi
+}
+
+search_catalog() {
+	local query="$1"
+	query=$(echo "$query" | tr '[:upper:]' '[:lower:]')
+
+	echo '{"results":['
+	local first=1
+
+	for f in "$ENTRIES_DIR"/*.json; do
+		[ -f "$f" ] || continue
+		local content=$(cat "$f" | tr '[:upper:]' '[:lower:]')
+		if echo "$content" | grep -q "$query"; then
+			[ $first -eq 0 ] && echo ","
+			cat "$f"
+			first=0
+		fi
+	done
+
+	echo ']}'
+}
+
+get_stats() {
+	local total=$(ls -1 "$ENTRIES_DIR"/*.json 2>/dev/null | wc -l)
+	local metablogs=$(grep -l '"type": "metablog"' "$ENTRIES_DIR"/*.json 2>/dev/null | wc -l)
+	local streamlits=$(grep -l '"type": "streamlit"' "$ENTRIES_DIR"/*.json 2>/dev/null | wc -l)
+	local books_count=0
+
+	if [ -f "$BOOKS_FILE" ]; then
+		books_count=$(jsonfilter -i "$BOOKS_FILE" -e '@.books[*].id' 2>/dev/null | wc -l)
+	fi
+
+	cat <<EOF
+{
+  "total_entries": $total,
+  "metablogs": $metablogs,
+  "streamlits": $streamlits,
+  "books": $books_count,
+  "index_exists": $([ -f "$INDEX_FILE" ] && echo "true" || echo "false"),
+  "books_exists": $([ -f "$BOOKS_FILE" ] && echo "true" || echo "false")
+}
+EOF
+}
+
+trigger_sync() {
+	# Run sync in background
+	/usr/sbin/metacatalogctl sync >/dev/null 2>&1 &
+	echo '{"status":"started","message":"Sync started in background"}'
+}
+
+trigger_scan() {
+	local source="$1"
+	if [ -n "$source" ]; then
+		/usr/sbin/metacatalogctl scan "$source" >/dev/null 2>&1 &
+	else
+		/usr/sbin/metacatalogctl scan >/dev/null 2>&1 &
+	fi
+	echo '{"status":"started","message":"Scan started in background"}'
+}
+
+assign_entry_to_book() {
+	local entry_id="$1"
+	local book_id="$2"
+	local entry_file="$ENTRIES_DIR/$entry_id.json"
+
+	if [ ! -f "$entry_file" ]; then
+		echo '{"error":"Entry not found"}'
+		return 1
+	fi
+
+	# Read current books
+	local current_books=$(jsonfilter -i "$entry_file" -e '@.books[*]' 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+
+	# Check if already assigned
+	if echo "$current_books" | grep -q "$book_id"; then
+		echo '{"status":"already_assigned"}'
+		return 0
+	fi
+
+	# Add book to entry
+	if [ -z "$current_books" ]; then
+		sed -i "s/\"books\": \[\]/\"books\": [\"$book_id\"]/" "$entry_file"
+	else
+		sed -i "s/\"books\": \[/\"books\": [\"$book_id\",/" "$entry_file"
+	fi
+
+	echo '{"status":"assigned"}'
+}
+
+remove_entry_from_book() {
+	local entry_id="$1"
+	local book_id="$2"
+	local entry_file="$ENTRIES_DIR/$entry_id.json"
+
+	if [ ! -f "$entry_file" ]; then
+		echo '{"error":"Entry not found"}'
+		return 1
+	fi
+
+	# Remove book from array (simplified - just remove the string)
+	sed -i "s/\"$book_id\",//g; s/,\"$book_id\"//g; s/\"$book_id\"//g" "$entry_file"
+
+	echo '{"status":"removed"}'
+}
+
+# ═══════════════════════════════════════════════════════════════
+# MAIN
+# ═══════════════════════════════════════════════════════════════
+
+case "$1" in
+	list)
+		cat <<EOF
+{
+  "list_entries": {},
+  "list_books": {},
+  "get_entry": {"id": "str"},
+  "get_book": {"id": "str"},
+  "search": {"query": "str"},
+  "get_stats": {},
+  "sync": {},
+  "scan": {"source": "str"},
+  "assign": {"entry_id": "str", "book_id": "str"},
+  "unassign": {"entry_id": "str", "book_id": "str"}
+}
+EOF
+		;;
+	call)
+		case "$2" in
+			list_entries)
+				list_entries
+				;;
+			list_books)
+				list_books
+				;;
+			get_entry)
+				read -r input
+				id=$(echo "$input" | jsonfilter -e '@.id')
+				get_entry "$id"
+				;;
+			get_book)
+				read -r input
+				id=$(echo "$input" | jsonfilter -e '@.id')
+				get_book "$id"
+				;;
+			search)
+				read -r input
+				query=$(echo "$input" | jsonfilter -e '@.query')
+				search_catalog "$query"
+				;;
+			get_stats)
+				get_stats
+				;;
+			sync)
+				trigger_sync
+				;;
+			scan)
+				read -r input
+				source=$(echo "$input" | jsonfilter -e '@.source' 2>/dev/null)
+				trigger_scan "$source"
+				;;
+			assign)
+				read -r input
+				entry_id=$(echo "$input" | jsonfilter -e '@.entry_id')
+				book_id=$(echo "$input" | jsonfilter -e '@.book_id')
+				assign_entry_to_book "$entry_id" "$book_id"
+				;;
+			unassign)
+				read -r input
+				entry_id=$(echo "$input" | jsonfilter -e '@.entry_id')
+				book_id=$(echo "$input" | jsonfilter -e '@.book_id')
+				remove_entry_from_book "$entry_id" "$book_id"
+				;;
+			*)
+				echo '{"error":"Unknown method"}'
+				;;
+		esac
+		;;
+esac

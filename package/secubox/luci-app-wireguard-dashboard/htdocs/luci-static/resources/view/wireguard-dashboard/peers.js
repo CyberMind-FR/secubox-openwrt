@@ -65,7 +65,7 @@ return view.extend({
 			E('div', { 'class': 'cbi-section', 'style': 'margin-bottom: 1em;' }, [
 				E('div', { 'style': 'display: flex; gap: 1em; align-items: center;' }, [
 					E('button', {
-						'class': 'cbi-button cbi-button-action',
+						'class': 'kiss-btn kiss-btn-blue',
 						'click': L.bind(this.handleAddPeer, this, interfaces)
 					}, '+ ' + _('Add New Peer')),
 					E('span', { 'class': 'peers-active-count', 'style': 'margin-left: auto; font-weight: bold;' },
@@ -125,17 +125,17 @@ return view.extend({
 									]),
 									E('td', {}, [
 										E('button', {
-											'class': 'cbi-button cbi-button-action',
+											'class': 'kiss-btn kiss-btn-blue',
 											'style': 'margin: 2px;',
 											'click': L.bind(self.handleShowQR, self, peer, interfaces)
 										}, _('QR Code')),
 										E('button', {
-											'class': 'cbi-button cbi-button-apply',
+											'class': 'kiss-btn kiss-btn-cyan',
 											'style': 'margin: 2px;',
 											'click': L.bind(self.handleDownloadConfig, self, peer, interfaces)
 										}, _('Config')),
 										E('button', {
-											'class': 'cbi-button cbi-button-negative',
+											'class': 'kiss-btn kiss-btn-red',
 											'style': 'margin: 2px;',
 											'click': L.bind(self.handleDeletePeer, self, peer)
 										}, _('Delete'))
@@ -151,7 +151,7 @@ return view.extend({
 					E('p', { 'style': 'color: #666;' },
 						_('Add peers to allow devices to connect to your WireGuard VPN.')),
 					E('button', {
-						'class': 'cbi-button cbi-button-action',
+						'class': 'kiss-btn kiss-btn-blue',
 						'style': 'margin-top: 1em;',
 						'click': L.bind(this.handleAddPeer, this, interfaces)
 					}, '+ ' + _('Add First Peer'))
@@ -335,12 +335,12 @@ return view.extend({
 
 				E('div', { 'class': 'right', 'style': 'margin-top: 1em;' }, [
 					E('button', {
-						'class': 'btn',
+						'class': 'kiss-btn',
 						'click': ui.hideModal
 					}, _('Cancel')),
 					' ',
 					E('button', {
-						'class': 'btn cbi-button-action',
+						'class': 'kiss-btn kiss-btn-blue',
 						'click': function() {
 							var iface = document.getElementById('peer-interface').value;
 							var name = document.getElementById('peer-name').value;
@@ -380,7 +380,7 @@ return view.extend({
 										]),
 										E('div', { 'class': 'right', 'style': 'margin-top: 1em;' }, [
 											E('button', {
-												'class': 'btn',
+												'class': 'kiss-btn',
 												'click': function() {
 													ui.hideModal();
 													window.location.reload();
@@ -388,7 +388,7 @@ return view.extend({
 											}, _('Skip')),
 											' ',
 											E('button', {
-												'class': 'btn cbi-button-action',
+												'class': 'kiss-btn kiss-btn-blue',
 												'click': function() {
 													ui.hideModal();
 													// Find the interface for QR generation
@@ -444,12 +444,12 @@ return view.extend({
 			]),
 			E('div', { 'class': 'right', 'style': 'margin-top: 1em;' }, [
 				E('button', {
-					'class': 'btn',
+					'class': 'kiss-btn',
 					'click': ui.hideModal
 				}, _('Cancel')),
 				' ',
 				E('button', {
-					'class': 'btn cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'click': function() {
 						var endpoint = API.getEndpointValue('qr-server-endpoint');
 						if (!endpoint) {
@@ -535,7 +535,7 @@ return view.extend({
 				E('p', { 'style': 'color: #666;' }, _('Scan with WireGuard app on your mobile device')),
 				E('div', { 'style': 'display: flex; gap: 10px; justify-content: center; margin: 1em 0;' }, [
 					E('button', {
-						'class': 'btn',
+						'class': 'kiss-btn',
 						'click': function() {
 							navigator.clipboard.writeText(config).then(function() {
 								ui.addNotification(null, E('p', _('Configuration copied to clipboard')), 'info');
@@ -543,7 +543,7 @@ return view.extend({
 						}
 					}, _('Copy Config')),
 					E('button', {
-						'class': 'btn cbi-button-action',
+						'class': 'kiss-btn kiss-btn-blue',
 						'click': function() {
 							var blob = new Blob([config], { type: 'text/plain' });
 							var url = URL.createObjectURL(blob);
@@ -562,7 +562,7 @@ return view.extend({
 			]),
 			E('div', { 'class': 'right' }, [
 				E('button', {
-					'class': 'btn',
+					'class': 'kiss-btn',
 					'click': ui.hideModal
 				}, _('Close'))
 			])
@@ -589,12 +589,12 @@ return view.extend({
 			]),
 			E('div', { 'class': 'right', 'style': 'margin-top: 1em;' }, [
 				E('button', {
-					'class': 'btn',
+					'class': 'kiss-btn',
 					'click': ui.hideModal
 				}, _('Cancel')),
 				' ',
 				E('button', {
-					'class': 'btn cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'click': function() {
 						var key = document.getElementById('manual-private-key').value.trim();
 						if (!key || key.length !== 44) {
@@ -701,12 +701,12 @@ return view.extend({
 				]),
 				E('div', { 'class': 'right', 'style': 'margin-top: 1em;' }, [
 					E('button', {
-						'class': 'btn',
+						'class': 'kiss-btn',
 						'click': ui.hideModal
 					}, _('Cancel')),
 					' ',
 					E('button', {
-						'class': 'btn cbi-button-action',
+						'class': 'kiss-btn kiss-btn-blue',
 						'click': function() {
 							var endpoint = API.getEndpointValue('cfg-server-endpoint');
 							if (!endpoint) {
@@ -756,12 +756,12 @@ return view.extend({
 				_('This action cannot be undone.')),
 			E('div', { 'class': 'right' }, [
 				E('button', {
-					'class': 'btn',
+					'class': 'kiss-btn',
 					'click': ui.hideModal
 				}, _('Cancel')),
 				' ',
 				E('button', {
-					'class': 'btn cbi-button-negative',
+					'class': 'kiss-btn kiss-btn-red',
 					'click': function() {
 						ui.hideModal();
 						ui.showModal(_('Deleting Peer'), [

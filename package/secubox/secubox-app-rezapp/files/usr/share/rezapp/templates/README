@@ -1,0 +1,14 @@
+RezApp Forge Templates
+======================
+
+This directory contains templates for generating SecuBox packages from
+Docker images. The templates use simple sed-based variable substitution.
+
+Variables:
+  APPNAME     - Application name
+  SOURCE_IMAGE - Original Docker image
+  MEMORY      - Memory limit
+  UID         - Container user ID
+  GID         - Container group ID
+
+Templates are automatically applied by rezappctl package command.

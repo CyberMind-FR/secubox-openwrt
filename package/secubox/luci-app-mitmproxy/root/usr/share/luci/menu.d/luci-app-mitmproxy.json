@@ -1,12 +1,12 @@
 {
 	"admin/secubox/security/mitmproxy": {
-		"title": "mitmproxy",
+		"title": "WAF",
 		"action": { "type": "firstchild" },
 		"depends": { "acl": ["luci-app-mitmproxy"] },
 		"order": 20
 	},
 	"admin/secubox/security/mitmproxy/status": {
-		"title": "Status",
+		"title": "Dashboard",
 		"action": { "type": "view", "path": "mitmproxy/status" },
 		"order": 1
 	},

@@ -303,9 +303,9 @@ return view.extend({
 		ui.showModal('Clear All Alerts', [
 			E('p', {}, 'Are you sure you want to clear all alerts?'),
 			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
 				E('button', {
-					'class': 'cbi-button cbi-button-negative',
+					'class': 'kiss-btn kiss-btn-red',
 					'click': function() {
 						callClearAlerts().then(function() {
 							self.alerts = [];

@@ -413,7 +413,7 @@ return view.extend({
 			]),
 			E('div', { 'style': 'display: flex; gap: 10px;' }, [
 				E('button', {
-					'class': 'cbi-button cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() {
 						navigator.clipboard.writeText(shareUrl).then(function() {
 							ui.addNotification(null, E('p', 'Share URL copied to clipboard!'), 'success');
@@ -423,7 +423,7 @@ return view.extend({
 					}
 				}, 'Copy to Clipboard'),
 				E('button', {
-					'class': 'cbi-button',
+					'class': 'kiss-btn',
 					'click': function() { ui.hideModal(); }
 				}, 'Close')
 			])

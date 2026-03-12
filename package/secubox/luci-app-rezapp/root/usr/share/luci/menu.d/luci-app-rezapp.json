@@ -1,0 +1,14 @@
+{
+	"admin/services/rezapp": {
+		"title": "RezApp Forge",
+		"order": 86,
+		"action": {
+			"type": "view",
+			"path": "rezapp/overview"
+		},
+		"depends": {
+			"acl": ["luci-app-rezapp"],
+			"uci": { "rezapp": true }
+		}
+	}
+}

@@ -1,6 +1,5 @@
 'use strict';
 'require view';
-'require secubox-theme/theme as Theme';
 'require form';
 'require ui';
 'require ksm-manager/api as KSM';
@@ -67,12 +66,13 @@ return view.extend({
 		o.onclick = L.bind(this.handleImportCertificate, this);
 
 		// Certificates Table
-		var certsTable = E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('Installed Certificates')),
-			E('div', { 'class': 'cbi-section-node' }, [
-				this.renderCertificatesTable(certificates)
-			])
-		]);
+		var certsTable = KissTheme.card(
+			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+				E('span', {}, 'Installed Certificates'),
+				KissTheme.badge(certificates.length + ' certs', 'cyan')
+			]),
+			this.renderCertificatesTable(certificates)
+		);
 
 		return KissTheme.wrap([
 			m.render(),
@@ -82,41 +82,37 @@ return view.extend({
 
 	renderCertificatesTable: function(certificates) {
 		if (!certificates || certificates.length === 0) {
-			return E('div', { 'class': 'cbi-value' }, [
-				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-				E('em', {}, _('No certificates found.'))
-			]);
+			return E('p', { 'style': 'color: var(--kiss-muted); text-align: center; padding: 20px;' },
+				'No certificates found.');
 		}
 
-		var table = E('table', { 'class': 'table' }, [
-			E('tr', { 'class': 'tr table-titles' }, [
-				E('th', { 'class': 'th' }, _('Subject')),
-				E('th', { 'class': 'th' }, _('Issuer')),
-				E('th', { 'class': 'th' }, _('Valid Until')),
-				E('th', { 'class': 'th center' }, _('Actions'))
-			])
+		return E('table', { 'class': 'kiss-table' }, [
+			E('thead', {}, E('tr', {}, [
+				E('th', { 'style': 'padding: 10px 12px;' }, _('Subject')),
+				E('th', { 'style': 'padding: 10px 12px;' }, _('Issuer')),
+				E('th', { 'style': 'padding: 10px 12px;' }, _('Valid Until')),
+				E('th', { 'style': 'padding: 10px 12px; text-align: center;' }, _('Actions'))
+			])),
+			E('tbody', {}, certificates.map(L.bind(function(cert) {
+				return E('tr', {}, [
+					E('td', { 'style': 'padding: 10px 12px;' }, cert.subject || 'Unknown'),
+					E('td', { 'style': 'padding: 10px 12px;' }, cert.issuer || 'Unknown'),
+					E('td', { 'style': 'padding: 10px 12px;' }, cert.valid_until || 'Unknown'),
+					E('td', { 'style': 'padding: 10px 12px; text-align: center;' }, [
+						E('button', {
+							'class': 'kiss-btn kiss-btn-cyan',
+							'style': 'padding: 4px 10px; font-size: 12px; margin-right: 6px;',
+							'click': L.bind(function() { this.handleVerifyCertificate(cert.id); }, this)
+						}, 'Verify'),
+						E('button', {
+							'class': 'kiss-btn kiss-btn-red',
+							'style': 'padding: 4px 10px; font-size: 12px;',
+							'click': L.bind(function() { this.handleDeleteCertificate(cert.id); }, this)
+						}, 'Delete')
+					])
+				]);
+			}, this)))
 		]);
-
-		certificates.forEach(L.bind(function(cert) {
-			table.appendChild(E('tr', { 'class': 'tr' }, [
-				E('td', { 'class': 'td' }, cert.subject || _('Unknown')),
-				E('td', { 'class': 'td' }, cert.issuer || _('Unknown')),
-				E('td', { 'class': 'td' }, cert.valid_until || _('Unknown')),
-				E('td', { 'class': 'td center' }, [
-					E('button', {
-						'class': 'cbi-button cbi-button-action',
-						'click': L.bind(function() { this.handleVerifyCertificate(cert.id); }, this)
-					}, _('Verify')),
-					' ',
-					E('button', {
-						'class': 'cbi-button cbi-button-negative',
-						'click': L.bind(function() { this.handleDeleteCertificate(cert.id); }, this)
-					}, _('Delete'))
-				])
-			]));
-		}, this));
-
-		return table;
 	},
 
 	handleGenerateCSR: function(ev) {
@@ -149,11 +145,14 @@ return view.extend({
 			ui.hideModal();
 			if (result && result.success) {
 				ui.showModal(_('Certificate Signing Request'), [
-					E('p', {}, _('CSR generated successfully. Copy the text below:')),
-					E('pre', { 'style': 'white-space: pre-wrap; word-wrap: break-word; max-height: 400px; overflow-y: auto;' }, result.csr),
-					E('div', { 'class': 'right' }, [
+					E('p', { 'style': 'color: var(--kiss-muted);' }, _('CSR generated successfully. Copy the text below:')),
+					E('pre', {
+						'style': 'white-space: pre-wrap; word-wrap: break-word; max-height: 400px; overflow-y: auto; ' +
+							'background: var(--kiss-bg); padding: 16px; border-radius: 8px; font-family: monospace; font-size: 12px;'
+					}, result.csr),
+					E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px;' }, [
 						E('button', {
-							'class': 'cbi-button cbi-button-action',
+							'class': 'kiss-btn kiss-btn-green',
 							'click': function() {
 								var blob = new Blob([result.csr], { type: 'text/plain' });
 								var url = window.URL.createObjectURL(blob);
@@ -164,8 +163,11 @@ return view.extend({
 								window.URL.revokeObjectURL(url);
 							}
 						}, _('Download')),
-						' ',
-						E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Close'))
+						E('button', {
+							'class': 'kiss-btn',
+							'style': 'background: var(--kiss-bg2); border: 1px solid var(--kiss-line);',
+							'click': ui.hideModal
+						}, _('Close'))
 					])
 				]);
 			} else {
@@ -210,33 +212,32 @@ return view.extend({
 
 		KSM.verifyCertificate(certId).then(function(result) {
 			ui.showModal(_('Certificate Verification'), [
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Valid') + ':'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('span', { 'style': 'color: ' + (result.valid ? 'green' : 'red') },
-							result.valid ? _('Yes') : _('No'))
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px;' }, [
+					E('div', { 'style': 'display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--kiss-line);' }, [
+						E('span', { 'style': 'color: var(--kiss-muted);' }, _('Valid')),
+						KissTheme.badge(result.valid ? 'Yes' : 'No', result.valid ? 'green' : 'red')
+					]),
+					E('div', { 'style': 'display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--kiss-line);' }, [
+						E('span', { 'style': 'color: var(--kiss-muted);' }, _('Chain Valid')),
+						KissTheme.badge(result.chain_valid ? 'Yes' : 'No', result.chain_valid ? 'green' : 'red')
+					]),
+					E('div', { 'style': 'display: flex; justify-content: space-between; padding: 10px 0;' }, [
+						E('span', { 'style': 'color: var(--kiss-muted);' }, _('Expires in')),
+						E('span', { 'style': 'font-weight: 500;' }, (result.expires_in_days || 0) + ' days')
 					])
 				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Chain Valid') + ':'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('span', { 'style': 'color: ' + (result.chain_valid ? 'green' : 'red') },
-							result.chain_valid ? _('Yes') : _('No'))
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Expires in') + ':'),
-					E('div', { 'class': 'cbi-value-field' }, String(result.expires_in_days || 0) + ' ' + _('days'))
-				]),
-				E('div', { 'class': 'right' }, [
-					E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Close'))
+				E('div', { 'style': 'display: flex; justify-content: flex-end; margin-top: 16px;' }, [
+					E('button', {
+						'class': 'kiss-btn',
+						'style': 'background: var(--kiss-bg2); border: 1px solid var(--kiss-line);',
+						'click': ui.hideModal
+					}, _('Close'))
 				])
 			]);
 		});
 	},
 
 	handleDeleteCertificate: function(certId) {
-		// Simplified delete - would need actual delete RPC method
 		ui.addNotification(null, E('p', _('Delete functionality requires backend implementation')), 'info');
 	},
 

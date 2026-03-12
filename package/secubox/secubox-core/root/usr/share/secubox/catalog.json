@@ -2473,6 +2473,169 @@
         "refresh_interval": 60,
         "metrics": []
       }
+    },
+    {
+      "id": "luci-app-streamlit-forge",
+      "name": "Streamlit Forge",
+      "version": "1.0.0",
+      "category": "productivity",
+      "runtime": "lxc",
+      "description": "Streamlit app publishing platform with template-based creation, instance management, HAProxy SSL exposure, and mesh catalog publishing",
+      "author": "CyberMind.fr",
+      "license": "Apache-2.0",
+      "icon": "\ud83d\udcca",
+      "featured": true,
+      "featured_priority": 5,
+      "featured_category": "productivity",
+      "featured_reason": "Create and publish Streamlit data apps with one-click SSL exposure",
+      "badges": ["new"],
+      "tags": [
+        "streamlit",
+        "python",
+        "data-apps",
+        "dashboard",
+        "visualization",
+        "lxc",
+        "publishing"
+      ],
+      "packages": {
+        "required": [
+          "luci-app-streamlit-forge",
+          "secubox-app-streamlit-forge",
+          "lxc",
+          "lxc-common"
+        ]
+      },
+      "capabilities": [
+        "app-publishing",
+        "streamlit",
+        "data-visualization",
+        "ssl-exposure"
+      ],
+      "requirements": {
+        "min_ram_mb": 512,
+        "min_storage_mb": 500
+      },
+      "status": "stable",
+      "notes": "Create Streamlit apps from templates, manage instances, expose via HAProxy with SSL, and publish to mesh catalog.",
+      "pkg_version": "1.0.0-1",
+      "app_version": "1.0.0",
+      "changelog": {
+        "1.0.0": {
+          "date": "2026-03-11",
+          "changes": [
+            "Initial release",
+            "Template-based app creation (basic, dashboard, data-viewer)",
+            "Instance start/stop/restart management",
+            "Automatic port allocation",
+            "HAProxy SSL exposure integration",
+            "Mesh catalog publishing",
+            "LuCI dashboard with app management"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": true,
+        "template": "custom-widget",
+        "refresh_interval": 30,
+        "metrics": [
+          {
+            "id": "running_apps",
+            "label": "Running Apps",
+            "type": "counter",
+            "source": "ubus",
+            "method": "luci.streamlit-forge.status"
+          },
+          {
+            "id": "total_apps",
+            "label": "Total Apps",
+            "type": "counter",
+            "source": "ubus"
+          }
+        ]
+      }
+    },
+    {
+      "id": "luci-app-rezapp",
+      "name": "RezApp Forge",
+      "version": "1.0.0",
+      "category": "system",
+      "runtime": "native",
+      "description": "Docker to SecuBox LXC app converter with catalog browsing, image conversion, package generation, and mesh publishing",
+      "author": "CyberMind.fr",
+      "license": "Apache-2.0",
+      "icon": "\ud83d\udc33",
+      "featured": true,
+      "featured_priority": 4,
+      "featured_category": "system",
+      "featured_reason": "Convert Docker images to native SecuBox LXC apps",
+      "badges": ["new"],
+      "tags": [
+        "docker",
+        "lxc",
+        "container",
+        "converter",
+        "packaging",
+        "dockerhub",
+        "linuxserver"
+      ],
+      "packages": {
+        "required": [
+          "luci-app-rezapp",
+          "secubox-app-rezapp",
+          "docker",
+          "dockerd",
+          "lxc",
+          "lxc-common"
+        ]
+      },
+      "capabilities": [
+        "docker-conversion",
+        "lxc-containers",
+        "package-generation",
+        "catalog-browsing"
+      ],
+      "requirements": {
+        "min_ram_mb": 512,
+        "min_storage_mb": 2048
+      },
+      "status": "stable",
+      "notes": "Browse Docker Hub and LinuxServer.io catalogs, convert images to LXC containers, generate SecuBox packages, and publish to app catalog.",
+      "pkg_version": "1.0.0-1",
+      "app_version": "1.0.0",
+      "changelog": {
+        "1.0.0": {
+          "date": "2026-03-11",
+          "changes": [
+            "Initial release",
+            "Docker Hub and LinuxServer.io catalog support",
+            "Docker to LXC conversion workflow",
+            "Automatic package generation",
+            "Mesh catalog publishing",
+            "LuCI dashboard with conversion wizard"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": true,
+        "template": "custom-widget",
+        "refresh_interval": 60,
+        "metrics": [
+          {
+            "id": "converted_apps",
+            "label": "Converted Apps",
+            "type": "counter",
+            "source": "ubus",
+            "method": "luci.rezapp.status"
+          },
+          {
+            "id": "docker_status",
+            "label": "Docker Status",
+            "type": "status",
+            "source": "ubus"
+          }
+        ]
+      }
     }
   ],
   "featured_sections": {
@@ -2492,14 +2655,16 @@
       "luci-app-ddns-manager"
     ],
     "new_releases": [
+      "luci-app-streamlit-forge",
+      "luci-app-rezapp",
       "luci-app-auth-guardian",
       "luci-app-bandwidth-manager"
     ]
   },
-  "total_plugins": 37,
+  "total_plugins": 39,
   "metadata": {
     "catalog_version": "2.0",
     "schema_version": "2.0",
-    "last_updated": "2026-01-04T16:34:26Z"
+    "last_updated": "2026-03-11T12:00:00Z"
   }
 }

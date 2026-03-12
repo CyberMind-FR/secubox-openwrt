@@ -38,37 +38,41 @@ function formatTimestamp(ts) {
 
 function getGradeColor(grade) {
 	switch(grade) {
-		case 'A': return '#22c55e';
-		case 'B': return '#84cc16';
-		case 'C': return '#eab308';
-		case 'D': return '#f97316';
-		case 'F': return '#ef4444';
-		default: return '#6b7280';
+		case 'A': return 'green';
+		case 'B': return 'cyan';
+		case 'C': return 'orange';
+		case 'D': return 'orange';
+		case 'F': return 'red';
+		default: return 'muted';
 	}
 }
 
 function getRiskColor(level) {
 	switch(level) {
-		case 'minimal': return '#22c55e';
-		case 'low': return '#84cc16';
-		case 'medium': return '#eab308';
-		case 'high': return '#f97316';
-		case 'critical': return '#ef4444';
-		default: return '#6b7280';
+		case 'minimal': return 'green';
+		case 'low': return 'cyan';
+		case 'medium': return 'orange';
+		case 'high': return 'orange';
+		case 'critical': return 'red';
+		default: return 'muted';
 	}
 }
 
-function getStatusIcon(status) {
+function getStatusBadge(status) {
 	switch(status) {
-		case 'pass': return '<span style="color:#22c55e">&#x2714;</span>';
-		case 'fail': return '<span style="color:#ef4444">&#x2718;</span>';
-		case 'warn': return '<span style="color:#eab308">&#x26A0;</span>';
-		case 'info': return '<span style="color:#3b82f6">&#x2139;</span>';
-		default: return '<span style="color:#6b7280">&#x2212;</span>';
+		case 'pass': return KissTheme.badge('PASS', 'green');
+		case 'fail': return KissTheme.badge('FAIL', 'red');
+		case 'warn': return KissTheme.badge('WARN', 'orange');
+		case 'info': return KissTheme.badge('INFO', 'blue');
+		default: return KissTheme.badge('N/A', 'muted');
 	}
 }
 
 return view.extend({
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null,
+
 	load: function() {
 		return Promise.all([
 			callStatus(),
@@ -77,7 +81,81 @@ return view.extend({
 		]);
 	},
 
+	renderStats: function(status) {
+		var c = KissTheme.colors;
+		var gradeColor = {
+			'A': c.green, 'B': c.cyan, 'C': c.orange, 'D': c.orange, 'F': c.red
+		}[status.grade] || c.muted;
+		var riskColor = {
+			'minimal': c.green, 'low': c.cyan, 'medium': c.orange, 'high': c.orange, 'critical': c.red
+		}[status.risk_level] || c.muted;
+
+		return [
+			KissTheme.stat(status.grade || '?', 'Grade', gradeColor),
+			KissTheme.stat((status.score || 0) + '/100', 'Score', c.blue),
+			KissTheme.stat((status.compliance_rate || 0) + '%', 'Compliance', c.purple),
+			KissTheme.stat((status.risk_level || 'Unknown').charAt(0).toUpperCase() + (status.risk_level || 'Unknown').slice(1), 'Risk', riskColor)
+		];
+	},
+
+	renderResultsTable: function(results) {
+		if (results.length === 0) {
+			return E('p', { 'style': 'color: var(--kiss-muted); text-align: center; padding: 30px;' },
+				'No check results available. Run a security check first.');
+		}
+
+		var rows = results.map(function(r) {
+			return E('tr', {}, [
+				E('td', { 'style': 'text-align: center;' }, getStatusBadge(r.status)),
+				E('td', { 'style': 'font-family: monospace; color: var(--kiss-cyan);' }, r.id || '-'),
+				E('td', {}, r.message || '-'),
+				E('td', { 'style': 'color: var(--kiss-muted); font-size: 12px;' }, r.details || '-')
+			]);
+		});
+
+		return E('table', { 'class': 'kiss-table' }, [
+			E('thead', {}, [
+				E('tr', {}, [
+					E('th', { 'style': 'width: 80px;' }, 'Status'),
+					E('th', { 'style': 'width: 150px;' }, 'Check ID'),
+					E('th', {}, 'Message'),
+					E('th', {}, 'Details')
+				])
+			]),
+			E('tbody', {}, rows)
+		]);
+	},
+
+	renderHistoryTable: function(history) {
+		if (history.length === 0) {
+			return E('p', { 'style': 'color: var(--kiss-muted); text-align: center; padding: 20px;' },
+				'No history available.');
+		}
+
+		var rows = history.slice().reverse().map(function(h) {
+			return E('tr', {}, [
+				E('td', { 'style': 'color: var(--kiss-muted);' }, formatTimestamp(h.timestamp)),
+				E('td', {}, h.score + '/100'),
+				E('td', {}, KissTheme.badge(h.grade, getGradeColor(h.grade))),
+				E('td', {}, KissTheme.badge(h.risk_level, getRiskColor(h.risk_level)))
+			]);
+		});
+
+		return E('table', { 'class': 'kiss-table' }, [
+			E('thead', {}, [
+				E('tr', {}, [
+					E('th', {}, 'Date'),
+					E('th', {}, 'Score'),
+					E('th', {}, 'Grade'),
+					E('th', {}, 'Risk Level')
+				])
+			]),
+			E('tbody', {}, rows)
+		]);
+	},
+
 	render: function(data) {
+		var self = this;
 		var status = data[0] || {};
 		var resultsData = data[1] || {};
 		var historyData = data[2] || {};
@@ -85,148 +163,62 @@ return view.extend({
 		var results = resultsData.results || [];
 		var history = historyData.history || [];
 
-		var view = E('div', { 'class': 'cbi-map' }, [
-			E('h2', {}, 'Config Advisor Dashboard'),
-			E('p', { 'class': 'cbi-map-descr' },
-				'ANSSI CSPN compliance checking and security configuration analysis.')
-		]);
-
-		// Score Card
-		var scoreCard = E('div', {
-			'style': 'display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:1rem; margin-bottom:1.5rem;'
-		});
-
-		// Grade circle
-		var gradeColor = getGradeColor(status.grade || '?');
-		scoreCard.appendChild(E('div', {
-			'style': 'background:#1e293b; border-radius:12px; padding:1.5rem; text-align:center;'
-		}, [
-			E('div', {
-				'style': 'width:100px; height:100px; border-radius:50%; border:8px solid ' + gradeColor + '; margin:0 auto 1rem; display:flex; align-items:center; justify-content:center;'
-			}, [
-				E('span', { 'style': 'font-size:48px; font-weight:bold; color:' + gradeColor }, status.grade || '?')
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'Config Advisor'),
+					KissTheme.badge(status.grade || '?', getGradeColor(status.grade))
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' },
+					'ANSSI CSPN compliance checking and security configuration analysis')
 			]),
-			E('div', { 'style': 'font-size:14px; color:#94a3b8' }, 'Security Grade'),
-			E('div', { 'style': 'font-size:24px; font-weight:bold; color:#f1f5f9; margin-top:0.5rem' },
-				(status.score || 0) + '/100')
-		]));
 
-		// Risk Level
-		var riskColor = getRiskColor(status.risk_level || 'unknown');
-		scoreCard.appendChild(E('div', {
-			'style': 'background:#1e293b; border-radius:12px; padding:1.5rem; text-align:center;'
-		}, [
-			E('div', {
-				'style': 'font-size:48px; margin-bottom:1rem; color:' + riskColor
-			}, status.risk_level === 'critical' ? '&#x26A0;' :
-			   status.risk_level === 'high' ? '&#x26A0;' :
-			   status.risk_level === 'minimal' ? '&#x2714;' : '&#x2139;'),
-			E('div', { 'style': 'font-size:14px; color:#94a3b8' }, 'Risk Level'),
-			E('div', {
-				'style': 'font-size:20px; font-weight:bold; color:' + riskColor + '; margin-top:0.5rem; text-transform:capitalize'
-			}, status.risk_level || 'Unknown')
-		]));
+			// Stats
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'style': 'margin: 20px 0;' },
+				this.renderStats(status)),
 
-		// Compliance Rate
-		scoreCard.appendChild(E('div', {
-			'style': 'background:#1e293b; border-radius:12px; padding:1.5rem; text-align:center;'
-		}, [
-			E('div', {
-				'style': 'font-size:48px; margin-bottom:1rem; color:#3b82f6'
-			}, '&#x2611;'),
-			E('div', { 'style': 'font-size:14px; color:#94a3b8' }, 'ANSSI Compliance'),
-			E('div', { 'style': 'font-size:24px; font-weight:bold; color:#f1f5f9; margin-top:0.5rem' },
-				(status.compliance_rate || 0) + '%')
-		]));
+			// Run Check Button
+			E('div', { 'style': 'margin: 20px 0;' }, [
+				E('button', {
+					'class': 'kiss-btn kiss-btn-green',
+					'click': ui.createHandlerFn(this, function() {
+						ui.showModal('Running Security Check', [
+							E('p', { 'class': 'spinning' }, 'Analyzing system configuration...')
+						]);
+						return callCheck().then(function() {
+							ui.hideModal();
+							ui.addNotification(null, E('p', 'Security check completed.'), 'success');
+							window.location.reload();
+						}).catch(function(err) {
+							ui.hideModal();
+							ui.addNotification(null, E('p', 'Check failed: ' + err.message), 'error');
+						});
+					})
+				}, 'Run Security Check'),
+				E('span', { 'style': 'margin-left: 16px; color: var(--kiss-muted); font-size: 12px;' },
+					'Last check: ' + formatTimestamp(status.last_check))
+			]),
 
-		// Last Check
-		scoreCard.appendChild(E('div', {
-			'style': 'background:#1e293b; border-radius:12px; padding:1.5rem; text-align:center;'
-		}, [
-			E('div', {
-				'style': 'font-size:48px; margin-bottom:1rem; color:#8b5cf6'
-			}, '&#x1F550;'),
-			E('div', { 'style': 'font-size:14px; color:#94a3b8' }, 'Last Check'),
-			E('div', { 'style': 'font-size:14px; color:#f1f5f9; margin-top:0.5rem' },
-				formatTimestamp(status.last_check))
-		]));
+			// Results Table
+			KissTheme.card(
+				E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+					E('span', {}, 'Check Results'),
+					KissTheme.badge(results.length + ' checks', 'blue')
+				]),
+				this.renderResultsTable(results)
+			),
 
-		view.appendChild(scoreCard);
+			// Score History
+			history.length > 0 ? KissTheme.card(
+				E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+					E('span', {}, 'Score History'),
+					KissTheme.badge(history.length + ' entries', 'purple')
+				]),
+				this.renderHistoryTable(history)
+			) : ''
+		];
 
-		// Run Check Button
-		var runBtn = E('button', {
-			'class': 'cbi-button cbi-button-apply',
-			'click': ui.createHandlerFn(this, function() {
-				return callCheck().then(function() {
-					ui.addNotification(null, E('p', 'Security check completed. Refreshing...'));
-					window.location.reload();
-				});
-			})
-		}, 'Run Security Check');
-
-		view.appendChild(E('div', { 'style': 'margin-bottom:1.5rem' }, runBtn));
-
-		// Results Table
-		view.appendChild(E('h3', { 'style': 'margin-top:2rem' }, 'Check Results'));
-
-		if (results.length > 0) {
-			var table = E('table', { 'class': 'table', 'style': 'width:100%' }, [
-				E('tr', { 'class': 'tr table-titles' }, [
-					E('th', { 'class': 'th' }, 'Status'),
-					E('th', { 'class': 'th' }, 'Check ID'),
-					E('th', { 'class': 'th' }, 'Message'),
-					E('th', { 'class': 'th' }, 'Details')
-				])
-			]);
-
-			results.forEach(function(r) {
-				table.appendChild(E('tr', { 'class': 'tr' }, [
-					E('td', { 'class': 'td', 'style': 'text-align:center' }, getStatusIcon(r.status)),
-					E('td', { 'class': 'td' }, E('code', {}, r.id || '-')),
-					E('td', { 'class': 'td' }, r.message || '-'),
-					E('td', { 'class': 'td', 'style': 'color:#94a3b8' }, r.details || '-')
-				]));
-			});
-
-			view.appendChild(table);
-		} else {
-			view.appendChild(E('p', { 'style': 'color:#94a3b8' },
-				'No check results available. Run a security check first.'));
-		}
-
-		// Score History
-		if (history.length > 0) {
-			view.appendChild(E('h3', { 'style': 'margin-top:2rem' }, 'Score History'));
-
-			var historyTable = E('table', { 'class': 'table', 'style': 'width:100%' }, [
-				E('tr', { 'class': 'tr table-titles' }, [
-					E('th', { 'class': 'th' }, 'Date'),
-					E('th', { 'class': 'th' }, 'Score'),
-					E('th', { 'class': 'th' }, 'Grade'),
-					E('th', { 'class': 'th' }, 'Risk Level')
-				])
-			]);
-
-			history.slice().reverse().forEach(function(h) {
-				historyTable.appendChild(E('tr', { 'class': 'tr' }, [
-					E('td', { 'class': 'td' }, formatTimestamp(h.timestamp)),
-					E('td', { 'class': 'td' }, h.score + '/100'),
-					E('td', { 'class': 'td' }, E('span', {
-						'style': 'color:' + getGradeColor(h.grade) + '; font-weight:bold'
-					}, h.grade)),
-					E('td', { 'class': 'td' }, E('span', {
-						'style': 'color:' + getRiskColor(h.risk_level) + '; text-transform:capitalize'
-					}, h.risk_level))
-				]));
-			});
-
-			view.appendChild(historyTable);
-		}
-
-		return KissTheme.wrap([view], 'admin/secubox/security/config-advisor');
-	},
-
-	handleSaveApply: null,
-	handleSave: null,
-	handleReset: null
+		return KissTheme.wrap(content, 'admin/secubox/security/config-advisor');
+	}
 });

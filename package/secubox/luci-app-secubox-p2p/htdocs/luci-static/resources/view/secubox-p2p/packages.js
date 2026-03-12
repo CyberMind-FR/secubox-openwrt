@@ -76,14 +76,27 @@ return view.extend({
 	},
 
 	renderSourceBadge: function(source) {
-		var color = source.type === 'local' ? '#27ae60' : '#3498db';
+		var colorType = source.type === 'local' ? 'green' : 'blue';
 		var label = source.type === 'local' ? 'LOCAL' : source.node_name || source.address;
+		return KissTheme.badge(label, colorType);
+	},
 
-		return E('span', {
-			'style': 'display:inline-block; padding:2px 6px; margin:2px; border-radius:3px; font-size:11px; ' +
-				'background-color:' + color + '; color:white;',
-			'title': source.type === 'local' ? 'Available locally' : 'Available on ' + source.address
-		}, label);
+	renderStats: function() {
+		var c = KissTheme.colors;
+		var localCount = 0;
+		var peerCount = 0;
+
+		this.sources.forEach(function(s) {
+			if (s.type === 'local') localCount = s.package_count || 0;
+			else peerCount += s.package_count || 0;
+		});
+
+		return [
+			KissTheme.stat(localCount, 'Local Packages', c.green),
+			KissTheme.stat(peerCount, 'Peer Packages', c.blue),
+			KissTheme.stat(this.sources.length, 'Feed Sources', c.purple),
+			KissTheme.stat(this.allPackages.length, 'Unique Packages', c.orange)
+		];
 	},
 
 	renderPackageRow: function(pkg) {
@@ -92,23 +105,27 @@ return view.extend({
 		// Check if available locally
 		var isLocal = pkg.sources.some(function(s) { return s.type === 'local'; });
 
-		return E('tr', { 'class': 'tr' }, [
-			E('td', { 'class': 'td', 'style': 'font-weight:500' }, pkg.name),
-			E('td', { 'class': 'td' }, pkg.version),
-			E('td', { 'class': 'td' }, self.formatSize(pkg.size)),
-			E('td', { 'class': 'td' }, pkg.sources.map(function(s) {
-				return self.renderSourceBadge(s);
-			})),
-			E('td', { 'class': 'td' }, [
+		return E('tr', {}, [
+			E('td', { 'style': 'padding: 10px 12px; font-weight: 500;' }, pkg.name),
+			E('td', { 'style': 'padding: 10px 12px; font-family: monospace;' }, pkg.version),
+			E('td', { 'style': 'padding: 10px 12px;' }, self.formatSize(pkg.size)),
+			E('td', { 'style': 'padding: 10px 12px;' },
+				E('div', { 'style': 'display: flex; flex-wrap: wrap; gap: 4px;' },
+					pkg.sources.map(function(s) {
+						return self.renderSourceBadge(s);
+					})
+				)
+			),
+			E('td', { 'style': 'padding: 10px 12px;' }, [
 				isLocal ?
 					E('button', {
-						'class': 'cbi-button cbi-button-positive',
-						'style': 'padding:4px 8px; font-size:12px',
+						'class': 'kiss-btn kiss-btn-green',
+						'style': 'padding: 4px 10px; font-size: 12px;',
 						'click': function() { self.installPackage(pkg.name); }
 					}, _('Install')) :
 					E('button', {
-						'class': 'cbi-button cbi-button-action',
-						'style': 'padding:4px 8px; font-size:12px',
+						'class': 'kiss-btn kiss-btn-blue',
+						'style': 'padding: 4px 10px; font-size: 12px;',
 						'click': function() { self.fetchPackage(pkg.name, pkg.sources[0].address); }
 					}, _('Fetch'))
 			])
@@ -172,73 +189,36 @@ return view.extend({
 		});
 	},
 
-	renderStats: function() {
-		var stats = this.syncStats;
-		var localCount = 0;
-		var peerCount = 0;
-
-		this.sources.forEach(function(s) {
-			if (s.type === 'local') localCount = s.package_count || 0;
-			else peerCount += s.package_count || 0;
-		});
-
-		return E('div', { 'class': 'cbi-section', 'style': 'margin-bottom:1em' }, [
-			E('div', { 'style': 'display:flex; gap:2em; flex-wrap:wrap' }, [
-				E('div', { 'style': 'padding:1em; background:#f8f9fa; border-radius:8px; min-width:150px' }, [
-					E('div', { 'style': 'font-size:24px; font-weight:bold; color:#27ae60' }, String(localCount)),
-					E('div', { 'style': 'color:#666' }, _('Local Packages'))
-				]),
-				E('div', { 'style': 'padding:1em; background:#f8f9fa; border-radius:8px; min-width:150px' }, [
-					E('div', { 'style': 'font-size:24px; font-weight:bold; color:#3498db' }, String(peerCount)),
-					E('div', { 'style': 'color:#666' }, _('Peer Packages'))
-				]),
-				E('div', { 'style': 'padding:1em; background:#f8f9fa; border-radius:8px; min-width:150px' }, [
-					E('div', { 'style': 'font-size:24px; font-weight:bold; color:#9b59b6' }, String(this.sources.length)),
-					E('div', { 'style': 'color:#666' }, _('Feed Sources'))
-				]),
-				E('div', { 'style': 'padding:1em; background:#f8f9fa; border-radius:8px; min-width:150px' }, [
-					E('div', { 'style': 'font-size:24px; font-weight:bold; color:#e67e22' }, String(this.allPackages.length)),
-					E('div', { 'style': 'color:#666' }, _('Unique Packages'))
-				])
-			])
-		]);
-	},
-
 	renderSettings: function() {
 		var self = this;
 		var settings = this.feedSettings;
 
-		return E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('Feed Settings')),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Share Feed')),
-				E('div', { 'class': 'cbi-value-field' }, [
+		return KissTheme.card('Feed Settings',
+			E('div', { 'style': 'display: flex; flex-direction: column; gap: 16px;' }, [
+				E('label', { 'style': 'display: flex; align-items: center; gap: 12px;' }, [
 					E('input', {
 						'type': 'checkbox',
 						'id': 'share-feed',
 						'checked': settings.share_feed
 					}),
-					E('span', { 'style': 'margin-left:8px' }, _('Share local packages with mesh peers'))
-				])
-			]),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Auto Sync')),
-				E('div', { 'class': 'cbi-value-field' }, [
+					E('span', { 'style': 'color: var(--kiss-muted);' }, _('Share local packages with mesh peers'))
+				]),
+				E('label', { 'style': 'display: flex; align-items: center; gap: 12px;' }, [
 					E('input', {
 						'type': 'checkbox',
 						'id': 'auto-sync',
 						'checked': settings.auto_sync
 					}),
-					E('span', { 'style': 'margin-left:8px' }, _('Automatically sync catalogs from peers'))
+					E('span', { 'style': 'color: var(--kiss-muted);' }, _('Automatically sync catalogs from peers'))
+				]),
+				E('div', { 'style': 'display: flex; justify-content: flex-end; margin-top: 8px;' }, [
+					E('button', {
+						'class': 'kiss-btn kiss-btn-green',
+						'click': function() { self.saveSettings(); }
+					}, _('Save Settings'))
 				])
-			]),
-			E('div', { 'class': 'right', 'style': 'margin-top:1em' }, [
-				E('button', {
-					'class': 'cbi-button cbi-button-save',
-					'click': function() { self.saveSettings(); }
-				}, _('Save Settings'))
 			])
-		]);
+		);
 	},
 
 	saveSettings: function() {
@@ -260,48 +240,57 @@ return view.extend({
 		}
 
 		if (this.allPackages.length === 0) {
-			return E('p', { 'style': 'color:#666; text-align:center; padding:2em' },
+			return E('p', { 'style': 'color: var(--kiss-muted); text-align: center; padding: 32px;' },
 				_('No packages found. Click "Sync Catalogs" to fetch from peers.'));
 		}
 
-		return E('table', { 'class': 'table' }, [
-			E('tr', { 'class': 'tr table-titles' }, [
-				E('th', { 'class': 'th' }, _('Package')),
-				E('th', { 'class': 'th' }, _('Version')),
-				E('th', { 'class': 'th' }, _('Size')),
-				E('th', { 'class': 'th' }, _('Available On')),
-				E('th', { 'class': 'th' }, _('Actions'))
-			])
-		].concat(this.allPackages.map(function(pkg) {
-			return self.renderPackageRow(pkg);
-		})));
+		return E('table', { 'class': 'kiss-table' }, [
+			E('thead', {}, E('tr', {}, [
+				E('th', { 'style': 'padding: 10px 12px;' }, _('Package')),
+				E('th', { 'style': 'padding: 10px 12px;' }, _('Version')),
+				E('th', { 'style': 'padding: 10px 12px;' }, _('Size')),
+				E('th', { 'style': 'padding: 10px 12px;' }, _('Available On')),
+				E('th', { 'style': 'padding: 10px 12px;' }, _('Actions'))
+			])),
+			E('tbody', {}, this.allPackages.map(function(pkg) {
+				return self.renderPackageRow(pkg);
+			}))
+		]);
 	},
 
 	render: function() {
 		var self = this;
 
-		var content = E('div', { 'class': 'cbi-map' }, [
-			E('h2', {}, _('P2P App Store')),
-			E('p', { 'style': 'color:#666; margin-bottom:1em' },
-				_('Discover and install packages from local feed and mesh peers.')),
-
-			this.renderStats(),
-
-			E('div', { 'class': 'cbi-section' }, [
-				E('div', { 'style': 'display:flex; justify-content:space-between; align-items:center; margin-bottom:1em' }, [
-					E('h3', {}, _('Packages')),
-					E('div', {}, [
-						E('button', {
-							'class': 'cbi-button cbi-button-action',
-							'click': function() { self.syncCatalogs(); }
-						}, _('Sync Catalogs'))
-					])
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'P2P App Store'),
+					KissTheme.badge('Packages', 'purple')
 				]),
-				E('div', { 'id': 'packages-content' }, this.renderPackagesTable())
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' },
+					'Discover and install packages from local feed and mesh peers')
 			]),
 
+			// Stats
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'style': 'margin: 20px 0;' },
+				this.renderStats()),
+
+			// Packages Card
+			KissTheme.card(
+				E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+					E('span', {}, 'Packages'),
+					E('button', {
+						'class': 'kiss-btn kiss-btn-cyan',
+						'click': function() { self.syncCatalogs(); }
+					}, _('Sync Catalogs'))
+				]),
+				E('div', { 'id': 'packages-content' }, this.renderPackagesTable())
+			),
+
+			// Settings
 			this.renderSettings()
-		]);
+		];
 
 		return KissTheme.wrap(content, 'admin/secubox/p2p/packages');
 	},

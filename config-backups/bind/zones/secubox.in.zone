@@ -1,0 +1,78 @@
+$TTL 300
+@       IN      SOA     ns0.secubox.in. admin.secubox.in. (
+                        2026021704      ; Serial (updated)
+                        3600            ; Refresh
+                        600             ; Retry
+                        604800          ; Expire
+                        300 )           ; Negative TTL
+
+; Nameservers
+@       IN      NS      ns0.secubox.in.
+@       IN      NS      ns1.secubox.in.
+@       IN      NS      ns6.gandi.net.
+
+; CAA records for Let's Encrypt
+@       IN      CAA     0 issue "letsencrypt.org"
+@       IN      CAA     0 issuewild "letsencrypt.org"
+
+; A records - PUBLIC IP for external access
+@       IN      A       82.67.100.75
+ns0     IN      A       82.67.100.75
+ns1     IN      A       82.67.100.75
+mail    IN      A       82.67.100.75
+localai IN      A       82.67.100.75
+gk2     IN      A       82.67.100.75
+
+; Wildcard for all subdomains - PUBLIC IP
+*       IN      A       82.67.100.75
+*.gk2   IN      A       82.67.100.75
+
+; MX record
+@       IN      MX      10 mail.secubox.in.
+
+; SPF record
+@       IN      TXT     "v=spf1 mx a ip4:82.67.100.75 ~all"
+
+; DMARC record
+_dmarc  IN      TXT     "v=DMARC1; p=quarantine; rua=mailto:postmaster@secubox.in"
+
+; ACME challenges
+_acme-challenge IN TXT "zIRC4aGfihUuFO1XhahHT8NvuC7a3Oi2fDzt1bXEmOA"
+_acme-challenge IN TXT "G0iJO-MiKDmYTJtjLdJoW3oWGA2l5d9moQ2H3DQLxyA"
+
+; IPv6 AAAA records
+@       IN      AAAA    2a01:e0a:dec:c4e0:250:43ff:fe84:fb2f
+ns0     IN      AAAA    2a01:e0a:dec:c4e0:250:43ff:fe84:fb2f
+ns1     IN      AAAA    2a01:e0a:dec:c4e0:250:43ff:fe84:fb2f
+mail    IN      AAAA    2a01:e0a:dec:c4e0:250:43ff:fe84:fb2f
+*       IN      AAAA    2a01:e0a:dec:c4e0:250:43ff:fe84:fb2f
+
+; Mail client autoconfig/autodiscover
+autoconfig      IN      A       82.67.100.75
+autoconfig      IN      AAAA    2a01:e0a:dec:c4e0:250:43ff:fe84:fb2f
+autodiscover    IN      A       82.67.100.75
+autodiscover    IN      AAAA    2a01:e0a:dec:c4e0:250:43ff:fe84:fb2f
+autoconfig.gk2  IN      A       82.67.100.75
+autoconfig.gk2  IN      AAAA    2a01:e0a:dec:c4e0:250:43ff:fe84:fb2f
+autodiscover.gk2 IN     A       82.67.100.75
+autodiscover.gk2 IN     AAAA    2a01:e0a:dec:c4e0:250:43ff:fe84:fb2f
+
+; SRV records for mail services (RFC 6186)
+_autodiscover._tcp      IN      SRV     0 0 443 autodiscover.secubox.in.
+_autodiscover._tcp.gk2  IN      SRV     0 0 443 autodiscover.gk2.secubox.in.
+
+; IMAP/IMAPS service discovery
+_imap._tcp              IN      SRV     0 0 143 mail.secubox.in.
+_imaps._tcp             IN      SRV     0 0 993 mail.secubox.in.
+_imap._tcp.gk2          IN      SRV     0 0 143 mail.gk2.secubox.in.
+_imaps._tcp.gk2         IN      SRV     0 0 993 mail.gk2.secubox.in.
+
+; SMTP submission service discovery
+_submission._tcp        IN      SRV     0 0 587 mail.secubox.in.
+_submissions._tcp       IN      SRV     0 0 465 mail.secubox.in.
+_submission._tcp.gk2    IN      SRV     0 0 587 mail.gk2.secubox.in.
+_submissions._tcp.gk2   IN      SRV     0 0 465 mail.gk2.secubox.in.
+
+; POP3 (optional, for legacy clients)
+_pop3s._tcp             IN      SRV     0 0 995 mail.secubox.in.
+_pop3s._tcp.gk2         IN      SRV     0 0 995 mail.gk2.secubox.in.

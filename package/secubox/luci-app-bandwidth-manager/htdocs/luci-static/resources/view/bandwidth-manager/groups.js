@@ -67,6 +67,10 @@ var callGetClasses = rpc.declare({
 });
 
 return view.extend({
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null,
+
 	groups: [],
 	clients: [],
 	classes: [],
@@ -79,48 +83,17 @@ return view.extend({
 		]);
 	},
 
-	render: function(data) {
-		var self = this;
-		this.groups = (data[0] && data[0].groups) || [];
-		this.clients = (data[1] && data[1].clients) || [];
-		this.classes = (data[2] && data[2].classes) || [];
+	renderStats: function() {
+		var c = KissTheme.colors;
+		var totalMembers = this.groups.reduce(function(sum, g) { return sum + (g.member_count || 0); }, 0);
+		var activeGroups = this.groups.filter(function(g) { return g.enabled; }).length;
 
-		document.body.setAttribute('data-secubox-app', 'bandwidth');
-
-		var view = E('div', { 'class': 'cbi-map' }, [
-			E('h2', { 'class': 'cbi-map-title' }, 'Device Groups'),
-			E('div', { 'class': 'cbi-map-descr' },
-				'Organize devices into groups for shared quotas and unified QoS policies'),
-
-			// Create Group Button
-			E('div', { 'style': 'margin-bottom: 1rem;' }, [
-				E('button', {
-					'class': 'cbi-button cbi-button-add',
-					'click': function() { self.showCreateGroupDialog(); }
-				}, 'Create New Group')
-			]),
-
-			// Groups Grid
-			E('div', { 'id': 'groups-container' }, [
-				this.renderGroupsGrid()
-			])
-		]);
-
-		poll.add(L.bind(this.pollData, this), 15);
-
-		return KissTheme.wrap([view], 'admin/services/bandwidth-manager/groups');
-	},
-
-	pollData: function() {
-		var self = this;
-		return callListGroups().then(function(data) {
-			self.groups = (data && data.groups) || [];
-			var container = document.getElementById('groups-container');
-			if (container) {
-				container.innerHTML = '';
-				container.appendChild(self.renderGroupsGrid());
-			}
-		});
+		return [
+			KissTheme.stat(this.groups.length, 'Total Groups', c.blue),
+			KissTheme.stat(activeGroups, 'Active', c.green),
+			KissTheme.stat(totalMembers, 'Total Members', c.purple),
+			KissTheme.stat(this.clients.length, 'Online Clients', c.cyan)
+		];
 	},
 
 	renderGroupsGrid: function() {
@@ -128,14 +101,13 @@ return view.extend({
 
 		if (this.groups.length === 0) {
 			return E('div', {
-				'style': 'padding: 3rem; text-align: center; color: var(--cyber-text-secondary, #a1a1aa); background: var(--cyber-bg-secondary, #141419); border-radius: 12px; border: 1px dashed var(--cyber-border-subtle, rgba(255,255,255,0.15));'
+				'style': 'padding: 40px; text-align: center; color: var(--kiss-muted); background: var(--kiss-bg); border-radius: 10px; border: 1px dashed var(--kiss-line);'
 			}, [
-				E('div', { 'style': 'font-size: 3rem; margin-bottom: 1rem;' }, '\ud83d\udc65'),
-				E('div', { 'style': 'font-weight: 600; margin-bottom: 0.5rem;' }, 'No Groups Created'),
-				E('div', { 'style': 'font-size: 0.875rem;' }, 'Create device groups to apply shared quotas and priorities'),
-				E('br'),
+				E('div', { 'style': 'font-size: 48px; margin-bottom: 16px;' }, '\ud83d\udc65'),
+				E('div', { 'style': 'font-weight: 600; margin-bottom: 8px;' }, 'No Groups Created'),
+				E('div', { 'style': 'font-size: 13px; margin-bottom: 20px;' }, 'Create device groups to apply shared quotas and priorities'),
 				E('button', {
-					'class': 'cbi-button cbi-button-add',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() { self.showCreateGroupDialog(); }
 				}, 'Create First Group')
 			]);
@@ -150,106 +122,138 @@ return view.extend({
 			'Guests': '\ud83d\udc64'
 		};
 
-		var presetColors = {
-			'Family': '#8b5cf6',
-			'IoT': '#06b6d4',
-			'Work': '#3b82f6',
-			'Gaming': '#ec4899',
-			'Kids': '#22c55e',
-			'Guests': '#f59e0b'
-		};
-
 		return E('div', {
-			'style': 'display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.25rem;'
+			'style': 'display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;'
 		}, this.groups.map(function(group) {
 			var icon = presetIcons[group.name] || '\ud83d\udc65';
-			var color = presetColors[group.name] || '#667eea';
-
 			var usagePercent = 0;
 			if (group.quota_mb && group.quota_mb > 0) {
 				usagePercent = Math.min(100, Math.round((group.used_mb / group.quota_mb) * 100));
 			}
-
-			var progressColor = usagePercent > 90 ? '#ef4444' : usagePercent > 70 ? '#f59e0b' : '#22c55e';
+			var progressColor = usagePercent > 90 ? 'var(--kiss-red)' : usagePercent > 70 ? 'var(--kiss-orange)' : 'var(--kiss-green)';
 
 			return E('div', {
-				'style': 'background: var(--cyber-bg-secondary, #141419); border: 1px solid var(--cyber-border-subtle, rgba(255,255,255,0.08)); border-radius: 12px; overflow: hidden; transition: all 0.2s ease;'
+				'style': 'background: var(--kiss-bg2); border: 1px solid var(--kiss-line); border-radius: 10px; overflow: hidden;'
 			}, [
 				// Header
-				E('div', {
-					'style': 'padding: 1.25rem; border-bottom: 1px solid var(--cyber-border-subtle, rgba(255,255,255,0.08));'
-				}, [
-					E('div', { 'style': 'display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;' }, [
+				E('div', { 'style': 'padding: 16px; border-bottom: 1px solid var(--kiss-line);' }, [
+					E('div', { 'style': 'display: flex; align-items: center; gap: 12px;' }, [
 						E('div', {
-							'style': 'width: 44px; height: 44px; background: ' + color + '20; color: ' + color + '; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.25rem;'
+							'style': 'width: 40px; height: 40px; background: var(--kiss-bg); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 20px;'
 						}, icon),
 						E('div', { 'style': 'flex: 1;' }, [
-							E('div', { 'style': 'font-weight: 600; font-size: 1rem;' }, group.name),
-							E('div', { 'style': 'font-size: 0.75rem; color: var(--cyber-text-tertiary, #71717a);' },
-								group.description || 'No description')
+							E('div', { 'style': 'font-weight: 600;' }, group.name),
+							E('div', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, group.description || 'No description')
 						]),
-						E('span', {
-							'style': 'padding: 0.25rem 0.5rem; font-size: 0.6875rem; font-weight: 600; border-radius: 4px; background: ' + (group.enabled ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)') + '; color: ' + (group.enabled ? '#22c55e' : '#ef4444') + ';'
-						}, group.enabled ? 'Active' : 'Disabled')
+						group.enabled ? KissTheme.badge('Active', 'green') : KissTheme.badge('Disabled', 'red')
 					])
 				]),
 
 				// Stats
-				E('div', { 'style': 'padding: 1rem 1.25rem;' }, [
-					E('div', { 'style': 'display: flex; justify-content: space-between; margin-bottom: 1rem;' }, [
-						E('div', {}, [
-							E('div', { 'style': 'font-size: 1.5rem; font-weight: 700;' }, group.member_count.toString()),
-							E('div', { 'style': 'font-size: 0.75rem; color: var(--cyber-text-secondary);' }, 'Devices')
+				E('div', { 'style': 'padding: 16px;' }, [
+					E('div', { 'style': 'display: flex; justify-content: space-between; margin-bottom: 16px;' }, [
+						E('div', { 'style': 'text-align: center;' }, [
+							E('div', { 'style': 'font-size: 24px; font-weight: 700;' }, String(group.member_count)),
+							E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted);' }, 'Devices')
 						]),
 						E('div', { 'style': 'text-align: center;' }, [
-							E('div', { 'style': 'font-size: 1.5rem; font-weight: 700;' }, 'P' + (group.priority || 5)),
-							E('div', { 'style': 'font-size: 0.75rem; color: var(--cyber-text-secondary);' }, 'Priority')
+							E('div', { 'style': 'font-size: 24px; font-weight: 700;' }, 'P' + (group.priority || 5)),
+							E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted);' }, 'Priority')
 						]),
-						E('div', { 'style': 'text-align: right;' }, [
-							E('div', { 'style': 'font-size: 1.5rem; font-weight: 700;' },
-								group.quota_mb > 0 ? self.formatMB(group.quota_mb) : '\u221e'),
-							E('div', { 'style': 'font-size: 0.75rem; color: var(--cyber-text-secondary);' }, 'Quota')
+						E('div', { 'style': 'text-align: center;' }, [
+							E('div', { 'style': 'font-size: 24px; font-weight: 700;' }, group.quota_mb > 0 ? self.formatMB(group.quota_mb) : '\u221e'),
+							E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted);' }, 'Quota')
 						])
 					]),
 
 					// Usage Progress
-					group.quota_mb > 0 ? E('div', { 'style': 'margin-bottom: 0.5rem;' }, [
-						E('div', { 'style': 'display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 0.25rem;' }, [
-							E('span', { 'style': 'color: var(--cyber-text-secondary);' }, 'Usage'),
+					group.quota_mb > 0 ? E('div', {}, [
+						E('div', { 'style': 'display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;' }, [
+							E('span', { 'style': 'color: var(--kiss-muted);' }, 'Usage'),
 							E('span', {}, self.formatMB(group.used_mb) + ' / ' + self.formatMB(group.quota_mb) + ' (' + usagePercent + '%)')
 						]),
 						E('div', {
-							'style': 'height: 6px; background: var(--cyber-bg-tertiary, rgba(255,255,255,0.05)); border-radius: 3px; overflow: hidden;'
+							'style': 'height: 6px; background: var(--kiss-bg); border-radius: 3px; overflow: hidden;'
 						}, [
 							E('div', {
-								'style': 'height: 100%; width: ' + usagePercent + '%; background: ' + progressColor + '; transition: width 0.3s ease;'
+								'style': 'height: 100%; width: ' + usagePercent + '%; background: ' + progressColor + ';'
 							})
 						])
-					]) : null
+					]) : ''
 				]),
 
 				// Actions
-				E('div', {
-					'style': 'padding: 0.75rem 1.25rem; background: var(--cyber-bg-tertiary, rgba(255,255,255,0.03)); display: flex; gap: 0.5rem;'
-				}, [
+				E('div', { 'style': 'padding: 12px 16px; background: var(--kiss-bg); display: flex; gap: 8px;' }, [
 					E('button', {
-						'class': 'cbi-button',
-						'style': 'flex: 1; font-size: 0.75rem;',
+						'class': 'kiss-btn kiss-btn-blue',
+						'style': 'flex: 1; font-size: 12px;',
 						'click': function() { self.showGroupDetails(group.id); }
 					}, 'Manage'),
 					E('button', {
-						'class': 'cbi-button',
-						'style': 'flex: 1; font-size: 0.75rem;',
+						'class': 'kiss-btn',
+						'style': 'flex: 1; font-size: 12px;',
 						'click': function() { self.showEditGroupDialog(group); }
 					}, 'Edit'),
 					E('button', {
-						'class': 'cbi-button cbi-button-negative',
-						'style': 'font-size: 0.75rem;',
+						'class': 'kiss-btn kiss-btn-red',
+						'style': 'font-size: 12px; padding: 6px 12px;',
 						'click': function() { self.deleteGroup(group); }
 					}, '\u2717')
 				])
 			]);
 		}));
+	},
+
+	render: function(data) {
+		var self = this;
+		this.groups = (data[0] && data[0].groups) || [];
+		this.clients = (data[1] && data[1].clients) || [];
+		this.classes = (data[2] && data[2].classes) || [];
+
+		poll.add(L.bind(this.pollData, this), 15);
+
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'Device Groups'),
+					KissTheme.badge(this.groups.length + ' groups', 'blue'),
+					E('button', {
+						'class': 'kiss-btn kiss-btn-green',
+						'style': 'margin-left: auto;',
+						'click': function() { self.showCreateGroupDialog(); }
+					}, 'Create Group')
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' },
+					'Organize devices into groups for shared quotas and unified QoS policies')
+			]),
+
+			// Stats
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'id': 'groups-stats', 'style': 'margin: 20px 0;' },
+				this.renderStats()),
+
+			// Groups Grid
+			E('div', { 'id': 'groups-container' }, [
+				this.renderGroupsGrid()
+			])
+		];
+
+		return KissTheme.wrap(content, 'admin/services/bandwidth-manager/groups');
+	},
+
+	pollData: function() {
+		var self = this;
+		return callListGroups().then(function(data) {
+			self.groups = (data && data.groups) || [];
+			var container = document.getElementById('groups-container');
+			var statsContainer = document.getElementById('groups-stats');
+			if (container) {
+				dom.content(container, self.renderGroupsGrid());
+			}
+			if (statsContainer) {
+				dom.content(statsContainer, self.renderStats());
+			}
+		});
 	},
 
 	showCreateGroupDialog: function() {
@@ -265,13 +269,13 @@ return view.extend({
 		];
 
 		ui.showModal('Create Device Group', [
-			E('div', { 'style': 'margin-bottom: 1rem;' }, [
-				E('label', { 'style': 'display: block; margin-bottom: 0.5rem; font-weight: 500;' }, 'Quick Presets'),
-				E('div', { 'style': 'display: flex; flex-wrap: wrap; gap: 0.5rem;' },
+			E('div', { 'style': 'margin-bottom: 16px;' }, [
+				E('label', { 'style': 'display: block; margin-bottom: 8px; font-weight: 500;' }, 'Quick Presets'),
+				E('div', { 'style': 'display: flex; flex-wrap: wrap; gap: 8px;' },
 					presets.map(function(preset) {
 						return E('button', {
-							'class': 'cbi-button',
-							'style': 'display: flex; align-items: center; gap: 0.5rem;',
+							'class': 'kiss-btn',
+							'style': 'display: flex; align-items: center; gap: 6px;',
 							'click': function() {
 								document.getElementById('group-name').value = preset.name;
 								document.getElementById('group-desc').value = preset.desc;
@@ -280,54 +284,53 @@ return view.extend({
 					})
 				)
 			]),
-			E('hr', { 'style': 'margin: 1rem 0; border-color: var(--cyber-border-subtle);' }),
-			E('div', { 'style': 'margin-bottom: 1rem;' }, [
-				E('label', { 'style': 'display: block; margin-bottom: 0.5rem;' }, 'Group Name *'),
+			E('hr', { 'style': 'margin: 16px 0; border-color: var(--kiss-line);' }),
+			E('div', { 'style': 'margin-bottom: 16px;' }, [
+				E('label', { 'style': 'display: block; margin-bottom: 6px;' }, 'Group Name *'),
 				E('input', {
 					'type': 'text',
 					'class': 'cbi-input-text',
 					'id': 'group-name',
-					'placeholder': 'Enter group name'
+					'placeholder': 'Enter group name',
+					'style': 'width: 100%; padding: 8px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text);'
 				})
 			]),
-			E('div', { 'style': 'margin-bottom: 1rem;' }, [
-				E('label', { 'style': 'display: block; margin-bottom: 0.5rem;' }, 'Description'),
+			E('div', { 'style': 'margin-bottom: 16px;' }, [
+				E('label', { 'style': 'display: block; margin-bottom: 6px;' }, 'Description'),
 				E('input', {
 					'type': 'text',
 					'class': 'cbi-input-text',
 					'id': 'group-desc',
-					'placeholder': 'Optional description'
+					'placeholder': 'Optional description',
+					'style': 'width: 100%; padding: 8px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text);'
 				})
 			]),
-			E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;' }, [
+			E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;' }, [
 				E('div', {}, [
-					E('label', { 'style': 'display: block; margin-bottom: 0.5rem;' }, 'Shared Quota (MB)'),
+					E('label', { 'style': 'display: block; margin-bottom: 6px;' }, 'Shared Quota (MB)'),
 					E('input', {
 						'type': 'number',
-						'class': 'cbi-input-text',
 						'id': 'group-quota',
 						'value': '0',
 						'min': '0',
-						'placeholder': '0 = unlimited'
+						'placeholder': '0 = unlimited',
+						'style': 'width: 100%; padding: 8px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text);'
 					})
 				]),
 				E('div', {}, [
-					E('label', { 'style': 'display: block; margin-bottom: 0.5rem;' }, 'Priority Class'),
-					E('select', { 'class': 'cbi-input-select', 'id': 'group-priority' },
-						this.classes.map(function(c) {
-							return E('option', { 'value': c.priority, 'selected': c.priority === 5 }, c.priority + ' - ' + c.name);
-						})
-					)
+					E('label', { 'style': 'display: block; margin-bottom: 6px;' }, 'Priority Class'),
+					E('select', {
+						'id': 'group-priority',
+						'style': 'width: 100%; padding: 8px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text);'
+					}, this.classes.map(function(c) {
+						return E('option', { 'value': c.priority, 'selected': c.priority === 5 }, c.priority + ' - ' + c.name);
+					}))
 				])
 			]),
-			E('div', { 'class': 'right' }, [
+			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px;' }, [
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
 				E('button', {
-					'class': 'cbi-button',
-					'click': ui.hideModal
-				}, 'Cancel'),
-				' ',
-				E('button', {
-					'class': 'cbi-button cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() {
 						var name = document.getElementById('group-name').value.trim();
 						var desc = document.getElementById('group-desc').value.trim();
@@ -358,55 +361,52 @@ return view.extend({
 		var self = this;
 
 		ui.showModal('Edit Group: ' + group.name, [
-			E('div', { 'style': 'margin-bottom: 1rem;' }, [
-				E('label', { 'style': 'display: block; margin-bottom: 0.5rem;' }, 'Group Name *'),
+			E('div', { 'style': 'margin-bottom: 16px;' }, [
+				E('label', { 'style': 'display: block; margin-bottom: 6px;' }, 'Group Name *'),
 				E('input', {
 					'type': 'text',
-					'class': 'cbi-input-text',
 					'id': 'edit-group-name',
-					'value': group.name
+					'value': group.name,
+					'style': 'width: 100%; padding: 8px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text);'
 				})
 			]),
-			E('div', { 'style': 'margin-bottom: 1rem;' }, [
-				E('label', { 'style': 'display: block; margin-bottom: 0.5rem;' }, 'Description'),
+			E('div', { 'style': 'margin-bottom: 16px;' }, [
+				E('label', { 'style': 'display: block; margin-bottom: 6px;' }, 'Description'),
 				E('input', {
 					'type': 'text',
-					'class': 'cbi-input-text',
 					'id': 'edit-group-desc',
-					'value': group.description || ''
+					'value': group.description || '',
+					'style': 'width: 100%; padding: 8px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text);'
 				})
 			]),
-			E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;' }, [
+			E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;' }, [
 				E('div', {}, [
-					E('label', { 'style': 'display: block; margin-bottom: 0.5rem;' }, 'Shared Quota (MB)'),
+					E('label', { 'style': 'display: block; margin-bottom: 6px;' }, 'Shared Quota (MB)'),
 					E('input', {
 						'type': 'number',
-						'class': 'cbi-input-text',
 						'id': 'edit-group-quota',
 						'value': group.quota_mb || '0',
-						'min': '0'
+						'min': '0',
+						'style': 'width: 100%; padding: 8px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text);'
 					})
 				]),
 				E('div', {}, [
-					E('label', { 'style': 'display: block; margin-bottom: 0.5rem;' }, 'Priority Class'),
-					E('select', { 'class': 'cbi-input-select', 'id': 'edit-group-priority' },
-						this.classes.map(function(c) {
-							return E('option', {
-								'value': c.priority,
-								'selected': c.priority === (group.priority || 5)
-							}, c.priority + ' - ' + c.name);
-						})
-					)
+					E('label', { 'style': 'display: block; margin-bottom: 6px;' }, 'Priority Class'),
+					E('select', {
+						'id': 'edit-group-priority',
+						'style': 'width: 100%; padding: 8px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text);'
+					}, this.classes.map(function(c) {
+						return E('option', {
+							'value': c.priority,
+							'selected': c.priority === (group.priority || 5)
+						}, c.priority + ' - ' + c.name);
+					}))
 				])
 			]),
-			E('div', { 'class': 'right' }, [
+			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px;' }, [
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
 				E('button', {
-					'class': 'cbi-button',
-					'click': ui.hideModal
-				}, 'Cancel'),
-				' ',
-				E('button', {
-					'class': 'cbi-button cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() {
 						var name = document.getElementById('edit-group-name').value.trim();
 						var desc = document.getElementById('edit-group-desc').value.trim();
@@ -448,11 +448,11 @@ return view.extend({
 			});
 
 			ui.showModal('Manage Group: ' + group.name, [
-				E('h4', { 'style': 'margin-bottom: 1rem;' }, 'Group Members (' + members.length + ')'),
+				E('h4', { 'style': 'margin-bottom: 16px;' }, 'Group Members (' + members.length + ')'),
 
 				members.length > 0 ?
-					E('div', { 'style': 'max-height: 200px; overflow-y: auto; margin-bottom: 1rem;' }, [
-						E('table', { 'class': 'table', 'style': 'width: 100%;' }, [
+					E('div', { 'style': 'max-height: 200px; overflow-y: auto; margin-bottom: 16px;' }, [
+						E('table', { 'class': 'kiss-table' }, [
 							E('thead', {}, [
 								E('tr', {}, [
 									E('th', {}, 'Device'),
@@ -466,14 +466,14 @@ return view.extend({
 									return E('tr', {}, [
 										E('td', {}, [
 											E('div', { 'style': 'font-weight: 500;' }, member.hostname || 'Unknown'),
-											E('div', { 'style': 'font-size: 0.75rem; color: var(--cyber-text-tertiary);' }, member.mac)
+											E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted);' }, member.mac)
 										]),
 										E('td', {}, member.ip || '-'),
 										E('td', {}, self.formatMB(member.used_mb || 0)),
 										E('td', {}, [
 											E('button', {
-												'class': 'cbi-button cbi-button-negative',
-												'style': 'font-size: 0.75rem; padding: 0.25rem 0.5rem;',
+												'class': 'kiss-btn kiss-btn-red',
+												'style': 'font-size: 11px; padding: 4px 8px;',
 												'click': function() {
 													callRemoveFromGroup(groupId, member.mac).then(function(res) {
 														if (res.success) {
@@ -491,14 +491,14 @@ return view.extend({
 						])
 					]) :
 					E('div', {
-						'style': 'padding: 1rem; text-align: center; color: var(--cyber-text-secondary); background: var(--cyber-bg-tertiary); border-radius: 8px; margin-bottom: 1rem;'
+						'style': 'padding: 16px; text-align: center; color: var(--kiss-muted); background: var(--kiss-bg); border-radius: 8px; margin-bottom: 16px;'
 					}, 'No devices in this group'),
 
-				E('h4', { 'style': 'margin-bottom: 1rem;' }, 'Add Devices'),
+				E('h4', { 'style': 'margin-bottom: 16px;' }, 'Add Devices'),
 
 				availableClients.length > 0 ?
-					E('div', { 'style': 'max-height: 200px; overflow-y: auto; margin-bottom: 1rem;' }, [
-						E('table', { 'class': 'table', 'style': 'width: 100%;' }, [
+					E('div', { 'style': 'max-height: 200px; overflow-y: auto; margin-bottom: 16px;' }, [
+						E('table', { 'class': 'kiss-table' }, [
 							E('thead', {}, [
 								E('tr', {}, [
 									E('th', {}, 'Device'),
@@ -511,13 +511,13 @@ return view.extend({
 									return E('tr', {}, [
 										E('td', {}, [
 											E('div', { 'style': 'font-weight: 500;' }, client.hostname || 'Unknown'),
-											E('div', { 'style': 'font-size: 0.75rem; color: var(--cyber-text-tertiary);' }, client.mac)
+											E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted);' }, client.mac)
 										]),
 										E('td', {}, client.ip || '-'),
 										E('td', {}, [
 											E('button', {
-												'class': 'cbi-button cbi-button-positive',
-												'style': 'font-size: 0.75rem; padding: 0.25rem 0.5rem;',
+												'class': 'kiss-btn kiss-btn-green',
+												'style': 'font-size: 11px; padding: 4px 8px;',
 												'click': function() {
 													callAddToGroup(groupId, client.mac).then(function(res) {
 														if (res.success) {
@@ -535,14 +535,11 @@ return view.extend({
 						])
 					]) :
 					E('div', {
-						'style': 'padding: 1rem; text-align: center; color: var(--cyber-text-secondary); background: var(--cyber-bg-tertiary); border-radius: 8px; margin-bottom: 1rem;'
+						'style': 'padding: 16px; text-align: center; color: var(--kiss-muted); background: var(--kiss-bg); border-radius: 8px; margin-bottom: 16px;'
 					}, 'No available devices to add'),
 
-				E('div', { 'class': 'right' }, [
-					E('button', {
-						'class': 'cbi-button',
-						'click': ui.hideModal
-					}, 'Close')
+				E('div', { 'style': 'display: flex; justify-content: flex-end;' }, [
+					E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Close')
 				])
 			]);
 		});
@@ -553,16 +550,11 @@ return view.extend({
 
 		ui.showModal('Delete Group', [
 			E('p', {}, 'Are you sure you want to delete the group "' + group.name + '"?'),
-			E('p', { 'style': 'color: var(--cyber-text-secondary);' },
-				'This will not affect the devices in the group.'),
-			E('div', { 'class': 'right' }, [
+			E('p', { 'style': 'color: var(--kiss-muted);' }, 'This will not affect the devices in the group.'),
+			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px;' }, [
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
 				E('button', {
-					'class': 'cbi-button',
-					'click': ui.hideModal
-				}, 'Cancel'),
-				' ',
-				E('button', {
-					'class': 'cbi-button cbi-button-negative',
+					'class': 'kiss-btn kiss-btn-red',
 					'click': function() {
 						ui.hideModal();
 						callDeleteGroup(group.id).then(function(res) {
@@ -585,9 +577,5 @@ return view.extend({
 			return (mb / 1024).toFixed(1) + ' GB';
 		}
 		return mb + ' MB';
-	},
-
-	handleSaveApply: null,
-	handleSave: null,
-	handleReset: null
+	}
 });

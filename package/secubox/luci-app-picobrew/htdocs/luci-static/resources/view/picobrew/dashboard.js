@@ -781,11 +781,11 @@ return view.extend({
 			E('p', {}, _('Are you sure you want to uninstall PicoBrew Server? Your data will be preserved.')),
 			E('div', { 'class': 'right' }, [
 				E('button', {
-					'class': 'btn',
+					'class': 'kiss-btn',
 					'click': ui.hideModal
 				}, _('Cancel')),
 				E('button', {
-					'class': 'btn cbi-button-negative',
+					'class': 'kiss-btn kiss-btn-red',
 					'click': function() {
 						ui.hideModal();
 						callUninstall().then(function(result) {

@@ -69,6 +69,19 @@ return view.extend({
 		]);
 	},
 
+	renderStats: function(config, records) {
+		var c = KissTheme.colors;
+		var enabled = config.enabled === '1';
+		var recordCount = records.success && records.raw ? records.raw.split('\n').filter(function(l) { return l.trim(); }).length : 0;
+
+		return [
+			KissTheme.stat(providerLabel(config.provider), 'Provider', c.purple),
+			KissTheme.stat(config.zone || '-', 'Zone', c.cyan),
+			KissTheme.stat(enabled ? 'Active' : 'Inactive', 'Status', enabled ? c.green : c.red),
+			KissTheme.stat(recordCount, 'Records', c.blue)
+		];
+	},
+
 	render: function(data) {
 		var config = data[0] || {};
 		var records = data[1] || {};
@@ -77,118 +90,110 @@ return view.extend({
 		var provider = config.provider || '';
 		var zone = config.zone || '';
 
-		// ── Status Bar ──
-		var statusItems = [
-			E('span', { 'style': 'margin-right:2em;' }, [
-				E('strong', {}, _('Provider: ')),
-				providerLabel(provider)
-			]),
-			E('span', { 'style': 'margin-right:2em;' }, [
-				E('strong', {}, _('Zone: ')),
-				zone || _('not set')
-			]),
-			E('span', {}, [
-				E('strong', {}, _('Enabled: ')),
-				config.enabled === '1'
-					? E('span', { 'style': 'color:#22c55e;' }, _('Yes'))
-					: E('span', { 'style': 'color:#ef4444;' }, _('No'))
-			])
-		];
-
-		var statusBar = E('div', {
-			'class': 'cbi-section',
-			'style': 'padding:1em; display:flex; flex-wrap:wrap; gap:0.5em;'
-		}, statusItems);
-
-		// ── Not Configured Warning ──
+		// Not Configured Warning
 		if (!provider || !zone) {
-			return E('div', {}, [
-				E('h2', {}, _('DNS Records')),
-				statusBar,
-				E('div', {
-					'class': 'cbi-section',
-					'style': 'padding:2em; text-align:center;'
-				}, [
-					E('p', { 'style': 'font-size:1.1em;' },
-						_('DNS provider is not configured. Go to Settings to configure your provider and zone.')),
+			var content = [
+				E('div', { 'style': 'margin-bottom: 24px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'DNS Records'),
+					E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' },
+						'Manage DNS records for your domain')
+				]),
+				KissTheme.card('Configuration Required', E('div', { 'style': 'text-align: center; padding: 40px 20px;' }, [
+					E('p', { 'style': 'font-size: 16px; color: var(--kiss-muted); margin-bottom: 20px;' },
+						'DNS provider is not configured. Go to Settings to configure your provider and zone.'),
 					E('a', {
 						'href': L.url('admin/secubox/network/dns-provider/settings'),
-						'class': 'cbi-button cbi-button-action'
-					}, _('Go to Settings'))
-				])
-			]);
+						'class': 'kiss-btn kiss-btn-green'
+					}, 'Go to Settings')
+				]))
+			];
+			return KissTheme.wrap(content, 'admin/secubox/network/dns-provider/records');
 		}
 
-		// ── Action Buttons ──
-		var actions = E('div', {
-			'style': 'display:flex; gap:0.5em; flex-wrap:wrap; margin-bottom:1em;'
-		}, [
+		// Action Buttons
+		var actions = E('div', { 'style': 'display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px;' }, [
 			E('button', {
-				'class': 'cbi-button cbi-button-action',
+				'class': 'kiss-btn kiss-btn-green',
 				'click': function() { self.handleAddRecord(zone); }
-			}, _('Add Record')),
+			}, '+ Add Record'),
 			E('button', {
-				'class': 'cbi-button cbi-button-neutral',
+				'class': 'kiss-btn kiss-btn-blue',
 				'click': function() { self.handleSync(); }
-			}, _('Sync HAProxy Vhosts')),
+			}, 'Sync HAProxy Vhosts'),
 			E('button', {
-				'class': 'cbi-button cbi-button-neutral',
+				'class': 'kiss-btn kiss-btn-purple',
 				'click': function() { self.handleAcme(zone); }
-			}, _('ACME DNS-01')),
+			}, 'ACME DNS-01'),
 			E('button', {
-				'class': 'cbi-button',
+				'class': 'kiss-btn',
+				'style': 'background: var(--kiss-bg2); border: 1px solid var(--kiss-line);',
 				'click': function() {
 					window.location.href = window.location.pathname + '?' + Date.now();
 				}
-			}, _('Refresh'))
+			}, 'Refresh')
 		]);
 
-		// ── Records Display ──
-		var recordsSection;
+		// Records Display
+		var recordsContent;
 		if (records.success && records.raw) {
-			// Raw output from provider API — display in a preformatted block
-			// The output format depends on the provider
-			recordsSection = E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Zone Records')),
-				E('pre', {
-					'style': 'background:var(--bg-alt, #f5f5f5); padding:1em; overflow-x:auto; ' +
-						'border-radius:4px; font-size:0.85em; max-height:60vh;'
-				}, records.raw || _('No records returned'))
-			]);
+			recordsContent = E('pre', {
+				'style': 'background: var(--kiss-bg); padding: 16px; border-radius: 8px; ' +
+					'font-family: monospace; font-size: 13px; overflow-x: auto; max-height: 400px; ' +
+					'border: 1px solid var(--kiss-line); color: var(--kiss-text);'
+			}, records.raw || 'No records returned');
 		} else {
-			recordsSection = E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Zone Records')),
-				E('p', { 'style': 'color:#ef4444;' },
-					records.error || _('Failed to fetch records. Check your provider configuration.'))
-			]);
+			recordsContent = E('p', { 'style': 'color: var(--kiss-red); padding: 20px;' },
+				records.error || 'Failed to fetch records. Check your provider configuration.');
 		}
 
-		// ── Verify Section ──
-		var verifySection = E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('DNS Propagation Check')),
-			E('div', { 'style': 'display:flex; gap:0.5em; align-items:center;' }, [
-				E('input', {
-					'id': 'verify-fqdn',
-					'type': 'text',
-					'class': 'cbi-input-text',
-					'placeholder': 'subdomain.' + zone,
-					'style': 'width:300px;'
-				}),
-				E('button', {
-					'class': 'cbi-button cbi-button-action',
-					'click': function() { self.handleVerify(); }
-				}, _('Verify'))
-			]),
-			E('div', { 'id': 'verify-results', 'style': 'margin-top:1em;' })
+		// Verify Section
+		var verifyContent = E('div', { 'style': 'display: flex; gap: 12px; align-items: center; flex-wrap: wrap;' }, [
+			E('input', {
+				'id': 'verify-fqdn',
+				'type': 'text',
+				'placeholder': 'subdomain.' + zone,
+				'style': 'flex: 1; min-width: 200px; padding: 10px 14px; background: var(--kiss-bg); ' +
+					'border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text);'
+			}),
+			E('button', {
+				'class': 'kiss-btn kiss-btn-cyan',
+				'click': function() { self.handleVerify(); }
+			}, 'Verify')
 		]);
 
-		var content = E('div', {}, [
-			E('h2', {}, _('DNS Records')),
-			statusBar,
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'DNS Records'),
+					KissTheme.badge(providerLabel(provider), 'purple')
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' },
+					'Manage DNS records for ' + zone)
+			]),
+
+			// Stats
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'style': 'margin: 20px 0;' },
+				this.renderStats(config, records)),
+
+			// Actions
 			actions,
-			recordsSection,
-			verifySection
-		]);
+
+			// Records Card
+			KissTheme.card('Zone Records', recordsContent),
+
+			// Verify Card
+			KissTheme.card(
+				E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+					E('span', {}, 'DNS Propagation Check'),
+					KissTheme.badge('Verify', 'cyan')
+				]),
+				E('div', {}, [
+					verifyContent,
+					E('div', { 'id': 'verify-results', 'style': 'margin-top: 16px;' })
+				])
+			)
+		];
 
 		return KissTheme.wrap(content, 'admin/secubox/network/dns-provider/records');
 	},
@@ -197,10 +202,13 @@ return view.extend({
 		var typeInput, subInput, targetInput, ttlInput;
 
 		ui.showModal(_('Add DNS Record'), [
-			E('div', { 'style': 'display:flex; flex-direction:column; gap:0.8em;' }, [
-				E('label', {}, [
-					E('strong', {}, _('Type')),
-					typeInput = E('select', { 'class': 'cbi-input-select', 'style': 'margin-left:0.5em;' }, [
+			E('div', { 'style': 'display: flex; flex-direction: column; gap: 16px;' }, [
+				E('label', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+					E('span', { 'style': 'font-weight: 500; color: var(--kiss-muted);' }, _('Type')),
+					typeInput = E('select', {
+						'style': 'padding: 10px 14px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); ' +
+							'border-radius: 6px; color: var(--kiss-text);'
+					}, [
 						E('option', { value: 'A' }, 'A'),
 						E('option', { value: 'AAAA' }, 'AAAA'),
 						E('option', { value: 'CNAME' }, 'CNAME'),
@@ -209,39 +217,44 @@ return view.extend({
 						E('option', { value: 'SRV' }, 'SRV')
 					])
 				]),
-				E('label', {}, [
-					E('strong', {}, _('Subdomain')),
+				E('label', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+					E('span', { 'style': 'font-weight: 500; color: var(--kiss-muted);' }, _('Subdomain')),
 					subInput = E('input', {
-						'type': 'text', 'class': 'cbi-input-text',
-						'placeholder': 'www', 'style': 'margin-left:0.5em;'
+						'type': 'text',
+						'placeholder': 'www',
+						'style': 'padding: 10px 14px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); ' +
+							'border-radius: 6px; color: var(--kiss-text);'
 					})
 				]),
-				E('label', {}, [
-					E('strong', {}, _('Target')),
+				E('label', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+					E('span', { 'style': 'font-weight: 500; color: var(--kiss-muted);' }, _('Target')),
 					targetInput = E('input', {
-						'type': 'text', 'class': 'cbi-input-text',
-						'placeholder': '1.2.3.4', 'style': 'margin-left:0.5em;'
+						'type': 'text',
+						'placeholder': '1.2.3.4',
+						'style': 'padding: 10px 14px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); ' +
+							'border-radius: 6px; color: var(--kiss-text);'
 					})
 				]),
-				E('label', {}, [
-					E('strong', {}, _('TTL')),
+				E('label', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+					E('span', { 'style': 'font-weight: 500; color: var(--kiss-muted);' }, _('TTL')),
 					ttlInput = E('input', {
-						'type': 'number', 'class': 'cbi-input-text',
-						'value': '3600', 'style': 'margin-left:0.5em; width:100px;'
+						'type': 'number',
+						'value': '3600',
+						'style': 'padding: 10px 14px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); ' +
+							'border-radius: 6px; color: var(--kiss-text); width: 120px;'
 					})
 				]),
-				E('p', { 'style': 'color:#6b7280; font-size:0.85em;' },
-					_('Record will be created as: ') +
-					E('code', {}, '{subdomain}.' + zone).textContent)
+				E('p', { 'style': 'color: var(--kiss-muted); font-size: 13px;' },
+					_('Record will be created as: ') + '{subdomain}.' + zone)
 			]),
-			E('div', { 'class': 'right', 'style': 'margin-top:1em;' }, [
+			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px;' }, [
 				E('button', {
-					'class': 'cbi-button',
+					'class': 'kiss-btn',
+					'style': 'background: var(--kiss-bg2); border: 1px solid var(--kiss-line);',
 					'click': ui.hideModal
 				}, _('Cancel')),
-				' ',
 				E('button', {
-					'class': 'cbi-button cbi-button-action',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() {
 						var type = typeInput.value;
 						var sub = subInput.value.trim();
@@ -283,12 +296,16 @@ return view.extend({
 
 	handleSync: function() {
 		ui.showModal(_('Sync DNS Records'), [
-			E('p', {}, _('This will create A records for all enabled HAProxy vhosts pointing to your public IP.')),
-			E('div', { 'class': 'right', 'style': 'margin-top:1em;' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
-				' ',
+			E('p', { 'style': 'color: var(--kiss-muted);' },
+				_('This will create A records for all enabled HAProxy vhosts pointing to your public IP.')),
+			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px;' }, [
 				E('button', {
-					'class': 'cbi-button cbi-button-action',
+					'class': 'kiss-btn',
+					'style': 'background: var(--kiss-bg2); border: 1px solid var(--kiss-line);',
+					'click': ui.hideModal
+				}, _('Cancel')),
+				E('button', {
+					'class': 'kiss-btn kiss-btn-blue',
 					'click': function() {
 						ui.hideModal();
 						ui.showModal(_('Syncing...'), [
@@ -320,20 +337,27 @@ return view.extend({
 		var domainInput;
 
 		ui.showModal(_('ACME DNS-01 Certificate'), [
-			E('p', {}, _('Issue an SSL certificate using DNS-01 challenge. Supports wildcards.')),
-			E('div', { 'style': 'margin:1em 0;' }, [
-				E('strong', {}, _('Domain: ')),
-				domainInput = E('input', {
-					'type': 'text', 'class': 'cbi-input-text',
-					'placeholder': '*.' + zone,
-					'style': 'width:300px;'
-				})
+			E('p', { 'style': 'color: var(--kiss-muted);' },
+				_('Issue an SSL certificate using DNS-01 challenge. Supports wildcards.')),
+			E('div', { 'style': 'margin: 16px 0;' }, [
+				E('label', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+					E('span', { 'style': 'font-weight: 500; color: var(--kiss-muted);' }, _('Domain')),
+					domainInput = E('input', {
+						'type': 'text',
+						'placeholder': '*.' + zone,
+						'style': 'padding: 10px 14px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); ' +
+							'border-radius: 6px; color: var(--kiss-text); width: 100%;'
+					})
+				])
 			]),
-			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
-				' ',
+			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px;' }, [
 				E('button', {
-					'class': 'cbi-button cbi-button-action',
+					'class': 'kiss-btn',
+					'style': 'background: var(--kiss-bg2); border: 1px solid var(--kiss-line);',
+					'click': ui.hideModal
+				}, _('Cancel')),
+				E('button', {
+					'class': 'kiss-btn kiss-btn-purple',
 					'click': function() {
 						var domain = domainInput.value.trim();
 						if (!domain) {
@@ -384,17 +408,17 @@ return view.extend({
 
 		callVerifyRecord(fqdn).then(function(res) {
 			if (!res || !res.success) {
-				dom.content(resultsEl, E('p', { 'style': 'color:#ef4444;' },
+				dom.content(resultsEl, E('p', { 'style': 'color: var(--kiss-red);' },
 					res ? res.error : _('Verification failed')));
 				return;
 			}
 
 			var rows = (res.resolvers || []).map(function(r) {
-				var color = r.resolved ? '#22c55e' : '#ef4444';
+				var resolved = r.resolved;
 				return E('tr', {}, [
-					E('td', {}, r.resolver),
-					E('td', { 'style': 'color:' + color + ';' },
-						r.resolved ? r.result : _('not resolved'))
+					E('td', { 'style': 'padding: 10px 12px;' }, r.resolver),
+					E('td', { 'style': 'padding: 10px 12px; color: var(--kiss-' + (resolved ? 'green' : 'red') + ');' },
+						resolved ? r.result : _('not resolved'))
 				]);
 			});
 
@@ -402,18 +426,18 @@ return view.extend({
 			var resolved = (res.resolvers || []).filter(function(r) { return r.resolved; }).length;
 
 			dom.content(resultsEl, E('div', {}, [
-				E('table', { 'class': 'table' }, [
+				E('table', { 'class': 'kiss-table' }, [
 					E('thead', {}, E('tr', {}, [
-						E('th', {}, _('Resolver')),
-						E('th', {}, _('Result'))
+						E('th', { 'style': 'padding: 10px 12px;' }, _('Resolver')),
+						E('th', { 'style': 'padding: 10px 12px;' }, _('Result'))
 					])),
 					E('tbody', {}, rows)
 				]),
-				E('p', { 'style': 'margin-top:0.5em; font-weight:bold;' },
+				E('p', { 'style': 'margin-top: 12px; font-weight: 600; color: var(--kiss-text);' },
 					resolved + '/' + total + _(' resolvers responded'))
 			]));
 		}).catch(function(err) {
-			dom.content(resultsEl, E('p', { 'style': 'color:#ef4444;' },
+			dom.content(resultsEl, E('p', { 'style': 'color: var(--kiss-red);' },
 				_('RPC error: ') + err.message));
 		});
 	},

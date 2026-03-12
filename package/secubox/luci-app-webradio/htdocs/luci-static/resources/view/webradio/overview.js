@@ -3,7 +3,7 @@
 'require rpc';
 'require poll';
 'require ui';
-'require form';
+'require secubox/kiss-theme';
 
 var callStatus = rpc.declare({
 	object: 'luci.webradio',
@@ -52,181 +52,137 @@ return view.extend({
 		]);
 	},
 
-	render: function(data) {
-		var self = this;
-		var status = data[0] || {};
-		var currentShow = data[1] || {};
-
-		poll.add(function() {
-			return Promise.all([callStatus(), callCurrentShow()]).then(function(res) {
-				self.updateStatus(res[0], res[1]);
-			});
-		}, 5);
-
-		var icecast = status.icecast || {};
-		var ezstream = status.ezstream || {};
-		var stream = status.stream || {};
-		var playlist = status.playlist || {};
-		var showName = currentShow.name || 'Default';
-
-		var content = [
-			E('h2', {}, 'WebRadio'),
-
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, 'Status'),
-				E('div', { 'class': 'table', 'id': 'status-table' }, [
-					E('div', { 'class': 'tr' }, [
-						E('div', { 'class': 'td' }, 'Icecast Server'),
-						E('div', { 'class': 'td', 'id': 'icecast-status' },
-							this.statusBadge(icecast.running))
-					]),
-					E('div', { 'class': 'tr' }, [
-						E('div', { 'class': 'td' }, 'Ezstream Source'),
-						E('div', { 'class': 'td', 'id': 'ezstream-status' },
-							this.statusBadge(ezstream.running))
-					]),
-					E('div', { 'class': 'tr' }, [
-						E('div', { 'class': 'td' }, 'Listeners'),
-						E('div', { 'class': 'td', 'id': 'listeners' },
-							String(stream.listeners || 0))
-					]),
-					E('div', { 'class': 'tr' }, [
-						E('div', { 'class': 'td' }, 'Current Show'),
-						E('div', { 'class': 'td', 'id': 'current-show' }, [
-							E('span', { 'style': 'font-weight: bold;' }, showName),
-							currentShow.playlist ? E('span', { 'style': 'color: #666; margin-left: 10px;' },
-								'(' + currentShow.playlist + ')') : ''
-						])
-					]),
-					E('div', { 'class': 'tr' }, [
-						E('div', { 'class': 'td' }, 'Now Playing'),
-						E('div', { 'class': 'td', 'id': 'current-song' },
-							stream.current_song || 'Nothing')
-					]),
-					E('div', { 'class': 'tr' }, [
-						E('div', { 'class': 'td' }, 'Playlist'),
-						E('div', { 'class': 'td', 'id': 'playlist-info' },
-							playlist.tracks + ' tracks' + (playlist.shuffle ? ' (shuffle)' : ''))
-					]),
-					E('div', { 'class': 'tr' }, [
-						E('div', { 'class': 'td' }, 'Stream URL'),
-						E('div', { 'class': 'td' },
-							E('a', { 'href': status.url, 'target': '_blank' }, status.url || 'N/A'))
-					])
-				])
-			]),
-
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, 'Controls'),
-				E('div', { 'style': 'display: flex; gap: 10px; flex-wrap: wrap;' }, [
-					E('button', {
-						'class': 'btn cbi-button-positive',
-						'click': ui.createHandlerFn(this, 'handleStart')
-					}, 'Start'),
-					E('button', {
-						'class': 'btn cbi-button-negative',
-						'click': ui.createHandlerFn(this, 'handleStop')
-					}, 'Stop'),
-					E('button', {
-						'class': 'btn cbi-button-action',
-						'click': ui.createHandlerFn(this, 'handleSkip')
-					}, 'Skip Track'),
-					E('button', {
-						'class': 'btn cbi-button-neutral',
-						'click': ui.createHandlerFn(this, 'handleRegenerate')
-					}, 'Regenerate Playlist')
-				])
-			]),
-
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, 'Listen'),
-				E('audio', {
-					'id': 'radio-player',
-					'controls': true,
-					'style': 'width: 100%; max-width: 500px;'
-				}, [
-					E('source', { 'src': status.url, 'type': 'audio/mpeg' })
-				]),
-				E('p', { 'style': 'color: #666; font-size: 0.9em;' },
-					'Click play to listen to the stream')
-			])
+	renderNav: function(active) {
+		var tabs = [
+			{ name: 'Overview', path: 'admin/services/webradio/overview' },
+			{ name: 'Playlist', path: 'admin/services/webradio/playlist' },
+			{ name: 'Schedule', path: 'admin/services/webradio/schedule' },
+			{ name: 'Live', path: 'admin/services/webradio/live' },
+			{ name: 'Jingles', path: 'admin/services/webradio/jingles' }
 		];
 
-		return E('div', { 'class': 'cbi-map' }, content);
+		return E('div', { 'class': 'kiss-tabs' }, tabs.map(function(tab) {
+			var isActive = tab.path.indexOf(active) !== -1;
+			return E('a', {
+				'href': L.url(tab.path),
+				'class': 'kiss-tab' + (isActive ? ' active' : '')
+			}, tab.name);
+		}));
 	},
 
-	statusBadge: function(running) {
-		if (running) {
-			return E('span', {
-				'style': 'color: #fff; background: #5cb85c; padding: 2px 8px; border-radius: 3px;'
-			}, 'Running');
-		} else {
-			return E('span', {
-				'style': 'color: #fff; background: #d9534f; padding: 2px 8px; border-radius: 3px;'
-			}, 'Stopped');
-		}
-	},
-
-	updateStatus: function(status, currentShow) {
+	renderStats: function(status) {
+		var c = KissTheme.colors;
 		var icecast = status.icecast || {};
 		var ezstream = status.ezstream || {};
 		var stream = status.stream || {};
 		var playlist = status.playlist || {};
-		currentShow = currentShow || {};
 
-		var icecastEl = document.getElementById('icecast-status');
-		var ezstreamEl = document.getElementById('ezstream-status');
-		var listenersEl = document.getElementById('listeners');
-		var songEl = document.getElementById('current-song');
-		var playlistEl = document.getElementById('playlist-info');
-		var showEl = document.getElementById('current-show');
+		return [
+			KissTheme.stat(icecast.running ? 'UP' : 'DOWN', 'Icecast', icecast.running ? c.green : c.red),
+			KissTheme.stat(ezstream.running ? 'UP' : 'DOWN', 'Ezstream', ezstream.running ? c.green : c.red),
+			KissTheme.stat(stream.listeners || 0, 'Listeners', (stream.listeners || 0) > 0 ? c.cyan : c.muted),
+			KissTheme.stat(playlist.tracks || 0, 'Tracks', c.purple)
+		];
+	},
 
-		if (icecastEl) {
-			icecastEl.innerHTML = '';
-			icecastEl.appendChild(this.statusBadge(icecast.running));
-		}
-		if (ezstreamEl) {
-			ezstreamEl.innerHTML = '';
-			ezstreamEl.appendChild(this.statusBadge(ezstream.running));
-		}
-		if (listenersEl) {
-			listenersEl.textContent = String(stream.listeners || 0);
-		}
-		if (songEl) {
-			songEl.textContent = stream.current_song || 'Nothing';
-		}
-		if (playlistEl) {
-			playlistEl.textContent = playlist.tracks + ' tracks' + (playlist.shuffle ? ' (shuffle)' : '');
-		}
-		if (showEl) {
-			var showText = currentShow.name || 'Default';
-			if (currentShow.playlist) {
-				showText += ' (' + currentShow.playlist + ')';
-			}
-			showEl.textContent = showText;
-		}
+	renderHealth: function(status, currentShow) {
+		var icecast = status.icecast || {};
+		var ezstream = status.ezstream || {};
+		var stream = status.stream || {};
+		var playlist = status.playlist || {};
+
+		var checks = [
+			{ label: 'Icecast Server', ok: icecast.running, value: icecast.running ? 'Running' : 'Stopped' },
+			{ label: 'Ezstream Source', ok: ezstream.running, value: ezstream.running ? 'Running' : 'Stopped' },
+			{ label: 'Current Show', ok: true, value: currentShow.name || 'Default' },
+			{ label: 'Now Playing', ok: !!stream.current_song, value: stream.current_song || 'Nothing' },
+			{ label: 'Playlist', ok: (playlist.tracks || 0) > 0, value: (playlist.tracks || 0) + ' tracks' + (playlist.shuffle ? ' (shuffle)' : '') }
+		];
+
+		return E('div', { 'style': 'display: flex; flex-direction: column; gap: 8px;' }, checks.map(function(c) {
+			return E('div', { 'style': 'display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--kiss-line);' }, [
+				E('div', { 'style': 'width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; ' +
+					(c.ok ? 'background: rgba(0,200,83,0.15); color: var(--kiss-green);' : 'background: rgba(255,23,68,0.15); color: var(--kiss-red);') },
+					c.ok ? '\u2713' : '\u2717'),
+				E('div', { 'style': 'flex: 1;' }, [
+					E('div', { 'style': 'font-size: 13px; color: var(--kiss-text);' }, c.label),
+					E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;' }, c.value)
+				])
+			]);
+		}));
+	},
+
+	renderControls: function(status) {
+		var self = this;
+		var icecast = status.icecast || {};
+		var isRunning = icecast.running;
+
+		return E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px;' }, [
+			E('div', { 'style': 'display: flex; gap: 8px; flex-wrap: wrap;' }, [
+				E('button', {
+					'class': 'kiss-btn kiss-btn-green',
+					'click': function() { self.handleStart(); }
+				}, 'Start'),
+				E('button', {
+					'class': 'kiss-btn kiss-btn-red',
+					'click': function() { self.handleStop(); }
+				}, 'Stop'),
+				E('button', {
+					'class': 'kiss-btn kiss-btn-blue',
+					'click': function() { self.handleSkip(); }
+				}, 'Skip Track'),
+				E('button', {
+					'class': 'kiss-btn',
+					'click': function() { self.handleRegenerate(); }
+				}, 'Regenerate Playlist')
+			]),
+			E('div', { 'style': 'margin-top: 12px;' }, [
+				E('div', { 'style': 'font-size: 12px; color: var(--kiss-muted); margin-bottom: 8px;' }, 'Stream URL'),
+				status.url ? E('a', {
+					'href': status.url,
+					'target': '_blank',
+					'style': 'font-family: monospace; font-size: 12px; color: var(--kiss-cyan);'
+				}, status.url) : E('span', { 'style': 'color: var(--kiss-muted);' }, 'N/A')
+			])
+		]);
+	},
+
+	renderPlayer: function(status) {
+		return E('div', { 'style': 'text-align: center;' }, [
+			E('audio', {
+				'id': 'radio-player',
+				'controls': true,
+				'style': 'width: 100%; max-width: 400px;'
+			}, [
+				E('source', { 'src': status.url, 'type': 'audio/mpeg' })
+			]),
+			E('p', { 'style': 'color: var(--kiss-muted); font-size: 12px; margin-top: 8px;' }, 'Click play to listen to the stream')
+		]);
 	},
 
 	handleStart: function() {
-		return callStart('all').then(function(res) {
-			ui.addNotification(null, E('p', 'WebRadio started'));
+		ui.showModal('Starting...', [E('p', { 'class': 'spinning' }, 'Starting WebRadio...')]);
+		callStart('all').then(function(res) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', 'WebRadio started'), 'success');
 		}).catch(function(e) {
-			ui.addNotification(null, E('p', 'Failed to start: ' + e.message), 'error');
+			ui.hideModal();
+			ui.addNotification(null, E('p', 'Failed: ' + e.message), 'error');
 		});
 	},
 
 	handleStop: function() {
-		return callStop('all').then(function(res) {
-			ui.addNotification(null, E('p', 'WebRadio stopped'));
+		callStop('all').then(function(res) {
+			ui.addNotification(null, E('p', 'WebRadio stopped'), 'info');
 		}).catch(function(e) {
-			ui.addNotification(null, E('p', 'Failed to stop: ' + e.message), 'error');
+			ui.addNotification(null, E('p', 'Failed: ' + e.message), 'error');
 		});
 	},
 
 	handleSkip: function() {
-		return callSkip().then(function(res) {
+		callSkip().then(function(res) {
 			if (res.result === 'ok') {
-				ui.addNotification(null, E('p', 'Skipping to next track...'));
+				ui.addNotification(null, E('p', 'Skipping to next track...'), 'success');
 			} else {
 				ui.addNotification(null, E('p', 'Skip failed: ' + (res.error || 'unknown')), 'warning');
 			}
@@ -234,13 +190,69 @@ return view.extend({
 	},
 
 	handleRegenerate: function() {
-		return callGeneratePlaylist(true).then(function(res) {
+		ui.showModal('Regenerating...', [E('p', { 'class': 'spinning' }, 'Regenerating playlist...')]);
+		callGeneratePlaylist(true).then(function(res) {
+			ui.hideModal();
 			if (res.result === 'ok') {
-				ui.addNotification(null, E('p', 'Playlist regenerated: ' + res.tracks + ' tracks'));
+				ui.addNotification(null, E('p', 'Playlist regenerated: ' + res.tracks + ' tracks'), 'success');
 			} else {
 				ui.addNotification(null, E('p', 'Failed: ' + (res.error || 'unknown')), 'error');
 			}
 		});
+	},
+
+	updateStatus: function(status, currentShow) {
+		// Update stats
+		var statsEl = document.getElementById('webradio-stats');
+		if (statsEl) {
+			statsEl.innerHTML = '';
+			this.renderStats(status).forEach(function(el) { statsEl.appendChild(el); });
+		}
+	},
+
+	render: function(data) {
+		var self = this;
+		var status = data[0] || {};
+		var currentShow = data[1] || {};
+		var c = KissTheme.colors;
+
+		var icecast = status.icecast || {};
+		var ezstream = status.ezstream || {};
+		var isRunning = icecast.running && ezstream.running;
+
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'WebRadio'),
+					KissTheme.badge(isRunning ? 'ON AIR' : 'OFFLINE', isRunning ? 'green' : 'red')
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' }, 'Internet radio station powered by Icecast + Ezstream')
+			]),
+
+			// Navigation
+			this.renderNav('overview'),
+
+			// Stats row
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'id': 'webradio-stats', 'style': 'margin: 20px 0;' }, this.renderStats(status)),
+
+			// Two column layout
+			E('div', { 'class': 'kiss-grid kiss-grid-2' }, [
+				KissTheme.card('Station Status', this.renderHealth(status, currentShow)),
+				KissTheme.card('Controls', this.renderControls(status))
+			]),
+
+			// Player
+			KissTheme.card('Listen Live', this.renderPlayer(status))
+		];
+
+		poll.add(function() {
+			return Promise.all([callStatus(), callCurrentShow()]).then(function(res) {
+				self.updateStatus(res[0], res[1]);
+			});
+		}, 5);
+
+		return KissTheme.wrap(content, 'admin/services/webradio/overview');
 	},
 
 	handleSaveApply: null,

@@ -59,7 +59,7 @@ return view.extend({
 				}, _('Cancel')),
 				' ',
 				E('button', {
-					'class': 'btn cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'click': function() {
 						var name = nameInput.value.trim();
 						var localPort = parseInt(localPortInput.value) || 80;
@@ -103,7 +103,7 @@ return view.extend({
 				}, _('Cancel')),
 				' ',
 				E('button', {
-					'class': 'btn cbi-button-negative',
+					'class': 'kiss-btn kiss-btn-red',
 					'click': function() {
 						ui.showModal(_('Removing Service'), [
 							E('p', { 'class': 'spinning' }, _('Removing hidden service...'))

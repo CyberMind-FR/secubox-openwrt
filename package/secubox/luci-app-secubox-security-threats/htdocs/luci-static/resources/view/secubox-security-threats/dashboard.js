@@ -62,7 +62,7 @@ return L.view.extend({
 				)
 			]),
 			E('div', { 'class': 'si-status-right' }, [
-				E('button', { 'class': 'cbi-button', 'click': function() { self.handleRefresh(); } }, 'Refresh')
+				E('button', { 'class': 'kiss-btn', 'click': function() { self.handleRefresh(); } }, 'Refresh')
 			])
 		]);
 	},
@@ -209,11 +209,11 @@ return L.view.extend({
 			// Actions
 			E('div', { 'class': 'si-actions' }, [
 				E('button', {
-					'class': 'cbi-button cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'click': function() { self.handlePublish(); }
 				}, 'Publish Now'),
 				E('button', {
-					'class': 'cbi-button cbi-button-apply',
+					'class': 'kiss-btn kiss-btn-cyan',
 					'click': function() { self.handleApplyIntel(); }
 				}, 'Apply Pending'),
 				E('span', { 'class': 'si-meta' },
@@ -308,7 +308,7 @@ return L.view.extend({
 							E('td', { 'class': 'td' }, API.formatRelativeTime(t.timestamp)),
 							E('td', { 'class': 'td' },
 								E('button', {
-									'class': 'cbi-button cbi-button-remove',
+									'class': 'kiss-btn kiss-btn-red',
 									'click': function() { self.handleBlock(t.ip); }
 								}, 'Block')
 							)

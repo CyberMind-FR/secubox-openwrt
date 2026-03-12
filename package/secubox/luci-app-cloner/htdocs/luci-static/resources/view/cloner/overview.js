@@ -1068,9 +1068,9 @@ return view.extend({
 				])
 			]),
 			E('div', { 'class': 'right', 'style': 'display:flex;gap:8px;justify-content:flex-end;' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
 				E('button', {
-					'class': 'cbi-button cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() {
 						var image = document.getElementById('flash-image')?.value;
 						var token = document.getElementById('flash-token')?.value;
@@ -1130,7 +1130,7 @@ return view.extend({
 						E('tr', {}, [E('td', { 'style': 'font-weight:600;padding:8px 0;' }, 'LuCI:'), E('td', {}, res.luci_accessible ? '✅ Accessible' : '❌ Not accessible')])
 					]),
 					E('div', { 'class': 'right', 'style': 'margin-top:20px;' }, [
-						E('button', { 'class': 'cbi-button cbi-button-positive', 'click': ui.hideModal }, 'Close')
+						E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': ui.hideModal }, 'Close')
 					])
 				]);
 			} else {
@@ -1166,7 +1166,7 @@ return view.extend({
 						])
 					]),
 					E('div', { 'class': 'right', 'style': 'margin-top:20px;' }, [
-						E('button', { 'class': 'cbi-button cbi-button-positive', 'click': ui.hideModal }, 'OK')
+						E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': ui.hideModal }, 'OK')
 					])
 				]);
 				self.refreshRemotes();
@@ -1659,7 +1659,7 @@ return view.extend({
 						E('tr', {}, [E('td', { 'style': 'font-weight:600;padding:8px 0;' }, 'Valid:'), E('td', {}, res.valid ? '✅ Yes' : '⚠️ Unknown format')])
 					]),
 					E('div', { 'class': 'right', 'style': 'margin-top:20px;' }, [
-						E('button', { 'class': 'cbi-button cbi-button-positive', 'click': ui.hideModal }, 'Close')
+						E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': ui.hideModal }, 'Close')
 					])
 				]);
 			} else {
@@ -1719,12 +1719,12 @@ return view.extend({
 					E('pre', { 'style': 'background:var(--kiss-bg2);color:var(--kiss-cyan);padding:12px;border-radius:6px;word-break:break-all;font-size:12px;' }, res.token),
 					E('p', { 'style': 'color:var(--kiss-yellow);font-size:12px;' }, '⚠️ Requires manual approval when used'),
 					E('div', { 'class': 'right', 'style': 'margin-top:15px;' }, [
-						E('button', { 'class': 'cbi-button', 'click': function() {
+						E('button', { 'class': 'kiss-btn', 'click': function() {
 							navigator.clipboard.writeText(res.token);
 							ui.addNotification(null, E('p', 'Copied!'), 'info');
 						} }, '📋 Copy'),
 						' ',
-						E('button', { 'class': 'cbi-button cbi-button-positive', 'click': ui.hideModal }, 'OK')
+						E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': ui.hideModal }, 'OK')
 					])
 				]);
 				self.refresh();
@@ -1741,12 +1741,12 @@ return view.extend({
 					E('pre', { 'style': 'background:rgba(0,200,83,0.1);color:var(--kiss-green);padding:12px;border-radius:6px;word-break:break-all;font-size:12px;border:1px solid rgba(0,200,83,0.3);' }, res.token),
 					E('p', { 'style': 'color:var(--kiss-green);font-size:12px;' }, '✅ Devices using this token auto-join without approval'),
 					E('div', { 'class': 'right', 'style': 'margin-top:15px;' }, [
-						E('button', { 'class': 'cbi-button', 'click': function() {
+						E('button', { 'class': 'kiss-btn', 'click': function() {
 							navigator.clipboard.writeText(res.token);
 							ui.addNotification(null, E('p', 'Copied!'), 'info');
 						} }, '📋 Copy'),
 						' ',
-						E('button', { 'class': 'cbi-button cbi-button-positive', 'click': ui.hideModal }, 'OK')
+						E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': ui.hideModal }, 'OK')
 					])
 				]);
 				self.refresh();

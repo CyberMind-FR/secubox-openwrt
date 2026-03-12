@@ -25,9 +25,9 @@ var callDeleteVendorRule = rpc.declare({
 });
 
 var RISK_COLORS = {
-	high: '#ff4444',
-	medium: '#ffaa00',
-	low: '#44cc44'
+	high: 'var(--kiss-red)',
+	medium: 'var(--kiss-orange)',
+	low: 'var(--kiss-green)'
 };
 
 var DEVICE_CLASSES = ['camera', 'thermostat', 'lighting', 'plug', 'assistant', 'media', 'lock', 'sensor', 'diy', 'mixed'];
@@ -73,9 +73,9 @@ return view.extend({
 		ui.showModal('Add Vendor Rule', [
 			form,
 			E('div', { 'class': 'right', 'style': 'margin-top: 20px;' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
 				E('button', {
-					'class': 'cbi-button cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'style': 'margin-left: 10px;',
 					'click': function() {
 						var name = document.getElementById('rule-name').value.trim().replace(/[^a-z0-9_]/gi, '_');
@@ -118,17 +118,17 @@ return view.extend({
 		var self = this;
 
 		var rows = rules.map(function(r) {
-			var riskColor = RISK_COLORS[r.risk_level] || '#888';
+			var riskColor = RISK_COLORS[r.risk_level] || 'var(--kiss-muted)';
 			return E('tr', {}, [
-				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid #333;' }, r.name),
-				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid #333; font-family: monospace;' }, r.pattern || '-'),
-				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid #333; font-family: monospace;' }, r.oui_prefix || '-'),
-				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid #333;' }, r.device_class),
-				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid #333; color: ' + riskColor + ';' }, r.risk_level),
-				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid #333;' }, r.auto_isolate ? 'Yes' : 'No'),
-				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid #333;' }, [
+				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid var(--kiss-line);' }, r.name),
+				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid var(--kiss-line); font-family: monospace;' }, r.pattern || '-'),
+				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid var(--kiss-line); font-family: monospace;' }, r.oui_prefix || '-'),
+				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid var(--kiss-line);' }, r.device_class),
+				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid var(--kiss-line); color: ' + riskColor + ';' }, r.risk_level),
+				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid var(--kiss-line);' }, r.auto_isolate ? 'Yes' : 'No'),
+				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid var(--kiss-line);' }, [
 					E('button', {
-						'class': 'cbi-button cbi-button-negative btn-sm',
+						'class': 'kiss-btn kiss-btn-red btn-sm',
 						'style': 'padding: 2px 8px; font-size: 12px;',
 						'click': function() { self.handleDeleteRule(r.name); }
 					}, 'Delete')
@@ -138,12 +138,12 @@ return view.extend({
 
 		var content = E('div', { 'class': 'cbi-map', 'style': 'padding: 20px;' }, [
 			E('h2', {}, 'IoT Guard Policies'),
-			E('p', { 'style': 'color: #888; margin-bottom: 20px;' },
+			E('p', { 'style': 'color: var(--kiss-muted); margin-bottom: 20px;' },
 				'Vendor classification rules determine how devices are identified and their default risk level.'),
 
 			E('div', { 'style': 'margin-bottom: 20px;' }, [
 				E('button', {
-					'class': 'cbi-button cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'click': L.bind(this.handleAddRule, this)
 				}, 'Add Vendor Rule')
 			]),
@@ -151,10 +151,10 @@ return view.extend({
 			E('h3', { 'style': 'margin-top: 25px;' }, 'Vendor Classification Rules'),
 
 			rules.length === 0 ?
-				E('div', { 'style': 'padding: 20px; color: #888; text-align: center;' },
+				E('div', { 'style': 'padding: 20px; color: var(--kiss-muted); text-align: center;' },
 					'No custom vendor rules defined. Using built-in classification.') :
 				E('table', { 'style': 'width: 100%; border-collapse: collapse;' }, [
-					E('thead', {}, E('tr', { 'style': 'background: #222;' }, [
+					E('thead', {}, E('tr', { 'style': 'background: var(--kiss-bg2);' }, [
 						E('th', { 'style': 'padding: 10px; text-align: left;' }, 'Name'),
 						E('th', { 'style': 'padding: 10px; text-align: left;' }, 'Vendor Pattern'),
 						E('th', { 'style': 'padding: 10px; text-align: left;' }, 'OUI Prefix'),
@@ -168,7 +168,7 @@ return view.extend({
 
 			E('h3', { 'style': 'margin-top: 30px;' }, 'Device Classes'),
 			E('table', { 'style': 'width: 100%; border-collapse: collapse; margin-top: 10px;' }, [
-				E('thead', {}, E('tr', { 'style': 'background: #222;' }, [
+				E('thead', {}, E('tr', { 'style': 'background: var(--kiss-bg2);' }, [
 					E('th', { 'style': 'padding: 8px; text-align: left;' }, 'Class'),
 					E('th', { 'style': 'padding: 8px; text-align: left;' }, 'Description'),
 					E('th', { 'style': 'padding: 8px; text-align: left;' }, 'Default Risk')
@@ -192,11 +192,11 @@ return view.extend({
 	},
 
 	renderClassRow: function(name, desc, risk) {
-		var color = RISK_COLORS[risk] || '#888';
+		var color = RISK_COLORS[risk] || 'var(--kiss-muted)';
 		return E('tr', {}, [
-			E('td', { 'style': 'padding: 8px; border-bottom: 1px solid #333;' }, name),
-			E('td', { 'style': 'padding: 8px; border-bottom: 1px solid #333; color: #888;' }, desc),
-			E('td', { 'style': 'padding: 8px; border-bottom: 1px solid #333; color: ' + color + ';' }, risk)
+			E('td', { 'style': 'padding: 8px; border-bottom: 1px solid var(--kiss-line);' }, name),
+			E('td', { 'style': 'padding: 8px; border-bottom: 1px solid var(--kiss-line); color: var(--kiss-muted);' }, desc),
+			E('td', { 'style': 'padding: 8px; border-bottom: 1px solid var(--kiss-line); color: ' + color + ';' }, risk)
 		]);
 	},
 

@@ -58,7 +58,7 @@ return view.extend({
 				}, _('Cancel')),
 				' ',
 				E('button', {
-					'class': 'btn cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'click': function() {
 						var bandwidth = document.getElementById('offer-bandwidth').value;
 						var latency = document.getElementById('offer-latency').value;
@@ -147,7 +147,7 @@ return view.extend({
 				}, _('Cancel')),
 				' ',
 				E('button', {
-					'class': 'btn cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'click': function() {
 						var priority = document.getElementById('uplink-priority').value;
 
@@ -199,7 +199,7 @@ return view.extend({
 				}, _('Cancel')),
 				' ',
 				E('button', {
-					'class': 'btn cbi-button-negative',
+					'class': 'kiss-btn kiss-btn-red',
 					'click': function() {
 						ui.hideModal();
 						ui.showModal(_('Removing Uplink'), [
@@ -302,7 +302,7 @@ return view.extend({
 				}, _('Cancel')),
 				' ',
 				E('button', {
-					'class': 'btn cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'click': function() {
 						var priority = document.getElementById('set-priority').value;
 						var weight = document.getElementById('set-weight').value;
@@ -446,21 +446,21 @@ return view.extend({
 				E('div', { 'style': 'display: flex; flex-wrap: wrap; gap: 0.5em; margin-bottom: 1em;' }, [
 					offering ?
 						E('button', {
-							'class': 'cbi-button cbi-button-negative',
+							'class': 'kiss-btn kiss-btn-red',
 							'click': L.bind(this.handleWithdrawUplink, this)
 						}, '📴 ' + _('Stop Offering')) :
 						E('button', {
-							'class': 'cbi-button cbi-button-action',
+							'class': 'kiss-btn kiss-btn-blue',
 							'click': L.bind(this.handleOfferUplink, this)
 						}, '📡 ' + _('Offer My Uplink')),
 
 					autoFailover ?
 						E('button', {
-							'class': 'cbi-button',
+							'class': 'kiss-btn',
 							'click': L.bind(this.handleToggleFailover, this, false)
 						}, '⏹ ' + _('Disable Auto-Failover')) :
 						E('button', {
-							'class': 'cbi-button cbi-button-apply',
+							'class': 'kiss-btn kiss-btn-cyan',
 							'click': L.bind(this.handleToggleFailover, this, true)
 						}, '▶ ' + _('Enable Auto-Failover'))
 				])
@@ -510,17 +510,17 @@ return view.extend({
 										]),
 										E('td', {}, [
 											E('button', {
-												'class': 'cbi-button cbi-button-action',
+												'class': 'kiss-btn kiss-btn-blue',
 												'style': 'margin: 2px; padding: 4px 8px;',
 												'click': L.bind(self.handleTestUplink, self, uplink)
 											}, '🔍 ' + _('Test')),
 											E('button', {
-												'class': 'cbi-button',
+												'class': 'kiss-btn',
 												'style': 'margin: 2px; padding: 4px 8px;',
 												'click': L.bind(self.handleSetPriority, self, uplink)
 											}, '⚙ ' + _('Priority')),
 											E('button', {
-												'class': 'cbi-button cbi-button-negative',
+												'class': 'kiss-btn kiss-btn-red',
 												'style': 'margin: 2px; padding: 4px 8px;',
 												'click': L.bind(self.handleRemoveUplink, self, uplink)
 											}, '✗ ' + _('Remove'))
@@ -572,7 +572,7 @@ return view.extend({
 									E('code', {}, API.shortenKey(offer.public_key, 16) || 'N/A')
 								]),
 								E('button', {
-									'class': 'cbi-button cbi-button-action',
+									'class': 'kiss-btn kiss-btn-blue',
 									'style': 'width: 100%;',
 									'click': L.bind(self.handleAddUplink, self, offer)
 								}, '+ ' + _('Use as Uplink'))

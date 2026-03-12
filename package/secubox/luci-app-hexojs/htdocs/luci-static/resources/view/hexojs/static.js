@@ -4,6 +4,7 @@
 'require ui';
 'require form';
 'require fs';
+'require secubox/kiss-theme';
 
 var callStaticList = rpc.declare({
 	object: 'luci.hexojs',
@@ -69,46 +70,66 @@ function formatDate(timestamp) {
 }
 
 return view.extend({
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null,
+
 	selectedInstance: null,
 
 	load: function() {
 		return callStaticList({});
 	},
 
+	renderStats: function(instances) {
+		var c = KissTheme.colors;
+		var totalFiles = instances.reduce(function(sum, inst) { return sum + (inst.file_count || 0); }, 0);
+		var withAuth = instances.filter(function(inst) { return inst.auth_enabled; }).length;
+		return [
+			KissTheme.stat(instances.length, 'Sites', c.blue),
+			KissTheme.stat(totalFiles, 'Files', c.cyan),
+			KissTheme.stat(withAuth, 'Auth', c.green)
+		];
+	},
+
 	renderInstanceCard: function(instance) {
 		var self = this;
-		var card = E('div', { 'class': 'cbi-section', 'style': 'margin-bottom: 10px; padding: 15px; border: 1px solid #ccc; border-radius: 8px;' }, [
-			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;' }, [
-				E('div', {}, [
-					E('strong', { 'style': 'font-size: 1.2em;' }, instance.name),
-					instance.domain ? E('span', { 'style': 'margin-left: 10px; color: #666;' }, instance.domain) : '',
-					instance.auth_enabled ? E('span', { 'class': 'badge', 'style': 'margin-left: 10px; background: #28a745; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8em;' }, 'Auth') : ''
+		return E('div', {
+			'style': 'background: var(--kiss-bg); border-radius: 8px; padding: 16px; margin-bottom: 12px;'
+		}, [
+			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 12px;' }, [
+					E('strong', { 'style': 'font-size: 1.1em;' }, instance.name),
+					instance.domain ? E('span', { 'style': 'color: var(--kiss-muted);' }, instance.domain) : '',
+					instance.auth_enabled ? KissTheme.badge('Auth', 'green') : ''
 				]),
-				E('div', {}, [
-					E('span', { 'style': 'margin-right: 15px; color: #666;' }, instance.file_count + ' files'),
-					instance.port > 0 ? E('span', { 'style': 'color: #666;' }, 'Port ' + instance.port) : ''
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px; color: var(--kiss-muted); font-size: 12px;' }, [
+					E('span', {}, instance.file_count + ' files'),
+					instance.port > 0 ? E('span', {}, 'Port ' + instance.port) : ''
 				])
 			]),
-			E('div', { 'style': 'display: flex; gap: 10px;' }, [
+			E('div', { 'style': 'display: flex; gap: 8px;' }, [
 				E('button', {
-					'class': 'cbi-button cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
+					'style': 'padding: 6px 12px; font-size: 12px;',
 					'click': function() { self.showFiles(instance.name); }
 				}, 'Manage Files'),
 				E('button', {
-					'class': 'cbi-button cbi-button-apply',
+					'class': 'kiss-btn kiss-btn-green',
+					'style': 'padding: 6px 12px; font-size: 12px;',
 					'click': function() { self.publishSite(instance.name); }
 				}, 'Publish'),
 				E('button', {
-					'class': 'cbi-button',
+					'class': 'kiss-btn',
+					'style': 'padding: 6px 12px; font-size: 12px;',
 					'click': function() { self.configureAuth(instance.name, instance.domain); }
 				}, 'Auth'),
 				E('button', {
-					'class': 'cbi-button cbi-button-remove',
+					'class': 'kiss-btn kiss-btn-red',
+					'style': 'padding: 6px 12px; font-size: 12px;',
 					'click': function() { self.deleteSite(instance.name); }
 				}, 'Delete')
 			])
 		]);
-		return card;
 	},
 
 	showFiles: function(instanceName) {
@@ -125,62 +146,66 @@ return view.extend({
 			container.innerHTML = '';
 
 			// Header
-			container.appendChild(E('h3', {}, 'Files in "' + instanceName + '"'));
+			container.appendChild(E('h3', { 'style': 'margin: 0 0 16px 0;' }, 'Files in "' + instanceName + '"'));
 
 			// Upload section
-			var uploadSection = E('div', { 'class': 'cbi-section', 'style': 'padding: 15px; background: #f9f9f9; border-radius: 8px; margin-bottom: 15px;' }, [
-				E('h4', {}, 'Upload Files'),
-				E('input', {
-					'type': 'file',
-					'id': 'file-upload-input',
-					'multiple': true,
-					'style': 'margin-right: 10px;'
-				}),
-				E('button', {
-					'class': 'cbi-button cbi-button-action',
-					'click': function() { self.uploadFiles(instanceName); }
-				}, 'Upload Selected')
+			var uploadSection = E('div', {
+				'style': 'padding: 16px; background: var(--kiss-bg); border-radius: 8px; margin-bottom: 16px;'
+			}, [
+				E('h4', { 'style': 'margin: 0 0 12px 0; font-size: 14px;' }, 'Upload Files'),
+				E('div', { 'style': 'display: flex; gap: 12px; align-items: center;' }, [
+					E('input', {
+						'type': 'file',
+						'id': 'file-upload-input',
+						'multiple': true,
+						'style': 'color: var(--kiss-text);'
+					}),
+					E('button', {
+						'class': 'kiss-btn kiss-btn-blue',
+						'click': function() { self.uploadFiles(instanceName); }
+					}, 'Upload Selected')
+				])
 			]);
 			container.appendChild(uploadSection);
 
 			// File list table
-			var table = E('table', { 'class': 'table cbi-section-table' }, [
-				E('tr', { 'class': 'tr table-titles' }, [
-					E('th', { 'class': 'th' }, 'Filename'),
-					E('th', { 'class': 'th' }, 'Size'),
-					E('th', { 'class': 'th' }, 'Modified'),
-					E('th', { 'class': 'th' }, 'Actions')
-				])
-			]);
-
 			var files = result.files || [];
 			if (files.length === 0) {
-				table.appendChild(E('tr', { 'class': 'tr' }, [
-					E('td', { 'class': 'td', 'colspan': '4', 'style': 'text-align: center; color: #666;' }, 'No files yet. Upload some files above.')
-				]));
+				container.appendChild(E('p', { 'style': 'color: var(--kiss-muted); text-align: center; padding: 20px;' },
+					'No files yet. Upload some files above.'));
 			} else {
-				files.forEach(function(file) {
-					table.appendChild(E('tr', { 'class': 'tr' }, [
-						E('td', { 'class': 'td' }, file.name),
-						E('td', { 'class': 'td' }, formatBytes(file.size)),
-						E('td', { 'class': 'td' }, formatDate(file.modified)),
-						E('td', { 'class': 'td' }, [
+				var rows = files.map(function(file) {
+					return E('tr', {}, [
+						E('td', {}, file.name),
+						E('td', { 'style': 'color: var(--kiss-muted);' }, formatBytes(file.size)),
+						E('td', { 'style': 'color: var(--kiss-muted);' }, formatDate(file.modified)),
+						E('td', { 'style': 'width: 100px;' }, [
 							E('button', {
-								'class': 'cbi-button cbi-button-remove',
-								'style': 'padding: 2px 8px; font-size: 0.9em;',
+								'class': 'kiss-btn kiss-btn-red',
+								'style': 'padding: 4px 10px; font-size: 11px;',
 								'click': function() { self.deleteFile(instanceName, file.name); }
 							}, 'Delete')
 						])
-					]));
+					]);
 				});
-			}
 
-			container.appendChild(table);
+				container.appendChild(E('table', { 'class': 'kiss-table' }, [
+					E('thead', {}, [
+						E('tr', {}, [
+							E('th', {}, 'Filename'),
+							E('th', {}, 'Size'),
+							E('th', {}, 'Modified'),
+							E('th', {}, 'Actions')
+						])
+					]),
+					E('tbody', {}, rows)
+				]));
+			}
 
 			// Back button
 			container.appendChild(E('button', {
-				'class': 'cbi-button',
-				'style': 'margin-top: 15px;',
+				'class': 'kiss-btn',
+				'style': 'margin-top: 16px;',
 				'click': function() { self.refreshView(); }
 			}, 'Back to Sites'));
 		});
@@ -203,7 +228,6 @@ return view.extend({
 				var promise = new Promise(function(resolve, reject) {
 					var reader = new FileReader();
 					reader.onload = function(e) {
-						// Convert to base64
 						var base64 = btoa(String.fromCharCode.apply(null, new Uint8Array(e.target.result)));
 
 						callStaticUpload({
@@ -307,7 +331,6 @@ return view.extend({
 		var name = prompt('Enter site name (lowercase, no spaces):');
 		if (!name) return;
 
-		// Validate name
 		if (!/^[a-z][a-z0-9_]*$/.test(name)) {
 			ui.addNotification(null, E('p', 'Invalid name. Use lowercase letters, numbers, underscore.'), 'error');
 			return;
@@ -336,13 +359,13 @@ return view.extend({
 			instancesContainer.innerHTML = '';
 
 			if (!result.success) {
-				instancesContainer.appendChild(E('p', { 'style': 'color: red;' }, result.error || 'Failed to load sites'));
+				instancesContainer.appendChild(E('p', { 'style': 'color: var(--kiss-red);' }, result.error || 'Failed to load sites'));
 				return;
 			}
 
 			var instances = result.instances || [];
 			if (instances.length === 0) {
-				instancesContainer.appendChild(E('p', { 'style': 'color: #666; text-align: center; padding: 20px;' },
+				instancesContainer.appendChild(E('p', { 'style': 'color: var(--kiss-muted); text-align: center; padding: 20px;' },
 					'No static sites yet. Click "Create New Site" to get started.'));
 			} else {
 				instances.forEach(function(inst) {
@@ -356,41 +379,54 @@ return view.extend({
 		var self = this;
 		var instances = (data && data.instances) || [];
 
-		var view = E('div', { 'class': 'cbi-map' }, [
-			E('h2', { 'class': 'cbi-map-title' }, 'Static Sites'),
-			E('div', { 'class': 'cbi-map-descr' },
-				'Upload and manage static HTML sites with optional Basic Auth via HAProxy. Fast KISS publishing without Hexo build process.'),
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'Static Sites'),
+					KissTheme.badge(instances.length + ' Sites', 'blue')
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' },
+					'Upload and manage static HTML sites with optional Basic Auth via HAProxy. Fast KISS publishing without Hexo build process.')
+			]),
+
+			// Stats
+			E('div', { 'class': 'kiss-grid kiss-grid-3', 'style': 'margin: 20px 0;' },
+				this.renderStats(instances)),
 
 			// Create button
 			E('div', { 'style': 'margin: 20px 0;' }, [
 				E('button', {
-					'class': 'cbi-button cbi-button-add',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() { self.createSite(); }
 				}, 'Create New Site')
 			]),
 
 			// Instances container
-			E('div', { 'id': 'static-instances' }),
+			KissTheme.card('Sites', E('div', { 'id': 'static-instances' })),
 
-			// File list container (shown when managing a site)
+			// File list container
 			E('div', { 'id': 'file-list-container', 'style': 'margin-top: 20px;' })
-		]);
+		];
 
 		// Render initial instances
-		var instancesContainer = view.querySelector('#static-instances');
-		if (instances.length === 0) {
-			instancesContainer.appendChild(E('p', { 'style': 'color: #666; text-align: center; padding: 20px;' },
-				'No static sites yet. Click "Create New Site" to get started.'));
-		} else {
-			instances.forEach(function(inst) {
-				instancesContainer.appendChild(self.renderInstanceCard(inst));
-			});
-		}
+		var instancesContainer = content[4].querySelector ? content[4].querySelector('#static-instances') : null;
 
-		return view;
-	},
+		// Defer rendering after DOM is available
+		setTimeout(function() {
+			var el = document.getElementById('static-instances');
+			if (el) {
+				if (instances.length === 0) {
+					el.appendChild(E('p', { 'style': 'color: var(--kiss-muted); text-align: center; padding: 20px;' },
+						'No static sites yet. Click "Create New Site" to get started.'));
+				} else {
+					instances.forEach(function(inst) {
+						el.appendChild(self.renderInstanceCard(inst));
+					});
+				}
+			}
+		}, 0);
 
-	handleSaveApply: null,
-	handleSave: null,
-	handleReset: null
+		return KissTheme.wrap(content, 'admin/services/hexojs/static');
+	}
 });

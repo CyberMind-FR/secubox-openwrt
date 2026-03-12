@@ -18,6 +18,16 @@ var DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 var DAY_LABELS = { 'mon': 'M', 'tue': 'T', 'wed': 'W', 'thu': 'T', 'fri': 'F', 'sat': 'S', 'sun': 'S' };
 
 return L.view.extend({
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null,
+
+	presets: [],
+	schedules: [],
+	categories: [],
+	groups: [],
+	clients: [],
+
 	load: function() {
 		return Promise.all([
 			API.listPresetModes(),
@@ -28,171 +38,254 @@ return L.view.extend({
 		]);
 	},
 
+	renderStats: function() {
+		var c = KissTheme.colors;
+		var activePresets = this.presets.filter(function(p) { return p.enabled; }).length;
+		var activeSchedules = this.schedules.filter(function(s) { return s.enabled; }).length;
+		return [
+			KissTheme.stat(this.presets.length, 'Presets', c.purple),
+			KissTheme.stat(activePresets, 'Active', activePresets > 0 ? c.green : c.muted),
+			KissTheme.stat(this.schedules.length, 'Schedules', c.blue),
+			KissTheme.stat(this.categories.length, 'Categories', c.cyan)
+		];
+	},
+
 	render: function(data) {
-		var presets = (data[0] && data[0].presets) || [];
-		var schedules = (data[1] && data[1].schedules) || [];
-		var categories = (data[2] && data[2].categories) || [];
-		var groups = (data[3] && data[3].groups) || [];
-		var clients = (data[4] && data[4].clients) || [];
+		this.presets = (data[0] && data[0].presets) || [];
+		this.schedules = (data[1] && data[1].schedules) || [];
+		this.categories = (data[2] && data[2].categories) || [];
+		this.groups = (data[3] && data[3].groups) || [];
+		this.clients = (data[4] && data[4].clients) || [];
 		var self = this;
 
-		var v = E('div', { 'class': 'cbi-map' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('bandwidth-manager/dashboard.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('bandwidth-manager/parental.css') }),
-			E('style', {}, this.getCustomStyles()),
-			E('h2', {}, _('Parental Controls')),
-			E('div', { 'class': 'cbi-map-descr' }, _('Manage internet access schedules, content filtering, and quick preset modes for family devices'))
-		]);
-
-		// Quick Preset Modes
-		var presetsSection = E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('Quick Preset Modes')),
-			E('p', { 'class': 'section-desc' }, _('Activate a preset to instantly apply predefined rules. Only one preset can be active at a time.'))
-		]);
-
-		var presetsGrid = E('div', { 'class': 'presets-grid' });
-
 		// Add default presets if none exist
-		var displayPresets = presets.length > 0 ? presets : [
-			{ id: 'preset_bedtime', name: 'Bedtime', icon: 'moon', enabled: false, action: 'block', blocked_categories: 'all', builtin: true },
-			{ id: 'preset_homework', name: 'Homework', icon: 'book', enabled: false, action: 'filter', allowed_categories: 'education reference', blocked_categories: 'gaming social streaming', builtin: true },
-			{ id: 'preset_family', name: 'Family Time', icon: 'users', enabled: false, action: 'filter', allowed_categories: 'streaming education', blocked_categories: 'adult gambling', builtin: true }
-		];
-
-		displayPresets.forEach(function(preset) {
-			var icon = PRESET_ICONS[preset.icon] || PRESET_ICONS['clock'];
-			var presetCard = E('div', {
-				'class': 'preset-card' + (preset.enabled ? ' active' : ''),
-				'data-preset-id': preset.id
-			}, [
-				E('div', { 'class': 'preset-icon' }, icon),
-				E('div', { 'class': 'preset-name' }, preset.name),
-				E('div', { 'class': 'preset-action' }, preset.action === 'block' ? _('Blocks all access') : _('Content filtered')),
-				E('label', { 'class': 'preset-toggle' }, [
-					E('input', {
-						'type': 'checkbox',
-						'checked': preset.enabled,
-						'change': function(ev) { self.togglePreset(preset.id, ev.target.checked); }
-					}),
-					E('span', { 'class': 'toggle-slider' })
-				])
-			]);
-			presetsGrid.appendChild(presetCard);
-		});
-
-		presetsSection.appendChild(presetsGrid);
-		v.appendChild(presetsSection);
-
-		// Schedules Section
-		var schedulesSection = E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('Access Schedules')),
-			E('div', { 'class': 'section-actions' }, [
-				E('button', {
-					'class': 'bw-btn bw-btn-primary',
-					'click': function() { self.showCreateScheduleModal(groups, clients); }
-				}, [E('span', {}, '+'), ' ' + _('Add Schedule')])
-			])
-		]);
-
-		if (schedules.length > 0) {
-			var schedulesGrid = E('div', { 'class': 'schedules-grid' });
-
-			schedules.forEach(function(schedule) {
-				var daysArray = (schedule.days || '').split(' ').filter(Boolean);
-
-				var scheduleCard = E('div', {
-					'class': 'schedule-card' + (schedule.active ? ' active-now' : ''),
-					'data-schedule-id': schedule.id
-				}, [
-					E('div', { 'class': 'schedule-header' }, [
-						E('div', { 'class': 'schedule-info' }, [
-							E('div', { 'class': 'schedule-name' }, schedule.name),
-							E('div', { 'class': 'schedule-target' }, [
-								E('span', { 'class': 'target-type' }, schedule.target_type === 'group' ? '👥' : '📱'),
-								' ' + schedule.target
-							])
-						]),
-						E('label', { 'class': 'schedule-toggle' }, [
-							E('input', {
-								'type': 'checkbox',
-								'checked': schedule.enabled,
-								'change': function(ev) { self.toggleSchedule(schedule.id, ev.target.checked); }
-							}),
-							E('span', { 'class': 'toggle-slider' })
-						])
-					]),
-					E('div', { 'class': 'schedule-time' }, [
-						E('span', { 'class': 'time-icon' }, '⏰'),
-						E('span', {}, schedule.start_time + ' - ' + schedule.end_time)
-					]),
-					E('div', { 'class': 'schedule-days' },
-						DAYS.map(function(day) {
-							return E('span', {
-								'class': 'day-badge' + (daysArray.indexOf(day) !== -1 ? ' active' : '')
-							}, DAY_LABELS[day]);
-						})
-					),
-					E('div', { 'class': 'schedule-action-badge' }, [
-						schedule.action === 'block' ?
-							E('span', { 'class': 'badge badge-danger' }, '🚫 ' + _('Block')) :
-							E('span', { 'class': 'badge badge-warning' }, '⚠️ ' + _('Throttle'))
-					]),
-					schedule.active ? E('div', { 'class': 'active-indicator' }, _('Active Now')) : null,
-					E('div', { 'class': 'schedule-actions' }, [
-						E('button', {
-							'class': 'bw-btn bw-btn-secondary btn-sm',
-							'click': function() { self.showEditScheduleModal(schedule, groups, clients); }
-						}, _('Edit')),
-						E('button', {
-							'class': 'bw-btn bw-btn-secondary btn-sm btn-danger',
-							'click': function() { self.deleteSchedule(schedule); }
-						}, _('Delete'))
-					])
-				].filter(Boolean));
-
-				schedulesGrid.appendChild(scheduleCard);
-			});
-
-			schedulesSection.appendChild(schedulesGrid);
-		} else {
-			schedulesSection.appendChild(E('div', { 'class': 'empty-state' }, [
-				E('div', { 'class': 'empty-icon' }, '📅'),
-				E('p', {}, _('No schedules configured')),
-				E('p', { 'class': 'empty-hint' }, _('Create schedules to automatically control internet access during specific times'))
-			]));
+		if (this.presets.length === 0) {
+			this.presets = [
+				{ id: 'preset_bedtime', name: 'Bedtime', icon: 'moon', enabled: false, action: 'block', builtin: true },
+				{ id: 'preset_homework', name: 'Homework', icon: 'book', enabled: false, action: 'filter', builtin: true },
+				{ id: 'preset_family', name: 'Family Time', icon: 'users', enabled: false, action: 'filter', builtin: true }
+			];
 		}
 
-		v.appendChild(schedulesSection);
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, _('Parental Controls')),
+					KissTheme.badge(this.schedules.length + ' schedules', 'blue')
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' },
+					_('Manage internet access schedules, content filtering, and quick preset modes'))
+			]),
 
-		// Weekly Schedule Visual
-		var weeklySection = E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('Weekly Overview')),
-			this.renderWeeklyGrid(schedules)
-		]);
-		v.appendChild(weeklySection);
+			// Stats
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'style': 'margin: 20px 0;' },
+				this.renderStats()),
 
-		// Content Filter Categories
-		var filterSection = E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('Content Filter Categories')),
-			E('p', { 'class': 'section-desc' }, _('Categories that can be blocked or allowed in schedules and presets'))
-		]);
+			// Presets Section
+			this.renderPresetsSection(),
 
-		var categoriesGrid = E('div', { 'class': 'categories-grid' });
-		categories.forEach(function(cat) {
-			categoriesGrid.appendChild(E('div', { 'class': 'category-badge' }, [
-				E('span', { 'class': 'category-icon' }, self.getCategoryIcon(cat.id)),
-				E('span', {}, cat.name)
-			]));
+			// Two column layout
+			E('div', { 'class': 'kiss-grid kiss-grid-2', 'style': 'margin-top: 20px;' }, [
+				this.renderSchedulesSection(),
+				this.renderCategoriesSection()
+			]),
+
+			// Weekly Overview
+			this.renderWeeklySection()
+		];
+
+		return KissTheme.wrap(content, 'admin/services/bandwidth-manager/parental-controls');
+	},
+
+	renderPresetsSection: function() {
+		var self = this;
+
+		var presetCards = E('div', { 'style': 'display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px;' },
+			this.presets.map(function(preset) {
+				var icon = PRESET_ICONS[preset.icon] || PRESET_ICONS['clock'];
+				var borderColor = preset.enabled ? 'var(--kiss-green)' : 'var(--kiss-line)';
+
+				return E('div', {
+					'style': 'background: var(--kiss-bg); border: 2px solid ' + borderColor + '; border-radius: 12px; padding: 20px; text-align: center;'
+				}, [
+					E('div', { 'style': 'font-size: 40px; margin-bottom: 12px;' }, icon),
+					E('div', { 'style': 'font-weight: 600; margin-bottom: 4px;' }, preset.name),
+					E('div', { 'style': 'font-size: 12px; color: var(--kiss-muted); margin-bottom: 16px;' },
+						preset.action === 'block' ? _('Blocks all access') : _('Content filtered')),
+					E('button', {
+						'class': preset.enabled ? 'kiss-btn kiss-btn-green' : 'kiss-btn',
+						'style': 'width: 100%;',
+						'click': function() { self.togglePreset(preset.id, !preset.enabled); }
+					}, preset.enabled ? _('Active') : _('Activate'))
+				]);
+			})
+		);
+
+		return KissTheme.card(
+			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+				E('span', {}, '⚡ ' + _('Quick Preset Modes')),
+				KissTheme.badge(this.presets.filter(function(p) { return p.enabled; }).length + ' active', 'green')
+			]),
+			presetCards
+		);
+	},
+
+	renderSchedulesSection: function() {
+		var self = this;
+
+		var content;
+		if (this.schedules.length === 0) {
+			content = E('div', { 'style': 'text-align: center; padding: 30px;' }, [
+				E('div', { 'style': 'font-size: 40px; margin-bottom: 12px; opacity: 0.5;' }, '📅'),
+				E('p', { 'style': 'color: var(--kiss-muted);' }, _('No schedules configured')),
+				E('button', {
+					'class': 'kiss-btn kiss-btn-green',
+					'style': 'margin-top: 12px;',
+					'click': function() { self.showCreateScheduleModal(self.groups, self.clients); }
+				}, '+ ' + _('Add Schedule'))
+			]);
+		} else {
+			content = E('div', {}, [
+				E('div', { 'style': 'margin-bottom: 12px;' }, [
+					E('button', {
+						'class': 'kiss-btn kiss-btn-green',
+						'click': function() { self.showCreateScheduleModal(self.groups, self.clients); }
+					}, '+ ' + _('Add Schedule'))
+				]),
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px;' },
+					this.schedules.map(function(schedule) {
+						var daysArray = (schedule.days || '').split(' ').filter(Boolean);
+						var borderColor = schedule.active ? 'var(--kiss-orange)' : 'var(--kiss-line)';
+
+						return E('div', {
+							'style': 'padding: 16px; background: var(--kiss-bg); border-radius: 8px; border-left: 3px solid ' + borderColor + ';'
+						}, [
+							E('div', { 'style': 'display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;' }, [
+								E('div', {}, [
+									E('div', { 'style': 'font-weight: 600;' }, schedule.name),
+									E('div', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, [
+										schedule.target_type === 'group' ? '👥 ' : '📱 ',
+										schedule.target
+									])
+								]),
+								E('div', { 'style': 'display: flex; gap: 6px;' }, [
+									schedule.active ? KissTheme.badge('Active', 'orange') : '',
+									KissTheme.badge(schedule.action, schedule.action === 'block' ? 'red' : 'orange')
+								])
+							]),
+							E('div', { 'style': 'display: flex; align-items: center; gap: 12px; margin-bottom: 8px;' }, [
+								E('span', { 'style': 'color: var(--kiss-muted);' }, '⏰'),
+								E('span', {}, schedule.start_time + ' - ' + schedule.end_time)
+							]),
+							E('div', { 'style': 'display: flex; gap: 4px; margin-bottom: 12px;' },
+								DAYS.map(function(day) {
+									var isActive = daysArray.indexOf(day) !== -1;
+									return E('span', {
+										'style': 'width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600;' +
+											(isActive ? ' background: var(--kiss-purple); color: white;' : ' background: var(--kiss-bg2); color: var(--kiss-muted);')
+									}, DAY_LABELS[day]);
+								})
+							),
+							E('div', { 'style': 'display: flex; gap: 8px;' }, [
+								E('button', {
+									'class': 'kiss-btn',
+									'style': 'padding: 4px 10px; font-size: 11px;',
+									'click': function() { self.showEditScheduleModal(schedule, self.groups, self.clients); }
+								}, _('Edit')),
+								E('button', {
+									'class': 'kiss-btn kiss-btn-red',
+									'style': 'padding: 4px 10px; font-size: 11px;',
+									'click': function() { self.deleteSchedule(schedule); }
+								}, _('Delete'))
+							])
+						]);
+					})
+				)
+			]);
+		}
+
+		return KissTheme.card(
+			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+				E('span', {}, '📅 ' + _('Access Schedules')),
+				KissTheme.badge(this.schedules.length + ' schedules', 'blue')
+			]),
+			content
+		);
+	},
+
+	renderCategoriesSection: function() {
+		var self = this;
+
+		if (this.categories.length === 0) {
+			return KissTheme.card('🏷️ ' + _('Content Categories'),
+				E('p', { 'style': 'color: var(--kiss-muted); text-align: center; padding: 20px;' },
+					_('No filter categories available')));
+		}
+
+		var categoriesGrid = E('div', { 'style': 'display: flex; flex-wrap: wrap; gap: 8px;' },
+			this.categories.map(function(cat) {
+				return E('span', {
+					'style': 'display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: var(--kiss-bg); border-radius: 6px; font-size: 13px;'
+				}, [
+					E('span', {}, self.getCategoryIcon(cat.id)),
+					cat.name
+				]);
+			})
+		);
+
+		return KissTheme.card(
+			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+				E('span', {}, '🏷️ ' + _('Content Categories')),
+				KissTheme.badge(this.categories.length + ' categories', 'cyan')
+			]),
+			categoriesGrid
+		);
+	},
+
+	renderWeeklySection: function() {
+		var hours = [];
+		for (var i = 0; i < 24; i++) hours.push(i);
+
+		var self = this;
+		var schedules = this.schedules;
+
+		var rows = DAYS.map(function(day) {
+			var cells = hours.map(function(hour) {
+				var isBlocked = false;
+				schedules.forEach(function(s) {
+					if (!s.enabled) return;
+					var daysArray = (s.days || '').split(' ');
+					if (daysArray.indexOf(day) === -1) return;
+
+					var start = parseInt(s.start_time.split(':')[0]);
+					var end = parseInt(s.end_time.split(':')[0]);
+
+					if (start < end) {
+						if (hour >= start && hour < end) isBlocked = true;
+					} else {
+						if (hour >= start || hour < end) isBlocked = true;
+					}
+				});
+
+				return E('div', {
+					'style': 'flex: 1; height: 16px;' +
+						(isBlocked ? ' background: var(--kiss-red);' : ' background: var(--kiss-bg2);')
+				});
+			});
+
+			return E('div', { 'style': 'display: flex; gap: 1px;' }, [
+				E('div', { 'style': 'width: 30px; font-size: 10px; color: var(--kiss-muted); text-align: center;' }, DAY_LABELS[day]),
+				E('div', { 'style': 'flex: 1; display: flex; gap: 1px;' }, cells)
+			]);
 		});
 
-		filterSection.appendChild(categoriesGrid);
-		v.appendChild(filterSection);
-
-		return KissTheme.wrap([v], 'admin/services/bandwidth-manager/parental-controls');
+		return KissTheme.card('📊 ' + _('Weekly Overview'),
+			E('div', { 'style': 'display: flex; flex-direction: column; gap: 2px;' }, rows)
+		);
 	},
 
 	togglePreset: function(presetId, enabled) {
-		var self = this;
 		API.activatePresetMode(presetId, enabled ? 1 : 0).then(function(result) {
 			if (result.success) {
 				ui.addNotification(null, E('p', enabled ? _('Preset activated') : _('Preset deactivated')), 'success');
@@ -215,6 +308,7 @@ return L.view.extend({
 
 	showCreateScheduleModal: function(groups, clients) {
 		var self = this;
+		var inputStyle = 'width: 100%; padding: 8px 12px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text);';
 
 		var targetOptions = [];
 		clients.forEach(function(c) {
@@ -224,39 +318,42 @@ return L.view.extend({
 			targetOptions.push(E('option', { 'value': g.id, 'data-type': 'group' }, '👥 ' + g.name));
 		});
 
-		var body = E('div', { 'class': 'schedule-form' }, [
-			E('div', { 'class': 'form-group' }, [
-				E('label', {}, _('Schedule Name')),
-				E('input', { 'type': 'text', 'id': 'schedule-name', 'class': 'cbi-input-text', 'placeholder': _('e.g., Bedtime for Kids') })
+		var body = E('div', { 'style': 'display: flex; flex-direction: column; gap: 16px;' }, [
+			E('div', {}, [
+				E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('Schedule Name')),
+				E('input', { 'type': 'text', 'id': 'schedule-name', 'style': inputStyle, 'placeholder': _('e.g., Bedtime for Kids') })
 			]),
-			E('div', { 'class': 'form-group' }, [
-				E('label', {}, _('Apply To')),
-				E('select', { 'id': 'schedule-target', 'class': 'cbi-input-select' }, targetOptions)
+			E('div', {}, [
+				E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('Apply To')),
+				E('select', { 'id': 'schedule-target', 'style': inputStyle }, targetOptions)
 			]),
-			E('div', { 'class': 'form-group' }, [
-				E('label', {}, _('Action')),
-				E('select', { 'id': 'schedule-action', 'class': 'cbi-input-select' }, [
+			E('div', {}, [
+				E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('Action')),
+				E('select', { 'id': 'schedule-action', 'style': inputStyle }, [
 					E('option', { 'value': 'block' }, _('Block Internet Access')),
 					E('option', { 'value': 'throttle' }, _('Throttle Bandwidth'))
 				])
 			]),
-			E('div', { 'class': 'form-row' }, [
-				E('div', { 'class': 'form-group half' }, [
-					E('label', {}, _('Start Time')),
-					E('input', { 'type': 'time', 'id': 'schedule-start', 'class': 'cbi-input-text', 'value': '21:00' })
+			E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 16px;' }, [
+				E('div', {}, [
+					E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('Start Time')),
+					E('input', { 'type': 'time', 'id': 'schedule-start', 'style': inputStyle, 'value': '21:00' })
 				]),
-				E('div', { 'class': 'form-group half' }, [
-					E('label', {}, _('End Time')),
-					E('input', { 'type': 'time', 'id': 'schedule-end', 'class': 'cbi-input-text', 'value': '07:00' })
+				E('div', {}, [
+					E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('End Time')),
+					E('input', { 'type': 'time', 'id': 'schedule-end', 'style': inputStyle, 'value': '07:00' })
 				])
 			]),
-			E('div', { 'class': 'form-group' }, [
-				E('label', {}, _('Days')),
-				E('div', { 'class': 'days-selector' },
+			E('div', {}, [
+				E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('Days')),
+				E('div', { 'class': 'days-selector', 'style': 'display: flex; gap: 8px;' },
 					DAYS.map(function(day) {
-						return E('label', { 'class': 'day-checkbox' }, [
-							E('input', { 'type': 'checkbox', 'value': day, 'checked': ['mon', 'tue', 'wed', 'thu', 'fri'].indexOf(day) !== -1 }),
-							E('span', {}, DAY_LABELS[day])
+						var isDefault = ['mon', 'tue', 'wed', 'thu', 'fri'].indexOf(day) !== -1;
+						return E('label', { 'style': 'display: flex; flex-direction: column; align-items: center; cursor: pointer;' }, [
+							E('input', { 'type': 'checkbox', 'value': day, 'checked': isDefault, 'style': 'margin-bottom: 4px;' }),
+							E('span', {
+								'style': 'width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--kiss-bg); border-radius: 50%; font-size: 12px; font-weight: 600;'
+							}, DAY_LABELS[day])
 						]);
 					})
 				)
@@ -265,13 +362,9 @@ return L.view.extend({
 
 		ui.showModal(_('Create Schedule'), [
 			body,
-			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')),
-				' ',
-				E('button', {
-					'class': 'btn cbi-button-action',
-					'click': function() { self.createSchedule(); }
-				}, _('Create'))
+			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px;' }, [
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, _('Cancel')),
+				E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': function() { self.createSchedule(); } }, _('Create'))
 			])
 		]);
 	},
@@ -313,57 +406,53 @@ return L.view.extend({
 
 	showEditScheduleModal: function(schedule, groups, clients) {
 		var self = this;
+		var inputStyle = 'width: 100%; padding: 8px 12px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text);';
 		var daysArray = (schedule.days || '').split(' ').filter(Boolean);
 
 		var targetOptions = [];
 		clients.forEach(function(c) {
-			targetOptions.push(E('option', {
-				'value': c.mac,
-				'data-type': 'device',
-				'selected': schedule.target === c.mac
-			}, '📱 ' + (c.hostname || c.mac)));
+			targetOptions.push(E('option', { 'value': c.mac, 'data-type': 'device', 'selected': schedule.target === c.mac }, '📱 ' + (c.hostname || c.mac)));
 		});
 		groups.forEach(function(g) {
-			targetOptions.push(E('option', {
-				'value': g.id,
-				'data-type': 'group',
-				'selected': schedule.target === g.id
-			}, '👥 ' + g.name));
+			targetOptions.push(E('option', { 'value': g.id, 'data-type': 'group', 'selected': schedule.target === g.id }, '👥 ' + g.name));
 		});
 
-		var body = E('div', { 'class': 'schedule-form' }, [
-			E('div', { 'class': 'form-group' }, [
-				E('label', {}, _('Schedule Name')),
-				E('input', { 'type': 'text', 'id': 'edit-schedule-name', 'class': 'cbi-input-text', 'value': schedule.name })
+		var body = E('div', { 'style': 'display: flex; flex-direction: column; gap: 16px;' }, [
+			E('div', {}, [
+				E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('Schedule Name')),
+				E('input', { 'type': 'text', 'id': 'edit-schedule-name', 'style': inputStyle, 'value': schedule.name })
 			]),
-			E('div', { 'class': 'form-group' }, [
-				E('label', {}, _('Apply To')),
-				E('select', { 'id': 'edit-schedule-target', 'class': 'cbi-input-select' }, targetOptions)
+			E('div', {}, [
+				E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('Apply To')),
+				E('select', { 'id': 'edit-schedule-target', 'style': inputStyle }, targetOptions)
 			]),
-			E('div', { 'class': 'form-group' }, [
-				E('label', {}, _('Action')),
-				E('select', { 'id': 'edit-schedule-action', 'class': 'cbi-input-select' }, [
+			E('div', {}, [
+				E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('Action')),
+				E('select', { 'id': 'edit-schedule-action', 'style': inputStyle }, [
 					E('option', { 'value': 'block', 'selected': schedule.action === 'block' }, _('Block Internet Access')),
 					E('option', { 'value': 'throttle', 'selected': schedule.action === 'throttle' }, _('Throttle Bandwidth'))
 				])
 			]),
-			E('div', { 'class': 'form-row' }, [
-				E('div', { 'class': 'form-group half' }, [
-					E('label', {}, _('Start Time')),
-					E('input', { 'type': 'time', 'id': 'edit-schedule-start', 'class': 'cbi-input-text', 'value': schedule.start_time })
+			E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 16px;' }, [
+				E('div', {}, [
+					E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('Start Time')),
+					E('input', { 'type': 'time', 'id': 'edit-schedule-start', 'style': inputStyle, 'value': schedule.start_time })
 				]),
-				E('div', { 'class': 'form-group half' }, [
-					E('label', {}, _('End Time')),
-					E('input', { 'type': 'time', 'id': 'edit-schedule-end', 'class': 'cbi-input-text', 'value': schedule.end_time })
+				E('div', {}, [
+					E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('End Time')),
+					E('input', { 'type': 'time', 'id': 'edit-schedule-end', 'style': inputStyle, 'value': schedule.end_time })
 				])
 			]),
-			E('div', { 'class': 'form-group' }, [
-				E('label', {}, _('Days')),
-				E('div', { 'class': 'days-selector' },
+			E('div', {}, [
+				E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('Days')),
+				E('div', { 'class': 'days-selector', 'style': 'display: flex; gap: 8px;' },
 					DAYS.map(function(day) {
-						return E('label', { 'class': 'day-checkbox' }, [
-							E('input', { 'type': 'checkbox', 'value': day, 'checked': daysArray.indexOf(day) !== -1 }),
-							E('span', {}, DAY_LABELS[day])
+						var isActive = daysArray.indexOf(day) !== -1;
+						return E('label', { 'style': 'display: flex; flex-direction: column; align-items: center; cursor: pointer;' }, [
+							E('input', { 'type': 'checkbox', 'value': day, 'checked': isActive, 'style': 'margin-bottom: 4px;' }),
+							E('span', {
+								'style': 'width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--kiss-bg); border-radius: 50%; font-size: 12px; font-weight: 600;'
+							}, DAY_LABELS[day])
 						]);
 					})
 				)
@@ -372,13 +461,9 @@ return L.view.extend({
 
 		ui.showModal(_('Edit Schedule'), [
 			body,
-			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')),
-				' ',
-				E('button', {
-					'class': 'btn cbi-button-action',
-					'click': function() { self.updateSchedule(schedule.id); }
-				}, _('Save'))
+			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px;' }, [
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, _('Cancel')),
+				E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': function() { self.updateSchedule(schedule.id); } }, _('Save'))
 			])
 		]);
 	},
@@ -423,55 +508,6 @@ return L.view.extend({
 		});
 	},
 
-	renderWeeklyGrid: function(schedules) {
-		var hours = [];
-		for (var i = 0; i < 24; i++) {
-			hours.push(i);
-		}
-
-		var grid = E('div', { 'class': 'weekly-grid' }, [
-			E('div', { 'class': 'grid-header' }, [
-				E('div', { 'class': 'grid-corner' }),
-				hours.map(function(h) {
-					return E('div', { 'class': 'hour-label' }, h % 6 === 0 ? String(h).padStart(2, '0') : '');
-				})
-			].flat())
-		]);
-
-		var self = this;
-		DAYS.forEach(function(day, dayIndex) {
-			var row = E('div', { 'class': 'grid-row' }, [
-				E('div', { 'class': 'day-label' }, DAY_LABELS[day])
-			]);
-
-			hours.forEach(function(hour) {
-				var isBlocked = false;
-				schedules.forEach(function(s) {
-					if (!s.enabled) return;
-					var daysArray = (s.days || '').split(' ');
-					if (daysArray.indexOf(day) === -1) return;
-
-					var start = parseInt(s.start_time.split(':')[0]);
-					var end = parseInt(s.end_time.split(':')[0]);
-
-					if (start < end) {
-						if (hour >= start && hour < end) isBlocked = true;
-					} else {
-						if (hour >= start || hour < end) isBlocked = true;
-					}
-				});
-
-				row.appendChild(E('div', {
-					'class': 'hour-cell' + (isBlocked ? ' blocked' : '')
-				}));
-			});
-
-			grid.appendChild(row);
-		});
-
-		return grid;
-	},
-
 	getCategoryIcon: function(catId) {
 		var icons = {
 			'adult': '🔞', 'gambling': '🎰', 'gaming': '🎮', 'social': '💬',
@@ -480,69 +516,5 @@ return L.view.extend({
 			'sports': '⚽', 'entertainment': '🎬', 'reference': '📖', 'downloads': '📥'
 		};
 		return icons[catId] || '📁';
-	},
-
-	getCustomStyles: function() {
-		return `
-			.section-desc { color: #999; font-size: 14px; margin-bottom: 16px; }
-			.section-actions { margin-bottom: 16px; }
-			.presets-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
-			.preset-card { background: var(--bw-light, #15151a); border: 2px solid var(--bw-border, #25252f); border-radius: 12px; padding: 20px; text-align: center; transition: all 0.2s; }
-			.preset-card.active { border-color: #10b981; background: rgba(16, 185, 129, 0.1); }
-			.preset-icon { font-size: 48px; margin-bottom: 12px; }
-			.preset-name { font-size: 18px; font-weight: 600; color: #fff; margin-bottom: 4px; }
-			.preset-action { font-size: 12px; color: #999; margin-bottom: 16px; }
-			.preset-toggle, .schedule-toggle { position: relative; display: inline-block; width: 48px; height: 24px; }
-			.preset-toggle input, .schedule-toggle input { opacity: 0; width: 0; height: 0; }
-			.toggle-slider { position: absolute; cursor: pointer; inset: 0; background: var(--bw-border, #25252f); border-radius: 24px; transition: 0.3s; }
-			.toggle-slider::before { content: ""; position: absolute; width: 18px; height: 18px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: 0.3s; }
-			input:checked + .toggle-slider { background: #10b981; }
-			input:checked + .toggle-slider::before { transform: translateX(24px); }
-			.schedules-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
-			.schedule-card { background: var(--bw-light, #15151a); border: 1px solid var(--bw-border, #25252f); border-radius: 12px; padding: 16px; position: relative; }
-			.schedule-card.active-now { border-color: #f59e0b; }
-			.schedule-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
-			.schedule-name { font-size: 16px; font-weight: 600; color: #fff; }
-			.schedule-target { font-size: 13px; color: #999; margin-top: 4px; }
-			.schedule-time { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #ccc; margin-bottom: 12px; }
-			.time-icon { font-size: 16px; }
-			.schedule-days { display: flex; gap: 4px; margin-bottom: 12px; }
-			.day-badge { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; background: var(--bw-dark, #0a0a0f); color: #666; border: 1px solid var(--bw-border, #25252f); }
-			.day-badge.active { background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%); color: white; border: none; }
-			.schedule-action-badge { margin-bottom: 12px; }
-			.badge { padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; }
-			.badge-danger { background: rgba(239, 68, 68, 0.2); color: #f87171; }
-			.badge-warning { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
-			.active-indicator { position: absolute; top: 12px; right: 12px; font-size: 11px; color: #f59e0b; font-weight: 600; animation: pulse 2s infinite; }
-			.schedule-actions { display: flex; gap: 8px; }
-			.btn-sm { padding: 6px 12px; font-size: 12px; }
-			.btn-danger { color: #ef4444; }
-			.empty-state { text-align: center; padding: 40px; color: #999; }
-			.empty-icon { font-size: 64px; margin-bottom: 16px; opacity: 0.5; }
-			.empty-hint { font-size: 13px; color: #666; }
-			.weekly-grid { background: var(--bw-light, #15151a); border: 1px solid var(--bw-border, #25252f); border-radius: 8px; overflow: hidden; }
-			.grid-header, .grid-row { display: flex; }
-			.grid-corner, .day-label { width: 40px; flex-shrink: 0; padding: 8px; font-size: 11px; font-weight: 600; color: #999; display: flex; align-items: center; justify-content: center; }
-			.hour-label { flex: 1; padding: 4px; font-size: 10px; color: #666; text-align: center; }
-			.hour-cell { flex: 1; height: 20px; background: var(--bw-dark, #0a0a0f); border: 1px solid var(--bw-border, #25252f); }
-			.hour-cell.blocked { background: rgba(239, 68, 68, 0.4); }
-			.categories-grid { display: flex; flex-wrap: wrap; gap: 8px; }
-			.category-badge { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: var(--bw-light, #15151a); border: 1px solid var(--bw-border, #25252f); border-radius: 6px; font-size: 13px; color: #ccc; }
-			.category-icon { font-size: 16px; }
-			.form-group { margin-bottom: 16px; }
-			.form-group label { display: block; margin-bottom: 6px; font-weight: 500; color: #ccc; }
-			.form-row { display: flex; gap: 16px; }
-			.form-group.half { flex: 1; }
-			.days-selector { display: flex; gap: 8px; }
-			.day-checkbox { display: flex; flex-direction: column; align-items: center; cursor: pointer; }
-			.day-checkbox input { margin-bottom: 4px; }
-			.day-checkbox span { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--bw-dark, #0a0a0f); border: 1px solid var(--bw-border, #25252f); border-radius: 50%; font-size: 12px; font-weight: 600; color: #666; }
-			.day-checkbox input:checked + span { background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%); color: white; border: none; }
-			@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-		`;
-	},
-
-	handleSaveApply: null,
-	handleSave: null,
-	handleReset: null
+	}
 });

@@ -200,7 +200,7 @@ return view.extend({
 			E('div', { 'class': 'adapters-header' }, [
 				E('h2', { 'class': 'adapters-title' }, _('USB IoT Adapters')),
 				E('button', {
-					'class': 'cbi-button cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'click': ui.createHandlerFn(this, this.handleScanUSB)
 				}, _('Scan USB Devices'))
 			]),
@@ -294,15 +294,15 @@ return view.extend({
 				]),
 				E('div', { 'class': 'adapter-actions' }, [
 					E('button', {
-						'class': 'cbi-button cbi-button-neutral',
+						'class': 'kiss-btn',
 						'click': ui.createHandlerFn(this, this.handleTestAdapter, adapter)
 					}, _('Test')),
 					E('button', {
-						'class': 'cbi-button cbi-button-neutral',
+						'class': 'kiss-btn',
 						'click': ui.createHandlerFn(this, this.handleConfigureAdapter, adapter)
 					}, _('Configure')),
 					E('button', {
-						'class': 'cbi-button cbi-button-negative',
+						'class': 'kiss-btn kiss-btn-red',
 						'click': ui.createHandlerFn(this, this.handleRemoveAdapter, adapter)
 					}, _('Remove'))
 				])
@@ -344,7 +344,7 @@ return view.extend({
 					device.bus && E('div', {}, 'Bus: ' + device.bus + ', Device: ' + device.device)
 				]),
 				E('button', {
-					'class': 'cbi-button cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'style': 'margin-top: 8px; width: 100%;',
 					'click': ui.createHandlerFn(this, this.handleImportDevice, device)
 				}, _('Import'))
@@ -387,11 +387,11 @@ return view.extend({
 			E('p', _('Import %s as a configured adapter?').format(device.name)),
 			E('div', { 'class': 'right' }, [
 				E('button', {
-					'class': 'cbi-button cbi-button-neutral',
+					'class': 'kiss-btn',
 					'click': ui.hideModal
 				}, _('Cancel')),
 				E('button', {
-					'class': 'cbi-button cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'click': ui.createHandlerFn(this, function() {
 						return API.configureAdapter(
 							adapterId,
@@ -449,11 +449,11 @@ return view.extend({
 				_('This will remove the adapter configuration from UCI.')),
 			E('div', { 'class': 'right' }, [
 				E('button', {
-					'class': 'cbi-button cbi-button-neutral',
+					'class': 'kiss-btn',
 					'click': ui.hideModal
 				}, _('Cancel')),
 				E('button', {
-					'class': 'cbi-button cbi-button-negative',
+					'class': 'kiss-btn kiss-btn-red',
 					'click': ui.createHandlerFn(this, function() {
 						return API.resetAdapter(adapter.id).then(function() {
 							ui.hideModal();

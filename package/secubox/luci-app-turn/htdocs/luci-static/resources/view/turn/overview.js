@@ -3,6 +3,7 @@
 'require rpc';
 'require poll';
 'require ui';
+'require secubox/kiss-theme';
 
 var callStatus = rpc.declare({ object: 'luci.turn', method: 'status', expect: {} });
 var callStart = rpc.declare({ object: 'luci.turn', method: 'start', expect: {} });
@@ -23,135 +24,143 @@ return view.extend({
 		return callStatus().then(function(r) { this.data = r; return r; }.bind(this));
 	},
 
-	render: function(data) {
+	renderNav: function(active) {
+		var tabs = [
+			{ name: 'Overview', path: 'admin/services/turn/overview' },
+			{ name: 'Settings', path: 'admin/services/turn/settings' }
+		];
+
+		return E('div', { 'class': 'kiss-tabs' }, tabs.map(function(tab) {
+			var isActive = tab.path.indexOf(active) !== -1;
+			return E('a', {
+				'href': L.url(tab.path),
+				'class': 'kiss-tab' + (isActive ? ' active' : '')
+			}, tab.name);
+		}));
+	},
+
+	renderStats: function(data) {
+		var c = KissTheme.colors;
+		return [
+			KissTheme.stat(data.running ? 'UP' : 'DOWN', 'Server', data.running ? c.green : c.red),
+			KissTheme.stat(data.udp_3478 ? 'YES' : 'NO', 'UDP 3478', data.udp_3478 ? c.green : c.yellow),
+			KissTheme.stat(data.tcp_5349 ? 'YES' : 'NO', 'TCP 5349', data.tcp_5349 ? c.green : c.yellow),
+			KissTheme.stat(data.port || 3478, 'Port', c.blue)
+		];
+	},
+
+	renderHealth: function(data) {
+		var checks = [
+			{ label: 'Server', ok: data.running, value: data.running ? 'Running' : 'Stopped' },
+			{ label: 'UDP 3478', ok: data.udp_3478, value: data.udp_3478 ? 'Listening' : 'Closed' },
+			{ label: 'TCP 5349', ok: data.tcp_5349, value: data.tcp_5349 ? 'Listening' : 'Closed' },
+			{ label: 'Realm', ok: true, value: data.realm || 'N/A' },
+			{ label: 'External IP', ok: !!(data.external_ip || data.detected_ip), value: data.external_ip || data.detected_ip || 'Unknown' }
+		];
+
+		return E('div', { 'style': 'display: flex; flex-direction: column; gap: 8px;' }, checks.map(function(c) {
+			return E('div', { 'style': 'display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--kiss-line);' }, [
+				E('div', { 'style': 'width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; ' +
+					(c.ok ? 'background: rgba(0,200,83,0.15); color: var(--kiss-green);' : 'background: rgba(255,23,68,0.15); color: var(--kiss-red);') },
+					c.ok ? '\u2713' : '\u2717'),
+				E('div', { 'style': 'flex: 1;' }, [
+					E('div', { 'style': 'font-size: 13px; color: var(--kiss-text);' }, c.label),
+					E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted);' }, c.value)
+				])
+			]);
+		}));
+	},
+
+	renderControls: function(data) {
 		var self = this;
-		this.data = data || {};
+		var running = data.running;
 
-		poll.add(function() {
-			return callStatus().then(function(r) {
-				self.data = r;
-				self.updateUI(r);
-			});
-		}, 5);
-
-		return E('div', { 'class': 'cbi-map' }, [
-			E('style', {}, this.getStyles()),
-
-			E('div', { 'class': 'sb-header' }, [
-				E('h2', {}, 'TURN Server'),
-				E('div', { 'class': 'sb-chips' }, [
-					E('span', { 'class': 'chip', 'id': 'chip-status' },
-						this.data.running ? 'Running' : 'Stopped'),
-					E('span', { 'class': 'chip' }, 'Realm: ' + (this.data.realm || 'N/A')),
-					E('span', { 'class': 'chip' }, 'Port: ' + (this.data.port || 3478))
-				])
+		return E('div', { 'style': 'display: flex; flex-direction: column; gap: 16px;' }, [
+			E('div', { 'style': 'display: flex; gap: 8px; flex-wrap: wrap;' }, [
+				E('button', {
+					'class': 'kiss-btn kiss-btn-green',
+					'click': ui.createHandlerFn(this, 'handleStart')
+				}, 'Start'),
+				E('button', {
+					'class': 'kiss-btn kiss-btn-red',
+					'click': ui.createHandlerFn(this, 'handleStop')
+				}, 'Stop'),
+				E('button', {
+					'class': 'kiss-btn',
+					'click': ui.createHandlerFn(this, 'handleEnable')
+				}, 'Enable'),
+				E('button', {
+					'class': 'kiss-btn',
+					'click': ui.createHandlerFn(this, 'handleDisable')
+				}, 'Disable')
 			]),
+			E('button', {
+				'class': 'kiss-btn',
+				'click': ui.createHandlerFn(this, 'handleShowLogs')
+			}, 'View Logs')
+		]);
+	},
 
-			E('div', { 'class': 'sb-section' }, [
-				E('h3', {}, 'Service Control'),
-				E('div', { 'class': 'btn-row' }, [
-					E('button', { 'class': 'sb-btn sb-btn-success', 'click': ui.createHandlerFn(this, 'handleStart') }, 'Start'),
-					E('button', { 'class': 'sb-btn sb-btn-danger', 'click': ui.createHandlerFn(this, 'handleStop') }, 'Stop'),
-					E('button', { 'class': 'sb-btn', 'click': ui.createHandlerFn(this, 'handleEnable') }, 'Enable Autostart'),
-					E('button', { 'class': 'sb-btn', 'click': ui.createHandlerFn(this, 'handleDisable') }, 'Disable Autostart')
-				])
-			]),
-
-			E('div', { 'class': 'sb-section' }, [
-				E('h3', {}, 'Status'),
-				E('div', { 'class': 'sb-grid' }, [
-					this.renderCard('Server', this.data.running ? 'Running' : 'Stopped', this.data.running ? 'success' : 'danger'),
-					this.renderCard('UDP 3478', this.data.udp_3478 ? 'Listening' : 'Closed', this.data.udp_3478 ? 'success' : 'warning'),
-					this.renderCard('TCP 5349', this.data.tcp_5349 ? 'Listening' : 'Closed', this.data.tcp_5349 ? 'success' : 'warning'),
-					this.renderCard('External IP', this.data.external_ip || this.data.detected_ip || 'Unknown', 'info')
-				])
-			]),
-
-			E('div', { 'class': 'sb-section' }, [
-				E('h3', {}, 'Jitsi Integration'),
-				E('p', {}, 'Configure TURN server for Jitsi Meet WebRTC connections'),
-				E('div', { 'class': 'form-row' }, [
-					E('input', { 'type': 'text', 'id': 'jitsi-domain', 'placeholder': 'jitsi.secubox.in', 'class': 'sb-input' }),
-					E('input', { 'type': 'text', 'id': 'turn-domain', 'placeholder': 'turn.secubox.in', 'class': 'sb-input' }),
-					E('button', { 'class': 'sb-btn sb-btn-primary', 'click': ui.createHandlerFn(this, 'handleSetupJitsi') }, 'Setup for Jitsi')
-				])
-			]),
-
-			E('div', { 'class': 'sb-section' }, [
-				E('h3', {}, 'Nextcloud Talk'),
-				E('p', {}, 'Configure TURN for Nextcloud Talk (uses port 443 for firewall compatibility)'),
-				E('div', { 'class': 'form-row' }, [
-					E('input', { 'type': 'text', 'id': 'nc-turn-domain', 'placeholder': 'turn.secubox.in', 'class': 'sb-input' }),
-					E('button', { 'class': 'sb-btn sb-btn-primary', 'click': ui.createHandlerFn(this, 'handleSetupNextcloud') }, 'Setup for Nextcloud')
-				]),
-				E('pre', { 'id': 'nextcloud-output', 'class': 'sb-output', 'style': 'display:none;' }, '')
-			]),
-
-			E('div', { 'class': 'sb-section' }, [
-				E('h3', {}, 'SSL & Expose'),
-				E('div', { 'class': 'form-row' }, [
-					E('input', { 'type': 'text', 'id': 'ssl-domain', 'placeholder': 'turn.secubox.in', 'class': 'sb-input' }),
-					E('button', { 'class': 'sb-btn', 'click': ui.createHandlerFn(this, 'handleSSL') }, 'Setup SSL'),
-					E('button', { 'class': 'sb-btn sb-btn-primary', 'click': ui.createHandlerFn(this, 'handleExpose') }, 'Expose (DNS+FW)')
-				])
-			]),
-
-			E('div', { 'class': 'sb-section' }, [
-				E('h3', {}, 'Generate Credentials'),
-				E('p', {}, 'Generate time-limited TURN credentials for WebRTC clients'),
-				E('div', { 'class': 'form-row' }, [
-					E('input', { 'type': 'text', 'id': 'cred-user', 'placeholder': 'username', 'value': 'webrtc', 'class': 'sb-input' }),
-					E('input', { 'type': 'number', 'id': 'cred-ttl', 'placeholder': 'TTL (seconds)', 'value': '86400', 'class': 'sb-input' }),
-					E('button', { 'class': 'sb-btn sb-btn-primary', 'click': ui.createHandlerFn(this, 'handleCredentials') }, 'Generate')
-				]),
-				E('pre', { 'id': 'credentials-output', 'class': 'sb-output', 'style': 'display:none;' }, '')
-			]),
-
-			E('div', { 'class': 'sb-section' }, [
-				E('h3', {}, 'Logs'),
-				E('button', { 'class': 'sb-btn', 'click': ui.createHandlerFn(this, 'handleShowLogs') }, 'Show Logs'),
-				E('pre', { 'id': 'logs-output', 'class': 'sb-output', 'style': 'display:none; max-height:300px; overflow:auto;' }, '')
+	renderJitsiSetup: function() {
+		var self = this;
+		return E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px;' }, [
+			E('p', { 'style': 'color: var(--kiss-muted); font-size: 12px; margin: 0;' }, 'Configure TURN server for Jitsi Meet WebRTC connections'),
+			E('div', { 'style': 'display: flex; gap: 8px; flex-wrap: wrap;' }, [
+				E('input', { 'type': 'text', 'id': 'jitsi-domain', 'placeholder': 'jitsi.secubox.in', 'style': 'flex: 1; min-width: 150px; background: var(--kiss-bg2); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px 12px; border-radius: 6px;' }),
+				E('input', { 'type': 'text', 'id': 'turn-domain', 'placeholder': 'turn.secubox.in', 'style': 'flex: 1; min-width: 150px; background: var(--kiss-bg2); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px 12px; border-radius: 6px;' }),
+				E('button', { 'class': 'kiss-btn kiss-btn-blue', 'click': ui.createHandlerFn(this, 'handleSetupJitsi') }, 'Setup')
 			])
 		]);
 	},
 
-	renderCard: function(title, value, status) {
-		var statusClass = status === 'success' ? 'card-success' : (status === 'danger' ? 'card-danger' : (status === 'warning' ? 'card-warning' : 'card-info'));
-		return E('div', { 'class': 'sb-card ' + statusClass }, [
-			E('div', { 'class': 'card-title' }, title),
-			E('div', { 'class': 'card-value' }, value)
+	renderNextcloudSetup: function() {
+		var self = this;
+		return E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px;' }, [
+			E('p', { 'style': 'color: var(--kiss-muted); font-size: 12px; margin: 0;' }, 'Configure TURN for Nextcloud Talk (uses port 443)'),
+			E('div', { 'style': 'display: flex; gap: 8px;' }, [
+				E('input', { 'type': 'text', 'id': 'nc-turn-domain', 'placeholder': 'turn.secubox.in', 'style': 'flex: 1; background: var(--kiss-bg2); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px 12px; border-radius: 6px;' }),
+				E('button', { 'class': 'kiss-btn kiss-btn-blue', 'click': ui.createHandlerFn(this, 'handleSetupNextcloud') }, 'Setup')
+			]),
+			E('pre', { 'id': 'nextcloud-output', 'style': 'display: none; background: var(--kiss-bg); color: var(--kiss-green); padding: 12px; border-radius: 6px; font-family: monospace; font-size: 11px; margin-top: 8px;' }, '')
 		]);
 	},
 
-	updateUI: function(data) {
-		var chip = document.getElementById('chip-status');
-		if (chip) {
-			chip.textContent = data.running ? 'Running' : 'Stopped';
-			chip.className = 'chip ' + (data.running ? 'chip-success' : 'chip-danger');
-		}
+	renderCredentials: function() {
+		var self = this;
+		return E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px;' }, [
+			E('p', { 'style': 'color: var(--kiss-muted); font-size: 12px; margin: 0;' }, 'Generate time-limited TURN credentials for WebRTC clients'),
+			E('div', { 'style': 'display: flex; gap: 8px; flex-wrap: wrap;' }, [
+				E('input', { 'type': 'text', 'id': 'cred-user', 'placeholder': 'username', 'value': 'webrtc', 'style': 'width: 120px; background: var(--kiss-bg2); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px 12px; border-radius: 6px;' }),
+				E('input', { 'type': 'number', 'id': 'cred-ttl', 'placeholder': 'TTL (s)', 'value': '86400', 'style': 'width: 120px; background: var(--kiss-bg2); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px 12px; border-radius: 6px;' }),
+				E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': ui.createHandlerFn(this, 'handleCredentials') }, 'Generate')
+			]),
+			E('pre', { 'id': 'credentials-output', 'style': 'display: none; background: var(--kiss-bg); color: var(--kiss-cyan); padding: 12px; border-radius: 6px; font-family: monospace; font-size: 11px; margin-top: 8px;' }, '')
+		]);
 	},
 
 	handleStart: function() {
 		return callStart().then(function() {
-			ui.addNotification(null, E('p', 'TURN server started'));
+			ui.addNotification(null, E('p', 'TURN server started'), 'success');
+			location.reload();
 		});
 	},
 
 	handleStop: function() {
 		return callStop().then(function() {
-			ui.addNotification(null, E('p', 'TURN server stopped'));
+			ui.addNotification(null, E('p', 'TURN server stopped'), 'info');
+			location.reload();
 		});
 	},
 
 	handleEnable: function() {
 		return callEnable().then(function() {
-			ui.addNotification(null, E('p', 'TURN server enabled'));
+			ui.addNotification(null, E('p', 'TURN server enabled'), 'success');
 		});
 	},
 
 	handleDisable: function() {
 		return callDisable().then(function() {
-			ui.addNotification(null, E('p', 'TURN server disabled'));
+			ui.addNotification(null, E('p', 'TURN server disabled'), 'info');
 		});
 	},
 
@@ -160,7 +169,7 @@ return view.extend({
 		var turnDomain = document.getElementById('turn-domain').value || 'turn.secubox.in';
 
 		return callSetupJitsi(jitsiDomain, turnDomain).then(function(res) {
-			ui.addNotification(null, E('p', 'TURN configured for Jitsi. Auth secret: ' + (res.auth_secret || 'generated')));
+			ui.addNotification(null, E('p', 'TURN configured for Jitsi. Auth secret: ' + (res.auth_secret || 'generated')), 'success');
 		});
 	},
 
@@ -170,27 +179,11 @@ return view.extend({
 		return callSetupNextcloud(turnDomain, 'yes').then(function(res) {
 			var output = document.getElementById('nextcloud-output');
 			output.style.display = 'block';
-			output.textContent = 'Nextcloud Talk Admin Settings:\n\n' +
-				'STUN servers: ' + turnDomain + ':' + (res.stun_port || 3478) + '\n' +
-				'TURN server: ' + turnDomain + ':' + (res.tls_port || 443) + '\n' +
-				'TURN secret: ' + (res.auth_secret || '') + '\n' +
-				'Protocol: UDP and TCP\n\n' +
-				'Note: Do NOT add turn:// or turns:// prefix';
-			ui.addNotification(null, E('p', 'TURN configured for Nextcloud Talk on port ' + (res.tls_port || 443)));
-		});
-	},
-
-	handleSSL: function() {
-		var domain = document.getElementById('ssl-domain').value || 'turn.secubox.in';
-		return callSSL(domain).then(function(res) {
-			ui.addNotification(null, E('p', 'SSL configured for ' + domain));
-		});
-	},
-
-	handleExpose: function() {
-		var domain = document.getElementById('ssl-domain').value || 'turn.secubox.in';
-		return callExpose(domain).then(function(res) {
-			ui.addNotification(null, E('p', 'TURN exposed on ' + domain));
+			output.textContent = 'Nextcloud Talk Settings:\n' +
+				'STUN: ' + turnDomain + ':' + (res.stun_port || 3478) + '\n' +
+				'TURN: ' + turnDomain + ':' + (res.tls_port || 443) + '\n' +
+				'Secret: ' + (res.auth_secret || '');
+			ui.addNotification(null, E('p', 'TURN configured for Nextcloud Talk'), 'success');
 		});
 	},
 
@@ -211,42 +204,63 @@ return view.extend({
 
 	handleShowLogs: function() {
 		return callLogs(100).then(function(res) {
-			var output = document.getElementById('logs-output');
-			output.style.display = 'block';
-			output.textContent = res.logs || 'No logs available';
+			ui.showModal('TURN Logs', [
+				E('pre', { 'style': 'background: var(--kiss-bg); color: var(--kiss-green); padding: 16px; border-radius: 6px; max-height: 400px; overflow: auto; font-family: monospace; font-size: 11px;' }, res.logs || 'No logs available'),
+				E('div', { 'style': 'display: flex; justify-content: flex-end; margin-top: 16px;' }, [
+					E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Close')
+				])
+			]);
 		});
 	},
 
-	getStyles: function() {
-		return [
-			'.sb-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }',
-			'.sb-chips { display:flex; gap:10px; }',
-			'.chip { padding:5px 12px; border-radius:15px; font-size:0.85em; background:#444; color:#fff; }',
-			'.chip-success { background:#28a745; }',
-			'.chip-danger { background:#dc3545; }',
-			'.sb-section { background:#1a1a2e; padding:20px; margin-bottom:15px; border-radius:8px; }',
-			'.sb-section h3 { margin:0 0 15px 0; color:#4fc3f7; }',
-			'.sb-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:15px; }',
-			'.sb-card { padding:15px; border-radius:8px; text-align:center; }',
-			'.card-success { background:#155724; border:1px solid #28a745; }',
-			'.card-danger { background:#721c24; border:1px solid #dc3545; }',
-			'.card-warning { background:#856404; border:1px solid #ffc107; }',
-			'.card-info { background:#0c5460; border:1px solid #17a2b8; }',
-			'.card-title { font-size:0.85em; color:#aaa; margin-bottom:5px; }',
-			'.card-value { font-size:1.1em; font-weight:bold; }',
-			'.btn-row { display:flex; gap:10px; flex-wrap:wrap; }',
-			'.sb-btn { padding:8px 16px; border:none; border-radius:5px; cursor:pointer; background:#444; color:#fff; }',
-			'.sb-btn:hover { background:#555; }',
-			'.sb-btn-primary { background:#007bff; }',
-			'.sb-btn-primary:hover { background:#0056b3; }',
-			'.sb-btn-success { background:#28a745; }',
-			'.sb-btn-success:hover { background:#218838; }',
-			'.sb-btn-danger { background:#dc3545; }',
-			'.sb-btn-danger:hover { background:#c82333; }',
-			'.form-row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }',
-			'.sb-input { padding:8px 12px; border:1px solid #444; border-radius:5px; background:#2a2a3e; color:#fff; }',
-			'.sb-output { background:#0a0a15; padding:15px; border-radius:5px; font-family:monospace; font-size:0.9em; white-space:pre-wrap; word-break:break-all; }'
-		].join('\n');
+	render: function(data) {
+		var self = this;
+		this.data = data || {};
+
+		poll.add(function() {
+			return callStatus().then(function(r) {
+				self.data = r;
+				var statsEl = document.getElementById('turn-stats');
+				if (statsEl) {
+					statsEl.innerHTML = '';
+					self.renderStats(r).forEach(function(el) { statsEl.appendChild(el); });
+				}
+			});
+		}, 5);
+
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'TURN Server'),
+					KissTheme.badge(this.data.running ? 'RUNNING' : 'STOPPED', this.data.running ? 'green' : 'red')
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' }, 'WebRTC relay server for NAT traversal')
+			]),
+
+			// Navigation
+			this.renderNav('overview'),
+
+			// Stats
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'id': 'turn-stats', 'style': 'margin: 20px 0;' }, this.renderStats(this.data)),
+
+			// Two column layout
+			E('div', { 'class': 'kiss-grid kiss-grid-2' }, [
+				KissTheme.card('System Health', this.renderHealth(this.data)),
+				KissTheme.card('Controls', this.renderControls(this.data))
+			]),
+
+			// Integration cards
+			E('div', { 'class': 'kiss-grid kiss-grid-2' }, [
+				KissTheme.card('Jitsi Integration', this.renderJitsiSetup()),
+				KissTheme.card('Nextcloud Talk', this.renderNextcloudSetup())
+			]),
+
+			// Credentials
+			KissTheme.card('Generate Credentials', this.renderCredentials())
+		];
+
+		return KissTheme.wrap(content, 'admin/services/turn/overview');
 	},
 
 	handleSaveApply: null,

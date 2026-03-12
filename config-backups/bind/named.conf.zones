@@ -1,0 +1,23 @@
+
+// SecuBox Mesh local domain
+zone "sblocal" {
+    type master;
+    file "/etc/bind/zones/sblocal.zone";
+    allow-update { none; };
+};
+
+// maegia.tv - authoritative master zone
+zone "maegia.tv" {
+    type master;
+    file "/etc/bind/zones/maegia.tv.zone";
+    allow-query { any; };
+    allow-transfer { none; };
+};
+
+// ganimed.fr - authoritative master zone
+zone "ganimed.fr" {
+    type master;
+    file "/etc/bind/zones/ganimed.fr.zone";
+    allow-query { any; };
+    allow-transfer { none; };
+};

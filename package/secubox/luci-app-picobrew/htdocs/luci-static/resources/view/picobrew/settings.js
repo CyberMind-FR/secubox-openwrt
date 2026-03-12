@@ -111,7 +111,7 @@ return view.extend({
 		return m.render().then(function(mapEl) {
 			// Add restart button after the form
 			var restartBtn = E('button', {
-				'class': 'cbi-button cbi-button-apply',
+				'class': 'kiss-btn kiss-btn-cyan',
 				'style': 'margin-top: 1em;',
 				'click': function() {
 					ui.showModal(_('Restarting Service'), [

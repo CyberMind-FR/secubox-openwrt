@@ -20,6 +20,9 @@ define Package/secubox-app-metablogizer/description
   KISS ULTIME MODE: One-command DNS + SSL + Mesh workflow.
 endef
 
+define Build/Compile
+endef
+
 define Package/secubox-app-metablogizer/install
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_BIN) ./files/usr/sbin/metablogizerctl $(1)/usr/sbin/

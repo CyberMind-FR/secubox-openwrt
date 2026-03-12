@@ -257,10 +257,10 @@ return view.extend({
 				html += '<td class="td">' + statusBadge(c.status) + '</td>';
 				html += '<td class="td">';
 				if (c.status !== 'trusted') {
-					html += '<button class="cbi-button cbi-button-apply" data-mac="' + c.mac + '" data-action="trust" style="margin-right:4px;">Trust</button>';
+					html += '<button class="kiss-btn kiss-btn-cyan" data-mac="' + c.mac + '" data-action="trust" style="margin-right:4px;">Trust</button>';
 				}
 				if (c.status !== 'blocked') {
-					html += '<button class="cbi-button cbi-button-remove" data-mac="' + c.mac + '" data-action="block">Block</button>';
+					html += '<button class="kiss-btn kiss-btn-red" data-mac="' + c.mac + '" data-action="block">Block</button>';
 				}
 				html += '</td>';
 				html += '</tr>';

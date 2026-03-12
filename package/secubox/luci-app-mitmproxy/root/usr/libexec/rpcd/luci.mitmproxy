@@ -7,16 +7,17 @@ CONFIG="mitmproxy"
 LXC_NAME="mitmproxy"
 LXC_PATH="/srv/lxc"
 LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
-MITMPROXY_CACHE="/tmp/secubox/mitmproxy.json"
+MITMPROXY_CACHE="/tmp/secubox/waf-stats.json"
 # WAF input instance data path (for threat stats)
 WAF_DATA_PATH="/srv/mitmproxy-in"
 
-# Read cached status for fast API responses
+# Read cached status for fast API responses (updated every minute by cron)
 get_cached_status() {
 	if [ -f "$MITMPROXY_CACHE" ]; then
 		cat "$MITMPROXY_CACHE"
 	else
-		echo '{"running":0,"threats_today":0,"autobans":0,"pending":0,"wan_enabled":0,"lan_enabled":0,"timestamp":0}'
+		# Fallback: generate minimal stats
+		echo '{"running":false,"threats_today":0,"autobans_today":0,"autobans_total":0,"autobans_pending":0,"autoban_enabled":false,"autoban_sensitivity":"moderate","autoban_duration":"4h","mode":"upstream","updated":null}'
 	fi
 }
 
@@ -649,18 +650,21 @@ sync_routes() {
 }
 
 get_bans() {
-	# Get CrowdSec decisions as JSON and output directly
+	# Get CrowdSec decisions as JSON - limit to avoid timeout
+	# CAPI blocklists can have thousands of entries, so we only show local decisions
 	local bans_json="[]"
 	local total=0
 	local autoban=0
 	local crowdsec_count=0
 
 	if command -v cscli >/dev/null 2>&1; then
-		bans_json=$(cscli decisions list -o json 2>/dev/null)
+		# Get local decisions only (WAF auto-bans) - these are what users care about
+		# Using --limit to prevent huge output from CAPI blocklists
+		bans_json=$(cscli decisions list -o json --limit 100 2>/dev/null)
 		if [ -z "$bans_json" ] || [ "$bans_json" = "null" ]; then
 			bans_json="[]"
 		else
-			# Count using grep on the raw JSON - patterns match with/without spaces
+			# Count using grep on the raw JSON
 			total=$(echo "$bans_json" | grep -c '"id":' 2>/dev/null) || total=0
 			autoban=$(echo "$bans_json" | grep -c '"origin":.*"cscli"' 2>/dev/null) || autoban=0
 			crowdsec_count=$(echo "$bans_json" | grep -c '"origin":.*"crowdsec"' 2>/dev/null) || crowdsec_count=0

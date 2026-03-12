@@ -4,350 +4,378 @@
 'require poll';
 'require ui';
 'require ipblocklist.api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
-    refreshInterval: 30,
-    statusData: null,
+	refreshInterval: 30,
 
-    load: function() {
-        return Promise.all([
-            api.getStatus(),
-            api.getSources(),
-            api.getWhitelist(),
-            api.getLogs(20)
-        ]);
-    },
+	load: function() {
+		return Promise.all([
+			api.getStatus(),
+			api.getSources(),
+			api.getWhitelist(),
+			api.getLogs(20)
+		]).catch(function() { return [{}, {}, {}, {}]; });
+	},
 
-    formatBytes: function(bytes) {
-        if (bytes === 0) return '0 B';
-        var k = 1024;
-        var sizes = ['B', 'KB', 'MB', 'GB'];
-        var i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    },
+	formatBytes: function(bytes) {
+		if (bytes === 0) return '0 B';
+		var k = 1024;
+		var sizes = ['B', 'KB', 'MB', 'GB'];
+		var i = Math.floor(Math.log(bytes) / Math.log(k));
+		return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+	},
 
-    formatTimestamp: function(ts) {
-        if (!ts || ts === 0) return 'Never';
-        var d = new Date(ts * 1000);
-        return d.toLocaleString();
-    },
+	formatTimestamp: function(ts) {
+		if (!ts || ts === 0) return 'Never';
+		var d = new Date(ts * 1000);
+		return d.toLocaleString();
+	},
 
-    renderStatusCard: function(status) {
-        var enabled = status.enabled === true || status.enabled === '1' || status.enabled === 1;
-        var entryCount = parseInt(status.entry_count) || 0;
-        var maxEntries = parseInt(status.max_entries) || 200000;
-        var memoryBytes = parseInt(status.memory_bytes) || 0;
-        var usagePercent = maxEntries > 0 ? Math.round((entryCount / maxEntries) * 100) : 0;
+	fmt: function(n) {
+		n = parseInt(n) || 0;
+		if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+		if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+		return String(n);
+	},
 
-        return E('div', { 'class': 'cbi-section' }, [
-            E('h3', {}, 'Status'),
-            E('div', { 'class': 'table', 'style': 'margin-bottom: 1em' }, [
-                E('div', { 'class': 'tr' }, [
-                    E('div', { 'class': 'td', 'style': 'width: 200px; font-weight: bold' }, 'Service Status'),
-                    E('div', { 'class': 'td' }, [
-                        E('span', {
-                            'class': enabled ? 'badge success' : 'badge warning',
-                            'style': 'padding: 4px 12px; border-radius: 4px; background: ' + (enabled ? '#4CAF50' : '#FF9800') + '; color: white;'
-                        }, enabled ? 'Enabled' : 'Disabled')
-                    ])
-                ]),
-                E('div', { 'class': 'tr' }, [
-                    E('div', { 'class': 'td', 'style': 'font-weight: bold' }, 'Blocked IPs'),
-                    E('div', { 'class': 'td' }, [
-                        E('strong', { 'style': 'font-size: 1.2em; color: #f44336' }, entryCount.toLocaleString()),
-                        E('span', { 'style': 'color: #888; margin-left: 8px' }, '/ ' + maxEntries.toLocaleString() + ' (' + usagePercent + '%)')
-                    ])
-                ]),
-                E('div', { 'class': 'tr' }, [
-                    E('div', { 'class': 'td', 'style': 'font-weight: bold' }, 'Memory Usage'),
-                    E('div', { 'class': 'td' }, this.formatBytes(memoryBytes))
-                ]),
-                E('div', { 'class': 'tr' }, [
-                    E('div', { 'class': 'td', 'style': 'font-weight: bold' }, 'Firewall Backend'),
-                    E('div', { 'class': 'td' }, status.firewall_backend || 'Unknown')
-                ]),
-                E('div', { 'class': 'tr' }, [
-                    E('div', { 'class': 'td', 'style': 'font-weight: bold' }, 'Last Update'),
-                    E('div', { 'class': 'td' }, this.formatTimestamp(status.last_update))
-                ]),
-                E('div', { 'class': 'tr' }, [
-                    E('div', { 'class': 'td', 'style': 'font-weight: bold' }, 'Sources'),
-                    E('div', { 'class': 'td' }, (status.source_count || 0) + ' configured')
-                ]),
-                E('div', { 'class': 'tr' }, [
-                    E('div', { 'class': 'td', 'style': 'font-weight: bold' }, 'Whitelist'),
-                    E('div', { 'class': 'td' }, (status.whitelist_count || 0) + ' entries')
-                ])
-            ])
-        ]);
-    },
+	renderStats: function(status) {
+		var c = KissTheme.colors;
+		var enabled = status.enabled === true || status.enabled === '1' || status.enabled === 1;
+		var entryCount = parseInt(status.entry_count) || 0;
+		var maxEntries = parseInt(status.max_entries) || 200000;
+		var usagePercent = maxEntries > 0 ? Math.round((entryCount / maxEntries) * 100) : 0;
 
-    renderControls: function(status) {
-        var self = this;
-        var enabled = status.enabled === true || status.enabled === '1' || status.enabled === 1;
+		var stats = [
+			{ label: 'Status', value: enabled ? 'ACTIVE' : 'OFF', color: enabled ? c.green : c.red },
+			{ label: 'Blocked IPs', value: this.fmt(entryCount), color: entryCount > 0 ? c.red : c.muted },
+			{ label: 'Capacity', value: usagePercent + '%', color: usagePercent > 80 ? c.orange : c.muted },
+			{ label: 'Sources', value: status.source_count || 0, color: c.cyan }
+		];
+		return stats.map(function(st) {
+			return KissTheme.stat(st.value, st.label, st.color);
+		});
+	},
 
-        return E('div', { 'class': 'cbi-section' }, [
-            E('h3', {}, 'Controls'),
-            E('div', { 'style': 'display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 1em' }, [
-                E('button', {
-                    'class': enabled ? 'btn cbi-button-remove' : 'btn cbi-button-apply',
-                    'click': ui.createHandlerFn(this, function() {
-                        return api.setEnabled(!enabled).then(function() {
-                            ui.addNotification(null, E('p', {}, enabled ? 'IP Blocklist disabled' : 'IP Blocklist enabled'));
-                            return self.refresh();
-                        });
-                    })
-                }, enabled ? 'Disable' : 'Enable'),
-                E('button', {
-                    'class': 'btn cbi-button-action',
-                    'click': ui.createHandlerFn(this, function() {
-                        ui.showModal('Updating...', [
-                            E('p', { 'class': 'spinning' }, 'Downloading and applying blocklists...')
-                        ]);
-                        return api.update().then(function(res) {
-                            ui.hideModal();
-                            ui.addNotification(null, E('p', {}, res.message || 'Update started'));
-                            setTimeout(function() { self.refresh(); }, 3000);
-                        });
-                    })
-                }, 'Update Now'),
-                E('button', {
-                    'class': 'btn cbi-button-negative',
-                    'click': ui.createHandlerFn(this, function() {
-                        ui.showModal('Confirm Flush', [
-                            E('p', {}, 'This will remove all IPs from the blocklist. Continue?'),
-                            E('div', { 'class': 'right' }, [
-                                E('button', {
-                                    'class': 'btn',
-                                    'click': ui.hideModal
-                                }, 'Cancel'),
-                                ' ',
-                                E('button', {
-                                    'class': 'btn cbi-button-negative',
-                                    'click': function() {
-                                        ui.hideModal();
-                                        return api.flush().then(function(res) {
-                                            ui.addNotification(null, E('p', {}, res.message || 'Blocklist flushed'));
-                                            return self.refresh();
-                                        });
-                                    }
-                                }, 'Flush')
-                            ])
-                        ]);
-                    })
-                }, 'Flush')
-            ])
-        ]);
-    },
+	renderHealth: function(status) {
+		var self = this;
+		var enabled = status.enabled === true || status.enabled === '1' || status.enabled === 1;
+		var memoryBytes = parseInt(status.memory_bytes) || 0;
 
-    renderTestIp: function() {
-        var self = this;
-        var input = E('input', {
-            'type': 'text',
-            'placeholder': 'Enter IP address...',
-            'style': 'width: 200px; margin-right: 10px'
-        });
-        var result = E('span', { 'id': 'test-result', 'style': 'margin-left: 10px' });
+		var checks = [
+			{ label: 'Service', ok: enabled },
+			{ label: 'Firewall Backend', ok: !!status.firewall_backend, value: status.firewall_backend || 'Unknown' },
+			{ label: 'Memory Usage', ok: true, value: this.formatBytes(memoryBytes) },
+			{ label: 'Last Update', ok: status.last_update > 0, value: this.formatTimestamp(status.last_update) },
+			{ label: 'Whitelist', ok: true, value: (status.whitelist_count || 0) + ' entries' }
+		];
 
-        return E('div', { 'class': 'cbi-section' }, [
-            E('h3', {}, 'Test IP'),
-            E('div', { 'style': 'display: flex; align-items: center; flex-wrap: wrap; gap: 10px' }, [
-                input,
-                E('button', {
-                    'class': 'btn cbi-button-action',
-                    'click': function() {
-                        var ip = input.value.trim();
-                        if (!ip) {
-                            result.textContent = 'Please enter an IP';
-                            return;
-                        }
-                        result.textContent = 'Testing...';
-                        api.testIp(ip).then(function(res) {
-                            if (res.blocked) {
-                                result.innerHTML = '<span style="color: #f44336; font-weight: bold">BLOCKED</span>';
-                            } else {
-                                result.innerHTML = '<span style="color: #4CAF50; font-weight: bold">ALLOWED</span>';
-                            }
-                        }).catch(function(e) {
-                            result.textContent = 'Error: ' + e.message;
-                        });
-                    }
-                }, 'Test'),
-                result
-            ])
-        ]);
-    },
+		return E('div', { 'style': 'display: flex; flex-direction: column; gap: 8px;' }, checks.map(function(ch) {
+			var valueText = ch.value ? ch.value : (ch.ok ? 'OK' : 'Disabled');
+			return E('div', { 'style': 'display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.03);' }, [
+				E('div', { 'style': 'width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; ' +
+					(ch.ok ? 'background: rgba(0,200,83,0.15); color: var(--kiss-green);' : 'background: rgba(255,23,68,0.15); color: var(--kiss-red);') },
+					ch.ok ? '\u2713' : '\u2717'),
+				E('div', { 'style': 'flex: 1;' }, [
+					E('div', { 'style': 'font-size: 13px; color: var(--kiss-text);' }, ch.label),
+					E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted);' }, valueText)
+				])
+			]);
+		}));
+	},
 
-    renderSources: function(sources) {
-        var self = this;
-        var sourceList = (sources && sources.sources) || [];
-        var input = E('input', {
-            'type': 'text',
-            'placeholder': 'https://...',
-            'style': 'flex: 1; min-width: 300px; margin-right: 10px'
-        });
+	renderControls: function(status) {
+		var self = this;
+		var enabled = status.enabled === true || status.enabled === '1' || status.enabled === 1;
 
-        var rows = sourceList.map(function(src) {
-            return E('div', { 'class': 'tr' }, [
-                E('div', { 'class': 'td', 'style': 'word-break: break-all' }, src),
-                E('div', { 'class': 'td', 'style': 'width: 80px; text-align: right' }, [
-                    E('button', {
-                        'class': 'btn cbi-button-remove',
-                        'style': 'padding: 2px 8px',
-                        'click': function() {
-                            return api.removeSource(src).then(function() {
-                                ui.addNotification(null, E('p', {}, 'Source removed'));
-                                return self.refresh();
-                            });
-                        }
-                    }, 'Remove')
-                ])
-            ]);
-        });
+		return E('div', { 'style': 'display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px;' }, [
+			E('button', {
+				'class': enabled ? 'kiss-btn kiss-btn-red' : 'kiss-btn kiss-btn-green',
+				'click': ui.createHandlerFn(this, function() {
+					return api.setEnabled(!enabled).then(function() {
+						ui.addNotification(null, E('p', {}, enabled ? 'IP Blocklist disabled' : 'IP Blocklist enabled'));
+						return self.refresh();
+					});
+				})
+			}, enabled ? '\u25A0 Disable' : '\u25B6 Enable'),
+			E('button', {
+				'class': 'kiss-btn kiss-btn-blue',
+				'click': ui.createHandlerFn(this, function() {
+					ui.showModal('Updating...', [
+						E('p', { 'class': 'spinning' }, 'Downloading and applying blocklists...')
+					]);
+					return api.update().then(function(res) {
+						ui.hideModal();
+						ui.addNotification(null, E('p', {}, res.message || 'Update started'));
+						setTimeout(function() { self.refresh(); }, 3000);
+					});
+				})
+			}, '\u21BB Update Now'),
+			E('button', {
+				'class': 'kiss-btn',
+				'click': ui.createHandlerFn(this, function() {
+					ui.showModal('Confirm Flush', [
+						E('p', {}, 'This will remove all IPs from the blocklist. Continue?'),
+						E('div', { 'style': 'display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px;' }, [
+							E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
+							E('button', {
+								'class': 'kiss-btn kiss-btn-red',
+								'click': function() {
+									ui.hideModal();
+									return api.flush().then(function(res) {
+										ui.addNotification(null, E('p', {}, res.message || 'Blocklist flushed'));
+										return self.refresh();
+									});
+								}
+							}, 'Flush All')
+						])
+					]);
+				})
+			}, '\u2716 Flush')
+		]);
+	},
 
-        return E('div', { 'class': 'cbi-section' }, [
-            E('h3', {}, 'Blocklist Sources'),
-            E('div', { 'class': 'table' }, rows.length > 0 ? rows : [
-                E('div', { 'class': 'tr' }, [
-                    E('div', { 'class': 'td', 'style': 'color: #888' }, 'No sources configured')
-                ])
-            ]),
-            E('div', { 'style': 'display: flex; align-items: center; margin-top: 1em; flex-wrap: wrap; gap: 10px' }, [
-                input,
-                E('button', {
-                    'class': 'btn cbi-button-add',
-                    'click': function() {
-                        var url = input.value.trim();
-                        if (!url || !url.startsWith('http')) {
-                            ui.addNotification(null, E('p', {}, 'Please enter a valid URL'));
-                            return;
-                        }
-                        return api.addSource(url).then(function() {
-                            input.value = '';
-                            ui.addNotification(null, E('p', {}, 'Source added'));
-                            return self.refresh();
-                        });
-                    }
-                }, 'Add Source')
-            ])
-        ]);
-    },
+	renderTestIp: function() {
+		var input = E('input', {
+			'type': 'text',
+			'placeholder': 'Enter IP address...',
+			'style': 'flex: 1; min-width: 150px; padding: 8px 12px; background: var(--kiss-bg2); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text); font-family: monospace;'
+		});
+		var result = E('span', { 'id': 'test-result', 'style': 'margin-left: 12px; font-weight: 600;' });
 
-    renderWhitelist: function(whitelist) {
-        var self = this;
-        var entries = (whitelist && whitelist.entries) || [];
-        var input = E('input', {
-            'type': 'text',
-            'placeholder': 'IP or CIDR (e.g., 192.168.1.0/24)',
-            'style': 'width: 200px; margin-right: 10px'
-        });
+		return E('div', { 'style': 'display: flex; align-items: center; gap: 12px; flex-wrap: wrap;' }, [
+			input,
+			E('button', {
+				'class': 'kiss-btn',
+				'click': function() {
+					var ip = input.value.trim();
+					if (!ip) {
+						result.textContent = 'Enter an IP';
+						result.style.color = 'var(--kiss-muted)';
+						return;
+					}
+					result.textContent = 'Testing...';
+					result.style.color = 'var(--kiss-muted)';
+					api.testIp(ip).then(function(res) {
+						if (res.blocked) {
+							result.textContent = '\u26D4 BLOCKED';
+							result.style.color = 'var(--kiss-red)';
+						} else {
+							result.textContent = '\u2714 ALLOWED';
+							result.style.color = 'var(--kiss-green)';
+						}
+					}).catch(function(e) {
+						result.textContent = 'Error';
+						result.style.color = 'var(--kiss-red)';
+					});
+				}
+			}, 'Test IP'),
+			result
+		]);
+	},
 
-        var rows = entries.map(function(entry) {
-            return E('div', { 'class': 'tr' }, [
-                E('div', { 'class': 'td' }, entry),
-                E('div', { 'class': 'td', 'style': 'width: 80px; text-align: right' }, [
-                    E('button', {
-                        'class': 'btn cbi-button-remove',
-                        'style': 'padding: 2px 8px',
-                        'click': function() {
-                            return api.removeWhitelist(entry).then(function() {
-                                ui.addNotification(null, E('p', {}, 'Entry removed from whitelist'));
-                                return self.refresh();
-                            });
-                        }
-                    }, 'Remove')
-                ])
-            ]);
-        });
+	renderSources: function(sources) {
+		var self = this;
+		var sourceList = (sources && sources.sources) || [];
 
-        return E('div', { 'class': 'cbi-section' }, [
-            E('h3', {}, 'Whitelist (Excluded IPs)'),
-            E('div', { 'class': 'table' }, rows.length > 0 ? rows : [
-                E('div', { 'class': 'tr' }, [
-                    E('div', { 'class': 'td', 'style': 'color: #888' }, 'No whitelist entries')
-                ])
-            ]),
-            E('div', { 'style': 'display: flex; align-items: center; margin-top: 1em; flex-wrap: wrap; gap: 10px' }, [
-                input,
-                E('button', {
-                    'class': 'btn cbi-button-add',
-                    'click': function() {
-                        var entry = input.value.trim();
-                        if (!entry) {
-                            ui.addNotification(null, E('p', {}, 'Please enter an IP or CIDR'));
-                            return;
-                        }
-                        return api.addWhitelist(entry).then(function() {
-                            input.value = '';
-                            ui.addNotification(null, E('p', {}, 'Added to whitelist'));
-                            return self.refresh();
-                        });
-                    }
-                }, 'Add')
-            ])
-        ]);
-    },
+		var input = E('input', {
+			'type': 'text',
+			'placeholder': 'https://example.com/blocklist.txt',
+			'style': 'flex: 1; min-width: 250px; padding: 8px 12px; background: var(--kiss-bg2); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text);'
+		});
 
-    renderLogs: function(logs) {
-        var logEntries = (logs && logs.logs) || [];
+		var rows = sourceList.length > 0 ? sourceList.map(function(src) {
+			return E('tr', {}, [
+				E('td', { 'style': 'word-break: break-all; font-size: 12px;' }, src),
+				E('td', { 'style': 'width: 80px; text-align: right;' }, [
+					E('button', {
+						'class': 'kiss-btn kiss-btn-red',
+						'style': 'padding: 4px 10px; font-size: 11px;',
+						'click': function() {
+							return api.removeSource(src).then(function() {
+								ui.addNotification(null, E('p', {}, 'Source removed'));
+								return self.refresh();
+							});
+						}
+					}, 'Remove')
+				])
+			]);
+		}) : [E('tr', {}, [E('td', { 'colspan': '2', 'style': 'text-align: center; color: var(--kiss-muted); padding: 24px;' }, 'No sources configured')])];
 
-        return E('div', { 'class': 'cbi-section' }, [
-            E('h3', {}, 'Recent Activity'),
-            E('div', {
-                'style': 'background: #1a1a2e; color: #0f0; font-family: monospace; padding: 1em; border-radius: 4px; max-height: 300px; overflow-y: auto; font-size: 0.85em'
-            }, logEntries.length > 0 ?
-                logEntries.map(function(line) {
-                    var color = '#0f0';
-                    if (line.indexOf('[ERROR]') >= 0) color = '#f44336';
-                    else if (line.indexOf('[WARN]') >= 0) color = '#FF9800';
-                    else if (line.indexOf('[INFO]') >= 0) color = '#00bcd4';
-                    return E('div', { 'style': 'color: ' + color + '; margin-bottom: 2px' }, line);
-                }) :
-                E('div', { 'style': 'color: #888' }, 'No log entries yet')
-            )
-        ]);
-    },
+		return E('div', {}, [
+			E('table', { 'class': 'kiss-table' }, [
+				E('thead', {}, E('tr', {}, [
+					E('th', {}, 'URL'),
+					E('th', { 'style': 'width: 80px;' }, 'Action')
+				])),
+				E('tbody', {}, rows)
+			]),
+			E('div', { 'style': 'display: flex; align-items: center; gap: 12px; margin-top: 16px; flex-wrap: wrap;' }, [
+				input,
+				E('button', {
+					'class': 'kiss-btn kiss-btn-green',
+					'click': function() {
+						var url = input.value.trim();
+						if (!url || !url.startsWith('http')) {
+							ui.addNotification(null, E('p', {}, 'Enter a valid URL'));
+							return;
+						}
+						return api.addSource(url).then(function() {
+							input.value = '';
+							ui.addNotification(null, E('p', {}, 'Source added'));
+							return self.refresh();
+						});
+					}
+				}, '+ Add Source')
+			])
+		]);
+	},
 
-    refresh: function() {
-        var self = this;
-        return this.load().then(function(data) {
-            var container = document.getElementById('ipblocklist-container');
-            if (container) {
-                dom.content(container, self.renderContent(data));
-            }
-        });
-    },
+	renderWhitelist: function(whitelist) {
+		var self = this;
+		var entries = (whitelist && whitelist.entries) || [];
 
-    renderContent: function(data) {
-        var status = data[0] || {};
-        var sources = data[1] || {};
-        var whitelist = data[2] || {};
-        var logs = data[3] || {};
+		var input = E('input', {
+			'type': 'text',
+			'placeholder': 'IP or CIDR (e.g., 192.168.1.0/24)',
+			'style': 'width: 200px; padding: 8px 12px; background: var(--kiss-bg2); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text); font-family: monospace;'
+		});
 
-        return E('div', {}, [
-            E('h2', {}, 'IP Blocklist'),
-            E('p', { 'style': 'color: #888; margin-bottom: 1em' },
-                'Pre-emptive static threat defense layer. Blocks known malicious IPs at kernel level before CrowdSec reactive analysis.'),
-            this.renderStatusCard(status),
-            this.renderControls(status),
-            this.renderTestIp(),
-            this.renderSources(sources),
-            this.renderWhitelist(whitelist),
-            this.renderLogs(logs)
-        ]);
-    },
+		var rows = entries.length > 0 ? entries.map(function(entry) {
+			return E('tr', {}, [
+				E('td', {}, E('span', { 'style': 'font-family: monospace; color: var(--kiss-cyan);' }, entry)),
+				E('td', { 'style': 'width: 80px; text-align: right;' }, [
+					E('button', {
+						'class': 'kiss-btn kiss-btn-red',
+						'style': 'padding: 4px 10px; font-size: 11px;',
+						'click': function() {
+							return api.removeWhitelist(entry).then(function() {
+								ui.addNotification(null, E('p', {}, 'Entry removed'));
+								return self.refresh();
+							});
+						}
+					}, 'Remove')
+				])
+			]);
+		}) : [E('tr', {}, [E('td', { 'colspan': '2', 'style': 'text-align: center; color: var(--kiss-muted); padding: 24px;' }, 'No whitelist entries')])];
 
-    render: function(data) {
-        var self = this;
+		return E('div', {}, [
+			E('table', { 'class': 'kiss-table' }, [
+				E('thead', {}, E('tr', {}, [
+					E('th', {}, 'IP / CIDR'),
+					E('th', { 'style': 'width: 80px;' }, 'Action')
+				])),
+				E('tbody', {}, rows)
+			]),
+			E('div', { 'style': 'display: flex; align-items: center; gap: 12px; margin-top: 16px; flex-wrap: wrap;' }, [
+				input,
+				E('button', {
+					'class': 'kiss-btn kiss-btn-green',
+					'click': function() {
+						var entry = input.value.trim();
+						if (!entry) {
+							ui.addNotification(null, E('p', {}, 'Enter an IP or CIDR'));
+							return;
+						}
+						return api.addWhitelist(entry).then(function() {
+							input.value = '';
+							ui.addNotification(null, E('p', {}, 'Added to whitelist'));
+							return self.refresh();
+						});
+					}
+				}, '+ Add Entry')
+			])
+		]);
+	},
 
-        poll.add(function() {
-            return self.refresh();
-        }, this.refreshInterval);
+	renderLogs: function(logs) {
+		var logEntries = (logs && logs.logs) || [];
 
-        return E('div', { 'id': 'ipblocklist-container' }, this.renderContent(data));
-    },
+		if (!logEntries.length) {
+			return E('div', { 'style': 'text-align: center; padding: 24px; color: var(--kiss-muted);' }, 'No log entries');
+		}
 
-    handleSaveApply: null,
-    handleSave: null,
-    handleReset: null
+		return E('div', {
+			'style': 'background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 8px; padding: 12px; max-height: 250px; overflow-y: auto; font-family: monospace; font-size: 11px;'
+		}, logEntries.map(function(line) {
+			var color = 'var(--kiss-green)';
+			if (line.indexOf('[ERROR]') >= 0) color = 'var(--kiss-red)';
+			else if (line.indexOf('[WARN]') >= 0) color = 'var(--kiss-orange)';
+			else if (line.indexOf('[INFO]') >= 0) color = 'var(--kiss-cyan)';
+			return E('div', { 'style': 'color: ' + color + '; margin-bottom: 4px; line-height: 1.4;' }, line);
+		}));
+	},
+
+	refresh: function() {
+		var self = this;
+		return this.load().then(function(data) {
+			var container = document.getElementById('ipblocklist-content');
+			if (container) {
+				dom.content(container, self.renderContent(data));
+			}
+		});
+	},
+
+	renderContent: function(data) {
+		var status = data[0] || {};
+		var sources = data[1] || {};
+		var whitelist = data[2] || {};
+		var logs = data[3] || {};
+
+		return [
+			// Stats grid
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'style': 'margin: 20px 0;' }, this.renderStats(status)),
+
+			// Two column layout
+			E('div', { 'class': 'kiss-grid kiss-grid-2' }, [
+				// Health & Controls
+				KissTheme.card('System Status', E('div', {}, [
+					this.renderHealth(status),
+					this.renderControls(status)
+				])),
+				// Test IP
+				KissTheme.card('Test IP Address', this.renderTestIp())
+			]),
+
+			// Sources
+			KissTheme.card('Blocklist Sources', this.renderSources(sources)),
+
+			// Two column: Whitelist & Logs
+			E('div', { 'class': 'kiss-grid kiss-grid-2' }, [
+				KissTheme.card('Whitelist (Excluded)', this.renderWhitelist(whitelist)),
+				KissTheme.card('Recent Activity', this.renderLogs(logs))
+			])
+		];
+	},
+
+	render: function(data) {
+		var self = this;
+		var status = data[0] || {};
+		var enabled = status.enabled === true || status.enabled === '1' || status.enabled === 1;
+
+		poll.add(function() {
+			return self.refresh();
+		}, this.refreshInterval);
+
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'IP Blocklist'),
+					KissTheme.badge(enabled ? 'ACTIVE' : 'DISABLED', enabled ? 'green' : 'red')
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' },
+					'Pre-emptive static threat defense. Blocks known malicious IPs at kernel level.')
+			]),
+
+			// Content container for refresh
+			E('div', { 'id': 'ipblocklist-content' }, this.renderContent(data))
+		];
+
+		return KissTheme.wrap(content, 'admin/services/ipblocklist');
+	},
+
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null
 });

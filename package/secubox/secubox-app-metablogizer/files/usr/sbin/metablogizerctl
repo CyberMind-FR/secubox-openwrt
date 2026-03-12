@@ -55,6 +55,8 @@ Runtime Commands:
 
 Management:
   status                Show overall status
+  check-ports           Check for duplicate port assignments
+  fix-ports             Auto-fix duplicate ports
   install-nginx         Install nginx LXC container (optional)
 
 Runtime Selection:
@@ -117,12 +119,116 @@ detect_runtime() {
 # Site Management
 # ===========================================
 
+port_in_use() {
+	local port="$1"
+	# Check uhttpd config
+	uci show uhttpd 2>/dev/null | grep -q "listen_http='0.0.0.0:$port'" && return 0
+	# Check metablogizer config (in case uhttpd hasn't loaded the site yet)
+	uci show ${CONFIG} 2>/dev/null | grep -q "\.port='$port'" && return 0
+	return 1
+}
+
 get_next_port() {
 	local port=$PORT_BASE
-	while uci show uhttpd 2>/dev/null | grep -q "listen_http='0.0.0.0:$port'"; do
+	while port_in_use "$port"; do
 		port=$((port + 1))
 	done
 	echo $port
+}
+
+# Check for duplicate ports across all sites
+cmd_check_ports() {
+	echo "Checking for duplicate ports..."
+	echo ""
+
+	local duplicates=0
+	local ports_file=$(mktemp)
+
+	# Collect all ports with their sites
+	uci show ${CONFIG} 2>/dev/null | grep "\.port=" | while read line; do
+		local section=$(echo "$line" | cut -d. -f2)
+		local port=$(echo "$line" | cut -d= -f2 | tr -d "'")
+		local name=$(uci_get "${section}.name" 2>/dev/null)
+		local domain=$(uci_get "${section}.domain" 2>/dev/null)
+		echo "$port|$name|$domain" >> "$ports_file"
+	done
+
+	# Find duplicates
+	local seen_ports=""
+	while IFS='|' read port name domain; do
+		if echo "$seen_ports" | grep -q ":$port:"; then
+			echo "DUPLICATE: Port $port used by $name ($domain)"
+			duplicates=$((duplicates + 1))
+		else
+			seen_ports="$seen_ports:$port:"
+		fi
+	done < "$ports_file"
+
+	rm -f "$ports_file"
+
+	if [ "$duplicates" -eq 0 ]; then
+		echo "No duplicate ports found."
+	else
+		echo ""
+		echo "Found $duplicates duplicate port(s)!"
+		echo "Run 'metablogizerctl fix-ports' to auto-assign new ports."
+		return 1
+	fi
+}
+
+# Auto-fix duplicate ports
+cmd_fix_ports() {
+	echo "Scanning for duplicate ports..."
+
+	local ports_file=$(mktemp)
+	local seen_ports=""
+	local fixed=0
+
+	# Collect all ports
+	uci show ${CONFIG} 2>/dev/null | grep "\.port=" | while read line; do
+		local section=$(echo "$line" | cut -d. -f2)
+		local port=$(echo "$line" | cut -d= -f2 | tr -d "'")
+		echo "$section|$port" >> "$ports_file"
+	done
+
+	# Process and fix duplicates
+	while IFS='|' read section port; do
+		if echo "$seen_ports" | grep -q ":$port:"; then
+			local name=$(uci_get "${section}.name" 2>/dev/null)
+			local new_port=$(get_next_port)
+			echo "Fixing $name: port $port -> $new_port"
+
+			# Update metablogizer config
+			uci set ${CONFIG}.${section}.port="$new_port"
+
+			# Update uhttpd config
+			uci set uhttpd.metablog_${section}.listen_http="0.0.0.0:$new_port"
+
+			# Update HAProxy backend if exists
+			uci set haproxy.metablog_${section}_srv.port="$new_port" 2>/dev/null
+
+			seen_ports="$seen_ports:$new_port:"
+			fixed=$((fixed + 1))
+		else
+			seen_ports="$seen_ports:$port:"
+		fi
+	done < "$ports_file"
+
+	rm -f "$ports_file"
+
+	if [ "$fixed" -gt 0 ]; then
+		uci commit ${CONFIG}
+		uci commit uhttpd
+		uci commit haproxy 2>/dev/null
+
+		echo ""
+		echo "Fixed $fixed duplicate port(s)."
+		echo "Restarting services..."
+		/etc/init.d/uhttpd restart
+		haproxyctl generate 2>/dev/null && haproxyctl reload 2>/dev/null
+	else
+		echo "No duplicate ports found."
+	fi
 }
 
 # Convert site name to UCI section name (hyphens -> underscores)
@@ -1062,6 +1168,8 @@ case "${1:-}" in
 	emancipate)     shift; cmd_emancipate "$@" ;;
 	runtime)        shift; cmd_runtime "$@" ;;
 	status)         shift; cmd_status "$@" ;;
+	check-ports)    shift; cmd_check_ports "$@" ;;
+	fix-ports)      shift; cmd_fix_ports "$@" ;;
 	install-nginx)  shift; cmd_install_nginx "$@" ;;
 	gitea)
 		shift

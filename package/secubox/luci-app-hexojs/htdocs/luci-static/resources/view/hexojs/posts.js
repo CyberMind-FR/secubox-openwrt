@@ -20,7 +20,7 @@ return view.extend({
 			E('div', { 'class': 'right', 'style': 'margin-top: 16px;' }, [
 				E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')),
 				E('button', {
-					'class': 'btn cbi-button-negative',
+					'class': 'kiss-btn kiss-btn-red',
 					'style': 'margin-left: 8px;',
 					'click': function() {
 						ui.showModal(_('Deleting'), [

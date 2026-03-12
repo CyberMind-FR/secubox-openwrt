@@ -4,30 +4,31 @@
 'require poll';
 'require rpc';
 'require ui';
+'require secubox/kiss-theme';
 
 var callOpenClawStatus = rpc.declare({
 	object: 'luci.openclaw',
 	method: 'status',
-	expect: { }
+	expect: {}
 });
 
 var callOpenClawChat = rpc.declare({
 	object: 'luci.openclaw',
 	method: 'chat',
 	params: ['message'],
-	expect: { }
+	expect: {}
 });
 
 var callOpenClawHistory = rpc.declare({
 	object: 'luci.openclaw',
 	method: 'get_history',
-	expect: { }
+	expect: {}
 });
 
 var callOpenClawClearHistory = rpc.declare({
 	object: 'luci.openclaw',
 	method: 'clear_history',
-	expect: { }
+	expect: {}
 });
 
 return view.extend({
@@ -43,16 +44,26 @@ return view.extend({
 
 	addMessage: function(content, isUser) {
 		var msgDiv = E('div', {
-			'class': 'openclaw-message ' + (isUser ? 'user-message' : 'ai-message')
+			'style': 'display: flex; margin-bottom: 16px;' + (isUser ? ' flex-direction: row-reverse;' : '')
 		});
 
+		var avatarStyle = 'width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 11px; flex-shrink: 0;';
 		if (isUser) {
-			msgDiv.appendChild(E('div', { 'class': 'message-avatar user-avatar' }, 'You'));
+			avatarStyle += ' background: var(--kiss-blue); color: white; margin-left: 10px;';
+			msgDiv.appendChild(E('div', { 'style': avatarStyle }, 'You'));
 		} else {
-			msgDiv.appendChild(E('div', { 'class': 'message-avatar ai-avatar' }, 'AI'));
+			avatarStyle += ' background: var(--kiss-purple); color: white; margin-right: 10px;';
+			msgDiv.appendChild(E('div', { 'style': avatarStyle }, 'AI'));
 		}
 
-		var contentDiv = E('div', { 'class': 'message-content' });
+		var contentStyle = 'max-width: 70%; padding: 12px 16px; border-radius: 16px; line-height: 1.5;';
+		if (isUser) {
+			contentStyle += ' background: var(--kiss-blue); color: white; border-bottom-right-radius: 4px;';
+		} else {
+			contentStyle += ' background: var(--kiss-bg2); color: var(--kiss-text); border-bottom-left-radius: 4px;';
+		}
+
+		var contentDiv = E('div', { 'style': contentStyle });
 		contentDiv.innerHTML = this.formatMessage(content);
 		msgDiv.appendChild(contentDiv);
 
@@ -61,9 +72,8 @@ return view.extend({
 	},
 
 	formatMessage: function(text) {
-		// Basic markdown-like formatting
-		text = text.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
-		text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+		text = text.replace(/```([\s\S]*?)```/g, '<pre style="background: var(--kiss-bg); padding: 10px; border-radius: 6px; overflow-x: auto; margin: 8px 0;"><code>$1</code></pre>');
+		text = text.replace(/`([^`]+)`/g, '<code style="background: rgba(255,255,255,0.1); padding: 2px 4px; border-radius: 3px; font-family: monospace;">$1</code>');
 		text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
 		text = text.replace(/\n/g, '<br>');
 		return text;
@@ -73,14 +83,14 @@ return view.extend({
 		var self = this;
 		var message = this.messageInput.value.trim();
 
-		if (!message)
-			return;
+		if (!message) return;
 
 		this.messageInput.value = '';
 		this.addMessage(message, true);
 
-		// Show typing indicator
-		var typingDiv = E('div', { 'class': 'openclaw-typing' }, 'AI is thinking...');
+		var typingDiv = E('div', {
+			'style': 'padding: 12px 16px; background: var(--kiss-bg2); border-radius: 16px; color: var(--kiss-muted); font-style: italic; display: inline-block; margin-left: 46px;'
+		}, 'AI is thinking...');
 		this.chatContainer.appendChild(typingDiv);
 
 		callOpenClawChat(message).then(function(response) {
@@ -91,19 +101,14 @@ return view.extend({
 				return;
 			}
 
-			// Parse response based on provider
 			var aiResponse = '';
 			if (response.content && response.content[0]) {
-				// Anthropic format
 				aiResponse = response.content[0].text || '';
 			} else if (response.choices && response.choices[0]) {
-				// OpenAI format
 				aiResponse = response.choices[0].message.content || '';
 			} else if (response.message && response.message.content) {
-				// Ollama format
 				aiResponse = response.message.content || '';
 			} else if (response.candidates && response.candidates[0]) {
-				// Gemini format
 				aiResponse = response.candidates[0].content.parts[0].text || '';
 			} else {
 				aiResponse = JSON.stringify(response);
@@ -121,78 +126,25 @@ return view.extend({
 		var status = data[0] || {};
 		var history = data[1] || {};
 
-		var styleEl = E('style', {}, [
-			'.openclaw-container { max-width: 900px; margin: 0 auto; }',
-			'.openclaw-status { padding: 10px; border-radius: 8px; margin-bottom: 15px; }',
-			'.openclaw-status.online { background: #d4edda; border: 1px solid #28a745; }',
-			'.openclaw-status.offline { background: #f8d7da; border: 1px solid #dc3545; }',
-			'.openclaw-chat { border: 1px solid #ddd; border-radius: 8px; height: 500px; overflow-y: auto; padding: 15px; background: #fafafa; margin-bottom: 15px; }',
-			'.openclaw-message { display: flex; margin-bottom: 15px; }',
-			'.user-message { flex-direction: row-reverse; }',
-			'.message-avatar { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 12px; flex-shrink: 0; }',
-			'.user-avatar { background: #007bff; color: white; margin-left: 10px; }',
-			'.ai-avatar { background: #6c757d; color: white; margin-right: 10px; }',
-			'.message-content { max-width: 70%; padding: 12px 16px; border-radius: 18px; line-height: 1.5; }',
-			'.user-message .message-content { background: #007bff; color: white; border-bottom-right-radius: 4px; }',
-			'.ai-message .message-content { background: #e9ecef; color: #333; border-bottom-left-radius: 4px; }',
-			'.message-content pre { background: #2d2d2d; color: #f8f8f2; padding: 10px; border-radius: 4px; overflow-x: auto; margin: 8px 0; }',
-			'.message-content code { background: rgba(0,0,0,0.1); padding: 2px 4px; border-radius: 3px; font-family: monospace; }',
-			'.openclaw-input { display: flex; gap: 10px; }',
-			'.openclaw-input textarea { flex: 1; min-height: 60px; padding: 12px; border: 1px solid #ddd; border-radius: 8px; resize: vertical; font-size: 14px; }',
-			'.openclaw-input button { padding: 12px 24px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; }',
-			'.openclaw-input button:hover { background: #0056b3; }',
-			'.openclaw-typing { padding: 12px 16px; background: #e9ecef; border-radius: 18px; color: #666; font-style: italic; display: inline-block; margin-left: 50px; }',
-			'.openclaw-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }',
-			'.openclaw-header h2 { margin: 0; }',
-			'.btn-clear { background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; }',
-			'.btn-clear:hover { background: #c82333; }'
-		]);
+		var running = status.running === '1';
 
-		var statusClass = (status.running === '1') ? 'online' : 'offline';
-		var statusText = (status.running === '1') ? 'Connected' : 'Offline';
-
-		this.chatContainer = E('div', { 'class': 'openclaw-chat' });
-		this.messageInput = E('textarea', {
-			'placeholder': 'Type your message here...',
-			'id': 'openclaw-message-input'
+		this.chatContainer = E('div', {
+			'id': 'chat-container',
+			'style': 'height: 450px; overflow-y: auto; padding: 16px; background: var(--kiss-bg); border-radius: 8px;'
 		});
 
-		// Add keypress handler for Enter key
+		this.messageInput = E('textarea', {
+			'placeholder': 'Type your message here...',
+			'id': 'openclaw-message-input',
+			'style': 'flex: 1; min-height: 60px; padding: 12px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 8px; color: var(--kiss-text); resize: vertical; font-size: 14px;'
+		});
+
 		this.messageInput.addEventListener('keypress', function(e) {
 			if (e.key === 'Enter' && !e.shiftKey) {
 				e.preventDefault();
 				self.sendMessage();
 			}
 		});
-
-		var sendButton = E('button', {
-			'click': function() { self.sendMessage(); }
-		}, 'Send');
-
-		var clearButton = E('button', {
-			'class': 'btn-clear',
-			'click': function() {
-				ui.showModal('Clear History', [
-					E('p', {}, 'Are you sure you want to clear all chat history?'),
-					E('div', { 'class': 'right' }, [
-						E('button', {
-							'class': 'btn',
-							'click': ui.hideModal
-						}, 'Cancel'),
-						' ',
-						E('button', {
-							'class': 'btn cbi-button-negative',
-							'click': function() {
-								callOpenClawClearHistory().then(function() {
-									self.chatContainer.innerHTML = '';
-									ui.hideModal();
-								});
-							}
-						}, 'Clear')
-					])
-				]);
-			}
-		}, 'Clear History');
 
 		// Load existing history
 		if (history.history && history.history.length > 0) {
@@ -216,23 +168,54 @@ return view.extend({
 			});
 		}
 
-		return E('div', { 'class': 'openclaw-container' }, [
-			styleEl,
-			E('div', { 'class': 'openclaw-header' }, [
-				E('h2', {}, 'OpenClaw AI Chat'),
-				clearButton
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+					E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+						E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'OpenClaw AI Chat'),
+						KissTheme.badge(running ? 'CONNECTED' : 'OFFLINE', running ? 'green' : 'red')
+					]),
+					E('button', {
+						'class': 'kiss-btn kiss-btn-red',
+						'click': function() {
+							ui.showModal('Clear History', [
+								E('p', {}, 'Are you sure you want to clear all chat history?'),
+								E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;' }, [
+									E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
+									E('button', {
+										'class': 'kiss-btn kiss-btn-red',
+										'click': function() {
+											callOpenClawClearHistory().then(function() {
+												self.chatContainer.innerHTML = '';
+												ui.hideModal();
+											});
+										}
+									}, 'Clear')
+								])
+							]);
+						}
+					}, 'Clear History')
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' },
+					running ? 'Port ' + (status.port || '3333') : 'Service not running')
 			]),
-			E('div', { 'class': 'openclaw-status ' + statusClass }, [
-				E('strong', {}, 'Status: '),
-				statusText,
-				(status.running === '1') ? ' (Port ' + (status.port || '3333') + ')' : ''
-			]),
-			this.chatContainer,
-			E('div', { 'class': 'openclaw-input' }, [
+
+			// Chat area
+			KissTheme.card('Conversation', this.chatContainer),
+
+			// Input area
+			E('div', { 'style': 'display: flex; gap: 12px; margin-top: 16px;' }, [
 				this.messageInput,
-				sendButton
+				E('button', {
+					'class': 'kiss-btn kiss-btn-blue',
+					'style': 'padding: 12px 24px;',
+					'click': function() { self.sendMessage(); }
+				}, 'Send')
 			])
-		]);
+		];
+
+		return KissTheme.wrap(content, 'admin/services/openclaw/chat');
 	},
 
 	handleSaveApply: null,

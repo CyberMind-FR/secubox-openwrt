@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-07 (lldh360 + cybaxe Vhosts Fix)_
+_Last updated: 2026-03-12 (SecuBox Watchdog)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -8,12 +8,347 @@ _Last updated: 2026-03-07 (lldh360 + cybaxe Vhosts Fix)_
 
 ## Recently Completed
 
+### 2026-03-12
+
+- **SecuBox Watchdog - Service Health Monitor (Complete)**
+  - New `secubox-app-watchdog` + `luci-app-watchdog` packages
+  - Monitors: LXC containers (haproxy, mitmproxy-in/out, streamlit), host services (crowdsec, uhttpd, dnsmasq), HTTPS endpoints
+  - CLI: watchdogctl status/check/check-recover/watch/restart-container/restart-service/logs
+  - Auto-recovery: detects stopped containers/services and restarts them
+  - RPCD: status, get_containers, get_services, get_endpoints, restart_*, check, get_logs
+  - LuCI Dashboard: Real-time status with 10s polling, restart buttons, log viewer
+  - Alert cooldown and log rotation
+  - Procd service + cron fallback
+  - Fixed HAProxy missing backends (luci_direct, fallback) and port mismatch
+
+- **RTTY Remote Control Phase 4 - Session Replay (Complete)**
+  - Avatar-Tap integration: passive session capture via mitmproxy WAF
+  - CLI: tap-sessions, tap-show, tap-replay, tap-export, tap-import
+  - RPCD: 6 new methods (get_tap_status, get_tap_sessions, get_tap_session, replay_to_node, export_session, import_session)
+  - LuCI: session-replay.js view with stats, filters, replay panel, import/export
+  - Menu: System Hub → Session Replay
+  - Tested: 10 captured sessions from multiple domains
+
+### 2026-03-11
+
+- **Streamlit Forge Phase 2 - Gitea Integration (Complete)**
+  - CLI: `slforge edit/pull/push/preview` commands
+  - Gitea API integration with token auth
+  - Auto-creates org/repo on first edit
+  - RPCD: 5 new methods (gitea_status, edit, pull, push, preview)
+  - LuCI: Gitea status card, Edit/Pull buttons, editor modal
+  - Preview generation: HTML capture + SVG placeholder
+
+- **HERMÈS·360 Full I-Ching Translation**
+  - All 64 hexagrams translated in 5 languages (DE, ES, PT, ZH, JA):
+    - Image texts (_i): 320 translations - symbolic imagery
+    - Description texts (_d): 320 translations - hexagram meaning
+    - Judgment texts (_j): 320 translations - oracle guidance
+    - Total: 960 new translation fields added
+  - Visual enhancements from wall.maegia.tv:
+    - Canvas CSS filters: saturate(1.3) brightness(1.15) contrast(1.05)
+    - Hover effect: saturate(1.4) brightness(1.25) contrast(1.08)
+  - Added grid rendering during coin toss animation (drawGrid function)
+  - File size: 1.7MB (up from 1.6MB)
+  - Deployed to: https://lldh360.maegia.tv/
+
+- **Meta Cataloger Phase 2 & 3 (Complete)**
+  - **Phase 2: RPCD + LuCI**
+    - RPCD backend: `luci.metacatalog` with 10 methods (list_entries, list_books, get_entry, get_book, search, get_stats, sync, scan, assign, unassign)
+    - LuCI dashboard: KISS-themed overview with stats chips, virtual books shelf
+    - HAProxy vhost scanner: Auto-indexes all HAProxy domains
+    - ACL permissions for read/write operations
+  - **Phase 3: Landing Page Enhancements**
+    - Search functionality: Real-time filter across all entries
+    - Tab navigation: Collections view, All entries view, per-book filters
+    - Scrollable book entries with max-height
+    - Link to LuCI dashboard in footer
+    - Responsive grid layout
+  - Deployed at: https://catalog.gk2.secubox.in/metacatalog/
+  - Total entries: 246 (127 MetaBlogs, 14 Streamlits, 105 HAProxy)
+
+- **Meta Cataloger - Virtual Books (Phase 1 Complete)**
+  - New `secubox-app-metacatalog` package for unified content aggregation
+  - Organizes MetaBlogizer sites, Streamlit apps into themed Virtual Books
+  - CLI: `/usr/sbin/metacatalogctl` with sync/scan/index/books/search/status/landing
+  - Scanners: MetaBlogizer (title, description, languages, colors, canvas/audio)
+  - Scanners: Streamlit (from app.py and UCI config)
+  - Auto-assignment: keyword + domain pattern matching to books
+  - 6 default books: Divination, Visualization, Analytics, Publications, Security, Media
+  - Landing page: Tao prism fluoro theme at `/www/metacatalog/index.html`
+  - APIs: `/metacatalog/api/index.json`, `/metacatalog/api/books.json`
+  - Initial sync: 120 entries (118 MetaBlogs, 2 Streamlits)
+  - BusyBox-compatible: sed-based regex (no grep -P)
+  - Cron: hourly auto-sync via `/etc/cron.d/metacatalog`
+
+- **HAProxy Auto-Sync Mitmproxy Routes**
+  - Fixed: New vhosts missing mitmproxy route entries causing 404 WAF errors
+  - `haproxyctl vhost add/remove` now triggers `mitmproxyctl sync-routes`
+  - Commit: 7cbd6406
+
+- **CrowdSec Dashboard Performance Optimization**
+  - **Problem**: `get_overview` RPC call was timing out (30s+), causing "TypeError: can't assign to property 'countries' on 5"
+  - **Root cause**: Function made 12+ sequential `cscli` calls, each taking 2-5s with CAPI data
+  - **Solution**: Pre-cached architecture with background refresh
+    - Cache file: `/tmp/secubox/crowdsec-overview.json` (60s TTL)
+    - `get_overview()` returns cached data instantly (0.08s)
+    - `refresh_overview_cache()` runs via cron every minute
+    - Background async refresh triggered when cache is stale
+  - **Technical fixes**:
+    - Reduced cscli calls from 12 to 4 (metrics, decisions, alerts, bouncers)
+    - Extracted flat decisions array from nested alert structure using jsonfilter
+    - Simplified alerts_raw to empty array (full alerts too large for ubus JSON)
+    - Manual JSON building to avoid jshn argument size limits (BusyBox constraint)
+    - Added `/etc/cron.d/crowdsec-dashboard` for periodic cache refresh
+  - **Files modified**: `luci.crowdsec-dashboard` RPCD, Makefile
+  - **Result**: Dashboard loads instantly, no more TypeError
+
+- **Streamlit Control Dashboard Phase 3 (Complete)**
+  - **Auto-refresh**: Toggle + interval selector on all main pages (10s/30s/60s)
+  - **Permission-aware UI**: Hide/disable action buttons for SecuBox users (limited access)
+  - **Containers page**: Tabs (All/Running/Stopped), search filter, improved info panels
+  - **Security page**: Better CrowdSec status parsing, threat table with columns, raw data expander
+  - **Streamlit apps page**: Restart button, delete confirmation dialog
+  - **Network page**: HAProxy filter, vhost count stats, WireGuard/DNS placeholders
+  - **Auth helpers**: `can_write()`, `is_admin()` functions for permission checks
+
+- **CrowdSec Dashboard Bugfix**
+  - Fixed: `TypeError: can't assign to property "countries" on 5: not an object`
+  - Root cause: RPC error code 5 returned instead of object (transient service state)
+  - Fix: Added type check in `overview.js` to treat non-objects as empty `{}`
+  - Deployed fix to router, cleared LuCI caches
+
+- **Streamlit Control Dashboard Phase 1 & 2 (Complete)**
+  - Package: `secubox-app-streamlit-control` with Python ubus client
+  - KISS-themed UI inspired by metablogizer design
+  - 7 pages: Home, Sites, Streamlit, Containers, Network, Security, System
+  - **Phase 2: RPCD Integration**
+    - HTTPS connection with self-signed cert support
+    - Dual auth: root (full access) + SecuBox users (read-only dashboard)
+    - Updated ACL: `unauthenticated.json` allows dashboard data without login
+    - Fixed LXC via `luci.secubox-portal.get_containers`
+    - Fixed CrowdSec via `luci.crowdsec-dashboard.status`
+    - All service status methods working (HAProxy, WAF, containers)
+  - Deployed on port 8531, exposed at control.gk2.secubox.in
+  - Test user: `testdash` / `Password123`
+
+- **RezApp Forge - Docker to SecuBox App Converter (Complete)**
+  - Package: `secubox-app-rezapp` with `rezappctl` CLI
+  - UCI config: `/etc/config/rezapp` with catalog sources (Docker Hub, LinuxServer.io, GHCR)
+  - Commands: catalog, search, info, import, convert, run, stop, package, publish, expose, list, cache
+  - Docker to LXC workflow: pull → export → extract → generate LXC config
+  - **Offline mode**: Convert from local tarball (--from-tar) or OCI directory (--from-oci)
+  - **Runtime fallback**: Docker → Podman automatic fallback
+  - **Network modes**: host (shared namespace), bridge (veth), none (isolated)
+  - **ENV extraction**: Docker ENV vars → LXC environment + UCI config
+  - **HAProxy integration**: `expose` command adds vhost + mitmproxy route
+  - Templates: Makefile.tpl, init.d.tpl, ctl.tpl, config.tpl, start-lxc.tpl, lxc-config.tpl, manifest.tpl
+  - **Tested**: Offline conversion from cached tarball, container runs successfully
+
+- **Streamlit Forge Phase 1** (implemented)
+  - Package: `secubox-app-streamlit-forge` with `slforge` CLI
+  - UCI config for app management
+  - 3 templates: basic, dashboard, data-viewer
+  - Commands: create, start, stop, restart, status, list, info, delete, templates
+  - Runs apps in Streamlit LXC container with proper mount paths
+  - Port-based status detection (container PID namespaces)
+  - HAProxy expose integration
+  - Mesh catalog publish
+  - **LuCI dashboard**: `luci-app-streamlit-forge` with create/start/stop/expose/publish
+
+- **RezApp Forge LuCI**
+  - Package: `luci-app-rezapp`
+  - Dashboard with Docker search, conversion dialog
+  - Converted apps table with Package/Publish/Delete
+  - Status cards for apps count, catalogs, Docker status
+
+- **SecuBox KISS Apps Catalog Update**
+  - Added `luci-app-streamlit-forge` and `luci-app-rezapp` to catalog.json
+  - Category: productivity (Streamlit), system (RezApp)
+  - Featured in new_releases section
+  - Total plugins: 37 → 39
+
+- **HAProxy Vhost Rename Feature**
+  - Added `haproxyctl vhost rename <old> <new>` command
+  - Renamed MC360_Streamlit_BPM_v2.gk2.secubox.in → mc360.gk2.secubox.in
+
+- **Lyrion Music Server Upgrade (9.0.3 → 9.1.1)**
+  - Diagnosed library showing 0 tracks (Perl XS module version mismatches)
+  - Root cause: Alpine 3.19 Perl 5.038 incompatible with bundled modules
+  - **Solution**: Rebuilt LXC container from official Docker image
+    - Pulled `lmscommunity/lyrionmusicserver:stable` (Debian Bookworm based)
+    - Exported Docker to tarball, extracted to LXC rootfs
+    - Created `/start-lxc.sh` wrapper for LXC execution
+    - Updated LXC config: UID 499 (squeezeboxserver), new paths
+    - Fixed /srv/lyrion ownership for new UID
+  - Library scan working: 81,430 files discovered
+  - Preserved config in /srv/lyrion (prefs, logs, cache)
+
+- **Metablogizer Package Conflict**
+  - opkg install fails: `/etc/config/metablogizer` file conflict
+  - Both `secubox-app-metablogizer` and `luci-app-metablogizer` provide same file
+  - Workaround: Deploy scripts directly via SCP instead of package install
+  - TODO: Fix package to use conffiles properly
+
+### 2026-03-10
+
+- **PeerTube Routing Fix**
+  - tube.gk2.secubox.in was serving Lyrion instead of PeerTube (port conflict)
+  - Lyrion moved from port 9001 → 9000 (server.prefs)
+  - PeerTube moved from port 9001 → 9002 (production.yaml)
+  - Fixed PeerTube database hostname: 192.168.255.1 → 127.0.0.1 (internal PostgreSQL)
+  - Updated mitmproxy routes for both services
+  - Both services now accessible: tube.gk2.secubox.in, lyrion.gk2.secubox.in
+
+- **Metablogizer Port Conflict Prevention**
+  - Fixed duplicate port detection in `get_next_port()` to check both uhttpd and metablogizer configs
+  - Added `check-ports` command: Scans all sites for duplicate port assignments
+  - Added `fix-ports` command: Auto-assigns new ports to duplicates
+  - Fixed 4 duplicate port conflicts:
+    - santefr.gk2.secubox.in: 8991 → 9010
+    - ganimed.maegia.fr: 9004 → 9011
+    - magic.maegia.tv: 8991 → 9012
+    - cybaxe.gk2.secubox.in: 9000 → 9004 (earlier fix)
+  - Fixed Makefile: Added empty `Build/Compile` rule for shell-only package
+
+- **magic.maegia.tv Full Publication**
+  - DNS A record added via Gandi API (`dnsctl -z maegia.tv add A magic`)
+  - Fixed ACME webroot path mismatch (`/var/www/acme-challenge`)
+  - SSL certificate issued and installed
+  - Fixed missing `luci_direct` HAProxy backend
+
+- **HAProxy Container Recovery**
+  - Diagnosed container startup failure (missing backend reference)
+  - Added `luci_direct` backend to generated config
+
+### 2026-03-09
+
+- **HAProxy Routes Health Check Panel**
+  - Backend: `/usr/sbin/service-health-check` script checks all routes in haproxy-routes.json
+  - RPCD method: `get_service_health` with 5-min cache and force-refresh option
+  - LuCI panel: Up/Down/Total stats, health %, down services list
+  - Refresh button for manual health check trigger
+  - CSS styling with KISS theme integration
+  - ACL permission added for read access
+  - Deployed and tested: 174 routes, 21 down (intentionally stopped LXC containers)
+
+- **admin.gk2.secubox.in WAF Routing Fix**
+  - Added route through mitmproxy WAF (port 8081 for LuCI)
+  - Fixed haproxy_router.py blocking 8081 routes
+  - Domain now accessible through WAF with proper access control
+
+- **Dev Status Widget v2.1 (Dynamic Dashboard)**
+  - Complete redesign with 4-layer architecture visualization
+  - 22+ features with dependency tracking (dependsOn/usedBy)
+  - 80+ components with status indicators
+  - Interactive filters: layer, status, category with localStorage persistence
+  - Feature cards: click to expand, show full dependencies/components
+  - Layer cards: click to filter features by layer
+  - Interconnection graph showing feature dependencies
+  - Milestone timeline to v1.0 with progress tracking
+  - Production stats display (185 packages, 226 vhosts, etc.)
+  - Auto-refresh with live RPCD data (60s interval)
+  - ES5 compatible for older browsers
+  - Standalone HTML page: `/dev-status.html` (no auth required)
+  - Files: `dev-status-widget.js`, `dev-status.js`, `dev-status-standalone.html`
+
+- **DNS Zone Configuration Sync**
+  - Fixed BIND zone path mismatch: `/srv/dns/zones/` → `/etc/bind/zones/`
+  - Added ganimed.fr zone declaration to `named.conf.zones`
+  - Synced zone files between LuCI-managed and BIND-loaded paths
+
+- **Mitmproxy WAF Memory Optimization**
+  - Diagnosed memory leak (687MB RSS)
+  - Added flow limits: `--set flow_detail=0 --set hardlimit=500`
+  - Reduced memory to 77MB
+  - Fixed `/srv/mitmproxy-in/haproxy-routes.json` for git.maegia.tv
+
+- **Config Backups Repository**
+  - Created `config-backups/` directory with BIND zones
+  - Created private `secubox-configs` repo on local Gitea
+  - Git remote: `git@git.maegia.tv:reepost/secubox-configs.git`
+
+### 2026-03-08
+
+- **RTTY Remote Control Module (Phase 3 - Web Terminal)**
+  - Web Terminal view: Embeds ttyd (port 7681) via iframe
+  - Node selector: Local/remote target selection
+  - Remote detection: Direct ttyd connection or SSH fallback
+  - RPCD method: start_terminal for remote node terminal info
+  - Menu: Remote Control → Remote Support → Web Terminal
+  - Fullscreen and refresh controls
+
+- **RTTY Remote Control Module (Phase 2 - Token-Based Shared Access)**
+  - Token authentication: 6-character codes grant RPC/terminal access without LuCI login
+  - CLI commands: `rttyctl token generate/list/validate/revoke`, `rttyctl token-rpc`
+  - RPCD methods: token_generate, token_list, token_validate, token_revoke, token_rpc
+  - Support Panel: Generate code → Share → Support person connects without auth
+  - Configurable TTL (30m/1h/2h/4h), permission tracking, usage counter
+  - Local address detection: Direct ubus for local calls (bypasses HTTP auth limits)
+  - Deployed and tested: Token RPC works for all ubus methods
+
+- **RTTY Remote Control Module (Phase 1 - RPCD Proxy)**
+  - Backend: `secubox-app-rtty-remote` with `rttyctl` CLI
+  - Frontend: `luci-app-rtty-remote` with KISS dashboard
+  - RPCD Proxy: Execute remote ubus calls to mesh nodes over HTTP
+  - CLI commands: `rttyctl nodes/rpc/rpc-list/rpc-batch/auth/sessions`
+  - RPCD methods: status, get_nodes, rpc_call, rpc_list, get_sessions, connect
+  - Session tracking with SQLite database
+  - Master-link integration for authentication
+  - Tested: `rttyctl rpc 127.0.0.1 system board` works
+
+- **lldh360.maegia.tv BIND Zone Fix**
+  - DNS was returning NXDOMAIN despite zone file existing
+  - Root cause: BIND (named) is the authoritative DNS, not dnsmasq
+  - Zone file `/srv/dns/zones/maegia.tv.zone` existed but wasn't registered in BIND
+  - Added zone entry to `/etc/bind/named.conf.zones`
+  - Restarted BIND (named), domain now resolves correctly
+  - Site accessible via HTTPS (HTTP 200)
+
+- **HAProxy mitmproxy Port Fix**
+  - Changed mitmproxy-in WAF port from 8890 to 22222
+  - Fixed UCI config regeneration issue (was overwriting manual edits)
+  - All vhosts now routing correctly through WAF
+
+- **Vortex DNS Zone Management & Secondary DNS**
+  - Added zone commands: `vortexctl zone list/dump/import/export/reload`
+  - Added secondary DNS commands: `vortexctl secondary list/add/remove`
+  - Zone dump generates BIND format zone files in `/srv/dns/zones/`
+  - Supports OVH as secondary DNS with AXFR zone transfer
+  - RPCD methods: zone_list, zone_dump, zone_import, zone_export, zone_reload, secondary_list, secondary_add, secondary_remove
+  - ACL permissions updated for all new methods
+  - Enables importing zones from Gandi and becoming authoritative DNS master
+
+- **Maegia Domains Audit & Fix**
+  - Fixed 3 broken domains (503 errors): crt.maegia.tv, git.maegia.tv, glances.maegia.tv
+  - Created missing vhost UCI configs for all 3 domains
+  - Added mitmproxy routes: crt→8503, git→3001, glances→61208
+  - Fixed ganimed.maegia.fr route IP: 127.0.0.1 → 192.168.255.1
+  - Fixed lldh360.maegia.tv WAF bypass: metablog_lldh360 → mitmproxy_inspector
+  - All 27 maegia domains now operational (4 have 404 content issues)
+
 ### 2026-03-07
 
-- **lldh360.maegia.tv Routing Fix**
+- **HAProxy mitmproxy_inspector Backend Fix**
+  - mitmproxy_inspector backend had NO server section (causing 503 for all WAF vhosts)
+  - Added UCI server section: `mitmproxy_inspector_srv` pointing to 192.168.255.1:8890
+  - Fixed haproxyctl duplicate userlist warning and _emit_sorted_path_acls indentation
+  - All vhosts now correctly routing through WAF
+
+- **Lyrion Routing Fix**
+  - Changed lyrion vhost backend from `lyrion_web` to `mitmproxy_inspector`
+  - Was bypassing WAF, now properly routed through mitmproxy-in
+
+- **Jellyfin Route IP Fix**
+  - Fixed mitmproxy route: 192.168.255.1 → 192.168.255.31 (container's actual IP)
+  - Jellyfin container has dedicated veth interface on br-lan
+
+- **lldh360.maegia.tv Routing Fix + SSL**
   - Fixed mitmproxy routes: 127.0.0.1 → 192.168.255.1 (all 187 routes updated)
-  - Disabled SSL redirect (DNS record doesn't exist yet for ACME)
   - Restored HAProxy config from backup (haproxyctl generate was corrupted)
+  - Installed Let's Encrypt SSL certificate (valid until 2026-06-05)
+  - Enabled HTTP→HTTPS redirect
+  - Site now accessible via HTTPS
   - Site now accessible via HTTP on port 9003
 
 - **cybaxe.gk2.secubox.in Port Conflict Fix**
@@ -145,14 +480,16 @@ _Last updated: 2026-03-07 (lldh360 + cybaxe Vhosts Fix)_
 
 ## In Progress
 
-- **Vortex DNS** - Meshed multi-dynamic subdomain delegation (DONE 2026-02-05)
-  - `secubox-vortex-dns` package with `vortexctl` CLI
-  - Master/slave hierarchical DNS delegation
-  - Wildcard domain management
+(No active tasks)
 
 ---
 
 ## Next Up
+
+### v1.0 Release Prep
+
+1. **Session Replay** - Avatar-tap integration for session capture/replay
+2. **Remote ttyd Deployment** - Auto-install ttyd on mesh nodes
 
 ### v1.1+ Extended Mesh
 

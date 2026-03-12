@@ -3,6 +3,7 @@
 'require dom';
 'require ui';
 'require rpc';
+'require secubox/kiss-theme';
 
 var callStatus = rpc.declare({
 	object: 'luci.secubox-users',
@@ -38,6 +39,10 @@ var callPasswd = rpc.declare({
 });
 
 return view.extend({
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null,
+
 	load: function() {
 		return Promise.all([
 			callStatus(),
@@ -45,90 +50,130 @@ return view.extend({
 		]);
 	},
 
-	renderServiceBadge: function(name, running) {
-		var color = running ? '#4CAF50' : '#9e9e9e';
-		return E('span', {
-			'style': 'display:inline-block;padding:2px 8px;margin:2px;border-radius:3px;color:#fff;background:' + color + ';font-size:0.85em;'
-		}, name);
+	renderStats: function(status, userCount) {
+		var c = KissTheme.colors;
+		var services = status.services || {};
+		var activeServices = Object.keys(services).filter(function(s) { return services[s]; }).length;
+		return [
+			KissTheme.stat(userCount, 'Users', c.blue),
+			KissTheme.stat(activeServices, 'Services', c.green),
+			KissTheme.stat(status.domain || 'N/A', 'Domain', c.purple)
+		];
+	},
+
+	renderServices: function(services) {
+		var serviceNames = ['nextcloud', 'peertube', 'matrix', 'jabber', 'email', 'gitea', 'jellyfin'];
+		var badges = serviceNames.map(function(name) {
+			var running = services[name];
+			return KissTheme.badge(name.charAt(0).toUpperCase() + name.slice(1), running ? 'green' : 'muted');
+		});
+		return E('div', { 'style': 'display: flex; flex-wrap: wrap; gap: 8px;' }, badges);
 	},
 
 	renderUserRow: function(user) {
 		var self = this;
 		var services = (user.services || []).map(function(s) {
 			return E('span', {
-				'style': 'display:inline-block;padding:1px 6px;margin:1px;border-radius:3px;background:#e3f2fd;font-size:0.8em;'
+				'style': 'display: inline-block; padding: 2px 6px; margin: 2px; border-radius: 4px; background: var(--kiss-bg); color: var(--kiss-cyan); font-size: 11px;'
 			}, s);
 		});
 
-		// Login stats
 		var lastLogin = user.last_login || 'never';
 		var loginSuccess = user.login_success || 0;
 		var loginFailure = user.login_failure || 0;
-
-		// Color code failures
-		var failColor = loginFailure > 10 ? '#f44336' : (loginFailure > 0 ? '#ff9800' : '#4caf50');
+		var failColor = loginFailure > 10 ? 'var(--kiss-red)' : (loginFailure > 0 ? 'var(--kiss-orange)' : 'var(--kiss-green)');
 
 		return E('tr', {}, [
-			E('td', {}, user.username),
-			E('td', {}, user.email),
-			E('td', {}, lastLogin),
-			E('td', { 'style': 'text-align:center;' }, [
-				E('span', { 'style': 'color:#4caf50;font-weight:bold;' }, String(loginSuccess)),
-				E('span', {}, ' / '),
-				E('span', { 'style': 'color:' + failColor + ';font-weight:bold;' }, String(loginFailure))
+			E('td', { 'style': 'font-weight: 600;' }, user.username),
+			E('td', { 'style': 'color: var(--kiss-muted);' }, user.email),
+			E('td', { 'style': 'color: var(--kiss-muted);' }, lastLogin),
+			E('td', { 'style': 'text-align: center;' }, [
+				E('span', { 'style': 'color: var(--kiss-green); font-weight: 600;' }, String(loginSuccess)),
+				E('span', { 'style': 'color: var(--kiss-muted);' }, ' / '),
+				E('span', { 'style': 'color: ' + failColor + '; font-weight: 600;' }, String(loginFailure))
 			]),
 			E('td', {}, services),
-			E('td', {}, [
-				E('button', {
-					'class': 'btn cbi-button',
-					'click': function() { self.handlePasswd(user.username); },
-					'style': 'margin-right:5px;'
-				}, _('Password')),
-				E('button', {
-					'class': 'btn cbi-button cbi-button-remove',
-					'click': function() { self.handleDelete(user.username); }
-				}, _('Delete'))
+			E('td', { 'style': 'width: 180px;' }, [
+				E('div', { 'style': 'display: flex; gap: 8px;' }, [
+					E('button', {
+						'class': 'kiss-btn',
+						'style': 'padding: 4px 10px; font-size: 11px;',
+						'click': function() { self.handlePasswd(user.username); }
+					}, 'Password'),
+					E('button', {
+						'class': 'kiss-btn kiss-btn-red',
+						'style': 'padding: 4px 10px; font-size: 11px;',
+						'click': function() { self.handleDelete(user.username); }
+					}, 'Delete')
+				])
 			])
+		]);
+	},
+
+	renderUsersTable: function(users) {
+		var self = this;
+		if (!users || users.length === 0) {
+			return E('p', { 'style': 'color: var(--kiss-muted);' }, 'No users configured. Click "Add User" to create one.');
+		}
+
+		var rows = users.map(function(u) { return self.renderUserRow(u); });
+
+		return E('table', { 'class': 'kiss-table' }, [
+			E('thead', {}, [
+				E('tr', {}, [
+					E('th', {}, 'Username'),
+					E('th', {}, 'Email'),
+					E('th', {}, 'Last Login'),
+					E('th', { 'style': 'text-align: center;' }, 'OK / Fail'),
+					E('th', {}, 'Services'),
+					E('th', {}, 'Actions')
+				])
+			]),
+			E('tbody', {}, rows)
 		]);
 	},
 
 	handleAdd: function() {
 		var self = this;
 
-		ui.showModal(_('Add User'), [
-			E('div', { 'class': 'cbi-section' }, [
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Username')),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', { 'type': 'text', 'id': 'new-username', 'style': 'width:200px;' })
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Password')),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', { 'type': 'password', 'id': 'new-password', 'placeholder': _('Leave empty to generate'), 'style': 'width:200px;' })
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Services')),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('label', {}, [E('input', { 'type': 'checkbox', 'id': 'svc-nextcloud', 'checked': true }), ' Nextcloud']),
-						E('label', { 'style': 'margin-left:10px;' }, [E('input', { 'type': 'checkbox', 'id': 'svc-peertube', 'checked': true }), ' PeerTube']),
-						E('label', { 'style': 'margin-left:10px;' }, [E('input', { 'type': 'checkbox', 'id': 'svc-jabber', 'checked': true }), ' Jabber']),
-						E('label', { 'style': 'margin-left:10px;' }, [E('input', { 'type': 'checkbox', 'id': 'svc-matrix', 'checked': true }), ' Matrix']),
-						E('label', { 'style': 'margin-left:10px;' }, [E('input', { 'type': 'checkbox', 'id': 'svc-email', 'checked': true }), ' Email']),
-						E('label', { 'style': 'margin-left:10px;' }, [E('input', { 'type': 'checkbox', 'id': 'svc-gitea', 'checked': true }), ' Gitea']),
-						E('label', { 'style': 'margin-left:10px;' }, [E('input', { 'type': 'checkbox', 'id': 'svc-jellyfin', 'checked': true }), ' Jellyfin'])
+		ui.showModal('Add User', [
+			E('div', { 'style': 'padding: 16px;' }, [
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 16px;' }, [
+					E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+						E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Username'),
+						E('input', {
+							'type': 'text',
+							'id': 'new-username',
+							'style': 'background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 10px 12px; border-radius: 6px;'
+						})
+					]),
+					E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+						E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Password'),
+						E('input', {
+							'type': 'password',
+							'id': 'new-password',
+							'placeholder': 'Leave empty to generate',
+							'style': 'background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 10px 12px; border-radius: 6px;'
+						})
+					]),
+					E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+						E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Services'),
+						E('div', { 'style': 'display: flex; flex-wrap: wrap; gap: 12px;' }, [
+							E('label', { 'style': 'display: flex; align-items: center; gap: 4px;' }, [E('input', { 'type': 'checkbox', 'id': 'svc-nextcloud', 'checked': true }), 'Nextcloud']),
+							E('label', { 'style': 'display: flex; align-items: center; gap: 4px;' }, [E('input', { 'type': 'checkbox', 'id': 'svc-peertube', 'checked': true }), 'PeerTube']),
+							E('label', { 'style': 'display: flex; align-items: center; gap: 4px;' }, [E('input', { 'type': 'checkbox', 'id': 'svc-jabber', 'checked': true }), 'Jabber']),
+							E('label', { 'style': 'display: flex; align-items: center; gap: 4px;' }, [E('input', { 'type': 'checkbox', 'id': 'svc-matrix', 'checked': true }), 'Matrix']),
+							E('label', { 'style': 'display: flex; align-items: center; gap: 4px;' }, [E('input', { 'type': 'checkbox', 'id': 'svc-email', 'checked': true }), 'Email']),
+							E('label', { 'style': 'display: flex; align-items: center; gap: 4px;' }, [E('input', { 'type': 'checkbox', 'id': 'svc-gitea', 'checked': true }), 'Gitea']),
+							E('label', { 'style': 'display: flex; align-items: center; gap: 4px;' }, [E('input', { 'type': 'checkbox', 'id': 'svc-jellyfin', 'checked': true }), 'Jellyfin'])
+						])
 					])
 				])
 			]),
-			E('div', { 'class': 'right' }, [
+			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px; padding: 16px; border-top: 1px solid var(--kiss-line);' }, [
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
 				E('button', {
-					'class': 'btn',
-					'click': ui.hideModal
-				}, _('Cancel')),
-				E('button', {
-					'class': 'btn cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() {
 						var username = document.getElementById('new-username').value;
 						var password = document.getElementById('new-password').value;
@@ -142,107 +187,113 @@ return view.extend({
 						if (document.getElementById('svc-jellyfin').checked) services.push('jellyfin');
 
 						if (!username) {
-							ui.addNotification(null, E('p', {}, _('Username required')), 'error');
+							ui.addNotification(null, E('p', 'Username required'), 'error');
 							return;
 						}
 
 						ui.hideModal();
-						ui.showModal(_('Creating User...'), [
-							E('p', { 'class': 'spinning' }, _('Please wait...'))
+						ui.showModal('Creating User...', [
+							E('p', { 'class': 'spinning' }, 'Please wait...')
 						]);
 
 						callAddUser(username, password, services.join(',')).then(function(res) {
 							ui.hideModal();
 							if (res && res.success) {
-								ui.showModal(_('User Created'), [
-									E('div', { 'style': 'padding:20px;' }, [
-										E('p', {}, _('User created successfully!')),
-										E('table', { 'style': 'margin:15px 0;' }, [
-											E('tr', {}, [E('td', { 'style': 'padding:5px;font-weight:bold;' }, _('Username:')), E('td', { 'style': 'padding:5px;' }, res.username)]),
-											E('tr', {}, [E('td', { 'style': 'padding:5px;font-weight:bold;' }, _('Password:')), E('td', { 'style': 'padding:5px;font-family:monospace;background:#f5f5f5;' }, res.password)]),
-											E('tr', {}, [E('td', { 'style': 'padding:5px;font-weight:bold;' }, _('Email:')), E('td', { 'style': 'padding:5px;' }, res.email)])
+								ui.showModal('User Created', [
+									E('div', { 'style': 'padding: 20px;' }, [
+										E('p', {}, 'User created successfully!'),
+										E('div', { 'style': 'margin: 16px 0; padding: 12px; background: var(--kiss-bg); border-radius: 6px;' }, [
+											E('div', { 'style': 'display: flex; gap: 12px; margin-bottom: 8px;' }, [
+												E('span', { 'style': 'color: var(--kiss-muted);' }, 'Username:'),
+												E('span', { 'style': 'font-weight: 600;' }, res.username)
+											]),
+											E('div', { 'style': 'display: flex; gap: 12px; margin-bottom: 8px;' }, [
+												E('span', { 'style': 'color: var(--kiss-muted);' }, 'Password:'),
+												E('span', { 'style': 'font-family: monospace; background: var(--kiss-bg2); padding: 4px 8px; border-radius: 4px;' }, res.password)
+											]),
+											E('div', { 'style': 'display: flex; gap: 12px;' }, [
+												E('span', { 'style': 'color: var(--kiss-muted);' }, 'Email:'),
+												E('span', {}, res.email)
+											])
 										])
 									]),
-									E('div', { 'class': 'right' }, [
-										E('button', { 'class': 'btn cbi-button-positive', 'click': function() { ui.hideModal(); location.reload(); } }, _('OK'))
+									E('div', { 'style': 'display: flex; justify-content: flex-end; padding: 16px;' }, [
+										E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': function() { ui.hideModal(); location.reload(); } }, 'OK')
 									])
 								]);
 							} else {
-								ui.addNotification(null, E('p', {}, _('Error: ') + (res.error || 'Unknown error')), 'error');
+								ui.addNotification(null, E('p', 'Error: ' + (res.error || 'Unknown error')), 'error');
 							}
 						});
-					},
-					'style': 'margin-left:10px;'
-				}, _('Create User'))
+					}
+				}, 'Create User')
 			])
 		]);
 	},
 
 	handleDelete: function(username) {
-		var self = this;
-
-		if (!confirm(_('Delete user "%s" from all services?').format(username))) {
+		if (!confirm('Delete user "' + username + '" from all services?')) {
 			return;
 		}
 
-		ui.showModal(_('Deleting...'), [
-			E('p', { 'class': 'spinning' }, _('Please wait...'))
+		ui.showModal('Deleting...', [
+			E('p', { 'class': 'spinning' }, 'Please wait...')
 		]);
 
 		callDeleteUser(username).then(function(res) {
 			ui.hideModal();
 			if (res && res.success) {
-				ui.addNotification(null, E('p', {}, _('User deleted')), 'success');
+				ui.addNotification(null, E('p', 'User deleted'), 'success');
 				location.reload();
 			} else {
-				ui.addNotification(null, E('p', {}, _('Error: ') + (res.error || 'Unknown error')), 'error');
+				ui.addNotification(null, E('p', 'Error: ' + (res.error || 'Unknown error')), 'error');
 			}
 		});
 	},
 
 	handlePasswd: function(username) {
-		var self = this;
-
-		ui.showModal(_('Change Password'), [
-			E('div', { 'class': 'cbi-section' }, [
-				E('p', {}, _('Change password for: %s').format(username)),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('New Password')),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', { 'type': 'password', 'id': 'new-passwd', 'placeholder': _('Leave empty to generate'), 'style': 'width:200px;' })
-					])
+		ui.showModal('Change Password', [
+			E('div', { 'style': 'padding: 16px;' }, [
+				E('p', {}, 'Change password for: ' + username),
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px; margin-top: 16px;' }, [
+					E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'New Password'),
+					E('input', {
+						'type': 'password',
+						'id': 'new-passwd',
+						'placeholder': 'Leave empty to generate',
+						'style': 'background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 10px 12px; border-radius: 6px;'
+					})
 				])
 			]),
-			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')),
+			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px; padding: 16px; border-top: 1px solid var(--kiss-line);' }, [
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
 				E('button', {
-					'class': 'btn cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-blue',
 					'click': function() {
 						var password = document.getElementById('new-passwd').value;
 						ui.hideModal();
-						ui.showModal(_('Updating...'), [
-							E('p', { 'class': 'spinning' }, _('Please wait...'))
+						ui.showModal('Updating...', [
+							E('p', { 'class': 'spinning' }, 'Please wait...')
 						]);
 
 						callPasswd(username, password).then(function(res) {
 							ui.hideModal();
 							if (res && res.success) {
-								ui.showModal(_('Password Updated'), [
-									E('div', { 'style': 'padding:20px;' }, [
-										E('p', {}, _('Password updated for all services!')),
-										E('p', { 'style': 'font-family:monospace;background:#f5f5f5;padding:10px;margin:10px 0;' }, res.password)
+								ui.showModal('Password Updated', [
+									E('div', { 'style': 'padding: 20px;' }, [
+										E('p', {}, 'Password updated for all services!'),
+										E('p', { 'style': 'font-family: monospace; background: var(--kiss-bg); padding: 12px; margin: 12px 0; border-radius: 6px;' }, res.password)
 									]),
-									E('div', { 'class': 'right' }, [
-										E('button', { 'class': 'btn cbi-button-positive', 'click': ui.hideModal }, _('OK'))
+									E('div', { 'style': 'display: flex; justify-content: flex-end; padding: 16px;' }, [
+										E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': ui.hideModal }, 'OK')
 									])
 								]);
 							} else {
-								ui.addNotification(null, E('p', {}, _('Error updating password')), 'error');
+								ui.addNotification(null, E('p', 'Error updating password'), 'error');
 							}
 						});
-					},
-					'style': 'margin-left:10px;'
-				}, _('Update'))
+					}
+				}, 'Update')
 			])
 		]);
 	},
@@ -254,51 +305,38 @@ return view.extend({
 		var users = usersData.users || [];
 		var services = status.services || {};
 
-		var content = [];
-
-		// Header
-		content.push(E('h2', {}, _('SecuBox User Management')));
-
-		// Status Section
-		content.push(E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('Services')),
-			E('div', { 'style': 'margin:10px 0;' }, [
-				this.renderServiceBadge('Nextcloud', services.nextcloud),
-				this.renderServiceBadge('PeerTube', services.peertube),
-				this.renderServiceBadge('Matrix', services.matrix),
-				this.renderServiceBadge('Jabber', services.jabber),
-				this.renderServiceBadge('Email', services.email),
-				this.renderServiceBadge('Gitea', services.gitea),
-				this.renderServiceBadge('Jellyfin', services.jellyfin)
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'SecuBox User Management'),
+					KissTheme.badge(users.length + ' Users', 'blue')
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' },
+					'Manage unified user accounts across all SecuBox services')
 			]),
-			E('p', { 'style': 'color:#666;' }, _('Domain: %s | Users: %d').format(status.domain, status.user_count))
-		]));
 
-		// Users Table
-		var userRows = users.map(function(u) { return self.renderUserRow(u); });
+			// Stats
+			E('div', { 'class': 'kiss-grid kiss-grid-3', 'style': 'margin: 20px 0;' },
+				this.renderStats(status, users.length)),
 
-		content.push(E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('Users')),
-			E('div', { 'class': 'cbi-page-actions', 'style': 'margin-bottom:15px;' }, [
-				E('button', {
-					'class': 'btn cbi-button-positive',
-					'click': function() { self.handleAdd(); }
-				}, _('Add User'))
-			]),
-			users.length > 0 ?
-				E('table', { 'class': 'table cbi-section-table' }, [
-					E('tr', { 'class': 'tr table-titles' }, [
-						E('th', { 'class': 'th' }, _('Username')),
-						E('th', { 'class': 'th' }, _('Email')),
-						E('th', { 'class': 'th' }, _('Last Login')),
-						E('th', { 'class': 'th', 'style': 'text-align:center;' }, _('OK / Fail')),
-						E('th', { 'class': 'th' }, _('Services')),
-						E('th', { 'class': 'th' }, _('Actions'))
-					])
-				].concat(userRows)) :
-				E('p', { 'style': 'color:#666;' }, _('No users configured. Click "Add User" to create one.'))
-		]));
+			// Services
+			KissTheme.card('Available Services', this.renderServices(services)),
 
-		return E('div', { 'class': 'cbi-map' }, content);
+			// Users
+			KissTheme.card(
+				E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+					E('span', {}, 'Users'),
+					E('button', {
+						'class': 'kiss-btn kiss-btn-green',
+						'style': 'padding: 6px 14px;',
+						'click': function() { self.handleAdd(); }
+					}, 'Add User')
+				]),
+				this.renderUsersTable(users)
+			)
+		];
+
+		return KissTheme.wrap(content, 'admin/system/secubox-users/overview');
 	}
 });

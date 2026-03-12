@@ -53,7 +53,7 @@ function showGeneratedConfig(mode) {
 			E('pre', { 'class': 'nm-config-preview' }, result.config),
 			E('div', { 'class': 'right', 'style': 'margin-top: 16px;' }, [
 				E('button', {
-					'class': 'cbi-button cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': ui.hideModal
 				}, _('Close'))
 			])

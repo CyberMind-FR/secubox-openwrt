@@ -132,12 +132,12 @@ return view.extend({
 				_('This action cannot be undone!')),
 			E('div', { 'class': 'right' }, [
 				E('button', {
-					'class': 'btn',
+					'class': 'kiss-btn',
 					'click': ui.hideModal
 				}, _('Cancel')),
 				' ',
 				E('button', {
-					'class': 'btn cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'click': L.bind(function() {
 						ui.hideModal();
 						this.applyPreset(presetId, btn);

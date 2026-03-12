@@ -296,9 +296,9 @@ return view.extend({
 		ui.showModal(_('Reset adapter'), [
 			E('p', {}, _('Clear cached detection info for ') + id + '?'),
 			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')),
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, _('Cancel')),
 				E('button', {
-					'class': 'btn cbi-button-negative',
+					'class': 'kiss-btn kiss-btn-red',
 					'click': function() {
 						API.resetAdapter({ adapter: id }).then(function() {
 							ui.hideModal();

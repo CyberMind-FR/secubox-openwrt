@@ -4,6 +4,7 @@
 'require ui';
 'require form';
 'require uci';
+'require secubox/kiss-theme';
 
 var callSchedules = rpc.declare({
 	object: 'luci.webradio',
@@ -66,6 +67,10 @@ function formatDays(days) {
 }
 
 return view.extend({
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null,
+
 	load: function() {
 		return Promise.all([
 			callSchedules(),
@@ -74,173 +79,25 @@ return view.extend({
 		]);
 	},
 
-	render: function(data) {
-		var self = this;
-		var scheduleData = data[0] || {};
-		var currentShow = data[1] || {};
-		var schedules = scheduleData.schedules || [];
-
-		var content = [
-			E('h2', {}, 'Programming Schedule'),
-
-			// Current show info
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, 'Now Playing'),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Show'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('span', { 'style': 'font-weight: bold; font-size: 1.1em;' },
-							currentShow.name || 'Default')
-					])
-				]),
-				currentShow.playlist ? E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Playlist'),
-					E('div', { 'class': 'cbi-value-field' }, currentShow.playlist)
-				]) : '',
-				currentShow.start ? E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Started'),
-					E('div', { 'class': 'cbi-value-field' }, currentShow.start)
-				]) : ''
-			]),
-
-			// Scheduling settings
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, 'Scheduling Settings'),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Enable Scheduling'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
-							'type': 'checkbox',
-							'id': 'scheduling-enabled',
-							'checked': scheduleData.scheduling_enabled
-						}),
-						E('span', { 'style': 'margin-left: 10px;' },
-							'Automatically switch shows based on schedule')
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Timezone'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('select', { 'id': 'timezone', 'class': 'cbi-input-select' }, [
-							E('option', { 'value': 'UTC', 'selected': scheduleData.timezone === 'UTC' }, 'UTC'),
-							E('option', { 'value': 'Europe/Paris', 'selected': scheduleData.timezone === 'Europe/Paris' }, 'Europe/Paris'),
-							E('option', { 'value': 'Europe/London', 'selected': scheduleData.timezone === 'Europe/London' }, 'Europe/London'),
-							E('option', { 'value': 'America/New_York', 'selected': scheduleData.timezone === 'America/New_York' }, 'America/New_York'),
-							E('option', { 'value': 'America/Los_Angeles', 'selected': scheduleData.timezone === 'America/Los_Angeles' }, 'America/Los_Angeles'),
-							E('option', { 'value': 'Asia/Tokyo', 'selected': scheduleData.timezone === 'Asia/Tokyo' }, 'Asia/Tokyo')
-						])
-					])
-				]),
-				E('div', { 'style': 'display: flex; gap: 10px; margin-top: 10px;' }, [
-					E('button', {
-						'class': 'btn cbi-button-action',
-						'click': ui.createHandlerFn(this, 'handleSaveSettings')
-					}, 'Save Settings'),
-					E('button', {
-						'class': 'btn cbi-button-neutral',
-						'click': ui.createHandlerFn(this, 'handleGenerateCron')
-					}, 'Regenerate Cron')
-				])
-			]),
-
-			// Add new schedule
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, 'Add New Schedule'),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Show Name'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
-							'type': 'text',
-							'id': 'new-name',
-							'class': 'cbi-input-text',
-							'placeholder': 'Morning Show',
-							'style': 'width: 250px;'
-						})
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Start Time'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
-							'type': 'time',
-							'id': 'new-start',
-							'class': 'cbi-input-text'
-						})
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'End Time'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
-							'type': 'time',
-							'id': 'new-end',
-							'class': 'cbi-input-text'
-						})
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Days'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('div', { 'style': 'display: flex; gap: 10px; flex-wrap: wrap;' },
-							Object.keys(DAYS).map(function(d) {
-								return E('label', { 'style': 'display: flex; align-items: center; gap: 4px;' }, [
-									E('input', {
-										'type': 'checkbox',
-										'class': 'day-checkbox',
-										'data-day': d,
-										'checked': true
-									}),
-									DAYS[d]
-								]);
-							})
-						)
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Playlist'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
-							'type': 'text',
-							'id': 'new-playlist',
-							'class': 'cbi-input-text',
-							'placeholder': 'morning_mix',
-							'style': 'width: 200px;'
-						}),
-						E('p', { 'style': 'color: #666; font-size: 0.9em;' },
-							'Playlist name (without .m3u extension)')
-					])
-				]),
-				E('button', {
-					'class': 'btn cbi-button-positive',
-					'style': 'margin-top: 10px;',
-					'click': ui.createHandlerFn(this, 'handleAddSchedule')
-				}, 'Add Schedule')
-			]),
-
-			// Schedule list
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, 'Scheduled Shows (' + schedules.length + ')'),
-				this.renderScheduleTable(schedules)
-			])
+	renderStats: function(scheduleCount, currentShow, schedulingEnabled) {
+		var c = KissTheme.colors;
+		return [
+			KissTheme.stat(currentShow.name || 'Default', 'Now Playing', c.green),
+			KissTheme.stat(scheduleCount, 'Schedules', c.blue),
+			KissTheme.stat(schedulingEnabled ? 'On' : 'Off', 'Auto-Switch', schedulingEnabled ? c.purple : c.muted)
 		];
-
-		return E('div', { 'class': 'cbi-map' }, content);
 	},
 
 	renderScheduleTable: function(schedules) {
 		if (!schedules || schedules.length === 0) {
-			return E('p', { 'style': 'color: #666;' },
+			return E('p', { 'style': 'color: var(--kiss-muted);' },
 				'No schedules configured. Add a schedule above to create a programming grid.');
 		}
 
 		var self = this;
 		var rows = schedules.map(function(sched) {
-			var statusStyle = sched.enabled
-				? 'background: #4CAF50; color: white; padding: 2px 8px; border-radius: 3px;'
-				: 'background: #9e9e9e; color: white; padding: 2px 8px; border-radius: 3px;';
-
-			return E('div', { 'class': 'tr' }, [
-				E('div', { 'class': 'td', 'style': 'width: 30px;' }, [
+			return E('tr', {}, [
+				E('td', { 'style': 'width: 40px;' }, [
 					E('input', {
 						'type': 'checkbox',
 						'checked': sched.enabled,
@@ -250,32 +107,185 @@ return view.extend({
 						}
 					})
 				]),
-				E('div', { 'class': 'td', 'style': 'font-weight: bold;' }, sched.name),
-				E('div', { 'class': 'td' }, sched.start_time + ' - ' + (sched.end_time || '...')),
-				E('div', { 'class': 'td' }, formatDays(sched.days)),
-				E('div', { 'class': 'td' }, sched.playlist || '-'),
-				E('div', { 'class': 'td' }, sched.jingle_before || '-'),
-				E('div', { 'class': 'td', 'style': 'width: 80px;' }, [
+				E('td', { 'style': 'font-weight: 600;' }, sched.name),
+				E('td', {}, sched.start_time + ' - ' + (sched.end_time || '...')),
+				E('td', { 'style': 'color: var(--kiss-muted);' }, formatDays(sched.days)),
+				E('td', {}, sched.playlist || '-'),
+				E('td', { 'style': 'color: var(--kiss-muted);' }, sched.jingle_before || '-'),
+				E('td', { 'style': 'width: 80px;' }, [
 					E('button', {
-						'class': 'btn cbi-button-remove',
-						'style': 'padding: 2px 8px;',
+						'class': 'kiss-btn kiss-btn-red',
+						'style': 'padding: 4px 10px; font-size: 11px;',
 						'click': ui.createHandlerFn(self, 'handleDelete', sched.slot)
 					}, 'Delete')
 				])
 			]);
 		});
 
-		return E('div', { 'class': 'table' }, [
-			E('div', { 'class': 'tr cbi-section-table-titles' }, [
-				E('div', { 'class': 'th' }, 'On'),
-				E('div', { 'class': 'th' }, 'Name'),
-				E('div', { 'class': 'th' }, 'Time'),
-				E('div', { 'class': 'th' }, 'Days'),
-				E('div', { 'class': 'th' }, 'Playlist'),
-				E('div', { 'class': 'th' }, 'Jingle'),
-				E('div', { 'class': 'th' }, 'Action')
-			])
-		].concat(rows));
+		return E('table', { 'class': 'kiss-table' }, [
+			E('thead', {}, [
+				E('tr', {}, [
+					E('th', {}, 'On'),
+					E('th', {}, 'Name'),
+					E('th', {}, 'Time'),
+					E('th', {}, 'Days'),
+					E('th', {}, 'Playlist'),
+					E('th', {}, 'Jingle'),
+					E('th', {}, 'Action')
+				])
+			]),
+			E('tbody', {}, rows)
+		]);
+	},
+
+	render: function(data) {
+		var self = this;
+		var scheduleData = data[0] || {};
+		var currentShow = data[1] || {};
+		var schedules = scheduleData.schedules || [];
+		var schedulingEnabled = scheduleData.scheduling_enabled;
+
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'Programming Schedule'),
+					KissTheme.badge(schedules.length + ' Shows', 'cyan')
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' },
+					'Schedule automated show changes and playlist rotations')
+			]),
+
+			// Stats
+			E('div', { 'class': 'kiss-grid kiss-grid-3', 'style': 'margin: 20px 0;' },
+				this.renderStats(schedules.length, currentShow, schedulingEnabled)),
+
+			// Current show info
+			KissTheme.card('Now Playing',
+				E('div', { 'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px;' }, [
+					E('div', {}, [
+						E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted); margin-bottom: 4px;' }, 'Show'),
+						E('div', { 'style': 'font-weight: 600; font-size: 16px;' }, currentShow.name || 'Default')
+					]),
+					currentShow.playlist ? E('div', {}, [
+						E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted); margin-bottom: 4px;' }, 'Playlist'),
+						E('div', {}, currentShow.playlist)
+					]) : '',
+					currentShow.start ? E('div', {}, [
+						E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted); margin-bottom: 4px;' }, 'Started'),
+						E('div', {}, currentShow.start)
+					]) : ''
+				])
+			),
+
+			// Scheduling settings
+			KissTheme.card('Scheduling Settings',
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 16px;' }, [
+					E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+						E('label', { 'style': 'display: flex; align-items: center; gap: 10px;' }, [
+							E('input', {
+								'type': 'checkbox',
+								'id': 'scheduling-enabled',
+								'checked': schedulingEnabled
+							}),
+							E('span', {}, 'Automatically switch shows based on schedule')
+						])
+					]),
+					E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+						E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Timezone'),
+						E('select', {
+							'id': 'timezone',
+							'style': 'background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 10px 12px; border-radius: 6px; max-width: 250px;'
+						}, [
+							E('option', { 'value': 'UTC', 'selected': scheduleData.timezone === 'UTC' }, 'UTC'),
+							E('option', { 'value': 'Europe/Paris', 'selected': scheduleData.timezone === 'Europe/Paris' }, 'Europe/Paris'),
+							E('option', { 'value': 'Europe/London', 'selected': scheduleData.timezone === 'Europe/London' }, 'Europe/London'),
+							E('option', { 'value': 'America/New_York', 'selected': scheduleData.timezone === 'America/New_York' }, 'America/New_York'),
+							E('option', { 'value': 'America/Los_Angeles', 'selected': scheduleData.timezone === 'America/Los_Angeles' }, 'America/Los_Angeles'),
+							E('option', { 'value': 'Asia/Tokyo', 'selected': scheduleData.timezone === 'Asia/Tokyo' }, 'Asia/Tokyo')
+						])
+					]),
+					E('div', { 'style': 'display: flex; gap: 12px;' }, [
+						E('button', {
+							'class': 'kiss-btn kiss-btn-blue',
+							'click': ui.createHandlerFn(this, 'handleSaveSettings')
+						}, 'Save Settings'),
+						E('button', {
+							'class': 'kiss-btn',
+							'click': ui.createHandlerFn(this, 'handleGenerateCron')
+						}, 'Regenerate Cron')
+					])
+				])
+			),
+
+			// Add new schedule
+			KissTheme.card('Add New Schedule',
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 16px;' }, [
+					E('div', { 'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;' }, [
+						E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+							E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Show Name'),
+							E('input', {
+								'type': 'text',
+								'id': 'new-name',
+								'placeholder': 'Morning Show',
+								'style': 'background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 10px 12px; border-radius: 6px;'
+							})
+						]),
+						E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+							E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Start Time'),
+							E('input', {
+								'type': 'time',
+								'id': 'new-start',
+								'style': 'background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 10px 12px; border-radius: 6px;'
+							})
+						]),
+						E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+							E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'End Time'),
+							E('input', {
+								'type': 'time',
+								'id': 'new-end',
+								'style': 'background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 10px 12px; border-radius: 6px;'
+							})
+						]),
+						E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+							E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Playlist'),
+							E('input', {
+								'type': 'text',
+								'id': 'new-playlist',
+								'placeholder': 'morning_mix',
+								'style': 'background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 10px 12px; border-radius: 6px;'
+							})
+						])
+					]),
+					E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+						E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Days'),
+						E('div', { 'style': 'display: flex; gap: 12px; flex-wrap: wrap;' },
+							Object.keys(DAYS).map(function(d) {
+								return E('label', { 'style': 'display: flex; align-items: center; gap: 4px;' }, [
+									E('input', {
+										'type': 'checkbox',
+										'class': 'day-checkbox',
+										'data-day': d,
+										'checked': true
+									}),
+									E('span', { 'style': 'font-size: 13px;' }, DAYS[d])
+								]);
+							})
+						)
+					]),
+					E('button', {
+						'class': 'kiss-btn kiss-btn-green',
+						'style': 'align-self: flex-start;',
+						'click': ui.createHandlerFn(this, 'handleAddSchedule')
+					}, 'Add Schedule')
+				])
+			),
+
+			// Schedule list
+			KissTheme.card('Scheduled Shows (' + schedules.length + ')', this.renderScheduleTable(schedules))
+		];
+
+		return KissTheme.wrap(content, 'admin/services/webradio/schedule');
 	},
 
 	handleSaveSettings: function() {
@@ -323,7 +333,6 @@ return view.extend({
 			return;
 		}
 
-		// Collect selected days
 		var days = '';
 		document.querySelectorAll('.day-checkbox:checked').forEach(function(cb) {
 			days += cb.dataset.day;
@@ -368,9 +377,5 @@ return view.extend({
 				ui.addNotification(null, E('p', 'Failed: ' + (res.error || 'unknown')), 'error');
 			}
 		});
-	},
-
-	handleSaveApply: null,
-	handleSave: null,
-	handleReset: null
+	}
 });

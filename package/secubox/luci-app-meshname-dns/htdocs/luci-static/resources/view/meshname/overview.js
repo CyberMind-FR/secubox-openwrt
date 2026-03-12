@@ -130,7 +130,7 @@ return view.extend({
 				E('div', { 'class': 'td' }, svc.port > 0 ? String(svc.port) : '-'),
 				E('div', { 'class': 'td' }, [
 					E('button', {
-						'class': 'btn cbi-button-negative',
+						'class': 'kiss-btn kiss-btn-red',
 						'click': function() {
 							self.handleRevoke(svc.name);
 						}
@@ -160,7 +160,7 @@ return view.extend({
 			]),
 			E('div', { 'style': 'margin-top: 10px;' }, [
 				E('button', {
-					'class': 'btn cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'click': function() { self.showAnnounceModal(); }
 				}, 'Announce Service')
 			])
@@ -206,7 +206,7 @@ return view.extend({
 			]),
 			E('div', { 'style': 'margin-top: 10px;' }, [
 				E('button', {
-					'class': 'btn cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'click': function() { self.handleSync(); }
 				}, 'Force Sync')
 			])
@@ -228,7 +228,7 @@ return view.extend({
 					'style': 'flex: 1; padding: 8px;'
 				}),
 				E('button', {
-					'class': 'btn cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'click': function() {
 						var domain = document.getElementById(inputId).value;
 						if (domain) {
@@ -273,12 +273,12 @@ return view.extend({
 			]),
 			E('div', { 'class': 'right' }, [
 				E('button', {
-					'class': 'btn',
+					'class': 'kiss-btn',
 					'click': ui.hideModal
 				}, 'Cancel'),
 				' ',
 				E('button', {
-					'class': 'btn cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() {
 						var name = document.getElementById('meshname-announce-name').value;
 						var port = document.getElementById('meshname-announce-port').value || '0';
@@ -319,12 +319,12 @@ return view.extend({
 			E('p', {}, 'Are you sure you want to revoke ' + name + '.ygg?'),
 			E('div', { 'class': 'right' }, [
 				E('button', {
-					'class': 'btn',
+					'class': 'kiss-btn',
 					'click': ui.hideModal
 				}, 'Cancel'),
 				' ',
 				E('button', {
-					'class': 'btn cbi-button-negative',
+					'class': 'kiss-btn kiss-btn-red',
 					'click': function() {
 						ui.hideModal();
 						callMeshnameRevoke(name).then(function(result) {

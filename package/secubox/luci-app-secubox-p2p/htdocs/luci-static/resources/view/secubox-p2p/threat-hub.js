@@ -38,23 +38,21 @@ function timeAgo(ts) {
 
 function severityBadge(severity) {
 	var colors = {
-		critical: '#e74c3c',
-		high: '#e67e22',
-		medium: '#f1c40f',
-		low: '#3498db'
+		critical: 'red',
+		high: 'orange',
+		medium: 'purple',
+		low: 'blue'
 	};
-	var color = colors[severity] || '#95a5a6';
-	return E('span', {
-		'style': 'display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:bold;color:#fff;background:' + color
-	}, severity || 'unknown');
+	var colorType = colors[severity] || 'muted';
+	return KissTheme.badge(severity || 'unknown', colorType);
 }
 
 function trustBadge(trust) {
 	var colors = {
-		direct: '#27ae60',
-		transitive: '#f39c12',
-		unknown: '#95a5a6',
-		self: '#3498db'
+		direct: 'green',
+		transitive: 'orange',
+		unknown: 'muted',
+		self: 'blue'
 	};
 	var icons = {
 		direct: '\u2714',
@@ -62,10 +60,8 @@ function trustBadge(trust) {
 		unknown: '?',
 		self: '\u2605'
 	};
-	var color = colors[trust] || '#95a5a6';
-	return E('span', {
-		'style': 'display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:bold;color:#fff;background:' + color
-	}, (icons[trust] || '') + ' ' + (trust || 'unknown'));
+	var colorType = colors[trust] || 'muted';
+	return KissTheme.badge((icons[trust] || '') + ' ' + (trust || 'unknown'), colorType);
 }
 
 return view.extend({
@@ -88,14 +84,6 @@ return view.extend({
 
 		var self = this;
 
-		var content = E('div', { 'class': 'cbi-map', 'style': 'padding:20px;' }, [
-			this.renderHeader(),
-			this.renderSummaryCards(),
-			this.renderActions(),
-			this.renderPeerTable(),
-			this.renderIOCTable()
-		]);
-
 		poll.add(function() {
 			return Promise.all([
 				fetchJSON('status'),
@@ -111,50 +99,67 @@ return view.extend({
 			});
 		}, 30);
 
+		var content = [
+			this.renderHeader(),
+			this.renderSummaryCards(),
+			this.renderActions(),
+			this.renderPeerTable(),
+			this.renderIOCTable()
+		];
+
 		return KissTheme.wrap(content, 'admin/secubox/p2p/threat-hub');
 	},
 
 	renderHeader: function() {
 		var enabled = this.status.enabled !== false;
-		return E('div', { 'style': 'margin-bottom:24px;' }, [
-			E('h2', { 'style': 'margin:0 0 8px;color:#ecf0f1;font-size:24px;' },
-				'Threat Intelligence Hub'),
-			E('p', { 'style': 'margin:0;color:#95a5a6;font-size:14px;' },
-				'Decentralized IOC sharing across mesh nodes via CrowdSec + mitmproxy'),
-			E('div', { 'style': 'margin-top:8px;' }, [
-				E('span', {
-					'style': 'display:inline-block;padding:4px 12px;border-radius:12px;font-size:12px;font-weight:bold;color:#fff;background:' + (enabled ? '#27ae60' : '#e74c3c')
-				}, enabled ? 'ACTIVE' : 'DISABLED'),
-				this.status.auto_apply ?
-					E('span', { 'style': 'display:inline-block;margin-left:8px;padding:4px 12px;border-radius:12px;font-size:12px;color:#fff;background:#2980b9;' }, 'Auto-Apply ON') : null
-			])
+		return E('div', { 'style': 'margin-bottom: 24px;' }, [
+			E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+				E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'Threat Intelligence Hub'),
+				KissTheme.badge(enabled ? 'Active' : 'Disabled', enabled ? 'green' : 'red'),
+				this.status.auto_apply ? KissTheme.badge('Auto-Apply ON', 'blue') : null
+			]),
+			E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' },
+				'Decentralized IOC sharing across mesh nodes via CrowdSec + mitmproxy')
 		]);
+	},
+
+	renderStats: function() {
+		var s = this.status;
+		var c = KissTheme.colors;
+		return [
+			KissTheme.stat(s.local_iocs || 0, 'Local IOCs Shared', c.blue),
+			KissTheme.stat(s.received_iocs || 0, 'Received from Mesh', c.orange),
+			KissTheme.stat(s.applied_iocs || 0, 'Applied to Firewall', c.green),
+			KissTheme.stat(s.peer_contributors || 0, 'Peer Contributors', c.purple)
+		];
 	},
 
 	renderSummaryCards: function() {
 		var s = this.status;
+		var c = KissTheme.colors;
 		var cards = [
-			{ id: 'card-local', label: 'Local IOCs Shared', value: s.local_iocs || 0, icon: '\uD83D\uDCE4', color: '#3498db' },
-			{ id: 'card-received', label: 'Received from Mesh', value: s.received_iocs || 0, icon: '\uD83D\uDCE5', color: '#e67e22' },
-			{ id: 'card-applied', label: 'Applied to Firewall', value: s.applied_iocs || 0, icon: '\uD83D\uDEE1', color: '#27ae60' },
-			{ id: 'card-peers', label: 'Peer Contributors', value: s.peer_contributors || 0, icon: '\uD83D\uDC65', color: '#9b59b6' },
-			{ id: 'card-chain', label: 'Chain Blocks', value: s.chain_threat_blocks || 0, icon: '\u26D3', color: '#1abc9c' }
+			{ id: 'card-local', label: 'Local IOCs Shared', value: s.local_iocs || 0, color: c.blue },
+			{ id: 'card-received', label: 'Received from Mesh', value: s.received_iocs || 0, color: c.orange },
+			{ id: 'card-applied', label: 'Applied to Firewall', value: s.applied_iocs || 0, color: c.green },
+			{ id: 'card-peers', label: 'Peer Contributors', value: s.peer_contributors || 0, color: c.purple },
+			{ id: 'card-chain', label: 'Chain Blocks', value: s.chain_threat_blocks || 0, color: c.cyan }
 		];
 
 		return E('div', {
 			'id': 'summary-cards',
-			'style': 'display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px;margin-bottom:24px;'
-		}, cards.map(function(c) {
+			'class': 'kiss-grid kiss-grid-4',
+			'style': 'margin-bottom: 24px;'
+		}, cards.map(function(card) {
 			return E('div', {
-				'id': c.id,
-				'style': 'background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:16px;text-align:center;border-left:4px solid ' + c.color + ';'
+				'id': card.id,
+				'style': 'background: var(--kiss-bg2); border: 1px solid var(--kiss-line); border-radius: 12px; ' +
+					'padding: 16px; text-align: center; border-left: 4px solid ' + card.color + ';'
 			}, [
-				E('div', { 'style': 'font-size:28px;margin-bottom:4px;' }, c.icon),
 				E('div', {
 					'class': 'card-value',
-					'style': 'font-size:32px;font-weight:bold;color:' + c.color + ';'
-				}, String(c.value)),
-				E('div', { 'style': 'font-size:12px;color:#95a5a6;margin-top:4px;' }, c.label)
+					'style': 'font-size: 32px; font-weight: bold; color: ' + card.color + ';'
+				}, String(card.value)),
+				E('div', { 'style': 'font-size: 12px; color: var(--kiss-muted); margin-top: 4px;' }, card.label)
 			]);
 		}));
 	},
@@ -162,46 +167,42 @@ return view.extend({
 	renderActions: function() {
 		var self = this;
 
-		var publishBtn = E('button', {
-			'class': 'cbi-button cbi-button-action',
-			'style': 'margin-right:12px;padding:8px 20px;',
-			'click': function() {
-				this.disabled = true;
-				this.textContent = 'Publishing...';
-				var btn = this;
-				postJSON('publish').then(function(res) {
-					btn.disabled = false;
-					btn.textContent = 'Publish Now';
-					if (res && res.success)
-						ui.addNotification(null, E('p', 'Published ' + (res.published || 0) + ' IOCs to chain'), 'info');
-					else
-						ui.addNotification(null, E('p', 'Publish failed'), 'error');
-				});
-			}
-		}, 'Publish Now');
-
-		var applyBtn = E('button', {
-			'class': 'cbi-button cbi-button-apply',
-			'style': 'padding:8px 20px;',
-			'click': function() {
-				this.disabled = true;
-				this.textContent = 'Applying...';
-				var btn = this;
-				postJSON('apply').then(function(res) {
-					btn.disabled = false;
-					btn.textContent = 'Apply Pending';
-					if (res && res.success)
-						ui.addNotification(null, E('p', 'Applied ' + (res.applied || 0) + ' IOCs, skipped ' + (res.skipped || 0)), 'info');
-					else
-						ui.addNotification(null, E('p', 'Apply failed'), 'error');
-				});
-			}
-		}, 'Apply Pending');
-
-		return E('div', { 'style': 'margin-bottom:24px;padding:16px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid rgba(255,255,255,0.08);' }, [
-			E('h3', { 'style': 'margin:0 0 12px;color:#ecf0f1;font-size:16px;' }, 'Actions'),
-			E('div', {}, [publishBtn, applyBtn])
-		]);
+		return KissTheme.card('Actions',
+			E('div', { 'style': 'display: flex; gap: 12px;' }, [
+				E('button', {
+					'class': 'kiss-btn kiss-btn-blue',
+					'click': function() {
+						this.disabled = true;
+						this.textContent = 'Publishing...';
+						var btn = this;
+						postJSON('publish').then(function(res) {
+							btn.disabled = false;
+							btn.textContent = 'Publish Now';
+							if (res && res.success)
+								ui.addNotification(null, E('p', 'Published ' + (res.published || 0) + ' IOCs to chain'), 'info');
+							else
+								ui.addNotification(null, E('p', 'Publish failed'), 'error');
+						});
+					}
+				}, 'Publish Now'),
+				E('button', {
+					'class': 'kiss-btn kiss-btn-green',
+					'click': function() {
+						this.disabled = true;
+						this.textContent = 'Applying...';
+						var btn = this;
+						postJSON('apply').then(function(res) {
+							btn.disabled = false;
+							btn.textContent = 'Apply Pending';
+							if (res && res.success)
+								ui.addNotification(null, E('p', 'Applied ' + (res.applied || 0) + ' IOCs, skipped ' + (res.skipped || 0)), 'info');
+							else
+								ui.addNotification(null, E('p', 'Apply failed'), 'error');
+						});
+					}
+				}, 'Apply Pending')
+			])
+		);
 	},
 
 	renderPeerTable: function() {
@@ -209,108 +210,105 @@ return view.extend({
 
 		var rows = peers.map(function(p) {
 			return E('tr', {}, [
-				E('td', { 'style': 'padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);font-family:monospace;font-size:13px;color:#ecf0f1;' },
+				E('td', { 'style': 'padding: 10px 12px; font-family: monospace; font-size: 13px;' },
 					(p.node || '').substring(0, 12) + '...'),
-				E('td', { 'style': 'padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);' },
+				E('td', { 'style': 'padding: 10px 12px;' },
 					trustBadge(p.trust)),
-				E('td', { 'style': 'padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);color:#ecf0f1;text-align:center;' },
+				E('td', { 'style': 'padding: 10px 12px; text-align: center;' },
 					String(p.ioc_count || 0)),
-				E('td', { 'style': 'padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);color:#ecf0f1;text-align:center;' },
+				E('td', { 'style': 'padding: 10px 12px; text-align: center;' },
 					String(p.applied_count || 0)),
-				E('td', { 'style': 'padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);color:#95a5a6;font-size:12px;' },
+				E('td', { 'style': 'padding: 10px 12px; color: var(--kiss-muted); font-size: 12px;' },
 					timeAgo(p.last_seen))
 			]);
 		});
 
+		var tableContent;
 		if (rows.length === 0) {
-			rows = [E('tr', {}, [
-				E('td', { 'colspan': '5', 'style': 'padding:24px;text-align:center;color:#95a5a6;' },
-					'No peer contributions yet. IOCs from mesh nodes will appear here after sync.')
-			])];
+			tableContent = E('p', { 'style': 'color: var(--kiss-muted); text-align: center; padding: 24px;' },
+				'No peer contributions yet. IOCs from mesh nodes will appear here after sync.');
+		} else {
+			tableContent = E('table', { 'id': 'peer-table', 'class': 'kiss-table' }, [
+				E('thead', {}, E('tr', {}, [
+					E('th', { 'style': 'padding: 10px 12px;' }, 'Node'),
+					E('th', { 'style': 'padding: 10px 12px;' }, 'Trust'),
+					E('th', { 'style': 'padding: 10px 12px; text-align: center;' }, 'IOCs'),
+					E('th', { 'style': 'padding: 10px 12px; text-align: center;' }, 'Applied'),
+					E('th', { 'style': 'padding: 10px 12px;' }, 'Last Seen')
+				])),
+				E('tbody', {}, rows)
+			]);
 		}
 
-		return E('div', { 'style': 'margin-bottom:24px;' }, [
-			E('h3', { 'style': 'margin:0 0 12px;color:#ecf0f1;font-size:16px;' }, 'Peer Contributions'),
-			E('div', { 'style': 'overflow-x:auto;' }, [
-				E('table', {
-					'id': 'peer-table',
-					'class': 'table',
-					'style': 'width:100%;border-collapse:collapse;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid rgba(255,255,255,0.08);'
-				}, [
-					E('thead', {}, [
-						E('tr', { 'style': 'background:rgba(255,255,255,0.05);' }, [
-							E('th', { 'style': 'padding:10px 12px;text-align:left;color:#95a5a6;font-size:12px;text-transform:uppercase;' }, 'Node'),
-							E('th', { 'style': 'padding:10px 12px;text-align:left;color:#95a5a6;font-size:12px;text-transform:uppercase;' }, 'Trust'),
-							E('th', { 'style': 'padding:10px 12px;text-align:center;color:#95a5a6;font-size:12px;text-transform:uppercase;' }, 'IOCs'),
-							E('th', { 'style': 'padding:10px 12px;text-align:center;color:#95a5a6;font-size:12px;text-transform:uppercase;' }, 'Applied'),
-							E('th', { 'style': 'padding:10px 12px;text-align:left;color:#95a5a6;font-size:12px;text-transform:uppercase;' }, 'Last Seen')
-						])
-					]),
-					E('tbody', {}, rows)
-				])
-			])
-		]);
+		return KissTheme.card(
+			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+				E('span', {}, 'Peer Contributions'),
+				KissTheme.badge(peers.length + ' peers', 'purple')
+			]),
+			tableContent
+		);
 	},
 
 	renderIOCTable: function() {
 		var iocs = this.iocs || [];
+		var c = KissTheme.colors;
 
 		var rows = iocs.slice(0, 50).map(function(ioc) {
 			return E('tr', {}, [
-				E('td', { 'style': 'padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);font-family:monospace;font-size:13px;color:#ecf0f1;' },
+				E('td', { 'style': 'padding: 10px 12px; font-family: monospace; font-size: 13px;' },
 					ioc.ip || '-'),
-				E('td', { 'style': 'padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);' },
+				E('td', { 'style': 'padding: 10px 12px;' },
 					severityBadge(ioc.severity)),
-				E('td', { 'style': 'padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);color:#95a5a6;font-size:12px;' },
+				E('td', { 'style': 'padding: 10px 12px; color: var(--kiss-muted); font-size: 12px;' },
 					ioc.source || '-'),
-				E('td', { 'style': 'padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);color:#95a5a6;font-size:12px;' },
+				E('td', { 'style': 'padding: 10px 12px; color: var(--kiss-muted); font-size: 12px;' },
 					ioc.scenario || '-'),
-				E('td', { 'style': 'padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);font-family:monospace;font-size:11px;color:#7f8c8d;' },
+				E('td', { 'style': 'padding: 10px 12px; font-family: monospace; font-size: 11px; color: var(--kiss-muted);' },
 					(ioc.node || '').substring(0, 12)),
-				E('td', { 'style': 'padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);' },
+				E('td', { 'style': 'padding: 10px 12px;' },
 					trustBadge(ioc.trust)),
-				E('td', { 'style': 'padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);text-align:center;' },
+				E('td', { 'style': 'padding: 10px 12px; text-align: center;' },
 					ioc.applied ?
-						E('span', { 'style': 'color:#27ae60;font-weight:bold;' }, '\u2714') :
-						E('span', { 'style': 'color:#95a5a6;' }, '\u2013')),
-				E('td', { 'style': 'padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);color:#95a5a6;font-size:12px;' },
+						E('span', { 'style': 'color: ' + c.green + '; font-weight: bold;' }, '\u2714') :
+						E('span', { 'style': 'color: var(--kiss-muted);' }, '\u2013')),
+				E('td', { 'style': 'padding: 10px 12px; color: var(--kiss-muted); font-size: 12px;' },
 					timeAgo(ioc.ts))
 			]);
 		});
 
+		var tableContent;
 		if (rows.length === 0) {
-			rows = [E('tr', {}, [
-				E('td', { 'colspan': '8', 'style': 'padding:24px;text-align:center;color:#95a5a6;' },
-					'No IOCs received from mesh yet.')
-			])];
+			tableContent = E('p', { 'style': 'color: var(--kiss-muted); text-align: center; padding: 24px;' },
+				'No IOCs received from mesh yet.');
+		} else {
+			tableContent = E('div', {}, [
+				E('p', { 'style': 'color: var(--kiss-muted); font-size: 12px; margin: 0 0 12px 0;' },
+					'Showing up to 50 most recent. Total: ' + (this.iocs || []).length),
+				E('div', { 'style': 'overflow-x: auto;' }, [
+					E('table', { 'id': 'ioc-table', 'class': 'kiss-table' }, [
+						E('thead', {}, E('tr', {}, [
+							E('th', { 'style': 'padding: 10px 12px;' }, 'IP'),
+							E('th', { 'style': 'padding: 10px 12px;' }, 'Severity'),
+							E('th', { 'style': 'padding: 10px 12px;' }, 'Source'),
+							E('th', { 'style': 'padding: 10px 12px;' }, 'Scenario'),
+							E('th', { 'style': 'padding: 10px 12px;' }, 'Origin'),
+							E('th', { 'style': 'padding: 10px 12px;' }, 'Trust'),
+							E('th', { 'style': 'padding: 10px 12px; text-align: center;' }, 'Applied'),
+							E('th', { 'style': 'padding: 10px 12px;' }, 'Age')
+						])),
+						E('tbody', {}, rows)
+					])
+				])
+			]);
 		}
 
-		return E('div', {}, [
-			E('h3', { 'style': 'margin:0 0 4px;color:#ecf0f1;font-size:16px;' }, 'Received IOCs'),
-			E('p', { 'style': 'margin:0 0 12px;color:#7f8c8d;font-size:12px;' },
-				'Showing up to 50 most recent. Total: ' + (this.iocs || []).length),
-			E('div', { 'style': 'overflow-x:auto;' }, [
-				E('table', {
-					'id': 'ioc-table',
-					'class': 'table',
-					'style': 'width:100%;border-collapse:collapse;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid rgba(255,255,255,0.08);'
-				}, [
-					E('thead', {}, [
-						E('tr', { 'style': 'background:rgba(255,255,255,0.05);' }, [
-							E('th', { 'style': 'padding:10px 12px;text-align:left;color:#95a5a6;font-size:12px;text-transform:uppercase;' }, 'IP'),
-							E('th', { 'style': 'padding:10px 12px;text-align:left;color:#95a5a6;font-size:12px;text-transform:uppercase;' }, 'Severity'),
-							E('th', { 'style': 'padding:10px 12px;text-align:left;color:#95a5a6;font-size:12px;text-transform:uppercase;' }, 'Source'),
-							E('th', { 'style': 'padding:10px 12px;text-align:left;color:#95a5a6;font-size:12px;text-transform:uppercase;' }, 'Scenario'),
-							E('th', { 'style': 'padding:10px 12px;text-align:left;color:#95a5a6;font-size:12px;text-transform:uppercase;' }, 'Origin'),
-							E('th', { 'style': 'padding:10px 12px;text-align:left;color:#95a5a6;font-size:12px;text-transform:uppercase;' }, 'Trust'),
-							E('th', { 'style': 'padding:10px 12px;text-align:center;color:#95a5a6;font-size:12px;text-transform:uppercase;' }, 'Applied'),
-							E('th', { 'style': 'padding:10px 12px;text-align:left;color:#95a5a6;font-size:12px;text-transform:uppercase;' }, 'Age')
-						])
-					]),
-					E('tbody', {}, rows)
-				])
-			])
-		]);
+		return KissTheme.card(
+			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+				E('span', {}, 'Received IOCs'),
+				KissTheme.badge(iocs.length + ' total', 'orange')
+			]),
+			tableContent
+		);
 	},
 
 	updateCards: function() {
@@ -341,20 +339,20 @@ return view.extend({
 		var peers = this.peers || [];
 		dom.content(tbody, peers.length === 0 ?
 			E('tr', {}, [
-				E('td', { 'colspan': '5', 'style': 'padding:24px;text-align:center;color:#95a5a6;' },
+				E('td', { 'colspan': '5', 'style': 'padding: 24px; text-align: center; color: var(--kiss-muted);' },
 					'No peer contributions yet.')
 			]) :
 			peers.map(function(p) {
 				return E('tr', {}, [
-					E('td', { 'style': 'padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);font-family:monospace;font-size:13px;color:#ecf0f1;' },
+					E('td', { 'style': 'padding: 10px 12px; font-family: monospace; font-size: 13px;' },
 						(p.node || '').substring(0, 12) + '...'),
-					E('td', { 'style': 'padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);' },
+					E('td', { 'style': 'padding: 10px 12px;' },
 						trustBadge(p.trust)),
-					E('td', { 'style': 'padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);color:#ecf0f1;text-align:center;' },
+					E('td', { 'style': 'padding: 10px 12px; text-align: center;' },
 						String(p.ioc_count || 0)),
-					E('td', { 'style': 'padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);color:#ecf0f1;text-align:center;' },
+					E('td', { 'style': 'padding: 10px 12px; text-align: center;' },
 						String(p.applied_count || 0)),
-					E('td', { 'style': 'padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);color:#95a5a6;font-size:12px;' },
+					E('td', { 'style': 'padding: 10px 12px; color: var(--kiss-muted); font-size: 12px;' },
 						timeAgo(p.last_seen))
 				]);
 			})
@@ -368,33 +366,34 @@ return view.extend({
 		if (!tbody) return;
 
 		var iocs = (this.iocs || []).slice(0, 50);
+		var c = KissTheme.colors;
 		var countEl = table.parentNode.parentNode.querySelector('p');
 		if (countEl) countEl.textContent = 'Showing up to 50 most recent. Total: ' + (this.iocs || []).length;
 
 		dom.content(tbody, iocs.length === 0 ?
 			E('tr', {}, [
-				E('td', { 'colspan': '8', 'style': 'padding:24px;text-align:center;color:#95a5a6;' },
+				E('td', { 'colspan': '8', 'style': 'padding: 24px; text-align: center; color: var(--kiss-muted);' },
 					'No IOCs received from mesh yet.')
 			]) :
 			iocs.map(function(ioc) {
 				return E('tr', {}, [
-					E('td', { 'style': 'padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);font-family:monospace;font-size:13px;color:#ecf0f1;' },
+					E('td', { 'style': 'padding: 10px 12px; font-family: monospace; font-size: 13px;' },
 						ioc.ip || '-'),
-					E('td', { 'style': 'padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);' },
+					E('td', { 'style': 'padding: 10px 12px;' },
 						severityBadge(ioc.severity)),
-					E('td', { 'style': 'padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);color:#95a5a6;font-size:12px;' },
+					E('td', { 'style': 'padding: 10px 12px; color: var(--kiss-muted); font-size: 12px;' },
 						ioc.source || '-'),
-					E('td', { 'style': 'padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);color:#95a5a6;font-size:12px;' },
+					E('td', { 'style': 'padding: 10px 12px; color: var(--kiss-muted); font-size: 12px;' },
 						ioc.scenario || '-'),
-					E('td', { 'style': 'padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);font-family:monospace;font-size:11px;color:#7f8c8d;' },
+					E('td', { 'style': 'padding: 10px 12px; font-family: monospace; font-size: 11px; color: var(--kiss-muted);' },
 						(ioc.node || '').substring(0, 12)),
-					E('td', { 'style': 'padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);' },
+					E('td', { 'style': 'padding: 10px 12px;' },
 						trustBadge(ioc.trust)),
-					E('td', { 'style': 'padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);text-align:center;' },
+					E('td', { 'style': 'padding: 10px 12px; text-align: center;' },
 						ioc.applied ?
-							E('span', { 'style': 'color:#27ae60;font-weight:bold;' }, '\u2714') :
-							E('span', { 'style': 'color:#95a5a6;' }, '\u2013')),
-					E('td', { 'style': 'padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);color:#95a5a6;font-size:12px;' },
+							E('span', { 'style': 'color: ' + c.green + '; font-weight: bold;' }, '\u2714') :
+							E('span', { 'style': 'color: var(--kiss-muted);' }, '\u2013')),
+					E('td', { 'style': 'padding: 10px 12px; color: var(--kiss-muted); font-size: 12px;' },
 						timeAgo(ioc.ts))
 				]);
 			})

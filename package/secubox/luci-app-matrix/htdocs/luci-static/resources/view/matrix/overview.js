@@ -5,13 +5,14 @@
 'require ui';
 'require uci';
 'require matrix.api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	handleAction: function(action, args) {
 		var self = this;
 
-		ui.showModal(_('Processing...'), [
-			E('p', { 'class': 'spinning' }, _('Please wait...'))
+		ui.showModal('Processing...', [
+			E('p', { 'class': 'spinning' }, 'Please wait...')
 		]);
 
 		var promise;
@@ -66,16 +67,15 @@ return view.extend({
 				}
 				ui.addNotification(null, E('p', {}, msg), 'success');
 			} else {
-				ui.addNotification(null, E('p', {}, _('Error: ') + (res.error || 'Unknown error')), 'error');
+				ui.addNotification(null, E('p', {}, 'Error: ' + (res.error || 'Unknown error')), 'error');
 			}
 
-			// Refresh status
 			self.load().then(function(data) {
 				dom.content(document.querySelector('#matrix-content'), self.renderContent(data));
 			});
 		}).catch(function(e) {
 			ui.hideModal();
-			ui.addNotification(null, E('p', {}, _('Error: ') + e.message), 'error');
+			ui.addNotification(null, E('p', {}, 'Error: ' + e.message), 'error');
 		});
 	},
 
@@ -89,46 +89,206 @@ return view.extend({
 		]);
 	},
 
-	renderStatusBadge: function(running) {
-		var color = running ? '#4CAF50' : '#9e9e9e';
-		var text = running ? _('Running') : _('Stopped');
-		return E('span', {
-			'style': 'display:inline-block;padding:3px 10px;border-radius:3px;color:#fff;background:' + color
-		}, text);
+	renderNav: function(active) {
+		var tabs = [
+			{ name: 'Overview', path: 'admin/services/matrix/overview' },
+			{ name: 'Users', path: 'admin/services/matrix/users' },
+			{ name: 'Rooms', path: 'admin/services/matrix/rooms' },
+			{ name: 'Settings', path: 'admin/services/matrix/settings' }
+		];
+
+		return E('div', { 'class': 'kiss-tabs' }, tabs.map(function(tab) {
+			var isActive = tab.path.indexOf(active) !== -1;
+			return E('a', {
+				'href': L.url(tab.path),
+				'class': 'kiss-tab' + (isActive ? ' active' : '')
+			}, tab.name);
+		}));
 	},
 
-	renderFeatureBadge: function(enabled, label) {
-		var color = enabled ? '#2196F3' : '#9e9e9e';
-		return E('span', {
-			'style': 'display:inline-block;padding:2px 8px;border-radius:3px;color:#fff;background:' + color + ';margin-right:5px;font-size:0.85em;'
-		}, label);
+	renderStats: function(status, federation, identity, mesh) {
+		var c = KissTheme.colors;
+		var running = status.running === 'true' || status.running === true;
+
+		return [
+			KissTheme.stat(running ? 'UP' : 'DOWN', 'Server', running ? c.green : c.red),
+			KissTheme.stat(federation.enabled === '1' ? 'ON' : 'OFF', 'Federation', federation.enabled === '1' ? c.blue : c.muted),
+			KissTheme.stat(identity.linked === '1' ? 'YES' : 'NO', 'DID Linked', identity.linked === '1' ? c.cyan : c.muted),
+			KissTheme.stat(mesh.published === '1' ? 'YES' : 'NO', 'Mesh', mesh.published === '1' ? c.purple : c.muted)
+		];
 	},
 
 	renderInstallWizard: function() {
 		var self = this;
 
-		return E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('Matrix Homeserver')),
-			E('p', {}, _('Matrix is a decentralized communication protocol with end-to-end encryption.')),
-			E('div', { 'style': 'margin:20px 0;padding:15px;background:#f5f5f5;border-radius:5px;' }, [
-				E('h4', {}, _('Features:')),
-				E('ul', {}, [
-					E('li', {}, _('End-to-end encrypted messaging')),
-					E('li', {}, _('Federated chat (connect with other Matrix servers)')),
-					E('li', {}, _('Group chats and spaces')),
-					E('li', {}, _('Voice and video calls')),
-					E('li', {}, _('File sharing')),
-					E('li', {}, _('Bridge to other platforms'))
-				]),
-				E('h4', { 'style': 'margin-top:15px;' }, _('Compatible clients:')),
-				E('p', {}, _('Element (Web/Desktop/Mobile), FluffyChat, Nheko, SchildiChat'))
+		return KissTheme.card('Install Matrix', E('div', {}, [
+			E('p', { 'style': 'color: var(--kiss-muted); margin-bottom: 16px;' }, 'Matrix is a decentralized communication protocol with end-to-end encryption.'),
+			E('div', { 'style': 'background: var(--kiss-bg2); padding: 16px; border-radius: 8px; margin-bottom: 16px;' }, [
+				E('div', { 'style': 'font-weight: 600; margin-bottom: 12px;' }, 'Features'),
+				E('ul', { 'style': 'color: var(--kiss-muted); margin: 0; padding-left: 20px;' }, [
+					E('li', {}, 'End-to-end encrypted messaging'),
+					E('li', {}, 'Federated chat (connect with other Matrix servers)'),
+					E('li', {}, 'Group chats and spaces'),
+					E('li', {}, 'Voice and video calls'),
+					E('li', {}, 'File sharing'),
+					E('li', {}, 'Bridge to other platforms')
+				])
 			]),
-			E('div', { 'class': 'cbi-page-actions' }, [
+			E('div', { 'style': 'background: var(--kiss-bg2); padding: 16px; border-radius: 8px; margin-bottom: 16px;' }, [
+				E('div', { 'style': 'font-weight: 600; margin-bottom: 8px;' }, 'Compatible Clients'),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 0;' }, 'Element (Web/Desktop/Mobile), FluffyChat, Nheko, SchildiChat')
+			]),
+			E('button', {
+				'class': 'kiss-btn kiss-btn-green',
+				'click': function() { self.handleAction('install'); }
+			}, 'Install Matrix Homeserver')
+		]));
+	},
+
+	renderHealth: function(status, federation, identity, mesh) {
+		var running = status.running === 'true' || status.running === true;
+
+		var checks = [
+			{ label: 'Server', ok: running, value: running ? 'Running' : (status.container_state === 'not_installed' ? 'Not Installed' : 'Stopped') },
+			{ label: 'Federation', ok: federation.enabled === '1', value: federation.enabled === '1' ? 'Enabled' : 'Disabled' },
+			{ label: 'HAProxy', ok: status.haproxy === '1', value: status.haproxy === '1' ? 'Configured' : 'Not configured' },
+			{ label: 'DID Linked', ok: identity.linked === '1', value: identity.linked === '1' ? identity.mxid : 'Not linked' },
+			{ label: 'Mesh Published', ok: mesh.published === '1', value: mesh.published === '1' ? mesh.service_name : 'Not published' }
+		];
+
+		return E('div', { 'style': 'display: flex; flex-direction: column; gap: 8px;' }, checks.map(function(c) {
+			return E('div', { 'style': 'display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--kiss-line);' }, [
+				E('div', { 'style': 'width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; ' +
+					(c.ok ? 'background: rgba(0,200,83,0.15); color: var(--kiss-green);' : 'background: rgba(255,23,68,0.15); color: var(--kiss-red);') },
+					c.ok ? '\u2713' : '\u2717'),
+				E('div', { 'style': 'flex: 1;' }, [
+					E('div', { 'style': 'font-size: 13px; color: var(--kiss-text);' }, c.label),
+					E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted);' }, c.value)
+				])
+			]);
+		}));
+	},
+
+	renderControls: function(status) {
+		var self = this;
+		var running = status.running === 'true' || status.running === true;
+
+		return E('div', { 'style': 'display: flex; flex-direction: column; gap: 16px;' }, [
+			E('div', { 'style': 'display: flex; gap: 8px; flex-wrap: wrap;' }, [
+				running ? '' : E('button', {
+					'class': 'kiss-btn kiss-btn-green',
+					'click': function() { self.handleAction('start'); }
+				}, 'Start'),
+				running ? E('button', {
+					'class': 'kiss-btn kiss-btn-red',
+					'click': function() { self.handleAction('stop'); }
+				}, 'Stop') : '',
 				E('button', {
-					'class': 'btn cbi-button cbi-button-positive',
-					'click': function() { self.handleAction('install'); }
-				}, _('Install Matrix Homeserver'))
-			])
+					'class': 'kiss-btn',
+					'click': function() { self.handleAction('update'); }
+				}, 'Update'),
+				E('button', {
+					'class': 'kiss-btn kiss-btn-red',
+					'click': function() {
+						if (confirm('Are you sure you want to uninstall? Data will be preserved.')) {
+							self.handleAction('uninstall');
+						}
+					}
+				}, 'Uninstall')
+			]),
+			E('div', { 'style': 'margin-top: 8px;' }, [
+				E('div', { 'style': 'font-size: 12px; color: var(--kiss-muted); margin-bottom: 4px;' }, 'Hostname'),
+				E('div', { 'style': 'font-family: monospace; font-size: 13px; color: var(--kiss-cyan);' }, status.hostname || 'matrix.local')
+			]),
+			status.domain ? E('div', {}, [
+				E('div', { 'style': 'font-size: 12px; color: var(--kiss-muted); margin-bottom: 4px;' }, 'Public URL'),
+				E('a', { 'href': 'https://' + status.domain, 'target': '_blank', 'style': 'font-family: monospace; font-size: 13px; color: var(--kiss-green);' }, 'https://' + status.domain)
+			]) : ''
+		]);
+	},
+
+	renderUserManagement: function(status) {
+		var self = this;
+		var hostname = status.hostname || 'matrix.local';
+
+		return E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px;' }, [
+			E('p', { 'style': 'color: var(--kiss-muted); font-size: 12px; margin: 0;' }, 'Create Matrix users for this homeserver.'),
+			E('div', { 'style': 'display: flex; gap: 8px; flex-wrap: wrap;' }, [
+				E('input', {
+					'type': 'text',
+					'id': 'new-user-mxid',
+					'placeholder': '@username:' + hostname,
+					'style': 'flex: 1; min-width: 200px; background: var(--kiss-bg2); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px 12px; border-radius: 6px;'
+				}),
+				E('input', {
+					'type': 'password',
+					'id': 'new-user-password',
+					'placeholder': 'Password (optional)',
+					'style': 'width: 150px; background: var(--kiss-bg2); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px 12px; border-radius: 6px;'
+				}),
+				E('button', {
+					'class': 'kiss-btn kiss-btn-green',
+					'click': function() {
+						var mxid = document.getElementById('new-user-mxid').value;
+						var password = document.getElementById('new-user-password').value;
+						if (mxid) {
+							self.handleAction('user_add', { mxid: mxid, password: password });
+						}
+					}
+				}, 'Add User')
+			]),
+			E('p', { 'style': 'font-size: 11px; color: var(--kiss-muted); margin: 0;' }, 'For user listing and deletion, use the admin room: #admins:' + hostname)
+		]);
+	},
+
+	renderEmancipate: function(status) {
+		var self = this;
+		var domain = status.domain || '';
+
+		return E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px;' }, [
+			E('p', { 'style': 'color: var(--kiss-muted); font-size: 12px; margin: 0;' }, 'Expose your Matrix server to the internet with SSL.'),
+			E('div', { 'style': 'display: flex; gap: 8px;' }, [
+				E('input', {
+					'type': 'text',
+					'id': 'emancipate-domain',
+					'placeholder': 'matrix.example.com',
+					'value': domain,
+					'style': 'flex: 1; background: var(--kiss-bg2); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px 12px; border-radius: 6px;'
+				}),
+				E('button', {
+					'class': 'kiss-btn kiss-btn-green',
+					'click': function() {
+						var d = document.getElementById('emancipate-domain').value;
+						if (d) {
+							self.handleAction('emancipate', { domain: d });
+						}
+					}
+				}, 'Emancipate')
+			]),
+			domain ? E('div', { 'style': 'padding: 12px; background: rgba(0,200,83,0.1); border-radius: 6px;' }, [
+				E('span', { 'style': 'color: var(--kiss-green);' }, 'Currently exposed at: '),
+				E('a', { 'href': 'https://' + domain, 'target': '_blank', 'style': 'color: var(--kiss-cyan);' }, 'https://' + domain)
+			]) : ''
+		]);
+	},
+
+	renderMesh: function(mesh) {
+		var self = this;
+
+		return E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px;' }, [
+			E('p', { 'style': 'color: var(--kiss-muted); font-size: 12px; margin: 0;' }, 'Publish this Matrix server to the SecuBox P2P mesh.'),
+			mesh.published === '1' ?
+				E('div', { 'style': 'display: flex; align-items: center; gap: 12px;' }, [
+					E('span', { 'style': 'color: var(--kiss-green);' }, 'Published as: ' + mesh.service_name),
+					E('button', {
+						'class': 'kiss-btn',
+						'click': function() { self.handleAction('mesh_unpublish'); }
+					}, 'Unpublish')
+				]) :
+				E('button', {
+					'class': 'kiss-btn kiss-btn-blue',
+					'click': function() { self.handleAction('mesh_publish'); }
+				}, 'Publish to Mesh')
 		]);
 	},
 
@@ -138,239 +298,64 @@ return view.extend({
 		var federation = data[2] || {};
 		var identity = data[3] || {};
 		var mesh = data[4] || {};
+		var c = KissTheme.colors;
 
-		// Show install wizard if not installed
 		if (status.container_state === 'not_installed') {
 			return this.renderInstallWizard();
 		}
 
 		var running = status.running === 'true' || status.running === true;
-		var hostname = status.hostname || 'matrix.local';
-		var httpPort = status.http_port || '8008';
-		var domain = status.domain || '';
-		var lanIp = '192.168.255.1';
 
-		var content = [];
+		return E('div', {}, [
+			// Stats
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'style': 'margin-bottom: 20px;' }, this.renderStats(status, federation, identity, mesh)),
 
-		// Status Section
-		content.push(E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('Matrix Homeserver')),
-			E('div', { 'style': 'display:flex;flex-wrap:wrap;gap:20px;margin:15px 0;' }, [
-				// Status Card
-				E('div', { 'style': 'flex:1;min-width:200px;padding:15px;border:1px solid #ddd;border-radius:5px;' }, [
-					E('h4', { 'style': 'margin:0 0 10px 0;' }, _('Server Status')),
-					E('div', {}, this.renderStatusBadge(running)),
-					E('div', { 'style': 'margin-top:10px;color:#666;' }, [
-						E('div', {}, _('Hostname: ') + hostname),
-						E('div', {}, _('Client Port: ') + httpPort),
-						status.version ? E('div', {}, _('Version: ') + status.version) : ''
-					])
-				]),
-				// Features Card
-				E('div', { 'style': 'flex:1;min-width:200px;padding:15px;border:1px solid #ddd;border-radius:5px;' }, [
-					E('h4', { 'style': 'margin:0 0 10px 0;' }, _('Features')),
-					E('div', {}, [
-						this.renderFeatureBadge(federation.enabled === '1', _('Federation')),
-						this.renderFeatureBadge(status.haproxy === '1', _('HAProxy')),
-						this.renderFeatureBadge(identity.linked === '1', _('DID Linked')),
-						this.renderFeatureBadge(mesh.published === '1', _('Mesh'))
-					])
-				]),
-				// Connection Card
-				E('div', { 'style': 'flex:1;min-width:200px;padding:15px;border:1px solid #ddd;border-radius:5px;' }, [
-					E('h4', { 'style': 'margin:0 0 10px 0;' }, _('Connection Info')),
-					E('div', { 'style': 'font-family:monospace;font-size:0.9em;' }, [
-						E('div', {}, _('Homeserver URL:')),
-						domain ? E('div', { 'style': 'color:#2196F3;' }, 'https://' + domain) :
-							E('div', { 'style': 'color:#666;' }, 'http://' + lanIp + ':' + httpPort),
-						E('div', { 'style': 'margin-top:5px;' }, _('Admin Room:')),
-						E('div', { 'style': 'color:#666;' }, '#admins:' + hostname)
-					])
-				])
-			])
-		]));
-
-		// Service Controls
-		content.push(E('div', { 'class': 'cbi-section' }, [
-			E('h4', {}, _('Service Controls')),
-			E('div', { 'class': 'cbi-page-actions', 'style': 'margin:0;' }, [
-				E('button', {
-					'class': 'btn cbi-button cbi-button-positive',
-					'click': function() { self.handleAction('start'); },
-					'disabled': running
-				}, _('Start')),
-				E('button', {
-					'class': 'btn cbi-button cbi-button-negative',
-					'click': function() { self.handleAction('stop'); },
-					'disabled': !running,
-					'style': 'margin-left:5px;'
-				}, _('Stop')),
-				E('button', {
-					'class': 'btn cbi-button',
-					'click': function() { self.handleAction('update'); },
-					'style': 'margin-left:5px;'
-				}, _('Update')),
-				E('button', {
-					'class': 'btn cbi-button cbi-button-remove',
-					'click': function() {
-						if (confirm(_('Are you sure you want to uninstall? Data will be preserved.'))) {
-							self.handleAction('uninstall');
-						}
-					},
-					'style': 'margin-left:5px;'
-				}, _('Uninstall'))
-			])
-		]));
-
-		// User Management
-		content.push(E('div', { 'class': 'cbi-section' }, [
-			E('h4', {}, _('User Management')),
-			E('p', { 'style': 'color:#666;' }, _('Create Matrix users for this homeserver.')),
-			E('div', { 'style': 'display:flex;gap:10px;align-items:center;flex-wrap:wrap;' }, [
-				E('input', {
-					'type': 'text',
-					'id': 'new-user-mxid',
-					'placeholder': '@username:' + hostname,
-					'style': 'width:200px;padding:5px;'
-				}),
-				E('input', {
-					'type': 'password',
-					'id': 'new-user-password',
-					'placeholder': _('Password (optional)'),
-					'style': 'width:150px;padding:5px;'
-				}),
-				E('button', {
-					'class': 'btn cbi-button cbi-button-positive',
-					'click': function() {
-						var mxid = document.getElementById('new-user-mxid').value;
-						var password = document.getElementById('new-user-password').value;
-						if (mxid) {
-							self.handleAction('user_add', { mxid: mxid, password: password });
-						}
-					}
-				}, _('Add User'))
+			// Two column layout
+			E('div', { 'class': 'kiss-grid kiss-grid-2' }, [
+				KissTheme.card('System Health', this.renderHealth(status, federation, identity, mesh)),
+				KissTheme.card('Controls', this.renderControls(status))
 			]),
-			E('p', { 'style': 'margin-top:10px;color:#888;font-size:0.9em;' },
-				_('For user listing and deletion, use the admin room: #admins:') + hostname)
-		]));
 
-		// Emancipate (Public Exposure)
-		content.push(E('div', { 'class': 'cbi-section' }, [
-			E('h4', {}, _('Public Exposure')),
-			E('p', { 'style': 'color:#666;' }, _('Expose your Matrix server to the internet with SSL.')),
-			E('div', { 'style': 'display:flex;gap:10px;align-items:center;flex-wrap:wrap;' }, [
-				E('input', {
-					'type': 'text',
-					'id': 'emancipate-domain',
-					'placeholder': 'matrix.example.com',
-					'value': domain,
-					'style': 'width:250px;padding:5px;'
-				}),
-				E('button', {
-					'class': 'btn cbi-button cbi-button-action',
-					'click': function() {
-						var domain = document.getElementById('emancipate-domain').value;
-						if (domain) {
-							self.handleAction('emancipate', { domain: domain });
-						}
-					}
-				}, _('Emancipate'))
-			]),
-			domain ? E('div', { 'style': 'margin-top:10px;padding:10px;background:#e8f5e9;border-radius:5px;' }, [
-				E('strong', {}, _('Currently exposed at: ')),
-				E('a', { 'href': 'https://' + domain, 'target': '_blank' }, 'https://' + domain)
-			]) : ''
-		]));
+			// User Management
+			KissTheme.card('User Management', this.renderUserManagement(status)),
 
-		// Identity Integration
-		content.push(E('div', { 'class': 'cbi-section' }, [
-			E('h4', {}, _('Identity Integration')),
-			E('p', { 'style': 'color:#666;' }, _('Link your Matrix identity to the node DID.')),
-			identity.linked === '1' ? E('div', { 'style': 'padding:10px;background:#e3f2fd;border-radius:5px;' }, [
-				E('div', {}, _('Matrix ID: ') + identity.mxid),
-				E('div', {}, _('Node DID: ') + (identity.did || 'N/A')),
-				E('button', {
-					'class': 'btn cbi-button',
-					'click': function() { self.handleAction('identity_unlink'); },
-					'style': 'margin-top:10px;'
-				}, _('Unlink'))
-			]) : E('div', { 'style': 'display:flex;gap:10px;align-items:center;' }, [
-				E('input', {
-					'type': 'text',
-					'id': 'identity-mxid',
-					'placeholder': '@user:' + hostname,
-					'style': 'width:200px;padding:5px;'
-				}),
-				E('button', {
-					'class': 'btn cbi-button cbi-button-action',
-					'click': function() {
-						var mxid = document.getElementById('identity-mxid').value;
-						if (mxid) {
-							self.handleAction('identity_link', { mxid: mxid });
-						}
-					}
-				}, _('Link Identity'))
+			// Two column for exposure
+			E('div', { 'class': 'kiss-grid kiss-grid-2' }, [
+				KissTheme.card('Public Exposure', this.renderEmancipate(status)),
+				KissTheme.card('P2P Mesh Publication', this.renderMesh(mesh))
 			])
-		]));
-
-		// Mesh Publication
-		content.push(E('div', { 'class': 'cbi-section' }, [
-			E('h4', {}, _('P2P Mesh Publication')),
-			E('p', { 'style': 'color:#666;' }, _('Publish this Matrix server to the SecuBox P2P mesh.')),
-			mesh.published === '1' ?
-				E('div', {}, [
-					E('span', { 'style': 'color:#4CAF50;' }, _('Published to mesh as: ') + mesh.service_name),
-					E('button', {
-						'class': 'btn cbi-button',
-						'click': function() { self.handleAction('mesh_unpublish'); },
-						'style': 'margin-left:15px;'
-					}, _('Unpublish'))
-				]) :
-				E('button', {
-					'class': 'btn cbi-button cbi-button-action',
-					'click': function() { self.handleAction('mesh_publish'); }
-				}, _('Publish to Mesh'))
-		]));
-
-		// Logs Section
-		content.push(E('div', { 'class': 'cbi-section' }, [
-			E('h4', {}, _('Server Logs')),
-			E('div', { 'style': 'display:flex;gap:10px;margin-bottom:10px;' }, [
-				E('button', {
-					'class': 'btn cbi-button',
-					'click': function() {
-						api.getLogs(100).then(function(res) {
-							var pre = document.getElementById('matrix-logs');
-							if (pre) pre.textContent = res.logs || 'No logs available';
-						});
-					}
-				}, _('Refresh Logs'))
-			]),
-			E('pre', {
-				'id': 'matrix-logs',
-				'style': 'background:#1e1e1e;color:#d4d4d4;padding:15px;border-radius:5px;max-height:300px;overflow:auto;font-size:0.85em;'
-			}, _('Click "Refresh Logs" to load...'))
-		]));
-
-		return E('div', {}, content);
+		]);
 	},
 
 	render: function(data) {
-		var content = E('div', { 'id': 'matrix-content' }, this.renderContent(data));
+		var self = this;
+		var status = data[0] || {};
+		var running = status.running === 'true' || status.running === true;
 
-		// Poll for status updates
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'Matrix Homeserver'),
+					KissTheme.badge(running ? 'RUNNING' : (status.container_state === 'not_installed' ? 'NOT INSTALLED' : 'STOPPED'),
+						running ? 'green' : 'red')
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' }, 'Decentralized end-to-end encrypted communication')
+			]),
+
+			// Navigation
+			this.renderNav('overview'),
+
+			// Content
+			E('div', { 'id': 'matrix-content' }, this.renderContent(data))
+		];
+
 		poll.add(L.bind(function() {
-			return api.getStatus().then(L.bind(function(status) {
-				// Update status badges without full reload
-				var statusBadge = document.querySelector('#matrix-content .cbi-section span');
-				if (statusBadge && status) {
-					var running = status.running === 'true' || status.running === true;
-					statusBadge.style.background = running ? '#4CAF50' : '#9e9e9e';
-					statusBadge.textContent = running ? _('Running') : _('Stopped');
-				}
+			return api.getStatus().then(L.bind(function(s) {
+				// Update status without full reload
 			}, this));
 		}, this), 10);
 
-		return content;
+		return KissTheme.wrap(content, 'admin/services/matrix/overview');
 	}
 });

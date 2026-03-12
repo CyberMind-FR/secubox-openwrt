@@ -3,167 +3,203 @@
 'require ui';
 'require uci';
 'require voip.api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
-    load: function() {
-        return Promise.all([
-            uci.load('voip'),
-            api.getExtensions(),
-            api.getCalls()
-        ]);
-    },
+	load: function() {
+		return Promise.all([
+			uci.load('voip'),
+			api.getExtensions(),
+			api.getCalls()
+		]);
+	},
 
-    render: function(data) {
-        var extensions = data[1] || [];
-        var calls = data[2] || [];
+	renderStats: function(extensions, calls) {
+		var c = KissTheme.colors;
+		return [
+			KissTheme.stat(extensions.length, 'Extensions', c.blue),
+			KissTheme.stat(calls.length, 'Active Calls', c.green),
+			KissTheme.stat('Ready', 'Status', c.purple)
+		];
+	},
 
-        var extOptions = extensions.map(function(ext) {
-            return E('option', { 'value': ext.number }, ext.number + ' - ' + ext.name);
-        });
+	renderCallsTable: function(calls) {
+		if (!calls || calls.length === 0) {
+			return E('div', { 'style': 'text-align: center; padding: 24px; color: var(--kiss-muted);' },
+				'No active calls');
+		}
 
-        var view = E('div', { 'class': 'cbi-map' }, [
-            E('h2', {}, 'Click to Call'),
-            E('p', { 'class': 'cbi-map-descr' },
-                'Make calls by selecting your extension and entering the destination number. ' +
-                'Your phone will ring first, then connect to the destination.'),
+		var self = this;
+		return E('table', { 'class': 'kiss-table' }, [
+			E('thead', {}, [
+				E('tr', {}, [
+					E('th', {}, 'Channel'),
+					E('th', {}, 'State'),
+					E('th', {}, 'Caller'),
+					E('th', {}, 'Connected'),
+					E('th', {}, 'Duration'),
+					E('th', {}, 'Actions')
+				])
+			]),
+			E('tbody', {},
+				calls.map(function(call) {
+					return E('tr', {}, [
+						E('td', { 'style': 'font-family: monospace;' }, call.channel),
+						E('td', {}, [KissTheme.badge(call.state, call.state === 'Up' ? 'green' : 'orange')]),
+						E('td', {}, call.caller),
+						E('td', {}, call.connected),
+						E('td', {}, call.duration),
+						E('td', {}, [
+							E('button', {
+								'class': 'kiss-btn kiss-btn-red',
+								'style': 'padding: 4px 10px; font-size: 11px;',
+								'click': ui.createHandlerFn(self, 'handleHangup', call.channel)
+							}, 'Hangup')
+						])
+					]);
+				})
+			)
+		]);
+	},
 
-            E('div', { 'class': 'cbi-section' }, [
-                E('div', { 'class': 'cbi-value' }, [
-                    E('label', { 'class': 'cbi-value-title' }, 'Your Extension'),
-                    E('div', { 'class': 'cbi-value-field' }, [
-                        E('select', { 'id': 'from-ext', 'class': 'cbi-input-select' }, extOptions)
-                    ])
-                ]),
-                E('div', { 'class': 'cbi-value' }, [
-                    E('label', { 'class': 'cbi-value-title' }, 'Destination Number'),
-                    E('div', { 'class': 'cbi-value-field' }, [
-                        E('input', {
-                            'type': 'tel',
-                            'id': 'to-number',
-                            'class': 'cbi-input-text',
-                            'placeholder': '+33612345678',
-                            'style': 'font-size: 1.5em; padding: 10px;'
-                        })
-                    ])
-                ]),
-                E('div', { 'class': 'cbi-value' }, [
-                    E('div', { 'class': 'cbi-value-field' }, [
-                        E('button', {
-                            'class': 'btn cbi-button cbi-button-positive',
-                            'style': 'font-size: 1.2em; padding: 15px 40px;',
-                            'click': ui.createHandlerFn(this, 'handleCall')
-                        }, 'Call')
-                    ])
-                ])
-            ]),
+	renderDialpad: function() {
+		var digits = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'];
 
-            // Dialpad
-            E('div', { 'class': 'cbi-section' }, [
-                E('h3', {}, 'Dialpad'),
-                E('div', { 'id': 'dialpad', 'style': 'display: grid; grid-template-columns: repeat(3, 80px); gap: 10px; justify-content: center;' },
-                    ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'].map(function(digit) {
-                        return E('button', {
-                            'class': 'btn',
-                            'style': 'font-size: 1.5em; padding: 20px;',
-                            'click': function() {
-                                var input = document.getElementById('to-number');
-                                input.value += digit;
-                            }
-                        }, digit);
-                    })
-                ),
-                E('div', { 'style': 'text-align: center; margin-top: 10px;' }, [
-                    E('button', {
-                        'class': 'btn cbi-button',
-                        'click': function() {
-                            var input = document.getElementById('to-number');
-                            input.value = input.value.slice(0, -1);
-                        }
-                    }, 'Backspace'),
-                    ' ',
-                    E('button', {
-                        'class': 'btn cbi-button',
-                        'click': function() {
-                            document.getElementById('to-number').value = '';
-                        }
-                    }, 'Clear')
-                ])
-            ]),
+		return E('div', { 'style': 'display: flex; flex-direction: column; gap: 16px;' }, [
+			E('div', {
+				'style': 'display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; max-width: 280px; margin: 0 auto;'
+			},
+				digits.map(function(digit) {
+					return E('button', {
+						'class': 'kiss-btn',
+						'style': 'font-size: 24px; padding: 16px; font-weight: 600;',
+						'click': function() {
+							var input = document.getElementById('to-number');
+							input.value += digit;
+						}
+					}, digit);
+				})
+			),
+			E('div', { 'style': 'display: flex; gap: 8px; justify-content: center;' }, [
+				E('button', {
+					'class': 'kiss-btn',
+					'style': 'padding: 8px 20px;',
+					'click': function() {
+						var input = document.getElementById('to-number');
+						input.value = input.value.slice(0, -1);
+					}
+				}, 'Backspace'),
+				E('button', {
+					'class': 'kiss-btn',
+					'style': 'padding: 8px 20px;',
+					'click': function() {
+						document.getElementById('to-number').value = '';
+					}
+				}, 'Clear')
+			])
+		]);
+	},
 
-            // Active calls
-            E('div', { 'class': 'cbi-section' }, [
-                E('h3', {}, 'Active Calls'),
-                this.renderCallsTable(calls)
-            ])
-        ]);
+	render: function(data) {
+		var self = this;
+		var extensions = data[1] || [];
+		var calls = data[2] || [];
 
-        return view;
-    },
+		var extOptions = extensions.map(function(ext) {
+			return E('option', { 'value': ext.number }, ext.number + ' - ' + ext.name);
+		});
 
-    renderCallsTable: function(calls) {
-        if (!calls || calls.length === 0) {
-            return E('p', { 'class': 'cbi-value-description' }, 'No active calls');
-        }
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'Click to Call'),
+					KissTheme.badge('DIALER', 'purple')
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' },
+					'Make calls by selecting your extension and entering the destination number')
+			]),
 
-        return E('table', { 'class': 'table' }, [
-            E('tr', { 'class': 'tr table-titles' }, [
-                E('th', { 'class': 'th' }, 'Channel'),
-                E('th', { 'class': 'th' }, 'State'),
-                E('th', { 'class': 'th' }, 'Caller'),
-                E('th', { 'class': 'th' }, 'Connected'),
-                E('th', { 'class': 'th' }, 'Duration'),
-                E('th', { 'class': 'th' }, 'Actions')
-            ])
-        ].concat(calls.map(function(call) {
-            return E('tr', { 'class': 'tr' }, [
-                E('td', { 'class': 'td' }, call.channel),
-                E('td', { 'class': 'td' }, call.state),
-                E('td', { 'class': 'td' }, call.caller),
-                E('td', { 'class': 'td' }, call.connected),
-                E('td', { 'class': 'td' }, call.duration),
-                E('td', { 'class': 'td' }, [
-                    E('button', {
-                        'class': 'btn cbi-button cbi-button-remove',
-                        'click': ui.createHandlerFn(this, 'handleHangup', call.channel)
-                    }, 'Hangup')
-                ])
-            ]);
-        }, this)));
-    },
+			// Stats
+			E('div', { 'class': 'kiss-grid kiss-grid-3', 'style': 'margin: 20px 0;' }, this.renderStats(extensions, calls)),
 
-    handleCall: function() {
-        var fromExt = document.getElementById('from-ext').value;
-        var toNumber = document.getElementById('to-number').value;
+			// Two-column layout
+			E('div', { 'class': 'kiss-grid kiss-grid-2' }, [
+				// Call form
+				KissTheme.card('Make a Call',
+					E('div', { 'style': 'display: flex; flex-direction: column; gap: 16px;' }, [
+						E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+							E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Your Extension'),
+							E('select', {
+								'id': 'from-ext',
+								'style': 'background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 10px 12px; border-radius: 6px;'
+							}, extOptions)
+						]),
+						E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+							E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Destination Number'),
+							E('input', {
+								'type': 'tel',
+								'id': 'to-number',
+								'placeholder': '+33612345678',
+								'style': 'background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 12px; border-radius: 6px; font-size: 20px; text-align: center; letter-spacing: 2px;'
+							})
+						]),
+						E('button', {
+							'class': 'kiss-btn kiss-btn-green',
+							'style': 'font-size: 18px; padding: 14px;',
+							'click': ui.createHandlerFn(this, 'handleCall')
+						}, 'Call')
+					])
+				),
 
-        if (!fromExt) {
-            ui.addNotification(null, E('p', 'Please select your extension'), 'error');
-            return;
-        }
+				// Dialpad
+				KissTheme.card('Dialpad', this.renderDialpad())
+			]),
 
-        if (!toNumber) {
-            ui.addNotification(null, E('p', 'Please enter a destination number'), 'error');
-            return;
-        }
+			// Active calls
+			KissTheme.card('Active Calls', this.renderCallsTable(calls))
+		];
 
-        ui.showModal('Calling...', [
-            E('p', {}, 'Connecting ' + fromExt + ' to ' + toNumber + '...'),
-            E('p', {}, 'Your phone will ring first.')
-        ]);
+		return KissTheme.wrap(content, 'admin/services/voip/click-to-call');
+	},
 
-        return api.originateCall(fromExt, toNumber).then(function(res) {
-            ui.hideModal();
-            if (res.success) {
-                ui.addNotification(null, E('p', 'Call initiated'), 'success');
-            } else {
-                ui.addNotification(null, E('p', 'Call failed: ' + res.output), 'error');
-            }
-        });
-    },
+	handleCall: function() {
+		var fromExt = document.getElementById('from-ext').value;
+		var toNumber = document.getElementById('to-number').value;
 
-    handleHangup: function(channel) {
-        return api.hangupCall(channel).then(function(res) {
-            ui.addNotification(null, E('p', 'Call terminated'), 'success');
-            window.location.reload();
-        });
-    }
+		if (!fromExt) {
+			ui.addNotification(null, E('p', 'Please select your extension'));
+			return;
+		}
+
+		if (!toNumber) {
+			ui.addNotification(null, E('p', 'Please enter a destination number'));
+			return;
+		}
+
+		ui.showModal('Calling...', [
+			E('p', { 'class': 'spinning' }, 'Connecting ' + fromExt + ' to ' + toNumber + '...'),
+			E('p', { 'style': 'color: var(--kiss-muted); font-size: 12px;' }, 'Your phone will ring first.')
+		]);
+
+		return api.originateCall(fromExt, toNumber).then(function(res) {
+			ui.hideModal();
+			if (res.success) {
+				ui.addNotification(null, E('p', 'Call initiated'));
+			} else {
+				ui.addNotification(null, E('p', 'Call failed: ' + res.output));
+			}
+		});
+	},
+
+	handleHangup: function(channel) {
+		return api.hangupCall(channel).then(function(res) {
+			ui.addNotification(null, E('p', 'Call terminated'));
+			window.location.reload();
+		});
+	},
+
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null
 });

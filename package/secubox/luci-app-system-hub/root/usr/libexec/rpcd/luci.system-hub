@@ -2253,6 +2253,38 @@ get_components_by_category() {
 	fi
 }
 
+# Service Health Check - checks all HAProxy routes status
+get_service_health() {
+	local cache_file="/tmp/service-health.json"
+
+	# Read refresh param
+	local input
+	read -r input
+	json_load "$input" 2>/dev/null
+	local refresh
+	json_get_var refresh refresh
+	json_cleanup
+	[ -z "$refresh" ] && refresh="0"
+
+	# Refresh if requested or cache is old (>5min) or missing
+	if [ "$refresh" = "1" ] || [ ! -f "$cache_file" ]; then
+		/usr/sbin/service-health-check json > "$cache_file" 2>/dev/null
+	elif [ -f "$cache_file" ]; then
+		local age=$(( $(date +%s) - $(stat -c %Y "$cache_file" 2>/dev/null || echo 0) ))
+		if [ "$age" -gt 300 ]; then
+			/usr/sbin/service-health-check json > "$cache_file" 2>/dev/null
+		fi
+	fi
+
+	if [ -f "$cache_file" ]; then
+		cat "$cache_file"
+	else
+		json_init
+		json_add_string "error" "No health data available"
+		json_dump
+	fi
+}
+
 # Main dispatcher
 case "$1" in
 	list)
@@ -2261,6 +2293,7 @@ case "$1" in
 	"status": {},
 	"get_system_info": {},
 	"get_health": {},
+	"get_service_health": { "refresh": 0 },
 	"get_components": {},
 	"get_components_by_category": { "category": "string" },
 	"list_services": {},
@@ -2338,6 +2371,7 @@ EOF
 			status) status ;;
 			get_system_info) get_system_info ;;
 			get_health) get_health ;;
+			get_service_health) get_service_health ;;
 			get_components) get_components ;;
 			get_components_by_category) get_components_by_category ;;
 			list_services) list_services ;;

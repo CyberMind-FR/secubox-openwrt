@@ -358,6 +358,14 @@ case "$1" in
 
 		json_add_object "p2p_set_settings"
 			json_add_object "settings"
+			json_close_object
+		json_close_object
+
+		# Dynamic KISS Apps discovery
+		json_add_object "get_installed_apps"
+		json_close_object
+
+		json_add_object "get_kiss_menu"
 		json_close_object
 
 	json_dump
@@ -2627,6 +2635,162 @@ PACEOF
 
 			json_init
 			json_add_boolean "success" 1
+			json_dump
+			;;
+
+		get_installed_apps)
+			# Return installed SecuBox apps with menu paths for dynamic KISS UI
+			CATALOG_FILE="/usr/share/secubox/catalog.json"
+
+			if [ ! -f "$CATALOG_FILE" ]; then
+				echo '{"apps":[]}'
+				exit 0
+			fi
+
+			# Get list of installed luci-app-* packages
+			INSTALLED=$(opkg list-installed 2>/dev/null | grep -E '^(luci-app-|secubox-app-)' | awk '{print $1}')
+
+			# Build JSON array of installed apps with their details
+			json_init
+			json_add_array "apps"
+
+			for pkg in $INSTALLED; do
+				# Check if in catalog
+				app_info=$(jq -r --arg id "$pkg" '.plugins[] | select(.id == $id)' "$CATALOG_FILE" 2>/dev/null)
+
+				if [ -n "$app_info" ] && [ "$app_info" != "null" ]; then
+					name=$(echo "$app_info" | jq -r '.name // .id')
+					icon=$(echo "$app_info" | jq -r '.icon // "📦"')
+					category=$(echo "$app_info" | jq -r '.category // "other"')
+					desc=$(echo "$app_info" | jq -r '.description // ""' | head -c 100)
+
+					# Get menu path from menu.d if exists
+					menu_file="/usr/share/luci/menu.d/${pkg}.json"
+					if [ -f "$menu_file" ]; then
+						menu_path=$(jq -r 'keys[0]' "$menu_file" 2>/dev/null)
+					else
+						menu_path=""
+					fi
+
+					# Check service status
+					service_name=$(echo "$pkg" | sed 's/^luci-app-//' | sed 's/^secubox-app-//')
+					if [ -x "/etc/init.d/$service_name" ]; then
+						status=$(/etc/init.d/$service_name status 2>/dev/null | head -1)
+						case "$status" in
+							*running*) running="true" ;;
+							*) running="false" ;;
+						esac
+					else
+						running="unknown"
+					fi
+
+					json_add_object ""
+					json_add_string "id" "$pkg"
+					json_add_string "name" "$name"
+					json_add_string "icon" "$icon"
+					json_add_string "category" "$category"
+					json_add_string "description" "$desc"
+					json_add_string "menu_path" "$menu_path"
+					json_add_string "status" "$running"
+					json_close_object
+				fi
+			done
+
+			json_close_array
+			json_dump
+			;;
+
+		get_kiss_menu)
+			# Return dynamic KISS menu structure based on installed apps
+			CATALOG_FILE="/usr/share/secubox/catalog.json"
+
+			# Build menu structure by category
+			json_init
+			json_add_object "menu"
+
+			# Security category
+			json_add_array "security"
+			for menu_file in /usr/share/luci/menu.d/luci-app-*.json; do
+				[ -f "$menu_file" ] || continue
+				pkg=$(basename "$menu_file" .json)
+
+				# Check if app is in security category
+				cat_check=$(jq -r --arg id "$pkg" '.plugins[] | select(.id == $id) | .category' "$CATALOG_FILE" 2>/dev/null)
+				if [ "$cat_check" = "security" ]; then
+					path=$(jq -r 'keys[0]' "$menu_file" 2>/dev/null)
+					title=$(jq -r '.[keys[0]].title // ""' "$menu_file" 2>/dev/null)
+					if [ -n "$path" ] && [ -n "$title" ]; then
+						json_add_object ""
+						json_add_string "id" "$pkg"
+						json_add_string "title" "$title"
+						json_add_string "path" "$path"
+						json_close_object
+					fi
+				fi
+			done
+			json_close_array
+
+			# System category
+			json_add_array "system"
+			for menu_file in /usr/share/luci/menu.d/luci-app-*.json; do
+				[ -f "$menu_file" ] || continue
+				pkg=$(basename "$menu_file" .json)
+				cat_check=$(jq -r --arg id "$pkg" '.plugins[] | select(.id == $id) | .category' "$CATALOG_FILE" 2>/dev/null)
+				if [ "$cat_check" = "system" ]; then
+					path=$(jq -r 'keys[0]' "$menu_file" 2>/dev/null)
+					title=$(jq -r '.[keys[0]].title // ""' "$menu_file" 2>/dev/null)
+					if [ -n "$path" ] && [ -n "$title" ]; then
+						json_add_object ""
+						json_add_string "id" "$pkg"
+						json_add_string "title" "$title"
+						json_add_string "path" "$path"
+						json_close_object
+					fi
+				fi
+			done
+			json_close_array
+
+			# Productivity category
+			json_add_array "productivity"
+			for menu_file in /usr/share/luci/menu.d/luci-app-*.json; do
+				[ -f "$menu_file" ] || continue
+				pkg=$(basename "$menu_file" .json)
+				cat_check=$(jq -r --arg id "$pkg" '.plugins[] | select(.id == $id) | .category' "$CATALOG_FILE" 2>/dev/null)
+				if [ "$cat_check" = "productivity" ]; then
+					path=$(jq -r 'keys[0]' "$menu_file" 2>/dev/null)
+					title=$(jq -r '.[keys[0]].title // ""' "$menu_file" 2>/dev/null)
+					if [ -n "$path" ] && [ -n "$title" ]; then
+						json_add_object ""
+						json_add_string "id" "$pkg"
+						json_add_string "title" "$title"
+						json_add_string "path" "$path"
+						json_close_object
+					fi
+				fi
+			done
+			json_close_array
+
+			# Media category
+			json_add_array "media"
+			for menu_file in /usr/share/luci/menu.d/luci-app-*.json; do
+				[ -f "$menu_file" ] || continue
+				pkg=$(basename "$menu_file" .json)
+				cat_check=$(jq -r --arg id "$pkg" '.plugins[] | select(.id == $id) | .category' "$CATALOG_FILE" 2>/dev/null)
+				if [ "$cat_check" = "media" ]; then
+					path=$(jq -r 'keys[0]' "$menu_file" 2>/dev/null)
+					title=$(jq -r '.[keys[0]].title // ""' "$menu_file" 2>/dev/null)
+					if [ -n "$path" ] && [ -n "$title" ]; then
+						json_add_object ""
+						json_add_string "id" "$pkg"
+						json_add_string "title" "$title"
+						json_add_string "path" "$path"
+						json_close_object
+					fi
+				fi
+			done
+			json_close_array
+
+			json_close_object
 			json_dump
 			;;
 

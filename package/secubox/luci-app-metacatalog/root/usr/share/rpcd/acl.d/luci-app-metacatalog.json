@@ -1,0 +1,27 @@
+{
+  "luci-app-metacatalog": {
+    "description": "Grant access to Meta Cataloger",
+    "read": {
+      "ubus": {
+        "luci.metacatalog": [
+          "list_entries",
+          "list_books",
+          "get_entry",
+          "get_book",
+          "search",
+          "get_stats"
+        ]
+      }
+    },
+    "write": {
+      "ubus": {
+        "luci.metacatalog": [
+          "sync",
+          "scan",
+          "assign",
+          "unassign"
+        ]
+      }
+    }
+  }
+}

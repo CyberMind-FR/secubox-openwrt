@@ -1,0 +1,17 @@
+$TTL 86400
+@   IN  SOA     ns1.sblocal. admin.sblocal. (
+        2026021101  ; Serial
+        3600        ; Refresh
+        1800        ; Retry
+        604800      ; Expire
+        86400 )     ; Minimum TTL
+
+    IN  NS      ns1.sblocal.
+
+; SecuBox Mesh nodes
+ns1         IN  A   192.168.255.1
+c3box       IN  A   192.168.255.1
+@           IN  A   192.168.255.1
+
+; Wildcard for services
+*           IN  A   192.168.255.1

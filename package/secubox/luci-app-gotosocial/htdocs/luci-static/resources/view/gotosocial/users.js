@@ -3,6 +3,7 @@
 'require rpc';
 'require ui';
 'require poll';
+'require secubox/kiss-theme';
 
 var callUsers = rpc.declare({
 	object: 'luci.gotosocial',
@@ -52,6 +53,22 @@ return view.extend({
 		}, this));
 	},
 
+	renderNav: function(active) {
+		var tabs = [
+			{ name: 'Overview', path: 'admin/services/gotosocial/overview' },
+			{ name: 'Users', path: 'admin/services/gotosocial/users' },
+			{ name: 'Settings', path: 'admin/services/gotosocial/settings' }
+		];
+
+		return E('div', { 'class': 'kiss-tabs' }, tabs.map(function(tab) {
+			var isActive = tab.path.indexOf(active) !== -1;
+			return E('a', {
+				'href': L.url(tab.path),
+				'class': 'kiss-tab' + (isActive ? ' active' : '')
+			}, tab.name);
+		}));
+	},
+
 	updateUserTable: function() {
 		var tbody = document.getElementById('users-tbody');
 		if (!tbody) return;
@@ -61,193 +78,220 @@ return view.extend({
 		}
 
 		if (this.users.length === 0) {
-			tbody.appendChild(E('tr', { 'class': 'tr' }, [
-				E('td', { 'class': 'td', 'colspan': '5', 'style': 'text-align:center' }, _('No users found'))
+			tbody.appendChild(E('tr', {}, [
+				E('td', { 'colspan': '5', 'style': 'text-align: center; padding: 24px; color: var(--kiss-muted);' }, 'No users found')
 			]));
 			return;
 		}
 
-		this.users.forEach(L.bind(function(user) {
-			var row = E('tr', { 'class': 'tr' }, [
-				E('td', { 'class': 'td' }, user.username || '-'),
-				E('td', { 'class': 'td' }, user.email || '-'),
-				E('td', { 'class': 'td' }, user.admin ?
-					E('span', { 'class': 'badge success' }, _('Admin')) :
-					E('span', { 'class': 'badge' }, _('User'))
-				),
-				E('td', { 'class': 'td' }, user.confirmed ?
-					E('span', { 'class': 'badge success' }, _('Confirmed')) :
-					E('span', { 'class': 'badge warning' }, _('Pending'))
-				),
-				E('td', { 'class': 'td' }, [
+		var self = this;
+		this.users.forEach(function(user) {
+			var row = E('tr', {}, [
+				E('td', { 'style': 'font-family: monospace;' }, user.username || '-'),
+				E('td', {}, user.email || '-'),
+				E('td', {}, [
 					user.admin ?
+						KissTheme.badge('Admin', 'purple') :
+						KissTheme.badge('User', 'blue')
+				]),
+				E('td', {}, [
+					user.confirmed ?
+						KissTheme.badge('Confirmed', 'green') :
+						KissTheme.badge('Pending', 'orange')
+				]),
+				E('td', {}, [
+					E('div', { 'style': 'display: flex; gap: 6px;' }, [
+						user.admin ?
+							E('button', {
+								'class': 'kiss-btn',
+								'style': 'padding: 4px 10px; font-size: 11px;',
+								'click': ui.createHandlerFn(self, self.handleDemote, user.username)
+							}, 'Demote') :
+							E('button', {
+								'class': 'kiss-btn kiss-btn-blue',
+								'style': 'padding: 4px 10px; font-size: 11px;',
+								'click': ui.createHandlerFn(self, self.handlePromote, user.username)
+							}, 'Promote'),
 						E('button', {
-							'class': 'btn cbi-button-neutral',
-							'click': ui.createHandlerFn(this, this.handleDemote, user.username)
-						}, _('Demote')) :
-						E('button', {
-							'class': 'btn cbi-button-action',
-							'click': ui.createHandlerFn(this, this.handlePromote, user.username)
-						}, _('Promote')),
-					' ',
-					E('button', {
-						'class': 'btn cbi-button-negative',
-						'click': ui.createHandlerFn(this, this.handleDelete, user.username)
-					}, _('Delete'))
+							'class': 'kiss-btn kiss-btn-red',
+							'style': 'padding: 4px 10px; font-size: 11px;',
+							'click': ui.createHandlerFn(self, self.handleDelete, user.username)
+						}, 'Delete')
+					])
 				])
 			]);
 			tbody.appendChild(row);
-		}, this));
+		});
 	},
 
 	handleCreate: function() {
-		return ui.showModal(_('Create User'), [
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Username')),
-				E('div', { 'class': 'cbi-value-field' }, [
-					E('input', { 'type': 'text', 'id': 'new-username', 'class': 'cbi-input-text', 'placeholder': 'johndoe' })
-				])
-			]),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Email')),
-				E('div', { 'class': 'cbi-value-field' }, [
-					E('input', { 'type': 'email', 'id': 'new-email', 'class': 'cbi-input-text', 'placeholder': 'john@example.com' })
-				])
-			]),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Password')),
-				E('div', { 'class': 'cbi-value-field' }, [
-					E('input', { 'type': 'password', 'id': 'new-password', 'class': 'cbi-input-text' })
-				])
-			]),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Admin')),
-				E('div', { 'class': 'cbi-value-field' }, [
+		var self = this;
+		return ui.showModal('Create User', [
+			E('div', { 'style': 'display: flex; flex-direction: column; gap: 16px;' }, [
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+					E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Username'),
+					E('input', {
+						'type': 'text',
+						'id': 'new-username',
+						'placeholder': 'johndoe',
+						'style': 'background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px 12px; border-radius: 6px;'
+					})
+				]),
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+					E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Email'),
+					E('input', {
+						'type': 'email',
+						'id': 'new-email',
+						'placeholder': 'john@example.com',
+						'style': 'background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px 12px; border-radius: 6px;'
+					})
+				]),
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+					E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Password'),
+					E('input', {
+						'type': 'password',
+						'id': 'new-password',
+						'style': 'background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px 12px; border-radius: 6px;'
+					})
+				]),
+				E('div', { 'style': 'display: flex; align-items: center; gap: 8px;' }, [
 					E('input', { 'type': 'checkbox', 'id': 'new-admin' }),
-					' ', _('Grant admin privileges')
+					E('label', { 'for': 'new-admin', 'style': 'font-size: 12px;' }, 'Grant admin privileges')
 				])
 			]),
-			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')),
-				' ',
+			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px;' }, [
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
 				E('button', {
-					'class': 'btn cbi-button-action',
-					'click': ui.createHandlerFn(this, function() {
+					'class': 'kiss-btn kiss-btn-green',
+					'click': function() {
 						var username = document.getElementById('new-username').value;
 						var email = document.getElementById('new-email').value;
 						var password = document.getElementById('new-password').value;
 						var admin = document.getElementById('new-admin').checked;
 
 						if (!username || !email || !password) {
-							ui.addNotification(null, E('p', _('All fields are required')), 'error');
+							ui.addNotification(null, E('p', 'All fields are required'), 'error');
 							return;
 						}
 
 						ui.hideModal();
-						ui.showModal(_('Creating User...'), [
-							E('p', { 'class': 'spinning' }, _('Creating user...'))
+						ui.showModal('Creating User...', [
+							E('p', { 'class': 'spinning' }, 'Creating user...')
 						]);
 
-						return callCreateUser(username, email, password, admin).then(L.bind(function(res) {
+						return callCreateUser(username, email, password, admin).then(function(res) {
 							ui.hideModal();
 							if (res.success) {
-								ui.addNotification(null, E('p', res.message || _('User created successfully')), 'success');
-								return this.pollUsers();
+								ui.addNotification(null, E('p', res.message || 'User created successfully'), 'success');
+								return self.pollUsers();
 							} else {
-								ui.addNotification(null, E('p', res.error || _('Failed to create user')), 'error');
+								ui.addNotification(null, E('p', res.error || 'Failed to create user'), 'error');
 							}
-						}, this));
-					})
-				}, _('Create'))
+						});
+					}
+				}, 'Create')
 			])
 		]);
 	},
 
 	handleDelete: function(username) {
-		return ui.showModal(_('Delete User'), [
-			E('p', _('Are you sure you want to delete user "%s"?').format(username)),
-			E('p', { 'class': 'alert-message warning' }, _('This action cannot be undone. All posts and data will be lost.')),
-			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')),
-				' ',
+		var self = this;
+		return ui.showModal('Delete User', [
+			E('p', {}, 'Are you sure you want to delete user "' + username + '"?'),
+			E('p', { 'style': 'color: var(--kiss-red); font-size: 12px;' }, 'This action cannot be undone. All posts and data will be lost.'),
+			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px;' }, [
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
 				E('button', {
-					'class': 'btn cbi-button-negative',
-					'click': ui.createHandlerFn(this, function() {
+					'class': 'kiss-btn kiss-btn-red',
+					'click': function() {
 						ui.hideModal();
-						return callDeleteUser(username).then(L.bind(function(res) {
+						return callDeleteUser(username).then(function(res) {
 							if (res.success) {
-								ui.addNotification(null, E('p', res.message || _('User deleted')), 'success');
-								return this.pollUsers();
+								ui.addNotification(null, E('p', res.message || 'User deleted'), 'success');
+								return self.pollUsers();
 							} else {
-								ui.addNotification(null, E('p', res.error || _('Failed to delete user')), 'error');
+								ui.addNotification(null, E('p', res.error || 'Failed to delete user'), 'error');
 							}
-						}, this));
-					})
-				}, _('Delete'))
+						});
+					}
+				}, 'Delete')
 			])
 		]);
 	},
 
 	handlePromote: function(username) {
-		return callPromoteUser(username).then(L.bind(function(res) {
+		var self = this;
+		return callPromoteUser(username).then(function(res) {
 			if (res.success) {
-				ui.addNotification(null, E('p', res.message || _('User promoted')), 'success');
-				return this.pollUsers();
+				ui.addNotification(null, E('p', res.message || 'User promoted'), 'success');
+				return self.pollUsers();
 			} else {
-				ui.addNotification(null, E('p', res.error || _('Failed to promote user')), 'error');
+				ui.addNotification(null, E('p', res.error || 'Failed to promote user'), 'error');
 			}
-		}, this));
+		});
 	},
 
 	handleDemote: function(username) {
-		return callDemoteUser(username).then(L.bind(function(res) {
+		var self = this;
+		return callDemoteUser(username).then(function(res) {
 			if (res.success) {
-				ui.addNotification(null, E('p', res.message || _('User demoted')), 'success');
-				return this.pollUsers();
+				ui.addNotification(null, E('p', res.message || 'User demoted'), 'success');
+				return self.pollUsers();
 			} else {
-				ui.addNotification(null, E('p', res.error || _('Failed to demote user')), 'error');
+				ui.addNotification(null, E('p', res.error || 'Failed to demote user'), 'error');
 			}
-		}, this));
+		});
+	},
+
+	renderUsersTable: function() {
+		return E('table', { 'class': 'kiss-table' }, [
+			E('thead', {}, [
+				E('tr', {}, [
+					E('th', {}, 'Username'),
+					E('th', {}, 'Email'),
+					E('th', {}, 'Role'),
+					E('th', {}, 'Status'),
+					E('th', {}, 'Actions')
+				])
+			]),
+			E('tbody', { 'id': 'users-tbody' })
+		]);
 	},
 
 	render: function(data) {
 		this.users = data.users || [];
 
-		var view = E('div', { 'class': 'cbi-map' }, [
-			E('h2', _('GoToSocial Users')),
-			E('div', { 'class': 'cbi-map-descr' }, _('Manage user accounts for your Fediverse instance.')),
+		poll.add(L.bind(this.pollUsers, this), 10);
 
-			E('div', { 'class': 'cbi-section' }, [
-				E('div', { 'style': 'margin-bottom:10px' }, [
-					E('button', {
-						'class': 'btn cbi-button-action',
-						'click': ui.createHandlerFn(this, this.handleCreate)
-					}, _('Create User'))
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'GoToSocial Users'),
+					KissTheme.badge(this.users.length + ' USERS', 'blue')
 				]),
-
-				E('table', { 'class': 'table' }, [
-					E('thead', {}, [
-						E('tr', { 'class': 'tr' }, [
-							E('th', { 'class': 'th' }, _('Username')),
-							E('th', { 'class': 'th' }, _('Email')),
-							E('th', { 'class': 'th' }, _('Role')),
-							E('th', { 'class': 'th' }, _('Status')),
-							E('th', { 'class': 'th' }, _('Actions'))
-						])
-					]),
-					E('tbody', { 'id': 'users-tbody' })
-				])
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' }, 'Manage user accounts for your Fediverse instance')
 			]),
 
-			E('style', {}, `
-				.badge { padding: 2px 8px; border-radius: 3px; background: #666; color: white; }
-				.badge.success { background: #4CAF50; }
-				.badge.warning { background: #FF9800; }
-			`)
-		]);
+			// Navigation
+			this.renderNav('users'),
 
-		this.updateUserTable();
-		poll.add(L.bind(this.pollUsers, this), 10);
+			// Actions
+			E('div', { 'style': 'margin: 20px 0;' }, [
+				E('button', {
+					'class': 'kiss-btn kiss-btn-green',
+					'click': ui.createHandlerFn(this, this.handleCreate)
+				}, 'Create User')
+			]),
+
+			// Users table
+			KissTheme.card('Users', this.renderUsersTable())
+		];
+
+		var view = KissTheme.wrap(content, 'admin/services/gotosocial/users');
+
+		// Populate table after render
+		setTimeout(L.bind(this.updateUserTable, this), 0);
 
 		return view;
 	},

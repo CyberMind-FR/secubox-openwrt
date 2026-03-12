@@ -45,6 +45,10 @@ function formatDate(ts) {
 }
 
 return view.extend({
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null,
+
 	load: function() {
 		return Promise.all([
 			callStatus(),
@@ -53,115 +57,89 @@ return view.extend({
 		]);
 	},
 
-	render: function(data) {
-		var status = data[0] || {};
-		var backups = (data[1] || {}).backups || [];
-		var containers = (data[2] || {}).containers || [];
+	renderStats: function(status, backups, containers) {
+		var c = KissTheme.colors;
+		var runningContainers = containers.filter(function(ct) { return ct.state === 'running'; }).length;
+		return [
+			KissTheme.stat(backups.length, 'Backups', c.blue),
+			KissTheme.stat(containers.length, 'Containers', c.cyan),
+			KissTheme.stat(runningContainers, 'Running', c.green),
+			KissTheme.stat(status.storage_used || '0', 'Storage', c.purple)
+		];
+	},
 
-		var view = E('div', { 'class': 'cbi-map' }, [
-			E('h2', {}, 'Backup Manager'),
-
-			// Status Card
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, 'Status'),
-				E('table', { 'class': 'table' }, [
-					E('tr', { 'class': 'tr' }, [
-						E('td', { 'class': 'td', 'style': 'width:200px' }, 'Storage Path'),
-						E('td', { 'class': 'td' }, status.storage_path || '/srv/backups')
-					]),
-					E('tr', { 'class': 'tr' }, [
-						E('td', { 'class': 'td' }, 'Storage Used'),
-						E('td', { 'class': 'td' }, status.storage_used || '0')
-					]),
-					E('tr', { 'class': 'tr' }, [
-						E('td', { 'class': 'td' }, 'Containers'),
-						E('td', { 'class': 'td' }, String(status.container_count || 0))
-					])
-				])
-			]),
-
-			// Quick Actions
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, 'Quick Actions'),
-				E('div', { 'style': 'display:flex;gap:10px;flex-wrap:wrap' }, [
-					E('button', {
-						'class': 'btn cbi-button-action',
-						'click': ui.createHandlerFn(this, function() {
-							return this.doBackup('full');
-						})
-					}, 'Full Backup'),
-					E('button', {
-						'class': 'btn cbi-button-neutral',
-						'click': ui.createHandlerFn(this, function() {
-							return this.doBackup('config');
-						})
-					}, 'Config Only'),
-					E('button', {
-						'class': 'btn cbi-button-neutral',
-						'click': ui.createHandlerFn(this, function() {
-							return this.doBackup('containers');
-						})
-					}, 'Containers Only')
-				])
-			]),
-
-			// Containers Section
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, 'LXC Containers'),
-				this.renderContainerTable(containers)
-			]),
-
-			// Backup History
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, 'Backup History'),
-				this.renderBackupTable(backups)
-			])
+	renderQuickActions: function() {
+		var self = this;
+		return E('div', { 'style': 'display: flex; gap: 12px; flex-wrap: wrap;' }, [
+			E('button', {
+				'class': 'kiss-btn kiss-btn-green',
+				'click': ui.createHandlerFn(this, function() {
+					return this.doBackup('full');
+				})
+			}, 'Full Backup'),
+			E('button', {
+				'class': 'kiss-btn kiss-btn-blue',
+				'click': ui.createHandlerFn(this, function() {
+					return this.doBackup('config');
+				})
+			}, 'Config Only'),
+			E('button', {
+				'class': 'kiss-btn',
+				'click': ui.createHandlerFn(this, function() {
+					return this.doBackup('containers');
+				})
+			}, 'Containers Only')
 		]);
-
-		return KissTheme.wrap([view], 'admin/system/backup');
 	},
 
 	renderContainerTable: function(containers) {
+		var self = this;
+
 		if (!containers || containers.length === 0) {
-			return E('p', { 'class': 'cbi-value-description' }, 'No LXC containers found.');
+			return E('p', { 'style': 'color: var(--kiss-muted); text-align: center; padding: 20px;' },
+				'No LXC containers found.');
 		}
 
-		var rows = containers.map(L.bind(function(c) {
-			var stateClass = c.state === 'running' ? 'badge success' : 'badge';
-			return E('tr', { 'class': 'tr' }, [
-				E('td', { 'class': 'td' }, c.name),
-				E('td', { 'class': 'td' }, [
-					E('span', { 'style': c.state === 'running' ? 'color:green' : 'color:gray' },
-						c.state === 'running' ? '● Running' : '○ Stopped')
+		var rows = containers.map(function(c) {
+			var stateColor = c.state === 'running' ? 'var(--kiss-green)' : 'var(--kiss-muted)';
+			return E('tr', {}, [
+				E('td', { 'style': 'font-weight: 600;' }, c.name),
+				E('td', {}, [
+					E('span', { 'style': 'color: ' + stateColor + ';' },
+						c.state === 'running' ? '\u25cf Running' : '\u25cb Stopped')
 				]),
-				E('td', { 'class': 'td' }, c.size || '-'),
-				E('td', { 'class': 'td' }, String(c.backups || 0)),
-				E('td', { 'class': 'td' }, [
+				E('td', { 'style': 'color: var(--kiss-muted);' }, c.size || '-'),
+				E('td', { 'style': 'color: var(--kiss-muted);' }, String(c.backups || 0)),
+				E('td', { 'style': 'width: 100px;' }, [
 					E('button', {
-						'class': 'btn cbi-button-action',
-						'style': 'padding:2px 8px;font-size:12px',
-						'click': ui.createHandlerFn(this, function(name) {
+						'class': 'kiss-btn kiss-btn-blue',
+						'style': 'padding: 4px 10px; font-size: 11px;',
+						'click': ui.createHandlerFn(self, function(name) {
 							return this.doContainerBackup(name);
 						}, c.name)
 					}, 'Backup')
 				])
 			]);
-		}, this));
+		});
 
-		return E('table', { 'class': 'table' }, [
-			E('tr', { 'class': 'tr table-titles' }, [
-				E('th', { 'class': 'th' }, 'Name'),
-				E('th', { 'class': 'th' }, 'State'),
-				E('th', { 'class': 'th' }, 'Size'),
-				E('th', { 'class': 'th' }, 'Backups'),
-				E('th', { 'class': 'th' }, 'Actions')
-			])
-		].concat(rows));
+		return E('table', { 'class': 'kiss-table' }, [
+			E('thead', {}, [
+				E('tr', {}, [
+					E('th', {}, 'Name'),
+					E('th', {}, 'State'),
+					E('th', {}, 'Size'),
+					E('th', {}, 'Backups'),
+					E('th', {}, 'Actions')
+				])
+			]),
+			E('tbody', {}, rows)
+		]);
 	},
 
 	renderBackupTable: function(backups) {
 		if (!backups || backups.length === 0) {
-			return E('p', { 'class': 'cbi-value-description' }, 'No backups found.');
+			return E('p', { 'style': 'color: var(--kiss-muted); text-align: center; padding: 20px;' },
+				'No backups found.');
 		}
 
 		// Sort by timestamp descending
@@ -171,25 +149,36 @@ return view.extend({
 			var typeLabel = {
 				'config': 'Config',
 				'container': 'Container',
-				'service': 'Service'
+				'service': 'Service',
+				'full': 'Full'
 			}[b.type] || b.type;
 
-			return E('tr', { 'class': 'tr' }, [
-				E('td', { 'class': 'td' }, b.file),
-				E('td', { 'class': 'td' }, typeLabel),
-				E('td', { 'class': 'td' }, b.size || '-'),
-				E('td', { 'class': 'td' }, formatDate(b.timestamp))
+			var typeColor = {
+				'config': 'blue',
+				'container': 'cyan',
+				'service': 'purple',
+				'full': 'green'
+			}[b.type] || 'muted';
+
+			return E('tr', {}, [
+				E('td', { 'style': 'font-family: monospace; font-size: 12px;' }, b.file),
+				E('td', {}, KissTheme.badge(typeLabel, typeColor)),
+				E('td', { 'style': 'color: var(--kiss-muted);' }, b.size || '-'),
+				E('td', { 'style': 'color: var(--kiss-muted);' }, formatDate(b.timestamp))
 			]);
 		});
 
-		return E('table', { 'class': 'table' }, [
-			E('tr', { 'class': 'tr table-titles' }, [
-				E('th', { 'class': 'th' }, 'File'),
-				E('th', { 'class': 'th' }, 'Type'),
-				E('th', { 'class': 'th' }, 'Size'),
-				E('th', { 'class': 'th' }, 'Date')
-			])
-		].concat(rows));
+		return E('table', { 'class': 'kiss-table' }, [
+			E('thead', {}, [
+				E('tr', {}, [
+					E('th', {}, 'File'),
+					E('th', {}, 'Type'),
+					E('th', {}, 'Size'),
+					E('th', {}, 'Date')
+				])
+			]),
+			E('tbody', {}, rows)
+		]);
 	},
 
 	doBackup: function(type) {
@@ -230,7 +219,50 @@ return view.extend({
 		});
 	},
 
-	handleSaveApply: null,
-	handleSave: null,
-	handleReset: null
+	render: function(data) {
+		var status = data[0] || {};
+		var backups = (data[1] || {}).backups || [];
+		var containers = (data[2] || {}).containers || [];
+
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'Backup Manager'),
+					KissTheme.badge(backups.length + ' backups', 'blue')
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' },
+					'System backups, container snapshots, and configuration archives')
+			]),
+
+			// Stats
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'style': 'margin: 20px 0;' },
+				this.renderStats(status, backups, containers)),
+
+			// Quick Actions
+			KissTheme.card('Quick Actions', this.renderQuickActions()),
+
+			// Two column layout
+			E('div', { 'class': 'kiss-grid kiss-grid-2', 'style': 'margin-top: 20px;' }, [
+				// Containers
+				KissTheme.card(
+					E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+						E('span', {}, 'LXC Containers'),
+						KissTheme.badge(containers.length + ' containers', 'cyan')
+					]),
+					this.renderContainerTable(containers)
+				),
+				// Backup History
+				KissTheme.card(
+					E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+						E('span', {}, 'Backup History'),
+						KissTheme.badge(backups.length + ' files', 'purple')
+					]),
+					this.renderBackupTable(backups)
+				)
+			])
+		];
+
+		return KissTheme.wrap(content, 'admin/system/backup');
+	}
 });

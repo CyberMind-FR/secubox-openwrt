@@ -1,0 +1,6 @@
+config APPNAME 'main'
+	option enabled '1'
+	option container 'APPNAME'
+	option lxc_dir '/srv/lxc'
+	option memory_limit 'MEMORY'
+	option network 'host'

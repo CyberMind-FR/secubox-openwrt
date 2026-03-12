@@ -1,0 +1,60 @@
+#!/bin/sh
+# WAF Stats Updater - writes to /tmp/secubox/waf-stats.json
+# Run via cron every minute: * * * * * /usr/sbin/waf-stats-update
+
+CACHE_DIR="/tmp/secubox"
+CACHE_FILE="$CACHE_DIR/waf-stats.json"
+WAF_DATA="/srv/mitmproxy-in"
+
+mkdir -p "$CACHE_DIR"
+
+# Check if mitmproxy containers are running
+running=0
+(lxc-info -n mitmproxy-in -s 2>/dev/null | grep -q "RUNNING") && running=1
+
+# Count threats today
+threats_today=0
+today=$(date -u +%Y-%m-%d)
+if [ -f "$WAF_DATA/threats.log" ]; then
+    threats_today=$(grep -c "\"timestamp\": \"$today" "$WAF_DATA/threats.log" 2>/dev/null)
+    [ -z "$threats_today" ] && threats_today=0
+fi
+
+# Count autobans
+autobans_total=0
+autobans_today=0
+if [ -f "$WAF_DATA/autoban-processed.log" ]; then
+    autobans_total=$(wc -l < "$WAF_DATA/autoban-processed.log" 2>/dev/null | tr -d ' ')
+    [ -z "$autobans_total" ] && autobans_total=0
+    autobans_today=$(grep -c "^$(date +%Y-%m-%d)" "$WAF_DATA/autoban-processed.log" 2>/dev/null)
+    [ -z "$autobans_today" ] && autobans_today=0
+fi
+
+# Pending
+autobans_pending=0
+if [ -f "$WAF_DATA/autoban-requests.log" ] && [ -s "$WAF_DATA/autoban-requests.log" ]; then
+    autobans_pending=$(wc -l < "$WAF_DATA/autoban-requests.log" 2>/dev/null | tr -d ' ')
+    [ -z "$autobans_pending" ] && autobans_pending=0
+fi
+
+# UCI settings
+autoban_enabled=$(uci -q get mitmproxy.autoban.enabled || echo 0)
+autoban_sensitivity=$(uci -q get mitmproxy.autoban.sensitivity || echo moderate)
+autoban_duration=$(uci -q get mitmproxy.autoban.ban_duration || echo 4h)
+mode=$(uci -q get mitmproxy.main.mode || echo upstream)
+
+# Write cache with compact JSON (no newlines in values)
+cat > "$CACHE_FILE" << EOF
+{
+  "running": $([ "$running" = "1" ] && echo "true" || echo "false"),
+  "threats_today": $threats_today,
+  "autobans_today": $autobans_today,
+  "autobans_total": $autobans_total,
+  "autobans_pending": $autobans_pending,
+  "autoban_enabled": $([ "$autoban_enabled" = "1" ] && echo "true" || echo "false"),
+  "autoban_sensitivity": "$autoban_sensitivity",
+  "autoban_duration": "$autoban_duration",
+  "mode": "$mode",
+  "updated": "$(date -Iseconds)"
+}
+EOF

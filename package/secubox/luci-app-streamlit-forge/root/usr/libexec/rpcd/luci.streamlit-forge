@@ -1,0 +1,479 @@
+#!/bin/sh
+# RPCD backend for Streamlit Forge LuCI app
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+APPS_DIR="/srv/streamlit/apps"
+
+# Get list of apps with status
+get_apps() {
+	json_init
+	json_add_array "apps"
+
+	config_load streamlit-forge
+	config_get apps_dir main apps_dir '/srv/streamlit/apps'
+
+	for app_dir in "$apps_dir"/*/; do
+		[ -d "$app_dir" ] || continue
+		local name=$(basename "$app_dir")
+		[ "$name" = "." ] || [ "$name" = ".." ] && continue
+		[ -f "$app_dir/.slforge-start.sh" ] && continue
+
+		local enabled port domain entrypoint memory created status
+
+		config_get enabled "$name" enabled '0'
+		config_get port "$name" port ''
+		config_get domain "$name" domain ''
+		config_get entrypoint "$name" entrypoint 'app.py'
+		config_get memory "$name" memory '512M'
+		config_get created "$name" created ''
+
+		# Check status by port
+		status="stopped"
+		if [ -n "$port" ] && netstat -tln 2>/dev/null | grep -q ":$port "; then
+			status="running"
+		fi
+
+		json_add_object ""
+		json_add_string "name" "$name"
+		json_add_string "enabled" "$enabled"
+		json_add_string "port" "$port"
+		json_add_string "domain" "$domain"
+		json_add_string "entrypoint" "$entrypoint"
+		json_add_string "memory" "$memory"
+		json_add_string "created" "$created"
+		json_add_string "status" "$status"
+		json_close_object
+	done
+
+	json_close_array
+	json_dump
+}
+
+# Get app info
+get_info() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	config_load streamlit-forge
+	config_get apps_dir main apps_dir '/srv/streamlit/apps'
+
+	local app_dir="$apps_dir/$name"
+	[ -d "$app_dir" ] || { echo '{"error":"App not found"}'; return; }
+
+	local enabled port domain entrypoint memory created status
+
+	config_get enabled "$name" enabled '0'
+	config_get port "$name" port ''
+	config_get domain "$name" domain ''
+	config_get entrypoint "$name" entrypoint 'app.py'
+	config_get memory "$name" memory '512M'
+	config_get created "$name" created ''
+
+	status="stopped"
+	if [ -n "$port" ] && netstat -tln 2>/dev/null | grep -q ":$port "; then
+		status="running"
+	fi
+
+	# Get files
+	local files=""
+	if [ -d "$app_dir/src" ]; then
+		files=$(ls -1 "$app_dir/src" 2>/dev/null | head -20 | tr '\n' ',')
+	fi
+
+	json_init
+	json_add_string "name" "$name"
+	json_add_string "enabled" "$enabled"
+	json_add_string "port" "$port"
+	json_add_string "domain" "$domain"
+	json_add_string "entrypoint" "$entrypoint"
+	json_add_string "memory" "$memory"
+	json_add_string "created" "$created"
+	json_add_string "status" "$status"
+	json_add_string "files" "$files"
+	json_add_string "directory" "$app_dir"
+	json_dump
+}
+
+# Get available templates
+get_templates() {
+	json_init
+	json_add_array "templates"
+
+	local tpl_dir="/usr/share/streamlit-forge/templates"
+	for tpl in "$tpl_dir"/*/; do
+		[ -d "$tpl" ] || continue
+		local name=$(basename "$tpl")
+		local desc=""
+		[ -f "$tpl/README.md" ] && desc=$(head -1 "$tpl/README.md" | sed 's/^#\s*//')
+
+		json_add_object ""
+		json_add_string "name" "$name"
+		json_add_string "description" "$desc"
+		json_close_object
+	done
+
+	json_close_array
+	json_dump
+}
+
+# Get global status
+get_status() {
+	local running=0
+	local total=0
+
+	config_load streamlit-forge
+	config_get apps_dir main apps_dir '/srv/streamlit/apps'
+
+	for app_dir in "$apps_dir"/*/; do
+		[ -d "$app_dir" ] || continue
+		local name=$(basename "$app_dir")
+		[ "$name" = "." ] || [ "$name" = ".." ] && continue
+		[ -f "$app_dir/.slforge-start.sh" ] && continue
+
+		total=$((total + 1))
+
+		local port
+		config_get port "$name" port ''
+		if [ -n "$port" ] && netstat -tln 2>/dev/null | grep -q ":$port "; then
+			running=$((running + 1))
+		fi
+	done
+
+	# Check LXC container
+	local lxc_status="stopped"
+	if lxc-info -n streamlit 2>/dev/null | grep -q "RUNNING"; then
+		lxc_status="running"
+	fi
+
+	json_init
+	json_add_int "total" "$total"
+	json_add_int "running" "$running"
+	json_add_string "lxc_status" "$lxc_status"
+	json_dump
+}
+
+# Create app
+do_create() {
+	local name="$1"
+	local template="$2"
+
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+	[ -z "$template" ] && template="basic"
+
+	local output
+	output=$(slforge create "$name" --from-template "$template" 2>&1)
+	local rc=$?
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "output" "$output"
+	json_dump
+}
+
+# Delete app
+do_delete() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	local output
+	output=$(slforge delete "$name" 2>&1)
+	local rc=$?
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "output" "$output"
+	json_dump
+}
+
+# Start app
+do_start() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	local output
+	output=$(slforge start "$name" 2>&1)
+	local rc=$?
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "output" "$output"
+	json_dump
+}
+
+# Stop app
+do_stop() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	local output
+	output=$(slforge stop "$name" 2>&1)
+	local rc=$?
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "output" "$output"
+	json_dump
+}
+
+# Restart app
+do_restart() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	local output
+	output=$(slforge restart "$name" 2>&1)
+	local rc=$?
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "output" "$output"
+	json_dump
+}
+
+# Expose app
+do_expose() {
+	local name="$1"
+	local domain="$2"
+
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	local output
+	if [ -n "$domain" ]; then
+		output=$(slforge expose "$name" --domain "$domain" 2>&1)
+	else
+		output=$(slforge expose "$name" 2>&1)
+	fi
+	local rc=$?
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "output" "$output"
+	json_dump
+}
+
+# Hide app
+do_hide() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	local output
+	output=$(slforge hide "$name" 2>&1)
+	local rc=$?
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "output" "$output"
+	json_dump
+}
+
+# Publish to mesh
+do_publish() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	local output
+	output=$(slforge publish "$name" 2>&1)
+	local rc=$?
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "output" "$output"
+	json_dump
+}
+
+# Unpublish from mesh
+do_unpublish() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	local output
+	output=$(slforge unpublish "$name" 2>&1)
+	local rc=$?
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "output" "$output"
+	json_dump
+}
+
+# Set config
+do_set_config() {
+	local name="$1"
+	local key="$2"
+	local value="$3"
+
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+	[ -z "$key" ] && { echo '{"error":"Key required"}'; return; }
+
+	uci set streamlit-forge."$name"."$key"="$value"
+	uci commit streamlit-forge
+
+	json_init
+	json_add_int "code" 0
+	json_add_string "message" "Config updated"
+	json_dump
+}
+
+# Get config
+get_config() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	json_init
+	config_load streamlit-forge
+
+	local enabled port domain entrypoint memory gitea_repo last_pull last_push
+	config_get enabled "$name" enabled '0'
+	config_get port "$name" port ''
+	config_get domain "$name" domain ''
+	config_get entrypoint "$name" entrypoint 'app.py'
+	config_get memory "$name" memory '512M'
+	config_get gitea_repo "$name" gitea_repo ''
+	config_get last_pull "$name" last_pull ''
+	config_get last_push "$name" last_push ''
+
+	json_add_string "enabled" "$enabled"
+	json_add_string "port" "$port"
+	json_add_string "domain" "$domain"
+	json_add_string "entrypoint" "$entrypoint"
+	json_add_string "memory" "$memory"
+	json_add_string "gitea_repo" "$gitea_repo"
+	json_add_string "last_pull" "$last_pull"
+	json_add_string "last_push" "$last_push"
+	json_dump
+}
+
+# ============================================
+# Phase 2: Gitea Integration
+# ============================================
+
+# Get edit URL for Gitea
+do_edit() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	local output
+	output=$(slforge edit "$name" 2>&1)
+	local rc=$?
+
+	# Extract URL from output
+	local edit_url=$(echo "$output" | grep -oE 'http[s]?://[^ ]+')
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "output" "$output"
+	json_add_string "edit_url" "$edit_url"
+	json_dump
+}
+
+# Pull from Gitea
+do_pull() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	local output
+	output=$(slforge pull "$name" 2>&1)
+	local rc=$?
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "output" "$output"
+	json_dump
+}
+
+# Push to Gitea
+do_push() {
+	local name="$1"
+	local message="$2"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	local output
+	if [ -n "$message" ]; then
+		output=$(slforge push "$name" -m "$message" 2>&1)
+	else
+		output=$(slforge push "$name" 2>&1)
+	fi
+	local rc=$?
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "output" "$output"
+	json_dump
+}
+
+# Generate preview
+do_preview() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	local output
+	output=$(slforge preview "$name" 2>&1)
+	local rc=$?
+
+	# Get preview path
+	config_load streamlit-forge
+	local preview_path
+	config_get preview_path "$name" preview ''
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "output" "$output"
+	json_add_string "preview_path" "$preview_path"
+	json_dump
+}
+
+# Get Gitea status
+get_gitea_status() {
+	json_init
+
+	# Load Gitea config
+	config_load gitea
+	local gitea_url gitea_token
+	config_get gitea_url main url 'http://127.0.0.1:3001'
+	config_get gitea_token main api_token ''
+
+	local gitea_available="false"
+	if [ -n "$gitea_token" ]; then
+		local version=$(curl -s -m 3 -H "Authorization: token $gitea_token" "$gitea_url/api/v1/version" 2>/dev/null | jsonfilter -e '@.version' 2>/dev/null)
+		if [ -n "$version" ]; then
+			gitea_available="true"
+			json_add_string "gitea_version" "$version"
+		fi
+	fi
+
+	json_add_string "gitea_available" "$gitea_available"
+	json_add_string "gitea_url" "$gitea_url"
+	json_dump
+}
+
+case "$1" in
+	list)
+		echo '{"list":{},"status":{},"gitea_status":{},"info":{"name":"String"},"templates":{},"config":{"name":"String"},"create":{"name":"String","template":"String"},"delete":{"name":"String"},"start":{"name":"String"},"stop":{"name":"String"},"restart":{"name":"String"},"expose":{"name":"String","domain":"String"},"hide":{"name":"String"},"publish":{"name":"String"},"unpublish":{"name":"String"},"set_config":{"name":"String","key":"String","value":"String"},"edit":{"name":"String"},"pull":{"name":"String"},"push":{"name":"String","message":"String"},"preview":{"name":"String"}}'
+		;;
+	call)
+		case "$2" in
+			list)         get_apps ;;
+			status)       get_status ;;
+			gitea_status) get_gitea_status ;;
+			info)         read input; json_load "$input"; json_get_var name name; get_info "$name" ;;
+			templates)    get_templates ;;
+			config)       read input; json_load "$input"; json_get_var name name; get_config "$name" ;;
+			create)       read input; json_load "$input"; json_get_var name name; json_get_var template template; do_create "$name" "$template" ;;
+			delete)       read input; json_load "$input"; json_get_var name name; do_delete "$name" ;;
+			start)        read input; json_load "$input"; json_get_var name name; do_start "$name" ;;
+			stop)         read input; json_load "$input"; json_get_var name name; do_stop "$name" ;;
+			restart)      read input; json_load "$input"; json_get_var name name; do_restart "$name" ;;
+			expose)       read input; json_load "$input"; json_get_var name name; json_get_var domain domain; do_expose "$name" "$domain" ;;
+			hide)         read input; json_load "$input"; json_get_var name name; do_hide "$name" ;;
+			publish)      read input; json_load "$input"; json_get_var name name; do_publish "$name" ;;
+			unpublish)    read input; json_load "$input"; json_get_var name name; do_unpublish "$name" ;;
+			set_config)   read input; json_load "$input"; json_get_var name name; json_get_var key key; json_get_var value value; do_set_config "$name" "$key" "$value" ;;
+			edit)         read input; json_load "$input"; json_get_var name name; do_edit "$name" ;;
+			pull)         read input; json_load "$input"; json_get_var name name; do_pull "$name" ;;
+			push)         read input; json_load "$input"; json_get_var name name; json_get_var message message; do_push "$name" "$message" ;;
+			preview)      read input; json_load "$input"; json_get_var name name; do_preview "$name" ;;
+		esac
+		;;
+esac

@@ -1,0 +1,14 @@
+{
+	"admin/services/streamlit-forge": {
+		"title": "Streamlit Forge",
+		"order": 85,
+		"action": {
+			"type": "view",
+			"path": "streamlit-forge/overview"
+		},
+		"depends": {
+			"acl": ["luci-app-streamlit-forge"],
+			"uci": { "streamlit-forge": true }
+		}
+	}
+}

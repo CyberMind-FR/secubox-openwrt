@@ -159,7 +159,7 @@ return L.view.extend({
 			E('td', {}, formatDate(cert.expires)),
 			E('td', {}, E('span', { 'class': 'vhost-pill ' + pill }, label)),
 			E('td', {}, E('button', {
-				'class': 'cbi-button cbi-button-action',
+				'class': 'kiss-btn kiss-btn-blue',
 				'click': function(ev) {
 					ev.preventDefault();
 					ui.showModal(_('Certificate Details'), [
@@ -181,7 +181,7 @@ return L.view.extend({
 						]),
 						E('div', { 'class': 'right' }, [
 							E('button', {
-								'class': 'cbi-button cbi-button-neutral',
+								'class': 'kiss-btn',
 								'click': ui.hideModal
 							}, _('Close'))
 						])

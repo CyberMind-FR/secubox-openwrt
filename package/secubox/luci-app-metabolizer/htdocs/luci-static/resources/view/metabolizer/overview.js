@@ -67,12 +67,12 @@ return view.extend({
 				E('h3', {}, _('Quick Access')),
 				E('div', { 'style': 'display: flex; gap: 1rem; flex-wrap: wrap;' }, [
 					E('a', {
-						'class': 'btn cbi-button cbi-button-action',
+						'class': 'kiss-btn kiss-btn-blue',
 						'href': status.cms_url || '#',
 						'target': '_blank'
 					}, _('Open CMS Editor')),
 					E('a', {
-						'class': 'btn cbi-button',
+						'class': 'kiss-btn',
 						'href': status.blog_url || '/blog/',
 						'target': '_blank'
 					}, _('View Blog'))
@@ -84,15 +84,15 @@ return view.extend({
 				E('h3', {}, _('Actions')),
 				E('div', { 'style': 'display: flex; gap: 1rem; flex-wrap: wrap;' }, [
 					E('button', {
-						'class': 'btn cbi-button',
+						'class': 'kiss-btn',
 						'click': ui.createHandlerFn(this, 'handleSync')
 					}, _('Sync Content')),
 					E('button', {
-						'class': 'btn cbi-button',
+						'class': 'kiss-btn',
 						'click': ui.createHandlerFn(this, 'handleBuild')
 					}, _('Build Site')),
 					E('button', {
-						'class': 'btn cbi-button',
+						'class': 'kiss-btn',
 						'click': ui.createHandlerFn(this, 'handleGiteaSync')
 					}, _('Pull from Gitea'))
 				])

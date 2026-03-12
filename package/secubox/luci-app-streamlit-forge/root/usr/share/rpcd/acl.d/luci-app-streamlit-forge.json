@@ -1,0 +1,17 @@
+{
+	"luci-app-streamlit-forge": {
+		"description": "Grant access to Streamlit Forge",
+		"read": {
+			"ubus": {
+				"luci.streamlit-forge": ["list", "status", "gitea_status", "info", "templates", "config"]
+			},
+			"uci": ["streamlit-forge", "gitea"]
+		},
+		"write": {
+			"ubus": {
+				"luci.streamlit-forge": ["create", "delete", "start", "stop", "restart", "expose", "hide", "publish", "unpublish", "set_config", "edit", "pull", "push", "preview"]
+			},
+			"uci": ["streamlit-forge"]
+		}
+	}
+}

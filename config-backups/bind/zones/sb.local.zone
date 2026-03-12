@@ -1,0 +1,16 @@
+$TTL 300
+@       IN      SOA     ns1.sb.local. admin.sb.local. (
+                        2026020601      ; Serial
+                        3600            ; Refresh
+                        900             ; Retry
+                        604800          ; Expire
+                        300 )           ; Negative Cache TTL
+
+        IN      NS      ns1.sb.local.
+
+; Wildcard for *.gk2.sb.local
+*.gk2   IN      A       192.168.255.1
+gk2     IN      A       192.168.255.1
+
+; Direct records
+ns1     IN      A       192.168.255.1

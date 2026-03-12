@@ -40,13 +40,9 @@ return view.extend({
 			E('style', {
 				'type': 'text/css'
 			}, `
-				.sh-dev-status-widget-shell .dsw-milestones,
-				.sh-dev-status-widget-shell .dsw-timeline,
-				.sh-dev-status-widget-shell .dsw-stats {
-					display: none !important;
-				}
-				.sh-dev-status-widget-shell .dsw-modules {
-					margin-top: -10px;
+				/* Widget v2.1 - full display */
+				.sh-dev-status-widget-shell {
+					margin-top: 16px;
 				}
 			`)
 		];
@@ -84,7 +80,7 @@ return view.extend({
 		var widget = this.getWidget();
 		var overallProgress = widget.getOverallProgress();
 		var phase = widget.getCurrentPhase();
-		var milestonesCount = Object.keys(widget.milestones || {}).length;
+		var milestonesCount = (widget.milestones || []).length;
 
 		return E('div', { 'class': 'sh-stats-grid sh-dev-status-grid' }, [
 			E('div', { 'class': 'sh-stat-badge' }, [
@@ -96,8 +92,8 @@ return view.extend({
 				E('div', { 'class': 'sh-stat-label' }, 'Milestone groups')
 			]),
 			E('div', { 'class': 'sh-stat-badge' }, [
-				E('div', { 'class': 'sh-stat-value' }, widget.stats.modulesCount),
-				E('div', { 'class': 'sh-stat-label' }, 'Modules livrés')
+				E('div', { 'class': 'sh-stat-value' }, Object.keys(widget.features || {}).length),
+				E('div', { 'class': 'sh-stat-label' }, 'Features')
 			]),
 			E('div', { 'class': 'sh-stat-badge' }, [
 				E('div', { 'class': 'sh-stat-value' }, (phase.status || '').replace('-', ' ')),

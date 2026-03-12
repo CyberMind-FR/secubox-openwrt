@@ -1,0 +1,1195 @@
+#!/bin/sh
+#
+# rttyctl - SecuBox RTTY Remote Control CLI
+#
+# Remote control assistant for SecuBox mesh nodes
+# Provides RPCD proxy, terminal access, and session replay
+#
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+SCRIPT_NAME="rttyctl"
+VERSION="0.1.0"
+
+# Configuration
+CONFIG_FILE="/etc/config/rtty-remote"
+SESSION_DB="/srv/rtty-remote/sessions.db"
+CACHE_DIR="/tmp/rtty-remote"
+TOKEN_DIR="/tmp/rtty-remote/tokens"
+LOG_FILE="/var/log/rtty-remote.log"
+
+# Load libraries
+[ -f /usr/lib/secubox/rtty-proxy.sh ] && . /usr/lib/secubox/rtty-proxy.sh
+[ -f /usr/lib/secubox/rtty-session.sh ] && . /usr/lib/secubox/rtty-session.sh
+[ -f /usr/lib/secubox/rtty-auth.sh ] && . /usr/lib/secubox/rtty-auth.sh
+
+# Load master-link if available
+[ -f /usr/lib/secubox/master-link.sh ] && . /usr/lib/secubox/master-link.sh
+
+#------------------------------------------------------------------------------
+# Utilities
+#------------------------------------------------------------------------------
+
+log() {
+    local level="$1"
+    shift
+    echo "[$level] $*" >> "$LOG_FILE"
+    [ "$level" = "error" ] && echo "Error: $*" >&2
+}
+
+die() {
+    echo "Error: $*" >&2
+    exit 1
+}
+
+ensure_dirs() {
+    mkdir -p "$CACHE_DIR" 2>/dev/null
+    mkdir -p "$TOKEN_DIR" 2>/dev/null
+    mkdir -p "$(dirname "$SESSION_DB")" 2>/dev/null
+}
+
+#------------------------------------------------------------------------------
+# Token-Based Shared Access
+#------------------------------------------------------------------------------
+
+generate_token_code() {
+    # Generate 6-character alphanumeric code
+    # Use hexdump if available, fallback to awk-based pseudo-random
+    local chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    local code=""
+
+    if command -v hexdump >/dev/null 2>&1; then
+        # Use hexdump for true randomness
+        local hex=$(head -c 6 /dev/urandom | hexdump -e '6/1 "%02x"')
+        local i=0
+        while [ $i -lt 6 ]; do
+            local byte=$(printf "%d" "0x$(echo "$hex" | cut -c$((i*2+1))-$((i*2+2)))")
+            local idx=$((byte % 32))
+            code="${code}$(echo "$chars" | cut -c$((idx + 1)))"
+            i=$((i + 1))
+        done
+    else
+        # Fallback: use awk with pseudo-random seed from /proc/sys/kernel/random/uuid
+        local seed=$(cat /proc/sys/kernel/random/uuid 2>/dev/null | tr -d '-' | cut -c1-8)
+        seed=$(printf "%d" "0x$seed" 2>/dev/null || echo $(($(date +%s) % 65536)))
+        code=$(awk -v seed="$seed" -v chars="$chars" 'BEGIN {
+            srand(seed)
+            for (i=1; i<=6; i++) {
+                idx = int(rand() * 32) + 1
+                printf "%s", substr(chars, idx, 1)
+            }
+            print ""
+        }')
+    fi
+
+    echo "$code"
+}
+
+cmd_token_generate() {
+    local ttl="${1:-3600}"  # Default 1 hour
+    local permissions="${2:-rpc,terminal}"
+
+    local code=$(generate_token_code)
+    local now=$(date +%s)
+    local expires=$((now + ttl))
+    local node_name=$(uci -q get system.@system[0].hostname || echo "secubox")
+    local node_ip=$(uci -q get network.lan.ipaddr || echo "192.168.255.1")
+
+    # Store token
+    cat > "$TOKEN_DIR/$code" << EOF
+{
+    "code": "$code",
+    "created": $now,
+    "expires": $expires,
+    "ttl": $ttl,
+    "node_id": "$node_name",
+    "node_ip": "$node_ip",
+    "permissions": "$permissions",
+    "used": 0
+}
+EOF
+
+    log "info" "Generated token $code (expires in ${ttl}s)"
+
+    echo "Support Access Token Generated"
+    echo "=============================="
+    echo ""
+    echo "  Code:    $code"
+    echo "  Expires: $(date -d "@$expires" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || date -r $expires "+%Y-%m-%d %H:%M:%S")"
+    echo "  TTL:     ${ttl}s"
+    echo "  Access:  $permissions"
+    echo ""
+    echo "Share this code with the support person."
+}
+
+cmd_token_validate() {
+    local code="$1"
+    [ -z "$code" ] && { echo '{"valid":false,"error":"Missing code"}'; return 1; }
+
+    # Normalize code (uppercase, remove spaces)
+    code=$(echo "$code" | tr 'a-z' 'A-Z' | tr -d ' -')
+
+    local token_file="$TOKEN_DIR/$code"
+
+    if [ ! -f "$token_file" ]; then
+        echo '{"valid":false,"error":"Invalid code"}'
+        return 1
+    fi
+
+    local now=$(date +%s)
+    local expires=$(jsonfilter -i "$token_file" -e '@.expires')
+
+    if [ "$now" -gt "$expires" ]; then
+        rm -f "$token_file"
+        echo '{"valid":false,"error":"Token expired"}'
+        return 1
+    fi
+
+    # Mark as used
+    local used=$(jsonfilter -i "$token_file" -e '@.used')
+    used=$((used + 1))
+    local tmp_file="${token_file}.tmp"
+    jsonfilter -i "$token_file" -e '@' | sed "s/\"used\": [0-9]*/\"used\": $used/" > "$tmp_file"
+    mv "$tmp_file" "$token_file"
+
+    # Return token info
+    cat "$token_file"
+}
+
+cmd_token_list() {
+    echo "Active Support Tokens"
+    echo "====================="
+    echo ""
+
+    local now=$(date +%s)
+    local count=0
+
+    for token_file in "$TOKEN_DIR"/*; do
+        [ -f "$token_file" ] || continue
+
+        local code=$(basename "$token_file")
+        local expires=$(jsonfilter -i "$token_file" -e '@.expires' 2>/dev/null)
+        local created=$(jsonfilter -i "$token_file" -e '@.created' 2>/dev/null)
+        local used=$(jsonfilter -i "$token_file" -e '@.used' 2>/dev/null)
+        local perms=$(jsonfilter -i "$token_file" -e '@.permissions' 2>/dev/null)
+
+        [ -z "$expires" ] && continue
+
+        if [ "$now" -gt "$expires" ]; then
+            rm -f "$token_file"
+            continue
+        fi
+
+        local remaining=$((expires - now))
+        local mins=$((remaining / 60))
+
+        printf "  %-8s  %3dm left  used:%d  [%s]\n" "$code" "$mins" "$used" "$perms"
+        count=$((count + 1))
+    done
+
+    [ $count -eq 0 ] && echo "  No active tokens"
+    echo ""
+}
+
+cmd_token_revoke() {
+    local code="$1"
+    [ -z "$code" ] && die "Usage: rttyctl token revoke <code>"
+
+    code=$(echo "$code" | tr 'a-z' 'A-Z' | tr -d ' -')
+
+    if [ -f "$TOKEN_DIR/$code" ]; then
+        rm -f "$TOKEN_DIR/$code"
+        echo "Token $code revoked"
+        log "info" "Token $code revoked"
+    else
+        echo "Token $code not found"
+    fi
+}
+
+cmd_token_json_list() {
+    local now=$(date +%s)
+
+    printf '{"tokens":['
+    local first=1
+
+    for token_file in "$TOKEN_DIR"/*; do
+        [ -f "$token_file" ] || continue
+
+        local expires=$(jsonfilter -i "$token_file" -e '@.expires' 2>/dev/null)
+        [ -z "$expires" ] && continue
+
+        if [ "$now" -gt "$expires" ]; then
+            rm -f "$token_file"
+            continue
+        fi
+
+        [ $first -eq 0 ] && printf ','
+        cat "$token_file"
+        first=0
+    done
+
+    printf ']}'
+}
+
+# Token-authenticated RPC call (for support access)
+cmd_token_rpc() {
+    local code="$1"
+    local object="$2"
+    local method="$3"
+    shift 3
+    local params="$*"
+
+    [ -z "$code" ] || [ -z "$object" ] || [ -z "$method" ] && {
+        echo "Usage: rttyctl token-rpc <code> <object> <method> [params]"
+        return 1
+    }
+
+    # Validate token
+    local validation=$(cmd_token_validate "$code")
+    local valid=$(echo "$validation" | jsonfilter -e '@.valid' 2>/dev/null)
+
+    if [ "$valid" = "false" ]; then
+        echo "Error: $(echo "$validation" | jsonfilter -e '@.error')"
+        return 1
+    fi
+
+    # Check permissions
+    local perms=$(echo "$validation" | jsonfilter -e '@.permissions' 2>/dev/null)
+    case "$perms" in
+        *rpc*) ;;
+        *) echo "Error: Token does not have RPC permission"; return 1 ;;
+    esac
+
+    # Execute RPC locally (token grants local access)
+    local result=$(ubus call "$object" "$method" "${params:-{}}" 2>&1)
+    local rc=$?
+
+    if [ $rc -eq 0 ]; then
+        echo "$result"
+    else
+        echo "Error: $result"
+        return 1
+    fi
+}
+
+get_config() {
+    local section="$1"
+    local option="$2"
+    local default="$3"
+
+    config_load rtty-remote
+    config_get value "$section" "$option" "$default"
+    echo "$value"
+}
+
+#------------------------------------------------------------------------------
+# Node Management
+#------------------------------------------------------------------------------
+
+cmd_nodes() {
+    echo "SecuBox RTTY Remote - Mesh Nodes"
+    echo "================================"
+    echo ""
+
+    # Try to get peers from master-link first
+    if command -v ml_peer_list >/dev/null 2>&1; then
+        local peers=$(ml_peer_list 2>/dev/null)
+        if [ -n "$peers" ]; then
+            echo "From Master-Link:"
+            echo "$peers" | jsonfilter -e '@.peers[*]' 2>/dev/null | while read peer; do
+                local fp=$(echo "$peer" | jsonfilter -e '@.fingerprint')
+                local name=$(echo "$peer" | jsonfilter -e '@.name')
+                local status=$(echo "$peer" | jsonfilter -e '@.status')
+                local addr=$(echo "$peer" | jsonfilter -e '@.address')
+                printf "  %-12s %-20s %-15s %s\n" "$fp" "$name" "$addr" "$status"
+            done
+            echo ""
+        fi
+    fi
+
+    # Try secubox-p2p peers
+    if [ -x /usr/sbin/secubox-p2p ]; then
+        echo "From P2P Mesh:"
+        /usr/sbin/secubox-p2p peers 2>/dev/null | head -20
+    fi
+
+    # Also check WireGuard peers
+    if command -v wg >/dev/null 2>&1; then
+        echo ""
+        echo "WireGuard Peers:"
+        wg show all peers 2>/dev/null | while read iface peer; do
+            local endpoint=$(wg show "$iface" endpoints 2>/dev/null | grep "$peer" | awk '{print $2}')
+            local handshake=$(wg show "$iface" latest-handshakes 2>/dev/null | grep "$peer" | awk '{print $2}')
+            [ -n "$endpoint" ] && printf "  %-15s %s (handshake: %ss ago)\n" "$endpoint" "${peer:0:12}..." "$handshake"
+        done
+    fi
+}
+
+cmd_node() {
+    local node_id="$1"
+    [ -z "$node_id" ] && die "Usage: rttyctl node <node_id>"
+
+    echo "Node: $node_id"
+    echo "=============="
+
+    # Check if in master-link
+    if command -v ml_peer_list >/dev/null 2>&1; then
+        local peer_info=$(ml_peer_list 2>/dev/null | jsonfilter -e "@.peers[?(@.fingerprint=='$node_id')]" 2>/dev/null)
+        if [ -n "$peer_info" ]; then
+            echo "Master-Link Status:"
+            echo "  Name:    $(echo "$peer_info" | jsonfilter -e '@.name')"
+            echo "  Status:  $(echo "$peer_info" | jsonfilter -e '@.status')"
+            echo "  Address: $(echo "$peer_info" | jsonfilter -e '@.address')"
+            echo "  Role:    $(echo "$peer_info" | jsonfilter -e '@.role')"
+        fi
+    fi
+
+    # Try to ping
+    local addr=$(get_node_address "$node_id")
+    if [ -n "$addr" ]; then
+        echo ""
+        echo "Connectivity:"
+        if ping -c 1 -W 2 "$addr" >/dev/null 2>&1; then
+            echo "  Ping: OK"
+        else
+            echo "  Ping: FAILED"
+        fi
+    fi
+}
+
+get_node_address() {
+    local node_id="$1"
+
+    # Check UCI for known nodes
+    config_load rtty-remote
+    local addr=""
+    config_get addr "node_${node_id}" address ""
+    [ -n "$addr" ] && { echo "$addr"; return; }
+
+    # Check master-link
+    if command -v ml_peer_list >/dev/null 2>&1; then
+        addr=$(ml_peer_list 2>/dev/null | jsonfilter -e "@.peers[?(@.fingerprint=='$node_id')].address" 2>/dev/null)
+        [ -n "$addr" ] && { echo "$addr"; return; }
+    fi
+
+    # Fallback: assume node_id is an IP
+    echo "$node_id"
+}
+
+#------------------------------------------------------------------------------
+# RPCD Proxy - Core Feature
+#------------------------------------------------------------------------------
+
+cmd_rpc() {
+    local node_id="$1"
+    local object="$2"
+    local method="$3"
+    shift 3
+    local params="$*"
+
+    [ -z "$node_id" ] || [ -z "$object" ] || [ -z "$method" ] && {
+        echo "Usage: rttyctl rpc <node_id> <object> <method> [params_json]"
+        echo ""
+        echo "Examples:"
+        echo "  rttyctl rpc 10.100.0.2 luci.system-hub status"
+        echo "  rttyctl rpc sb-01 luci.haproxy vhost_list"
+        echo "  rttyctl rpc 192.168.255.2 system board"
+        exit 1
+    }
+
+    local addr=$(get_node_address "$node_id")
+    [ -z "$addr" ] && die "Cannot resolve node address for: $node_id"
+
+    if [ -z "$params" ] || [ "$params" = "{}" ]; then
+        params="{}"
+    fi
+
+    log "info" "RPC call to $addr: $object.$method"
+
+    # Check if local address - use direct ubus for full access
+    local is_local=0
+    case "$addr" in
+        127.0.0.1|localhost|192.168.255.1|$(uci -q get network.lan.ipaddr))
+            is_local=1
+            ;;
+    esac
+
+    local result=""
+    if [ "$is_local" = "1" ]; then
+        # Use direct ubus call for local node (full access)
+        result=$(ubus call "$object" "$method" "$params" 2>&1)
+        local ubus_rc=$?
+        if [ $ubus_rc -ne 0 ]; then
+            die "ubus error: $result"
+        fi
+    else
+        # Remote node - use HTTP JSON-RPC
+        local auth_token=$(get_auth_token "$addr")
+        local rpc_id=$(date +%s%N | cut -c1-13)
+
+        local request=$(cat << EOF
+{"jsonrpc":"2.0","id":$rpc_id,"method":"call","params":["$auth_token","$object","$method",$params]}
+EOF
+)
+
+        local timeout=$(get_config proxy rpc_timeout 30)
+        local http_port=$(get_config proxy http_port 8081)
+        local url="http://${addr}:${http_port}/ubus"
+
+        local response=$(curl -s -m "$timeout" \
+            -H "Content-Type: application/json" \
+            -d "$request" \
+            "$url" 2>&1)
+
+        local curl_rc=$?
+
+        if [ $curl_rc -ne 0 ]; then
+            die "Connection failed to $addr (curl error: $curl_rc)"
+        fi
+
+        # Check for JSON-RPC error
+        local error=$(echo "$response" | jsonfilter -e '@.error.message' 2>/dev/null)
+        if [ -n "$error" ]; then
+            die "RPC error: $error"
+        fi
+
+        # Extract result
+        result=$(echo "$response" | jsonfilter -e '@.result[1]' 2>/dev/null)
+    fi
+    if [ -z "$result" ]; then
+        result=$(echo "$response" | jsonfilter -e '@.result' 2>/dev/null)
+    fi
+
+    echo "$result"
+}
+
+cmd_rpc_list() {
+    local node_id="$1"
+    [ -z "$node_id" ] && die "Usage: rttyctl rpc-list <node_id>"
+
+    local addr=$(get_node_address "$node_id")
+    [ -z "$addr" ] && die "Cannot resolve node address for: $node_id"
+
+    echo "RPCD Objects on $node_id ($addr)"
+    echo "================================="
+
+    # Get session first
+    local auth_token=$(get_auth_token "$addr")
+
+    # List ubus objects
+    json_init
+    json_add_string "jsonrpc" "2.0"
+    json_add_int "id" 1
+    json_add_string "method" "list"
+    json_add_array "params"
+    json_add_string "" "$auth_token"
+    json_add_string "" "*"
+    json_close_array
+    local request=$(json_dump)
+
+    local http_port=$(get_config proxy http_port 8081)
+    local response=$(curl -s -m 30 \
+        -H "Content-Type: application/json" \
+        -d "$request" \
+        "http://${addr}:${http_port}/ubus" 2>&1)
+
+    # Parse and display objects
+    echo "$response" | jsonfilter -e '@.result[1]' 2>/dev/null | \
+        python3 -c "import sys,json; d=json.load(sys.stdin); [print(f'  {k}') for k in sorted(d.keys())]" 2>/dev/null || \
+        echo "$response"
+}
+
+cmd_rpc_batch() {
+    local node_id="$1"
+    local batch_file="$2"
+
+    [ -z "$node_id" ] || [ -z "$batch_file" ] && die "Usage: rttyctl rpc-batch <node_id> <file.json>"
+    [ ! -f "$batch_file" ] && die "Batch file not found: $batch_file"
+
+    echo "Executing batch RPC to $node_id..."
+
+    local count=0
+    while read -r line; do
+        [ -z "$line" ] && continue
+        local object=$(echo "$line" | jsonfilter -e '@.object')
+        local method=$(echo "$line" | jsonfilter -e '@.method')
+        local params=$(echo "$line" | jsonfilter -e '@.params')
+
+        echo "[$count] $object.$method"
+        cmd_rpc "$node_id" "$object" "$method" "$params"
+        echo ""
+        count=$((count + 1))
+    done < "$batch_file"
+
+    echo "Executed $count calls"
+}
+
+#------------------------------------------------------------------------------
+# Authentication
+#------------------------------------------------------------------------------
+
+get_auth_token() {
+    local addr="$1"
+    local cache_file="$CACHE_DIR/auth_${addr//[.:]/_}"
+
+    # Check cache
+    if [ -f "$cache_file" ]; then
+        local cached=$(cat "$cache_file")
+        local ts=$(echo "$cached" | cut -d: -f1)
+        local token=$(echo "$cached" | cut -d: -f2-)
+        local now=$(date +%s)
+        local ttl=$(get_config main session_ttl 3600)
+
+        if [ $((now - ts)) -lt $ttl ]; then
+            echo "$token"
+            return 0
+        fi
+    fi
+
+    # Get new session via login
+    # For now, use anonymous session (00000000000000000000000000000000)
+    # TODO: Implement proper master-link authentication
+    local anon_token="00000000000000000000000000000000"
+
+    # Try to get authenticated session
+    json_init
+    json_add_string "jsonrpc" "2.0"
+    json_add_int "id" 1
+    json_add_string "method" "call"
+    json_add_array "params"
+    json_add_string "" "$anon_token"
+    json_add_string "" "session"
+    json_add_string "" "login"
+    json_add_object ""
+    json_add_string "username" "root"
+    json_add_string "password" ""
+    json_close_object
+    json_close_array
+    local request=$(json_dump)
+
+    local http_port=$(get_config proxy http_port 8081)
+    local response=$(curl -s -m 10 \
+        -H "Content-Type: application/json" \
+        -d "$request" \
+        "http://${addr}:${http_port}/ubus" 2>&1)
+
+    local token=$(echo "$response" | jsonfilter -e '@.result[1].ubus_rpc_session' 2>/dev/null)
+
+    if [ -n "$token" ] && [ "$token" != "null" ]; then
+        echo "$(date +%s):$token" > "$cache_file"
+        echo "$token"
+    else
+        # Fallback to anonymous
+        echo "$anon_token"
+    fi
+}
+
+cmd_auth() {
+    local node_id="$1"
+    [ -z "$node_id" ] && die "Usage: rttyctl auth <node_id>"
+
+    local addr=$(get_node_address "$node_id")
+    echo "Authenticating to $node_id ($addr)..."
+
+    # Clear cache to force re-auth
+    rm -f "$CACHE_DIR/auth_${addr//[.:]/_}" 2>/dev/null
+
+    local token=$(get_auth_token "$addr")
+    if [ -n "$token" ] && [ "$token" != "00000000000000000000000000000000" ]; then
+        echo "Authenticated successfully"
+        echo "Session: ${token:0:16}..."
+    else
+        echo "Using anonymous session (limited access)"
+    fi
+}
+
+cmd_revoke() {
+    local node_id="$1"
+    [ -z "$node_id" ] && die "Usage: rttyctl revoke <node_id>"
+
+    local addr=$(get_node_address "$node_id")
+    rm -f "$CACHE_DIR/auth_${addr//[.:]/_}" 2>/dev/null
+    echo "Revoked authentication for $node_id"
+}
+
+#------------------------------------------------------------------------------
+# Terminal/Connection (Placeholder for RTTY)
+#------------------------------------------------------------------------------
+
+cmd_connect() {
+    local node_id="$1"
+    [ -z "$node_id" ] && die "Usage: rttyctl connect <node_id>"
+
+    local addr=$(get_node_address "$node_id")
+
+    echo "Connecting to $node_id ($addr)..."
+    echo ""
+    echo "Note: Full terminal support requires RTTY package."
+    echo "For now, use SSH:"
+    echo "  ssh root@$addr"
+    echo ""
+    echo "Or use RPCD proxy:"
+    echo "  rttyctl rpc $node_id system board"
+}
+
+cmd_disconnect() {
+    local session_id="$1"
+    [ -z "$session_id" ] && die "Usage: rttyctl disconnect <session_id>"
+    echo "Session $session_id disconnected"
+}
+
+#------------------------------------------------------------------------------
+# Session Management (RTTY Remote Sessions)
+#------------------------------------------------------------------------------
+
+cmd_sessions() {
+    local node_id="$1"
+
+    echo "Active Sessions"
+    echo "==============="
+
+    if [ ! -f "$SESSION_DB" ]; then
+        echo "No sessions recorded"
+        return
+    fi
+
+    sqlite3 "$SESSION_DB" "SELECT id, node_id, type, started_at FROM sessions ORDER BY started_at DESC LIMIT 20" 2>/dev/null || \
+        echo "Session database not initialized"
+}
+
+#------------------------------------------------------------------------------
+# Avatar-Tap Integration - Session Capture & Replay
+#------------------------------------------------------------------------------
+
+# Load avatar-tap database path from UCI config
+get_avatar_tap_db() {
+    config_load avatar-tap 2>/dev/null
+    local db_path
+    config_get db_path main db_path '/srv/avatar-tap/sessions.db'
+    echo "$db_path"
+}
+
+AVATAR_TAP_DB=$(get_avatar_tap_db)
+
+cmd_tap_sessions() {
+    local domain_filter="$1"
+
+    echo "Avatar-Tap Captured Sessions"
+    echo "============================"
+    echo ""
+
+    if [ ! -f "$AVATAR_TAP_DB" ]; then
+        echo "No captured sessions (avatar-tap database not found)"
+        return 1
+    fi
+
+    if [ -n "$domain_filter" ]; then
+        echo "Filter: $domain_filter"
+        echo ""
+        sqlite3 "$AVATAR_TAP_DB" "SELECT id, domain, method, path, datetime(captured_at,'unixepoch') as captured, label FROM sessions WHERE domain LIKE '%$domain_filter%' ORDER BY captured_at DESC LIMIT 30" 2>/dev/null | \
+        while IFS='|' read id domain method path captured label; do
+            printf "  [%3d] %-25s %-6s %-30s %s\n" "$id" "$domain" "$method" "${path:0:30}" "${label:-}"
+        done
+    else
+        sqlite3 "$AVATAR_TAP_DB" "SELECT id, domain, method, path, datetime(captured_at,'unixepoch') as captured, label FROM sessions ORDER BY captured_at DESC LIMIT 30" 2>/dev/null | \
+        while IFS='|' read id domain method path captured label; do
+            printf "  [%3d] %-25s %-6s %-30s %s\n" "$id" "$domain" "$method" "${path:0:30}" "${label:-}"
+        done
+    fi
+
+    echo ""
+    local total=$(sqlite3 "$AVATAR_TAP_DB" "SELECT COUNT(*) FROM sessions" 2>/dev/null)
+    echo "Total sessions: ${total:-0}"
+}
+
+cmd_tap_show() {
+    local session_id="$1"
+    [ -z "$session_id" ] && die "Usage: rttyctl tap-show <session_id>"
+
+    if [ ! -f "$AVATAR_TAP_DB" ]; then
+        die "Avatar-tap database not found"
+    fi
+
+    echo "Session Details: #$session_id"
+    echo "=========================="
+
+    local session=$(sqlite3 "$AVATAR_TAP_DB" "SELECT id, domain, method, path, captured_at, last_used, use_count, label, avatar_id FROM sessions WHERE id=$session_id" 2>/dev/null)
+
+    if [ -z "$session" ]; then
+        die "Session not found: $session_id"
+    fi
+
+    echo "$session" | while IFS='|' read id domain method path captured last_used use_count label avatar_id; do
+        echo "  ID:       $id"
+        echo "  Domain:   $domain"
+        echo "  Method:   $method"
+        echo "  Path:     $path"
+        echo "  Captured: $(date -d "@$captured" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || date -r "$captured" "+%Y-%m-%d %H:%M:%S")"
+        echo "  Used:     $use_count times"
+        echo "  Label:    ${label:-(none)}"
+        echo "  Avatar:   ${avatar_id:-(not linked)}"
+    done
+
+    # Show headers
+    echo ""
+    echo "Request Headers:"
+    sqlite3 "$AVATAR_TAP_DB" "SELECT name, value FROM session_headers WHERE session_id=$session_id AND type='request'" 2>/dev/null | \
+    while IFS='|' read name value; do
+        # Mask sensitive values
+        case "$name" in
+            Cookie|Authorization|X-Auth-Token)
+                printf "  %-20s %s...\n" "$name:" "${value:0:30}"
+                ;;
+            *)
+                printf "  %-20s %s\n" "$name:" "$value"
+                ;;
+        esac
+    done
+}
+
+cmd_tap_replay() {
+    local session_id="$1"
+    local target_node="$2"
+
+    [ -z "$session_id" ] || [ -z "$target_node" ] && {
+        echo "Usage: rttyctl tap-replay <session_id> <target_node>"
+        echo ""
+        echo "Replay a captured avatar-tap session to a remote mesh node."
+        echo ""
+        echo "Examples:"
+        echo "  rttyctl tap-replay 5 10.100.0.2"
+        echo "  rttyctl tap-replay 12 sb-office"
+        exit 1
+    }
+
+    if [ ! -f "$AVATAR_TAP_DB" ]; then
+        die "Avatar-tap database not found"
+    fi
+
+    # Get session info
+    local session=$(sqlite3 "$AVATAR_TAP_DB" "SELECT domain, method, path FROM sessions WHERE id=$session_id" 2>/dev/null)
+    [ -z "$session" ] && die "Session not found: $session_id"
+
+    local domain=$(echo "$session" | cut -d'|' -f1)
+    local method=$(echo "$session" | cut -d'|' -f2)
+    local path=$(echo "$session" | cut -d'|' -f3)
+
+    echo "Replaying Session #$session_id to $target_node"
+    echo "=============================================="
+    echo "  Original: $method $domain$path"
+    echo ""
+
+    # Get target node address
+    local target_addr=$(get_node_address "$target_node")
+    [ -z "$target_addr" ] && die "Cannot resolve target node: $target_node"
+
+    echo "  Target:   $target_addr"
+    echo ""
+
+    # Export session to JSON
+    local export_file="/tmp/replay_session_$$.json"
+    avatar-tapctl export "$session_id" "$export_file" 2>/dev/null || die "Failed to export session"
+
+    # Read session data
+    local headers=$(jsonfilter -i "$export_file" -e '@.headers' 2>/dev/null)
+    local cookies=$(jsonfilter -i "$export_file" -e '@.cookies' 2>/dev/null)
+    local body=$(jsonfilter -i "$export_file" -e '@.body' 2>/dev/null)
+
+    # Build the replay target URL
+    # Replace original domain with target node domain if same path is available
+    local target_url="http://${target_addr}${path}"
+
+    echo "  Replay URL: $target_url"
+    echo ""
+
+    # Execute replay via curl
+    local curl_opts="-s -m 30"
+
+    # Add headers
+    if [ -n "$headers" ]; then
+        echo "$headers" | jsonfilter -e '@[*]' 2>/dev/null | while read header; do
+            local name=$(echo "$header" | jsonfilter -e '@.name')
+            local value=$(echo "$header" | jsonfilter -e '@.value')
+            # Skip host header as we're changing target
+            [ "$name" = "Host" ] && continue
+            curl_opts="$curl_opts -H \"$name: $value\""
+        done
+    fi
+
+    # Add cookies
+    if [ -n "$cookies" ]; then
+        local cookie_str=$(echo "$cookies" | jsonfilter -e '@[*]' 2>/dev/null | while read c; do
+            local n=$(echo "$c" | jsonfilter -e '@.name')
+            local v=$(echo "$c" | jsonfilter -e '@.value')
+            echo -n "$n=$v; "
+        done)
+        [ -n "$cookie_str" ] && curl_opts="$curl_opts -H \"Cookie: $cookie_str\""
+    fi
+
+    echo "Executing replay..."
+
+    case "$method" in
+        GET)
+            local result=$(curl $curl_opts "$target_url" 2>&1)
+            ;;
+        POST)
+            local result=$(curl $curl_opts -X POST -d "$body" "$target_url" 2>&1)
+            ;;
+        PUT)
+            local result=$(curl $curl_opts -X PUT -d "$body" "$target_url" 2>&1)
+            ;;
+        DELETE)
+            local result=$(curl $curl_opts -X DELETE "$target_url" 2>&1)
+            ;;
+        *)
+            local result=$(curl $curl_opts -X "$method" "$target_url" 2>&1)
+            ;;
+    esac
+
+    local rc=$?
+    rm -f "$export_file"
+
+    if [ $rc -eq 0 ]; then
+        echo "Replay successful!"
+        echo ""
+        echo "Response:"
+        echo "$result" | head -50
+    else
+        echo "Replay failed (curl error: $rc)"
+        echo "$result"
+        return 1
+    fi
+
+    # Log replay
+    log "info" "Replayed session #$session_id to $target_node"
+}
+
+cmd_tap_export() {
+    local session_id="$1"
+    local output_file="$2"
+
+    [ -z "$session_id" ] && die "Usage: rttyctl tap-export <session_id> [output_file]"
+
+    if [ -z "$output_file" ]; then
+        output_file="/tmp/session_${session_id}.json"
+    fi
+
+    if [ ! -f "$AVATAR_TAP_DB" ]; then
+        die "Avatar-tap database not found"
+    fi
+
+    # Use avatar-tapctl export
+    avatar-tapctl export "$session_id" "$output_file" 2>/dev/null
+
+    if [ -f "$output_file" ]; then
+        echo "Session exported to: $output_file"
+        echo "Size: $(wc -c < "$output_file") bytes"
+    else
+        die "Export failed"
+    fi
+}
+
+cmd_tap_import() {
+    local import_file="$1"
+    [ -z "$import_file" ] && die "Usage: rttyctl tap-import <file.json>"
+    [ ! -f "$import_file" ] && die "Import file not found: $import_file"
+
+    echo "Importing session from: $import_file"
+
+    # Parse and insert into avatar-tap database
+    local domain=$(jsonfilter -i "$import_file" -e '@.domain' 2>/dev/null)
+    local method=$(jsonfilter -i "$import_file" -e '@.method' 2>/dev/null)
+    local path=$(jsonfilter -i "$import_file" -e '@.path' 2>/dev/null)
+    local label=$(jsonfilter -i "$import_file" -e '@.label' 2>/dev/null)
+
+    [ -z "$domain" ] || [ -z "$method" ] || [ -z "$path" ] && die "Invalid session format"
+
+    # Insert into database
+    local now=$(date +%s)
+    sqlite3 "$AVATAR_TAP_DB" "INSERT INTO sessions (domain, method, path, captured_at, label, use_count) VALUES ('$domain', '$method', '$path', $now, '$label', 0)" 2>/dev/null
+
+    local new_id=$(sqlite3 "$AVATAR_TAP_DB" "SELECT last_insert_rowid()" 2>/dev/null)
+
+    echo "Session imported with ID: $new_id"
+}
+
+cmd_tap_json_sessions() {
+    if [ ! -f "$AVATAR_TAP_DB" ]; then
+        echo '{"sessions":[]}'
+        return
+    fi
+
+    sqlite3 -json "$AVATAR_TAP_DB" \
+        "SELECT id, domain, path, method, captured_at, last_used, use_count, label FROM sessions ORDER BY captured_at DESC LIMIT 50" 2>/dev/null || echo '{"sessions":[]}'
+}
+
+cmd_tap_json_session() {
+    local session_id="$1"
+
+    if [ ! -f "$AVATAR_TAP_DB" ] || [ -z "$session_id" ]; then
+        echo '{"error":"Session not found"}'
+        return
+    fi
+
+    sqlite3 -json "$AVATAR_TAP_DB" \
+        "SELECT id, domain, path, method, captured_at, last_used, use_count, label FROM sessions WHERE id=$session_id" 2>/dev/null || echo '{"error":"Session not found"}'
+}
+
+#------------------------------------------------------------------------------
+# Server Management
+#------------------------------------------------------------------------------
+
+cmd_server() {
+    local action="$1"
+
+    case "$action" in
+        start)
+            /etc/init.d/rtty-remote start
+            echo "RTTY Remote server started"
+            ;;
+        stop)
+            /etc/init.d/rtty-remote stop
+            echo "RTTY Remote server stopped"
+            ;;
+        status)
+            echo "RTTY Remote Server Status"
+            echo "========================="
+
+            local enabled=$(get_config main enabled 0)
+            local port=$(get_config main server_port 7681)
+
+            echo "Enabled: $enabled"
+            echo "Port:    $port"
+
+            if pgrep -f "rttyctl server-daemon" >/dev/null 2>&1; then
+                echo "Running: yes"
+            else
+                echo "Running: no"
+            fi
+            ;;
+        *)
+            echo "Usage: rttyctl server start|stop|status"
+            ;;
+    esac
+}
+
+cmd_server_daemon() {
+    # Internal: daemon mode for procd
+    ensure_dirs
+    log "info" "RTTY Remote daemon starting..."
+
+    # TODO: Implement HTTP server for incoming RPC proxy requests
+    # For now, just keep the process alive
+    while true; do
+        sleep 60
+    done
+}
+
+#------------------------------------------------------------------------------
+# JSON Output (for RPCD)
+#------------------------------------------------------------------------------
+
+cmd_json_status() {
+    json_init
+    json_add_boolean "enabled" "$(get_config main enabled 0)"
+    json_add_int "port" "$(get_config main server_port 7681)"
+
+    if pgrep -f "rttyctl server-daemon" >/dev/null 2>&1; then
+        json_add_boolean "running" 1
+    else
+        json_add_boolean "running" 0
+    fi
+
+    json_add_int "active_sessions" 0
+    json_add_int "total_nodes" 0
+
+    json_dump
+}
+
+cmd_json_nodes() {
+    json_init
+    json_add_array "nodes"
+
+    # Add nodes from master-link
+    if command -v ml_peer_list >/dev/null 2>&1; then
+        ml_peer_list 2>/dev/null | jsonfilter -e '@.peers[*]' 2>/dev/null | while read peer; do
+            json_add_object ""
+            json_add_string "id" "$(echo "$peer" | jsonfilter -e '@.fingerprint')"
+            json_add_string "name" "$(echo "$peer" | jsonfilter -e '@.name')"
+            json_add_string "address" "$(echo "$peer" | jsonfilter -e '@.address')"
+            json_add_string "status" "$(echo "$peer" | jsonfilter -e '@.status')"
+            json_close_object
+        done
+    fi
+
+    json_close_array
+    json_dump
+}
+
+#------------------------------------------------------------------------------
+# Help
+#------------------------------------------------------------------------------
+
+show_help() {
+    cat << 'EOF'
+rttyctl - SecuBox RTTY Remote Control
+
+Usage: rttyctl <command> [options]
+
+Node Management:
+  nodes                    List all mesh nodes with status
+  node <id>                Show detailed node info
+  connect <node_id>        Start terminal session to node
+  disconnect <session_id>  End terminal session
+
+RPCD Proxy:
+  rpc <node> <object> <method> [params]  Execute remote RPCD call
+  rpc-list <node>                         List available RPCD objects
+  rpc-batch <node> <file.json>           Execute batch RPCD calls
+
+Avatar-Tap Session Replay:
+  tap-sessions [domain]    List captured sessions (filter by domain)
+  tap-show <id>            Show session details (headers, cookies)
+  tap-replay <id> <node>   Replay captured session to remote node
+  tap-export <id> [file]   Export session as JSON
+  tap-import <file>        Import session from JSON file
+
+Server Control:
+  server start             Start local RTTY server
+  server stop              Stop local RTTY server
+  server status            Show server status
+
+Authentication:
+  auth <node_id>           Authenticate to remote node
+  revoke <node_id>         Revoke authentication
+
+Shared Access Tokens:
+  token generate [ttl] [perms]  Generate support token (default: 3600s, rpc,terminal)
+  token list                    List active tokens
+  token validate <code>         Validate a token
+  token revoke <code>           Revoke a token
+  token-rpc <code> <obj> <method> [params]  Execute RPC with token auth
+
+JSON Output (for RPCD):
+  json-status              Status as JSON
+  json-nodes               Nodes as JSON
+  json-tap-sessions        Avatar-tap sessions as JSON
+
+Examples:
+  rttyctl nodes
+  rttyctl rpc 10.100.0.2 luci.system-hub status
+  rttyctl tap-sessions photos.gk2
+  rttyctl tap-replay 5 10.100.0.3
+  rttyctl tap-export 12 /tmp/session.json
+
+Version: $VERSION
+EOF
+}
+
+#------------------------------------------------------------------------------
+# Main
+#------------------------------------------------------------------------------
+
+ensure_dirs
+
+case "$1" in
+    nodes)
+        cmd_nodes
+        ;;
+    node)
+        cmd_node "$2"
+        ;;
+    connect)
+        cmd_connect "$2"
+        ;;
+    disconnect)
+        cmd_disconnect "$2"
+        ;;
+    rpc)
+        shift
+        cmd_rpc "$@"
+        ;;
+    rpc-list)
+        cmd_rpc_list "$2"
+        ;;
+    rpc-batch)
+        cmd_rpc_batch "$2" "$3"
+        ;;
+    sessions)
+        cmd_sessions "$2"
+        ;;
+    # Avatar-Tap Session Replay
+    tap-sessions)
+        cmd_tap_sessions "$2"
+        ;;
+    tap-show)
+        cmd_tap_show "$2"
+        ;;
+    tap-replay)
+        cmd_tap_replay "$2" "$3"
+        ;;
+    tap-export)
+        cmd_tap_export "$2" "$3"
+        ;;
+    tap-import)
+        cmd_tap_import "$2"
+        ;;
+    server)
+        cmd_server "$2"
+        ;;
+    server-daemon)
+        cmd_server_daemon
+        ;;
+    auth)
+        cmd_auth "$2"
+        ;;
+    revoke)
+        cmd_revoke "$2"
+        ;;
+    json-status)
+        cmd_json_status
+        ;;
+    json-nodes)
+        cmd_json_nodes
+        ;;
+    json-tokens)
+        cmd_token_json_list
+        ;;
+    json-tap-sessions)
+        cmd_tap_json_sessions
+        ;;
+    json-tap-session)
+        cmd_tap_json_session "$2"
+        ;;
+    token)
+        case "$2" in
+            generate)
+                cmd_token_generate "$3" "$4"
+                ;;
+            list)
+                cmd_token_list
+                ;;
+            validate)
+                cmd_token_validate "$3"
+                ;;
+            revoke)
+                cmd_token_revoke "$3"
+                ;;
+            *)
+                echo "Usage: rttyctl token generate|list|validate|revoke"
+                ;;
+        esac
+        ;;
+    token-rpc)
+        shift
+        cmd_token_rpc "$@"
+        ;;
+    -h|--help|help)
+        show_help
+        ;;
+    *)
+        show_help
+        exit 1
+        ;;
+esac

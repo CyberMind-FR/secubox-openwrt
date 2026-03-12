@@ -324,7 +324,7 @@ return view.extend({
 					'click': ui.hideModal
 				}, _('Cancel')),
 				E('button', {
-					'class': 'btn cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'click': L.bind(function() {
 						ui.hideModal();
 						this.createRedirectFromTemplate(template);
@@ -352,7 +352,7 @@ return view.extend({
 					'click': ui.hideModal
 				}, _('Cancel')),
 				E('button', {
-					'class': 'btn cbi-button-negative',
+					'class': 'kiss-btn kiss-btn-red',
 					'click': L.bind(function() {
 						ui.hideModal();
 						this.deleteRedirect(redirect['.name']);
@@ -438,7 +438,7 @@ return view.extend({
 					'click': ui.hideModal
 				}, _('Cancel')),
 				E('button', {
-					'class': 'btn cbi-button-negative',
+					'class': 'kiss-btn kiss-btn-red',
 					'click': L.bind(function() {
 						ui.hideModal();
 						this.deleteRedirect(redirect['.name']);

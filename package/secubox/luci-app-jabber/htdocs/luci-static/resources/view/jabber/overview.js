@@ -6,14 +6,14 @@
 'require uci';
 'require form';
 'require jabber.api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
 	handleAction: function(action, args) {
 		var self = this;
-		var btn = document.activeElement;
 
-		ui.showModal(_('Please wait...'), [
-			E('p', { 'class': 'spinning' }, _('Processing request...'))
+		ui.showModal('Processing...', [
+			E('p', { 'class': 'spinning' }, 'Processing request...')
 		]);
 
 		var promise;
@@ -28,7 +28,7 @@ return view.extend({
 				promise = api.install();
 				break;
 			case 'uninstall':
-				if (!confirm(_('This will remove the Jabber container. User data will be preserved. Continue?')))
+				if (!confirm('This will remove the Jabber container. User data will be preserved. Continue?'))
 					return ui.hideModal();
 				promise = api.uninstall();
 				break;
@@ -42,7 +42,7 @@ return view.extend({
 				var domain = args;
 				if (!domain) {
 					ui.hideModal();
-					ui.addNotification(null, E('p', _('Domain is required')), 'error');
+					ui.addNotification(null, E('p', 'Domain is required'), 'error');
 					return;
 				}
 				promise = api.emancipate(domain);
@@ -52,13 +52,13 @@ return view.extend({
 				var password = args.password;
 				if (!jid) {
 					ui.hideModal();
-					ui.addNotification(null, E('p', _('JID is required')), 'error');
+					ui.addNotification(null, E('p', 'JID is required'), 'error');
 					return;
 				}
 				promise = api.userAdd(jid, password);
 				break;
 			case 'user_del':
-				if (!confirm(_('Delete user ') + args + '?'))
+				if (!confirm('Delete user ' + args + '?'))
 					return ui.hideModal();
 				promise = api.userDel(args);
 				break;
@@ -73,7 +73,7 @@ return view.extend({
 				var sender = args;
 				if (!sender) {
 					ui.hideModal();
-					ui.addNotification(null, E('p', _('Sender name is required')), 'error');
+					ui.addNotification(null, E('p', 'Sender name is required'), 'error');
 					return;
 				}
 				promise = api.smsConfig(sender);
@@ -81,7 +81,7 @@ return view.extend({
 			case 'sms_send':
 				if (!args.to || !args.message) {
 					ui.hideModal();
-					ui.addNotification(null, E('p', _('Phone number and message are required')), 'error');
+					ui.addNotification(null, E('p', 'Phone number and message are required'), 'error');
 					return;
 				}
 				promise = api.smsSend(args.to, args.message);
@@ -90,7 +90,7 @@ return view.extend({
 				var notifyJid = args;
 				if (!notifyJid) {
 					ui.hideModal();
-					ui.addNotification(null, E('p', _('Notification JID is required')), 'error');
+					ui.addNotification(null, E('p', 'Notification JID is required'), 'error');
 					return;
 				}
 				promise = api.voicemailConfig(notifyJid);
@@ -103,20 +103,20 @@ return view.extend({
 		promise.then(function(res) {
 			ui.hideModal();
 			if (res && res.success) {
-				var msg = res.message || _('Action completed');
+				var msg = res.message || 'Action completed';
 				if (res.password) {
-					msg += '\n' + _('Password: ') + res.password;
+					msg += '\nPassword: ' + res.password;
 				}
 				ui.addNotification(null, E('p', { 'style': 'white-space: pre-wrap;' }, msg), 'success');
 				self.load().then(function(data) {
 					dom.content(document.querySelector('#jabber-content'), self.renderContent(data));
 				});
 			} else {
-				ui.addNotification(null, E('p', res.error || _('Action failed')), 'error');
+				ui.addNotification(null, E('p', res.error || 'Action failed'), 'error');
 			}
 		}).catch(function(e) {
 			ui.hideModal();
-			ui.addNotification(null, E('p', _('Error: ') + e.message), 'error');
+			ui.addNotification(null, E('p', 'Error: ' + e.message), 'error');
 		});
 	},
 
@@ -131,48 +131,193 @@ return view.extend({
 		]);
 	},
 
+	renderNav: function(active) {
+		var tabs = [
+			{ name: 'Overview', path: 'admin/services/jabber/overview' },
+			{ name: 'Users', path: 'admin/services/jabber/users' },
+			{ name: 'Settings', path: 'admin/services/jabber/settings' }
+		];
+
+		return E('div', { 'class': 'kiss-tabs' }, tabs.map(function(tab) {
+			var isActive = tab.path.indexOf(active) !== -1;
+			return E('a', {
+				'href': L.url(tab.path),
+				'class': 'kiss-tab' + (isActive ? ' active' : '')
+			}, tab.name);
+		}));
+	},
+
+	renderStats: function(status) {
+		var c = KissTheme.colors;
+		var running = status.running === 'true';
+
+		return [
+			KissTheme.stat(running ? 'UP' : 'DOWN', 'Server', running ? c.green : c.red),
+			KissTheme.stat(status.user_count || '0', 'Users', c.blue),
+			KissTheme.stat(status.s2s_enabled === '1' ? 'ON' : 'OFF', 'Federation', status.s2s_enabled === '1' ? c.cyan : c.muted),
+			KissTheme.stat(status.muc_enabled === '1' ? 'ON' : 'OFF', 'MUC', status.muc_enabled === '1' ? c.purple : c.muted)
+		];
+	},
+
 	renderInstallWizard: function() {
 		var self = this;
 
-		return E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('Jabber/XMPP Server')),
-			E('p', {}, _('Prosody is a modern XMPP server written in Lua. It aims to be easy to set up and configure, and efficient with system resources.')),
-			E('div', { 'class': 'cbi-value' }, [
-				E('h4', {}, _('Features')),
-				E('ul', {}, [
-					E('li', {}, _('Secure messaging with end-to-end encryption (OMEMO)')),
-					E('li', {}, _('Multi-user chat rooms (MUC)')),
-					E('li', {}, _('File sharing with HTTP upload')),
-					E('li', {}, _('Server-to-server federation (S2S)')),
-					E('li', {}, _('BOSH and WebSocket for web clients')),
-					E('li', {}, _('Message archiving (MAM)'))
+		return KissTheme.card('Install Jabber/XMPP', E('div', {}, [
+			E('p', { 'style': 'color: var(--kiss-muted); margin-bottom: 16px;' }, 'Prosody is a modern XMPP server with end-to-end encryption support.'),
+			E('div', { 'style': 'background: var(--kiss-bg2); padding: 16px; border-radius: 8px; margin-bottom: 16px;' }, [
+				E('div', { 'style': 'font-weight: 600; margin-bottom: 12px;' }, 'Features'),
+				E('ul', { 'style': 'color: var(--kiss-muted); margin: 0; padding-left: 20px;' }, [
+					E('li', {}, 'Secure messaging with OMEMO encryption'),
+					E('li', {}, 'Multi-user chat rooms (MUC)'),
+					E('li', {}, 'File sharing with HTTP upload'),
+					E('li', {}, 'Server-to-server federation'),
+					E('li', {}, 'BOSH and WebSocket for web clients'),
+					E('li', {}, 'Message archiving (MAM)')
 				])
 			]),
-			E('div', { 'class': 'cbi-value' }, [
-				E('h4', {}, _('Compatible Clients')),
-				E('ul', {}, [
-					E('li', {}, _('Conversations (Android)')),
-					E('li', {}, _('Monal (iOS/macOS)')),
-					E('li', {}, _('Gajim (Windows/Linux)')),
-					E('li', {}, _('Dino (Linux)')),
-					E('li', {}, _('Converse.js (Web)'))
-				])
+			E('div', { 'style': 'background: var(--kiss-bg2); padding: 16px; border-radius: 8px; margin-bottom: 16px;' }, [
+				E('div', { 'style': 'font-weight: 600; margin-bottom: 8px;' }, 'Compatible Clients'),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 0;' }, 'Conversations, Monal, Gajim, Dino, Converse.js')
 			]),
-			E('div', { 'class': 'cbi-page-actions' }, [
+			E('button', {
+				'class': 'kiss-btn kiss-btn-green',
+				'click': function() { self.handleAction('install'); }
+			}, 'Install Jabber/XMPP')
+		]));
+	},
+
+	renderHealth: function(status, jingleStatus, smsStatus, voicemailStatus) {
+		var running = status.running === 'true';
+
+		var checks = [
+			{ label: 'Server', ok: running, value: running ? 'Running' : 'Stopped' },
+			{ label: 'HAProxy', ok: status.haproxy === '1', value: status.haproxy === '1' ? 'Configured' : 'Not configured' },
+			{ label: 'Jingle (VoIP)', ok: jingleStatus.enabled === '1', value: jingleStatus.enabled === '1' ? 'Enabled' : 'Disabled' },
+			{ label: 'SMS Relay', ok: smsStatus.enabled === '1', value: smsStatus.enabled === '1' ? 'Enabled' : 'Disabled' },
+			{ label: 'Voicemail', ok: voicemailStatus.enabled === '1', value: voicemailStatus.enabled === '1' ? 'Enabled' : 'Disabled' }
+		];
+
+		return E('div', { 'style': 'display: flex; flex-direction: column; gap: 8px;' }, checks.map(function(c) {
+			return E('div', { 'style': 'display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--kiss-line);' }, [
+				E('div', { 'style': 'width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; ' +
+					(c.ok ? 'background: rgba(0,200,83,0.15); color: var(--kiss-green);' : 'background: rgba(255,23,68,0.15); color: var(--kiss-red);') },
+					c.ok ? '\u2713' : '\u2717'),
+				E('div', { 'style': 'flex: 1;' }, [
+					E('div', { 'style': 'font-size: 13px; color: var(--kiss-text);' }, c.label),
+					E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted);' }, c.value)
+				])
+			]);
+		}));
+	},
+
+	renderControls: function(status) {
+		var self = this;
+		var running = status.running === 'true';
+		var haproxy = status.haproxy === '1';
+
+		return E('div', { 'style': 'display: flex; flex-direction: column; gap: 16px;' }, [
+			E('div', { 'style': 'display: flex; gap: 8px; flex-wrap: wrap;' }, [
+				running ? E('button', {
+					'class': 'kiss-btn kiss-btn-red',
+					'click': function() { self.handleAction('stop'); }
+				}, 'Stop') : E('button', {
+					'class': 'kiss-btn kiss-btn-green',
+					'click': function() { self.handleAction('start'); }
+				}, 'Start'),
 				E('button', {
-					'class': 'btn cbi-button cbi-button-positive',
-					'click': function() { self.handleAction('install'); }
-				}, _('Install Jabber/XMPP'))
+					'class': 'kiss-btn',
+					'click': function() { self.handleAction('update'); }
+				}, 'Update'),
+				!haproxy ? E('button', {
+					'class': 'kiss-btn kiss-btn-blue',
+					'click': function() { self.handleAction('configure_haproxy'); }
+				}, 'Configure HAProxy') : '',
+				E('button', {
+					'class': 'kiss-btn kiss-btn-red',
+					'click': function() { self.handleAction('uninstall'); }
+				}, 'Uninstall')
+			]),
+			E('div', { 'style': 'font-family: monospace; font-size: 12px; color: var(--kiss-muted); background: var(--kiss-bg2); padding: 12px; border-radius: 6px;' }, [
+				E('div', {}, 'Hostname: ' + (status.hostname || 'jabber.local')),
+				E('div', {}, 'C2S: ' + (status.c2s_port || '5222') + ' | S2S: ' + (status.s2s_port || '5269')),
+				E('div', {}, 'HTTP/BOSH: ' + (status.http_port || '5280'))
 			])
 		]);
 	},
 
-	renderStatusBadge: function(running) {
-		var color = running === 'true' ? '#4CAF50' : '#f44336';
-		var text = running === 'true' ? _('Running') : _('Stopped');
-		return E('span', {
-			'style': 'display:inline-block;padding:3px 10px;border-radius:3px;color:#fff;background:' + color
-		}, text);
+	renderUsers: function(userListData, hostname) {
+		var self = this;
+		var users = [];
+		if (userListData.users) {
+			users = userListData.users.split(',').filter(function(u) { return u.length > 0; });
+		}
+
+		return E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px;' }, [
+			E('div', { 'style': 'display: flex; gap: 8px; flex-wrap: wrap;' }, [
+				E('input', {
+					'type': 'text',
+					'id': 'new-user-jid',
+					'placeholder': 'user@' + hostname,
+					'style': 'flex: 1; min-width: 150px; background: var(--kiss-bg2); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px 12px; border-radius: 6px;'
+				}),
+				E('input', {
+					'type': 'password',
+					'id': 'new-user-password',
+					'placeholder': 'Password (auto)',
+					'style': 'width: 150px; background: var(--kiss-bg2); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px 12px; border-radius: 6px;'
+				}),
+				E('button', {
+					'class': 'kiss-btn kiss-btn-green',
+					'click': function() {
+						var jid = document.getElementById('new-user-jid').value;
+						var password = document.getElementById('new-user-password').value;
+						self.handleAction('user_add', { jid: jid, password: password });
+					}
+				}, 'Add')
+			]),
+			users.length > 0 ? E('table', { 'class': 'kiss-table' }, [
+				E('thead', {}, E('tr', {}, [
+					E('th', {}, 'JID'),
+					E('th', { 'style': 'width: 80px;' }, 'Action')
+				])),
+				E('tbody', {}, users.map(function(user) {
+					return E('tr', {}, [
+						E('td', { 'style': 'font-family: monospace; font-size: 12px; color: var(--kiss-cyan);' }, user),
+						E('td', {}, E('button', {
+							'class': 'kiss-btn kiss-btn-red',
+							'style': 'padding: 4px 10px; font-size: 11px;',
+							'click': function() { self.handleAction('user_del', user); }
+						}, 'Delete'))
+					]);
+				}))
+			]) : E('div', { 'style': 'color: var(--kiss-muted); font-size: 12px;' }, 'No users registered')
+		]);
+	},
+
+	renderEmancipate: function(status) {
+		var self = this;
+		var domain = status.domain || '';
+
+		return E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px;' }, [
+			E('p', { 'style': 'color: var(--kiss-muted); font-size: 12px; margin: 0;' }, 'Expose with SSL, DNS records, and S2S federation.'),
+			E('div', { 'style': 'display: flex; gap: 8px;' }, [
+				E('input', {
+					'type': 'text',
+					'id': 'emancipate-domain',
+					'placeholder': 'xmpp.example.com',
+					'value': domain,
+					'style': 'flex: 1; background: var(--kiss-bg2); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px 12px; border-radius: 6px;'
+				}),
+				E('button', {
+					'class': 'kiss-btn kiss-btn-green',
+					'click': function() {
+						var d = document.getElementById('emancipate-domain').value;
+						self.handleAction('emancipate', d);
+					}
+				}, 'Emancipate')
+			]),
+			E('p', { 'style': 'font-size: 11px; color: var(--kiss-muted); margin: 0;' }, 'DNS: A record + SRV for _xmpp-client._tcp and _xmpp-server._tcp')
+		]);
 	},
 
 	renderContent: function(data) {
@@ -182,442 +327,62 @@ return view.extend({
 		var jingleStatus = data[3] || {};
 		var smsStatus = data[4] || {};
 		var voicemailStatus = data[5] || {};
+		var c = KissTheme.colors;
 
 		if (status.container_state === 'not_installed') {
 			return this.renderInstallWizard();
 		}
 
-		var running = status.running === 'true';
-		var haproxyConfigured = status.haproxy === '1';
-		var domain = status.domain || '';
 		var hostname = status.hostname || 'jabber.local';
 
-		// Parse user list
-		var users = [];
-		if (userListData.users) {
-			users = userListData.users.split(',').filter(function(u) { return u.length > 0; });
-		}
+		return E('div', {}, [
+			// Stats
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'style': 'margin-bottom: 20px;' }, this.renderStats(status)),
 
-		var accessUrl = '';
-		if (running) {
-			if (domain && haproxyConfigured) {
-				accessUrl = 'https://' + domain;
-			} else {
-				accessUrl = 'http://192.168.255.1:' + (status.http_port || '5280');
-			}
-		}
-
-		return E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('Jabber/XMPP Server (Prosody)')),
-
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Status')),
-				E('div', { 'class': 'cbi-value-field' }, this.renderStatusBadge(status.running))
+			// Two column layout
+			E('div', { 'class': 'kiss-grid kiss-grid-2' }, [
+				KissTheme.card('System Health', this.renderHealth(status, jingleStatus, smsStatus, voicemailStatus)),
+				KissTheme.card('Controls', this.renderControls(status))
 			]),
 
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Hostname')),
-				E('div', { 'class': 'cbi-value-field' }, hostname)
-			]),
-
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('C2S Port')),
-				E('div', { 'class': 'cbi-value-field' }, status.c2s_port || '5222')
-			]),
-
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('S2S Port')),
-				E('div', { 'class': 'cbi-value-field' }, [
-					status.s2s_port || '5269',
-					' ',
-					E('span', {
-						'style': 'display:inline-block;padding:2px 8px;border-radius:3px;color:#fff;background:' + (status.s2s_enabled === '1' ? '#4CAF50' : '#9e9e9e')
-					}, status.s2s_enabled === '1' ? _('Federation ON') : _('Federation OFF'))
-				])
-			]),
-
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('HTTP/BOSH Port')),
-				E('div', { 'class': 'cbi-value-field' }, status.http_port || '5280')
-			]),
-
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Users')),
-				E('div', { 'class': 'cbi-value-field' }, status.user_count || '0')
-			]),
-
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('MUC (Chat Rooms)')),
-				E('div', { 'class': 'cbi-value-field' }, [
-					E('span', {
-						'style': 'display:inline-block;padding:3px 10px;border-radius:3px;color:#fff;background:' + (status.muc_enabled === '1' ? '#4CAF50' : '#9e9e9e')
-					}, status.muc_enabled === '1' ? _('Enabled') : _('Disabled'))
-				])
-			]),
-
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('HAProxy')),
-				E('div', { 'class': 'cbi-value-field' }, [
-					E('span', {
-						'style': 'display:inline-block;padding:3px 10px;border-radius:3px;color:#fff;background:' + (haproxyConfigured ? '#4CAF50' : '#9e9e9e')
-					}, haproxyConfigured ? _('Configured') : _('Not configured')),
-					' ',
-					!haproxyConfigured ? E('button', {
-						'class': 'btn cbi-button',
-						'click': function() { self.handleAction('configure_haproxy'); }
-					}, _('Configure')) : ''
-				])
-			]),
-
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Domain')),
-				E('div', { 'class': 'cbi-value-field' }, domain || _('Not configured'))
-			]),
-
-			E('hr'),
-
-			E('h4', {}, _('Service Controls')),
-			E('div', { 'class': 'cbi-page-actions', 'style': 'margin-bottom: 20px;' }, [
-				running ?
-					E('button', {
-						'class': 'btn cbi-button cbi-button-negative',
-						'click': function() { self.handleAction('stop'); }
-					}, _('Stop')) :
-					E('button', {
-						'class': 'btn cbi-button cbi-button-positive',
-						'click': function() { self.handleAction('start'); }
-					}, _('Start')),
-				' ',
-				E('button', {
-					'class': 'btn cbi-button',
-					'click': function() { self.handleAction('update'); }
-				}, _('Update')),
-				' ',
-				E('button', {
-					'class': 'btn cbi-button cbi-button-negative',
-					'click': function() { self.handleAction('uninstall'); }
-				}, _('Uninstall'))
-			]),
-
-			E('hr'),
-
-			E('h4', {}, _('User Management')),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('New User')),
-				E('div', { 'class': 'cbi-value-field' }, [
-					E('input', {
-						'type': 'text',
-						'id': 'new-user-jid',
-						'class': 'cbi-input-text',
-						'placeholder': 'user@' + hostname,
-						'style': 'width: 200px;'
-					}),
-					' ',
-					E('input', {
-						'type': 'password',
-						'id': 'new-user-password',
-						'class': 'cbi-input-text',
-						'placeholder': _('Password (auto-generate if empty)'),
-						'style': 'width: 200px;'
-					}),
-					' ',
-					E('button', {
-						'class': 'btn cbi-button cbi-button-positive',
-						'click': function() {
-							var jid = document.getElementById('new-user-jid').value;
-							var password = document.getElementById('new-user-password').value;
-							self.handleAction('user_add', { jid: jid, password: password });
-						}
-					}, _('Add User'))
-				])
-			]),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Registered Users')),
-				E('div', { 'class': 'cbi-value-field' }, [
-					users.length > 0 ?
-						E('table', { 'class': 'table', 'style': 'width: auto;' }, [
-							E('tr', { 'class': 'tr table-titles' }, [
-								E('th', { 'class': 'th' }, _('JID')),
-								E('th', { 'class': 'th' }, _('Actions'))
-							])
-						].concat(users.map(function(user) {
-							return E('tr', { 'class': 'tr' }, [
-								E('td', { 'class': 'td' }, user),
-								E('td', { 'class': 'td' }, [
-									E('button', {
-										'class': 'btn cbi-button cbi-button-remove',
-										'click': function() { self.handleAction('user_del', user); }
-									}, _('Delete'))
-								])
-							]);
-						}))) :
-						E('em', {}, _('No users registered'))
-				])
-			]),
-
-			E('hr'),
-
-			E('h4', {}, _('Emancipate (Public Exposure)')),
-			E('p', {}, _('Make Jabber publicly accessible with SSL certificate, DNS records, and S2S federation.')),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Domain')),
-				E('div', { 'class': 'cbi-value-field' }, [
-					E('input', {
-						'type': 'text',
-						'id': 'emancipate-domain',
-						'class': 'cbi-input-text',
-						'placeholder': 'xmpp.example.com',
-						'value': domain
-					})
-				])
-			]),
-			E('div', { 'class': 'cbi-page-actions' }, [
-				E('button', {
-					'class': 'btn cbi-button cbi-button-action',
-					'click': function() {
-						var domainInput = document.getElementById('emancipate-domain');
-						self.handleAction('emancipate', domainInput.value);
-					}
-				}, _('Emancipate'))
-			]),
-			E('p', { 'style': 'font-size: 12px; color: #666;' }, [
-				_('DNS records needed: A record for domain, SRV records for _xmpp-client._tcp and _xmpp-server._tcp')
-			]),
-
-			E('hr'),
-
-			E('h4', {}, _('Connection Info')),
-			E('div', { 'style': 'background: #f5f5f5; padding: 15px; border-radius: 4px; font-family: monospace;' }, [
-				E('p', {}, [
-					E('strong', {}, _('XMPP Server: ')),
-					hostname + ':' + (status.c2s_port || '5222')
-				]),
-				E('p', {}, [
-					E('strong', {}, _('BOSH URL: ')),
-					accessUrl + '/http-bind'
-				]),
-				E('p', {}, [
-					E('strong', {}, _('WebSocket: ')),
-					(domain && haproxyConfigured ? 'wss://' + domain : 'ws://192.168.255.1:' + (status.http_port || '5280')) + '/xmpp-websocket'
-				]),
-				E('p', {}, [
-					E('strong', {}, _('Admin JID: ')),
-					(status.admin_user || 'admin') + '@' + hostname
-				])
-			]),
-
-			E('hr'),
-
-			// VoIP Integration - Jingle
-			E('h4', {}, _('VoIP Integration - Jingle')),
-			E('p', {}, _('Enable Jingle for voice/video calls between XMPP clients (Conversations, Dino, etc.)')),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Status')),
-				E('div', { 'class': 'cbi-value-field' }, [
-					E('span', {
-						'style': 'display:inline-block;padding:3px 10px;border-radius:3px;color:#fff;background:' + (jingleStatus.enabled === '1' ? '#4CAF50' : '#9e9e9e')
-					}, jingleStatus.enabled === '1' ? _('Enabled') : _('Disabled')),
-					' ',
-					jingleStatus.enabled === '1' ?
-						E('button', {
-							'class': 'btn cbi-button cbi-button-negative',
-							'click': function() { self.handleAction('jingle_disable'); }
-						}, _('Disable')) :
-						E('button', {
-							'class': 'btn cbi-button cbi-button-positive',
-							'click': function() {
-								var stunServer = document.getElementById('jingle-stun').value || 'stun.l.google.com:19302';
-								self.handleAction('jingle_enable', stunServer);
-							}
-						}, _('Enable'))
-				])
-			]),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('STUN Server')),
-				E('div', { 'class': 'cbi-value-field' }, [
-					E('input', {
-						'type': 'text',
-						'id': 'jingle-stun',
-						'class': 'cbi-input-text',
-						'placeholder': 'stun.l.google.com:19302',
-						'value': jingleStatus.stun_server || 'stun.l.google.com:19302',
-						'style': 'width: 250px;'
-					})
-				])
-			]),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('TURN Server')),
-				E('div', { 'class': 'cbi-value-field' }, [
-					jingleStatus.turn_server || E('em', {}, _('Not configured')),
-					E('p', { 'style': 'font-size: 12px; color: #666; margin: 5px 0 0;' },
-						_('TURN server for NAT traversal. Configure in /etc/config/jabber'))
-				])
-			]),
-
-			E('hr'),
-
-			// VoIP Integration - SMS Relay
-			E('h4', {}, _('VoIP Integration - SMS Relay')),
-			E('p', {}, _('Send SMS messages via OVH API through XMPP. Requires OVH API credentials in VoIP settings.')),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Status')),
-				E('div', { 'class': 'cbi-value-field' }, [
-					E('span', {
-						'style': 'display:inline-block;padding:3px 10px;border-radius:3px;color:#fff;background:' + (smsStatus.enabled === '1' ? '#4CAF50' : '#9e9e9e')
-					}, smsStatus.enabled === '1' ? _('Enabled') : _('Disabled')),
-					' ',
-					smsStatus.ovh_configured === '1' ?
-						E('span', {
-							'style': 'display:inline-block;padding:3px 10px;border-radius:3px;color:#fff;background:#2196F3'
-						}, _('OVH API Configured')) :
-						E('span', {
-							'style': 'display:inline-block;padding:3px 10px;border-radius:3px;color:#fff;background:#ff9800'
-						}, _('OVH API Not Configured'))
-				])
-			]),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Sender Name')),
-				E('div', { 'class': 'cbi-value-field' }, [
-					E('input', {
-						'type': 'text',
-						'id': 'sms-sender',
-						'class': 'cbi-input-text',
-						'placeholder': 'SecuBox',
-						'value': smsStatus.sender || 'SecuBox',
-						'style': 'width: 200px;'
-					}),
-					' ',
-					E('button', {
-						'class': 'btn cbi-button',
-						'click': function() {
-							var sender = document.getElementById('sms-sender').value;
-							self.handleAction('sms_config', sender);
-						}
-					}, _('Save'))
-				])
-			]),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Test SMS')),
-				E('div', { 'class': 'cbi-value-field' }, [
-					E('input', {
-						'type': 'tel',
-						'id': 'sms-test-to',
-						'class': 'cbi-input-text',
-						'placeholder': '+33612345678',
-						'style': 'width: 150px;'
-					}),
-					' ',
-					E('input', {
-						'type': 'text',
-						'id': 'sms-test-msg',
-						'class': 'cbi-input-text',
-						'placeholder': _('Test message'),
-						'style': 'width: 200px;'
-					}),
-					' ',
-					E('button', {
-						'class': 'btn cbi-button cbi-button-action',
-						'click': function() {
-							var to = document.getElementById('sms-test-to').value;
-							var message = document.getElementById('sms-test-msg').value;
-							self.handleAction('sms_send', { to: to, message: message });
-						}
-					}, _('Send Test SMS'))
-				])
-			]),
-			E('p', { 'style': 'font-size: 12px; color: #666;' },
-				_('To send SMS via XMPP, message sms@[domain] with format: +33612345678 Your message')),
-
-			E('hr'),
-
-			// VoIP Integration - Voicemail Notifications
-			E('h4', {}, _('VoIP Integration - Voicemail Notifications')),
-			E('p', {}, _('Receive XMPP notifications when new voicemails arrive in Asterisk PBX.')),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Status')),
-				E('div', { 'class': 'cbi-value-field' }, [
-					E('span', {
-						'style': 'display:inline-block;padding:3px 10px;border-radius:3px;color:#fff;background:' + (voicemailStatus.enabled === '1' ? '#4CAF50' : '#9e9e9e')
-					}, voicemailStatus.enabled === '1' ? _('Enabled') : _('Disabled'))
-				])
-			]),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('AMI Host')),
-				E('div', { 'class': 'cbi-value-field' }, voicemailStatus.ami_host || '127.0.0.1')
-			]),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('AMI Port')),
-				E('div', { 'class': 'cbi-value-field' }, voicemailStatus.ami_port || '5038')
-			]),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Notification JID')),
-				E('div', { 'class': 'cbi-value-field' }, [
-					E('input', {
-						'type': 'text',
-						'id': 'voicemail-jid',
-						'class': 'cbi-input-text',
-						'placeholder': 'admin@' + hostname,
-						'value': voicemailStatus.notify_jid || '',
-						'style': 'width: 250px;'
-					}),
-					' ',
-					E('button', {
-						'class': 'btn cbi-button cbi-button-action',
-						'click': function() {
-							var notifyJid = document.getElementById('voicemail-jid').value;
-							self.handleAction('voicemail_config', notifyJid);
-						}
-					}, _('Configure'))
-				])
-			]),
-			E('p', { 'style': 'font-size: 12px; color: #666;' },
-				_('Requires VoIP container running with Asterisk AMI enabled.')),
-
-			E('hr'),
-
-			E('h4', {}, _('Logs')),
-			E('div', { 'id': 'jabber-logs' }, [
-				E('pre', {
-					'style': 'background:#1e1e1e;color:#d4d4d4;padding:10px;max-height:300px;overflow:auto;font-size:12px;border-radius:4px;'
-				}, _('Loading logs...'))
-			]),
-			E('div', { 'class': 'cbi-page-actions' }, [
-				E('button', {
-					'class': 'btn cbi-button',
-					'click': function() {
-						api.logs(100).then(function(res) {
-							var logsEl = document.querySelector('#jabber-logs pre');
-							if (logsEl) {
-								logsEl.textContent = res.logs || _('No logs available');
-							}
-						});
-					}
-				}, _('Refresh Logs'))
+			// Users and Emancipate
+			E('div', { 'class': 'kiss-grid kiss-grid-2' }, [
+				KissTheme.card('User Management', this.renderUsers(userListData, hostname)),
+				KissTheme.card('Public Exposure', this.renderEmancipate(status))
 			])
 		]);
 	},
 
 	render: function(data) {
 		var self = this;
+		var status = data[0] || {};
+		var running = status.running === 'true';
 
-		var content = E('div', { 'id': 'jabber-content' }, this.renderContent(data));
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'Jabber/XMPP'),
+					KissTheme.badge(running ? 'RUNNING' : (status.container_state === 'not_installed' ? 'NOT INSTALLED' : 'STOPPED'),
+						running ? 'green' : 'red')
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' }, 'Prosody XMPP server with OMEMO encryption')
+			]),
 
-		// Load logs initially
-		api.logs(50).then(function(res) {
-			var logsEl = document.querySelector('#jabber-logs pre');
-			if (logsEl) {
-				logsEl.textContent = res.logs || _('No logs available');
-			}
-		});
+			// Navigation
+			this.renderNav('overview'),
 
-		// Poll for status updates
+			// Content
+			E('div', { 'id': 'jabber-content' }, this.renderContent(data))
+		];
+
 		poll.add(function() {
-			return api.status().then(function(status) {
-				// Update status badge if needed
+			return api.status().then(function(s) {
+				// Status update
 			});
 		}, 10);
 
-		return content;
+		return KissTheme.wrap(content, 'admin/services/jabber/overview');
 	},
 
 	handleSaveApply: null,

@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-03-07 (Avatar-Tap, PhotoPrism, Service Fixes)_
+_Last updated: 2026-03-11 (Streamlit Control Phase 3, CrowdSec bugfix)_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -4479,3 +4479,384 @@ git checkout HEAD -- index.html
     - RPCD methods: status, get_config, set_config, get_stats, start, stop, index, import, emancipate
     - Sidecar and cache paths redirected to writable storage directory
     - Environment-aware lxc-attach helper for photoprism commands
+
+77. **Vortex DNS Zone Management & Secondary DNS (2026-03-08)**
+    - Zone management commands: `vortexctl zone list/dump/import/export/reload`
+    - Secondary DNS commands: `vortexctl secondary list/add/remove`
+    - Zone dump generates BIND format zone files from external DNS queries (dig)
+    - Import configures dnsmasq as authoritative master with auth-zone
+    - OVH secondary DNS support with AXFR zone transfer configuration
+    - RPCD methods: zone_list, zone_dump, zone_import, zone_export, zone_reload, secondary_list, secondary_add, secondary_remove
+    - ACL permissions updated for all new methods
+    - Enables migration from Gandi/OVH hosted DNS to self-hosted authoritative DNS
+
+78. **RTTY Remote Control Module (2026-03-08)**
+    - **Phase 1 - RPCD Proxy:**
+      - Backend: `secubox-app-rtty-remote` with `rttyctl` CLI
+      - RPCD Proxy: Execute remote ubus calls to mesh nodes over HTTP JSON-RPC
+      - CLI commands: `rttyctl nodes/rpc/rpc-list/rpc-batch/auth/sessions`
+      - RPCD methods: status, get_nodes, rpc_call, rpc_list, get_sessions, connect
+      - Local address detection for direct ubus access (bypasses auth limits)
+    - **Phase 2 - Token-Based Shared Access:**
+      - 6-character token codes grant RPC/terminal access without LuCI login
+      - CLI commands: `rttyctl token generate/list/validate/revoke`, `rttyctl token-rpc`
+      - RPCD methods: token_generate, token_list, token_validate, token_revoke, token_rpc
+      - Support Panel: Generate code → Share → Support person connects
+      - Configurable TTL (30m/1h/2h/4h), permission tracking, usage counter
+    - **Phase 3 - Web Terminal:**
+      - Web Terminal view embedding ttyd (port 7681) via iframe
+      - Node selector for local/remote target selection
+      - Remote detection: Direct ttyd connection or SSH fallback
+      - RPCD method: start_terminal
+      - Fullscreen and refresh controls
+    - **LuCI Views:**
+      - Remote Control dashboard (RPC proxy interface)
+      - Remote Support panel (token sharing)
+      - Web Terminal (ttyd shell access)
+
+79. **HAProxy Routes Health Check (2026-03-09)**
+    - Backend: `/usr/sbin/service-health-check` script probes all routes in haproxy-routes.json
+    - Modes: `down` (only failures), `all` (color-coded status), `json` (structured output)
+    - RPCD method: `get_service_health` with 5-minute cache and force-refresh option
+    - LuCI panel integration in Services view:
+      - Stats display: Up/Down/Total counts, health percentage
+      - Down services list with IP:port tooltips (shows first 10)
+      - Refresh button for manual health check trigger
+    - CSS styling with KISS theme integration
+    - ACL permission: `get_service_health` added to read access
+
+80. **admin.gk2.secubox.in WAF Routing (2026-03-09)**
+    - Fixed admin panel routing through mitmproxy WAF
+    - Route: admin.gk2.secubox.in → 192.168.255.1:8081 (LuCI internal port)
+    - Modified haproxy_router.py to allow port 8081 routes (was blocked)
+    - Domain now accessible via HTTPS through WAF with proper access control
+      - Web Terminal (ttyd shell access)
+
+81. **RezApp Forge - Docker to SecuBox App Converter (2026-03-11)**
+    - Package: `secubox-app-rezapp` with `rezappctl` CLI
+    - UCI configuration: `/etc/config/rezapp` with catalog sources
+    - Supported catalogs: Docker Hub, LinuxServer.io, GitHub Container Registry
+    - CLI commands:
+      - `rezappctl catalog list/add/remove` - Manage catalog sources
+      - `rezappctl search <query>` - Search Docker images across catalogs
+      - `rezappctl info <image>` - Show image details (tags, arch, ENV)
+      - `rezappctl convert <image>` - Docker → LXC conversion
+      - `rezappctl package <app>` - Generate SecuBox package structure
+      - `rezappctl publish <app>` - Add to SecuBox addon catalog
+    - Conversion workflow: pull → export → extract → generate LXC config
+    - Templates: Makefile.tpl, init.d.tpl, ctl.tpl, config.tpl, start-lxc.tpl, lxc-config.tpl, manifest.tpl
+    - Auto-generates procd init scripts, management CLIs, and UCI configs
+    - Enables one-command Docker app deployment: convert → package → install
+
+82. **Streamlit Forge Plan (2026-03-11)**
+    - Comprehensive Streamlit app publishing platform specification
+    - Features planned:
+      - App upload and source management via Gitea
+      - Multiple running instances with isolated configs
+      - Auto-publishing to SecuBox dedicated spaces
+      - Miniature preview/thumbnail generation
+      - UCI configuration synchronization
+      - Mesh AppStore publishing
+      - Author workspace with blog integration
+    - Templates: basic, dashboard, data-viewer, research-paper, slides, portfolio
+    - Integration with: Gitea, HAProxy, Mitmproxy, MetaBlogizer, SecuBox P2P
+    - Plan: `/home/reepost/.claude/plans/streamlit-forge.md`
+
+83. **HAProxy Vhost Rename Feature (2026-03-11)**
+    - Added `haproxyctl vhost rename <old> <new>` command
+    - Renames vhost UCI section and all related configurations
+    - Tested: MC360_Streamlit_BPM_v2.gk2.secubox.in → mc360.gk2.secubox.in
+
+84. **Streamlit Forge - App Publishing Platform (2026-03-11)**
+    - Package: `secubox-app-streamlit-forge` with `slforge` CLI
+    - UCI configuration at `/etc/config/streamlit-forge`
+    - 3 app templates: basic, dashboard, data-viewer
+    - CLI commands:
+      - `slforge create <name> --from-template <tpl>` - Create from template
+      - `slforge start/stop/restart <app>` - Instance control
+      - `slforge status/info/list` - Status and information
+      - `slforge expose <app> --domain <d>` - HAProxy vhost + SSL
+      - `slforge publish/unpublish <app>` - Mesh catalog management
+    - Runs apps in Streamlit LXC container (mount: /srv/apps/)
+    - Port-based status detection (works across LXC namespaces)
+    - Wrapper script approach for reliable container execution
+    - LuCI: `luci-app-streamlit-forge` with RPCD backend
+      - Status dashboard with running/total/LXC cards
+      - Create dialog with template selection
+      - App table with Start/Stop/Open/Expose/Publish/Delete actions
+      - Auto-refresh polling (10s interval)
+
+85. **RezApp Forge LuCI Dashboard (2026-03-11)**
+    - Package: `luci-app-rezapp` with RPCD backend
+    - Menu: Services > RezApp Forge
+    - Features:
+      - Status cards (converted apps, catalogs, Docker status)
+      - Docker Hub search with star ratings and descriptions
+      - Convert dialog (name, tag, memory options)
+      - Converted apps table with Package/Publish/Delete actions
+    - RPCD methods: status, catalogs, apps, search, info, convert, package, publish, delete
+    - ACL permissions for read/write operations
+
+86. **SecuBox KISS Apps Catalog Update (2026-03-11)**
+    - Added `luci-app-streamlit-forge` to catalog (productivity, lxc runtime)
+      - Streamlit app publishing with templates, SSL exposure, mesh publishing
+      - Featured as new release
+    - Added `luci-app-rezapp` to catalog (system, native runtime)
+      - Docker to LXC converter with catalog browsing, package generation
+      - Featured as new release
+    - Updated `new_releases` section with both apps
+    - Total plugins: 37 → 39
+
+87. **Streamlit Control Dashboard Phase 1 (2026-03-11)**
+    - Package: `secubox-app-streamlit-control` - Modern Streamlit-based LuCI replacement
+    - Inspired by metablogizer KISS design patterns
+    - Architecture:
+      - Python ubus client (`lib/ubus_client.py`) - JSON-RPC for RPCD communication
+      - Authentication module (`lib/auth.py`) - LuCI session integration
+      - KISS widgets library (`lib/widgets.py`) - Badges, status cards, QR codes
+    - Pages:
+      - Home (app.py) - System stats, service status, container quick controls
+      - Sites (Metablogizer clone) - One-click deploy, sites table, action buttons
+      - Streamlit - Streamlit Forge apps management
+      - Containers - LXC container status and controls
+      - Network - Interface status, WireGuard peers, mwan3 uplinks
+      - Security - WAF status, CrowdSec decisions, firewall
+      - System - Board info, packages, logs
+    - Deployment:
+      - Registered with Streamlit Forge on port 8531
+      - Exposed via HAProxy at control.gk2.secubox.in
+      - Routed through mitmproxy WAF (security policy compliant)
+    - Fixed mitmproxy-in container startup (cgroup:mixed removal, routes JSON repair)
+
+88. **Streamlit Control Dashboard Phase 2 (2026-03-11)**
+    - RPCD integration for real data access
+    - Authentication:
+      - HTTPS with self-signed cert support (verify=False)
+      - Dual auth: root (full access) + SecuBox users (read-only)
+      - SecuBox users authenticate via `luci.secubox-users.authenticate`
+    - ACL updates (`/usr/share/rpcd/acl.d/unauthenticated.json`):
+      - Added read access: secubox-portal, metablogizer, haproxy, mitmproxy, crowdsec-dashboard, streamlit-forge
+      - Allows dashboard viewing without system login
+    - Fixed methods:
+      - LXC containers: `luci.secubox-portal.get_containers` (luci.lxc doesn't exist)
+      - CrowdSec: `luci.crowdsec-dashboard.status`
+      - Fixed duplicate key error in Streamlit pages (enumerate with index)
+    - Dashboard data verified: containers (11/32 running), HAProxy, WAF (16k threats), CrowdSec
+    - Test user created: `testdash` / `Password123`
+
+89. **Streamlit Control Dashboard Phase 3 (2026-03-11)**
+    - Auto-refresh toggle:
+      - Added to all main pages (Dashboard, Containers, Security, Streamlit, Network)
+      - Configurable intervals: 10s, 30s, 60s
+      - Manual refresh button
+    - Permission-aware UI:
+      - `can_write()` and `is_admin()` helper functions in auth.py
+      - Action buttons hidden/disabled for SecuBox users (read-only access)
+      - "View only" indicators for limited users
+    - Containers page improvements:
+      - Tabs for All/Running/Stopped filtering
+      - Search filter by container name
+      - Improved info panels with metrics display
+      - Raw data expander
+    - Security page improvements:
+      - Better CrowdSec status parsing (handles various response formats)
+      - Threat table with columns (IP, URL, Category, Severity, Time)
+      - Stats tab with raw data viewer
+    - Streamlit apps page:
+      - Added restart button
+      - Delete confirmation dialog
+      - Open link buttons
+    - Network page:
+      - HAProxy search filter
+      - Vhost count stats
+      - WireGuard/DNS placeholders with setup hints
+
+90. **CrowdSec Dashboard Bugfix (2026-03-11)**
+    - Fixed: `TypeError: can't assign to property "countries" on 5: not an object`
+    - Root cause: RPC error code 5 (UBUS_STATUS_NOT_FOUND) returned instead of object
+    - Occurs when CrowdSec service is busy or temporarily unavailable
+    - Fix: Added type check in `overview.js` render() and pollData() functions
+    - `var s = (data && typeof data === 'object' && !Array.isArray(data)) ? data : {}`
+    - Deployed to router, cleared LuCI caches
+
+91. **Meta Cataloger - Virtual Books (2026-03-11)**
+    - New `secubox-app-metacatalog` package for content aggregation
+    - Virtual Library concept: organizes MetaBlogizer sites, Streamlit apps into themed collections
+    - CLI tool `/usr/sbin/metacatalogctl` with commands:
+      - `sync` - Full scan + index + assign books + generate landing
+      - `scan [source]` - Scan content sources (metablogizer, streamlit)
+      - `index list|show|refresh` - Index management
+      - `books list|show` - Virtual book management
+      - `search <query>` - Full-text search
+      - `status` - Catalog statistics
+      - `landing` - Regenerate landing page
+    - Content scanners:
+      - MetaBlogizer: extracts title, description, languages, colors, canvas/audio detection
+      - Streamlit: extracts from app.py and UCI config
+    - Auto-assignment engine: matches entries to books via keywords and domain patterns
+    - Default virtual books (6):
+      - Divination (oracle, iching, hexagram)
+      - Visualization (canvas, animation, 3d)
+      - Analytics (dashboard, data, metrics)
+      - Publications (blog, article, press)
+      - Security (waf, firewall, crowdsec)
+      - Media (video, audio, streaming)
+    - Landing page: Tao prism fluoro theme with book shelf visualization
+    - API endpoints: `/metacatalog/api/index.json`, `/metacatalog/api/books.json`
+    - Initial sync: 120 entries indexed (118 MetaBlogs, 2 Streamlits)
+    - BusyBox-compatible: uses sed instead of grep -P for regex extraction
+    - Cron integration: hourly auto-sync via `/etc/cron.d/metacatalog`
+
+92. **HAProxy Auto-Sync Mitmproxy Routes (2026-03-11)**
+    - Fixed: New vhosts were missing mitmproxy route entries
+    - `haproxyctl vhost add` now auto-runs `mitmproxyctl sync-routes` in background
+    - `haproxyctl vhost remove` also triggers route sync
+    - Prevents 404 WAF errors when adding new domains
+    - Commit: 7cbd6406 "feat(haproxy): Auto-sync mitmproxy routes on vhost add/remove"
+
+93. **Meta Cataloger Phase 2 & 3 (2026-03-11)**
+    - **Phase 2: RPCD + LuCI Dashboard**
+      - RPCD backend: `/usr/libexec/rpcd/luci.metacatalog`
+      - 10 methods: list_entries, list_books, get_entry, get_book, search, get_stats, sync, scan, assign, unassign
+      - LuCI view: `metacatalog/overview.js` with KISS theme
+        - Header with stats chips (Entries, MetaBlogs, Streamlits, Books)
+        - Sync Now button, Landing Page link
+        - Virtual books shelf with entry previews
+      - ACL file with read/write permissions
+      - HAProxy vhost scanner: indexes all HAProxy domains as type "haproxy"
+    - **Phase 3: Landing Page Enhancements**
+      - Search functionality: real-time filter across all entries
+      - Tab navigation: Collections (all books), All (full list), per-book filters
+      - Scrollable book entries with max-height:300px
+      - Entry type badges (metablog/red, streamlit/green, haproxy/blue)
+      - Link to LuCI dashboard in footer
+      - Template stored in `/usr/share/metacatalog/templates/landing.html.tpl`
+    - Total entries: 246 (127 MetaBlogs, 14 Streamlits, 105 HAProxy)
+    - Deployed at: https://catalog.gk2.secubox.in/metacatalog/
+    - Persistent routes: `/srv/mitmproxy/manual-routes.json` for catalog/admin domains
+
+94. **RTTY Remote Control Phase 3 (2026-03-08)**
+    - Web Terminal view in LuCI
+    - Embeds ttyd (port 7681) via secure iframe
+    - Node selector for local/remote target selection
+    - Remote detection: direct ttyd or SSH fallback
+    - RPCD method: `start_terminal` returns terminal connection info
+    - Menu entry: Remote Control → Remote Support → Web Terminal
+    - Fullscreen toggle and refresh controls
+
+95. **HERMÈS·360 Full I-Ching Translation (2026-03-11)**
+    - Added full translations for all 64 hexagrams in 5 languages (DE, ES, PT, ZH, JA):
+      - Image texts (_i): symbolic imagery section - 320 translations
+      - Description texts (_d): hexagram meaning - 320 translations  
+      - Judgment texts (_j): oracle guidance - 320 translations
+      - Total: 960 new translation fields
+    - Visual enhancements from wall.maegia.tv:
+      - Canvas CSS filters: saturate(1.3) brightness(1.15) contrast(1.05)
+      - Hover effect: saturate(1.4) brightness(1.25) contrast(1.08)
+    - Added grid rendering during coin toss animation (drawGrid function)
+    - File size: 1.7MB (up from 1.6MB with all translations)
+    - Deployed to: https://lldh360.maegia.tv/
+
+96. **HERMÈS·360 Language Switching Fix (2026-03-12)**
+    - Fixed language switching for all hexagram texts (was only FR/EN, now all 7 languages)
+    - Updated `getHexD`, `getHexJ`, `getHexI` functions to use dynamic field lookup (`LANG + '_d'`)
+    - Added 320 hexagram name translations to `HNAMES_I18N` (DE/ES/PT/ZH/JA × 64)
+    - Removed white background from canvas wrapper (`.cvwrap{background:transparent}`)
+    - Mutation section now displays localized hexagram names
+    - All 960 translations (descriptions, judgments, images) now accessible via language selector
+
+97. **Streamlit Forge Phase 2 - Gitea Integration (2026-03-12)**
+    - **CLI Commands**:
+      - `slforge edit <app>` - Opens Gitea web editor, auto-creates repo if needed
+      - `slforge pull <app>` - Pulls latest from Gitea, auto-restarts if running
+      - `slforge push <app> [-m "msg"]` - Commits and pushes local changes to Gitea
+      - `slforge preview <app>` - Generates HTML/SVG preview of running app
+    - **Gitea API Integration**:
+      - `gitea_api()` helper function with token auth
+      - `gitea_ensure_org()` creates streamlit-apps org if missing
+      - `gitea_create_repo()` initializes git repo and pushes to Gitea
+      - Reads token from `/etc/config/gitea` UCI config
+    - **RPCD Methods** (5 new):
+      - `gitea_status` - Check Gitea availability and version
+      - `edit` - Get Gitea editor URL for app
+      - `pull` - Pull changes from Gitea
+      - `push` - Push changes to Gitea
+      - `preview` - Generate app preview
+    - **LuCI Dashboard Updates**:
+      - Gitea status card (version, online/offline)
+      - Edit button (purple) opens Gitea editor modal
+      - Pull button syncs latest changes
+      - Modal shows direct link to Gitea editor
+    - **Dependencies**: Git credentials configured via `.git-credentials`
+    - **ACL**: Updated with new methods for read/write
+98. **RTTY Remote Control Phase 4 - Session Replay (2026-03-12)**
+    - **Avatar-Tap Integration**:
+      - Session capture via mitmproxy WAF (passive, no traffic modification)
+      - UCI config integration for database path (`/srv/lxc/streamlit/rootfs/srv/avatar-tap/sessions.db`)
+      - Captures: auth headers, cookies, tokens, session data
+    - **CLI Commands** (rttyctl):
+      - `tap-sessions [domain]` - List captured sessions with optional domain filter
+      - `tap-show <id>` - Show detailed session info (headers, cookies)
+      - `tap-replay <id> <node>` - Replay captured session to remote mesh node
+      - `tap-export <id> [file]` - Export session as JSON
+      - `tap-import <file>` - Import session from JSON file
+      - `json-tap-sessions` / `json-tap-session` - JSON output for RPCD
+    - **RPCD Methods** (6 new):
+      - `get_tap_status` - Avatar-Tap running state, session count, database path
+      - `get_tap_sessions` - List all captured sessions
+      - `get_tap_session` - Get single session details
+      - `replay_to_node` - Replay session to target mesh node
+      - `export_session` - Export session as base64 JSON
+      - `import_session` - Import session from base64 JSON
+    - **LuCI View** (`session-replay.js`):
+      - Stats cards: total sessions, unique domains, recent activity, tap status
+      - Sessions table with domain, method, path, captured time, use count
+      - Filters: domain search, HTTP method dropdown
+      - Replay panel: node selector, custom IP support, execution preview
+      - View modal: session details with masked auth data
+      - Import/Export: JSON file upload/download
+    - **Menu**: System Hub → Session Replay
+    - **ACL**: Updated with read (get_tap_*) and write (replay_*, export_, import_) permissions
+    - **Tested**: 10 captured sessions from photos.gk2, cloud.gk2, api.anthropic.com, chatgpt.com
+
+99. **SecuBox Watchdog - Service Health Monitor (2026-03-12)**
+    - Created `secubox-app-watchdog` package for service health monitoring and auto-recovery
+    - Created `luci-app-watchdog` package for LuCI dashboard integration
+    - **Monitored Components**:
+      - LXC Containers: haproxy, mitmproxy-in, mitmproxy-out, streamlit
+      - Host Services: crowdsec, uhttpd, dnsmasq
+      - HTTPS Endpoints: gk2.secubox.in, admin.gk2.secubox.in, lldh360.maegia.tv
+    - **CLI Tool** (`watchdogctl`):
+      - `status` - Show status of all monitored services with color output
+      - `check` - Single health check without recovery
+      - `check-recover` - Health check with automatic restart of failed services
+      - `watch` - Continuous monitoring loop (procd managed)
+      - `restart-container <name>` - Manual container restart
+      - `restart-service <name>` - Manual service restart
+      - `logs [N]` - View last N log entries
+      - `clear-logs` - Clear log file and alert states
+    - **Features**:
+      - Alert cooldown to prevent spam (configurable, default 300s)
+      - Log rotation (configurable max lines)
+      - Critical service flagging
+      - Container service start after LXC start (e.g., haproxy inside container)
+    - **RPCD Methods**:
+      - `status` - Full status with containers, services, endpoints
+      - `get_containers` / `get_services` / `get_endpoints` - Individual lists
+      - `restart_container` / `restart_service` - Remote restart via ubus
+      - `check` - Trigger health check
+      - `get_logs` / `clear_logs` - Log management
+    - **LuCI Dashboard** (`watchdog/status.js`):
+      - Real-time status with 10s polling
+      - Containers table with restart buttons
+      - Services table with restart buttons
+      - Endpoints table with health indicators
+      - Alert logs viewer with refresh/clear
+      - "Run Check Now" button
+    - **Auto-Recovery**: Cron job runs every minute, procd service runs continuous loop
+    - **Files**:
+      - `/etc/config/watchdog` - UCI configuration
+      - `/usr/sbin/watchdogctl` - CLI tool
+      - `/etc/init.d/watchdog` - procd service
+      - `/etc/cron.d/watchdog` - Cron backup
+      - `/usr/libexec/rpcd/luci.watchdog` - RPCD backend

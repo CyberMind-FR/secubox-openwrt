@@ -24,121 +24,159 @@ return view.extend({
 		}).catch(function() { return {}; });
 	},
 
+	renderStats: function() {
+		var c = KissTheme.colors;
+		return [
+			KissTheme.stat(this.dnsConfig.enabled ? 'Active' : 'Off', 'DNS Federation', this.dnsConfig.enabled ? c.green : c.muted),
+			KissTheme.stat(this.wgConfig.enabled ? 'Active' : 'Off', 'WireGuard Mesh', this.wgConfig.enabled ? c.green : c.muted),
+			KissTheme.stat(this.haConfig.enabled ? 'Active' : 'Off', 'Load Balancer', this.haConfig.enabled ? c.green : c.muted),
+			KissTheme.stat(this.haConfig.strategy || 'N/A', 'LB Strategy', c.purple)
+		];
+	},
+
 	render: function() {
 		var self = this;
 
-		var content = E('div', { 'class': 'cbi-map' }, [
-			E('h2', {}, 'Mesh Network Configuration'),
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'Mesh Network Configuration'),
+					KissTheme.badge('Infrastructure', 'cyan')
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' },
+					'Configure DNS Federation, WireGuard mesh, and HAProxy load balancing')
+			]),
 
-			// DNS Federation Section
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, 'DNS Federation'),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Enabled'),
-					E('div', { 'class': 'cbi-value-field' }, [
+			// Stats
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'style': 'margin: 20px 0;' },
+				this.renderStats()),
+
+			// DNS Federation Card
+			KissTheme.card(
+				E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+					E('span', {}, 'DNS Federation'),
+					KissTheme.badge(this.dnsConfig.enabled ? 'Enabled' : 'Disabled', this.dnsConfig.enabled ? 'green' : 'muted')
+				]),
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 16px;' }, [
+					E('label', { 'style': 'display: flex; align-items: center; gap: 12px;' }, [
 						E('input', {
 							'type': 'checkbox',
 							'id': 'dns-enabled',
 							'checked': this.dnsConfig.enabled
-						})
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Base Domain'),
-					E('div', { 'class': 'cbi-value-field' }, [
+						}),
+						E('span', { 'style': 'color: var(--kiss-muted);' }, 'Enable DNS Federation')
+					]),
+					E('label', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+						E('span', { 'style': 'font-weight: 500; color: var(--kiss-muted);' }, 'Base Domain'),
 						E('input', {
 							'type': 'text',
 							'id': 'dns-domain',
-							'class': 'cbi-input-text',
-							'value': this.dnsConfig.base_domain || 'sb.local'
+							'value': this.dnsConfig.base_domain || 'sb.local',
+							'style': 'padding: 10px 14px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); ' +
+								'border-radius: 6px; color: var(--kiss-text);'
 						})
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Primary DNS'),
-					E('div', { 'class': 'cbi-value-field' }, [
+					]),
+					E('label', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+						E('span', { 'style': 'font-weight: 500; color: var(--kiss-muted);' }, 'Primary DNS'),
 						E('input', {
 							'type': 'text',
 							'id': 'dns-primary',
-							'class': 'cbi-input-text',
-							'value': this.dnsConfig.primary_dns || '127.0.0.1:53'
+							'value': this.dnsConfig.primary_dns || '127.0.0.1:53',
+							'style': 'padding: 10px 14px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); ' +
+								'border-radius: 6px; color: var(--kiss-text);'
 						})
+					]),
+					E('div', { 'style': 'display: flex; justify-content: flex-end;' }, [
+						E('button', {
+							'class': 'kiss-btn kiss-btn-green',
+							'click': function() { self.saveDNSConfig(); }
+						}, 'Save DNS Config')
 					])
-				]),
-				E('div', { 'class': 'cbi-page-actions' }, [
-					E('button', { 'class': 'cbi-button cbi-button-save', 'click': function() { self.saveDNSConfig(); } }, 'Save DNS Config')
 				])
-			]),
+			),
 
-			// WireGuard Section
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, 'WireGuard Mesh'),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Enabled'),
-					E('div', { 'class': 'cbi-value-field' }, [
+			// WireGuard Mesh Card
+			KissTheme.card(
+				E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+					E('span', {}, 'WireGuard Mesh'),
+					KissTheme.badge(this.wgConfig.enabled ? 'Enabled' : 'Disabled', this.wgConfig.enabled ? 'green' : 'muted')
+				]),
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 16px;' }, [
+					E('label', { 'style': 'display: flex; align-items: center; gap: 12px;' }, [
 						E('input', {
 							'type': 'checkbox',
 							'id': 'wg-enabled',
 							'checked': this.wgConfig.enabled
-						})
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Network CIDR'),
-					E('div', { 'class': 'cbi-value-field' }, [
+						}),
+						E('span', { 'style': 'color: var(--kiss-muted);' }, 'Enable WireGuard Mesh')
+					]),
+					E('label', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+						E('span', { 'style': 'font-weight: 500; color: var(--kiss-muted);' }, 'Network CIDR'),
 						E('input', {
 							'type': 'text',
 							'id': 'wg-cidr',
-							'class': 'cbi-input-text',
-							'value': this.wgConfig.network_cidr || '10.100.0.0/24'
+							'value': this.wgConfig.network_cidr || '10.100.0.0/24',
+							'style': 'padding: 10px 14px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); ' +
+								'border-radius: 6px; color: var(--kiss-text);'
 						})
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Listen Port'),
-					E('div', { 'class': 'cbi-value-field' }, [
+					]),
+					E('label', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+						E('span', { 'style': 'font-weight: 500; color: var(--kiss-muted);' }, 'Listen Port'),
 						E('input', {
 							'type': 'number',
 							'id': 'wg-port',
-							'class': 'cbi-input-text',
-							'value': this.wgConfig.listen_port || 51820
+							'value': this.wgConfig.listen_port || 51820,
+							'style': 'padding: 10px 14px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); ' +
+								'border-radius: 6px; color: var(--kiss-text); width: 120px;'
 						})
+					]),
+					E('div', { 'style': 'display: flex; justify-content: flex-end;' }, [
+						E('button', {
+							'class': 'kiss-btn kiss-btn-blue',
+							'click': function() { self.saveWGConfig(); }
+						}, 'Save WireGuard Config')
 					])
-				]),
-				E('div', { 'class': 'cbi-page-actions' }, [
-					E('button', { 'class': 'cbi-button cbi-button-save', 'click': function() { self.saveWGConfig(); } }, 'Save WireGuard Config')
 				])
-			]),
+			),
 
-			// HAProxy Section
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, 'HAProxy Load Balancer'),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Enabled'),
-					E('div', { 'class': 'cbi-value-field' }, [
+			// HAProxy Card
+			KissTheme.card(
+				E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+					E('span', {}, 'HAProxy Load Balancer'),
+					KissTheme.badge(this.haConfig.enabled ? 'Enabled' : 'Disabled', this.haConfig.enabled ? 'green' : 'muted')
+				]),
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 16px;' }, [
+					E('label', { 'style': 'display: flex; align-items: center; gap: 12px;' }, [
 						E('input', {
 							'type': 'checkbox',
 							'id': 'ha-enabled',
 							'checked': this.haConfig.enabled
-						})
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Strategy'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('select', { 'id': 'ha-strategy', 'class': 'cbi-input-select' }, [
+						}),
+						E('span', { 'style': 'color: var(--kiss-muted);' }, 'Enable HAProxy Load Balancer')
+					]),
+					E('label', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+						E('span', { 'style': 'font-weight: 500; color: var(--kiss-muted);' }, 'Strategy'),
+						E('select', {
+							'id': 'ha-strategy',
+							'style': 'padding: 10px 14px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); ' +
+								'border-radius: 6px; color: var(--kiss-text);'
+						}, [
 							E('option', { 'value': 'round-robin', 'selected': this.haConfig.strategy === 'round-robin' }, 'Round Robin'),
 							E('option', { 'value': 'least-conn', 'selected': this.haConfig.strategy === 'least-conn' }, 'Least Connections'),
 							E('option', { 'value': 'weighted', 'selected': this.haConfig.strategy === 'weighted' }, 'Weighted'),
 							E('option', { 'value': 'failover', 'selected': this.haConfig.strategy === 'failover' }, 'Failover')
 						])
+					]),
+					E('div', { 'style': 'display: flex; justify-content: flex-end;' }, [
+						E('button', {
+							'class': 'kiss-btn kiss-btn-purple',
+							'click': function() { self.saveHAConfig(); }
+						}, 'Save HAProxy Config')
 					])
-				]),
-				E('div', { 'class': 'cbi-page-actions' }, [
-					E('button', { 'class': 'cbi-button cbi-button-save', 'click': function() { self.saveHAConfig(); } }, 'Save HAProxy Config')
 				])
-			])
-		]);
+			)
+		];
 
 		return KissTheme.wrap(content, 'admin/secubox/mirrorbox/mesh');
 	},

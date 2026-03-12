@@ -57,7 +57,7 @@ return view.extend({
 				E('h2', { 'style': 'margin: 0 0 10px 0; color: #f39c12;' }, _('Glances is not running')),
 				E('p', { 'style': 'color: #a0a0b0; margin: 0 0 20px 0;' }, _('Start the service to access the Web UI')),
 				E('button', {
-					'class': 'btn cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() {
 						ui.showModal(_('Starting...'), [
 							E('p', { 'class': 'spinning' }, _('Starting Glances...'))

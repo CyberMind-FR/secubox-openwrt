@@ -1,6 +1,5 @@
 'use strict';
 'require view';
-'require secubox-theme/theme as Theme';
 'require form';
 'require ui';
 'require ksm-manager/api as KSM';
@@ -67,12 +66,13 @@ return view.extend({
 		o.onclick = L.bind(this.handleDeploySshKey, this);
 
 		// SSH Keys Table
-		var keysTable = E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('SSH Keys')),
-			E('div', { 'class': 'cbi-section-node' }, [
-				this.renderSshKeysTable(sshKeys)
-			])
-		]);
+		var keysTable = KissTheme.card(
+			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+				E('span', {}, 'SSH Keys'),
+				KissTheme.badge(sshKeys.length + ' keys', 'green')
+			]),
+			this.renderSshKeysTable(sshKeys)
+		);
 
 		return KissTheme.wrap([
 			m.render(),
@@ -82,36 +82,32 @@ return view.extend({
 
 	renderSshKeysTable: function(keys) {
 		if (!keys || keys.length === 0) {
-			return E('div', { 'class': 'cbi-value' }, [
-				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-				E('em', {}, _('No SSH keys found. Generate a key to get started.'))
-			]);
+			return E('p', { 'style': 'color: var(--kiss-muted); text-align: center; padding: 20px;' },
+				'No SSH keys found. Generate a key to get started.');
 		}
 
-		var table = E('table', { 'class': 'table' }, [
-			E('tr', { 'class': 'tr table-titles' }, [
-				E('th', { 'class': 'th' }, _('Label')),
-				E('th', { 'class': 'th' }, _('Type')),
-				E('th', { 'class': 'th' }, _('Created')),
-				E('th', { 'class': 'th center' }, _('Actions'))
-			])
+		return E('table', { 'class': 'kiss-table' }, [
+			E('thead', {}, E('tr', {}, [
+				E('th', { 'style': 'padding: 10px 12px;' }, _('Label')),
+				E('th', { 'style': 'padding: 10px 12px;' }, _('Type')),
+				E('th', { 'style': 'padding: 10px 12px;' }, _('Created')),
+				E('th', { 'style': 'padding: 10px 12px; text-align: center;' }, _('Actions'))
+			])),
+			E('tbody', {}, keys.map(L.bind(function(key) {
+				return E('tr', {}, [
+					E('td', { 'style': 'padding: 10px 12px;' }, key.label || 'Unnamed'),
+					E('td', { 'style': 'padding: 10px 12px;' }, KSM.formatKeyType(key.type)),
+					E('td', { 'style': 'padding: 10px 12px; font-family: monospace; font-size: 12px;' }, KSM.formatTimestamp(key.created)),
+					E('td', { 'style': 'padding: 10px 12px; text-align: center;' }, [
+						E('button', {
+							'class': 'kiss-btn kiss-btn-cyan',
+							'style': 'padding: 4px 10px; font-size: 12px;',
+							'click': L.bind(function() { this.handleViewPublicKey(key.id); }, this)
+						}, 'View Public Key')
+					])
+				]);
+			}, this)))
 		]);
-
-		keys.forEach(L.bind(function(key) {
-			table.appendChild(E('tr', { 'class': 'tr' }, [
-				E('td', { 'class': 'td' }, key.label || _('Unnamed')),
-				E('td', { 'class': 'td' }, KSM.formatKeyType(key.type)),
-				E('td', { 'class': 'td' }, KSM.formatTimestamp(key.created)),
-				E('td', { 'class': 'td center' }, [
-					E('button', {
-						'class': 'cbi-button cbi-button-action',
-						'click': L.bind(function() { this.handleViewPublicKey(key.id); }, this)
-					}, _('View Public Key'))
-				])
-			]));
-		}, this));
-
-		return table;
 	},
 
 	handleGenerateSshKey: function(ev) {
@@ -139,28 +135,31 @@ return view.extend({
 			ui.hideModal();
 			if (result && result.success) {
 				ui.showModal(_('SSH Key Generated'), [
-					E('p', {}, _('SSH key generated successfully!')),
-					E('div', { 'class': 'cbi-value' }, [
-						E('label', { 'class': 'cbi-value-title' }, _('Key ID') + ':'),
-						E('div', { 'class': 'cbi-value-field' }, result.key_id)
-					]),
-					E('div', { 'class': 'cbi-value' }, [
-						E('label', { 'class': 'cbi-value-title' }, _('Public Key') + ':'),
-						E('div', { 'class': 'cbi-value-field' }, [
-							E('pre', { 'style': 'white-space: pre-wrap; word-wrap: break-word;' }, result.public_key)
+					E('p', { 'style': 'color: var(--kiss-green); margin-bottom: 16px;' }, _('SSH key generated successfully!')),
+					E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px;' }, [
+						E('div', { 'style': 'display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--kiss-line);' }, [
+							E('span', { 'style': 'color: var(--kiss-muted);' }, _('Key ID')),
+							E('span', { 'style': 'font-family: monospace;' }, result.key_id)
+						]),
+						E('div', {}, [
+							E('span', { 'style': 'color: var(--kiss-muted); display: block; margin-bottom: 8px;' }, _('Public Key')),
+							E('pre', {
+								'style': 'white-space: pre-wrap; word-wrap: break-word; background: var(--kiss-bg); ' +
+									'padding: 12px; border-radius: 6px; font-family: monospace; font-size: 11px;'
+							}, result.public_key)
 						])
 					]),
-					E('div', { 'class': 'right' }, [
+					E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px;' }, [
 						E('button', {
-							'class': 'cbi-button cbi-button-action',
+							'class': 'kiss-btn kiss-btn-cyan',
 							'click': function() {
 								navigator.clipboard.writeText(result.public_key);
 								ui.addNotification(null, E('p', _('Public key copied to clipboard')), 'info');
 							}
 						}, _('Copy Public Key')),
-						' ',
 						E('button', {
-							'class': 'cbi-button',
+							'class': 'kiss-btn',
+							'style': 'background: var(--kiss-bg2); border: 1px solid var(--kiss-line);',
 							'click': function() {
 								ui.hideModal();
 								window.location.reload();
@@ -209,17 +208,23 @@ return view.extend({
 		KSM.exportKey(keyId, 'pem', false, '').then(function(result) {
 			if (result && result.success) {
 				ui.showModal(_('Public Key'), [
-					E('pre', { 'style': 'white-space: pre-wrap; word-wrap: break-word; max-height: 400px; overflow-y: auto;' }, result.key_data),
-					E('div', { 'class': 'right' }, [
+					E('pre', {
+						'style': 'white-space: pre-wrap; word-wrap: break-word; max-height: 400px; overflow-y: auto; ' +
+							'background: var(--kiss-bg); padding: 16px; border-radius: 8px; font-family: monospace; font-size: 12px;'
+					}, result.key_data),
+					E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px;' }, [
 						E('button', {
-							'class': 'cbi-button cbi-button-action',
+							'class': 'kiss-btn kiss-btn-cyan',
 							'click': function() {
 								navigator.clipboard.writeText(result.key_data);
 								ui.addNotification(null, E('p', _('Public key copied to clipboard')), 'info');
 							}
 						}, _('Copy to Clipboard')),
-						' ',
-						E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Close'))
+						E('button', {
+							'class': 'kiss-btn',
+							'style': 'background: var(--kiss-bg2); border: 1px solid var(--kiss-line);',
+							'click': ui.hideModal
+						}, _('Close'))
 					])
 				]);
 			}

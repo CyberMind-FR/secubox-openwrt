@@ -1,0 +1,659 @@
+#!/bin/sh
+
+# RPCD handler for luci-app-rtty-remote
+# Provides RPC interface for RTTY Remote Control
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+# Load libraries
+[ -f /usr/lib/secubox/rtty-proxy.sh ] && . /usr/lib/secubox/rtty-proxy.sh
+[ -f /usr/lib/secubox/rtty-session.sh ] && . /usr/lib/secubox/rtty-session.sh
+[ -f /usr/lib/secubox/rtty-auth.sh ] && . /usr/lib/secubox/rtty-auth.sh
+
+RTTYCTL="/usr/sbin/rttyctl"
+
+#------------------------------------------------------------------------------
+# Helper functions
+#------------------------------------------------------------------------------
+
+get_config() {
+    local section="$1"
+    local option="$2"
+    local default="$3"
+
+    config_load rtty-remote
+    config_get value "$section" "$option" "$default"
+    echo "$value"
+}
+
+#------------------------------------------------------------------------------
+# RPC Methods
+#------------------------------------------------------------------------------
+
+# Get server status
+method_status() {
+    json_init
+
+    config_load rtty-remote
+    local enabled
+    config_get enabled main enabled '0'
+    json_add_boolean "enabled" "$enabled"
+
+    local port
+    config_get port main server_port '7681'
+    json_add_int "port" "$port"
+
+    # Check if running
+    if pgrep -f "rttyctl server-daemon" >/dev/null 2>&1; then
+        json_add_boolean "running" 1
+    else
+        json_add_boolean "running" 0
+    fi
+
+    # Stats
+    if [ -f /srv/rtty-remote/sessions.db ]; then
+        local stats=$(session_stats 2>/dev/null)
+        json_add_int "total_sessions" "$(echo "$stats" | jsonfilter -e '@.total_sessions' 2>/dev/null || echo 0)"
+        json_add_int "active_sessions" "$(echo "$stats" | jsonfilter -e '@.active_sessions' 2>/dev/null || echo 0)"
+        json_add_int "total_rpc_calls" "$(echo "$stats" | jsonfilter -e '@.total_rpc_calls' 2>/dev/null || echo 0)"
+        json_add_int "unique_nodes" "$(echo "$stats" | jsonfilter -e '@.unique_nodes' 2>/dev/null || echo 0)"
+    else
+        json_add_int "total_sessions" 0
+        json_add_int "active_sessions" 0
+        json_add_int "total_rpc_calls" 0
+        json_add_int "unique_nodes" 0
+    fi
+
+    json_dump
+}
+
+# Get mesh nodes
+method_get_nodes() {
+    local nodes=$($RTTYCTL json-nodes 2>/dev/null)
+    [ -z "$nodes" ] && nodes='{"nodes":[]}'
+    echo "$nodes"
+}
+
+# Get single node details
+method_get_node() {
+    local node_id
+    read -r input
+    json_load "$input"
+    json_get_var node_id node_id
+
+    [ -z "$node_id" ] && {
+        echo '{"error":"Missing node_id"}'
+        return
+    }
+
+    # Get node info from master-link or P2P
+    json_init
+    json_add_string "node_id" "$node_id"
+
+    # Try to get address
+    local addr=$($RTTYCTL node "$node_id" 2>&1 | grep "Address:" | awk '{print $2}')
+    json_add_string "address" "$addr"
+
+    # Check connectivity
+    if [ -n "$addr" ] && ping -c 1 -W 2 "$addr" >/dev/null 2>&1; then
+        json_add_string "status" "online"
+    else
+        json_add_string "status" "offline"
+    fi
+
+    json_dump
+}
+
+# Execute remote RPC call
+method_rpc_call() {
+    local node_id object method params
+    read -r input
+    json_load "$input"
+    json_get_var node_id node_id
+    json_get_var object object
+    json_get_var method method
+    json_get_var params params
+
+    [ -z "$node_id" ] || [ -z "$object" ] || [ -z "$method" ] && {
+        echo '{"error":"Missing required parameters (node_id, object, method)"}'
+        return
+    }
+
+    # Execute via rttyctl
+    local result=$($RTTYCTL rpc "$node_id" "$object" "$method" "$params" 2>&1)
+    local rc=$?
+
+    if [ $rc -eq 0 ] && [ -n "$result" ]; then
+        # Check if result is valid JSON
+        if echo "$result" | jsonfilter -e '@' >/dev/null 2>&1; then
+            # Output success with embedded JSON result
+            printf '{"success":true,"result":%s}' "$result"
+        else
+            # Result is not JSON, wrap as string
+            printf '{"success":true,"result":"%s"}' "$(echo "$result" | sed 's/"/\\"/g')"
+        fi
+    else
+        # Error case
+        local err_msg=$(echo "$result" | sed 's/"/\\"/g' | tr '\n' ' ')
+        printf '{"success":false,"error":"%s"}' "$err_msg"
+    fi
+}
+
+# List remote RPCD objects
+method_rpc_list() {
+    local node_id
+    read -r input
+    json_load "$input"
+    json_get_var node_id node_id
+
+    [ -z "$node_id" ] && {
+        echo '{"error":"Missing node_id"}'
+        return
+    }
+
+    local result=$($RTTYCTL rpc-list "$node_id" 2>&1)
+    echo "$result"
+}
+
+# Get sessions
+method_get_sessions() {
+    local node_id limit
+    read -r input
+    json_load "$input"
+    json_get_var node_id node_id
+    json_get_var limit limit
+
+    [ -z "$limit" ] && limit=50
+
+    session_list "$node_id" "$limit"
+}
+
+# Start server
+method_server_start() {
+    /etc/init.d/rtty-remote start 2>&1
+    json_init
+    json_add_boolean "success" 1
+    json_dump
+}
+
+# Stop server
+method_server_stop() {
+    /etc/init.d/rtty-remote stop 2>&1
+    json_init
+    json_add_boolean "success" 1
+    json_dump
+}
+
+# Get settings
+method_get_settings() {
+    json_init
+
+    config_load rtty-remote
+
+    json_add_object "main"
+    local val
+    config_get val main enabled '0'
+    json_add_boolean "enabled" "$val"
+    config_get val main server_port '7681'
+    json_add_int "server_port" "$val"
+    config_get val main auth_method 'master-link'
+    json_add_string "auth_method" "$val"
+    config_get val main session_ttl '3600'
+    json_add_int "session_ttl" "$val"
+    config_get val main max_sessions '10'
+    json_add_int "max_sessions" "$val"
+    json_close_object
+
+    json_add_object "security"
+    config_get val security require_wg '1'
+    json_add_boolean "require_wg" "$val"
+    config_get val security allowed_networks ''
+    json_add_string "allowed_networks" "$val"
+    json_close_object
+
+    json_add_object "proxy"
+    config_get val proxy rpc_timeout '30'
+    json_add_int "rpc_timeout" "$val"
+    config_get val proxy batch_limit '50'
+    json_add_int "batch_limit" "$val"
+    config_get val proxy cache_ttl '60'
+    json_add_int "cache_ttl" "$val"
+    json_close_object
+
+    json_dump
+}
+
+# Set settings
+method_set_settings() {
+    read -r input
+
+    # Parse and apply settings
+    local enabled=$(echo "$input" | jsonfilter -e '@.main.enabled' 2>/dev/null)
+    [ -n "$enabled" ] && uci set rtty-remote.main.enabled="$enabled"
+
+    local port=$(echo "$input" | jsonfilter -e '@.main.server_port' 2>/dev/null)
+    [ -n "$port" ] && uci set rtty-remote.main.server_port="$port"
+
+    local auth=$(echo "$input" | jsonfilter -e '@.main.auth_method' 2>/dev/null)
+    [ -n "$auth" ] && uci set rtty-remote.main.auth_method="$auth"
+
+    local ttl=$(echo "$input" | jsonfilter -e '@.main.session_ttl' 2>/dev/null)
+    [ -n "$ttl" ] && uci set rtty-remote.main.session_ttl="$ttl"
+
+    uci commit rtty-remote
+
+    json_init
+    json_add_boolean "success" 1
+    json_dump
+}
+
+# Replay session
+method_replay_session() {
+    local session_id target_node
+    read -r input
+    json_load "$input"
+    json_get_var session_id session_id
+    json_get_var target_node target_node
+
+    [ -z "$session_id" ] || [ -z "$target_node" ] && {
+        echo '{"error":"Missing session_id or target_node"}'
+        return
+    }
+
+    local result=$($RTTYCTL replay "$session_id" "$target_node" 2>&1)
+
+    json_init
+    json_add_boolean "success" 1
+    json_add_string "message" "$result"
+    json_dump
+}
+
+# Connect to node (start terminal)
+method_connect() {
+    local node_id
+    read -r input
+    json_load "$input"
+    json_get_var node_id node_id
+
+    [ -z "$node_id" ] && {
+        echo '{"error":"Missing node_id"}'
+        return
+    }
+
+    # Get node address
+    local addr=$($RTTYCTL node "$node_id" 2>&1 | grep "Address:" | awk '{print $2}')
+
+    json_init
+    json_add_string "node_id" "$node_id"
+    json_add_string "address" "$addr"
+    json_add_string "terminal_url" "ws://localhost:7681/ws"
+    json_add_string "ssh_command" "ssh root@$addr"
+    json_dump
+}
+
+#------------------------------------------------------------------------------
+# Token-Based Shared Access
+#------------------------------------------------------------------------------
+
+# Generate support access token
+method_token_generate() {
+    local ttl permissions
+    read -r input
+    json_load "$input" 2>/dev/null
+    json_get_var ttl ttl
+    json_get_var permissions permissions
+
+    [ -z "$ttl" ] && ttl=3600
+    [ -z "$permissions" ] && permissions="rpc,terminal"
+
+    # Generate token via rttyctl
+    local output=$($RTTYCTL token generate "$ttl" "$permissions" 2>&1)
+
+    # Extract code from output
+    local code=$(echo "$output" | grep "Code:" | awk '{print $2}')
+    local expires=$(echo "$output" | grep "Expires:" | sed 's/.*Expires: //')
+
+    if [ -n "$code" ]; then
+        json_init
+        json_add_boolean "success" 1
+        json_add_string "code" "$code"
+        json_add_int "ttl" "$ttl"
+        json_add_string "permissions" "$permissions"
+        json_add_string "expires" "$expires"
+        json_dump
+    else
+        printf '{"success":false,"error":"Failed to generate token"}'
+    fi
+}
+
+# List active tokens
+method_token_list() {
+    $RTTYCTL json-tokens 2>/dev/null || echo '{"tokens":[]}'
+}
+
+# Validate token (for support access)
+method_token_validate() {
+    local code
+    read -r input
+    json_load "$input"
+    json_get_var code code
+
+    [ -z "$code" ] && {
+        echo '{"valid":false,"error":"Missing code"}'
+        return
+    }
+
+    $RTTYCTL token validate "$code" 2>/dev/null
+}
+
+# Revoke token
+method_token_revoke() {
+    local code
+    read -r input
+    json_load "$input"
+    json_get_var code code
+
+    [ -z "$code" ] && {
+        echo '{"success":false,"error":"Missing code"}'
+        return
+    }
+
+    $RTTYCTL token revoke "$code" >/dev/null 2>&1
+
+    json_init
+    json_add_boolean "success" 1
+    json_dump
+}
+
+# Start terminal session to remote node
+method_start_terminal() {
+    local node_id
+    read -r input
+    json_load "$input"
+    json_get_var node_id node_id
+
+    [ -z "$node_id" ] && {
+        echo '{"success":false,"error":"Missing node_id"}'
+        return
+    }
+
+    # Get node address
+    local addr=$($RTTYCTL node "$node_id" 2>&1 | grep "Address:" | awk '{print $2}')
+    [ -z "$addr" ] && addr="$node_id"
+
+    # Check if we can reach the remote ttyd directly
+    local remote_port=7681
+    if curl -s -m 2 "http://${addr}:${remote_port}/" >/dev/null 2>&1; then
+        # Remote ttyd is accessible
+        json_init
+        json_add_boolean "success" 1
+        json_add_string "type" "direct"
+        json_add_string "url" "http://${addr}:${remote_port}"
+        json_add_string "node_id" "$node_id"
+        json_add_string "address" "$addr"
+        json_dump
+    else
+        # Remote ttyd not accessible, provide SSH info
+        json_init
+        json_add_boolean "success" 1
+        json_add_string "type" "ssh"
+        json_add_string "ssh_command" "ssh root@${addr}"
+        json_add_string "node_id" "$node_id"
+        json_add_string "address" "$addr"
+        json_dump
+    fi
+}
+
+# Execute RPC with token authentication (no LuCI session needed)
+method_token_rpc() {
+    local code object method params
+    read -r input
+    json_load "$input"
+    json_get_var code code
+    json_get_var object object
+    json_get_var method method
+    json_get_var params params
+
+    [ -z "$code" ] || [ -z "$object" ] || [ -z "$method" ] && {
+        echo '{"success":false,"error":"Missing required parameters (code, object, method)"}'
+        return
+    }
+
+    [ -z "$params" ] && params="{}"
+
+    # Execute via rttyctl with token auth
+    local result=$($RTTYCTL token-rpc "$code" "$object" "$method" "$params" 2>&1)
+    local rc=$?
+
+    if [ $rc -eq 0 ] && [ -n "$result" ]; then
+        if echo "$result" | jsonfilter -e '@' >/dev/null 2>&1; then
+            printf '{"success":true,"result":%s}' "$result"
+        else
+            printf '{"success":true,"result":"%s"}' "$(echo "$result" | sed 's/"/\\"/g')"
+        fi
+    else
+        local err_msg=$(echo "$result" | sed 's/"/\\"/g' | tr '\n' ' ')
+        printf '{"success":false,"error":"%s"}' "$err_msg"
+    fi
+}
+
+#------------------------------------------------------------------------------
+# Avatar-Tap Session Integration
+#------------------------------------------------------------------------------
+
+# Get Avatar-Tap status
+method_get_tap_status() {
+    local running=0
+    pgrep -f "mitmdump.*tap.py" >/dev/null && running=1
+
+    # Get database path from UCI
+    config_load avatar-tap
+    local db_path
+    config_get db_path main db_path '/srv/avatar-tap/sessions.db'
+
+    local sessions=0
+    local recent=0
+
+    if [ -f "$db_path" ]; then
+        sessions=$(sqlite3 "$db_path" "SELECT COUNT(*) FROM sessions" 2>/dev/null || echo 0)
+        recent=$(sqlite3 "$db_path" "SELECT COUNT(*) FROM sessions WHERE captured_at > strftime('%s','now','-1 hour')" 2>/dev/null || echo 0)
+    fi
+
+    json_init
+    json_add_boolean "running" "$running"
+    json_add_int "sessions" "$sessions"
+    json_add_int "recent" "$recent"
+    json_add_string "db_path" "$db_path"
+    json_dump
+}
+
+# Get captured sessions from avatar-tap
+method_get_tap_sessions() {
+    local domain
+    read -r input
+    json_load "$input" 2>/dev/null
+    json_get_var domain domain
+
+    $RTTYCTL json-tap-sessions 2>/dev/null || echo '[]'
+}
+
+# Get single session details
+method_get_tap_session() {
+    local session_id
+    read -r input
+    json_load "$input"
+    json_get_var session_id session_id
+
+    [ -z "$session_id" ] && {
+        echo '{"error":"Missing session_id"}'
+        return
+    }
+
+    $RTTYCTL json-tap-session "$session_id" 2>/dev/null || echo '{"error":"Session not found"}'
+}
+
+# Replay a session to a remote node
+method_replay_to_node() {
+    local session_id target_node
+    read -r input
+    json_load "$input"
+    json_get_var session_id session_id
+    json_get_var target_node target_node
+
+    [ -z "$session_id" ] || [ -z "$target_node" ] && {
+        echo '{"success":false,"error":"Missing session_id or target_node"}'
+        return
+    }
+
+    local result=$($RTTYCTL tap-replay "$session_id" "$target_node" 2>&1)
+    local rc=$?
+
+    json_init
+    if [ $rc -eq 0 ]; then
+        json_add_boolean "success" 1
+        json_add_string "message" "Session replayed successfully"
+        # Extract response preview
+        local preview=$(echo "$result" | tail -20 | head -10)
+        json_add_string "preview" "$preview"
+    else
+        json_add_boolean "success" 0
+        json_add_string "error" "$result"
+    fi
+    json_dump
+}
+
+# Export session
+method_export_session() {
+    local session_id
+    read -r input
+    json_load "$input"
+    json_get_var session_id session_id
+
+    [ -z "$session_id" ] && {
+        echo '{"success":false,"error":"Missing session_id"}'
+        return
+    }
+
+    local export_file="/tmp/export_session_$session_id.json"
+    $RTTYCTL tap-export "$session_id" "$export_file" 2>/dev/null
+
+    if [ -f "$export_file" ]; then
+        json_init
+        json_add_boolean "success" 1
+        json_add_string "file" "$export_file"
+        json_add_int "size" "$(wc -c < "$export_file")"
+        # Include the actual content for download
+        local content=$(cat "$export_file" | base64 -w 0)
+        json_add_string "content" "$content"
+        json_dump
+        rm -f "$export_file"
+    else
+        echo '{"success":false,"error":"Export failed"}'
+    fi
+}
+
+# Import session
+method_import_session() {
+    local content filename
+    read -r input
+    json_load "$input"
+    json_get_var content content
+    json_get_var filename filename
+
+    [ -z "$content" ] && {
+        echo '{"success":false,"error":"Missing content"}'
+        return
+    }
+
+    local import_file="/tmp/import_session_$$.json"
+    echo "$content" | base64 -d > "$import_file" 2>/dev/null
+
+    if [ ! -s "$import_file" ]; then
+        rm -f "$import_file"
+        echo '{"success":false,"error":"Invalid content"}'
+        return
+    fi
+
+    local result=$($RTTYCTL tap-import "$import_file" 2>&1)
+    local rc=$?
+    rm -f "$import_file"
+
+    json_init
+    if [ $rc -eq 0 ]; then
+        json_add_boolean "success" 1
+        json_add_string "message" "$result"
+    else
+        json_add_boolean "success" 0
+        json_add_string "error" "$result"
+    fi
+    json_dump
+}
+
+#------------------------------------------------------------------------------
+# Main dispatcher
+#------------------------------------------------------------------------------
+
+case "$1" in
+    list)
+        cat << 'EOF'
+{
+    "status": {},
+    "get_nodes": {},
+    "get_node": {"node_id": "string"},
+    "rpc_call": {"node_id": "string", "object": "string", "method": "string", "params": "string"},
+    "rpc_list": {"node_id": "string"},
+    "get_sessions": {"node_id": "string", "limit": 50},
+    "server_start": {},
+    "server_stop": {},
+    "get_settings": {},
+    "set_settings": {"config": "object"},
+    "replay_session": {"session_id": "integer", "target_node": "string"},
+    "connect": {"node_id": "string"},
+    "start_terminal": {"node_id": "string"},
+    "token_generate": {"ttl": 3600, "permissions": "rpc,terminal"},
+    "token_list": {},
+    "token_validate": {"code": "string"},
+    "token_revoke": {"code": "string"},
+    "token_rpc": {"code": "string", "object": "string", "method": "string", "params": "string"},
+    "get_tap_sessions": {},
+    "get_tap_session": {"session_id": "integer"},
+    "replay_to_node": {"session_id": "integer", "target_node": "string"},
+    "export_session": {"session_id": "integer"},
+    "import_session": {"content": "string"},
+    "get_tap_status": {}
+}
+EOF
+        ;;
+    call)
+        case "$2" in
+            status)         method_status ;;
+            get_nodes)      method_get_nodes ;;
+            get_node)       method_get_node ;;
+            rpc_call)       method_rpc_call ;;
+            rpc_list)       method_rpc_list ;;
+            get_sessions)   method_get_sessions ;;
+            server_start)   method_server_start ;;
+            server_stop)    method_server_stop ;;
+            get_settings)   method_get_settings ;;
+            set_settings)   method_set_settings ;;
+            replay_session) method_replay_session ;;
+            connect)        method_connect ;;
+            start_terminal) method_start_terminal ;;
+            token_generate) method_token_generate ;;
+            token_list)     method_token_list ;;
+            token_validate) method_token_validate ;;
+            token_revoke)   method_token_revoke ;;
+            token_rpc)      method_token_rpc ;;
+            get_tap_sessions)  method_get_tap_sessions ;;
+            get_tap_session)   method_get_tap_session ;;
+            replay_to_node)    method_replay_to_node ;;
+            export_session)    method_export_session ;;
+            import_session)    method_import_session ;;
+            get_tap_status)    method_get_tap_status ;;
+            *)
+                echo '{"error":"Unknown method"}'
+                ;;
+        esac
+        ;;
+esac

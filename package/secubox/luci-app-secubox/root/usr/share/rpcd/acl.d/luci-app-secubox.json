@@ -51,7 +51,9 @@
                     "get_heartbeat_line",
                     "get_stats_status",
                     "get_history",
-                    "get_collector_cache"
+                    "get_collector_cache",
+                    "get_installed_apps",
+                    "get_kiss_menu"
                 ],
                 "luci.service-registry": [
                     "list_services",

@@ -1,0 +1,46 @@
+{
+    "admin/secubox/system/system-hub/rtty-remote": {
+        "title": "Remote Control",
+        "order": 15,
+        "action": {
+            "type": "view",
+            "path": "rtty-remote/dashboard"
+        },
+        "depends": {
+            "acl": ["luci-app-rtty-remote"]
+        }
+    },
+    "admin/secubox/system/system-hub/support": {
+        "title": "Remote Support",
+        "order": 16,
+        "action": {
+            "type": "view",
+            "path": "rtty-remote/support"
+        },
+        "depends": {
+            "acl": ["luci-app-rtty-remote"]
+        }
+    },
+    "admin/secubox/system/system-hub/terminal": {
+        "title": "Web Terminal",
+        "order": 17,
+        "action": {
+            "type": "view",
+            "path": "rtty-remote/terminal"
+        },
+        "depends": {
+            "acl": ["luci-app-rtty-remote"]
+        }
+    },
+    "admin/secubox/system/system-hub/session-replay": {
+        "title": "Session Replay",
+        "order": 18,
+        "action": {
+            "type": "view",
+            "path": "rtty-remote/session-replay"
+        },
+        "depends": {
+            "acl": ["luci-app-rtty-remote"]
+        }
+    }
+}
