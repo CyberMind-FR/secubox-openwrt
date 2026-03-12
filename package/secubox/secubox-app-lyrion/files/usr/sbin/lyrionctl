@@ -423,8 +423,12 @@ lxc_create_debian_rootfs() {
 		return 1
 	}
 
-	# Configure DNS
-	echo "nameserver 8.8.8.8" > "$rootfs/etc/resolv.conf"
+	# Configure DNS (use local gateway + fallback)
+	cat > "$rootfs/etc/resolv.conf" << 'RESOLV'
+nameserver 1.1.1.1
+nameserver 8.8.8.8
+search lan
+RESOLV
 
 	# Install Lyrion in the container
 	cat > "$rootfs/tmp/setup-lyrion.sh" << 'SETUP'
@@ -481,6 +485,7 @@ if [ ! -f /config/prefs/server.prefs ]; then
 ---
 mediadirs:
   - /music
+httpaddr: 0.0.0.0
 httpport: 9000
 cliport: 9090
 PREFS
@@ -488,10 +493,12 @@ PREFS
 fi
 
 # Run Lyrion (squeezeboxserver drops privileges to nobody when run as root)
+# Listen on all interfaces (0.0.0.0) to allow WAN devices to stream
 exec /usr/sbin/squeezeboxserver \
     --prefsdir /config/prefs \
     --cachedir /config/cache \
     --logdir /var/log/lyrion \
+    --httpaddr 0.0.0.0 \
     --httpport 9000 \
     --cliport 9090
 START
