@@ -324,42 +324,156 @@ get_config() {
 	json_init
 	config_load streamlit-forge
 
-	local enabled port domain entrypoint memory
+	local enabled port domain entrypoint memory gitea_repo last_pull last_push
 	config_get enabled "$name" enabled '0'
 	config_get port "$name" port ''
 	config_get domain "$name" domain ''
 	config_get entrypoint "$name" entrypoint 'app.py'
 	config_get memory "$name" memory '512M'
+	config_get gitea_repo "$name" gitea_repo ''
+	config_get last_pull "$name" last_pull ''
+	config_get last_push "$name" last_push ''
 
 	json_add_string "enabled" "$enabled"
 	json_add_string "port" "$port"
 	json_add_string "domain" "$domain"
 	json_add_string "entrypoint" "$entrypoint"
 	json_add_string "memory" "$memory"
+	json_add_string "gitea_repo" "$gitea_repo"
+	json_add_string "last_pull" "$last_pull"
+	json_add_string "last_push" "$last_push"
+	json_dump
+}
+
+# ============================================
+# Phase 2: Gitea Integration
+# ============================================
+
+# Get edit URL for Gitea
+do_edit() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	local output
+	output=$(slforge edit "$name" 2>&1)
+	local rc=$?
+
+	# Extract URL from output
+	local edit_url=$(echo "$output" | grep -oE 'http[s]?://[^ ]+')
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "output" "$output"
+	json_add_string "edit_url" "$edit_url"
+	json_dump
+}
+
+# Pull from Gitea
+do_pull() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	local output
+	output=$(slforge pull "$name" 2>&1)
+	local rc=$?
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "output" "$output"
+	json_dump
+}
+
+# Push to Gitea
+do_push() {
+	local name="$1"
+	local message="$2"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	local output
+	if [ -n "$message" ]; then
+		output=$(slforge push "$name" -m "$message" 2>&1)
+	else
+		output=$(slforge push "$name" 2>&1)
+	fi
+	local rc=$?
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "output" "$output"
+	json_dump
+}
+
+# Generate preview
+do_preview() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	local output
+	output=$(slforge preview "$name" 2>&1)
+	local rc=$?
+
+	# Get preview path
+	config_load streamlit-forge
+	local preview_path
+	config_get preview_path "$name" preview ''
+
+	json_init
+	json_add_int "code" "$rc"
+	json_add_string "output" "$output"
+	json_add_string "preview_path" "$preview_path"
+	json_dump
+}
+
+# Get Gitea status
+get_gitea_status() {
+	json_init
+
+	# Load Gitea config
+	config_load gitea
+	local gitea_url gitea_token
+	config_get gitea_url main url 'http://127.0.0.1:3001'
+	config_get gitea_token main api_token ''
+
+	local gitea_available="false"
+	if [ -n "$gitea_token" ]; then
+		local version=$(curl -s -m 3 -H "Authorization: token $gitea_token" "$gitea_url/api/v1/version" 2>/dev/null | jsonfilter -e '@.version' 2>/dev/null)
+		if [ -n "$version" ]; then
+			gitea_available="true"
+			json_add_string "gitea_version" "$version"
+		fi
+	fi
+
+	json_add_string "gitea_available" "$gitea_available"
+	json_add_string "gitea_url" "$gitea_url"
 	json_dump
 }
 
 case "$1" in
 	list)
-		echo '{"list":{},"status":{},"info":{"name":"String"},"templates":{},"config":{"name":"String"},"create":{"name":"String","template":"String"},"delete":{"name":"String"},"start":{"name":"String"},"stop":{"name":"String"},"restart":{"name":"String"},"expose":{"name":"String","domain":"String"},"hide":{"name":"String"},"publish":{"name":"String"},"unpublish":{"name":"String"},"set_config":{"name":"String","key":"String","value":"String"}}'
+		echo '{"list":{},"status":{},"gitea_status":{},"info":{"name":"String"},"templates":{},"config":{"name":"String"},"create":{"name":"String","template":"String"},"delete":{"name":"String"},"start":{"name":"String"},"stop":{"name":"String"},"restart":{"name":"String"},"expose":{"name":"String","domain":"String"},"hide":{"name":"String"},"publish":{"name":"String"},"unpublish":{"name":"String"},"set_config":{"name":"String","key":"String","value":"String"},"edit":{"name":"String"},"pull":{"name":"String"},"push":{"name":"String","message":"String"},"preview":{"name":"String"}}'
 		;;
 	call)
 		case "$2" in
-			list)      get_apps ;;
-			status)    get_status ;;
-			info)      read input; json_load "$input"; json_get_var name name; get_info "$name" ;;
-			templates) get_templates ;;
-			config)    read input; json_load "$input"; json_get_var name name; get_config "$name" ;;
-			create)    read input; json_load "$input"; json_get_var name name; json_get_var template template; do_create "$name" "$template" ;;
-			delete)    read input; json_load "$input"; json_get_var name name; do_delete "$name" ;;
-			start)     read input; json_load "$input"; json_get_var name name; do_start "$name" ;;
-			stop)      read input; json_load "$input"; json_get_var name name; do_stop "$name" ;;
-			restart)   read input; json_load "$input"; json_get_var name name; do_restart "$name" ;;
-			expose)    read input; json_load "$input"; json_get_var name name; json_get_var domain domain; do_expose "$name" "$domain" ;;
-			hide)      read input; json_load "$input"; json_get_var name name; do_hide "$name" ;;
-			publish)   read input; json_load "$input"; json_get_var name name; do_publish "$name" ;;
-			unpublish) read input; json_load "$input"; json_get_var name name; do_unpublish "$name" ;;
-			set_config) read input; json_load "$input"; json_get_var name name; json_get_var key key; json_get_var value value; do_set_config "$name" "$key" "$value" ;;
+			list)         get_apps ;;
+			status)       get_status ;;
+			gitea_status) get_gitea_status ;;
+			info)         read input; json_load "$input"; json_get_var name name; get_info "$name" ;;
+			templates)    get_templates ;;
+			config)       read input; json_load "$input"; json_get_var name name; get_config "$name" ;;
+			create)       read input; json_load "$input"; json_get_var name name; json_get_var template template; do_create "$name" "$template" ;;
+			delete)       read input; json_load "$input"; json_get_var name name; do_delete "$name" ;;
+			start)        read input; json_load "$input"; json_get_var name name; do_start "$name" ;;
+			stop)         read input; json_load "$input"; json_get_var name name; do_stop "$name" ;;
+			restart)      read input; json_load "$input"; json_get_var name name; do_restart "$name" ;;
+			expose)       read input; json_load "$input"; json_get_var name name; json_get_var domain domain; do_expose "$name" "$domain" ;;
+			hide)         read input; json_load "$input"; json_get_var name name; do_hide "$name" ;;
+			publish)      read input; json_load "$input"; json_get_var name name; do_publish "$name" ;;
+			unpublish)    read input; json_load "$input"; json_get_var name name; do_unpublish "$name" ;;
+			set_config)   read input; json_load "$input"; json_get_var name name; json_get_var key key; json_get_var value value; do_set_config "$name" "$key" "$value" ;;
+			edit)         read input; json_load "$input"; json_get_var name name; do_edit "$name" ;;
+			pull)         read input; json_load "$input"; json_get_var name name; do_pull "$name" ;;
+			push)         read input; json_load "$input"; json_get_var name name; json_get_var message message; do_push "$name" "$message" ;;
+			preview)      read input; json_load "$input"; json_get_var name name; do_preview "$name" ;;
 		esac
 		;;
 esac

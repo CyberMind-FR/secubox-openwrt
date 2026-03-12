@@ -6,7 +6,7 @@
 
 # Load config
 config_load streamlit-forge
-config_get GITEA_URL main gitea_url 'http://127.0.0.1:3000'
+config_get GITEA_URL main gitea_url 'http://127.0.0.1:3001'
 config_get GITEA_ORG main gitea_org 'streamlit-apps'
 config_get APPS_DIR main apps_dir '/srv/streamlit/apps'
 config_get PREVIEWS_DIR main previews_dir '/srv/streamlit/previews'
@@ -14,6 +14,11 @@ config_get TEMPLATES_DIR main templates_dir '/usr/share/streamlit-forge/template
 config_get BASE_DOMAIN main base_domain 'apps.secubox.in'
 config_get DEFAULT_PORT main default_port_start '8501'
 config_get DEFAULT_MEMORY main default_memory '512M'
+
+# Load Gitea token from gitea config if available
+config_load gitea
+config_get GITEA_TOKEN main api_token ''
+config_get GITEA_URL main url "$GITEA_URL"
 
 # Colors
 RED='\033[0;31m'
@@ -114,6 +119,290 @@ set_app_config() {
 	uci set streamlit-forge."$name"."$key"="$value"
 	uci commit streamlit-forge
 }
+
+# ============================================
+# Gitea Integration Functions (Phase 2)
+# ============================================
+
+# Call Gitea API
+gitea_api() {
+	local method="$1"
+	local endpoint="$2"
+	local data="$3"
+
+	if [ -z "$GITEA_TOKEN" ]; then
+		log_err "Gitea API token not configured"
+		return 1
+	fi
+
+	local url="${GITEA_URL}/api/v1${endpoint}"
+
+	if [ "$method" = "GET" ]; then
+		curl -s -H "Authorization: token $GITEA_TOKEN" "$url"
+	elif [ "$method" = "POST" ]; then
+		curl -s -X POST -H "Authorization: token $GITEA_TOKEN" \
+			-H "Content-Type: application/json" \
+			-d "$data" "$url"
+	elif [ "$method" = "DELETE" ]; then
+		curl -s -X DELETE -H "Authorization: token $GITEA_TOKEN" "$url"
+	fi
+}
+
+# Check if Gitea org exists, create if not
+gitea_ensure_org() {
+	local org="$GITEA_ORG"
+
+	# Check if org exists
+	local result=$(gitea_api GET "/orgs/$org" 2>/dev/null)
+	if echo "$result" | grep -q '"id"'; then
+		return 0
+	fi
+
+	# Create org
+	log_info "Creating Gitea organization: $org"
+	gitea_api POST "/orgs" "{\"username\":\"$org\",\"description\":\"Streamlit Forge Apps\"}" >/dev/null
+}
+
+# Create Gitea repo for app
+gitea_create_repo() {
+	local name="$1"
+	local app_dir="$APPS_DIR/$name"
+
+	gitea_ensure_org
+
+	# Check if repo exists
+	local result=$(gitea_api GET "/repos/$GITEA_ORG/$name" 2>/dev/null)
+	if echo "$result" | grep -q '"id"'; then
+		log_info "Repository already exists: $GITEA_ORG/$name"
+		return 0
+	fi
+
+	# Create repo
+	log_info "Creating repository: $GITEA_ORG/$name"
+	gitea_api POST "/orgs/$GITEA_ORG/repos" \
+		"{\"name\":\"$name\",\"description\":\"Streamlit app: $name\",\"private\":false,\"auto_init\":false}" >/dev/null
+
+	# Initialize git in app directory
+	cd "$app_dir/src"
+	if [ ! -d ".git" ]; then
+		git init -q
+		git add -A
+		git commit -q -m "Initial commit from Streamlit Forge"
+	fi
+
+	# Add remote
+	local remote_url="${GITEA_URL}/${GITEA_ORG}/${name}.git"
+	git remote remove origin 2>/dev/null
+	git remote add origin "$remote_url"
+
+	# Push
+	git push -u origin main 2>/dev/null || git push -u origin master 2>/dev/null
+
+	# Save repo info to UCI
+	set_app_config "$name" gitea_repo "$name"
+	set_app_config "$name" gitea_branch "$(git rev-parse --abbrev-ref HEAD)"
+
+	log_ok "Created and pushed to: $remote_url"
+}
+
+# Open Gitea editor
+cmd_edit() {
+	local name="$1"
+	[ -z "$name" ] && { log_err "App name required"; return 1; }
+
+	if ! app_exists "$name"; then
+		log_err "App not found: $name"
+		return 1
+	fi
+
+	local gitea_repo=$(get_app_config "$name" gitea_repo)
+
+	# Create repo if doesn't exist
+	if [ -z "$gitea_repo" ]; then
+		log_info "Setting up Gitea repository..."
+		gitea_create_repo "$name"
+		gitea_repo="$name"
+	fi
+
+	local branch=$(get_app_config "$name" gitea_branch)
+	[ -z "$branch" ] && branch="main"
+
+	local edit_url="${GITEA_URL}/${GITEA_ORG}/${gitea_repo}/_edit/${branch}/app.py"
+
+	echo ""
+	log_ok "Edit your app at:"
+	echo "  $edit_url"
+	echo ""
+	echo "After editing, run: slforge pull $name"
+	echo ""
+}
+
+# Pull from Gitea
+cmd_pull() {
+	local name="$1"
+	[ -z "$name" ] && { log_err "App name required"; return 1; }
+
+	if ! app_exists "$name"; then
+		log_err "App not found: $name"
+		return 1
+	fi
+
+	local app_dir="$APPS_DIR/$name"
+	local gitea_repo=$(get_app_config "$name" gitea_repo)
+
+	if [ -z "$gitea_repo" ]; then
+		log_err "No Gitea repository configured for $name"
+		log_info "Run: slforge edit $name   to set up the repository"
+		return 1
+	fi
+
+	cd "$app_dir/src"
+
+	if [ ! -d ".git" ]; then
+		log_err "Not a git repository. Setting up..."
+		git init -q
+		git remote add origin "${GITEA_URL}/${GITEA_ORG}/${gitea_repo}.git"
+	fi
+
+	log_info "Pulling latest changes..."
+	git fetch origin 2>/dev/null
+	git pull origin "$(git rev-parse --abbrev-ref HEAD)" 2>/dev/null || {
+		# Try with reset for forced sync
+		git reset --hard origin/"$(git rev-parse --abbrev-ref HEAD)" 2>/dev/null
+	}
+
+	# Update timestamp
+	set_app_config "$name" last_pull "$(date -Iseconds)"
+
+	# Check if app is running and restart
+	local port=$(get_app_config "$name" port)
+	if [ -n "$port" ] && netstat -tln 2>/dev/null | grep -q ":$port "; then
+		log_info "App is running, restarting to apply changes..."
+		cmd_restart "$name"
+	fi
+
+	log_ok "Pulled latest for $name"
+}
+
+# Push to Gitea
+cmd_push() {
+	local name="$1"
+	shift
+
+	[ -z "$name" ] && { log_err "App name required"; return 1; }
+
+	if ! app_exists "$name"; then
+		log_err "App not found: $name"
+		return 1
+	fi
+
+	local message="Update from Streamlit Forge"
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			-m|--message) message="$2"; shift 2 ;;
+			*) shift ;;
+		esac
+	done
+
+	local app_dir="$APPS_DIR/$name"
+	local gitea_repo=$(get_app_config "$name" gitea_repo)
+
+	if [ -z "$gitea_repo" ]; then
+		log_info "Setting up Gitea repository..."
+		gitea_create_repo "$name"
+		return 0
+	fi
+
+	cd "$app_dir/src"
+
+	if [ ! -d ".git" ]; then
+		log_err "Not a git repository"
+		return 1
+	fi
+
+	# Check for changes
+	if git diff --quiet && git diff --cached --quiet; then
+		log_info "No changes to push"
+		return 0
+	fi
+
+	log_info "Pushing changes..."
+	git add -A
+	git commit -m "$message" 2>/dev/null
+	git push origin "$(git rev-parse --abbrev-ref HEAD)" 2>/dev/null || {
+		log_err "Failed to push. Check remote access."
+		return 1
+	}
+
+	# Update timestamp
+	set_app_config "$name" last_push "$(date -Iseconds)"
+
+	log_ok "Pushed changes for $name"
+}
+
+# Generate preview screenshot
+cmd_preview() {
+	local name="$1"
+	[ -z "$name" ] && { log_err "App name required"; return 1; }
+
+	if ! app_exists "$name"; then
+		log_err "App not found: $name"
+		return 1
+	fi
+
+	local port=$(get_app_config "$name" port)
+
+	# Check if running
+	if ! netstat -tln 2>/dev/null | grep -q ":$port "; then
+		log_warn "App not running. Starting temporarily..."
+		cmd_start "$name" --quiet
+		sleep 5
+	fi
+
+	mkdir -p "$PREVIEWS_DIR"
+	local preview_file="$PREVIEWS_DIR/${name}.png"
+	local preview_html="$PREVIEWS_DIR/${name}.html"
+
+	# Method 1: Try wkhtmltoimage if available (best quality)
+	if command -v wkhtmltoimage >/dev/null 2>&1; then
+		log_info "Generating preview with wkhtmltoimage..."
+		wkhtmltoimage --width 1280 --height 800 --quality 85 \
+			"http://127.0.0.1:$port" "$preview_file" 2>/dev/null
+		if [ -f "$preview_file" ]; then
+			log_ok "Preview saved: $preview_file"
+			set_app_config "$name" preview "$preview_file"
+			return 0
+		fi
+	fi
+
+	# Method 2: Capture HTML content for later rendering
+	log_info "Capturing page content..."
+	curl -s -m 10 "http://127.0.0.1:$port" > "$preview_html" 2>/dev/null
+
+	if [ -s "$preview_html" ]; then
+		log_ok "HTML preview saved: $preview_html"
+		set_app_config "$name" preview "$preview_html"
+
+		# Generate a simple placeholder PNG using SVG
+		cat > "${preview_file%.*}.svg" <<-SVGEOF
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300">
+  <rect width="100%" height="100%" fill="#1a1a2e"/>
+  <text x="50%" y="45%" text-anchor="middle" fill="#00ff88" font-size="24" font-family="monospace">📊 $name</text>
+  <text x="50%" y="60%" text-anchor="middle" fill="#666" font-size="14" font-family="sans-serif">Streamlit App</text>
+  <text x="50%" y="75%" text-anchor="middle" fill="#444" font-size="12" font-family="sans-serif">Port: $port</text>
+</svg>
+SVGEOF
+		log_info "SVG placeholder: ${preview_file%.*}.svg"
+		return 0
+	fi
+
+	log_err "Failed to generate preview"
+	return 1
+}
+
+# ============================================
+# End Gitea Integration Functions
+# ============================================
 
 # Create app from template
 cmd_create() {
@@ -216,10 +505,9 @@ REQEOF
 	uci set streamlit-forge."$name".created="$(date +%Y-%m-%d)"
 	uci commit streamlit-forge
 
-	# Create Gitea repo if available
-	if curl -s "$GITEA_URL/api/v1/version" >/dev/null 2>&1; then
-		log_info "Creating Gitea repository..."
-		# TODO: Create repo via Gitea API
+	# Create Gitea repo if token available
+	if [ -n "$GITEA_TOKEN" ]; then
+		gitea_create_repo "$name" 2>/dev/null || log_warn "Gitea repo creation skipped"
 	fi
 
 	log_ok "Created app: $name"
@@ -654,19 +942,23 @@ cmd_unpublish() {
 
 # Main command router
 case "$1" in
-	create)   shift; cmd_create "$@" ;;
-	list)     cmd_list ;;
-	info)     shift; cmd_info "$@" ;;
-	delete)   shift; cmd_delete "$@" ;;
-	start)    shift; cmd_start "$@" ;;
-	stop)     shift; cmd_stop "$@" ;;
-	restart)  shift; cmd_restart "$@" ;;
-	status)   shift; cmd_status "$@" ;;
-	logs)     shift; cmd_logs "$@" ;;
-	config)   shift; cmd_config "$@" ;;
-	expose)   shift; cmd_expose "$@" ;;
-	hide)     shift; cmd_hide "$@" ;;
-	publish)  shift; cmd_publish "$@" ;;
+	create)    shift; cmd_create "$@" ;;
+	list)      cmd_list ;;
+	info)      shift; cmd_info "$@" ;;
+	delete)    shift; cmd_delete "$@" ;;
+	start)     shift; cmd_start "$@" ;;
+	stop)      shift; cmd_stop "$@" ;;
+	restart)   shift; cmd_restart "$@" ;;
+	status)    shift; cmd_status "$@" ;;
+	logs)      shift; cmd_logs "$@" ;;
+	config)    shift; cmd_config "$@" ;;
+	edit)      shift; cmd_edit "$@" ;;
+	pull)      shift; cmd_pull "$@" ;;
+	push)      shift; cmd_push "$@" ;;
+	preview)   shift; cmd_preview "$@" ;;
+	expose)    shift; cmd_expose "$@" ;;
+	hide)      shift; cmd_hide "$@" ;;
+	publish)   shift; cmd_publish "$@" ;;
 	unpublish) shift; cmd_unpublish "$@" ;;
 	templates) cmd_templates ;;
 	help|--help|-h|"")

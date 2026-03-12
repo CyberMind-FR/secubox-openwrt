@@ -65,16 +65,52 @@ var callPublish = rpc.declare({
 	expect: {}
 });
 
+var callGiteaStatus = rpc.declare({
+	object: 'luci.streamlit-forge',
+	method: 'gitea_status',
+	expect: {}
+});
+
+var callEdit = rpc.declare({
+	object: 'luci.streamlit-forge',
+	method: 'edit',
+	params: ['name'],
+	expect: {}
+});
+
+var callPull = rpc.declare({
+	object: 'luci.streamlit-forge',
+	method: 'pull',
+	params: ['name'],
+	expect: {}
+});
+
+var callPush = rpc.declare({
+	object: 'luci.streamlit-forge',
+	method: 'push',
+	params: ['name', 'message'],
+	expect: {}
+});
+
+var callPreview = rpc.declare({
+	object: 'luci.streamlit-forge',
+	method: 'preview',
+	params: ['name'],
+	expect: {}
+});
+
 return view.extend({
 	apps: [],
 	templates: [],
 	status: {},
+	giteaStatus: {},
 
 	load: function() {
 		return Promise.all([
 			callList(),
 			callStatus(),
-			callTemplates()
+			callTemplates(),
+			callGiteaStatus().catch(function() { return {}; })
 		]);
 	},
 
@@ -83,6 +119,7 @@ return view.extend({
 		this.apps = (data[0] && data[0].apps) || [];
 		this.status = data[1] || {};
 		this.templates = (data[2] && data[2].templates) || [];
+		this.giteaStatus = data[3] || {};
 
 		var view = E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, 'Streamlit Forge'),
@@ -94,7 +131,10 @@ return view.extend({
 				this.renderStatCard('Running', this.status.running || 0, '#4caf50'),
 				this.renderStatCard('Total Apps', this.status.total || 0, '#2196f3'),
 				this.renderStatCard('LXC Container', this.status.lxc_status || 'unknown',
-					this.status.lxc_status === 'running' ? '#4caf50' : '#ff9800')
+					this.status.lxc_status === 'running' ? '#4caf50' : '#ff9800'),
+				this.renderStatCard('Gitea',
+					this.giteaStatus.gitea_available === 'true' ? 'v' + (this.giteaStatus.gitea_version || '?') : 'offline',
+					this.giteaStatus.gitea_available === 'true' ? '#9c27b0' : '#666')
 			]),
 
 			// Actions
@@ -165,17 +205,22 @@ return view.extend({
 						'href': 'http://' + window.location.hostname + ':' + app.port,
 						'target': '_blank'
 					}, 'Open') : '',
+				E('button', {
+					'class': 'cbi-button',
+					'style': 'padding:4px 8px;font-size:0.8rem;background:#9c27b0;color:#fff;border-color:#9c27b0;',
+					'click': ui.createHandlerFn(this, 'handleEdit', app.name)
+				}, 'Edit'),
+				E('button', {
+					'class': 'cbi-button',
+					'style': 'padding:4px 8px;font-size:0.8rem;',
+					'click': ui.createHandlerFn(this, 'handlePull', app.name)
+				}, 'Pull'),
 				!app.domain ?
 					E('button', {
 						'class': 'cbi-button',
 						'style': 'padding:4px 8px;font-size:0.8rem;',
 						'click': ui.createHandlerFn(this, 'handleExpose', app.name)
 					}, 'Expose') : '',
-				E('button', {
-					'class': 'cbi-button',
-					'style': 'padding:4px 8px;font-size:0.8rem;',
-					'click': ui.createHandlerFn(this, 'handlePublish', app.name)
-				}, 'Publish'),
 				E('button', {
 					'class': 'cbi-button cbi-button-remove',
 					'style': 'padding:4px 8px;font-size:0.8rem;',
@@ -376,6 +421,82 @@ return view.extend({
 				ui.addNotification(null, E('p', 'App published to mesh catalog'));
 			} else {
 				ui.addNotification(null, E('p', 'Error: ' + (res.output || 'Failed to publish')));
+			}
+			return self.pollStatus();
+		});
+	},
+
+	handleEdit: function(name) {
+		var self = this;
+		ui.showModal('Opening Editor...', [
+			E('p', { 'class': 'spinning' }, 'Setting up Gitea repository...')
+		]);
+
+		return callEdit(name).then(function(res) {
+			ui.hideModal();
+			if (res.code === 0 && res.edit_url) {
+				ui.showModal('Edit in Gitea', [
+					E('p', {}, 'Your app is ready for editing in Gitea:'),
+					E('p', {}, [
+						E('a', {
+							'href': res.edit_url,
+							'target': '_blank',
+							'style': 'color:#9c27b0;font-weight:bold;'
+						}, res.edit_url)
+					]),
+					E('p', { 'style': 'margin-top:1rem;color:#888;' },
+						'After editing, click "Pull" to sync changes to this device.'),
+					E('div', { 'class': 'right', 'style': 'margin-top:1rem;' }, [
+						E('button', {
+							'class': 'cbi-button',
+							'click': ui.hideModal
+						}, 'Close'),
+						E('a', {
+							'class': 'cbi-button cbi-button-positive',
+							'href': res.edit_url,
+							'target': '_blank',
+							'style': 'margin-left:0.5rem;text-decoration:none;'
+						}, 'Open Editor')
+					])
+				]);
+			} else {
+				ui.addNotification(null, E('p', 'Error: ' + (res.output || 'Failed to open editor')));
+			}
+		});
+	},
+
+	handlePull: function(name) {
+		var self = this;
+		ui.showModal('Pulling Changes...', [
+			E('p', { 'class': 'spinning' }, 'Pulling latest from Gitea...')
+		]);
+
+		return callPull(name).then(function(res) {
+			ui.hideModal();
+			if (res.code === 0) {
+				ui.addNotification(null, E('p', 'Changes pulled successfully'));
+			} else {
+				ui.addNotification(null, E('p', 'Error: ' + (res.output || 'Failed to pull')));
+			}
+			return self.pollStatus();
+		});
+	},
+
+	handlePush: function(name) {
+		var self = this;
+		var message = prompt('Commit message:', 'Update from LuCI');
+		if (message === null) return;
+
+		ui.showModal('Pushing Changes...', [
+			E('p', { 'class': 'spinning' }, 'Pushing to Gitea...')
+		]);
+
+		return callPush(name, message).then(function(res) {
+			ui.hideModal();
+			if (res.code === 0) {
+				ui.addNotification(null, E('p', 'Changes pushed to Gitea'));
+			} else {
+				ui.addNotification(null, E('p', 'Error: ' + (res.output || 'Failed to push')));
 			}
 			return self.pollStatus();
 		});
