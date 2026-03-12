@@ -52,12 +52,12 @@ return view.extend({
 				])
 			]),
 			E('div', { 'class': 'z2m-actions' }, [
-				E('button', { 'class': 'cbi-button cbi-button-action', 'click': this.handleInstall.bind(this) }, _('Install')),
-				E('button', { 'class': 'cbi-button', 'click': this.handleCheck.bind(this) }, _('Check')),
-				E('button', { 'class': 'cbi-button', 'click': this.handleControl.bind(this, 'start') }, _('Start')),
-				E('button', { 'class': 'cbi-button', 'click': this.handleControl.bind(this, 'stop') }, _('Stop')),
-				E('button', { 'class': 'cbi-button', 'click': this.handleControl.bind(this, 'restart') }, _('Restart')),
-				E('button', { 'class': 'cbi-button', 'click': this.handleUpdate.bind(this) }, _('Update'))
+				E('button', { 'class': 'kiss-btn kiss-btn-blue', 'click': this.handleInstall.bind(this) }, _('Install')),
+				E('button', { 'class': 'kiss-btn', 'click': this.handleCheck.bind(this) }, _('Check')),
+				E('button', { 'class': 'kiss-btn', 'click': this.handleControl.bind(this, 'start') }, _('Start')),
+				E('button', { 'class': 'kiss-btn', 'click': this.handleControl.bind(this, 'stop') }, _('Stop')),
+				E('button', { 'class': 'kiss-btn', 'click': this.handleControl.bind(this, 'restart') }, _('Restart')),
+				E('button', { 'class': 'kiss-btn', 'click': this.handleUpdate.bind(this) }, _('Update'))
 			])
 		]);
 	},
@@ -137,7 +137,7 @@ return view.extend({
 			E('h3', { 'style': 'margin:0 0 0.5em;' }, _('Configuration')),
 			E('div', { 'class': 'z2m-form-grid', 'id': 'z2m-form-grid' }, inputs),
 			E('div', { 'class': 'z2m-actions' }, [
-				E('button', { 'class': 'cbi-button cbi-button-action', 'click': this.handleSave.bind(this) }, _('Save & Apply'))
+				E('button', { 'class': 'kiss-btn kiss-btn-blue', 'click': this.handleSave.bind(this) }, _('Save & Apply'))
 			])
 		]);
 	},
@@ -165,7 +165,7 @@ return view.extend({
 				E('h3', { 'style': 'margin:0;' }, _('Logs')),
 				E('div', { 'style': 'display:flex; gap:0.5em; align-items:center;' }, [
 					E('input', { 'class': 'z2m-input', 'type': 'number', 'id': 'z2m-log-tail', 'value': '50', 'style': 'width:70px;' }),
-					E('button', { 'class': 'cbi-button', 'click': this.handleLogs.bind(this) }, _('Refresh'))
+					E('button', { 'class': 'kiss-btn', 'click': this.handleLogs.bind(this) }, _('Refresh'))
 				])
 			]),
 			E('pre', { 'class': 'z2m-log', 'id': 'z2m-log-output' }, _('Click Refresh to load logs.'))

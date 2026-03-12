@@ -280,7 +280,7 @@ return view.extend({
 
 			content.push(E('div', { 'style': 'display: flex; gap: 10px; margin-top: 15px;' }, [
 				E('button', {
-					'class': 'cbi-button',
+					'class': 'kiss-btn',
 					'click': function() { ui.hideModal(); }
 				}, 'Close')
 			]));
@@ -300,7 +300,7 @@ return view.extend({
 				'This will automatically select and install the recommended provider.'),
 			E('div', { 'style': 'display: flex; gap: 10px; margin-top: 20px;' }, [
 				E('button', {
-					'class': 'cbi-button cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() {
 						ui.showModal('Installing Skill', [
 							Components.renderLoader('Installing provider for: ' + skillId + '...')
@@ -321,7 +321,7 @@ return view.extend({
 					}
 				}, 'Install'),
 				E('button', {
-					'class': 'cbi-button',
+					'class': 'kiss-btn',
 					'click': function() { ui.hideModal(); }
 				}, 'Cancel')
 			])
@@ -363,7 +363,7 @@ return view.extend({
 				]),
 				E('div', { 'style': 'display: flex; gap: 10px; margin-top: 15px;' }, [
 					E('button', {
-						'class': 'cbi-button',
+						'class': 'kiss-btn',
 						'click': function() { ui.hideModal(); }
 					}, 'Close')
 				])

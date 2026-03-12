@@ -165,7 +165,7 @@ return view.extend({
 			// Save buttons
 			E('div', { 'class': 'cbi-page-actions' }, [
 				E('button', {
-					'class': 'cbi-button cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() { self.save(); }
 				}, _('Save & Apply'))
 			])

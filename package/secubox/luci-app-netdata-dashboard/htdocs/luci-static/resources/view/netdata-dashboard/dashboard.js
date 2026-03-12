@@ -254,12 +254,12 @@ return view.extend({
 				_('This will stop all real-time monitoring and data collection.')),
 			E('div', { 'class': 'right' }, [
 				E('button', {
-					'class': 'btn',
+					'class': 'kiss-btn',
 					'click': ui.hideModal
 				}, _('Cancel')),
 				' ',
 				E('button', {
-					'class': 'btn cbi-button-negative',
+					'class': 'kiss-btn kiss-btn-red',
 					'click': L.bind(function() {
 						ui.hideModal();
 						this.doStop(ev.target);

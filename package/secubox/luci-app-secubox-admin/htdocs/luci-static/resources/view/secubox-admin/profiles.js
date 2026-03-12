@@ -242,7 +242,7 @@ return view.extend({
 			]),
 			E('div', { 'style': 'display: flex; gap: 10px;' }, [
 				E('button', {
-					'class': 'cbi-button cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() {
 						var name = nameInput.value || 'Exported Configuration';
 						var includeFeeds = includeFeedsCheckbox.checked;
@@ -250,7 +250,7 @@ return view.extend({
 					}
 				}, 'Export'),
 				E('button', {
-					'class': 'cbi-button',
+					'class': 'kiss-btn',
 					'click': function() { ui.hideModal(); }
 				}, 'Cancel')
 			])
@@ -283,7 +283,7 @@ return view.extend({
 			]),
 			E('div', { 'style': 'display: flex; gap: 10px;' }, [
 				E('button', {
-					'class': 'cbi-button cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() {
 						var url = urlInput.value;
 						var mode = modeSelect.value;
@@ -293,7 +293,7 @@ return view.extend({
 					}
 				}, 'Import'),
 				E('button', {
-					'class': 'cbi-button',
+					'class': 'kiss-btn',
 					'click': function() { ui.hideModal(); }
 				}, 'Cancel')
 			])
@@ -320,7 +320,7 @@ return view.extend({
 					}, jsonStr),
 					E('div', { 'style': 'display: flex; gap: 10px; margin-top: 15px;' }, [
 						E('button', {
-							'class': 'cbi-button cbi-button-positive',
+							'class': 'kiss-btn kiss-btn-green',
 							'click': function() {
 								navigator.clipboard.writeText(jsonStr).then(function() {
 									ui.addNotification(null, E('p', 'Copied to clipboard!'), 'success');
@@ -328,7 +328,7 @@ return view.extend({
 							}
 						}, 'Copy to Clipboard'),
 						E('button', {
-							'class': 'cbi-button',
+							'class': 'kiss-btn',
 							'click': function() {
 								var blob = new Blob([jsonStr], { type: 'application/json' });
 								var url = URL.createObjectURL(blob);
@@ -340,7 +340,7 @@ return view.extend({
 							}
 						}, 'Download'),
 						E('button', {
-							'class': 'cbi-button',
+							'class': 'kiss-btn',
 							'click': function() { ui.hideModal(); }
 						}, 'Close')
 					])
@@ -382,7 +382,7 @@ return view.extend({
 				'This will install required modules and apply UCI configuration changes.'),
 			E('div', { 'style': 'display: flex; gap: 10px; margin-top: 20px;' }, [
 				E('button', {
-					'class': 'cbi-button cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() {
 						ui.showModal('Applying Profile', [
 							Components.renderLoader('Applying profile: ' + profileId + '...')
@@ -402,7 +402,7 @@ return view.extend({
 					}
 				}, 'Apply'),
 				E('button', {
-					'class': 'cbi-button',
+					'class': 'kiss-btn',
 					'click': function() { ui.hideModal(); }
 				}, 'Cancel')
 			])
@@ -418,7 +418,7 @@ return view.extend({
 			}, jsonStr),
 			E('div', { 'style': 'display: flex; gap: 10px; margin-top: 15px;' }, [
 				E('button', {
-					'class': 'cbi-button',
+					'class': 'kiss-btn',
 					'click': function() { ui.hideModal(); }
 				}, 'Close')
 			])
@@ -439,7 +439,7 @@ return view.extend({
 			]),
 			E('div', { 'style': 'display: flex; gap: 10px;' }, [
 				E('button', {
-					'class': 'cbi-button',
+					'class': 'kiss-btn',
 					'click': function() { ui.hideModal(); }
 				}, 'Close')
 			])

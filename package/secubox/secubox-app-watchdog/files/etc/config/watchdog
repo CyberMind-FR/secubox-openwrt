@@ -21,7 +21,7 @@ config container 'mitmproxy_in'
 	option start_service '0'
 
 config container 'mitmproxy_out'
-	option enabled '1'
+	option enabled '0'
 	option name 'mitmproxy-out'
 	option critical '0'
 	option start_service '0'

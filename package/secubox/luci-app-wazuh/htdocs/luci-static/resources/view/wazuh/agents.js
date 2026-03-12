@@ -3,6 +3,7 @@
 'require dom';
 'require poll';
 'require wazuh.api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
     handleSaveApply: null,
@@ -13,170 +14,124 @@ return view.extend({
         return api.listAgents();
     },
 
-    render: function(data) {
-        var agents = data.agents || [];
+    renderNav: function(active) {
+        var tabs = [
+            { name: 'Overview', path: 'admin/services/wazuh/overview' },
+            { name: 'Alerts', path: 'admin/services/wazuh/alerts' },
+            { name: 'File Integrity', path: 'admin/services/wazuh/fim' },
+            { name: 'Agents', path: 'admin/services/wazuh/agents' }
+        ];
 
-        // Calculate statistics
+        return E('div', { 'class': 'kiss-tabs' }, tabs.map(function(tab) {
+            var isActive = tab.path.indexOf(active) !== -1;
+            return E('a', {
+                'href': L.url(tab.path),
+                'class': 'kiss-tab' + (isActive ? ' active' : '')
+            }, tab.name);
+        }));
+    },
+
+    renderStats: function(agents) {
+        var c = KissTheme.colors;
         var connected = agents.filter(function(a) { return a.status === 'active' || a.status === 'connected'; }).length;
         var disconnected = agents.filter(function(a) { return a.status === 'disconnected'; }).length;
         var pending = agents.filter(function(a) { return a.status === 'pending' || a.status === 'never_connected'; }).length;
 
-        var view = E('div', { 'class': 'cbi-map' }, [
-            E('h2', {}, _('Wazuh Agents')),
-            E('div', { 'class': 'cbi-map-descr' },
-                _('Manage security agents across your infrastructure')
-            ),
-
-            // Agent Statistics
-            E('div', { 'class': 'cbi-section' }, [
-                E('h3', {}, _('Agent Status Summary')),
-                E('div', { 'style': 'display: flex; gap: 1rem; flex-wrap: wrap;' }, [
-                    this.renderStatCard('Connected', connected, 'success'),
-                    this.renderStatCard('Disconnected', disconnected, 'danger'),
-                    this.renderStatCard('Pending', pending, 'warning'),
-                    this.renderStatCard('Total', agents.length, 'info')
-                ])
-            ]),
-
-            // Actions
-            E('div', { 'class': 'cbi-section' }, [
-                E('div', { 'style': 'display: flex; gap: 1rem; flex-wrap: wrap;' }, [
-                    E('button', {
-                        'class': 'btn cbi-button cbi-button-action',
-                        'click': L.bind(this.handleRefresh, this)
-                    }, _('Refresh')),
-                    E('a', {
-                        'href': 'https://wazuh.gk2.secubox.in/app/wazuh#/agents-preview',
-                        'target': '_blank',
-                        'class': 'btn cbi-button'
-                    }, _('View in Wazuh Dashboard'))
-                ])
-            ]),
-
-            // Agents Table
-            E('div', { 'class': 'cbi-section' }, [
-                E('h3', {}, _('Registered Agents')),
-                E('div', { 'id': 'agents-container' }, [
-                    this.renderAgentsTable(agents)
-                ])
-            ]),
-
-            // Local Agent Quick Actions
-            E('div', { 'class': 'cbi-section' }, [
-                E('h3', {}, _('Local Agent Control')),
-                E('div', { 'class': 'cbi-value', 'style': 'background: var(--background-color-high); padding: 1rem; border-radius: 8px;' }, [
-                    E('p', { 'style': 'margin-bottom: 1rem;' },
-                        _('Control the Wazuh agent running on this SecuBox device')
-                    ),
-                    E('div', { 'style': 'display: flex; gap: 0.5rem; flex-wrap: wrap;' }, [
-                        E('button', {
-                            'class': 'btn cbi-button cbi-button-apply',
-                            'click': L.bind(this.handleStartAgent, this)
-                        }, _('Start Agent')),
-                        E('button', {
-                            'class': 'btn cbi-button cbi-button-remove',
-                            'click': L.bind(this.handleStopAgent, this)
-                        }, _('Stop Agent')),
-                        E('button', {
-                            'class': 'btn cbi-button cbi-button-action',
-                            'click': L.bind(this.handleRestartAgent, this)
-                        }, _('Restart Agent'))
-                    ])
-                ])
-            ]),
-
-            // Agent Installation Guide
-            E('div', { 'class': 'cbi-section' }, [
-                E('h3', {}, _('Deploy New Agent')),
-                E('div', { 'style': 'background: var(--background-color-high); padding: 1rem; border-radius: 8px;' }, [
-                    E('p', {}, _('To register a new agent with the Wazuh Manager:')),
-                    E('ol', { 'style': 'margin: 1rem 0; padding-left: 1.5rem;' }, [
-                        E('li', {}, _('Install Wazuh agent on the target system')),
-                        E('li', {}, _('Configure agent to connect to manager: 192.168.255.50')),
-                        E('li', {}, _('Register with: /var/ossec/bin/agent-auth -m 192.168.255.50')),
-                        E('li', {}, _('Start the agent service'))
-                    ]),
-                    E('div', { 'style': 'margin-top: 1rem;' }, [
-                        E('a', {
-                            'href': 'https://documentation.wazuh.com/current/installation-guide/wazuh-agent/index.html',
-                            'target': '_blank',
-                            'class': 'btn cbi-button'
-                        }, _('Agent Installation Guide'))
-                    ])
-                ])
-            ])
-        ]);
-
-        poll.add(L.bind(this.pollAgents, this), 30);
-
-        return view;
-    },
-
-    renderStatCard: function(label, count, badgeClass) {
-        return E('div', {
-            'style': 'text-align: center; padding: 1rem; background: var(--background-color-high); border-radius: 8px; min-width: 120px;'
-        }, [
-            E('div', { 'style': 'font-size: 2.5em; font-weight: bold;' }, String(count)),
-            E('div', { 'class': 'badge ' + badgeClass, 'style': 'font-size: 0.9em;' }, label)
-        ]);
+        return [
+            KissTheme.stat(connected, 'Connected', c.green),
+            KissTheme.stat(disconnected, 'Disconnected', c.red),
+            KissTheme.stat(pending, 'Pending', c.yellow),
+            KissTheme.stat(agents.length, 'Total', c.cyan)
+        ];
     },
 
     renderAgentsTable: function(agents) {
+        var c = KissTheme.colors;
         if (!agents || agents.length === 0) {
-            return E('div', { 'class': 'cbi-value', 'style': 'text-align: center; padding: 2rem;' },
-                _('No agents registered')
-            );
+            return E('div', { 'style': 'text-align: center; padding: 32px; color: var(--kiss-muted);' }, 'No agents registered');
         }
 
-        var rows = [
-            E('tr', { 'class': 'tr' }, [
-                E('th', { 'class': 'th', 'style': 'width: 60px;' }, _('ID')),
-                E('th', { 'class': 'th' }, _('Name')),
-                E('th', { 'class': 'th', 'style': 'width: 120px;' }, _('IP Address')),
-                E('th', { 'class': 'th', 'style': 'width: 100px;' }, _('Status')),
-                E('th', { 'class': 'th', 'style': 'width: 100px;' }, _('OS')),
-                E('th', { 'class': 'th', 'style': 'width: 100px;' }, _('Version')),
-                E('th', { 'class': 'th', 'style': 'width: 150px;' }, _('Last Keep Alive'))
+        return E('table', { 'class': 'kiss-table' }, [
+            E('thead', {}, E('tr', {}, [
+                E('th', { 'style': 'width: 60px;' }, 'ID'),
+                E('th', {}, 'Name'),
+                E('th', { 'style': 'width: 120px;' }, 'IP Address'),
+                E('th', { 'style': 'width: 110px;' }, 'Status'),
+                E('th', { 'style': 'width: 100px;' }, 'OS'),
+                E('th', { 'style': 'width: 100px;' }, 'Version'),
+                E('th', { 'style': 'width: 140px;' }, 'Last Keep Alive')
+            ])),
+            E('tbody', { 'id': 'agents-body' }, agents.map(function(agent) {
+                var isConnected = agent.status === 'active' || agent.status === 'connected';
+                var statusText = isConnected ? 'Connected' :
+                    agent.status === 'disconnected' ? 'Disconnected' :
+                    agent.status === 'pending' ? 'Pending' :
+                    agent.status === 'never_connected' ? 'Never' : (agent.status || 'Unknown');
+
+                return E('tr', {}, [
+                    E('td', {}, E('code', { 'style': 'background: var(--kiss-bg2); padding: 2px 6px; border-radius: 4px; font-size: 11px;' }, agent.id || '-')),
+                    E('td', { 'style': 'font-weight: 600;' }, agent.name || '-'),
+                    E('td', { 'style': 'font-family: monospace; font-size: 12px; color: var(--kiss-cyan);' }, agent.ip || '-'),
+                    E('td', {}, KissTheme.badge(statusText, isConnected ? 'green' : 'red')),
+                    E('td', { 'style': 'font-size: 11px; color: var(--kiss-muted);' }, agent.os_name || agent.os || '-'),
+                    E('td', { 'style': 'font-family: monospace; font-size: 11px; color: var(--kiss-muted);' }, agent.version || '-'),
+                    E('td', { 'style': 'font-size: 11px; color: var(--kiss-muted);' }, api.formatTime(agent.lastKeepAlive || agent.last_keepalive))
+                ]);
+            }))
+        ]);
+    },
+
+    renderLocalAgentControl: function() {
+        var self = this;
+        return E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px;' }, [
+            E('p', { 'style': 'color: var(--kiss-muted); font-size: 13px; margin: 0;' },
+                'Control the Wazuh agent running on this SecuBox device'
+            ),
+            E('div', { 'style': 'display: flex; gap: 8px; flex-wrap: wrap;' }, [
+                E('button', {
+                    'class': 'kiss-btn kiss-btn-green',
+                    'click': function() { self.handleStartAgent(); }
+                }, 'Start Agent'),
+                E('button', {
+                    'class': 'kiss-btn kiss-btn-red',
+                    'click': function() { self.handleStopAgent(); }
+                }, 'Stop Agent'),
+                E('button', {
+                    'class': 'kiss-btn kiss-btn-blue',
+                    'click': function() { self.handleRestartAgent(); }
+                }, 'Restart Agent')
             ])
-        ];
+        ]);
+    },
 
-        agents.forEach(function(agent) {
-            var statusClass = (agent.status === 'active' || agent.status === 'connected') ? 'success' :
-                             (agent.status === 'disconnected' ? 'danger' : 'warning');
-            var statusText = agent.status === 'active' ? 'Connected' :
-                            (agent.status === 'connected' ? 'Connected' :
-                            (agent.status === 'disconnected' ? 'Disconnected' :
-                            (agent.status === 'pending' ? 'Pending' :
-                            (agent.status === 'never_connected' ? 'Never Connected' : agent.status || 'Unknown'))));
-
-            rows.push(E('tr', { 'class': 'tr' }, [
-                E('td', { 'class': 'td' }, [
-                    E('code', {}, agent.id || '-')
-                ]),
-                E('td', { 'class': 'td', 'style': 'font-weight: bold;' }, agent.name || '-'),
-                E('td', { 'class': 'td', 'style': 'font-family: monospace;' }, agent.ip || '-'),
-                E('td', { 'class': 'td' }, [
-                    E('span', { 'class': 'badge ' + statusClass }, statusText)
-                ]),
-                E('td', { 'class': 'td', 'style': 'font-size: 0.85em;' },
-                    agent.os_name || agent.os || '-'
-                ),
-                E('td', { 'class': 'td', 'style': 'font-family: monospace; font-size: 0.85em;' },
-                    agent.version || '-'
-                ),
-                E('td', { 'class': 'td', 'style': 'font-size: 0.85em;' },
-                    api.formatTime(agent.lastKeepAlive || agent.last_keepalive)
-                )
-            ]));
-        });
-
-        return E('table', { 'class': 'table' }, rows);
+    renderDeployGuide: function() {
+        return E('div', { 'style': 'color: var(--kiss-muted); font-size: 13px;' }, [
+            E('p', { 'style': 'margin: 0 0 12px 0;' }, 'To register a new agent with the Wazuh Manager:'),
+            E('ol', { 'style': 'margin: 0; padding-left: 20px;' }, [
+                E('li', {}, 'Install Wazuh agent on the target system'),
+                E('li', {}, 'Configure agent to connect to manager: 192.168.255.50'),
+                E('li', {}, E('code', { 'style': 'background: var(--kiss-bg2); padding: 2px 6px; border-radius: 4px;' }, '/var/ossec/bin/agent-auth -m 192.168.255.50')),
+                E('li', {}, 'Start the agent service')
+            ]),
+            E('div', { 'style': 'margin-top: 16px;' }, [
+                E('a', {
+                    'href': 'https://documentation.wazuh.com/current/installation-guide/wazuh-agent/index.html',
+                    'target': '_blank',
+                    'class': 'kiss-btn',
+                    'style': 'text-decoration: none;'
+                }, 'Agent Installation Guide')
+            ])
+        ]);
     },
 
     handleRefresh: function() {
         var container = document.getElementById('agents-container');
         if (container) {
-            container.innerHTML = '<div style="text-align: center; padding: 2rem;">Loading...</div>';
+            container.innerHTML = '';
+            container.appendChild(E('div', { 'style': 'text-align: center; padding: 32px; color: var(--kiss-muted);' }, [
+                E('span', { 'class': 'spinning' }),
+                ' Loading...'
+            ]));
         }
 
         var self = this;
@@ -185,15 +140,19 @@ return view.extend({
             if (container) {
                 dom.content(container, self.renderAgentsTable(agents));
             }
+            var statsEl = document.getElementById('agents-stats');
+            if (statsEl) {
+                dom.content(statsEl, self.renderStats(agents));
+            }
         });
     },
 
     handleStartAgent: function() {
         return api.startAgent().then(function(res) {
             if (res.success) {
-                L.ui.addNotification(null, E('p', _('Wazuh agent started successfully')), 'info');
+                L.ui.addNotification(null, E('p', 'Wazuh agent started successfully'), 'info');
             } else {
-                L.ui.addNotification(null, E('p', _('Failed to start agent: %s').format(res.error || 'Unknown error')), 'error');
+                L.ui.addNotification(null, E('p', 'Failed to start agent: ' + (res.error || 'Unknown')), 'error');
             }
         });
     },
@@ -201,9 +160,9 @@ return view.extend({
     handleStopAgent: function() {
         return api.stopAgent().then(function(res) {
             if (res.success) {
-                L.ui.addNotification(null, E('p', _('Wazuh agent stopped')), 'info');
+                L.ui.addNotification(null, E('p', 'Wazuh agent stopped'), 'info');
             } else {
-                L.ui.addNotification(null, E('p', _('Failed to stop agent: %s').format(res.error || 'Unknown error')), 'error');
+                L.ui.addNotification(null, E('p', 'Failed to stop agent: ' + (res.error || 'Unknown')), 'error');
             }
         });
     },
@@ -211,14 +170,61 @@ return view.extend({
     handleRestartAgent: function() {
         return api.restartAgent().then(function(res) {
             if (res.success) {
-                L.ui.addNotification(null, E('p', _('Wazuh agent restarted successfully')), 'info');
+                L.ui.addNotification(null, E('p', 'Wazuh agent restarted successfully'), 'info');
             } else {
-                L.ui.addNotification(null, E('p', _('Failed to restart agent: %s').format(res.error || 'Unknown error')), 'error');
+                L.ui.addNotification(null, E('p', 'Failed to restart agent: ' + (res.error || 'Unknown')), 'error');
             }
         });
     },
 
-    pollAgents: function() {
-        return this.handleRefresh();
+    render: function(data) {
+        var self = this;
+        var agents = data.agents || [];
+
+        var content = [
+            // Header
+            E('div', { 'style': 'margin-bottom: 24px;' }, [
+                E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+                    E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'Wazuh Agents'),
+                    KissTheme.badge(agents.length + ' registered', 'blue')
+                ]),
+                E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' }, 'Manage security agents across your infrastructure')
+            ]),
+
+            // Navigation
+            this.renderNav('agents'),
+
+            // Stats row
+            E('div', { 'class': 'kiss-grid kiss-grid-4', 'id': 'agents-stats', 'style': 'margin: 20px 0;' }, this.renderStats(agents)),
+
+            // Actions
+            E('div', { 'style': 'display: flex; gap: 12px; margin-bottom: 20px;' }, [
+                E('button', {
+                    'class': 'kiss-btn kiss-btn-blue',
+                    'click': function() { self.handleRefresh(); }
+                }, 'Refresh'),
+                E('a', {
+                    'href': 'https://wazuh.gk2.secubox.in/app/wazuh#/agents-preview',
+                    'target': '_blank',
+                    'class': 'kiss-btn',
+                    'style': 'text-decoration: none;'
+                }, 'View in Wazuh Dashboard')
+            ]),
+
+            // Agents Table
+            KissTheme.card('Registered Agents', E('div', { 'id': 'agents-container' }, this.renderAgentsTable(agents))),
+
+            // Two column layout
+            E('div', { 'class': 'kiss-grid kiss-grid-2' }, [
+                // Local Agent Control
+                KissTheme.card('Local Agent Control', this.renderLocalAgentControl()),
+                // Deploy Guide
+                KissTheme.card('Deploy New Agent', this.renderDeployGuide())
+            ])
+        ];
+
+        poll.add(L.bind(function() { return this.handleRefresh(); }, this), 30);
+
+        return KissTheme.wrap(content, 'admin/services/wazuh/agents');
     }
 });

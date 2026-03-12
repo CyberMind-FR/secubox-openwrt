@@ -4,6 +4,7 @@
 'require ui';
 'require form';
 'require uci';
+'require secubox/kiss-theme';
 
 var callPlaylist = rpc.declare({
 	object: 'luci.webradio',
@@ -26,6 +27,10 @@ var callUpload = rpc.declare({
 });
 
 return view.extend({
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null,
+
 	load: function() {
 		return Promise.all([
 			callPlaylist(),
@@ -33,112 +38,32 @@ return view.extend({
 		]);
 	},
 
-	render: function(data) {
-		var self = this;
-		var playlist = data[0] || {};
-		var tracks = playlist.tracks || [];
-
-		var content = [
-			E('h2', {}, 'Playlist Management'),
-
-			// Playlist settings
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, 'Settings'),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Music Directory'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
-							'type': 'text',
-							'id': 'music-dir',
-							'class': 'cbi-input-text',
-							'value': uci.get('ezstream', 'playlist', 'directory') || '/srv/webradio/music',
-							'style': 'width: 300px;'
-						}),
-						E('button', {
-							'class': 'btn cbi-button',
-							'style': 'margin-left: 10px;',
-							'click': ui.createHandlerFn(this, 'handleSaveDir')
-						}, 'Save')
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Shuffle'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
-							'type': 'checkbox',
-							'id': 'shuffle',
-							'checked': uci.get('ezstream', 'playlist', 'shuffle') === '1'
-						}),
-						E('span', { 'style': 'margin-left: 10px;' }, 'Randomize track order')
-					])
-				])
-			]),
-
-			// Actions
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, 'Actions'),
-				E('div', { 'style': 'display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px;' }, [
-					E('button', {
-						'class': 'btn cbi-button-action',
-						'click': ui.createHandlerFn(this, 'handleRegenerate')
-					}, 'Regenerate Playlist'),
-					E('button', {
-						'class': 'btn cbi-button-neutral',
-						'click': ui.createHandlerFn(this, 'handleRefresh')
-					}, 'Refresh List')
-				]),
-
-				// File upload
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Upload Music'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
-							'type': 'file',
-							'id': 'music-file',
-							'accept': 'audio/*',
-							'multiple': true
-						}),
-						E('button', {
-							'class': 'btn cbi-button-positive',
-							'style': 'margin-left: 10px;',
-							'click': ui.createHandlerFn(this, 'handleUpload')
-						}, 'Upload')
-					]),
-					E('p', { 'style': 'color: #666; font-size: 0.9em;' },
-						'Supported formats: MP3, OGG, FLAC, WAV, M4A')
-				])
-			]),
-
-			// Current playlist
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, 'Current Playlist (' + playlist.total + ' tracks)'),
-				E('div', { 'id': 'playlist-container' }, [
-					this.renderPlaylist(tracks, playlist.total)
-				])
-			])
+	renderStats: function(total, directory, shuffle) {
+		var c = KissTheme.colors;
+		return [
+			KissTheme.stat(total, 'Tracks', c.blue),
+			KissTheme.stat(shuffle ? 'On' : 'Off', 'Shuffle', shuffle ? c.green : c.muted),
+			KissTheme.stat('M3U', 'Format', c.purple)
 		];
-
-		return E('div', { 'class': 'cbi-map' }, content);
 	},
 
 	renderPlaylist: function(tracks, total) {
 		if (!tracks || tracks.length === 0) {
-			return E('p', { 'style': 'color: #666;' },
+			return E('p', { 'style': 'color: var(--kiss-muted);' },
 				'No tracks in playlist. Add music files to the music directory and click "Regenerate Playlist".');
 		}
 
 		var rows = tracks.map(function(track, idx) {
-			return E('div', { 'class': 'tr' }, [
-				E('div', { 'class': 'td', 'style': 'width: 50px;' }, String(idx + 1)),
-				E('div', { 'class': 'td' }, track.name),
-				E('div', { 'class': 'td', 'style': 'width: 100px;' }, [
+			return E('tr', {}, [
+				E('td', { 'style': 'width: 50px; color: var(--kiss-muted);' }, String(idx + 1)),
+				E('td', {}, track.name),
+				E('td', { 'style': 'width: 100px;' }, [
 					E('button', {
-						'class': 'btn cbi-button-remove',
-						'style': 'padding: 2px 8px;',
+						'class': 'kiss-btn kiss-btn-red',
+						'style': 'padding: 4px 10px; font-size: 11px;',
 						'data-path': track.path,
 						'click': function(ev) {
-							ev.target.closest('.tr').remove();
-							// TODO: Add remove from playlist
+							ev.target.closest('tr').remove();
 						}
 					}, 'Remove')
 				])
@@ -147,20 +72,118 @@ return view.extend({
 
 		var moreMsg = '';
 		if (total > 50) {
-			moreMsg = E('p', { 'style': 'color: #666; margin-top: 10px;' },
+			moreMsg = E('p', { 'style': 'color: var(--kiss-muted); margin-top: 12px; font-size: 12px;' },
 				'Showing first 50 of ' + total + ' tracks');
 		}
 
 		return E('div', {}, [
-			E('div', { 'class': 'table' }, [
-				E('div', { 'class': 'tr cbi-section-table-titles' }, [
-					E('div', { 'class': 'th' }, '#'),
-					E('div', { 'class': 'th' }, 'Track'),
-					E('div', { 'class': 'th' }, 'Action')
-				])
-			].concat(rows)),
+			E('table', { 'class': 'kiss-table' }, [
+				E('thead', {}, [
+					E('tr', {}, [
+						E('th', {}, '#'),
+						E('th', {}, 'Track'),
+						E('th', {}, 'Action')
+					])
+				]),
+				E('tbody', {}, rows)
+			]),
 			moreMsg
 		]);
+	},
+
+	render: function(data) {
+		var self = this;
+		var playlist = data[0] || {};
+		var tracks = playlist.tracks || [];
+		var total = playlist.total || 0;
+		var musicDir = uci.get('ezstream', 'playlist', 'directory') || '/srv/webradio/music';
+		var shuffle = uci.get('ezstream', 'playlist', 'shuffle') === '1';
+
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'Playlist Management'),
+					KissTheme.badge(total + ' Tracks', 'blue')
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' },
+					'Manage music files and playlist for ezstream')
+			]),
+
+			// Stats
+			E('div', { 'class': 'kiss-grid kiss-grid-3', 'style': 'margin: 20px 0;' },
+				this.renderStats(total, musicDir, shuffle)),
+
+			// Settings
+			KissTheme.card('Settings',
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 16px;' }, [
+					E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+						E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Music Directory'),
+						E('div', { 'style': 'display: flex; gap: 12px;' }, [
+							E('input', {
+								'type': 'text',
+								'id': 'music-dir',
+								'value': musicDir,
+								'style': 'flex: 1; background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 10px 12px; border-radius: 6px;'
+							}),
+							E('button', {
+								'class': 'kiss-btn kiss-btn-blue',
+								'click': ui.createHandlerFn(this, 'handleSaveDir')
+							}, 'Save')
+						])
+					]),
+					E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+						E('label', { 'style': 'display: flex; align-items: center; gap: 10px;' }, [
+							E('input', {
+								'type': 'checkbox',
+								'id': 'shuffle',
+								'checked': shuffle
+							}),
+							E('span', {}, 'Randomize track order')
+						])
+					])
+				])
+			),
+
+			// Actions
+			KissTheme.card('Actions',
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 16px;' }, [
+					E('div', { 'style': 'display: flex; gap: 12px; flex-wrap: wrap;' }, [
+						E('button', {
+							'class': 'kiss-btn kiss-btn-purple',
+							'click': ui.createHandlerFn(this, 'handleRegenerate')
+						}, 'Regenerate Playlist'),
+						E('button', {
+							'class': 'kiss-btn',
+							'click': ui.createHandlerFn(this, 'handleRefresh')
+						}, 'Refresh List')
+					]),
+					E('div', { 'style': 'display: flex; flex-direction: column; gap: 8px;' }, [
+						E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Upload Music'),
+						E('div', { 'style': 'display: flex; gap: 12px; align-items: center;' }, [
+							E('input', {
+								'type': 'file',
+								'id': 'music-file',
+								'accept': 'audio/*',
+								'multiple': true,
+								'style': 'color: var(--kiss-text);'
+							}),
+							E('button', {
+								'class': 'kiss-btn kiss-btn-green',
+								'click': ui.createHandlerFn(this, 'handleUpload')
+							}, 'Upload')
+						]),
+						E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted);' },
+							'Supported formats: MP3, OGG, FLAC, WAV, M4A')
+					])
+				])
+			),
+
+			// Current playlist
+			KissTheme.card('Current Playlist (' + total + ' tracks)', this.renderPlaylist(tracks, total))
+		];
+
+		return KissTheme.wrap(content, 'admin/services/webradio/playlist');
 	},
 
 	handleRegenerate: function() {
@@ -203,7 +226,6 @@ return view.extend({
 			return;
 		}
 
-		var self = this;
 		var uploaded = 0;
 		var failed = 0;
 
@@ -238,9 +260,5 @@ return view.extend({
 				'Upload complete: ' + uploaded + ' succeeded, ' + failed + ' failed'));
 			fileInput.value = '';
 		});
-	},
-
-	handleSaveApply: null,
-	handleSave: null,
-	handleReset: null
+	}
 });

@@ -218,7 +218,7 @@ return view.extend({
 					'class': 'sr-wizard-input'
 				}),
 				E('button', {
-					'class': 'cbi-button cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'click': ui.createHandlerFn(this, 'handleUrlCheck')
 				}, '🔍 Check')
 			]),
@@ -608,7 +608,7 @@ return view.extend({
 		ui.showModal('📱 ' + (service.name || service.id), [
 			E('div', { 'class': 'sr-qr-modal' }, qrBoxes),
 			E('div', { 'class': 'right', 'style': 'margin-top: 15px;' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Close'))
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, _('Close'))
 			])
 		]);
 	},
@@ -651,9 +651,9 @@ return view.extend({
 				])
 			]),
 			E('div', { 'class': 'right', 'style': 'margin-top: 15px;' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, _('Cancel')),
 				E('button', {
-					'class': 'cbi-button cbi-button-apply',
+					'class': 'kiss-btn kiss-btn-cyan',
 					'click': function() {
 						var domain = document.getElementById('qp-domain').value.trim();
 						var tor = document.getElementById('qp-tor').checked;

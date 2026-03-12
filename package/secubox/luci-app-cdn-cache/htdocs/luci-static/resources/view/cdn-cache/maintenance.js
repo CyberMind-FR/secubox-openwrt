@@ -100,7 +100,7 @@ return view.extend({
 									E('button', { 'class': 'btn', 'click': ui.hideModal }, 'Annuler'),
 									' ',
 									E('button', {
-										'class': 'btn cbi-button-negative',
+										'class': 'kiss-btn kiss-btn-red',
 										'click': function() {
 											callPurgeCache().then(function(res) {
 												ui.hideModal();

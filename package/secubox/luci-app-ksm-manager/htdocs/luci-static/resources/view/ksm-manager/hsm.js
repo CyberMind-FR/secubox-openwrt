@@ -1,6 +1,5 @@
 'use strict';
 'require view';
-'require secubox-theme/theme as Theme';
 'require poll';
 'require ui';
 'require ksm-manager/api as KSM';
@@ -26,72 +25,89 @@ return view.extend({
 
 		poll.add(L.bind(this.pollDevices, this), 10);
 
-		return KissTheme.wrap([
-			E('h2', {}, _('Hardware Security Modules')),
-			E('p', {}, _('Manage Nitrokey and YubiKey devices for hardware-backed cryptographic operations.')),
-
-			E('div', { 'class': 'cbi-section' }, [
-				E('div', { 'class': 'cbi-section-node' }, [
-					E('button', {
-						'class': 'cbi-button cbi-button-action',
-						'click': L.bind(this.handleScanDevices, this)
-					}, _('Scan for Devices'))
-				])
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'Hardware Security Modules'),
+					KissTheme.badge('HSM', 'purple')
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' },
+					'Manage Nitrokey and YubiKey devices for hardware-backed cryptographic operations')
 			]),
 
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Connected Devices')),
-				E('div', { 'class': 'cbi-section-node', 'id': 'hsm-devices-container' },
-					this.renderDevices(devices)
-				)
-			])
-		], 'admin/secubox/ksm/hsm');
+			// Actions
+			E('div', { 'style': 'margin-bottom: 20px;' }, [
+				E('button', {
+					'class': 'kiss-btn kiss-btn-cyan',
+					'click': L.bind(this.handleScanDevices, this)
+				}, 'Scan for Devices')
+			]),
+
+			// Devices Card
+			KissTheme.card(
+				E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+					E('span', {}, 'Connected Devices'),
+					KissTheme.badge(devices.length + ' found', devices.length > 0 ? 'green' : 'muted')
+				]),
+				E('div', { 'id': 'hsm-devices-container' }, this.renderDevices(devices))
+			)
+		];
+
+		return KissTheme.wrap(content, 'admin/secubox/ksm/hsm');
 	},
 
 	renderDevices: function(devices) {
 		if (!devices || devices.length === 0) {
-			return E('div', { 'class': 'cbi-value' }, [
-				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-				E('em', {}, _('No HSM devices detected. Connect a Nitrokey or YubiKey and click "Scan for Devices".'))
-			]);
+			return E('p', { 'style': 'color: var(--kiss-muted); text-align: center; padding: 30px;' },
+				'No HSM devices detected. Connect a Nitrokey or YubiKey and click "Scan for Devices".');
 		}
 
-		var container = E('div', {});
+		return E('div', { 'style': 'display: flex; flex-direction: column; gap: 16px;' },
+			devices.map(L.bind(function(device) {
+				return E('div', {
+					'style': 'background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 8px; padding: 16px;'
+				}, [
+					// Device Header
+					E('div', { 'style': 'display: flex; align-items: center; gap: 12px; margin-bottom: 16px;' }, [
+						E('span', { 'style': 'font-size: 28px;' }, device.type === 'nitrokey' ? '🔐' : '🔑'),
+						E('div', { 'style': 'flex: 1;' }, [
+							E('div', { 'style': 'font-size: 16px; font-weight: 600;' }, device.type.toUpperCase()),
+							E('div', { 'style': 'font-size: 13px; color: var(--kiss-muted);' }, 'Serial: ' + device.serial)
+						]),
+						KissTheme.badge('v' + (device.version || '?'), 'cyan')
+					]),
 
-		devices.forEach(L.bind(function(device) {
-			var typeIcon = device.type === 'nitrokey' ? '🔐' : '🔑';
-			var card = E('div', { 'class': 'cbi-section', 'style': 'border: 1px solid #ccc; padding: 10px; margin-bottom: 10px;' }, [
-				E('h4', {}, typeIcon + ' ' + device.type.toUpperCase() + ' - ' + device.serial),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Serial Number') + ':'),
-					E('div', { 'class': 'cbi-value-field' }, device.serial)
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Firmware Version') + ':'),
-					E('div', { 'class': 'cbi-value-field' }, device.version || _('Unknown'))
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('button', {
-						'class': 'cbi-button cbi-button-action',
-						'click': L.bind(function() { this.handleInitHsm(device.serial); }, this)
-					}, _('Initialize')),
-					' ',
-					E('button', {
-						'class': 'cbi-button cbi-button-action',
-						'click': L.bind(function() { this.handleGenerateHsmKey(device.serial); }, this)
-					}, _('Generate Key')),
-					' ',
-					E('button', {
-						'class': 'cbi-button cbi-button-neutral',
-						'click': L.bind(function() { this.handleGetStatus(device.serial); }, this)
-					}, _('Get Status'))
-				])
-			]);
+					// Device Info
+					E('div', { 'style': 'display: flex; gap: 16px; margin-bottom: 16px;' }, [
+						E('div', { 'style': 'display: flex; align-items: center; gap: 8px;' }, [
+							E('span', { 'style': 'color: var(--kiss-muted);' }, 'Serial:'),
+							E('span', { 'style': 'font-family: monospace;' }, device.serial)
+						]),
+						E('div', { 'style': 'display: flex; align-items: center; gap: 8px;' }, [
+							E('span', { 'style': 'color: var(--kiss-muted);' }, 'Firmware:'),
+							E('span', { 'style': 'font-family: monospace;' }, device.version || 'Unknown')
+						])
+					]),
 
-			container.appendChild(card);
-		}, this));
-
-		return container;
+					// Actions
+					E('div', { 'style': 'display: flex; gap: 12px; flex-wrap: wrap;' }, [
+						E('button', {
+							'class': 'kiss-btn kiss-btn-green',
+							'click': L.bind(function() { this.handleInitHsm(device.serial); }, this)
+						}, 'Initialize'),
+						E('button', {
+							'class': 'kiss-btn kiss-btn-blue',
+							'click': L.bind(function() { this.handleGenerateHsmKey(device.serial); }, this)
+						}, 'Generate Key'),
+						E('button', {
+							'class': 'kiss-btn kiss-btn-purple',
+							'click': L.bind(function() { this.handleGetStatus(device.serial); }, this)
+						}, 'Get Status')
+					])
+				]);
+			}, this))
+		);
 	},
 
 	handleScanDevices: function() {
@@ -111,22 +127,32 @@ return view.extend({
 
 	handleInitHsm: function(serial) {
 		ui.showModal(_('Initialize HSM'), [
-			E('p', {}, _('Initialize device: %s').format(serial)),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Admin PIN') + ':'),
-				E('div', { 'class': 'cbi-value-field' }, [
-					E('input', { 'type': 'password', 'id': 'admin-pin', 'placeholder': _('6-32 characters') })
+			E('p', { 'style': 'color: var(--kiss-muted);' }, _('Initialize device: %s').format(serial)),
+			E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px; margin: 16px 0;' }, [
+				E('label', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+					E('span', { 'style': 'font-weight: 500; color: var(--kiss-muted);' }, _('Admin PIN')),
+					E('input', {
+						'type': 'password',
+						'id': 'admin-pin',
+						'placeholder': _('6-32 characters'),
+						'style': 'padding: 10px 14px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); ' +
+							'border-radius: 6px; color: var(--kiss-text);'
+					})
+				]),
+				E('label', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+					E('span', { 'style': 'font-weight: 500; color: var(--kiss-muted);' }, _('User PIN')),
+					E('input', {
+						'type': 'password',
+						'id': 'user-pin',
+						'placeholder': _('6-32 characters'),
+						'style': 'padding: 10px 14px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); ' +
+							'border-radius: 6px; color: var(--kiss-text);'
+					})
 				])
 			]),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('User PIN') + ':'),
-				E('div', { 'class': 'cbi-value-field' }, [
-					E('input', { 'type': 'password', 'id': 'user-pin', 'placeholder': _('6-32 characters') })
-				])
-			]),
-			E('div', { 'class': 'right' }, [
+			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px;' }, [
 				E('button', {
-					'class': 'cbi-button cbi-button-action',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() {
 						var adminPin = document.getElementById('admin-pin').value;
 						var userPin = document.getElementById('user-pin').value;
@@ -149,43 +175,56 @@ return view.extend({
 						});
 					}
 				}, _('Initialize')),
-				' ',
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel'))
+				E('button', {
+					'class': 'kiss-btn',
+					'style': 'background: var(--kiss-bg2); border: 1px solid var(--kiss-line);',
+					'click': ui.hideModal
+				}, _('Cancel'))
 			])
 		]);
 	},
 
 	handleGenerateHsmKey: function(serial) {
 		ui.showModal(_('Generate HSM Key'), [
-			E('p', {}, _('Generate key on device: %s').format(serial)),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Label') + ':'),
-				E('div', { 'class': 'cbi-value-field' }, [
-					E('input', { 'type': 'text', 'id': 'hsm-key-label', 'placeholder': _('Key label') })
-				])
-			]),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Key Type') + ':'),
-				E('div', { 'class': 'cbi-value-field' }, [
-					E('select', { 'id': 'hsm-key-type' }, [
+			E('p', { 'style': 'color: var(--kiss-muted);' }, _('Generate key on device: %s').format(serial)),
+			E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px; margin: 16px 0;' }, [
+				E('label', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+					E('span', { 'style': 'font-weight: 500; color: var(--kiss-muted);' }, _('Label')),
+					E('input', {
+						'type': 'text',
+						'id': 'hsm-key-label',
+						'placeholder': _('Key label'),
+						'style': 'padding: 10px 14px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); ' +
+							'border-radius: 6px; color: var(--kiss-text);'
+					})
+				]),
+				E('label', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+					E('span', { 'style': 'font-weight: 500; color: var(--kiss-muted);' }, _('Key Type')),
+					E('select', {
+						'id': 'hsm-key-type',
+						'style': 'padding: 10px 14px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); ' +
+							'border-radius: 6px; color: var(--kiss-text);'
+					}, [
 						E('option', { 'value': 'rsa' }, 'RSA'),
 						E('option', { 'value': 'ecdsa' }, 'ECDSA'),
 						E('option', { 'value': 'ed25519' }, 'Ed25519')
 					])
-				])
-			]),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Key Size') + ':'),
-				E('div', { 'class': 'cbi-value-field' }, [
-					E('select', { 'id': 'hsm-key-size' }, [
+				]),
+				E('label', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+					E('span', { 'style': 'font-weight: 500; color: var(--kiss-muted);' }, _('Key Size')),
+					E('select', {
+						'id': 'hsm-key-size',
+						'style': 'padding: 10px 14px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); ' +
+							'border-radius: 6px; color: var(--kiss-text);'
+					}, [
 						E('option', { 'value': '2048' }, '2048 bits'),
 						E('option', { 'value': '4096' }, '4096 bits')
 					])
 				])
 			]),
-			E('div', { 'class': 'right' }, [
+			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px;' }, [
 				E('button', {
-					'class': 'cbi-button cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'click': function() {
 						var label = document.getElementById('hsm-key-label').value;
 						var keyType = document.getElementById('hsm-key-type').value;
@@ -209,8 +248,11 @@ return view.extend({
 						});
 					}
 				}, _('Generate')),
-				' ',
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel'))
+				E('button', {
+					'class': 'kiss-btn',
+					'style': 'background: var(--kiss-bg2); border: 1px solid var(--kiss-line);',
+					'click': ui.hideModal
+				}, _('Cancel'))
 			])
 		]);
 	},
@@ -220,21 +262,27 @@ return view.extend({
 
 		KSM.getHsmStatus(serial).then(function(status) {
 			ui.showModal(_('HSM Status'), [
-				E('p', {}, _('Device: %s').format(serial)),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Initialized') + ':'),
-					E('div', { 'class': 'cbi-value-field' }, status.initialized ? _('Yes') : _('No'))
+				E('p', { 'style': 'color: var(--kiss-muted); margin-bottom: 16px;' }, _('Device: %s').format(serial)),
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px;' }, [
+					E('div', { 'style': 'display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--kiss-line);' }, [
+						E('span', { 'style': 'color: var(--kiss-muted);' }, _('Initialized')),
+						KissTheme.badge(status.initialized ? 'Yes' : 'No', status.initialized ? 'green' : 'red')
+					]),
+					E('div', { 'style': 'display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--kiss-line);' }, [
+						E('span', { 'style': 'color: var(--kiss-muted);' }, _('PIN Retries')),
+						E('span', { 'style': 'font-weight: 500;' }, String(status.pin_retries || 0))
+					]),
+					E('div', { 'style': 'display: flex; justify-content: space-between; padding: 10px 0;' }, [
+						E('span', { 'style': 'color: var(--kiss-muted);' }, _('Keys Count')),
+						E('span', { 'style': 'font-weight: 500;' }, String(status.keys_count || 0))
+					])
 				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('PIN Retries') + ':'),
-					E('div', { 'class': 'cbi-value-field' }, String(status.pin_retries || 0))
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Keys Count') + ':'),
-					E('div', { 'class': 'cbi-value-field' }, String(status.keys_count || 0))
-				]),
-				E('div', { 'class': 'right' }, [
-					E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Close'))
+				E('div', { 'style': 'display: flex; justify-content: flex-end; margin-top: 16px;' }, [
+					E('button', {
+						'class': 'kiss-btn',
+						'style': 'background: var(--kiss-bg2); border: 1px solid var(--kiss-line);',
+						'click': ui.hideModal
+					}, _('Close'))
 				])
 			]);
 		});

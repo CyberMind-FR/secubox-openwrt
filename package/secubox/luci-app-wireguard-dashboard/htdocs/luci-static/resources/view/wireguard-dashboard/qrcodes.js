@@ -54,12 +54,12 @@ return view.extend({
 			]),
 			E('div', { 'class': 'right' }, [
 				E('button', {
-					'class': 'btn',
+					'class': 'kiss-btn',
 					'click': ui.hideModal
 				}, _('Cancel')),
 				' ',
 				E('button', {
-					'class': 'btn cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'click': function() {
 						var input = document.getElementById('wg-private-key-input');
 						var key = input ? input.value.trim() : '';
@@ -159,7 +159,7 @@ return view.extend({
 				E('p', { 'class': 'wg-qr-hint' }, _('Scan with WireGuard app on your mobile device')),
 				E('div', { 'class': 'wg-qr-actions' }, [
 					E('button', {
-						'class': 'btn',
+						'class': 'kiss-btn',
 						'click': function() {
 							navigator.clipboard.writeText(config).then(function() {
 								ui.addNotification(null, E('p', {}, _('Configuration copied to clipboard')), 'info');
@@ -167,7 +167,7 @@ return view.extend({
 						}
 					}, _('Copy Config')),
 					E('button', {
-						'class': 'btn cbi-button-action',
+						'class': 'kiss-btn kiss-btn-blue',
 						'click': function() {
 							var blob = new Blob([config], { type: 'text/plain' });
 							var url = URL.createObjectURL(blob);
@@ -186,7 +186,7 @@ return view.extend({
 			]),
 			E('div', { 'class': 'right' }, [
 				E('button', {
-					'class': 'btn',
+					'class': 'kiss-btn',
 					'click': ui.hideModal
 				}, _('Close'))
 			])
@@ -205,7 +205,7 @@ return view.extend({
 					E('td', {}, ep.name || ep.id),
 					E('td', {}, E('code', {}, ep.address)),
 					E('td', {}, ep.id === defaultId ? E('strong', {}, _('Default')) : E('button', {
-						'class': 'cbi-button cbi-button-apply',
+						'class': 'kiss-btn kiss-btn-cyan',
 						'style': 'padding: 2px 8px; font-size: 0.85em;',
 						'click': function() {
 							api.setDefaultEndpoint(ep.id).then(function() {
@@ -215,7 +215,7 @@ return view.extend({
 						}
 					}, _('Set Default'))),
 					E('td', {}, E('button', {
-						'class': 'cbi-button cbi-button-negative',
+						'class': 'kiss-btn kiss-btn-red',
 						'style': 'padding: 2px 8px; font-size: 0.85em;',
 						'click': function() {
 							api.deleteEndpoint(ep.id).then(function() {
@@ -259,12 +259,12 @@ return view.extend({
 				]),
 				E('div', { 'class': 'right', 'style': 'margin-top: 1em;' }, [
 					E('button', {
-						'class': 'btn',
+						'class': 'kiss-btn',
 						'click': ui.hideModal
 					}, _('Close')),
 					' ',
 					E('button', {
-						'class': 'btn cbi-button-action',
+						'class': 'kiss-btn kiss-btn-blue',
 						'click': function() {
 							var name = document.getElementById('new-ep-name').value.trim();
 							var address = document.getElementById('new-ep-address').value.trim();

@@ -108,16 +108,16 @@ return view.extend({
 
 			// LXC/Container status
 			html += '<div class="status-card" style="min-width:200px;">';
-			html += '<h4 style="margin:0 0 10px 0;border-bottom:1px solid #ddd;padding-bottom:5px;">Container</h4>';
+			html += '<h4 style="margin:0 0 10px 0;border-bottom:1px solid var(--kiss-line);padding-bottom:5px;">Container</h4>';
 
 			if (!status.lxc_available) {
-				html += '<p style="color:#c00;"><b>LXC not installed</b></p>';
+				html += '<p style="color:var(--kiss-red, #f44336);"><b>LXC not installed</b></p>';
 				html += '<p><small>Install: opkg install lxc lxc-common</small></p>';
 			} else if (!status.container_exists) {
-				html += '<p style="color:#888;"><b>Not installed</b></p>';
+				html += '<p style="color:var(--kiss-muted);"><b>Not installed</b></p>';
 				html += '<p><small>Click "Install" below</small></p>';
 			} else {
-				var containerColor = status.container_status === 'running' ? '#080' : '#c60';
+				var containerColor = status.container_status === 'running' ? 'var(--kiss-green, #4caf50)' : 'var(--kiss-orange, #ff9800)';
 				html += '<p><b>Status:</b> <span style="color:' + containerColor + '">' + status.container_status + '</span></p>';
 			}
 			html += '</div>';
@@ -125,8 +125,8 @@ return view.extend({
 			// SMP Server status
 			if (status.smp_enabled) {
 				html += '<div class="status-card" style="min-width:200px;">';
-				html += '<h4 style="margin:0 0 10px 0;border-bottom:1px solid #ddd;padding-bottom:5px;">SMP Server</h4>';
-				var smpColor = status.smp_status === 'running' ? '#080' : '#c00';
+				html += '<h4 style="margin:0 0 10px 0;border-bottom:1px solid var(--kiss-line);padding-bottom:5px;">SMP Server</h4>';
+				var smpColor = status.smp_status === 'running' ? 'var(--kiss-green, #4caf50)' : '#c00';
 				html += '<p><b>Status:</b> <span style="color:' + smpColor + '">' + status.smp_status + '</span></p>';
 				html += '<p><b>Port:</b> ' + status.smp_port + '/tcp</p>';
 				if (status.smp_hostname) {
@@ -138,8 +138,8 @@ return view.extend({
 			// XFTP Server status
 			if (status.xftp_enabled) {
 				html += '<div class="status-card" style="min-width:200px;">';
-				html += '<h4 style="margin:0 0 10px 0;border-bottom:1px solid #ddd;padding-bottom:5px;">XFTP Server</h4>';
-				var xftpColor = status.xftp_status === 'running' ? '#080' : '#c00';
+				html += '<h4 style="margin:0 0 10px 0;border-bottom:1px solid var(--kiss-line);padding-bottom:5px;">XFTP Server</h4>';
+				var xftpColor = status.xftp_status === 'running' ? 'var(--kiss-green, #4caf50)' : '#c00';
 				html += '<p><b>Status:</b> <span style="color:' + xftpColor + '">' + status.xftp_status + '</span></p>';
 				html += '<p><b>Port:</b> ' + status.xftp_port + '/tcp</p>';
 				if (status.xftp_hostname) {
@@ -151,14 +151,14 @@ return view.extend({
 			// Storage stats
 			if (stats) {
 				html += '<div class="status-card" style="min-width:200px;">';
-				html += '<h4 style="margin:0 0 10px 0;border-bottom:1px solid #ddd;padding-bottom:5px;">Storage</h4>';
+				html += '<h4 style="margin:0 0 10px 0;border-bottom:1px solid var(--kiss-line);padding-bottom:5px;">Storage</h4>';
 				html += '<p><b>Used:</b> ' + formatBytes(stats.storage_used || 0) + '</p>';
 				html += '<p><b>Quota:</b> ' + formatBytes(stats.storage_quota || 0) + '</p>';
 				html += '<p><b>Files:</b> ' + (stats.file_count || 0) + '</p>';
 				if (stats.storage_quota > 0) {
 					var pct = Math.round((stats.storage_used / stats.storage_quota) * 100);
-					var barColor = pct > 80 ? '#c00' : (pct > 60 ? '#c60' : '#080');
-					html += '<div style="background:#ddd;border-radius:3px;height:8px;margin-top:5px;">';
+					var barColor = pct > 80 ? '#c00' : (pct > 60 ? 'var(--kiss-orange, #ff9800)' : 'var(--kiss-green, #4caf50)');
+					html += '<div style="background:var(--kiss-line);border-radius:3px;height:8px;margin-top:5px;">';
 					html += '<div style="background:' + barColor + ';width:' + Math.min(pct, 100) + '%;height:100%;border-radius:3px;"></div>';
 					html += '</div>';
 					html += '<small>' + pct + '% used</small>';
@@ -207,10 +207,10 @@ return view.extend({
 		o = s.option(form.DummyValue, '_addresses', _('Addresses'));
 		o.rawhtml = true;
 		o.cfgvalue = function() {
-			var html = '<div class="simplex-addresses" style="background:#f8f8f8;padding:15px;border-radius:5px;">';
+			var html = '<div class="simplex-addresses" style="background:var(--kiss-bg2);padding:15px;border-radius:5px;">';
 
 			if (!addresses.smp_address && !addresses.xftp_address) {
-				html += '<p style="color:#888;">Server addresses will appear here after installation and configuration.</p>';
+				html += '<p style="color:var(--kiss-muted);">Server addresses will appear here after installation and configuration.</p>';
 				html += '<p><small>Set hostnames in the configuration below, then restart the service.</small></p>';
 			} else {
 				html += '<p style="margin-bottom:10px;"><small>Add these addresses to your SimpleX Chat app under Settings &gt; Network &amp; Servers</small></p>';
@@ -219,8 +219,8 @@ return view.extend({
 					html += '<div style="margin-bottom:15px;">';
 					html += '<label style="font-weight:bold;display:block;margin-bottom:5px;">SMP Server (messaging):</label>';
 					html += '<div style="display:flex;gap:10px;align-items:center;">';
-					html += '<code style="flex:1;background:#fff;padding:8px;border:1px solid #ddd;border-radius:3px;word-break:break-all;font-size:12px;">' + addresses.smp_address + '</code>';
-					html += '<button class="cbi-button" onclick="copyToClipboard(\'' + addresses.smp_address + '\')">Copy</button>';
+					html += '<code style="flex:1;background:var(--kiss-bg);padding:8px;border:1px solid var(--kiss-line);border-radius:3px;word-break:break-all;font-size:12px;">' + addresses.smp_address + '</code>';
+					html += '<button class="kiss-btn" onclick="copyToClipboard(\'' + addresses.smp_address + '\')">Copy</button>';
 					html += '</div>';
 					html += '</div>';
 				}
@@ -229,8 +229,8 @@ return view.extend({
 					html += '<div>';
 					html += '<label style="font-weight:bold;display:block;margin-bottom:5px;">XFTP Server (file transfer):</label>';
 					html += '<div style="display:flex;gap:10px;align-items:center;">';
-					html += '<code style="flex:1;background:#fff;padding:8px;border:1px solid #ddd;border-radius:3px;word-break:break-all;font-size:12px;">' + addresses.xftp_address + '</code>';
-					html += '<button class="cbi-button" onclick="copyToClipboard(\'' + addresses.xftp_address + '\')">Copy</button>';
+					html += '<code style="flex:1;background:var(--kiss-bg);padding:8px;border:1px solid var(--kiss-line);border-radius:3px;word-break:break-all;font-size:12px;">' + addresses.xftp_address + '</code>';
+					html += '<button class="kiss-btn" onclick="copyToClipboard(\'' + addresses.xftp_address + '\')">Copy</button>';
 					html += '</div>';
 					html += '</div>';
 				}
@@ -422,7 +422,7 @@ return view.extend({
 		o = s.option(form.DummyValue, '_help');
 		o.rawhtml = true;
 		o.cfgvalue = function() {
-			return '<div style="background:#f5f5f5;padding:15px;border-radius:5px;">' +
+			return '<div style="background:var(--kiss-bg2);padding:15px;border-radius:5px;">' +
 				'<h4>What is SimpleX?</h4>' +
 				'<p>SimpleX Chat is a privacy-focused messaging platform with no user identifiers. ' +
 				'Self-hosting your own servers ensures your messages never pass through third-party infrastructure.</p>' +
@@ -445,7 +445,7 @@ return view.extend({
 				'<li><a href="https://github.com/simplex-chat/simplexmq" target="_blank">SimpleX Server Documentation</a></li>' +
 				'</ul>' +
 				'<h4>CLI Commands:</h4>' +
-				'<code style="display:block;background:#fff;padding:10px;margin-top:10px;">' +
+				'<code style="display:block;background:var(--kiss-bg);padding:10px;margin-top:10px;">' +
 				'simplexctl status      # Show server status<br>' +
 				'simplexctl get-address # Show server addresses<br>' +
 				'simplexctl logs smp    # View SMP logs<br>' +

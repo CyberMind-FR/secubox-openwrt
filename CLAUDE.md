@@ -72,6 +72,57 @@ When checking if a port is listening, use this order of fallbacks:
 - Use `logread -l N` to get last N lines
 - CrowdSec writes to `/var/log/crowdsec.log`
 
+## Performance Patterns — Double Caching
+
+### Static Stats Pre-caching
+For dashboards that show aggregated stats (WAF threats, bans, service metrics), use a **cron-generated static JSON file** instead of computing stats on each request:
+
+1. **Create a cron job** that updates stats periodically:
+   ```bash
+   # /etc/cron.d/waf-stats
+   * * * * * root /usr/sbin/waf-stats-update >/dev/null 2>&1
+   ```
+
+2. **Write stats to a static file**:
+   ```bash
+   # /usr/sbin/waf-stats-update
+   CACHE_FILE="/tmp/secubox/waf-stats.json"
+   # ... compute stats ...
+   cat > "$CACHE_FILE" << EOF
+   {"running": true, "threats_today": $count, "updated": "$(date -Iseconds)"}
+   EOF
+   ```
+
+3. **RPCD reads from cache** (fast, no computation):
+   ```sh
+   get_cached_status() {
+       [ -f "$CACHE_FILE" ] && cat "$CACHE_FILE" || echo '{"error":"no cache"}'
+   }
+   ```
+
+### Progressive Enhancement in LuCI JS
+Load minimal data first, then enhance with async details:
+
+```javascript
+load: function() {
+    return Promise.all([
+        // Fast cached status (always succeeds)
+        callStatusCached().catch(function() { return {}; }),
+        // Slower detail calls with timeout
+        Promise.race([
+            callAlerts(),
+            new Promise(function(_, r) { setTimeout(r, 5000); })
+        ]).catch(function() { return { alerts: [] }; })
+    ]);
+}
+```
+
+### When to Use Double Caching
+- **Always** for stats dashboards (WAF, CrowdSec, bandwidth, etc.)
+- **Always** when RPC calls query log files or compute aggregates
+- **Always** when data can be stale by 1 minute without user impact
+- **Never** for real-time control actions (start/stop/restart)
+
 ## Build & Sync Workflow
 
 ### CRITICAL: Sync Local Feed Before Building

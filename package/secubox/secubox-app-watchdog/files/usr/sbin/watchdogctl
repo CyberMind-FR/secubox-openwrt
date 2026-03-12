@@ -188,6 +188,53 @@ restart_service() {
     fi
 }
 
+# Check mountpoint
+check_mountpoint() {
+    local section="$1"
+    local enabled name path critical
+
+    config_get enabled "$section" enabled '0'
+    [ "$enabled" = "1" ] || return 0
+
+    config_get name "$section" name
+    config_get path "$section" path
+    config_get critical "$section" critical '0'
+
+    # Check if path is a mountpoint and accessible
+    if mountpoint -q "$path" 2>/dev/null && [ -d "$path" ] && [ -r "$path" ]; then
+        clear_alert "mountpoint_$name"
+        return 0
+    else
+        if should_alert "mountpoint_$name"; then
+            log_alert "Mountpoint $name ($path) is not accessible"
+        fi
+        return 1
+    fi
+}
+
+# Remount a mountpoint
+remount_mountpoint() {
+    local section="$1"
+    local name path
+
+    config_get name "$section" name
+    config_get path "$section" path
+
+    log_info "Attempting to remount: $path"
+
+    # Try to remount
+    mount -o remount "$path" 2>/dev/null
+    sleep 1
+
+    if mountpoint -q "$path" 2>/dev/null && [ -d "$path" ] && [ -r "$path" ]; then
+        log_ok "Mountpoint $path recovered"
+        return 0
+    else
+        log_alert "Mountpoint $path failed to remount - manual intervention required"
+        return 1
+    fi
+}
+
 # Check HTTPS endpoint
 check_endpoint() {
     local section="$1"

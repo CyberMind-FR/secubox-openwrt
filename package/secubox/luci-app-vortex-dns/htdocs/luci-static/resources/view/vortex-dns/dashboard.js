@@ -133,32 +133,32 @@ return view.extend({
 		var zones = data[4] || [];
 		var secondaries = data[5] || [];
 
-		var view = E('div', { 'class': 'cbi-map' }, [
+		var view = E('div', { 'style': 'max-width: 1200px;' }, [
 			E('h2', {}, 'Vortex DNS'),
-			E('div', { 'class': 'cbi-map-descr' },
+			E('div', { 'style': 'color: var(--kiss-muted); margin-bottom: 16px;' },
 				'Meshed multi-dynamic subdomain delegation system'),
 
 			// Status Card
-			E('div', { 'class': 'cbi-section' }, [
+			E('div', { 'style': 'background: var(--kiss-card); border: 1px solid var(--kiss-line); border-radius: 12px; padding: 16px; margin-bottom: 16px;' }, [
 				E('h3', {}, 'Status'),
-				E('div', { 'class': 'table' }, [
-					E('div', { 'class': 'tr' }, [
-						E('div', { 'class': 'td' }, 'Mode'),
-						E('div', { 'class': 'td' }, this.renderModeBadge(status.mode))
+				E('div', { 'class': 'kiss-table' }, [
+					E('div', { 'style': 'border-bottom: 1px solid var(--kiss-line);' }, [
+						E('div', { 'style': 'padding: 10px 12px;' }, 'Mode'),
+						E('div', { 'style': 'padding: 10px 12px;' }, this.renderModeBadge(status.mode))
 					]),
-					E('div', { 'class': 'tr' }, [
-						E('div', { 'class': 'td' }, 'Enabled'),
-						E('div', { 'class': 'td' }, status.enabled ?
+					E('div', { 'style': 'border-bottom: 1px solid var(--kiss-line);' }, [
+						E('div', { 'style': 'padding: 10px 12px;' }, 'Enabled'),
+						E('div', { 'style': 'padding: 10px 12px;' }, status.enabled ?
 							E('span', { 'class': 'badge success' }, 'Yes') :
 							E('span', { 'class': 'badge warning' }, 'No'))
 					]),
-					E('div', { 'class': 'tr' }, [
-						E('div', { 'class': 'td' }, 'Sync Interval'),
-						E('div', { 'class': 'td' }, (status.sync_interval || 300) + 's')
+					E('div', { 'style': 'border-bottom: 1px solid var(--kiss-line);' }, [
+						E('div', { 'style': 'padding: 10px 12px;' }, 'Sync Interval'),
+						E('div', { 'style': 'padding: 10px 12px;' }, (status.sync_interval || 300) + 's')
 					]),
-					E('div', { 'class': 'tr' }, [
-						E('div', { 'class': 'td' }, 'Last Sync'),
-						E('div', { 'class': 'td' }, status.last_sync || 'Never')
+					E('div', { 'style': 'border-bottom: 1px solid var(--kiss-line);' }, [
+						E('div', { 'style': 'padding: 10px 12px;' }, 'Last Sync'),
+						E('div', { 'style': 'padding: 10px 12px;' }, status.last_sync || 'Never')
 					])
 				])
 			]),
@@ -205,24 +205,24 @@ return view.extend({
 	renderZonesSection: function(zones) {
 		var self = this;
 
-		return E('div', { 'class': 'cbi-section' }, [
+		return E('div', { 'style': 'background: var(--kiss-card); border: 1px solid var(--kiss-line); border-radius: 12px; padding: 16px; margin-bottom: 16px;' }, [
 			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
 				E('h3', {}, 'Authoritative Zones'),
 				E('button', {
-					'class': 'btn cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'style': 'padding: 6px 12px;',
 					'click': function() { self.showImportZoneDialog(); }
 				}, '+ Import Zone')
 			]),
-			E('div', { 'class': 'cbi-section-descr' },
+			E('div', { 'style': 'color: var(--kiss-muted); font-size: 13px; margin-bottom: 12px;' },
 				'DNS zones managed by this server as authoritative master'),
 
-			zones.length > 0 ? E('table', { 'class': 'table', 'style': 'margin-top: 12px;' }, [
-				E('tr', { 'class': 'tr table-titles' }, [
-					E('th', { 'class': 'th' }, 'Domain'),
-					E('th', { 'class': 'th' }, 'Records'),
-					E('th', { 'class': 'th' }, 'Status'),
-					E('th', { 'class': 'th' }, 'Actions')
+			zones.length > 0 ? E('table', { 'class': 'kiss-table', 'style': 'margin-top: 12px;' }, [
+				E('tr', { 'style': 'border-bottom: 1px solid var(--kiss-line);' }, [
+					E('th', { 'style': 'padding: 10px 12px; font-weight: 600;' }, 'Domain'),
+					E('th', { 'style': 'padding: 10px 12px; font-weight: 600;' }, 'Records'),
+					E('th', { 'style': 'padding: 10px 12px; font-weight: 600;' }, 'Status'),
+					E('th', { 'style': 'padding: 10px 12px; font-weight: 600;' }, 'Actions')
 				])
 			].concat(zones.map(function(z) {
 				var statusBadge;
@@ -234,25 +234,25 @@ return view.extend({
 					statusBadge = E('span', { 'class': 'badge warning' }, 'Disabled');
 				}
 
-				return E('tr', { 'class': 'tr' }, [
-					E('td', { 'class': 'td' }, E('strong', {}, z.domain)),
-					E('td', { 'class': 'td' }, z.records || 0),
-					E('td', { 'class': 'td' }, statusBadge),
-					E('td', { 'class': 'td' }, [
+				return E('tr', { 'style': 'border-bottom: 1px solid var(--kiss-line);' }, [
+					E('td', { 'style': 'padding: 10px 12px;' }, E('strong', {}, z.domain)),
+					E('td', { 'style': 'padding: 10px 12px;' }, z.records || 0),
+					E('td', { 'style': 'padding: 10px 12px;' }, statusBadge),
+					E('td', { 'style': 'padding: 10px 12px;' }, [
 						E('button', {
-							'class': 'btn cbi-button-action',
+							'class': 'kiss-btn kiss-btn-blue',
 							'style': 'padding: 2px 8px; margin-right: 4px;',
 							'click': function() { self.showZoneContentDialog(z.domain); },
 							'title': 'View zone file'
 						}, 'View'),
 						E('button', {
-							'class': 'btn cbi-button-neutral',
+							'class': 'kiss-btn',
 							'style': 'padding: 2px 8px; margin-right: 4px;',
 							'click': function() { self.doZoneDump(z.domain); },
 							'title': 'Re-dump zone from DNS'
 						}, 'Dump'),
 						E('button', {
-							'class': 'btn cbi-button-apply',
+							'class': 'kiss-btn kiss-btn-cyan',
 							'style': 'padding: 2px 8px;',
 							'click': function() { self.doZoneReload(z.domain); },
 							'title': 'Reload zone in dnsmasq'
@@ -268,33 +268,33 @@ return view.extend({
 	renderSecondarySection: function(secondaries) {
 		var self = this;
 
-		return E('div', { 'class': 'cbi-section' }, [
+		return E('div', { 'style': 'background: var(--kiss-card); border: 1px solid var(--kiss-line); border-radius: 12px; padding: 16px; margin-bottom: 16px;' }, [
 			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
 				E('h3', {}, 'Secondary DNS Providers'),
 				E('button', {
-					'class': 'btn cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'style': 'padding: 6px 12px;',
 					'click': function() { self.showAddSecondaryDialog(); }
 				}, '+ Add Secondary')
 			]),
-			E('div', { 'class': 'cbi-section-descr' },
+			E('div', { 'style': 'color: var(--kiss-muted); font-size: 13px; margin-bottom: 12px;' },
 				'External DNS providers configured as secondary servers (zone transfer via AXFR)'),
 
-			secondaries.length > 0 ? E('table', { 'class': 'table', 'style': 'margin-top: 12px;' }, [
-				E('tr', { 'class': 'tr table-titles' }, [
-					E('th', { 'class': 'th' }, 'Provider'),
-					E('th', { 'class': 'th' }, 'Status'),
-					E('th', { 'class': 'th' }, 'Actions')
+			secondaries.length > 0 ? E('table', { 'class': 'kiss-table', 'style': 'margin-top: 12px;' }, [
+				E('tr', { 'style': 'border-bottom: 1px solid var(--kiss-line);' }, [
+					E('th', { 'style': 'padding: 10px 12px; font-weight: 600;' }, 'Provider'),
+					E('th', { 'style': 'padding: 10px 12px; font-weight: 600;' }, 'Status'),
+					E('th', { 'style': 'padding: 10px 12px; font-weight: 600;' }, 'Actions')
 				])
 			].concat(secondaries.map(function(s) {
-				return E('tr', { 'class': 'tr' }, [
-					E('td', { 'class': 'td' }, E('strong', {}, s.provider.toUpperCase())),
-					E('td', { 'class': 'td' }, s.enabled ?
+				return E('tr', { 'style': 'border-bottom: 1px solid var(--kiss-line);' }, [
+					E('td', { 'style': 'padding: 10px 12px;' }, E('strong', {}, s.provider.toUpperCase())),
+					E('td', { 'style': 'padding: 10px 12px;' }, s.enabled ?
 						E('span', { 'class': 'badge success' }, 'Configured') :
 						E('span', { 'class': 'badge warning' }, 'Disabled')),
-					E('td', { 'class': 'td' }, [
+					E('td', { 'style': 'padding: 10px 12px;' }, [
 						E('button', {
-							'class': 'btn cbi-button-remove',
+							'class': 'kiss-btn kiss-btn-red',
 							'style': 'padding: 2px 8px;',
 							'click': function() { self.doSecondaryRemove(s.provider); }
 						}, 'Remove')
@@ -310,39 +310,39 @@ return view.extend({
 	},
 
 	renderMasterSection: function(master, slaves) {
-		return E('div', { 'class': 'cbi-section' }, [
+		return E('div', { 'style': 'background: var(--kiss-card); border: 1px solid var(--kiss-line); border-radius: 12px; padding: 16px; margin-bottom: 16px;' }, [
 			E('h3', {}, 'Master Node'),
-			E('div', { 'class': 'table' }, [
-				E('div', { 'class': 'tr' }, [
-					E('div', { 'class': 'td' }, 'Wildcard Domain'),
-					E('div', { 'class': 'td' }, E('strong', {}, '*.' + (master.wildcard_domain || 'not set')))
+			E('div', { 'class': 'kiss-table' }, [
+				E('div', { 'style': 'border-bottom: 1px solid var(--kiss-line);' }, [
+					E('div', { 'style': 'padding: 10px 12px;' }, 'Wildcard Domain'),
+					E('div', { 'style': 'padding: 10px 12px;' }, E('strong', {}, '*.' + (master.wildcard_domain || 'not set')))
 				]),
-				E('div', { 'class': 'tr' }, [
-					E('div', { 'class': 'td' }, 'DNS Provider'),
-					E('div', { 'class': 'td' }, master.dns_provider || 'not set')
+				E('div', { 'style': 'border-bottom: 1px solid var(--kiss-line);' }, [
+					E('div', { 'style': 'padding: 10px 12px;' }, 'DNS Provider'),
+					E('div', { 'style': 'padding: 10px 12px;' }, master.dns_provider || 'not set')
 				]),
-				E('div', { 'class': 'tr' }, [
-					E('div', { 'class': 'td' }, 'Delegated Slaves'),
-					E('div', { 'class': 'td' }, master.slave_count || 0)
+				E('div', { 'style': 'border-bottom: 1px solid var(--kiss-line);' }, [
+					E('div', { 'style': 'padding: 10px 12px;' }, 'Delegated Slaves'),
+					E('div', { 'style': 'padding: 10px 12px;' }, master.slave_count || 0)
 				])
 			]),
 
 			// Slaves Table
 			slaves.length > 0 ? E('div', { 'style': 'margin-top: 16px;' }, [
 				E('h4', {}, 'Delegated Zones'),
-				E('table', { 'class': 'table' }, [
-					E('tr', { 'class': 'tr table-titles' }, [
-						E('th', { 'class': 'th' }, 'Zone'),
-						E('th', { 'class': 'th' }, 'FQDN'),
-						E('th', { 'class': 'th' }, 'Node IP'),
-						E('th', { 'class': 'th' }, 'Created')
+				E('table', { 'class': 'kiss-table' }, [
+					E('tr', { 'style': 'border-bottom: 1px solid var(--kiss-line);' }, [
+						E('th', { 'style': 'padding: 10px 12px; font-weight: 600;' }, 'Zone'),
+						E('th', { 'style': 'padding: 10px 12px; font-weight: 600;' }, 'FQDN'),
+						E('th', { 'style': 'padding: 10px 12px; font-weight: 600;' }, 'Node IP'),
+						E('th', { 'style': 'padding: 10px 12px; font-weight: 600;' }, 'Created')
 					])
 				].concat(slaves.map(function(s) {
-					return E('tr', { 'class': 'tr' }, [
-						E('td', { 'class': 'td' }, s.zone),
-						E('td', { 'class': 'td' }, s.fqdn),
-						E('td', { 'class': 'td' }, s.node),
-						E('td', { 'class': 'td' }, s.created)
+					return E('tr', { 'style': 'border-bottom: 1px solid var(--kiss-line);' }, [
+						E('td', { 'style': 'padding: 10px 12px;' }, s.zone),
+						E('td', { 'style': 'padding: 10px 12px;' }, s.fqdn),
+						E('td', { 'style': 'padding: 10px 12px;' }, s.node),
+						E('td', { 'style': 'padding: 10px 12px;' }, s.created)
 					]);
 				})))
 			]) : null
@@ -350,59 +350,59 @@ return view.extend({
 	},
 
 	renderSlaveSection: function(slave) {
-		return E('div', { 'class': 'cbi-section' }, [
+		return E('div', { 'style': 'background: var(--kiss-card); border: 1px solid var(--kiss-line); border-radius: 12px; padding: 16px; margin-bottom: 16px;' }, [
 			E('h3', {}, 'Slave Node'),
-			E('div', { 'class': 'table' }, [
-				E('div', { 'class': 'tr' }, [
-					E('div', { 'class': 'td' }, 'Parent Master'),
-					E('div', { 'class': 'td' }, slave.parent_master || 'not set')
+			E('div', { 'class': 'kiss-table' }, [
+				E('div', { 'style': 'border-bottom: 1px solid var(--kiss-line);' }, [
+					E('div', { 'style': 'padding: 10px 12px;' }, 'Parent Master'),
+					E('div', { 'style': 'padding: 10px 12px;' }, slave.parent_master || 'not set')
 				]),
-				E('div', { 'class': 'tr' }, [
-					E('div', { 'class': 'td' }, 'Delegated Zone'),
-					E('div', { 'class': 'td' }, E('strong', {}, slave.delegated_zone || 'pending'))
+				E('div', { 'style': 'border-bottom: 1px solid var(--kiss-line);' }, [
+					E('div', { 'style': 'padding: 10px 12px;' }, 'Delegated Zone'),
+					E('div', { 'style': 'padding: 10px 12px;' }, E('strong', {}, slave.delegated_zone || 'pending'))
 				])
 			])
 		]);
 	},
 
 	renderPeersSection: function(mesh, peers) {
-		return E('div', { 'class': 'cbi-section' }, [
+		return E('div', { 'style': 'background: var(--kiss-card); border: 1px solid var(--kiss-line); border-radius: 12px; padding: 16px; margin-bottom: 16px;' }, [
 			E('h3', {}, 'Mesh Network'),
-			E('div', { 'class': 'table' }, [
-				E('div', { 'class': 'tr' }, [
-					E('div', { 'class': 'td' }, 'Gossip'),
-					E('div', { 'class': 'td' }, mesh && mesh.gossip_enabled ?
+			E('div', { 'class': 'kiss-table' }, [
+				E('div', { 'style': 'border-bottom: 1px solid var(--kiss-line);' }, [
+					E('div', { 'style': 'padding: 10px 12px;' }, 'Gossip'),
+					E('div', { 'style': 'padding: 10px 12px;' }, mesh && mesh.gossip_enabled ?
 						E('span', { 'class': 'badge success' }, 'Enabled') :
 						E('span', { 'class': 'badge warning' }, 'Disabled'))
 				]),
-				E('div', { 'class': 'tr' }, [
-					E('div', { 'class': 'td' }, 'First Peek'),
-					E('div', { 'class': 'td' }, mesh && mesh.first_peek ? 'Enabled' : 'Disabled')
+				E('div', { 'style': 'border-bottom: 1px solid var(--kiss-line);' }, [
+					E('div', { 'style': 'padding: 10px 12px;' }, 'First Peek'),
+					E('div', { 'style': 'padding: 10px 12px;' }, mesh && mesh.first_peek ? 'Enabled' : 'Disabled')
 				]),
-				E('div', { 'class': 'tr' }, [
-					E('div', { 'class': 'td' }, 'Connected Peers'),
-					E('div', { 'class': 'td' }, (mesh && mesh.peer_count) || 0)
+				E('div', { 'style': 'border-bottom: 1px solid var(--kiss-line);' }, [
+					E('div', { 'style': 'padding: 10px 12px;' }, 'Connected Peers'),
+					E('div', { 'style': 'padding: 10px 12px;' }, (mesh && mesh.peer_count) || 0)
 				]),
-				E('div', { 'class': 'tr' }, [
-					E('div', { 'class': 'td' }, 'Published Services'),
-					E('div', { 'class': 'td' }, (mesh && mesh.published_count) || 0)
+				E('div', { 'style': 'border-bottom: 1px solid var(--kiss-line);' }, [
+					E('div', { 'style': 'padding: 10px 12px;' }, 'Published Services'),
+					E('div', { 'style': 'padding: 10px 12px;' }, (mesh && mesh.published_count) || 0)
 				])
 			]),
 
 			// Peers Table
 			peers.length > 0 ? E('div', { 'style': 'margin-top: 16px;' }, [
 				E('h4', {}, 'Connected Peers'),
-				E('table', { 'class': 'table' }, [
-					E('tr', { 'class': 'tr table-titles' }, [
-						E('th', { 'class': 'th' }, 'Name'),
-						E('th', { 'class': 'th' }, 'IP'),
-						E('th', { 'class': 'th' }, 'Status')
+				E('table', { 'class': 'kiss-table' }, [
+					E('tr', { 'style': 'border-bottom: 1px solid var(--kiss-line);' }, [
+						E('th', { 'style': 'padding: 10px 12px; font-weight: 600;' }, 'Name'),
+						E('th', { 'style': 'padding: 10px 12px; font-weight: 600;' }, 'IP'),
+						E('th', { 'style': 'padding: 10px 12px; font-weight: 600;' }, 'Status')
 					])
 				].concat(peers.map(function(p) {
-					return E('tr', { 'class': 'tr' }, [
-						E('td', { 'class': 'td' }, p.name || p.id),
-						E('td', { 'class': 'td' }, p.ip),
-						E('td', { 'class': 'td' }, p.online ?
+					return E('tr', { 'style': 'border-bottom: 1px solid var(--kiss-line);' }, [
+						E('td', { 'style': 'padding: 10px 12px;' }, p.name || p.id),
+						E('td', { 'style': 'padding: 10px 12px;' }, p.ip),
+						E('td', { 'style': 'padding: 10px 12px;' }, p.online ?
 							E('span', { 'class': 'badge success' }, 'Online') :
 							E('span', { 'class': 'badge danger' }, 'Offline'))
 					]);
@@ -425,36 +425,36 @@ return view.extend({
 			}
 		});
 
-		return E('div', { 'class': 'cbi-section' }, [
+		return E('div', { 'style': 'background: var(--kiss-card); border: 1px solid var(--kiss-line); border-radius: 12px; padding: 16px; margin-bottom: 16px;' }, [
 			E('h3', {}, 'Node Services'),
-			E('div', { 'class': 'cbi-section-descr' },
+			E('div', { 'style': 'color: var(--kiss-muted); font-size: 13px; margin-bottom: 12px;' },
 				wildcard ? 'Services published on *.' + wildcard : 'Published services on this node'),
 
-			uniqueServices.length > 0 ? E('table', { 'class': 'table' }, [
-				E('tr', { 'class': 'tr table-titles' }, [
-					E('th', { 'class': 'th' }, 'Service'),
-					E('th', { 'class': 'th' }, 'Domain'),
-					E('th', { 'class': 'th' }, 'Node URL'),
-					E('th', { 'class': 'th' }, 'Actions')
+			uniqueServices.length > 0 ? E('table', { 'class': 'kiss-table' }, [
+				E('tr', { 'style': 'border-bottom: 1px solid var(--kiss-line);' }, [
+					E('th', { 'style': 'padding: 10px 12px; font-weight: 600;' }, 'Service'),
+					E('th', { 'style': 'padding: 10px 12px; font-weight: 600;' }, 'Domain'),
+					E('th', { 'style': 'padding: 10px 12px; font-weight: 600;' }, 'Node URL'),
+					E('th', { 'style': 'padding: 10px 12px; font-weight: 600;' }, 'Actions')
 				])
 			].concat(uniqueServices.map(function(s) {
 				var nodeUrl = nodePrefix ? 'https://' + s.name + '.' + wildcard : null;
-				return E('tr', { 'class': 'tr' }, [
-					E('td', { 'class': 'td' }, E('strong', {}, s.name)),
-					E('td', { 'class': 'td' }, E('a', {
+				return E('tr', { 'style': 'border-bottom: 1px solid var(--kiss-line);' }, [
+					E('td', { 'style': 'padding: 10px 12px;' }, E('strong', {}, s.name)),
+					E('td', { 'style': 'padding: 10px 12px;' }, E('a', {
 						'href': 'https://' + s.domain,
 						'target': '_blank',
 						'style': 'color: #00d4aa;'
 					}, s.domain)),
-					E('td', { 'class': 'td' }, nodeUrl ? E('a', {
+					E('td', { 'style': 'padding: 10px 12px;' }, nodeUrl ? E('a', {
 						'href': nodeUrl,
 						'target': '_blank',
 						'style': 'color: #888; font-size: 0.9em;'
 					}, s.name + '.' + wildcard) : '-'),
-					E('td', { 'class': 'td' }, E('a', {
+					E('td', { 'style': 'padding: 10px 12px;' }, E('a', {
 						'href': 'https://' + s.domain,
 						'target': '_blank',
-						'class': 'btn cbi-button-action',
+						'class': 'kiss-btn kiss-btn-blue',
 						'style': 'padding: 2px 8px; font-size: 0.85em;'
 					}, 'Open'))
 				]);
@@ -466,26 +466,26 @@ return view.extend({
 	renderActionsSection: function(status) {
 		var self = this;
 
-		return E('div', { 'class': 'cbi-section' }, [
+		return E('div', { 'style': 'background: var(--kiss-card); border: 1px solid var(--kiss-line); border-radius: 12px; padding: 16px; margin-bottom: 16px;' }, [
 			E('h3', {}, 'Actions'),
 			E('div', { 'style': 'display: flex; gap: 8px; flex-wrap: wrap;' }, [
 				E('button', {
-					'class': 'btn cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'click': function() { self.doMeshSync(); }
 				}, 'Sync Mesh'),
 
 				status.mode === 'standalone' ? E('button', {
-					'class': 'btn cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() { self.showMasterInitDialog(); }
 				}, 'Initialize as Master') : null,
 
 				status.mode === 'standalone' ? E('button', {
-					'class': 'btn cbi-button-neutral',
+					'class': 'kiss-btn',
 					'click': function() { self.showSlaveJoinDialog(); }
 				}, 'Join as Slave') : null,
 
 				status.mode === 'master' ? E('button', {
-					'class': 'btn cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() { self.showDelegateDialog(); }
 				}, 'Delegate Zone') : null
 			])
@@ -519,11 +519,11 @@ return view.extend({
 			]),
 			E('div', { 'class': 'right', 'style': 'margin-top: 16px;' }, [
 				E('button', {
-					'class': 'btn',
+					'class': 'kiss-btn',
 					'click': ui.hideModal
 				}, 'Cancel'),
 				E('button', {
-					'class': 'btn cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'style': 'margin-left: 8px;',
 					'click': function() {
 						var domain = document.getElementById('import-domain').value.trim();
@@ -555,7 +555,7 @@ return view.extend({
 					]),
 					E('div', { 'class': 'right', 'style': 'margin-top: 16px;' }, [
 						E('button', {
-							'class': 'btn cbi-button-action',
+							'class': 'kiss-btn kiss-btn-blue',
 							'click': function() {
 								var blob = new Blob([res.content], { type: 'text/plain' });
 								var a = document.createElement('a');
@@ -565,7 +565,7 @@ return view.extend({
 							}
 						}, 'Download'),
 						E('button', {
-							'class': 'btn',
+							'class': 'kiss-btn',
 							'style': 'margin-left: 8px;',
 							'click': ui.hideModal
 						}, 'Close')
@@ -628,7 +628,7 @@ return view.extend({
 					]),
 					E('div', { 'class': 'right' }, [
 						E('button', {
-							'class': 'btn cbi-button-positive',
+							'class': 'kiss-btn kiss-btn-green',
 							'click': function() { location.reload(); }
 						}, 'OK')
 					])
@@ -694,11 +694,11 @@ return view.extend({
 			]),
 			E('div', { 'class': 'right', 'style': 'margin-top: 16px;' }, [
 				E('button', {
-					'class': 'btn',
+					'class': 'kiss-btn',
 					'click': ui.hideModal
 				}, 'Cancel'),
 				E('button', {
-					'class': 'btn cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'style': 'margin-left: 8px;',
 					'click': function() {
 						var provider = document.getElementById('secondary-provider').value;
@@ -740,11 +740,11 @@ return view.extend({
 			E('p', {}, 'Remove ' + provider.toUpperCase() + ' as secondary DNS provider?'),
 			E('div', { 'class': 'right', 'style': 'margin-top: 16px;' }, [
 				E('button', {
-					'class': 'btn',
+					'class': 'kiss-btn',
 					'click': ui.hideModal
 				}, 'Cancel'),
 				E('button', {
-					'class': 'btn cbi-button-remove',
+					'class': 'kiss-btn kiss-btn-red',
 					'style': 'margin-left: 8px;',
 					'click': function() {
 						ui.hideModal();
@@ -786,11 +786,11 @@ return view.extend({
 			}),
 			E('div', { 'class': 'right' }, [
 				E('button', {
-					'class': 'btn',
+					'class': 'kiss-btn',
 					'click': ui.hideModal
 				}, 'Cancel'),
 				E('button', {
-					'class': 'btn cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() {
 						var domain = document.getElementById('master-domain').value;
 						if (domain) {
@@ -818,7 +818,7 @@ return view.extend({
 				E('p', {}, 'Slaves can join with: vortexctl slave join <this_ip> ' + res.token),
 				E('div', { 'class': 'right' }, [
 					E('button', {
-						'class': 'btn cbi-button-positive',
+						'class': 'kiss-btn kiss-btn-green',
 						'click': function() { location.reload(); }
 					}, 'OK')
 				])
@@ -849,11 +849,11 @@ return view.extend({
 			}),
 			E('div', { 'class': 'right' }, [
 				E('button', {
-					'class': 'btn',
+					'class': 'kiss-btn',
 					'click': ui.hideModal
 				}, 'Cancel'),
 				E('button', {
-					'class': 'btn cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() {
 						var ip = document.getElementById('master-ip').value;
 						var token = document.getElementById('master-token').value;
@@ -901,11 +901,11 @@ return view.extend({
 			}),
 			E('div', { 'class': 'right' }, [
 				E('button', {
-					'class': 'btn',
+					'class': 'kiss-btn',
 					'click': ui.hideModal
 				}, 'Cancel'),
 				E('button', {
-					'class': 'btn cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() {
 						var node = document.getElementById('delegate-node').value;
 						var zone = document.getElementById('delegate-zone').value;

@@ -290,7 +290,7 @@ return view.extend({
 	viewDetails: function(svc) {
 		ui.showModal('Service: ' + (svc.name || svc.id), [
 			E('pre', { 'class': 'sr-json' }, JSON.stringify(svc, null, 2)),
-			E('div', { 'class': 'right' }, [E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Close')])
+			E('div', { 'class': 'right' }, [E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Close')])
 		]);
 	},
 
@@ -314,12 +314,12 @@ return view.extend({
 					E('div', { 'class': 'sr-diag-row' }, [E('span', {}, 'Port 443'), E('strong', { 'style': 'color:' + (httpsOpen ? '#22c55e' : '#ef4444') }, httpsOpen ? '✓ Open' : '✗ Closed')])
 				]),
 				E('div', { 'class': 'right' }, [
-					E('button', { 'class': 'cbi-button', 'click': function() { self.showNetworkDiagnostics(); } }, '🔄 Refresh'),
-					E('button', { 'class': 'cbi-button cbi-button-positive', 'click': ui.hideModal }, 'Close')
+					E('button', { 'class': 'kiss-btn', 'click': function() { self.showNetworkDiagnostics(); } }, '🔄 Refresh'),
+					E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': ui.hideModal }, 'Close')
 				])
 			]);
 		}).catch(function(e) {
-			ui.showModal('Error', [E('p', {}, '❌ ' + e.message), E('div', { 'class': 'right' }, [E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Close')])]);
+			ui.showModal('Error', [E('p', {}, '❌ ' + e.message), E('div', { 'class': 'right' }, [E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Close')])]);
 		});
 	},
 
@@ -345,8 +345,8 @@ return view.extend({
 					]);
 				}) : [E('p', {}, 'No health data')]),
 				E('div', { 'class': 'right' }, [
-					E('button', { 'class': 'cbi-button', 'click': function() { self.checkAllHealth(); } }, '🔄 Recheck'),
-					E('button', { 'class': 'cbi-button cbi-button-positive', 'click': ui.hideModal }, 'Close')
+					E('button', { 'class': 'kiss-btn', 'click': function() { self.checkAllHealth(); } }, '🔄 Recheck'),
+					E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': ui.hideModal }, 'Close')
 				])
 			]);
 		});

@@ -201,13 +201,13 @@ return view.extend({
                 E('div', { style: 'display:flex;justify-content:space-between;margin-top:30px;' }, [
                     E('button', {
                         id: 'btn-prev',
-                        class: 'cbi-button',
+                        class: 'kiss-btn',
                         style: 'display:none;',
                         click: ui.createHandlerFn(this, 'prevStep')
                     }, '← Back'),
                     E('button', {
                         id: 'btn-next',
-                        class: 'cbi-button cbi-button-action',
+                        class: 'kiss-btn kiss-btn-blue',
                         style: 'margin-left:auto;',
                         click: ui.createHandlerFn(this, 'nextStep')
                     }, 'Next →')
@@ -230,12 +230,12 @@ return view.extend({
                     E('a', {
                         id: 'result-link',
                         href: '#',
-                        class: 'cbi-button cbi-button-action',
+                        class: 'kiss-btn kiss-btn-blue',
                         target: '_blank',
                         style: 'text-decoration:none;'
                     }, 'View Article'),
                     E('button', {
-                        class: 'cbi-button',
+                        class: 'kiss-btn',
                         style: 'margin-left:10px;',
                         click: function() { window.location.reload(); }
                     }, 'Upload Another')

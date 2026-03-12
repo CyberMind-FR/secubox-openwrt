@@ -94,7 +94,7 @@ return view.extend({
 					E('div', { 'class': 'cert-form-row' }, [
 						E('label', {}, ''),
 						E('button', {
-							'class': 'cbi-button cbi-button-apply',
+							'class': 'kiss-btn kiss-btn-cyan',
 							'id': 'btn-request-cert',
 							'click': function() { self.handleRequestCertAsync(); }
 						}, '🚀 Request Certificate')
@@ -153,7 +153,7 @@ return view.extend({
 					E('div', { 'class': 'cert-form-row' }, [
 						E('label', {}, ''),
 						E('button', {
-							'class': 'cbi-button cbi-button-add',
+							'class': 'kiss-btn kiss-btn-green',
 							'click': function() { self.handleImportCert(); }
 						}, '📥 Import Certificate')
 					])
@@ -186,7 +186,7 @@ return view.extend({
 						E('span', { 'class': 'cert-task-domain' }, task.domain),
 						E('span', { 'class': 'cert-task-phase' }, task.phase),
 						E('button', {
-							'class': 'cbi-button cbi-button-action',
+							'class': 'kiss-btn kiss-btn-blue',
 							'click': function() { self.resumeTaskPolling(task.task_id); }
 						}, '👁️ View Progress')
 					]);
@@ -399,9 +399,9 @@ return view.extend({
 		ui.showModal('🗑️ Delete Certificate', [
 			E('p', {}, 'Are you sure you want to delete the certificate for "' + cert.domain + '"?'),
 			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
 				E('button', {
-					'class': 'cbi-button cbi-button-negative',
+					'class': 'kiss-btn kiss-btn-red',
 					'click': function() {
 						ui.hideModal();
 						api.deleteCertificate(cert.id).then(function(res) {

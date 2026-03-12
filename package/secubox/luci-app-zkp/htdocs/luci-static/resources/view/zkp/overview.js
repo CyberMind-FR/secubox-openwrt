@@ -3,6 +3,7 @@
 'require rpc';
 'require ui';
 'require poll';
+'require secubox/kiss-theme';
 
 var callStatus = rpc.declare({
 	object: 'luci.zkp',
@@ -44,272 +45,6 @@ var callDeleteKey = rpc.declare({
 	expect: {}
 });
 
-function injectStyles() {
-	if (document.getElementById('zkp-styles')) return;
-
-	var style = document.createElement('style');
-	style.id = 'zkp-styles';
-	style.textContent = `
-		.zkp-container {
-			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-			max-width: 1200px;
-			margin: 0 auto;
-			padding: 1rem;
-		}
-
-		.zkp-header {
-			display: flex;
-			align-items: center;
-			gap: 1rem;
-			margin-bottom: 1.5rem;
-			padding-bottom: 1rem;
-			border-bottom: 2px solid #3b82f6;
-		}
-
-		.zkp-header h2 {
-			margin: 0;
-			font-size: 1.5rem;
-			color: #1e293b;
-		}
-
-		.zkp-badge {
-			display: inline-block;
-			padding: 0.25rem 0.75rem;
-			border-radius: 9999px;
-			font-size: 0.75rem;
-			font-weight: 600;
-		}
-
-		.zkp-badge-success { background: #dcfce7; color: #166534; }
-		.zkp-badge-error { background: #fee2e2; color: #991b1b; }
-		.zkp-badge-info { background: #dbeafe; color: #1e40af; }
-
-		.zkp-grid {
-			display: grid;
-			grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-			gap: 1rem;
-			margin-bottom: 1.5rem;
-		}
-
-		.zkp-card {
-			background: #fff;
-			border: 1px solid #e2e8f0;
-			border-radius: 0.5rem;
-			padding: 1rem;
-			box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-		}
-
-		.zkp-card-title {
-			font-size: 0.875rem;
-			font-weight: 600;
-			color: #64748b;
-			margin-bottom: 0.5rem;
-			text-transform: uppercase;
-			letter-spacing: 0.05em;
-		}
-
-		.zkp-card-value {
-			font-size: 1.5rem;
-			font-weight: 700;
-			color: #1e293b;
-		}
-
-		.zkp-section {
-			background: #fff;
-			border: 1px solid #e2e8f0;
-			border-radius: 0.5rem;
-			padding: 1.5rem;
-			margin-bottom: 1.5rem;
-		}
-
-		.zkp-section-title {
-			font-size: 1.125rem;
-			font-weight: 600;
-			color: #1e293b;
-			margin-bottom: 1rem;
-			display: flex;
-			align-items: center;
-			gap: 0.5rem;
-		}
-
-		.zkp-form-row {
-			display: flex;
-			flex-wrap: wrap;
-			gap: 1rem;
-			margin-bottom: 1rem;
-			align-items: flex-end;
-		}
-
-		.zkp-form-group {
-			flex: 1;
-			min-width: 150px;
-		}
-
-		.zkp-form-group label {
-			display: block;
-			font-size: 0.875rem;
-			font-weight: 500;
-			color: #475569;
-			margin-bottom: 0.25rem;
-		}
-
-		.zkp-form-group input,
-		.zkp-form-group select {
-			width: 100%;
-			padding: 0.5rem 0.75rem;
-			border: 1px solid #cbd5e1;
-			border-radius: 0.375rem;
-			font-size: 0.875rem;
-		}
-
-		.zkp-form-group input:focus,
-		.zkp-form-group select:focus {
-			outline: none;
-			border-color: #3b82f6;
-			box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-		}
-
-		.zkp-btn {
-			display: inline-flex;
-			align-items: center;
-			gap: 0.5rem;
-			padding: 0.5rem 1rem;
-			border: none;
-			border-radius: 0.375rem;
-			font-size: 0.875rem;
-			font-weight: 500;
-			cursor: pointer;
-			transition: all 0.15s;
-		}
-
-		.zkp-btn-primary {
-			background: #3b82f6;
-			color: #fff;
-		}
-
-		.zkp-btn-primary:hover {
-			background: #2563eb;
-		}
-
-		.zkp-btn-success {
-			background: #22c55e;
-			color: #fff;
-		}
-
-		.zkp-btn-success:hover {
-			background: #16a34a;
-		}
-
-		.zkp-btn-danger {
-			background: #ef4444;
-			color: #fff;
-		}
-
-		.zkp-btn-danger:hover {
-			background: #dc2626;
-		}
-
-		.zkp-btn-secondary {
-			background: #64748b;
-			color: #fff;
-		}
-
-		.zkp-btn-secondary:hover {
-			background: #475569;
-		}
-
-		.zkp-btn:disabled {
-			opacity: 0.5;
-			cursor: not-allowed;
-		}
-
-		.zkp-table {
-			width: 100%;
-			border-collapse: collapse;
-		}
-
-		.zkp-table th,
-		.zkp-table td {
-			padding: 0.75rem;
-			text-align: left;
-			border-bottom: 1px solid #e2e8f0;
-		}
-
-		.zkp-table th {
-			font-weight: 600;
-			color: #64748b;
-			font-size: 0.75rem;
-			text-transform: uppercase;
-			letter-spacing: 0.05em;
-		}
-
-		.zkp-table tr:hover {
-			background: #f8fafc;
-		}
-
-		.zkp-result {
-			padding: 1rem;
-			border-radius: 0.5rem;
-			margin-top: 1rem;
-			font-family: monospace;
-			font-size: 0.875rem;
-		}
-
-		.zkp-result-accept {
-			background: #dcfce7;
-			border: 1px solid #86efac;
-			color: #166534;
-		}
-
-		.zkp-result-reject {
-			background: #fee2e2;
-			border: 1px solid #fca5a5;
-			color: #991b1b;
-		}
-
-		.zkp-result-info {
-			background: #f1f5f9;
-			border: 1px solid #cbd5e1;
-			color: #475569;
-		}
-
-		.zkp-actions {
-			display: flex;
-			gap: 0.5rem;
-		}
-
-		.zkp-empty {
-			text-align: center;
-			padding: 2rem;
-			color: #64748b;
-		}
-
-		/* Dark mode */
-		@media (prefers-color-scheme: dark) {
-			.zkp-header h2 { color: #f1f5f9; }
-			.zkp-card { background: #1e293b; border-color: #334155; }
-			.zkp-card-title { color: #94a3b8; }
-			.zkp-card-value { color: #f1f5f9; }
-			.zkp-section { background: #1e293b; border-color: #334155; }
-			.zkp-section-title { color: #f1f5f9; }
-			.zkp-form-group label { color: #94a3b8; }
-			.zkp-form-group input,
-			.zkp-form-group select {
-				background: #0f172a;
-				border-color: #334155;
-				color: #f1f5f9;
-			}
-			.zkp-table th { color: #94a3b8; }
-			.zkp-table td { color: #e2e8f0; }
-			.zkp-table th,
-			.zkp-table td { border-color: #334155; }
-			.zkp-table tr:hover { background: #334155; }
-			.zkp-result-info { background: #334155; border-color: #475569; color: #e2e8f0; }
-		}
-	`;
-	document.head.appendChild(style);
-}
-
 function formatBytes(bytes) {
 	if (bytes === 0) return '0 B';
 	var k = 1024;
@@ -336,119 +71,55 @@ return view.extend({
 		]);
 	},
 
-	render: function(data) {
-		var status = data[0] || {};
-		var keysData = data[1] || {};
-		var keys = keysData.keys || [];
-
-		injectStyles();
-
-		var view = E('div', { 'class': 'zkp-container' }, [
-			// Header
-			E('div', { 'class': 'zkp-header' }, [
-				E('h2', {}, 'ZKP Hamiltonian Cryptography'),
-				status.tools_available ?
-					E('span', { 'class': 'zkp-badge zkp-badge-success' }, 'v' + (status.version || '1.0')) :
-					E('span', { 'class': 'zkp-badge zkp-badge-error' }, 'Not Installed')
-			]),
-
-			// Stats Grid
-			E('div', { 'class': 'zkp-grid' }, [
-				E('div', { 'class': 'zkp-card' }, [
-					E('div', { 'class': 'zkp-card-title' }, 'Saved Keys'),
-					E('div', { 'class': 'zkp-card-value' }, String(status.key_count || 0))
-				]),
-				E('div', { 'class': 'zkp-card' }, [
-					E('div', { 'class': 'zkp-card-title' }, 'Max Nodes'),
-					E('div', { 'class': 'zkp-card-value' }, '50')
-				]),
-				E('div', { 'class': 'zkp-card' }, [
-					E('div', { 'class': 'zkp-card-title' }, 'Hash Algorithm'),
-					E('div', { 'class': 'zkp-card-value' }, 'SHA3-256')
-				]),
-				E('div', { 'class': 'zkp-card' }, [
-					E('div', { 'class': 'zkp-card-title' }, 'Protocol'),
-					E('div', { 'class': 'zkp-card-value' }, 'Blum 1986')
-				])
-			]),
-
-			// Keygen Section
-			E('div', { 'class': 'zkp-section' }, [
-				E('div', { 'class': 'zkp-section-title' }, [
-					E('span', {}, '\uD83D\uDD11'),
-					' Generate New Key'
-				]),
-				E('div', { 'class': 'zkp-form-row' }, [
-					E('div', { 'class': 'zkp-form-group' }, [
-						E('label', {}, 'Key Name'),
-						E('input', {
-							'type': 'text',
-							'id': 'zkp-name',
-							'placeholder': 'my_key',
-							'value': 'key_' + Date.now()
-						})
-					]),
-					E('div', { 'class': 'zkp-form-group' }, [
-						E('label', {}, 'Nodes (4-50)'),
-						E('input', {
-							'type': 'number',
-							'id': 'zkp-nodes',
-							'min': '4',
-							'max': '50',
-							'value': '20'
-						})
-					]),
-					E('div', { 'class': 'zkp-form-group' }, [
-						E('label', {}, 'Edge Density'),
-						E('select', { 'id': 'zkp-density' }, [
-							E('option', { 'value': '0.5' }, '0.5 (Sparse)'),
-							E('option', { 'value': '0.7' }, '0.7 (Medium)'),
-							E('option', { 'value': '0.8', 'selected': true }, '0.8 (Dense)'),
-							E('option', { 'value': '1.0' }, '1.0 (Complete)')
-						])
-					]),
-					E('div', { 'class': 'zkp-form-group', 'style': 'flex: 0;' }, [
-						E('label', {}, '\u00A0'),
-						E('button', {
-							'class': 'zkp-btn zkp-btn-primary',
-							'click': ui.createHandlerFn(this, 'handleKeygen')
-						}, 'Generate')
-					])
-				]),
-				E('div', { 'id': 'zkp-keygen-result' })
-			]),
-
-			// Keys Table Section
-			E('div', { 'class': 'zkp-section' }, [
-				E('div', { 'class': 'zkp-section-title' }, [
-					E('span', {}, '\uD83D\uDDC2\uFE0F'),
-					' Saved Keys'
-				]),
-				this.renderKeysTable(keys)
-			]),
-
-			// Verification Result Section
-			E('div', { 'class': 'zkp-section', 'id': 'zkp-verify-section', 'style': 'display: none;' }, [
-				E('div', { 'class': 'zkp-section-title' }, [
-					E('span', {}, '\u2705'),
-					' Verification Result'
-				]),
-				E('div', { 'id': 'zkp-verify-result' })
-			])
-		]);
-
-		return view;
+	renderStats: function(status) {
+		var c = KissTheme.colors;
+		return [
+			KissTheme.stat(status.key_count || 0, 'Keys', c.blue),
+			KissTheme.stat('50', 'Max Nodes', c.purple),
+			KissTheme.stat('SHA3-256', 'Hash', c.cyan),
+			KissTheme.stat('Blum 1986', 'Protocol', c.green)
+		];
 	},
 
 	renderKeysTable: function(keys) {
+		var self = this;
 		if (!keys || keys.length === 0) {
-			return E('div', { 'class': 'zkp-empty' }, [
+			return E('div', { 'style': 'text-align: center; padding: 20px; color: var(--kiss-muted);' }, [
 				E('p', {}, 'No keys generated yet.'),
 				E('p', {}, 'Use the form above to generate your first ZKP key pair.')
 			]);
 		}
 
-		return E('table', { 'class': 'zkp-table' }, [
+		var rows = keys.map(function(key) {
+			return E('tr', { 'data-name': key.name }, [
+				E('td', { 'style': 'font-weight: 600;' }, key.name),
+				E('td', {}, String(key.nodes || '-')),
+				E('td', { 'style': 'color: var(--kiss-muted);' }, formatBytes(key.graph_size || 0)),
+				E('td', { 'style': 'color: var(--kiss-muted);' }, formatBytes(key.key_size || 0)),
+				E('td', { 'style': 'color: var(--kiss-muted);' }, formatDate(key.created)),
+				E('td', { 'style': 'width: 200px;' }, [
+					E('div', { 'style': 'display: flex; gap: 6px;' }, [
+						E('button', {
+							'class': 'kiss-btn kiss-btn-green',
+							'style': 'padding: 4px 10px; font-size: 11px;',
+							'click': ui.createHandlerFn(self, 'handleProve', key.name)
+						}, 'Prove'),
+						E('button', {
+							'class': 'kiss-btn kiss-btn-blue',
+							'style': 'padding: 4px 10px; font-size: 11px;',
+							'click': ui.createHandlerFn(self, 'handleVerify', key.name)
+						}, 'Verify'),
+						E('button', {
+							'class': 'kiss-btn kiss-btn-red',
+							'style': 'padding: 4px 10px; font-size: 11px;',
+							'click': ui.createHandlerFn(self, 'handleDelete', key.name)
+						}, 'Delete')
+					])
+				])
+			]);
+		});
+
+		return E('table', { 'class': 'kiss-table' }, [
 			E('thead', {}, [
 				E('tr', {}, [
 					E('th', {}, 'Name'),
@@ -459,34 +130,98 @@ return view.extend({
 					E('th', {}, 'Actions')
 				])
 			]),
-			E('tbody', {}, keys.map(function(key) {
-				return E('tr', { 'data-name': key.name }, [
-					E('td', {}, E('strong', {}, key.name)),
-					E('td', {}, String(key.nodes || '-')),
-					E('td', {}, formatBytes(key.graph_size || 0)),
-					E('td', {}, formatBytes(key.key_size || 0)),
-					E('td', {}, formatDate(key.created)),
-					E('td', {}, E('div', { 'class': 'zkp-actions' }, [
-						E('button', {
-							'class': 'zkp-btn zkp-btn-success',
-							'click': ui.createHandlerFn(this, 'handleProve', key.name)
-						}, 'Prove'),
-						E('button', {
-							'class': 'zkp-btn zkp-btn-primary',
-							'click': ui.createHandlerFn(this, 'handleVerify', key.name)
-						}, 'Verify'),
-						E('button', {
-							'class': 'zkp-btn zkp-btn-danger',
-							'click': ui.createHandlerFn(this, 'handleDelete', key.name)
-						}, 'Delete')
-					]))
-				]);
-			}.bind(this)))
+			E('tbody', {}, rows)
 		]);
 	},
 
+	render: function(data) {
+		var self = this;
+		var status = data[0] || {};
+		var keysData = data[1] || {};
+		var keys = keysData.keys || [];
+
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'ZKP Hamiltonian Cryptography'),
+					status.tools_available ?
+						KissTheme.badge('v' + (status.version || '1.0'), 'green') :
+						KissTheme.badge('Not Installed', 'red')
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' },
+					'Zero-knowledge proof system based on Hamiltonian cycle problem')
+			]),
+
+			// Stats
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'style': 'margin: 20px 0;' },
+				this.renderStats(status)),
+
+			// Keygen Section
+			KissTheme.card('Generate New Key',
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 16px;' }, [
+					E('div', { 'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px;' }, [
+						E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+							E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Key Name'),
+							E('input', {
+								'type': 'text',
+								'id': 'zkp-name',
+								'placeholder': 'my_key',
+								'value': 'key_' + Date.now(),
+								'style': 'background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 10px 12px; border-radius: 6px;'
+							})
+						]),
+						E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+							E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Nodes (4-50)'),
+							E('input', {
+								'type': 'number',
+								'id': 'zkp-nodes',
+								'min': '4',
+								'max': '50',
+								'value': '20',
+								'style': 'background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 10px 12px; border-radius: 6px;'
+							})
+						]),
+						E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+							E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Edge Density'),
+							E('select', {
+								'id': 'zkp-density',
+								'style': 'background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 10px 12px; border-radius: 6px;'
+							}, [
+								E('option', { 'value': '0.5' }, '0.5 (Sparse)'),
+								E('option', { 'value': '0.7' }, '0.7 (Medium)'),
+								E('option', { 'value': '0.8', 'selected': true }, '0.8 (Dense)'),
+								E('option', { 'value': '1.0' }, '1.0 (Complete)')
+							])
+						])
+					]),
+					E('div', { 'style': 'display: flex; gap: 12px;' }, [
+						E('button', {
+							'class': 'kiss-btn kiss-btn-purple',
+							'id': 'zkp-keygen-btn',
+							'click': ui.createHandlerFn(this, 'handleKeygen')
+						}, 'Generate')
+					]),
+					E('div', { 'id': 'zkp-keygen-result' })
+				])
+			),
+
+			// Keys Table
+			KissTheme.card('Saved Keys', this.renderKeysTable(keys)),
+
+			// Verification Result
+			E('div', { 'id': 'zkp-verify-section', 'style': 'display: none;' }, [
+				KissTheme.card('Verification Result',
+					E('div', { 'id': 'zkp-verify-result' })
+				)
+			])
+		];
+
+		return KissTheme.wrap(content, 'admin/services/zkp/overview');
+	},
+
 	handleKeygen: function(ev) {
-		var btn = ev.target;
+		var btn = document.getElementById('zkp-keygen-btn');
 		var name = document.getElementById('zkp-name').value;
 		var nodes = parseInt(document.getElementById('zkp-nodes').value, 10);
 		var density = document.getElementById('zkp-density').value;
@@ -501,7 +236,9 @@ return view.extend({
 
 			if (result.success) {
 				resultDiv.innerHTML = '';
-				resultDiv.appendChild(E('div', { 'class': 'zkp-result zkp-result-accept' }, [
+				resultDiv.appendChild(E('div', {
+					'style': 'padding: 16px; background: rgba(74, 222, 128, 0.15); border-radius: 8px; color: var(--kiss-green);'
+				}, [
 					E('strong', {}, 'Key generated successfully!'),
 					E('br'),
 					'Name: ' + result.name,
@@ -510,11 +247,12 @@ return view.extend({
 					E('br'),
 					'Graph: ' + formatBytes(result.graph_size) + ', Key: ' + formatBytes(result.key_size)
 				]));
-				// Refresh the page to show new key
 				window.location.reload();
 			} else {
 				resultDiv.innerHTML = '';
-				resultDiv.appendChild(E('div', { 'class': 'zkp-result zkp-result-reject' }, [
+				resultDiv.appendChild(E('div', {
+					'style': 'padding: 16px; background: rgba(248, 113, 113, 0.15); border-radius: 8px; color: var(--kiss-red);'
+				}, [
 					E('strong', {}, 'Error: '),
 					result.error || 'Unknown error'
 				]));
@@ -523,7 +261,9 @@ return view.extend({
 			btn.disabled = false;
 			btn.textContent = 'Generate';
 			resultDiv.innerHTML = '';
-			resultDiv.appendChild(E('div', { 'class': 'zkp-result zkp-result-reject' }, [
+			resultDiv.appendChild(E('div', {
+				'style': 'padding: 16px; background: rgba(248, 113, 113, 0.15); border-radius: 8px; color: var(--kiss-red);'
+			}, [
 				E('strong', {}, 'RPC Error: '),
 				err.message || String(err)
 			]));
@@ -546,7 +286,9 @@ return view.extend({
 			resultDiv.innerHTML = '';
 
 			if (result.success) {
-				resultDiv.appendChild(E('div', { 'class': 'zkp-result zkp-result-info' }, [
+				resultDiv.appendChild(E('div', {
+					'style': 'padding: 16px; background: var(--kiss-bg); border-radius: 8px;'
+				}, [
 					E('strong', {}, 'Proof generated for: ' + result.name),
 					E('br'),
 					'Size: ' + formatBytes(result.proof_size),
@@ -554,10 +296,12 @@ return view.extend({
 					'File: ' + result.proof_file,
 					E('br'),
 					E('br'),
-					E('em', {}, 'Click "Verify" to validate this proof.')
+					E('em', { 'style': 'color: var(--kiss-muted);' }, 'Click "Verify" to validate this proof.')
 				]));
 			} else {
-				resultDiv.appendChild(E('div', { 'class': 'zkp-result zkp-result-reject' }, [
+				resultDiv.appendChild(E('div', {
+					'style': 'padding: 16px; background: rgba(248, 113, 113, 0.15); border-radius: 8px; color: var(--kiss-red);'
+				}, [
 					E('strong', {}, 'Prove failed: '),
 					result.error || 'Unknown error'
 				]));
@@ -587,11 +331,14 @@ return view.extend({
 
 			if (result.success) {
 				var isAccept = result.result === 'ACCEPT';
+				var bgColor = isAccept ? 'rgba(74, 222, 128, 0.15)' : 'rgba(248, 113, 113, 0.15)';
+				var textColor = isAccept ? 'var(--kiss-green)' : 'var(--kiss-red)';
+
 				resultDiv.appendChild(E('div', {
-					'class': 'zkp-result ' + (isAccept ? 'zkp-result-accept' : 'zkp-result-reject')
+					'style': 'padding: 16px; background: ' + bgColor + '; border-radius: 8px; color: ' + textColor + ';'
 				}, [
 					E('strong', { 'style': 'font-size: 1.25rem;' },
-						isAccept ? '\u2705 ACCEPT' : '\u274C REJECT'),
+						isAccept ? 'ACCEPT' : 'REJECT'),
 					E('br'),
 					E('br'),
 					'Key: ' + result.name,
@@ -601,7 +348,9 @@ return view.extend({
 						'Proof is invalid or tampered.')
 				]));
 			} else {
-				resultDiv.appendChild(E('div', { 'class': 'zkp-result zkp-result-reject' }, [
+				resultDiv.appendChild(E('div', {
+					'style': 'padding: 16px; background: rgba(248, 113, 113, 0.15); border-radius: 8px; color: var(--kiss-red);'
+				}, [
 					E('strong', {}, 'Verify failed: '),
 					result.error || 'Unknown error'
 				]));

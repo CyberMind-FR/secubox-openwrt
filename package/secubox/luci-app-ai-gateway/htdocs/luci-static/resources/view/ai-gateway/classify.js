@@ -1,6 +1,7 @@
 'use strict';
 'require view';
 'require rpc';
+'require secubox/kiss-theme';
 
 var callClassify = rpc.declare({
 	object: 'luci.ai-gateway',
@@ -8,61 +9,6 @@ var callClassify = rpc.declare({
 	params: ['text'],
 	expect: {}
 });
-
-var kissCSS = `
-	.classify-container { padding: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 900px; }
-	.classify-container h2 { margin: 0 0 8px 0; }
-	.classify-container .subtitle { color: var(--text-secondary, #64748b); margin-bottom: 24px; }
-
-	.classify-form { margin-bottom: 24px; }
-	.classify-form textarea {
-		width: 100%; min-height: 120px; padding: 12px; border: 1px solid var(--border-color, #e2e8f0);
-		border-radius: 8px; font-size: 0.95em; font-family: monospace; resize: vertical;
-		background: var(--bg-primary, white); color: var(--text-primary, #1e293b);
-	}
-	.classify-form .btn-row { margin-top: 12px; display: flex; gap: 12px; }
-
-	.btn { padding: 10px 20px; border-radius: 8px; font-weight: 500; cursor: pointer; border: none; }
-	.btn-primary { background: #3b82f6; color: white; }
-	.btn-primary:hover { background: #2563eb; }
-	.btn-secondary { background: #64748b; color: white; }
-	.btn-secondary:hover { background: #475569; }
-
-	.result-card { background: var(--bg-secondary, #f8fafc); border: 1px solid var(--border-color, #e2e8f0); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
-	.result-card h3 { margin: 0 0 16px 0; font-size: 1.1em; }
-
-	.classification-badge { display: inline-block; padding: 8px 16px; border-radius: 8px; font-weight: 600; font-size: 1.1em; }
-	.badge-local_only { background: #dcfce7; color: #166534; }
-	.badge-sanitized { background: #fef3c7; color: #92400e; }
-	.badge-cloud_direct { background: #dbeafe; color: #1e40af; }
-
-	.result-details { margin-top: 16px; }
-	.detail-row { display: flex; padding: 8px 0; border-bottom: 1px solid var(--border-color, #e2e8f0); }
-	.detail-row:last-child { border-bottom: none; }
-	.detail-label { width: 150px; font-weight: 500; color: var(--text-secondary, #64748b); }
-	.detail-value { flex: 1; font-family: monospace; }
-
-	.examples-section { margin-top: 32px; }
-	.examples-section h3 { margin-bottom: 16px; }
-	.example-list { display: flex; flex-direction: column; gap: 8px; }
-	.example-item { padding: 12px 16px; background: var(--bg-secondary, #f8fafc); border: 1px solid var(--border-color, #e2e8f0);
-		border-radius: 8px; cursor: pointer; transition: all 0.2s; display: flex; justify-content: space-between; align-items: center; }
-	.example-item:hover { border-color: #3b82f6; background: #eff6ff; }
-	.example-text { font-family: monospace; font-size: 0.9em; }
-	.example-badge { padding: 2px 8px; border-radius: 4px; font-size: 0.75em; font-weight: 500; }
-
-	.tier-explanation { margin-top: 24px; padding: 16px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; }
-	.tier-explanation h4 { margin: 0 0 12px 0; color: #0369a1; }
-	.tier-explanation ul { margin: 0; padding-left: 20px; }
-	.tier-explanation li { margin-bottom: 8px; color: #0c4a6e; }
-
-	@media (prefers-color-scheme: dark) {
-		.classify-form textarea { background: #0f172a; border-color: #334155; color: #f1f5f9; }
-		.result-card, .example-item { background: #1e293b; border-color: #334155; }
-		.tier-explanation { background: #0c4a6e; border-color: #0369a1; }
-		.tier-explanation h4, .tier-explanation li { color: #bae6fd; }
-	}
-`;
 
 var examples = [
 	{ text: 'What is the weather today?', expected: 'cloud_direct' },
@@ -80,78 +26,103 @@ var examples = [
 return view.extend({
 	title: 'Data Classifier',
 
+	renderNav: function(active) {
+		var tabs = [
+			{ name: 'Overview', path: 'admin/services/ai-gateway/overview' },
+			{ name: 'Providers', path: 'admin/services/ai-gateway/providers' },
+			{ name: 'Classify', path: 'admin/services/ai-gateway/classify' },
+			{ name: 'Audit', path: 'admin/services/ai-gateway/audit' }
+		];
+
+		return E('div', { 'class': 'kiss-tabs' }, tabs.map(function(tab) {
+			var isActive = tab.path.indexOf(active) !== -1;
+			return E('a', {
+				'href': L.url(tab.path),
+				'class': 'kiss-tab' + (isActive ? ' active' : '')
+			}, tab.name);
+		}));
+	},
+
+	renderExamples: function() {
+		var self = this;
+		var badgeColors = {
+			'local_only': 'green',
+			'sanitized': 'orange',
+			'cloud_direct': 'cyan'
+		};
+
+		return E('div', { 'style': 'display: flex; flex-direction: column; gap: 8px;' },
+			examples.map(function(ex) {
+				return E('div', {
+					'style': 'display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: var(--kiss-bg); border-radius: 6px; cursor: pointer; transition: background 0.2s;',
+					'click': function() { self.handleExampleClick(ex.text); }
+				}, [
+					E('span', { 'style': 'font-family: monospace; font-size: 12px; flex: 1; overflow: hidden; text-overflow: ellipsis;' }, ex.text),
+					KissTheme.badge(ex.expected.toUpperCase(), badgeColors[ex.expected] || 'purple')
+				]);
+			})
+		);
+	},
+
 	render: function() {
-		var container = E('div', { 'class': 'classify-container' });
+		var self = this;
 
-		container.appendChild(E('style', {}, kissCSS));
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'Data Classifier'),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' }, 'Test the classification engine for sovereignty tiers')
+			]),
 
-		container.appendChild(E('h2', {}, 'Data Classifier'));
-		container.appendChild(E('p', { 'class': 'subtitle' },
-			'Test the classification engine to see how data is categorized into sovereignty tiers.'));
+			// Navigation
+			this.renderNav('classify'),
 
-		// Input form
-		var form = E('div', { 'class': 'classify-form' });
-		var textarea = E('textarea', {
-			'id': 'classify-input',
-			'placeholder': 'Enter text to classify...\n\nExamples:\n- "Server IP is 192.168.1.100" → LOCAL_ONLY\n- "What is 2+2?" → CLOUD_DIRECT'
-		});
-		form.appendChild(textarea);
+			// Two-column layout
+			E('div', { 'class': 'kiss-grid kiss-grid-2', 'style': 'margin-top: 20px;' }, [
+				// Input form
+				KissTheme.card('Test Input', E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px;' }, [
+					E('textarea', {
+						'id': 'classify-input',
+						'placeholder': 'Enter text to classify...\n\nExamples:\n- "Server IP is 192.168.1.100" → LOCAL_ONLY\n- "What is 2+2?" → CLOUD_DIRECT',
+						'style': 'width: 100%; min-height: 120px; padding: 12px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 8px; font-family: monospace; font-size: 12px; color: var(--kiss-text); resize: vertical;'
+					}),
+					E('div', { 'style': 'display: flex; gap: 8px;' }, [
+						E('button', {
+							'class': 'kiss-btn kiss-btn-blue',
+							'click': function() { self.handleClassify(); }
+						}, 'Classify'),
+						E('button', {
+							'class': 'kiss-btn',
+							'click': function() { self.handleClear(); }
+						}, 'Clear')
+					])
+				])),
 
-		form.appendChild(E('div', { 'class': 'btn-row' }, [
-			E('button', {
-				'class': 'btn btn-primary',
-				'click': this.handleClassify.bind(this)
-			}, 'Classify'),
-			E('button', {
-				'class': 'btn btn-secondary',
-				'click': this.handleClear.bind(this)
-			}, 'Clear')
-		]));
+				// Classification tiers explanation
+				KissTheme.card('Classification Tiers', E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px;' }, [
+					E('div', { 'style': 'display: flex; align-items: flex-start; gap: 10px;' }, [
+						KissTheme.badge('LOCAL_ONLY', 'green'),
+						E('span', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Contains sensitive data (IPs, MACs, credentials, logs, keys). Never sent externally.')
+					]),
+					E('div', { 'style': 'display: flex; align-items: flex-start; gap: 10px;' }, [
+						KissTheme.badge('SANITIZED', 'orange'),
+						E('span', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Contains PII that can be scrubbed. Sent to EU cloud (Mistral) with opt-in.')
+					]),
+					E('div', { 'style': 'display: flex; align-items: flex-start; gap: 10px;' }, [
+						KissTheme.badge('CLOUD_DIRECT', 'cyan'),
+						E('span', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Generic queries with no sensitive data. Can be sent to any provider with opt-in.')
+					])
+				]))
+			]),
 
-		container.appendChild(form);
+			// Result placeholder
+			E('div', { 'id': 'classify-result', 'style': 'margin-top: 20px;' }),
 
-		// Result placeholder
-		container.appendChild(E('div', { 'id': 'classify-result' }));
+			// Examples section
+			KissTheme.card('Example Inputs (click to test)', this.renderExamples())
+		];
 
-		// Tier explanation
-		container.appendChild(E('div', { 'class': 'tier-explanation' }, [
-			E('h4', {}, 'Classification Tiers'),
-			E('ul', {}, [
-				E('li', {}, [
-					E('strong', {}, 'LOCAL_ONLY: '),
-					'Contains sensitive data (IPs, MACs, credentials, logs, keys). Never sent externally.'
-				]),
-				E('li', {}, [
-					E('strong', {}, 'SANITIZED: '),
-					'Contains PII that can be scrubbed. Sent to EU cloud (Mistral) with opt-in.'
-				]),
-				E('li', {}, [
-					E('strong', {}, 'CLOUD_DIRECT: '),
-					'Generic queries with no sensitive data. Can be sent to any provider with opt-in.'
-				])
-			])
-		]));
-
-		// Examples section
-		var examplesSection = E('div', { 'class': 'examples-section' });
-		examplesSection.appendChild(E('h3', {}, 'Example Inputs'));
-
-		var exampleList = E('div', { 'class': 'example-list' });
-		examples.forEach(function(ex) {
-			var badgeClass = 'badge-' + ex.expected;
-			exampleList.appendChild(E('div', {
-				'class': 'example-item',
-				'click': this.handleExampleClick.bind(this, ex.text)
-			}, [
-				E('span', { 'class': 'example-text' }, ex.text),
-				E('span', { 'class': 'example-badge ' + badgeClass }, ex.expected.toUpperCase())
-			]));
-		}.bind(this));
-
-		examplesSection.appendChild(exampleList);
-		container.appendChild(examplesSection);
-
-		return container;
+		return KissTheme.wrap(content, 'admin/services/ai-gateway/classify');
 	},
 
 	handleClassify: function() {
@@ -194,9 +165,8 @@ return view.extend({
 
 		if (result.error) {
 			resultDiv.innerHTML = '';
-			resultDiv.appendChild(E('div', { 'class': 'result-card' }, [
-				E('p', { 'style': 'color: #dc2626;' }, result.error)
-			]));
+			var errorCard = KissTheme.card('Error', E('p', { 'style': 'color: var(--kiss-red);' }, result.error));
+			resultDiv.appendChild(errorCard);
 			return;
 		}
 
@@ -204,36 +174,9 @@ return view.extend({
 		var reason = result.reason || result.result?.reason || 'No reason provided';
 		var pattern = result.matched_pattern || result.result?.matched_pattern || '-';
 
-		resultDiv.innerHTML = '';
+		var badgeColor = classification === 'local_only' ? 'green' :
+			classification === 'sanitized' ? 'orange' : 'cyan';
 
-		var card = E('div', { 'class': 'result-card' });
-		card.appendChild(E('h3', {}, 'Classification Result'));
-
-		card.appendChild(E('div', { 'style': 'margin-bottom: 16px;' }, [
-			E('span', { 'class': 'classification-badge badge-' + classification },
-				classification.toUpperCase())
-		]));
-
-		var details = E('div', { 'class': 'result-details' });
-
-		details.appendChild(E('div', { 'class': 'detail-row' }, [
-			E('span', { 'class': 'detail-label' }, 'Classification'),
-			E('span', { 'class': 'detail-value' }, classification.toUpperCase())
-		]));
-
-		details.appendChild(E('div', { 'class': 'detail-row' }, [
-			E('span', { 'class': 'detail-label' }, 'Reason'),
-			E('span', { 'class': 'detail-value' }, reason)
-		]));
-
-		if (pattern !== '-') {
-			details.appendChild(E('div', { 'class': 'detail-row' }, [
-				E('span', { 'class': 'detail-label' }, 'Matched Pattern'),
-				E('span', { 'class': 'detail-value' }, pattern)
-			]));
-		}
-
-		// Destination explanation
 		var destination = 'Unknown';
 		if (classification === 'local_only') {
 			destination = 'LocalAI only (data never leaves device)';
@@ -243,12 +186,32 @@ return view.extend({
 			destination = 'Any enabled provider (no sensitive data detected)';
 		}
 
-		details.appendChild(E('div', { 'class': 'detail-row' }, [
-			E('span', { 'class': 'detail-label' }, 'Destination'),
-			E('span', { 'class': 'detail-value' }, destination)
-		]));
+		resultDiv.innerHTML = '';
 
-		card.appendChild(details);
-		resultDiv.appendChild(card);
+		var resultContent = E('div', { 'style': 'display: flex; flex-direction: column; gap: 16px;' }, [
+			E('div', { 'style': 'text-align: center;' }, [
+				KissTheme.badge(classification.toUpperCase(), badgeColor)
+			]),
+			E('div', { 'style': 'display: flex; flex-direction: column; gap: 8px;' }, [
+				E('div', { 'style': 'display: flex; padding: 10px 0; border-bottom: 1px solid var(--kiss-line);' }, [
+					E('span', { 'style': 'width: 140px; font-weight: 500; color: var(--kiss-muted);' }, 'Classification'),
+					E('span', { 'style': 'flex: 1; font-family: monospace;' }, classification.toUpperCase())
+				]),
+				E('div', { 'style': 'display: flex; padding: 10px 0; border-bottom: 1px solid var(--kiss-line);' }, [
+					E('span', { 'style': 'width: 140px; font-weight: 500; color: var(--kiss-muted);' }, 'Reason'),
+					E('span', { 'style': 'flex: 1; font-family: monospace;' }, reason)
+				]),
+				pattern !== '-' ? E('div', { 'style': 'display: flex; padding: 10px 0; border-bottom: 1px solid var(--kiss-line);' }, [
+					E('span', { 'style': 'width: 140px; font-weight: 500; color: var(--kiss-muted);' }, 'Matched Pattern'),
+					E('span', { 'style': 'flex: 1; font-family: monospace;' }, pattern)
+				]) : '',
+				E('div', { 'style': 'display: flex; padding: 10px 0;' }, [
+					E('span', { 'style': 'width: 140px; font-weight: 500; color: var(--kiss-muted);' }, 'Destination'),
+					E('span', { 'style': 'flex: 1; font-family: monospace;' }, destination)
+				])
+			])
+		]);
+
+		resultDiv.appendChild(KissTheme.card('Classification Result', resultContent));
 	}
 });

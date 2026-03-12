@@ -515,12 +515,12 @@ return view.extend({
 
 		if (this.wizardStep < 4) {
 			buttons.push(E('button', {
-				'class': 'btn cbi-button-action',
+				'class': 'kiss-btn kiss-btn-blue',
 				'click': L.bind(this.nextWizardStep, this)
 			}, _('Next')));
 		} else {
 			buttons.push(E('button', {
-				'class': 'btn cbi-button-action',
+				'class': 'kiss-btn kiss-btn-blue',
 				'click': L.bind(this.finishWizard, this)
 			}, _('Finish Setup')));
 		}
@@ -586,7 +586,7 @@ return view.extend({
 		// Action buttons
 		if (!installed && this.status.docker_available) {
 			items.push(E('button', {
-				'class': 'btn cbi-button-action',
+				'class': 'kiss-btn kiss-btn-blue',
 				'style': 'margin-top: 12px;',
 				'click': function() {
 					ui.hideModal();
@@ -606,7 +606,7 @@ return view.extend({
 			}, _('Install Jellyfin')));
 		} else if (installed && !running) {
 			items.push(E('button', {
-				'class': 'btn cbi-button-action',
+				'class': 'kiss-btn kiss-btn-blue',
 				'style': 'margin-top: 12px;',
 				'click': function() {
 					callStart().then(function() {
@@ -664,7 +664,7 @@ return view.extend({
 				'style': 'flex: 1; min-width: 150px; padding: 6px;'
 			}),
 			E('button', {
-				'class': 'btn cbi-button-action',
+				'class': 'kiss-btn kiss-btn-blue',
 				'click': L.bind(this.addMediaPath, this)
 			}, _('Add'))
 		]));
@@ -789,7 +789,7 @@ return view.extend({
 			E('a', {
 				'href': 'http://' + window.location.hostname + ':' + port,
 				'target': '_blank',
-				'class': 'btn cbi-button-action',
+				'class': 'kiss-btn kiss-btn-blue',
 				'style': 'margin-top: 16px; display: inline-block;'
 			}, _('Open Jellyfin Web UI')),
 			E('p', { 'style': 'color: #888; font-size: 12px; margin-top: 24px;' },

@@ -2,102 +2,20 @@
 'require view';
 'require rpc';
 'require ui';
-'require form';
 'require poll';
+'require secubox/kiss-theme';
 
-var callList = rpc.declare({
-	object: 'luci.streamlit-forge',
-	method: 'list',
-	expect: {}
-});
-
-var callStatus = rpc.declare({
-	object: 'luci.streamlit-forge',
-	method: 'status',
-	expect: {}
-});
-
-var callTemplates = rpc.declare({
-	object: 'luci.streamlit-forge',
-	method: 'templates',
-	expect: {}
-});
-
-var callCreate = rpc.declare({
-	object: 'luci.streamlit-forge',
-	method: 'create',
-	params: ['name', 'template'],
-	expect: {}
-});
-
-var callStart = rpc.declare({
-	object: 'luci.streamlit-forge',
-	method: 'start',
-	params: ['name'],
-	expect: {}
-});
-
-var callStop = rpc.declare({
-	object: 'luci.streamlit-forge',
-	method: 'stop',
-	params: ['name'],
-	expect: {}
-});
-
-var callDelete = rpc.declare({
-	object: 'luci.streamlit-forge',
-	method: 'delete',
-	params: ['name'],
-	expect: {}
-});
-
-var callExpose = rpc.declare({
-	object: 'luci.streamlit-forge',
-	method: 'expose',
-	params: ['name', 'domain'],
-	expect: {}
-});
-
-var callPublish = rpc.declare({
-	object: 'luci.streamlit-forge',
-	method: 'publish',
-	params: ['name'],
-	expect: {}
-});
-
-var callGiteaStatus = rpc.declare({
-	object: 'luci.streamlit-forge',
-	method: 'gitea_status',
-	expect: {}
-});
-
-var callEdit = rpc.declare({
-	object: 'luci.streamlit-forge',
-	method: 'edit',
-	params: ['name'],
-	expect: {}
-});
-
-var callPull = rpc.declare({
-	object: 'luci.streamlit-forge',
-	method: 'pull',
-	params: ['name'],
-	expect: {}
-});
-
-var callPush = rpc.declare({
-	object: 'luci.streamlit-forge',
-	method: 'push',
-	params: ['name', 'message'],
-	expect: {}
-});
-
-var callPreview = rpc.declare({
-	object: 'luci.streamlit-forge',
-	method: 'preview',
-	params: ['name'],
-	expect: {}
-});
+var callList = rpc.declare({ object: 'luci.streamlit-forge', method: 'list', expect: {} });
+var callStatus = rpc.declare({ object: 'luci.streamlit-forge', method: 'status', expect: {} });
+var callTemplates = rpc.declare({ object: 'luci.streamlit-forge', method: 'templates', expect: {} });
+var callCreate = rpc.declare({ object: 'luci.streamlit-forge', method: 'create', params: ['name', 'template'], expect: {} });
+var callStart = rpc.declare({ object: 'luci.streamlit-forge', method: 'start', params: ['name'], expect: {} });
+var callStop = rpc.declare({ object: 'luci.streamlit-forge', method: 'stop', params: ['name'], expect: {} });
+var callDelete = rpc.declare({ object: 'luci.streamlit-forge', method: 'delete', params: ['name'], expect: {} });
+var callExpose = rpc.declare({ object: 'luci.streamlit-forge', method: 'expose', params: ['name', 'domain'], expect: {} });
+var callGiteaStatus = rpc.declare({ object: 'luci.streamlit-forge', method: 'gitea_status', expect: {} });
+var callEdit = rpc.declare({ object: 'luci.streamlit-forge', method: 'edit', params: ['name'], expect: {} });
+var callPull = rpc.declare({ object: 'luci.streamlit-forge', method: 'pull', params: ['name'], expect: {} });
 
 return view.extend({
 	apps: [],
@@ -114,6 +32,78 @@ return view.extend({
 		]);
 	},
 
+	renderStats: function(status, giteaStatus) {
+		var c = KissTheme.colors;
+		return [
+			KissTheme.stat(status.running || 0, 'Running', c.green),
+			KissTheme.stat(status.total || 0, 'Total Apps', c.blue),
+			KissTheme.stat(status.lxc_status === 'running' ? 'UP' : 'DOWN', 'LXC', status.lxc_status === 'running' ? c.green : c.orange),
+			KissTheme.stat(giteaStatus.gitea_available === 'true' ? 'v' + (giteaStatus.gitea_version || '?') : 'OFF', 'Gitea', giteaStatus.gitea_available === 'true' ? c.purple : c.red)
+		];
+	},
+
+	renderAppCard: function(app) {
+		var self = this;
+		var isRunning = app.status === 'running';
+
+		var actions = E('div', { 'style': 'display: flex; gap: 6px; flex-wrap: wrap;' }, [
+			isRunning ?
+				E('button', {
+					'class': 'kiss-btn kiss-btn-red',
+					'style': 'padding: 4px 10px; font-size: 11px;',
+					'click': ui.createHandlerFn(this, 'handleStop', app.name)
+				}, 'Stop') :
+				E('button', {
+					'class': 'kiss-btn kiss-btn-green',
+					'style': 'padding: 4px 10px; font-size: 11px;',
+					'click': ui.createHandlerFn(this, 'handleStart', app.name)
+				}, 'Start'),
+			isRunning && app.port ? E('a', {
+				'class': 'kiss-btn kiss-btn-blue',
+				'style': 'padding: 4px 10px; font-size: 11px; text-decoration: none;',
+				'href': 'http://' + window.location.hostname + ':' + app.port,
+				'target': '_blank'
+			}, 'Open') : '',
+			E('button', {
+				'class': 'kiss-btn',
+				'style': 'padding: 4px 10px; font-size: 11px;',
+				'click': ui.createHandlerFn(this, 'handleEdit', app.name)
+			}, 'Edit'),
+			E('button', {
+				'class': 'kiss-btn',
+				'style': 'padding: 4px 10px; font-size: 11px;',
+				'click': ui.createHandlerFn(this, 'handlePull', app.name)
+			}, 'Pull'),
+			!app.domain ? E('button', {
+				'class': 'kiss-btn',
+				'style': 'padding: 4px 10px; font-size: 11px;',
+				'click': ui.createHandlerFn(this, 'handleExpose', app.name)
+			}, 'Expose') : '',
+			E('button', {
+				'class': 'kiss-btn kiss-btn-red',
+				'style': 'padding: 4px 10px; font-size: 11px;',
+				'click': ui.createHandlerFn(this, 'handleDelete', app.name)
+			}, 'Delete')
+		]);
+
+		return E('div', {
+			'style': 'background: var(--kiss-bg2); border-radius: 8px; padding: 16px; border-left: 3px solid ' + (isRunning ? 'var(--kiss-green)' : 'var(--kiss-muted)') + ';'
+		}, [
+			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;' }, [
+				E('div', {}, [
+					E('div', { 'style': 'font-weight: 600; font-size: 14px;' }, app.name),
+					E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted);' }, 'Port: ' + (app.port || '-'))
+				]),
+				KissTheme.badge(isRunning ? 'RUNNING' : 'STOPPED', isRunning ? 'green' : 'red')
+			]),
+			app.domain ? E('div', { 'style': 'font-size: 11px; margin-bottom: 8px;' }, [
+				E('a', { 'href': 'https://' + app.domain, 'target': '_blank', 'style': 'color: var(--kiss-cyan);' }, app.domain)
+			]) : '',
+			E('div', { 'style': 'font-size: 10px; color: var(--kiss-muted); margin-bottom: 10px;' }, 'Created: ' + (app.created || '-')),
+			actions
+		]);
+	},
+
 	render: function(data) {
 		var self = this;
 		this.apps = (data[0] && data[0].apps) || [];
@@ -121,133 +111,45 @@ return view.extend({
 		this.templates = (data[2] && data[2].templates) || [];
 		this.giteaStatus = data[3] || {};
 
-		var view = E('div', { 'class': 'cbi-map' }, [
-			E('h2', {}, 'Streamlit Forge'),
-			E('div', { 'class': 'cbi-map-descr' },
-				'Create, manage, and publish Streamlit applications.'),
-
-			// Status cards
-			E('div', { 'class': 'sh-stats', 'style': 'display:flex;gap:1rem;margin:1rem 0;flex-wrap:wrap;' }, [
-				this.renderStatCard('Running', this.status.running || 0, '#4caf50'),
-				this.renderStatCard('Total Apps', this.status.total || 0, '#2196f3'),
-				this.renderStatCard('LXC Container', this.status.lxc_status || 'unknown',
-					this.status.lxc_status === 'running' ? '#4caf50' : '#ff9800'),
-				this.renderStatCard('Gitea',
-					this.giteaStatus.gitea_available === 'true' ? 'v' + (this.giteaStatus.gitea_version || '?') : 'offline',
-					this.giteaStatus.gitea_available === 'true' ? '#9c27b0' : '#666')
-			]),
-
-			// Actions
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, 'Actions'),
-				E('div', { 'style': 'display:flex;gap:0.5rem;flex-wrap:wrap;' }, [
-					E('button', {
-						'class': 'cbi-button cbi-button-add',
-						'click': ui.createHandlerFn(this, 'handleCreate')
-					}, '+ Create App'),
-					E('button', {
-						'class': 'cbi-button',
-						'click': ui.createHandlerFn(this, 'handleRefresh')
-					}, 'Refresh')
-				])
-			]),
-
-			// Apps table
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, 'Applications'),
-				this.renderAppsTable()
-			])
-		]);
-
 		poll.add(L.bind(this.pollStatus, this), 10);
 
-		return view;
-	},
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'Streamlit Forge'),
+					KissTheme.badge(this.apps.length + ' APPS', 'purple')
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' }, 'Create and manage Streamlit applications')
+			]),
 
-	renderStatCard: function(label, value, color) {
-		return E('div', {
-			'style': 'background:#1a1a2e;border-left:4px solid ' + color + ';padding:1rem;min-width:120px;border-radius:4px;'
-		}, [
-			E('div', { 'style': 'font-size:1.5rem;font-weight:bold;color:' + color }, String(value)),
-			E('div', { 'style': 'color:#888;font-size:0.85rem;' }, label)
-		]);
-	},
+			// Stats
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'id': 'forge-stats', 'style': 'margin: 20px 0;' }, this.renderStats(this.status, this.giteaStatus)),
 
-	renderAppsTable: function() {
-		if (!this.apps.length) {
-			return E('p', { 'class': 'cbi-value-description' },
-				'No apps found. Click "Create App" to get started.');
-		}
-
-		var rows = this.apps.map(L.bind(function(app) {
-			var isRunning = app.status === 'running';
-			var statusBadge = E('span', {
-				'class': 'badge',
-				'style': 'background:' + (isRunning ? '#4caf50' : '#666') + ';color:#fff;padding:2px 8px;border-radius:10px;font-size:0.8rem;'
-			}, isRunning ? 'Running' : 'Stopped');
-
-			var actions = E('div', { 'style': 'display:flex;gap:4px;flex-wrap:wrap;' }, [
-				isRunning ?
-					E('button', {
-						'class': 'cbi-button cbi-button-remove',
-						'style': 'padding:4px 8px;font-size:0.8rem;',
-						'click': ui.createHandlerFn(this, 'handleStop', app.name)
-					}, 'Stop') :
-					E('button', {
-						'class': 'cbi-button cbi-button-apply',
-						'style': 'padding:4px 8px;font-size:0.8rem;',
-						'click': ui.createHandlerFn(this, 'handleStart', app.name)
-					}, 'Start'),
-				isRunning && app.port ?
-					E('a', {
-						'class': 'cbi-button',
-						'style': 'padding:4px 8px;font-size:0.8rem;text-decoration:none;',
-						'href': 'http://' + window.location.hostname + ':' + app.port,
-						'target': '_blank'
-					}, 'Open') : '',
+			// Actions
+			E('div', { 'style': 'display: flex; gap: 8px; margin-bottom: 20px;' }, [
 				E('button', {
-					'class': 'cbi-button',
-					'style': 'padding:4px 8px;font-size:0.8rem;background:#9c27b0;color:#fff;border-color:#9c27b0;',
-					'click': ui.createHandlerFn(this, 'handleEdit', app.name)
-				}, 'Edit'),
+					'class': 'kiss-btn kiss-btn-green',
+					'click': ui.createHandlerFn(this, 'handleCreate')
+				}, '+ Create App'),
 				E('button', {
-					'class': 'cbi-button',
-					'style': 'padding:4px 8px;font-size:0.8rem;',
-					'click': ui.createHandlerFn(this, 'handlePull', app.name)
-				}, 'Pull'),
-				!app.domain ?
-					E('button', {
-						'class': 'cbi-button',
-						'style': 'padding:4px 8px;font-size:0.8rem;',
-						'click': ui.createHandlerFn(this, 'handleExpose', app.name)
-					}, 'Expose') : '',
-				E('button', {
-					'class': 'cbi-button cbi-button-remove',
-					'style': 'padding:4px 8px;font-size:0.8rem;',
-					'click': ui.createHandlerFn(this, 'handleDelete', app.name)
-				}, 'Delete')
-			]);
+					'class': 'kiss-btn',
+					'click': ui.createHandlerFn(this, 'handleRefresh')
+				}, 'Refresh')
+			]),
 
-			return E('tr', {}, [
-				E('td', {}, app.name),
-				E('td', {}, statusBadge),
-				E('td', {}, app.port || '-'),
-				E('td', {}, app.domain ? E('a', { 'href': 'https://' + app.domain, 'target': '_blank' }, app.domain) : '-'),
-				E('td', {}, app.created || '-'),
-				E('td', {}, actions)
-			]);
-		}, this));
+			// Apps grid
+			KissTheme.card('Applications (' + this.apps.length + ')',
+				this.apps.length > 0 ?
+					E('div', { 'id': 'apps-container', 'style': 'display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px;' },
+						this.apps.map(function(app) { return self.renderAppCard(app); })
+					) :
+					E('div', { 'style': 'text-align: center; padding: 24px; color: var(--kiss-muted);' },
+						'No apps found. Click "Create App" to get started.')
+			)
+		];
 
-		return E('table', { 'class': 'table cbi-section-table' }, [
-			E('tr', { 'class': 'tr table-titles' }, [
-				E('th', { 'class': 'th' }, 'Name'),
-				E('th', { 'class': 'th' }, 'Status'),
-				E('th', { 'class': 'th' }, 'Port'),
-				E('th', { 'class': 'th' }, 'Domain'),
-				E('th', { 'class': 'th' }, 'Created'),
-				E('th', { 'class': 'th' }, 'Actions')
-			])
-		].concat(rows));
+		return KissTheme.wrap(content, 'admin/services/streamlit-forge/overview');
 	},
 
 	pollStatus: function() {
@@ -256,24 +158,18 @@ return view.extend({
 			self.apps = (data[0] && data[0].apps) || [];
 			self.status = data[1] || {};
 
-			var container = document.querySelector('.cbi-map');
-			if (container) {
-				var statsDiv = container.querySelector('.sh-stats');
-				if (statsDiv) {
-					statsDiv.innerHTML = '';
-					statsDiv.appendChild(self.renderStatCard('Running', self.status.running || 0, '#4caf50'));
-					statsDiv.appendChild(self.renderStatCard('Total Apps', self.status.total || 0, '#2196f3'));
-					statsDiv.appendChild(self.renderStatCard('LXC Container', self.status.lxc_status || 'unknown',
-						self.status.lxc_status === 'running' ? '#4caf50' : '#ff9800'));
-				}
+			var statsEl = document.getElementById('forge-stats');
+			if (statsEl) {
+				statsEl.innerHTML = '';
+				self.renderStats(self.status, self.giteaStatus).forEach(function(el) { statsEl.appendChild(el); });
+			}
 
-				var tableSection = container.querySelectorAll('.cbi-section')[1];
-				if (tableSection) {
-					var oldTable = tableSection.querySelector('table, p');
-					if (oldTable) {
-						oldTable.replaceWith(self.renderAppsTable());
-					}
-				}
+			var appsContainer = document.getElementById('apps-container');
+			if (appsContainer) {
+				appsContainer.innerHTML = '';
+				self.apps.forEach(function(app) {
+					appsContainer.appendChild(self.renderAppCard(app));
+				});
 			}
 		});
 	},
@@ -291,27 +187,28 @@ return view.extend({
 		});
 
 		ui.showModal('Create New App', [
-			E('div', { 'class': 'cbi-section' }, [
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'App Name'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', { 'type': 'text', 'id': 'new-app-name', 'class': 'cbi-input-text', 'placeholder': 'myapp' })
-					])
+			E('div', { 'style': 'display: flex; flex-direction: column; gap: 16px;' }, [
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+					E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'App Name'),
+					E('input', {
+						'type': 'text',
+						'id': 'new-app-name',
+						'placeholder': 'myapp',
+						'style': 'background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px 12px; border-radius: 6px;'
+					})
 				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Template'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('select', { 'id': 'new-app-template', 'class': 'cbi-input-select' }, templateOptions)
-					])
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+					E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Template'),
+					E('select', {
+						'id': 'new-app-template',
+						'style': 'background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px 12px; border-radius: 6px;'
+					}, templateOptions)
 				])
 			]),
-			E('div', { 'class': 'right' }, [
+			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px;' }, [
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
 				E('button', {
-					'class': 'cbi-button',
-					'click': ui.hideModal
-				}, 'Cancel'),
-				E('button', {
-					'class': 'cbi-button cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() {
 						var name = document.getElementById('new-app-name').value.trim();
 						var template = document.getElementById('new-app-template').value;
@@ -322,7 +219,7 @@ return view.extend({
 						}
 
 						if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(name)) {
-							ui.addNotification(null, E('p', 'Invalid app name. Use letters, numbers, underscore, hyphen.'));
+							ui.addNotification(null, E('p', 'Invalid name. Use letters, numbers, underscore, hyphen.'));
 							return;
 						}
 
@@ -348,9 +245,7 @@ return view.extend({
 
 	handleStart: function(name) {
 		var self = this;
-		ui.showModal('Starting App...', [
-			E('p', { 'class': 'spinning' }, 'Starting ' + name + '...')
-		]);
+		ui.showModal('Starting App...', [E('p', { 'class': 'spinning' }, 'Starting ' + name + '...')]);
 
 		return callStart(name).then(function(res) {
 			ui.hideModal();
@@ -375,9 +270,7 @@ return view.extend({
 
 	handleDelete: function(name) {
 		var self = this;
-		if (!confirm('Delete app "' + name + '"? This cannot be undone.')) {
-			return;
-		}
+		if (!confirm('Delete app "' + name + '"? This cannot be undone.')) return;
 
 		return callDelete(name).then(function(res) {
 			if (res.code === 0) {
@@ -391,12 +284,10 @@ return view.extend({
 
 	handleExpose: function(name) {
 		var self = this;
-		var domain = prompt('Enter domain for ' + name + ' (leave empty for auto):', name + '.apps.secubox.in');
+		var domain = prompt('Enter domain for ' + name + ':', name + '.apps.secubox.in');
 		if (domain === null) return;
 
-		ui.showModal('Exposing App...', [
-			E('p', { 'class': 'spinning' }, 'Creating vhost and SSL certificate...')
-		]);
+		ui.showModal('Exposing App...', [E('p', { 'class': 'spinning' }, 'Creating vhost and SSL certificate...')]);
 
 		return callExpose(name, domain || '').then(function(res) {
 			ui.hideModal();
@@ -409,28 +300,8 @@ return view.extend({
 		});
 	},
 
-	handlePublish: function(name) {
-		var self = this;
-		ui.showModal('Publishing...', [
-			E('p', { 'class': 'spinning' }, 'Publishing to mesh catalog...')
-		]);
-
-		return callPublish(name).then(function(res) {
-			ui.hideModal();
-			if (res.code === 0) {
-				ui.addNotification(null, E('p', 'App published to mesh catalog'));
-			} else {
-				ui.addNotification(null, E('p', 'Error: ' + (res.output || 'Failed to publish')));
-			}
-			return self.pollStatus();
-		});
-	},
-
 	handleEdit: function(name) {
-		var self = this;
-		ui.showModal('Opening Editor...', [
-			E('p', { 'class': 'spinning' }, 'Setting up Gitea repository...')
-		]);
+		ui.showModal('Opening Editor...', [E('p', { 'class': 'spinning' }, 'Setting up Gitea repository...')]);
 
 		return callEdit(name).then(function(res) {
 			ui.hideModal();
@@ -438,24 +309,17 @@ return view.extend({
 				ui.showModal('Edit in Gitea', [
 					E('p', {}, 'Your app is ready for editing in Gitea:'),
 					E('p', {}, [
-						E('a', {
-							'href': res.edit_url,
-							'target': '_blank',
-							'style': 'color:#9c27b0;font-weight:bold;'
-						}, res.edit_url)
+						E('a', { 'href': res.edit_url, 'target': '_blank', 'style': 'color: var(--kiss-purple);' }, res.edit_url)
 					]),
-					E('p', { 'style': 'margin-top:1rem;color:#888;' },
+					E('p', { 'style': 'color: var(--kiss-muted); font-size: 12px;' },
 						'After editing, click "Pull" to sync changes to this device.'),
-					E('div', { 'class': 'right', 'style': 'margin-top:1rem;' }, [
-						E('button', {
-							'class': 'cbi-button',
-							'click': ui.hideModal
-						}, 'Close'),
+					E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;' }, [
+						E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Close'),
 						E('a', {
-							'class': 'cbi-button cbi-button-positive',
+							'class': 'kiss-btn kiss-btn-purple',
 							'href': res.edit_url,
 							'target': '_blank',
-							'style': 'margin-left:0.5rem;text-decoration:none;'
+							'style': 'text-decoration: none;'
 						}, 'Open Editor')
 					])
 				]);
@@ -467,9 +331,7 @@ return view.extend({
 
 	handlePull: function(name) {
 		var self = this;
-		ui.showModal('Pulling Changes...', [
-			E('p', { 'class': 'spinning' }, 'Pulling latest from Gitea...')
-		]);
+		ui.showModal('Pulling Changes...', [E('p', { 'class': 'spinning' }, 'Pulling latest from Gitea...')]);
 
 		return callPull(name).then(function(res) {
 			ui.hideModal();
@@ -477,26 +339,6 @@ return view.extend({
 				ui.addNotification(null, E('p', 'Changes pulled successfully'));
 			} else {
 				ui.addNotification(null, E('p', 'Error: ' + (res.output || 'Failed to pull')));
-			}
-			return self.pollStatus();
-		});
-	},
-
-	handlePush: function(name) {
-		var self = this;
-		var message = prompt('Commit message:', 'Update from LuCI');
-		if (message === null) return;
-
-		ui.showModal('Pushing Changes...', [
-			E('p', { 'class': 'spinning' }, 'Pushing to Gitea...')
-		]);
-
-		return callPush(name, message).then(function(res) {
-			ui.hideModal();
-			if (res.code === 0) {
-				ui.addNotification(null, E('p', 'Changes pushed to Gitea'));
-			} else {
-				ui.addNotification(null, E('p', 'Error: ' + (res.output || 'Failed to push')));
 			}
 			return self.pollStatus();
 		});

@@ -540,7 +540,12 @@
       "Bash(__NEW_LINE_010faa2e33a60d91__ ssh root@192.168.255.1 'slforge restart control 2>&1')",
       "Bash(__NEW_LINE_eb1b0ab801ec1afd__ scp /home/reepost/CyberMindStudio/secubox-openwrt/package/secubox/secubox-app-streamlit-control/files/usr/share/streamlit-control/app.py root@192.168.255.1:/srv/streamlit/apps/control/src/)",
       "Bash(__NEW_LINE_eb1b0ab801ec1afd__ ssh root@192.168.255.1 'slforge restart control 2>&1')",
-      "Bash(__NEW_LINE_066a081550243cc1__ echo \"\")"
+      "Bash(__NEW_LINE_066a081550243cc1__ echo \"\")",
+      "WebFetch(domain:lldh.ganimed.fr)",
+      "Bash(do if grep -q \"require secubox/kiss-theme\" \"$f\")",
+      "Bash(! grep -q \"KissTheme.wrap\" \"$f\")",
+      "Bash(then echo \"$f\")",
+      "Bash(do if ! grep -q \"require secubox/kiss-theme\" \"$f\")"
     ]
   }
 }

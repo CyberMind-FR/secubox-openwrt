@@ -168,17 +168,17 @@ return view.extend({
 			E('div', { 'style': 'margin-top: 20px; display: flex; gap: 10px;' }, [
 				!device.isolated && !device.blocked ?
 					E('button', {
-						'class': 'cbi-button cbi-button-action',
+						'class': 'kiss-btn kiss-btn-blue',
 						'click': function() { ui.hideModal(); self.handleIsolate(device.mac); }
 					}, 'Isolate') : '',
 				!device.trusted && !device.blocked ?
 					E('button', {
-						'class': 'cbi-button',
+						'class': 'kiss-btn',
 						'click': function() { ui.hideModal(); self.handleTrust(device.mac); }
 					}, 'Trust') : '',
 				!device.blocked ?
 					E('button', {
-						'class': 'cbi-button cbi-button-negative',
+						'class': 'kiss-btn kiss-btn-red',
 						'click': function() { ui.hideModal(); self.handleBlock(device.mac); }
 					}, 'Block') : ''
 			])
@@ -187,7 +187,7 @@ return view.extend({
 		ui.showModal('Device: ' + (device.hostname || device.mac), [
 			content,
 			E('div', { 'class': 'right', 'style': 'margin-top: 20px;' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Close')
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Close')
 			])
 		]);
 	},
@@ -217,12 +217,12 @@ return view.extend({
 				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid #333; color: ' + statusColor + ';' }, status),
 				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid #333;' }, [
 					!d.isolated && !d.blocked ? E('button', {
-						'class': 'cbi-button cbi-button-action btn-sm',
+						'class': 'kiss-btn kiss-btn-blue btn-sm',
 						'style': 'padding: 2px 8px; font-size: 12px; margin-right: 5px;',
 						'click': function(ev) { ev.stopPropagation(); self.handleIsolate(d.mac); }
 					}, 'Isolate') : '',
 					!d.blocked ? E('button', {
-						'class': 'cbi-button cbi-button-negative btn-sm',
+						'class': 'kiss-btn kiss-btn-red btn-sm',
 						'style': 'padding: 2px 8px; font-size: 12px;',
 						'click': function(ev) { ev.stopPropagation(); self.handleBlock(d.mac); }
 					}, 'Block') : ''
@@ -234,7 +234,7 @@ return view.extend({
 			E('h2', {}, 'IoT Devices'),
 			E('div', { 'style': 'margin-bottom: 20px;' }, [
 				E('button', {
-					'class': 'cbi-button cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'click': L.bind(this.handleScan, this)
 				}, 'Scan Network'),
 				E('span', { 'style': 'margin-left: 15px; color: #888;' }, devices.length + ' devices')

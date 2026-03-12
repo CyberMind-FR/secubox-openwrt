@@ -4,6 +4,7 @@
 'require poll';
 'require rpc';
 'require ui';
+'require secubox/kiss-theme';
 
 var callStatus = rpc.declare({
     object: 'luci.rtty-remote',
@@ -14,27 +15,6 @@ var callStatus = rpc.declare({
 var callGetNodes = rpc.declare({
     object: 'luci.rtty-remote',
     method: 'get_nodes',
-    expect: {}
-});
-
-var callGetNode = rpc.declare({
-    object: 'luci.rtty-remote',
-    method: 'get_node',
-    params: ['node_id'],
-    expect: {}
-});
-
-var callRpcCall = rpc.declare({
-    object: 'luci.rtty-remote',
-    method: 'rpc_call',
-    params: ['node_id', 'object', 'method', 'params'],
-    expect: {}
-});
-
-var callRpcList = rpc.declare({
-    object: 'luci.rtty-remote',
-    method: 'rpc_list',
-    params: ['node_id'],
     expect: {}
 });
 
@@ -64,6 +44,13 @@ var callConnect = rpc.declare({
     expect: {}
 });
 
+var callRpcCall = rpc.declare({
+    object: 'luci.rtty-remote',
+    method: 'rpc_call',
+    params: ['node_id', 'object', 'method', 'params'],
+    expect: {}
+});
+
 return view.extend({
     handleSaveApply: null,
     handleSave: null,
@@ -77,241 +64,199 @@ return view.extend({
         ]);
     },
 
-    render: function(data) {
-        var status = data[0] || {};
-        var nodesData = data[1] || {};
-        var sessionsData = data[2] || [];
+    renderNav: function(active) {
+        var tabs = [
+            { name: 'Dashboard', path: 'admin/services/rtty-remote/dashboard' },
+            { name: 'Terminal', path: 'admin/services/rtty-remote/terminal' },
+            { name: 'Replay', path: 'admin/services/rtty-remote/session-replay' },
+            { name: 'Support', path: 'admin/services/rtty-remote/support' }
+        ];
 
-        var nodes = nodesData.nodes || [];
-        var sessions = Array.isArray(sessionsData) ? sessionsData : [];
-
-        var view = E('div', { 'class': 'cbi-map' }, [
-            this.renderHeader(status),
-            this.renderStats(status),
-            this.renderNodesSection(nodes),
-            this.renderSessionsSection(sessions),
-            this.renderRpcConsole()
-        ]);
-
-        // Start polling
-        poll.add(L.bind(this.pollStatus, this), 10);
-
-        return view;
-    },
-
-    renderHeader: function(status) {
-        var serverStatus = status.running ?
-            E('span', { 'style': 'color: #0a0; font-weight: bold;' }, 'RUNNING') :
-            E('span', { 'style': 'color: #a00; font-weight: bold;' }, 'STOPPED');
-
-        var toggleBtn = status.running ?
-            E('button', {
-                'class': 'cbi-button cbi-button-negative',
-                'click': L.bind(this.handleServerStop, this)
-            }, 'Stop Server') :
-            E('button', {
-                'class': 'cbi-button cbi-button-positive',
-                'click': L.bind(this.handleServerStart, this)
-            }, 'Start Server');
-
-        return E('div', { 'class': 'cbi-section' }, [
-            E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 1em;' }, [
-                E('h2', { 'style': 'margin: 0;' }, 'RTTY Remote Control'),
-                E('div', { 'style': 'display: flex; align-items: center; gap: 1em;' }, [
-                    E('span', {}, ['Server: ', serverStatus]),
-                    toggleBtn
-                ])
-            ]),
-            E('p', { 'style': 'color: #666; margin: 0;' },
-                'Remote control assistant for SecuBox mesh nodes. Execute RPCD calls, manage terminals, and replay sessions.')
-        ]);
+        return E('div', { 'class': 'kiss-tabs' }, tabs.map(function(tab) {
+            var isActive = tab.path.indexOf(active) !== -1;
+            return E('a', {
+                'href': L.url(tab.path),
+                'class': 'kiss-tab' + (isActive ? ' active' : '')
+            }, tab.name);
+        }));
     },
 
     renderStats: function(status) {
-        var stats = [
-            { label: 'NODES', value: status.unique_nodes || 0, color: '#4a9' },
-            { label: 'SESSIONS', value: status.total_sessions || 0, color: '#49a' },
-            { label: 'ACTIVE', value: status.active_sessions || 0, color: '#a94' },
-            { label: 'RPC CALLS', value: status.total_rpc_calls || 0, color: '#94a' }
+        var c = KissTheme.colors;
+        return [
+            KissTheme.stat(status.unique_nodes || 0, 'Nodes', c.green),
+            KissTheme.stat(status.total_sessions || 0, 'Sessions', c.blue),
+            KissTheme.stat(status.active_sessions || 0, 'Active', c.orange),
+            KissTheme.stat(status.total_rpc_calls || 0, 'RPC Calls', c.purple)
         ];
-
-        return E('div', { 'class': 'cbi-section', 'style': 'display: flex; gap: 1em; flex-wrap: wrap;' },
-            stats.map(function(stat) {
-                return E('div', {
-                    'style': 'flex: 1; min-width: 120px; padding: 1em; background: #f5f5f5; border-radius: 8px; text-align: center; border-left: 4px solid ' + stat.color + ';'
-                }, [
-                    E('div', { 'style': 'font-size: 2em; font-weight: bold; color: #333;' }, String(stat.value)),
-                    E('div', { 'style': 'font-size: 0.9em; color: #666; text-transform: uppercase;' }, stat.label)
-                ]);
-            })
-        );
     },
 
-    renderNodesSection: function(nodes) {
+    renderNodes: function(nodes) {
         var self = this;
+        var c = KissTheme.colors;
 
-        var table = E('table', { 'class': 'table', 'id': 'nodes-table' }, [
-            E('tr', { 'class': 'tr table-titles' }, [
-                E('th', { 'class': 'th' }, 'Node ID'),
-                E('th', { 'class': 'th' }, 'Name'),
-                E('th', { 'class': 'th' }, 'Address'),
-                E('th', { 'class': 'th' }, 'Status'),
-                E('th', { 'class': 'th' }, 'Actions')
-            ])
-        ]);
+        if (!nodes || nodes.length === 0) {
+            return E('div', { 'style': 'text-align: center; padding: 24px; color: var(--kiss-muted);' }, 'No mesh nodes found. Connect nodes via Master-Link or P2P.');
+        }
 
-        if (nodes.length === 0) {
-            table.appendChild(E('tr', { 'class': 'tr' }, [
-                E('td', { 'class': 'td', 'colspan': '5', 'style': 'text-align: center; color: #666;' },
-                    'No mesh nodes found. Connect nodes via Master-Link or P2P.')
-            ]));
-        } else {
-            nodes.forEach(function(node) {
-                var statusBadge = node.status === 'approved' || node.status === 'online' ?
-                    E('span', { 'style': 'color: #0a0;' }, 'ONLINE') :
-                    E('span', { 'style': 'color: #a00;' }, node.status || 'OFFLINE');
-
-                table.appendChild(E('tr', { 'class': 'tr' }, [
-                    E('td', { 'class': 'td' }, E('code', {}, node.id || '-')),
-                    E('td', { 'class': 'td' }, node.name || '-'),
-                    E('td', { 'class': 'td' }, E('code', {}, node.address || '-')),
-                    E('td', { 'class': 'td' }, statusBadge),
-                    E('td', { 'class': 'td' }, [
+        return E('table', { 'class': 'kiss-table', 'id': 'nodes-table' }, [
+            E('thead', {}, E('tr', {}, [
+                E('th', {}, 'Node ID'),
+                E('th', {}, 'Name'),
+                E('th', {}, 'Address'),
+                E('th', {}, 'Status'),
+                E('th', { 'style': 'width: 150px;' }, 'Actions')
+            ])),
+            E('tbody', {}, nodes.map(function(node) {
+                var isOnline = node.status === 'approved' || node.status === 'online';
+                return E('tr', {}, [
+                    E('td', {}, E('code', { 'style': 'background: var(--kiss-bg2); padding: 2px 6px; border-radius: 4px; font-size: 11px;' }, node.id || '-')),
+                    E('td', { 'style': 'font-weight: 600;' }, node.name || '-'),
+                    E('td', { 'style': 'font-family: monospace; font-size: 12px; color: var(--kiss-cyan);' }, node.address || '-'),
+                    E('td', {}, KissTheme.badge(isOnline ? 'ONLINE' : (node.status || 'OFFLINE'), isOnline ? 'green' : 'red')),
+                    E('td', {}, E('div', { 'style': 'display: flex; gap: 6px;' }, [
                         E('button', {
-                            'class': 'cbi-button cbi-button-action',
-                            'style': 'margin-right: 0.5em;',
-                            'click': L.bind(self.handleRpcConsoleOpen, self, node)
+                            'class': 'kiss-btn kiss-btn-blue',
+                            'style': 'padding: 4px 10px; font-size: 11px;',
+                            'click': function() { self.handleRpcConsoleOpen(node); }
                         }, 'RPC'),
                         E('button', {
-                            'class': 'cbi-button',
-                            'click': L.bind(self.handleConnect, self, node)
+                            'class': 'kiss-btn',
+                            'style': 'padding: 4px 10px; font-size: 11px;',
+                            'click': function() { self.handleConnect(node); }
                         }, 'Term')
-                    ])
-                ]));
-            });
-        }
-
-        return E('div', { 'class': 'cbi-section' }, [
-            E('h3', {}, 'Connected Nodes'),
-            table
+                    ]))
+                ]);
+            }))
         ]);
     },
 
-    renderSessionsSection: function(sessions) {
-        var table = E('table', { 'class': 'table', 'id': 'sessions-table' }, [
-            E('tr', { 'class': 'tr table-titles' }, [
-                E('th', { 'class': 'th' }, 'ID'),
-                E('th', { 'class': 'th' }, 'Node'),
-                E('th', { 'class': 'th' }, 'Type'),
-                E('th', { 'class': 'th' }, 'Started'),
-                E('th', { 'class': 'th' }, 'Duration'),
-                E('th', { 'class': 'th' }, 'Label')
-            ])
-        ]);
-
+    renderSessions: function(sessions) {
         if (!sessions || sessions.length === 0) {
-            table.appendChild(E('tr', { 'class': 'tr' }, [
-                E('td', { 'class': 'td', 'colspan': '6', 'style': 'text-align: center; color: #666;' },
-                    'No sessions recorded yet.')
-            ]));
-        } else {
-            sessions.forEach(function(session) {
-                var duration = session.duration ? (session.duration + 's') : 'active';
-
-                table.appendChild(E('tr', { 'class': 'tr' }, [
-                    E('td', { 'class': 'td' }, String(session.id)),
-                    E('td', { 'class': 'td' }, session.node_id || '-'),
-                    E('td', { 'class': 'td' }, session.type || '-'),
-                    E('td', { 'class': 'td' }, session.started || '-'),
-                    E('td', { 'class': 'td' }, duration),
-                    E('td', { 'class': 'td' }, session.label || '-')
-                ]));
-            });
+            return E('div', { 'style': 'text-align: center; padding: 24px; color: var(--kiss-muted);' }, 'No sessions recorded yet.');
         }
 
-        return E('div', { 'class': 'cbi-section' }, [
-            E('h3', {}, 'Recent Sessions'),
-            table
+        return E('table', { 'class': 'kiss-table', 'id': 'sessions-table' }, [
+            E('thead', {}, E('tr', {}, [
+                E('th', { 'style': 'width: 50px;' }, 'ID'),
+                E('th', {}, 'Node'),
+                E('th', {}, 'Type'),
+                E('th', {}, 'Started'),
+                E('th', {}, 'Duration'),
+                E('th', {}, 'Label')
+            ])),
+            E('tbody', {}, sessions.map(function(session) {
+                var duration = session.duration ? (session.duration + 's') : 'active';
+                return E('tr', {}, [
+                    E('td', { 'style': 'font-family: monospace; font-size: 12px;' }, String(session.id)),
+                    E('td', { 'style': 'font-size: 12px; color: var(--kiss-cyan);' }, session.node_id || '-'),
+                    E('td', { 'style': 'font-size: 12px;' }, session.type || '-'),
+                    E('td', { 'style': 'font-size: 11px; color: var(--kiss-muted);' }, session.started || '-'),
+                    E('td', { 'style': 'font-family: monospace; font-size: 12px;' }, duration),
+                    E('td', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, session.label || '-')
+                ]);
+            }))
         ]);
     },
 
     renderRpcConsole: function() {
-        return E('div', { 'class': 'cbi-section', 'id': 'rpc-console' }, [
-            E('h3', {}, 'RPC Console'),
-            E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 0.5em; margin-bottom: 1em;' }, [
+        var self = this;
+        return E('div', {}, [
+            E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 8px; margin-bottom: 12px;' }, [
                 E('input', {
                     'type': 'text',
                     'id': 'rpc-node',
                     'placeholder': 'Node (IP or ID)',
-                    'class': 'cbi-input-text'
+                    'style': 'background: var(--kiss-bg2); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px 12px; border-radius: 6px;'
                 }),
                 E('input', {
                     'type': 'text',
                     'id': 'rpc-object',
-                    'placeholder': 'Object (e.g., luci.system-hub)',
-                    'class': 'cbi-input-text'
+                    'placeholder': 'Object (e.g., system)',
+                    'style': 'background: var(--kiss-bg2); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px 12px; border-radius: 6px;'
                 }),
                 E('input', {
                     'type': 'text',
                     'id': 'rpc-method',
-                    'placeholder': 'Method (e.g., status)',
-                    'class': 'cbi-input-text'
+                    'placeholder': 'Method (e.g., board)',
+                    'style': 'background: var(--kiss-bg2); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px 12px; border-radius: 6px;'
                 }),
                 E('button', {
-                    'class': 'cbi-button cbi-button-positive',
-                    'click': L.bind(this.handleRpcExecute, this)
+                    'class': 'kiss-btn kiss-btn-green',
+                    'click': function() { self.handleRpcExecute(); }
                 }, 'Execute')
             ]),
-            E('div', { 'style': 'margin-bottom: 0.5em;' }, [
-                E('input', {
-                    'type': 'text',
-                    'id': 'rpc-params',
-                    'placeholder': 'Parameters (JSON, optional)',
-                    'class': 'cbi-input-text',
-                    'style': 'width: 100%;'
-                })
-            ]),
+            E('input', {
+                'type': 'text',
+                'id': 'rpc-params',
+                'placeholder': 'Parameters (JSON, optional)',
+                'style': 'width: 100%; background: var(--kiss-bg2); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px 12px; border-radius: 6px; margin-bottom: 12px;'
+            }),
             E('pre', {
                 'id': 'rpc-result',
-                'style': 'background: #1a1a2e; color: #0f0; padding: 1em; border-radius: 4px; min-height: 150px; overflow: auto; font-family: monospace;'
+                'style': 'background: var(--kiss-bg); color: var(--kiss-green); padding: 16px; border-radius: 6px; min-height: 150px; overflow: auto; font-family: monospace; font-size: 12px; border: 1px solid var(--kiss-line);'
             }, '// RPC result will appear here...')
+        ]);
+    },
+
+    renderControls: function(status) {
+        var self = this;
+        var isRunning = status.running;
+
+        return E('div', { 'style': 'display: flex; gap: 12px;' }, [
+            isRunning ? E('button', {
+                'class': 'kiss-btn kiss-btn-red',
+                'click': function() { self.handleServerStop(); }
+            }, 'Stop Server') : E('button', {
+                'class': 'kiss-btn kiss-btn-green',
+                'click': function() { self.handleServerStart(); }
+            }, 'Start Server')
         ]);
     },
 
     handleServerStart: function() {
         var self = this;
+        ui.showModal('Starting...', [E('p', { 'class': 'spinning' }, 'Starting RTTY server...')]);
         callServerStart().then(function() {
+            ui.hideModal();
             ui.addNotification(null, E('p', 'Server started'), 'success');
-            self.pollStatus();
+            location.reload();
         }).catch(function(err) {
-            ui.addNotification(null, E('p', 'Failed to start server: ' + err.message), 'error');
+            ui.hideModal();
+            ui.addNotification(null, E('p', 'Failed: ' + err.message), 'error');
         });
     },
 
     handleServerStop: function() {
         var self = this;
+        ui.showModal('Stopping...', [E('p', { 'class': 'spinning' }, 'Stopping RTTY server...')]);
         callServerStop().then(function() {
+            ui.hideModal();
             ui.addNotification(null, E('p', 'Server stopped'), 'success');
-            self.pollStatus();
+            location.reload();
         }).catch(function(err) {
-            ui.addNotification(null, E('p', 'Failed to stop server: ' + err.message), 'error');
+            ui.hideModal();
+            ui.addNotification(null, E('p', 'Failed: ' + err.message), 'error');
         });
     },
 
     handleConnect: function(node) {
         callConnect(node.id || node.address).then(function(result) {
             ui.addNotification(null, E('p', [
-                'To connect to ', E('strong', {}, node.name || node.id), ':', E('br'),
-                E('code', {}, result.ssh_command || ('ssh root@' + node.address))
+                'Connect to ', E('strong', {}, node.name || node.id), ': ',
+                E('code', { 'style': 'background: var(--kiss-bg2); padding: 2px 6px; border-radius: 4px;' }, result.ssh_command || ('ssh root@' + node.address))
             ]), 'info');
         });
     },
 
     handleRpcConsoleOpen: function(node) {
-        document.getElementById('rpc-node').value = node.address || node.id;
-        document.getElementById('rpc-object').value = 'system';
-        document.getElementById('rpc-method').value = 'board';
-        document.getElementById('rpc-node').scrollIntoView({ behavior: 'smooth' });
+        var nodeEl = document.getElementById('rpc-node');
+        var objectEl = document.getElementById('rpc-object');
+        var methodEl = document.getElementById('rpc-method');
+        if (nodeEl) nodeEl.value = node.address || node.id;
+        if (objectEl) objectEl.value = 'system';
+        if (methodEl) methodEl.value = 'board';
+        if (nodeEl) nodeEl.scrollIntoView({ behavior: 'smooth' });
     },
 
     handleRpcExecute: function() {
@@ -339,11 +284,56 @@ return view.extend({
         });
     },
 
-    pollStatus: function() {
+    render: function(data) {
         var self = this;
-        return callStatus().then(function(status) {
-            // Update stats display
-            // (In a full implementation, update the DOM elements)
-        });
+        var status = data[0] || {};
+        var nodesData = data[1] || {};
+        var sessionsData = data[2] || [];
+        var nodes = nodesData.nodes || [];
+        var sessions = Array.isArray(sessionsData) ? sessionsData : [];
+        var c = KissTheme.colors;
+
+        var content = [
+            // Header
+            E('div', { 'style': 'margin-bottom: 24px;' }, [
+                E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+                    E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'RTTY Remote Control'),
+                    KissTheme.badge(status.running ? 'RUNNING' : 'STOPPED', status.running ? 'green' : 'red')
+                ]),
+                E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' }, 'Remote control for SecuBox mesh nodes. Execute RPCD calls, manage terminals, and replay sessions.')
+            ]),
+
+            // Navigation
+            this.renderNav('dashboard'),
+
+            // Stats row
+            E('div', { 'class': 'kiss-grid kiss-grid-4', 'id': 'rtty-stats', 'style': 'margin: 20px 0;' }, this.renderStats(status)),
+
+            // Controls
+            E('div', { 'style': 'margin-bottom: 20px;' }, this.renderControls(status)),
+
+            // Two column layout
+            E('div', { 'class': 'kiss-grid kiss-grid-2' }, [
+                // Nodes
+                KissTheme.card('Connected Nodes', E('div', { 'id': 'nodes-card' }, this.renderNodes(nodes))),
+                // Sessions
+                KissTheme.card('Recent Sessions', E('div', { 'id': 'sessions-card' }, this.renderSessions(sessions)))
+            ]),
+
+            // RPC Console
+            KissTheme.card('RPC Console', this.renderRpcConsole())
+        ];
+
+        // Start polling
+        poll.add(function() {
+            return callStatus().then(function(s) {
+                var statsEl = document.getElementById('rtty-stats');
+                if (statsEl) {
+                    dom.content(statsEl, self.renderStats(s));
+                }
+            });
+        }, 10);
+
+        return KissTheme.wrap(content, 'admin/services/rtty-remote/dashboard');
     }
 });

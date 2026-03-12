@@ -134,19 +134,19 @@ return view.extend({
 
 		tabNames.forEach(function(name, i) {
 			var btn = E('button', {
-				'class': 'cbi-button' + (i === 0 ? ' cbi-button-positive' : ''),
+				'class': 'kiss-btn' + (i === 0 ? ' kiss-btn-green' : ''),
 				'style': 'border-radius:0;border-bottom:none;margin-bottom:-2px;' +
 					(i === 0 ? 'border-bottom:2px solid #0069d9;font-weight:bold;' : ''),
 				'data-tab': tabIds[i],
 				'click': function() {
 					tabs.querySelectorAll('button').forEach(function(b) {
-						b.className = 'cbi-button';
+						b.className = 'kiss-btn';
 						b.style.borderBottom = 'none';
 						b.style.fontWeight = 'normal';
 						b.style.marginBottom = '-2px';
 						b.style.borderRadius = '0';
 					});
-					this.className = 'cbi-button cbi-button-positive';
+					this.className = 'kiss-btn kiss-btn-green';
 					this.style.borderBottom = '2px solid #0069d9';
 					this.style.fontWeight = 'bold';
 
@@ -203,7 +203,7 @@ return view.extend({
 				E('code', { 'style': 'font-size:14px;font-weight:600;letter-spacing:0.05em;' },
 					status.fingerprint || '-'),
 				E('button', {
-					'class': 'cbi-button cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'style': 'padding:2px 8px;font-size:11px;',
 					'click': function() { copyText(status.fingerprint); }
 				}, _('Copy'))
@@ -276,7 +276,7 @@ return view.extend({
 						zkp.fingerprint || '-') :
 					E('span', { 'style': 'color:#94a3b8;font-style:italic;' }, _('Not generated')),
 				zkp.fingerprint ? E('button', {
-					'class': 'cbi-button cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'style': 'padding:2px 8px;font-size:11px;',
 					'click': function() { copyText(zkp.fingerprint); }
 				}, _('Copy')) : E('span')
@@ -339,7 +339,7 @@ return view.extend({
 
 			// Generate Token button
 			var tokenBtn = E('button', {
-				'class': 'cbi-button cbi-button-positive',
+				'class': 'kiss-btn kiss-btn-green',
 				'click': function() {
 					this.disabled = true;
 					this.textContent = _('Generating...');
@@ -362,16 +362,16 @@ return view.extend({
 								]),
 								E('div', { 'class': 'right' }, [
 									E('button', {
-										'class': 'cbi-button',
+										'class': 'kiss-btn',
 										'click': function() { copyText(url); }
 									}, _('Copy URL')),
 									E('button', {
-										'class': 'cbi-button',
+										'class': 'kiss-btn',
 										'style': 'margin-left:8px;',
 										'click': function() { copyText(res.token); }
 									}, _('Copy Token')),
 									E('button', {
-										'class': 'cbi-button cbi-button-positive',
+										'class': 'kiss-btn kiss-btn-green',
 										'style': 'margin-left:8px;',
 										'click': ui.hideModal
 									}, _('Close'))
@@ -392,7 +392,7 @@ return view.extend({
 
 			// Cleanup button
 			var cleanupBtn = E('button', {
-				'class': 'cbi-button',
+				'class': 'kiss-btn',
 				'click': function() {
 					callTokenCleanup().then(function(res) {
 						ui.addNotification(null,
@@ -451,7 +451,7 @@ return view.extend({
 
 					if (peer.status === 'pending') {
 						actionCell.appendChild(E('button', {
-							'class': 'cbi-button cbi-button-positive',
+							'class': 'kiss-btn kiss-btn-green',
 							'style': 'margin-right:4px;padding:2px 10px;font-size:12px;',
 							'data-fp': peer.fingerprint,
 							'click': function() {
@@ -470,7 +470,7 @@ return view.extend({
 						}, _('Approve')));
 
 						actionCell.appendChild(E('button', {
-							'class': 'cbi-button cbi-button-remove',
+							'class': 'kiss-btn kiss-btn-red',
 							'style': 'padding:2px 10px;font-size:12px;',
 							'data-fp': peer.fingerprint,
 							'click': function() {
@@ -488,7 +488,7 @@ return view.extend({
 						}, _('Reject')));
 					} else if (peer.status === 'approved' && (!peer.role || peer.role === 'peer')) {
 						actionCell.appendChild(E('button', {
-							'class': 'cbi-button cbi-button-action',
+							'class': 'kiss-btn kiss-btn-blue',
 							'style': 'padding:2px 10px;font-size:12px;',
 							'data-fp': peer.fingerprint,
 							'click': function() {

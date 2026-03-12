@@ -85,7 +85,7 @@ return view.extend({
 				'Safe remediations are non-destructive changes that can be applied without risk.'),
 			E('div', { 'style': 'display:flex; gap:1rem; flex-wrap:wrap;' }, [
 				E('button', {
-					'class': 'cbi-button',
+					'class': 'kiss-btn',
 					'click': ui.createHandlerFn(this, function() {
 						return callRemediateSafe(true).then(function(res) {
 							var msg = 'Dry run: Would apply ' + (res.applied || 0) + ' safe fixes.';
@@ -94,7 +94,7 @@ return view.extend({
 					})
 				}, 'Preview Safe Fixes'),
 				E('button', {
-					'class': 'cbi-button cbi-button-apply',
+					'class': 'kiss-btn kiss-btn-cyan',
 					'click': ui.createHandlerFn(this, function() {
 						if (!confirm('Apply all safe remediations?')) return;
 						return callRemediateSafe(false).then(function(res) {
@@ -136,7 +136,7 @@ return view.extend({
 
 				if (hasRemediation) {
 					actions.push(E('button', {
-						'class': 'cbi-button cbi-button-action',
+						'class': 'kiss-btn kiss-btn-blue',
 						'style': 'margin-right:0.5rem;',
 						'click': ui.createHandlerFn(self, function() {
 							return callRemediate(check.id, true).then(function(res) {
@@ -150,7 +150,7 @@ return view.extend({
 					}, 'Preview'));
 
 					actions.push(E('button', {
-						'class': 'cbi-button cbi-button-apply',
+						'class': 'kiss-btn kiss-btn-cyan',
 						'click': ui.createHandlerFn(self, function() {
 							if (!confirm('Apply remediation for ' + check.id + '?')) return;
 							return callRemediate(check.id, false).then(function(res) {
@@ -166,7 +166,7 @@ return view.extend({
 				}
 
 				actions.push(E('button', {
-					'class': 'cbi-button',
+					'class': 'kiss-btn',
 					'style': 'margin-left:0.5rem;',
 					'click': ui.createHandlerFn(self, function() {
 						return callSuggest(check.id).then(function(res) {
@@ -184,7 +184,7 @@ return view.extend({
 								}, suggestion),
 								E('div', { 'class': 'right', 'style': 'margin-top:1rem;' }, [
 									E('button', {
-										'class': 'cbi-button',
+										'class': 'kiss-btn',
 										'click': ui.hideModal
 									}, 'Close')
 								])

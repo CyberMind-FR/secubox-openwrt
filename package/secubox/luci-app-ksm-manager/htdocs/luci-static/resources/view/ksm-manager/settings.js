@@ -1,7 +1,7 @@
 'use strict';
 'require view';
-'require secubox-theme/theme as Theme';
 'require form';
+'require ui';
 'require uci';
 'require secubox/kiss-theme';
 
@@ -97,32 +97,32 @@ return view.extend({
 
 	handleCreateBackup: function() {
 		ui.showModal(_('Create Backup'), [
-			E('p', {}, _('Create an encrypted backup of the keystore and all keys.')),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Backup Passphrase') + ':'),
-				E('div', { 'class': 'cbi-value-field' }, [
+			E('p', { 'style': 'color: var(--kiss-muted);' }, _('Create an encrypted backup of the keystore and all keys.')),
+			E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px; margin: 16px 0;' }, [
+				E('label', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+					E('span', { 'style': 'font-weight: 500; color: var(--kiss-muted);' }, _('Backup Passphrase')),
 					E('input', {
 						'type': 'password',
 						'id': 'backup-passphrase',
 						'placeholder': _('Strong passphrase for encryption'),
-						'style': 'width: 100%;'
+						'style': 'width: 100%; padding: 10px 14px; background: var(--kiss-bg); ' +
+							'border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text);'
 					})
-				])
-			]),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Confirm Passphrase') + ':'),
-				E('div', { 'class': 'cbi-value-field' }, [
+				]),
+				E('label', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+					E('span', { 'style': 'font-weight: 500; color: var(--kiss-muted);' }, _('Confirm Passphrase')),
 					E('input', {
 						'type': 'password',
 						'id': 'backup-passphrase-confirm',
 						'placeholder': _('Confirm passphrase'),
-						'style': 'width: 100%;'
+						'style': 'width: 100%; padding: 10px 14px; background: var(--kiss-bg); ' +
+							'border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text);'
 					})
 				])
 			]),
-			E('div', { 'class': 'right' }, [
+			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px;' }, [
 				E('button', {
-					'class': 'cbi-button cbi-button-action',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() {
 						var passphrase = document.getElementById('backup-passphrase').value;
 						var confirm = document.getElementById('backup-passphrase-confirm').value;
@@ -140,52 +140,52 @@ return view.extend({
 						ui.hideModal();
 						ui.showModal(_('Creating Backup'), [E('p', { 'class': 'spinning' }, _('Please wait...'))]);
 
-						// Simulate backup creation (would call backend)
 						setTimeout(function() {
 							ui.hideModal();
 							ui.addNotification(null, E('p', _('Backup created successfully. Download started.')), 'info');
-
-							// In production, this would trigger actual backup download
 						}, 2000);
 					}
 				}, _('Create & Download')),
-				' ',
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel'))
+				E('button', {
+					'class': 'kiss-btn',
+					'style': 'background: var(--kiss-bg2); border: 1px solid var(--kiss-line);',
+					'click': ui.hideModal
+				}, _('Cancel'))
 			])
 		]);
 	},
 
 	handleRestoreBackup: function() {
 		ui.showModal(_('Restore Backup'), [
-			E('p', {}, _('Restore keystore from an encrypted backup file.')),
-			E('div', { 'class': 'alert-message warning' }, [
-				_('Warning: This will replace all existing keys and settings!')
-			]),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Backup File') + ':'),
-				E('div', { 'class': 'cbi-value-field' }, [
+			E('p', { 'style': 'color: var(--kiss-muted);' }, _('Restore keystore from an encrypted backup file.')),
+			E('div', {
+				'style': 'background: var(--kiss-orange); color: #000; padding: 12px; border-radius: 6px; margin: 12px 0;'
+			}, _('Warning: This will replace all existing keys and settings!')),
+			E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px; margin: 16px 0;' }, [
+				E('label', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+					E('span', { 'style': 'font-weight: 500; color: var(--kiss-muted);' }, _('Backup File')),
 					E('input', {
 						'type': 'file',
 						'id': 'backup-file',
 						'accept': '.tar.gz,.tar.enc',
-						'style': 'width: 100%;'
+						'style': 'width: 100%; padding: 10px 14px; background: var(--kiss-bg); ' +
+							'border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text);'
 					})
-				])
-			]),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Backup Passphrase') + ':'),
-				E('div', { 'class': 'cbi-value-field' }, [
+				]),
+				E('label', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+					E('span', { 'style': 'font-weight: 500; color: var(--kiss-muted);' }, _('Backup Passphrase')),
 					E('input', {
 						'type': 'password',
 						'id': 'restore-passphrase',
 						'placeholder': _('Passphrase used during backup'),
-						'style': 'width: 100%;'
+						'style': 'width: 100%; padding: 10px 14px; background: var(--kiss-bg); ' +
+							'border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text);'
 					})
 				])
 			]),
-			E('div', { 'class': 'right' }, [
+			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px;' }, [
 				E('button', {
-					'class': 'cbi-button cbi-button-action',
+					'class': 'kiss-btn kiss-btn-orange',
 					'click': function() {
 						var fileInput = document.getElementById('backup-file');
 						var passphrase = document.getElementById('restore-passphrase').value;
@@ -203,15 +203,17 @@ return view.extend({
 						ui.hideModal();
 						ui.showModal(_('Restoring Backup'), [E('p', { 'class': 'spinning' }, _('Please wait...'))]);
 
-						// Simulate restore (would call backend)
 						setTimeout(function() {
 							ui.hideModal();
 							ui.addNotification(null, E('p', _('Backup restored successfully. Please restart the service.')), 'info');
 						}, 3000);
 					}
 				}, _('Restore')),
-				' ',
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel'))
+				E('button', {
+					'class': 'kiss-btn',
+					'style': 'background: var(--kiss-bg2); border: 1px solid var(--kiss-line);',
+					'click': ui.hideModal
+				}, _('Cancel'))
 			])
 		]);
 	},

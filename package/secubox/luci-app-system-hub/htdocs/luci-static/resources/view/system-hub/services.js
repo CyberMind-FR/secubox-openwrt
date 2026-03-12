@@ -327,8 +327,7 @@ return view.extend({
 			E('div', { 'class': 'sh-service-search' }, [
 				E('input', {
 					'type': 'text',
-					'class': 'cbi-input-text',
-					'placeholder': _('🔍 Search services...'),
+					'placeholder': _('Search services...'),
 					'input': function(ev) {
 						self.searchQuery = (ev.target.value || '').toLowerCase();
 						self.updateServicesGrid();
@@ -460,7 +459,7 @@ return view.extend({
 				})),
 			E('div', { 'class': 'right' }, [
 				E('button', {
-					'class': 'cbi-button cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': ui.hideModal
 				}, _('Close'))
 			])

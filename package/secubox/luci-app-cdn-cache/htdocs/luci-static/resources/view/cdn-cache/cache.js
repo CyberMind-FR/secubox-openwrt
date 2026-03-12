@@ -160,7 +160,7 @@ return view.extend({
 			E('div', { 'class': 'right' }, [
 				E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')),
 				E('button', {
-					'class': 'btn cbi-button-negative',
+					'class': 'kiss-btn kiss-btn-red',
 					'click': function() {
 						callPurgeDomain(domain).then(function() {
 							ui.hideModal();

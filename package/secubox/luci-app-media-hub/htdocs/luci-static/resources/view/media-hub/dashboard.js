@@ -4,6 +4,7 @@
 'require poll';
 'require rpc';
 'require ui';
+'require secubox/kiss-theme';
 
 var callMediaHubStatus = rpc.declare({
 	object: 'luci.media-hub',
@@ -35,24 +36,6 @@ var callServiceRestart = rpc.declare({
 	params: ['id']
 });
 
-// Category icons and colors
-var categoryConfig = {
-	streaming: { icon: '🎬', color: '#e74c3c', label: 'Streaming' },
-	conferencing: { icon: '📹', color: '#3498db', label: 'Conferencing' },
-	apps: { icon: '📊', color: '#9b59b6', label: 'Apps' },
-	display: { icon: '🪞', color: '#1abc9c', label: 'Display' },
-	social: { icon: '🦣', color: '#e67e22', label: 'Social' },
-	monitoring: { icon: '📡', color: '#2ecc71', label: 'Monitoring' }
-};
-
-// Status colors and icons
-var statusConfig = {
-	running: { color: '#27ae60', icon: '●', label: 'Running' },
-	stopped: { color: '#e74c3c', icon: '○', label: 'Stopped' },
-	not_installed: { color: '#95a5a6', icon: '◌', label: 'Not Installed' },
-	unknown: { color: '#f39c12', icon: '?', label: 'Unknown' }
-};
-
 return view.extend({
 	load: function() {
 		return Promise.all([
@@ -61,127 +44,147 @@ return view.extend({
 		]);
 	},
 
-	renderStatusBar: function(status) {
+	renderNav: function(active) {
+		var tabs = [
+			{ name: 'Dashboard', path: 'admin/services/media-hub/dashboard' },
+			{ name: 'Settings', path: 'admin/services/media-hub/settings' }
+		];
+
+		return E('div', { 'class': 'kiss-tabs' }, tabs.map(function(tab) {
+			var isActive = tab.path.indexOf(active) !== -1;
+			return E('a', {
+				'href': L.url(tab.path),
+				'class': 'kiss-tab' + (isActive ? ' active' : '')
+			}, tab.name);
+		}));
+	},
+
+	renderStats: function(status) {
+		var c = KissTheme.colors;
 		var total = status.total_services || 0;
 		var installed = status.installed || 0;
 		var running = status.running || 0;
 		var stopped = status.stopped || 0;
 
-		return E('div', { 'class': 'media-hub-status-bar' }, [
-			E('div', { 'class': 'status-item' }, [
-				E('span', { 'class': 'status-value', 'style': 'color: #3498db' }, String(total)),
-				E('span', { 'class': 'status-label' }, 'Total')
-			]),
-			E('div', { 'class': 'status-item' }, [
-				E('span', { 'class': 'status-value', 'style': 'color: #9b59b6' }, String(installed)),
-				E('span', { 'class': 'status-label' }, 'Installed')
-			]),
-			E('div', { 'class': 'status-item' }, [
-				E('span', { 'class': 'status-value', 'style': 'color: #27ae60' }, String(running)),
-				E('span', { 'class': 'status-label' }, 'Running')
-			]),
-			E('div', { 'class': 'status-item' }, [
-				E('span', { 'class': 'status-value', 'style': 'color: #e74c3c' }, String(stopped)),
-				E('span', { 'class': 'status-label' }, 'Stopped')
-			])
-		]);
+		return [
+			KissTheme.stat(total, 'Total', c.blue),
+			KissTheme.stat(installed, 'Installed', c.purple),
+			KissTheme.stat(running, 'Running', c.green),
+			KissTheme.stat(stopped, 'Stopped', c.red)
+		];
 	},
 
 	renderServiceCard: function(service) {
 		var self = this;
-		var statusCfg = statusConfig[service.status] || statusConfig.unknown;
-		var categoryCfg = categoryConfig[service.category] || { icon: '📦', color: '#7f8c8d', label: 'Other' };
+		var c = KissTheme.colors;
+
+		var categoryColors = {
+			streaming: c.red,
+			conferencing: c.blue,
+			apps: c.purple,
+			display: c.cyan,
+			social: c.orange,
+			monitoring: c.green
+		};
+
+		var statusColor = service.status === 'running' ? c.green :
+			service.status === 'stopped' ? c.red : c.muted;
+
+		var catColor = categoryColors[service.category] || c.muted;
 
 		var controls = [];
-
 		if (service.installed) {
 			if (service.status === 'running') {
 				controls.push(
 					E('button', {
-						'class': 'cbi-button cbi-button-negative',
-						'style': 'margin-right: 5px; padding: 4px 12px; font-size: 12px;',
+						'class': 'kiss-btn kiss-btn-red',
+						'style': 'padding: 4px 10px; font-size: 11px;',
 						'click': ui.createHandlerFn(this, function() {
 							return callServiceStop(service.id).then(function() {
 								window.location.reload();
 							});
 						})
-					}, '⏹ Stop'),
+					}, 'Stop'),
 					E('button', {
-						'class': 'cbi-button cbi-button-action',
-						'style': 'padding: 4px 12px; font-size: 12px;',
+						'class': 'kiss-btn',
+						'style': 'padding: 4px 10px; font-size: 11px;',
 						'click': ui.createHandlerFn(this, function() {
 							return callServiceRestart(service.id).then(function() {
 								window.location.reload();
 							});
 						})
-					}, '🔄 Restart')
+					}, 'Restart')
 				);
 			} else if (service.status === 'stopped') {
 				controls.push(
 					E('button', {
-						'class': 'cbi-button cbi-button-positive',
-						'style': 'padding: 4px 12px; font-size: 12px;',
+						'class': 'kiss-btn kiss-btn-green',
+						'style': 'padding: 4px 10px; font-size: 11px;',
 						'click': ui.createHandlerFn(this, function() {
 							return callServiceStart(service.id).then(function() {
 								window.location.reload();
 							});
 						})
-					}, '▶ Start')
+					}, 'Start')
 				);
 			}
 		}
 
-		// Add settings link
 		if (service.url) {
 			controls.push(
 				E('a', {
 					'href': service.url,
-					'class': 'cbi-button cbi-button-neutral',
-					'style': 'margin-left: 5px; padding: 4px 12px; font-size: 12px; text-decoration: none;'
-				}, '⚙ Settings')
+					'class': 'kiss-btn',
+					'style': 'padding: 4px 10px; font-size: 11px; text-decoration: none;'
+				}, 'Settings')
 			);
 		}
 
+		var statusBg = service.status === 'running' ? 'rgba(0,200,83,0.1)' :
+			service.status === 'stopped' ? 'rgba(255,23,68,0.1)' : 'rgba(128,128,128,0.1)';
+
 		return E('div', {
-			'class': 'media-service-card',
-			'data-status': service.status,
-			'style': 'border-left: 4px solid ' + categoryCfg.color + ';'
+			'style': 'background: var(--kiss-bg2); border-radius: 8px; padding: 16px; border-left: 3px solid ' + catColor + ';'
 		}, [
-			E('div', { 'class': 'card-header' }, [
-				E('span', { 'class': 'service-emoji' }, service.emoji || '📦'),
-				E('div', { 'class': 'service-info' }, [
-					E('span', { 'class': 'service-name' }, service.name),
-					E('span', { 'class': 'service-category', 'style': 'color: ' + categoryCfg.color }, categoryCfg.label)
+			E('div', { 'style': 'display: flex; align-items: center; gap: 12px; margin-bottom: 12px;' }, [
+				E('span', { 'style': 'font-size: 2em;' }, service.emoji || ''),
+				E('div', { 'style': 'flex: 1;' }, [
+					E('div', { 'style': 'font-weight: 600; font-size: 14px;' }, service.name),
+					E('div', { 'style': 'font-size: 11px; color: ' + catColor + '; text-transform: uppercase;' },
+						service.category || 'Other')
 				]),
-				E('span', {
-					'class': 'service-status',
-					'style': 'color: ' + statusCfg.color,
-					'title': statusCfg.label
-				}, statusCfg.icon + ' ' + statusCfg.label)
+				KissTheme.badge(service.status === 'running' ? 'RUNNING' :
+					service.status === 'stopped' ? 'STOPPED' : 'N/A',
+					service.status === 'running' ? 'green' : service.status === 'stopped' ? 'red' : 'gray')
 			]),
-			E('div', { 'class': 'card-body' }, [
-				E('p', { 'class': 'service-description' }, service.description),
-				service.port > 0 ? E('p', { 'class': 'service-port' }, 'Port: ' + service.port) : E('span')
-			]),
-			E('div', { 'class': 'card-footer' }, controls)
+			E('p', { 'style': 'color: var(--kiss-muted); font-size: 12px; margin: 0 0 12px 0;' }, service.description || ''),
+			service.port > 0 ? E('div', { 'style': 'font-family: monospace; font-size: 11px; color: var(--kiss-cyan); margin-bottom: 12px;' }, 'Port: ' + service.port) : '',
+			E('div', { 'style': 'display: flex; gap: 8px; flex-wrap: wrap;' }, controls)
 		]);
 	},
 
-	renderCategorySection: function(category, services) {
-		var categoryCfg = categoryConfig[category] || { icon: '📦', color: '#7f8c8d', label: category };
+	renderCategory: function(category, services, label) {
+		var self = this;
+		var c = KissTheme.colors;
 		var categoryServices = services.filter(function(s) { return s.category === category; });
 
-		if (categoryServices.length === 0) return E('span');
+		if (categoryServices.length === 0) return null;
 
-		var self = this;
-		return E('div', { 'class': 'media-category-section' }, [
-			E('h3', { 'class': 'category-title', 'style': 'color: ' + categoryCfg.color }, [
-				E('span', { 'class': 'category-icon' }, categoryCfg.icon),
-				' ',
-				categoryCfg.label,
-				E('span', { 'class': 'category-count' }, ' (' + categoryServices.length + ')')
+		var categoryColors = {
+			streaming: c.red,
+			conferencing: c.blue,
+			apps: c.purple,
+			display: c.cyan,
+			social: c.orange,
+			monitoring: c.green
+		};
+
+		return E('div', { 'style': 'margin-bottom: 24px;' }, [
+			E('h3', { 'style': 'font-size: 16px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--kiss-line); color: ' + (categoryColors[category] || c.muted) + ';' }, [
+				label,
+				E('span', { 'style': 'font-size: 12px; color: var(--kiss-muted); margin-left: 8px;' }, '(' + categoryServices.length + ')')
 			]),
-			E('div', { 'class': 'media-cards-grid' },
+			E('div', { 'style': 'display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;' },
 				categoryServices.map(function(service) {
 					return self.renderServiceCard(service);
 				})
@@ -190,10 +193,11 @@ return view.extend({
 	},
 
 	render: function(data) {
+		var self = this;
 		var status = data[0];
 		var services = data[1];
+		var c = KissTheme.colors;
 
-		// Sort by category then by name
 		services.sort(function(a, b) {
 			if (a.category !== b.category) {
 				return a.category.localeCompare(b.category);
@@ -201,173 +205,54 @@ return view.extend({
 			return a.name.localeCompare(b.name);
 		});
 
-		// Get unique categories in order
-		var categories = ['streaming', 'conferencing', 'apps', 'display', 'social', 'monitoring'];
+		var categories = [
+			{ id: 'streaming', label: 'Streaming' },
+			{ id: 'conferencing', label: 'Conferencing' },
+			{ id: 'apps', label: 'Apps' },
+			{ id: 'display', label: 'Display' },
+			{ id: 'social', label: 'Social' },
+			{ id: 'monitoring', label: 'Monitoring' }
+		];
 
-		var self = this;
-		var view = E('div', { 'class': 'media-hub-dashboard' }, [
-			E('style', {}, `
-				.media-hub-dashboard {
-					padding: 20px;
-				}
-				.media-hub-header {
-					text-align: center;
-					margin-bottom: 30px;
-				}
-				.media-hub-header h2 {
-					font-size: 2em;
-					margin-bottom: 10px;
-				}
-				.media-hub-header .subtitle {
-					color: #666;
-					font-size: 1.1em;
-				}
-				.media-hub-status-bar {
-					display: flex;
-					justify-content: center;
-					gap: 40px;
-					padding: 20px;
-					background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-					border-radius: 12px;
-					margin-bottom: 30px;
-				}
-				.status-item {
-					text-align: center;
-				}
-				.status-value {
-					display: block;
-					font-size: 2.5em;
-					font-weight: bold;
-				}
-				.status-label {
-					color: #aaa;
-					font-size: 0.9em;
-					text-transform: uppercase;
-				}
-				.media-category-section {
-					margin-bottom: 30px;
-				}
-				.category-title {
-					font-size: 1.4em;
-					margin-bottom: 15px;
-					padding-bottom: 10px;
-					border-bottom: 2px solid #333;
-				}
-				.category-icon {
-					font-size: 1.2em;
-				}
-				.category-count {
-					font-weight: normal;
-					font-size: 0.8em;
-					color: #666;
-				}
-				.media-cards-grid {
-					display: grid;
-					grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-					gap: 20px;
-				}
-				.media-service-card {
-					background: #1a1a2e;
-					border-radius: 12px;
-					padding: 20px;
-					transition: transform 0.2s, box-shadow 0.2s;
-				}
-				.media-service-card:hover {
-					transform: translateY(-2px);
-					box-shadow: 0 8px 25px rgba(0,0,0,0.3);
-				}
-				.media-service-card[data-status="running"] {
-					background: linear-gradient(135deg, #1a2e1a 0%, #162e16 100%);
-				}
-				.media-service-card[data-status="stopped"] {
-					background: linear-gradient(135deg, #2e1a1a 0%, #2e1616 100%);
-				}
-				.media-service-card[data-status="not_installed"] {
-					opacity: 0.7;
-				}
-				.card-header {
-					display: flex;
-					align-items: center;
-					margin-bottom: 15px;
-				}
-				.service-emoji {
-					font-size: 2.5em;
-					margin-right: 15px;
-				}
-				.service-info {
-					flex: 1;
-				}
-				.service-name {
-					display: block;
-					font-size: 1.3em;
-					font-weight: bold;
-					color: #fff;
-				}
-				.service-category {
-					font-size: 0.85em;
-					text-transform: uppercase;
-				}
-				.service-status {
-					font-size: 0.9em;
-					font-weight: bold;
-				}
-				.card-body {
-					margin-bottom: 15px;
-				}
-				.service-description {
-					color: #aaa;
-					font-size: 0.95em;
-					margin-bottom: 8px;
-				}
-				.service-port {
-					color: #666;
-					font-size: 0.85em;
-					font-family: monospace;
-				}
-				.card-footer {
-					display: flex;
-					flex-wrap: wrap;
-					gap: 8px;
-				}
-				.card-footer button, .card-footer a {
-					border-radius: 6px;
-				}
-				@media (max-width: 768px) {
-					.media-hub-status-bar {
-						flex-wrap: wrap;
-						gap: 20px;
-					}
-					.media-cards-grid {
-						grid-template-columns: 1fr;
-					}
-				}
-			`),
-			E('div', { 'class': 'media-hub-header' }, [
-				E('h2', {}, '🎬 Media Services Hub'),
-				E('p', { 'class': 'subtitle' }, 'Unified dashboard for all SecuBox media services')
-			]),
-			this.renderStatusBar(status)
-		]);
-
-		categories.forEach(function(category) {
-			var section = self.renderCategorySection(category, services);
-			if (section.tagName !== 'SPAN') {
-				view.appendChild(section);
-			}
+		var categorySections = [];
+		categories.forEach(function(cat) {
+			var section = self.renderCategory(cat.id, services, cat.label);
+			if (section) categorySections.push(section);
 		});
 
-		// Setup polling for status updates
+		var runningCount = status.running || 0;
+		var totalCount = status.total_services || 0;
+
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'Media Services Hub'),
+					KissTheme.badge(runningCount + '/' + totalCount + ' RUNNING', runningCount > 0 ? 'green' : 'red')
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' }, 'Unified dashboard for all SecuBox media services')
+			]),
+
+			// Navigation
+			this.renderNav('dashboard'),
+
+			// Stats row
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'id': 'media-stats', 'style': 'margin: 20px 0;' }, this.renderStats(status)),
+
+			// Service categories
+			E('div', {}, categorySections)
+		];
+
 		poll.add(L.bind(function() {
-			return callMediaHubServices().then(L.bind(function(services) {
-				// Update status indicators without full reload
-				services.forEach(function(service) {
-					var card = document.querySelector('.media-service-card[data-status]');
-					// Could update individual cards here for smooth updates
-				});
+			return Promise.all([callMediaHubStatus(), callMediaHubServices()]).then(L.bind(function(res) {
+				var statsEl = document.getElementById('media-stats');
+				if (statsEl) {
+					dom.content(statsEl, this.renderStats(res[0]));
+				}
 			}, this));
 		}, this), 30);
 
-		return view;
+		return KissTheme.wrap(content, 'admin/services/media-hub/dashboard');
 	},
 
 	handleSaveApply: null,

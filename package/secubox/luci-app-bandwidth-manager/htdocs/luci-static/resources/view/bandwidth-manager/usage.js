@@ -1,11 +1,15 @@
 'use strict';
 'require view';
-'require secubox-theme/theme as Theme';
+'require dom';
 'require poll';
 'require bandwidth-manager/api as API';
 'require secubox/kiss-theme';
 
-return L.view.extend({
+return view.extend({
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null,
+
 	historyData: {},
 	maxDataPoints: 60,
 
@@ -13,41 +17,140 @@ return L.view.extend({
 		return API.getUsageRealtime();
 	},
 
-	render: function(clients) {
-		var v = E('div', { 'class': 'cbi-map' }, [
-			E('h2', {}, _('Real-time Usage')),
-			E('div', { 'class': 'cbi-map-descr' }, _('Live bandwidth usage per client (updates every 5 seconds)'))
-		]);
+	renderStats: function(clients) {
+		var c = KissTheme.colors;
+		var totalRx = 0, totalTx = 0;
+		clients.forEach(function(client) {
+			totalRx += client.rx_bytes || 0;
+			totalTx += client.tx_bytes || 0;
+		});
 
-		// Real-time usage graph
-		var graphContainer = E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('Network Traffic Graph')),
+		return [
+			KissTheme.stat(this.formatBytes(totalRx), 'Download', c.green),
+			KissTheme.stat(this.formatBytes(totalTx), 'Upload', c.blue),
+			KissTheme.stat(clients.length, 'Active Clients', c.purple),
+			KissTheme.stat(this.formatBytes(totalRx + totalTx), 'Total', c.cyan)
+		];
+	},
+
+	renderGraph: function() {
+		return E('div', {
+			'style': 'background: var(--kiss-bg); border-radius: 8px; padding: 16px;'
+		}, [
 			E('canvas', {
 				'id': 'usage-graph',
 				'width': '800',
-				'height': '300',
-				'style': 'width: 100%; background: #f8f9fa; border-radius: 4px; padding: 10px;'
+				'height': '250',
+				'style': 'width: 100%; background: var(--kiss-bg2); border-radius: 6px;'
 			})
 		]);
-		v.appendChild(graphContainer);
+	},
 
-		var container = E('div', { 'id': 'usage-container', 'class': 'cbi-section' });
-		E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-		v.appendChild(container);
+	renderClientsTable: function(clients) {
+		var self = this;
 
-		// Initial render
-		this.renderUsageTable(container, clients);
-		this.updateGraph(clients);
+		if (clients.length === 0) {
+			return E('p', { 'style': 'color: var(--kiss-muted); text-align: center; padding: 30px;' },
+				'No active clients');
+		}
 
-		// Auto-refresh every 5 seconds
+		var rows = clients.map(function(client) {
+			var total = (client.rx_bytes || 0) + (client.tx_bytes || 0);
+
+			var quotaCell = E('span', { 'style': 'color: var(--kiss-muted);' }, 'None');
+			if (client.has_quota) {
+				var percent = client.limit_mb > 0 ? Math.floor((client.used_mb * 100) / client.limit_mb) : 0;
+				var progressColor = percent > 90 ? 'var(--kiss-red)' : (percent > 75 ? 'var(--kiss-orange)' : 'var(--kiss-green)');
+				quotaCell = E('div', {}, [
+					E('div', { 'style': 'font-size: 12px; margin-bottom: 4px;' }, client.used_mb + ' / ' + client.limit_mb + ' MB'),
+					E('div', { 'style': 'background: var(--kiss-bg); width: 80px; height: 6px; border-radius: 3px; overflow: hidden;' }, [
+						E('div', {
+							'style': 'background: ' + progressColor + '; width: ' + Math.min(percent, 100) + '%; height: 100%;'
+						})
+					])
+				]);
+			}
+
+			return E('tr', {}, [
+				E('td', { 'style': 'font-weight: 500;' }, client.hostname || 'Unknown'),
+				E('td', { 'style': 'font-family: monospace;' }, client.ip),
+				E('td', { 'style': 'font-family: monospace; color: var(--kiss-cyan);' }, client.mac),
+				E('td', { 'style': 'color: var(--kiss-green);' }, '\u2b07 ' + self.formatBytes(client.rx_bytes || 0)),
+				E('td', { 'style': 'color: var(--kiss-blue);' }, '\u2b06 ' + self.formatBytes(client.tx_bytes || 0)),
+				E('td', { 'style': 'font-weight: 600;' }, self.formatBytes(total)),
+				E('td', {}, quotaCell)
+			]);
+		});
+
+		return E('table', { 'class': 'kiss-table' }, [
+			E('thead', {}, [
+				E('tr', {}, [
+					E('th', {}, 'Client'),
+					E('th', {}, 'IP'),
+					E('th', {}, 'MAC'),
+					E('th', {}, 'Download'),
+					E('th', {}, 'Upload'),
+					E('th', {}, 'Total'),
+					E('th', {}, 'Quota')
+				])
+			]),
+			E('tbody', {}, rows)
+		]);
+	},
+
+	render: function(clients) {
+		var self = this;
+		clients = clients || [];
+
 		poll.add(L.bind(function() {
 			return API.getUsageRealtime().then(L.bind(function(data) {
-				this.renderUsageTable(container, data);
+				this.updateDisplay(data);
 				this.updateGraph(data);
 			}, this));
 		}, this), 5);
 
-		return KissTheme.wrap([v], 'admin/services/bandwidth-manager/usage');
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'Real-time Usage'),
+					KissTheme.badge('Live', 'green')
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' },
+					'Live bandwidth usage per client (updates every 5 seconds)')
+			]),
+
+			// Stats
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'id': 'usage-stats', 'style': 'margin: 20px 0;' },
+				this.renderStats(clients)),
+
+			// Graph
+			KissTheme.card('Network Traffic Graph', this.renderGraph()),
+
+			// Clients Table
+			KissTheme.card(
+				E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+					E('span', {}, 'Active Clients'),
+					KissTheme.badge(clients.length + ' clients', 'blue')
+				]),
+				E('div', { 'id': 'clients-table' }, this.renderClientsTable(clients))
+			)
+		];
+
+		// Initial graph update
+		setTimeout(function() {
+			self.updateGraph(clients);
+		}, 100);
+
+		return KissTheme.wrap(content, 'admin/services/bandwidth-manager/usage');
+	},
+
+	updateDisplay: function(clients) {
+		var statsEl = document.getElementById('usage-stats');
+		var tableEl = document.getElementById('clients-table');
+
+		if (statsEl) dom.content(statsEl, this.renderStats(clients));
+		if (tableEl) dom.content(tableEl, this.renderClientsTable(clients));
 	},
 
 	updateGraph: function(clients) {
@@ -66,14 +169,13 @@ return L.view.extend({
 		});
 
 		// Store history data
-		var timestamp = Date.now();
 		if (!this.historyData.timestamps) {
 			this.historyData.timestamps = [];
 			this.historyData.rx = [];
 			this.historyData.tx = [];
 		}
 
-		this.historyData.timestamps.push(timestamp);
+		this.historyData.timestamps.push(Date.now());
 		this.historyData.rx.push(totalRx);
 		this.historyData.tx.push(totalTx);
 
@@ -86,12 +188,13 @@ return L.view.extend({
 
 		// Clear canvas
 		ctx.clearRect(0, 0, width, height);
+		ctx.fillStyle = '#0d0d12';
+		ctx.fillRect(0, 0, width, height);
 
-		// Draw grid and axes
-		ctx.strokeStyle = '#dee2e6';
+		// Draw grid
+		ctx.strokeStyle = 'rgba(255,255,255,0.1)';
 		ctx.lineWidth = 1;
 
-		// Horizontal grid lines
 		for (var i = 0; i <= 5; i++) {
 			var y = (height - 40) * (i / 5) + 20;
 			ctx.beginPath();
@@ -105,46 +208,40 @@ return L.view.extend({
 		for (var i = 0; i < this.historyData.rx.length; i++) {
 			maxValue = Math.max(maxValue, this.historyData.rx[i], this.historyData.tx[i]);
 		}
-		if (maxValue === 0) maxValue = 1024; // Minimum scale
+		if (maxValue === 0) maxValue = 1024;
 
 		// Draw RX line (download - green)
 		if (this.historyData.rx.length > 1) {
-			ctx.strokeStyle = '#28a745';
+			ctx.strokeStyle = '#22c55e';
 			ctx.lineWidth = 2;
 			ctx.beginPath();
 			for (var i = 0; i < this.historyData.rx.length; i++) {
 				var x = 50 + ((width - 70) * (i / Math.max(this.historyData.rx.length - 1, 1)));
 				var value = this.historyData.rx[i];
 				var y = height - 40 - ((height - 60) * (value / maxValue));
-				if (i === 0) {
-					ctx.moveTo(x, y);
-				} else {
-					ctx.lineTo(x, y);
-				}
+				if (i === 0) ctx.moveTo(x, y);
+				else ctx.lineTo(x, y);
 			}
 			ctx.stroke();
 		}
 
 		// Draw TX line (upload - blue)
 		if (this.historyData.tx.length > 1) {
-			ctx.strokeStyle = '#007bff';
+			ctx.strokeStyle = '#3b82f6';
 			ctx.lineWidth = 2;
 			ctx.beginPath();
 			for (var i = 0; i < this.historyData.tx.length; i++) {
 				var x = 50 + ((width - 70) * (i / Math.max(this.historyData.tx.length - 1, 1)));
 				var value = this.historyData.tx[i];
 				var y = height - 40 - ((height - 60) * (value / maxValue));
-				if (i === 0) {
-					ctx.moveTo(x, y);
-				} else {
-					ctx.lineTo(x, y);
-				}
+				if (i === 0) ctx.moveTo(x, y);
+				else ctx.lineTo(x, y);
 			}
 			ctx.stroke();
 		}
 
 		// Draw axes
-		ctx.strokeStyle = '#495057';
+		ctx.strokeStyle = 'rgba(255,255,255,0.3)';
 		ctx.lineWidth = 2;
 		ctx.beginPath();
 		ctx.moveTo(50, 20);
@@ -153,85 +250,32 @@ return L.view.extend({
 		ctx.stroke();
 
 		// Draw labels
-		ctx.fillStyle = '#495057';
-		ctx.font = '12px sans-serif';
+		ctx.fillStyle = 'rgba(255,255,255,0.6)';
+		ctx.font = '11px monospace';
 
-		// Y-axis labels
 		for (var i = 0; i <= 5; i++) {
 			var y = (height - 40) * (i / 5) + 20;
 			var value = maxValue * (1 - i / 5);
-			ctx.fillText(this.formatBytes(value), 5, y + 5);
+			ctx.fillText(this.formatBytes(value), 5, y + 4);
 		}
 
 		// Legend
-		ctx.fillStyle = '#28a745';
-		ctx.fillRect(width - 150, 30, 15, 15);
-		ctx.fillStyle = '#495057';
-		ctx.fillText('⬇ Download', width - 130, 42);
+		ctx.fillStyle = '#22c55e';
+		ctx.fillRect(width - 140, 25, 12, 12);
+		ctx.fillStyle = 'rgba(255,255,255,0.8)';
+		ctx.fillText('Download', width - 123, 35);
 
-		ctx.fillStyle = '#007bff';
-		ctx.fillRect(width - 150, 55, 15, 15);
-		ctx.fillStyle = '#495057';
-		ctx.fillText('⬆ Upload', width - 130, 67);
+		ctx.fillStyle = '#3b82f6';
+		ctx.fillRect(width - 140, 45, 12, 12);
+		ctx.fillStyle = 'rgba(255,255,255,0.8)';
+		ctx.fillText('Upload', width - 123, 55);
 
 		// Current values
-		ctx.font = '14px sans-serif';
-		ctx.fillStyle = '#28a745';
-		ctx.fillText('⬇ ' + this.formatBytes(totalRx), width - 150, 95);
-		ctx.fillStyle = '#007bff';
-		ctx.fillText('⬆ ' + this.formatBytes(totalTx), width - 150, 115);
-	},
-
-	renderUsageTable: function(container, clients) {
-		L.dom.content(container, [
-			E('h3', {}, _('Active Clients')),
-			E('table', { 'class': 'table' }, [
-				E('tr', { 'class': 'tr table-titles' }, [
-					E('th', { 'class': 'th' }, _('Client')),
-					E('th', { 'class': 'th' }, _('IP')),
-					E('th', { 'class': 'th' }, _('MAC')),
-					E('th', { 'class': 'th' }, _('Download')),
-					E('th', { 'class': 'th' }, _('Upload')),
-					E('th', { 'class': 'th' }, _('Total')),
-					E('th', { 'class': 'th' }, _('Quota'))
-				])
-			].concat(clients.length > 0 ? clients.map(L.bind(function(client) {
-				var total = (client.rx_bytes || 0) + (client.tx_bytes || 0);
-				
-				var quotaCell = _('None');
-				if (client.has_quota) {
-					var percent = client.limit_mb > 0 ? Math.floor((client.used_mb * 100) / client.limit_mb) : 0;
-					var color = percent > 90 ? 'red' : (percent > 75 ? 'orange' : 'green');
-					quotaCell = [
-						E('div', {}, client.used_mb + ' / ' + client.limit_mb + ' MB'),
-						E('div', { 'style': 'background: #eee; width: 80px; height: 8px; border-radius: 4px;' }, [
-							E('div', {
-								'style': 'background: ' + color + '; width: ' + Math.min(percent, 100) + '%; height: 100%; border-radius: 4px;'
-							})
-						])
-					];
-				}
-
-				return E('tr', { 'class': 'tr' }, [
-					E('td', { 'class': 'td' }, client.hostname),
-					E('td', { 'class': 'td' }, client.ip),
-					E('td', { 'class': 'td' }, E('code', {}, client.mac)),
-					E('td', { 'class': 'td' }, [
-						E('span', { 'style': 'color: #28a745' }, '⬇ ' + this.formatBytes(client.rx_bytes))
-					]),
-					E('td', { 'class': 'td' }, [
-						E('span', { 'style': 'color: #dc3545' }, '⬆ ' + this.formatBytes(client.tx_bytes))
-					]),
-					E('td', { 'class': 'td' }, E('strong', {}, this.formatBytes(total))),
-					E('td', { 'class': 'td' }, quotaCell)
-				]);
-			}, this)) : [
-				E('tr', { 'class': 'tr' }, [
-					E('td', { 'class': 'td center', 'colspan': 7 }, 
-						E('em', {}, _('No active clients')))
-				])
-			]))
-		]);
+		ctx.font = '12px monospace';
+		ctx.fillStyle = '#22c55e';
+		ctx.fillText('\u2b07 ' + this.formatBytes(totalRx), width - 140, 80);
+		ctx.fillStyle = '#3b82f6';
+		ctx.fillText('\u2b06 ' + this.formatBytes(totalTx), width - 140, 98);
 	},
 
 	formatBytes: function(bytes) {
@@ -240,9 +284,5 @@ return L.view.extend({
 		var sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
 		var i = Math.floor(Math.log(bytes) / Math.log(k));
 		return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-	},
-
-	handleSaveApply: null,
-	handleSave: null,
-	handleReset: null
+	}
 });

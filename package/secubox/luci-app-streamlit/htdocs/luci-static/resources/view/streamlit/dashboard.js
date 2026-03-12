@@ -36,14 +36,14 @@ return view.extend({
 		var running = s.running;
 		var installed = s.installed;
 
-		var view = E('div', { 'class': 'cbi-map' }, [
+		var view = E('div', { 'style': 'max-width: 1200px;' }, [
 			E('h2', {}, _('Streamlit Platform')),
-			E('div', { 'class': 'cbi-map-descr' }, _('Python data apps - One-click deploy & expose')),
+			E('div', { 'style': 'color: var(--kiss-muted); margin-bottom: 16px;' }, _('Python data apps - One-click deploy & expose')),
 
 			// Status Section
-			E('div', { 'class': 'cbi-section' }, [
+			E('div', { 'style': 'background: var(--kiss-card); border: 1px solid var(--kiss-line); border-radius: 12px; padding: 16px; margin-bottom: 16px;' }, [
 				E('h3', {}, _('Status')),
-				E('table', { 'class': 'table', 'id': 'status-table' }, [
+				E('table', { 'class': 'kiss-table', 'id': 'status-table' }, [
 					E('tr', {}, [
 						E('td', { 'style': 'width:120px' }, _('Service')),
 						E('td', { 'id': 'svc-status' },
@@ -65,13 +65,13 @@ return view.extend({
 			]),
 
 			// Instances Section - Main focus
-			E('div', { 'class': 'cbi-section' }, [
+			E('div', { 'style': 'background: var(--kiss-card); border: 1px solid var(--kiss-line); border-radius: 12px; padding: 16px; margin-bottom: 16px;' }, [
 				E('h3', {}, _('Instances & Exposure')),
 				E('div', { 'id': 'instances-table' }, this.renderInstancesTable())
 			]),
 
 			// One-Click Deploy Section
-			E('div', { 'class': 'cbi-section' }, [
+			E('div', { 'style': 'background: var(--kiss-card); border: 1px solid var(--kiss-line); border-radius: 12px; padding: 16px; margin-bottom: 16px;' }, [
 				E('h3', {}, _('One-Click Deploy')),
 				E('p', { 'style': 'color:#666; margin-bottom:12px' },
 					_('Upload a .py file to auto-create app + instance + start')),
@@ -79,7 +79,7 @@ return view.extend({
 			]),
 
 			// Apps Section (compact)
-			E('div', { 'class': 'cbi-section' }, [
+			E('div', { 'style': 'background: var(--kiss-card); border: 1px solid var(--kiss-line); border-radius: 12px; padding: 16px; margin-bottom: 16px;' }, [
 				E('h3', {}, _('Apps Library')),
 				E('div', { 'id': 'apps-table' }, this.renderAppsTable())
 			])
@@ -100,23 +100,23 @@ return view.extend({
 
 		if (!installed) {
 			btns.push(E('button', {
-				'class': 'cbi-button cbi-button-positive',
+				'class': 'kiss-btn kiss-btn-green',
 				'click': function() { self.doInstall(); }
 			}, _('Install')));
 		} else {
 			if (running) {
 				btns.push(E('button', {
-					'class': 'cbi-button cbi-button-negative',
+					'class': 'kiss-btn kiss-btn-red',
 					'click': function() { self.doStop(); }
 				}, _('Stop')));
 				btns.push(E('button', {
-					'class': 'cbi-button',
+					'class': 'kiss-btn',
 					'style': 'margin-left:8px',
 					'click': function() { self.doRestart(); }
 				}, _('Restart')));
 			} else {
 				btns.push(E('button', {
-					'class': 'cbi-button cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() { self.doStart(); }
 				}, _('Start')));
 			}
@@ -165,7 +165,7 @@ return view.extend({
 						'style': 'font-size:12px; color:#007bff'
 					}, domain),
 					E('button', {
-						'class': 'cbi-button',
+						'class': 'kiss-btn',
 						'style': 'padding:2px 6px; font-size:10px',
 						'title': _('Edit domain'),
 						'click': function() { self.editDomain(inst.id, domain); }
@@ -211,13 +211,13 @@ return view.extend({
 			// Enable/Disable
 			if (inst.enabled) {
 				actions.push(E('button', {
-					'class': 'cbi-button',
+					'class': 'kiss-btn',
 					'title': _('Disable'),
 					'click': function() { self.disableInstance(inst.id); }
 				}, '\u23F8'));
 			} else {
 				actions.push(E('button', {
-					'class': 'cbi-button cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'title': _('Enable'),
 					'click': function() { self.enableInstance(inst.id); }
 				}, '\u25B6'));
@@ -226,14 +226,14 @@ return view.extend({
 			// Expose / Unpublish
 			if (isExposed) {
 				actions.push(E('button', {
-					'class': 'cbi-button cbi-button-negative',
+					'class': 'kiss-btn kiss-btn-red',
 					'style': 'margin-left:4px',
 					'title': _('Unpublish'),
 					'click': function() { self.unpublishInstance(inst.id, exp.domain); }
 				}, '\u2715'));
 			} else {
 				actions.push(E('button', {
-					'class': 'cbi-button cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'style': 'margin-left:4px',
 					'title': _('Expose with domain'),
 					'click': function() {
@@ -247,7 +247,7 @@ return view.extend({
 			// Auth toggle
 			if (isExposed) {
 				actions.push(E('button', {
-					'class': authRequired ? 'cbi-button cbi-button-action' : 'cbi-button',
+					'class': authRequired ? 'kiss-btn kiss-btn-blue' : 'kiss-btn',
 					'style': 'margin-left:4px',
 					'title': authRequired ? _('Auth required - click to disable') : _('Public - click to require auth'),
 					'click': function() { self.toggleAuth(inst.id, !authRequired); }
@@ -256,7 +256,7 @@ return view.extend({
 
 			// Delete
 			actions.push(E('button', {
-				'class': 'cbi-button cbi-button-remove',
+				'class': 'kiss-btn kiss-btn-red',
 				'style': 'margin-left:4px',
 				'title': _('Delete'),
 				'click': function() { self.deleteInstance(inst.id); }
@@ -272,14 +272,14 @@ return view.extend({
 			]);
 		});
 
-		return E('table', { 'class': 'table cbi-section-table' }, [
-			E('tr', { 'class': 'tr table-titles' }, [
-				E('th', { 'class': 'th' }, _('Instance')),
-				E('th', { 'class': 'th' }, _('App')),
-				E('th', { 'class': 'th' }, _('Port')),
-				E('th', { 'class': 'th' }, _('Domain')),
-				E('th', { 'class': 'th' }, _('Status')),
-				E('th', { 'class': 'th' }, _('Actions'))
+		return E('table', { 'class': 'kiss-table' }, [
+			E('tr', { 'style': 'padding: 10px 12px;' }, [
+				E('th', { 'style': 'padding: 10px 12px;' }, _('Instance')),
+				E('th', { 'style': 'padding: 10px 12px;' }, _('App')),
+				E('th', { 'style': 'padding: 10px 12px;' }, _('Port')),
+				E('th', { 'style': 'padding: 10px 12px;' }, _('Domain')),
+				E('th', { 'style': 'padding: 10px 12px;' }, _('Status')),
+				E('th', { 'style': 'padding: 10px 12px;' }, _('Actions'))
 			])
 		].concat(rows));
 	},
@@ -289,7 +289,7 @@ return view.extend({
 		return E('div', { 'style': 'display:flex; gap:8px; align-items:center; flex-wrap:wrap' }, [
 			E('input', { 'type': 'file', 'id': 'deploy-file', 'accept': '.py,.zip' }),
 			E('button', {
-				'class': 'cbi-button cbi-button-positive',
+				'class': 'kiss-btn kiss-btn-green',
 				'click': function() { self.oneClickDeploy(); }
 			}, _('Deploy & Create Instance'))
 		]);
@@ -311,21 +311,21 @@ return view.extend({
 				E('td', {}, app.path ? app.path.split('/').pop() : '-'),
 				E('td', {}, [
 					E('button', {
-						'class': 'cbi-button',
+						'class': 'kiss-btn',
 						'click': function() { self.createInstanceFromApp(id); }
 					}, _('+ Instance')),
 					E('button', {
-						'class': 'cbi-button',
+						'class': 'kiss-btn',
 						'style': 'margin-left:4px',
 						'click': function() { self.reuploadApp(id); }
 					}, _('Re-upload')),
 					hasGitea ? E('button', {
-						'class': 'cbi-button cbi-button-action',
+						'class': 'kiss-btn kiss-btn-cyan',
 						'style': 'margin-left:4px',
 						'click': function() { self.giteaPull(id); }
 					}, _('Gitea Sync')) : '',
 					E('button', {
-						'class': 'cbi-button cbi-button-remove',
+						'class': 'kiss-btn kiss-btn-red',
 						'style': 'margin-left:4px',
 						'click': function() { self.deleteApp(id); }
 					}, _('Delete'))
@@ -333,11 +333,11 @@ return view.extend({
 			]);
 		});
 
-		return E('table', { 'class': 'table cbi-section-table' }, [
-			E('tr', { 'class': 'tr table-titles' }, [
-				E('th', { 'class': 'th' }, _('Name')),
-				E('th', { 'class': 'th' }, _('File')),
-				E('th', { 'class': 'th' }, _('Actions'))
+		return E('table', { 'class': 'kiss-table' }, [
+			E('tr', { 'style': 'padding: 10px 12px;' }, [
+				E('th', { 'style': 'padding: 10px 12px;' }, _('Name')),
+				E('th', { 'style': 'padding: 10px 12px;' }, _('File')),
+				E('th', { 'style': 'padding: 10px 12px;' }, _('Actions'))
 			])
 		].concat(rows));
 	},
@@ -504,9 +504,9 @@ return view.extend({
 		ui.showModal(_('Confirm'), [
 			E('p', {}, _('Delete instance: ') + id + '?'),
 			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, _('Cancel')),
 				E('button', {
-					'class': 'cbi-button cbi-button-negative',
+					'class': 'kiss-btn kiss-btn-red',
 					'style': 'margin-left:8px',
 					'click': function() {
 						ui.hideModal();
@@ -554,9 +554,9 @@ return view.extend({
 			E('p', { 'style': 'color:#666; font-size:12px' },
 				_('Note: Changing domain will request a new SSL certificate.')),
 			E('div', { 'class': 'right', 'style': 'margin-top:16px' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, _('Cancel')),
 				E('button', {
-					'class': 'cbi-button cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'style': 'margin-left:8px',
 					'click': function() {
 						var newDomain = document.getElementById('edit-domain-input').value.trim();
@@ -590,9 +590,9 @@ return view.extend({
 			E('p', {}, _('Unpublish ') + domain + '?'),
 			E('p', { 'style': 'color:#666' }, _('This removes the public URL and SSL certificate.')),
 			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, _('Cancel')),
 				E('button', {
-					'class': 'cbi-button cbi-button-negative',
+					'class': 'kiss-btn kiss-btn-red',
 					'style': 'margin-left:8px',
 					'click': function() {
 						ui.hideModal();
@@ -641,9 +641,9 @@ return view.extend({
 		ui.showModal(_('Confirm'), [
 			E('p', {}, _('Delete app: ') + name + '?'),
 			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, _('Cancel')),
 				E('button', {
-					'class': 'cbi-button cbi-button-negative',
+					'class': 'kiss-btn kiss-btn-red',
 					'style': 'margin-left:8px',
 					'click': function() {
 						ui.hideModal();
@@ -665,9 +665,9 @@ return view.extend({
 			E('p', {}, _('Select a new .py or .zip file to replace the app code:')),
 			E('input', { 'type': 'file', 'id': 'reupload-file', 'accept': '.py,.zip' }),
 			E('div', { 'class': 'right', 'style': 'margin-top:16px' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, _('Cancel')),
 				E('button', {
-					'class': 'cbi-button cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'style': 'margin-left:8px',
 					'click': function() {
 						var fileInput = document.getElementById('reupload-file');

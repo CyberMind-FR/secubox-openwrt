@@ -215,7 +215,7 @@ generate_evolution() {
 
     # Get timestamps from health (most reliable)
     local first=1
-    for hfile in $(ls -t "$health_dir"/*.json 2>/dev/null | head -48 | tac); do
+    for hfile in $(ls -t "$health_dir"/*.json 2>/dev/null | head -48 | awk '{a[NR]=$0} END{for(i=NR;i>=1;i--)print a[i]}'); do
         [ -f "$hfile" ] || continue
 
         local hour=$(basename "$hfile" .json)

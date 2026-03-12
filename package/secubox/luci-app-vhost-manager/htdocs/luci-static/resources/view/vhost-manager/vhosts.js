@@ -297,7 +297,7 @@ return L.view.extend({
 			E('div', { 'class': 'right', 'style': 'margin-top: 1rem;' }, [
 				E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')),
 				E('button', {
-					'class': newState ? 'btn cbi-button-positive' : 'btn cbi-button-warning',
+					'class': newState ? 'kiss-btn kiss-btn-green' : 'kiss-btn kiss-btn-yellow',
 					'click': L.bind(function() {
 						ui.hideModal();
 						this.toggleVHost(section, newState);
@@ -321,7 +321,7 @@ return L.view.extend({
 			E('div', { 'class': 'right', 'style': 'margin-top: 1rem;' }, [
 				E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')),
 				E('button', {
-					'class': 'btn cbi-button-negative',
+					'class': 'kiss-btn kiss-btn-red',
 					'click': L.bind(function() {
 						ui.hideModal();
 						this.deleteVHost(section);

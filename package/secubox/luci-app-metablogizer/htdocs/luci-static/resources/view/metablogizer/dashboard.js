@@ -31,23 +31,23 @@ return view.extend({
 		});
 
 		return KissTheme.wrap([
-			E('div', { 'class': 'cbi-map' }, [
+			E('div', { 'style': 'max-width: 1200px;' }, [
 				E('h2', {}, _('MetaBlogizer')),
-				E('div', { 'class': 'cbi-map-descr' }, _('Static site publisher with HAProxy vhosts and SSL')),
+				E('div', { 'style': 'color: var(--kiss-muted); margin-bottom: 16px;' }, _('Static site publisher with HAProxy vhosts and SSL')),
 
 				// One-Click Deploy Section
-				E('div', { 'class': 'cbi-section' }, [
+				E('div', { 'style': 'background: var(--kiss-card); padding: 16px; border-radius: 8px; margin-bottom: 16px;' }, [
 					E('h3', {}, _('One-Click Deploy')),
-					E('div', { 'class': 'cbi-section-descr' }, _('Upload HTML/ZIP to create a new static site with auto-configured SSL')),
+					E('div', { 'style': 'color: var(--kiss-muted); margin-bottom: 12px;' }, _('Upload HTML/ZIP to create a new static site with auto-configured SSL')),
 					E('div', { 'style': 'display:flex; gap:1em; flex-wrap:wrap; align-items:flex-end' }, [
 						E('div', { 'style': 'flex:1; min-width:150px' }, [
 							E('label', { 'style': 'display:block; margin-bottom:0.25em; font-weight:500' }, _('Site Name')),
-							E('input', { 'type': 'text', 'id': 'deploy-name', 'class': 'cbi-input-text',
+							E('input', { 'type': 'text', 'id': 'deploy-name', 'style': 'padding: 8px 12px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text);',
 								'placeholder': 'myblog', 'style': 'width:100%' })
 						]),
 						E('div', { 'style': 'flex:2; min-width:200px' }, [
 							E('label', { 'style': 'display:block; margin-bottom:0.25em; font-weight:500' }, _('Domain')),
-							E('input', { 'type': 'text', 'id': 'deploy-domain', 'class': 'cbi-input-text',
+							E('input', { 'type': 'text', 'id': 'deploy-domain', 'style': 'padding: 8px 12px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text);',
 								'placeholder': 'blog.example.com', 'style': 'width:100%' })
 						]),
 						E('div', { 'style': 'flex:2; min-width:200px' }, [
@@ -56,7 +56,7 @@ return view.extend({
 								'style': 'width:100%' })
 						]),
 						E('button', {
-							'class': 'cbi-button cbi-button-positive',
+							'class': 'kiss-btn kiss-btn-green',
 							'style': 'white-space:nowrap',
 							'click': ui.createHandlerFn(this, 'handleOneClickDeploy')
 						}, _('Deploy'))
@@ -64,11 +64,11 @@ return view.extend({
 				]),
 
 				// Sites Table
-				E('div', { 'class': 'cbi-section' }, [
+				E('div', { 'style': 'background: var(--kiss-card); padding: 16px; border-radius: 8px; margin-bottom: 16px;' }, [
 					E('h3', {}, _('Sites')),
 					sites.length > 0 ?
 						this.renderSitesTable(sites, exposureMap) :
-						E('div', { 'class': 'cbi-section-descr' }, _('No sites configured'))
+						E('div', { 'style': 'color: var(--kiss-muted); margin-bottom: 12px;' }, _('No sites configured'))
 				])
 			])
 		], 'admin/services/metablogizer');
@@ -77,12 +77,12 @@ return view.extend({
 	renderSitesTable: function(sites, exposureMap) {
 		var self = this;
 
-		return E('table', { 'class': 'table' }, [
-			E('tr', { 'class': 'tr table-titles' }, [
-				E('th', { 'class': 'th' }, _('Site')),
-				E('th', { 'class': 'th' }, _('Status')),
-				E('th', { 'class': 'th' }, _('Exposure')),
-				E('th', { 'class': 'th', 'style': 'text-align:center' }, _('Actions'))
+		return E('table', { 'class': 'kiss-table' }, [
+			E('tr', { 'style': 'border-bottom: 1px solid var(--kiss-line);' }, [
+				E('th', { 'style': 'padding: 10px 12px; font-weight: 500; color: var(--kiss-muted);' }, _('Site')),
+				E('th', { 'style': 'padding: 10px 12px; font-weight: 500; color: var(--kiss-muted);' }, _('Status')),
+				E('th', { 'style': 'padding: 10px 12px; font-weight: 500; color: var(--kiss-muted);' }, _('Exposure')),
+				E('th', { 'style': 'padding: 10px 12px; font-weight: 500; color: var(--kiss-muted);', 'style': 'text-align:center' }, _('Actions'))
 			])
 		].concat(sites.map(function(site) {
 			var exp = exposureMap[site.id] || {};
@@ -97,11 +97,11 @@ return view.extend({
 		var backendBadge;
 		if (exp.backend_running) {
 			backendBadge = E('span', {
-				'style': 'display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.85em; background:#d4edda; color:#155724'
+				'style': 'display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.85em; background: rgba(76, 175, 80, 0.2); color: var(--kiss-green, #4caf50)'
 			}, 'Running');
 		} else {
 			backendBadge = E('span', {
-				'style': 'display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.85em; background:#f8d7da; color:#721c24'
+				'style': 'display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.85em; background: rgba(244, 67, 54, 0.2); color: var(--kiss-red, #f44336)'
 			}, 'Stopped');
 		}
 
@@ -109,22 +109,22 @@ return view.extend({
 		var exposureBadge;
 		if (exp.vhost_exists && exp.cert_status === 'valid') {
 			exposureBadge = E('span', {
-				'style': 'display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.85em; background:#d4edda; color:#155724',
+				'style': 'display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.85em; background: rgba(76, 175, 80, 0.2); color: var(--kiss-green, #4caf50)',
 				'title': 'SSL certificate valid'
 			}, 'SSL OK');
 		} else if (exp.vhost_exists && exp.cert_status === 'warning') {
 			exposureBadge = E('span', {
-				'style': 'display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.85em; background:#fff3cd; color:#856404',
+				'style': 'display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.85em; background: rgba(255, 152, 0, 0.2); color: var(--kiss-orange, #ff9800)',
 				'title': 'Certificate expiring soon'
 			}, 'SSL Warn');
 		} else if (exp.vhost_exists) {
 			exposureBadge = E('span', {
-				'style': 'display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.85em; background:#f8d7da; color:#721c24',
+				'style': 'display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.85em; background: rgba(244, 67, 54, 0.2); color: var(--kiss-red, #f44336)',
 				'title': exp.cert_status || 'No certificate'
 			}, 'No SSL');
 		} else {
 			exposureBadge = E('span', {
-				'style': 'display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.85em; background:#e2e3e5; color:#383d41'
+				'style': 'display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.85em; background: var(--kiss-bg2); color: var(--kiss-muted)'
 			}, 'Private');
 		}
 
@@ -132,7 +132,7 @@ return view.extend({
 		var authBadge = '';
 		if (exp.auth_required) {
 			authBadge = E('span', {
-				'style': 'display:inline-block; padding:2px 6px; border-radius:4px; font-size:0.85em; background:#cce5ff; color:#004085; margin-left:4px'
+				'style': 'display:inline-block; padding:2px 6px; border-radius:4px; font-size:0.85em; background: rgba(33, 150, 243, 0.2); color: var(--kiss-blue, #2196f3); margin-left:4px'
 			}, 'Auth');
 		}
 
@@ -140,7 +140,7 @@ return view.extend({
 		var wafBadge = '';
 		if (site.waf_enabled) {
 			wafBadge = E('span', {
-				'style': 'display:inline-block; padding:2px 6px; border-radius:4px; font-size:0.85em; background:#d1ecf1; color:#0c5460; margin-left:4px',
+				'style': 'display:inline-block; padding:2px 6px; border-radius:4px; font-size:0.85em; background: rgba(0, 188, 212, 0.2); color: var(--kiss-cyan, #00bcd4); margin-left:4px',
 				'title': _('Traffic inspected by WAF (mitmproxy)')
 			}, 'WAF');
 		}
@@ -151,52 +151,52 @@ return view.extend({
 			domainEl = E('a', {
 				'href': 'https://' + site.domain,
 				'target': '_blank',
-				'style': 'color:#0066cc'
+				'style': 'color: var(--kiss-cyan, #00bcd4)'
 			}, site.domain);
 		} else {
-			domainEl = E('em', { 'style': 'color:#888' }, '-');
+			domainEl = E('em', { 'style': 'color: var(--kiss-muted)' }, '-');
 		}
 
-		return E('tr', { 'class': 'tr' }, [
+		return E('tr', { 'style': 'border-bottom: 1px solid var(--kiss-line);' }, [
 			// Site column
-			E('td', { 'class': 'td' }, [
+			E('td', { 'style': 'padding: 10px 12px;' }, [
 				E('strong', {}, site.name),
 				E('br'),
 				domainEl,
-				site.port ? E('span', { 'style': 'color:#888; font-size:0.9em; margin-left:0.5em' }, ':' + site.port) : ''
+				site.port ? E('span', { 'style': 'color: var(--kiss-muted); font-size:0.9em; margin-left:0.5em' }, ':' + site.port) : ''
 			]),
 			// Status column
-			E('td', { 'class': 'td' }, [
+			E('td', { 'style': 'padding: 10px 12px;' }, [
 				backendBadge,
 				exp.has_content ? '' : E('span', {
-					'style': 'display:inline-block; padding:2px 6px; border-radius:4px; font-size:0.85em; background:#fff3cd; color:#856404; margin-left:4px'
+					'style': 'display:inline-block; padding:2px 6px; border-radius:4px; font-size:0.85em; background: rgba(255, 152, 0, 0.2); color: var(--kiss-orange, #ff9800); margin-left:4px'
 				}, 'Empty')
 			]),
 			// Exposure column
-			E('td', { 'class': 'td' }, [
+			E('td', { 'style': 'padding: 10px 12px;' }, [
 				exposureBadge,
 				authBadge,
 				wafBadge
 			]),
 			// Actions column
-			E('td', { 'class': 'td', 'style': 'text-align:center; white-space:nowrap' }, [
+			E('td', { 'style': 'padding: 10px 12px;', 'style': 'text-align:center; white-space:nowrap' }, [
 				// Edit button
 				E('button', {
-					'class': 'cbi-button',
+					'class': 'kiss-btn',
 					'style': 'padding:0.25em 0.5em; margin:2px',
 					'title': _('Edit site settings'),
 					'click': ui.createHandlerFn(self, 'showEditModal', site)
 				}, _('Edit')),
 				// Share button
 				E('button', {
-					'class': 'cbi-button',
+					'class': 'kiss-btn',
 					'style': 'padding:0.25em 0.5em; margin:2px',
 					'title': _('Share / QR Code'),
 					'click': ui.createHandlerFn(self, 'showShareModal', site)
 				}, _('Share')),
 				// Upload button
 				E('button', {
-					'class': 'cbi-button',
+					'class': 'kiss-btn',
 					'style': 'padding:0.25em 0.5em; margin:2px',
 					'title': _('Upload content'),
 					'click': ui.createHandlerFn(self, 'showUploadModal', site)
@@ -204,34 +204,34 @@ return view.extend({
 				// Expose/Unpublish button - use emancipated flag, not vhost_exists
 				exp.emancipated ?
 					E('button', {
-						'class': 'cbi-button cbi-button-remove',
+						'class': 'kiss-btn kiss-btn-red',
 						'style': 'padding:0.25em 0.5em; margin:2px',
 						'title': _('Unpublish site'),
 						'click': ui.createHandlerFn(self, 'handleUnpublish', site)
 					}, _('Unpublish')) :
 					E('button', {
-						'class': 'cbi-button cbi-button-apply',
+						'class': 'kiss-btn kiss-btn-cyan',
 						'style': 'padding:0.25em 0.5em; margin:2px',
 						'title': _('Expose with SSL'),
 						'click': ui.createHandlerFn(self, 'handleEmancipate', site)
 					}, _('Expose')),
 				// Auth toggle button
 				E('button', {
-					'class': 'cbi-button',
+					'class': 'kiss-btn',
 					'style': 'padding:0.25em 0.5em; margin:2px; ' + (exp.auth_required ? 'background:#cce5ff' : ''),
 					'title': exp.auth_required ? _('Authentication required - click to disable') : _('No authentication - click to enable'),
 					'click': ui.createHandlerFn(self, 'handleToggleAuth', site, exp)
 				}, exp.auth_required ? _('Unlock') : _('Lock')),
 				// Health/Repair button
 				E('button', {
-					'class': 'cbi-button',
+					'class': 'kiss-btn',
 					'style': 'padding:0.25em 0.5em; margin:2px',
 					'title': _('Check health and repair'),
 					'click': ui.createHandlerFn(self, 'handleHealthCheck', site)
 				}, _('Health')),
 				// Delete button
 				E('button', {
-					'class': 'cbi-button cbi-button-remove',
+					'class': 'kiss-btn kiss-btn-red',
 					'style': 'padding:0.25em 0.5em; margin:2px',
 					'title': _('Delete site'),
 					'click': ui.createHandlerFn(self, 'handleDelete', site)
@@ -306,36 +306,36 @@ return view.extend({
 		var self = this;
 
 		ui.showModal(_('Upload to: ') + site.name, [
-			E('div', { 'class': 'cbi-section' }, [
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('File')),
-					E('div', { 'class': 'cbi-value-field' }, [
+			E('div', { 'style': 'background: var(--kiss-card); padding: 16px; border-radius: 8px; margin-bottom: 16px;' }, [
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px;' }, [
+					E('label', { 'style': 'font-weight: 500; color: var(--kiss-muted);' }, _('File')),
+					E('div', { 'style': 'flex: 1;' }, [
 						E('input', { 'type': 'file', 'id': 'upload-file-input' }),
-						E('div', { 'class': 'cbi-value-description' }, _('HTML, CSS, JS, images, etc.'))
+						E('div', { 'style': 'font-size: 0.85em; color: var(--kiss-muted);' }, _('HTML, CSS, JS, images, etc.'))
 					])
 				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Set as index')),
-					E('div', { 'class': 'cbi-value-field' }, [
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px;' }, [
+					E('label', { 'style': 'font-weight: 500; color: var(--kiss-muted);' }, _('Set as index')),
+					E('div', { 'style': 'flex: 1;' }, [
 						E('input', { 'type': 'checkbox', 'id': 'upload-as-index', 'checked': true }),
 						E('span', { 'style': 'margin-left:0.5em' }, _('Replace index.html (main page)')),
-						E('div', { 'class': 'cbi-value-description' }, _('Uncheck to keep original filename'))
+						E('div', { 'style': 'font-size: 0.85em; color: var(--kiss-muted);' }, _('Uncheck to keep original filename'))
 					])
 				]),
-				E('div', { 'class': 'cbi-value', 'id': 'upload-dest-row', 'style': 'display:none' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Destination')),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', { 'type': 'text', 'id': 'upload-dest', 'class': 'cbi-input-text',
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px;', 'id': 'upload-dest-row', 'style': 'display:none' }, [
+					E('label', { 'style': 'font-weight: 500; color: var(--kiss-muted);' }, _('Destination')),
+					E('div', { 'style': 'flex: 1;' }, [
+						E('input', { 'type': 'text', 'id': 'upload-dest', 'style': 'padding: 8px 12px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text);',
 							'placeholder': 'filename.html' }),
-						E('div', { 'class': 'cbi-value-description' }, _('Leave empty to use original filename'))
+						E('div', { 'style': 'font-size: 0.85em; color: var(--kiss-muted);' }, _('Leave empty to use original filename'))
 					])
 				])
 			]),
 			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, _('Cancel')),
 				' ',
 				E('button', {
-					'class': 'cbi-button cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() {
 						var fileInput = document.getElementById('upload-file-input');
 						var destInput = document.getElementById('upload-dest');
@@ -406,10 +406,10 @@ return view.extend({
 				E('li', {}, _('DNS + Vortex mesh publication'))
 			]),
 			E('div', { 'class': 'right', 'style': 'margin-top:1em' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, _('Cancel')),
 				' ',
 				E('button', {
-					'class': 'cbi-button cbi-button-apply',
+					'class': 'kiss-btn kiss-btn-cyan',
 					'click': function() {
 						ui.hideModal();
 						self.runEmancipateAsync(site);
@@ -422,7 +422,7 @@ return view.extend({
 	runEmancipateAsync: function(site) {
 		var self = this;
 		var outputPre = E('pre', {
-			'style': 'max-height:300px; overflow:auto; background:#f5f5f5; padding:10px; font-size:11px; white-space:pre-wrap'
+			'style': 'max-height:300px; overflow:auto; background: var(--kiss-bg2); padding:10px; font-size:11px; white-space:pre-wrap'
 		}, _('Starting...'));
 
 		ui.showModal(_('Exposing Site'), [
@@ -473,12 +473,12 @@ return view.extend({
 
 		ui.showModal(_('Unpublish Site'), [
 			E('p', {}, _('Remove public exposure for "') + site.name + '"?'),
-			E('p', { 'style': 'color:#666' }, _('The site content will be preserved but the HAProxy vhost will be removed.')),
+			E('p', { 'style': 'color: var(--kiss-muted)' }, _('The site content will be preserved but the HAProxy vhost will be removed.')),
 			E('div', { 'class': 'right', 'style': 'margin-top:1em' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, _('Cancel')),
 				' ',
 				E('button', {
-					'class': 'cbi-button cbi-button-remove',
+					'class': 'kiss-btn kiss-btn-red',
 					'click': function() {
 						ui.hideModal();
 						ui.showModal(_('Unpublishing'), [E('p', { 'class': 'spinning' }, _('Removing exposure...'))]);
@@ -526,12 +526,12 @@ return view.extend({
 
 		ui.showModal(_('Delete Site'), [
 			E('p', {}, _('Are you sure you want to delete "') + site.name + '"?'),
-			E('p', { 'style': 'color:#a00' }, _('This will remove the site, HAProxy vhost, and all files.')),
+			E('p', { 'style': 'color: var(--kiss-red, #f44336)' }, _('This will remove the site, HAProxy vhost, and all files.')),
 			E('div', { 'class': 'right', 'style': 'margin-top:1em' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, _('Cancel')),
 				' ',
 				E('button', {
-					'class': 'cbi-button cbi-button-remove',
+					'class': 'kiss-btn kiss-btn-red',
 					'click': function() {
 						ui.hideModal();
 						ui.showModal(_('Deleting'), [E('p', { 'class': 'spinning' }, _('Removing site...'))]);
@@ -567,50 +567,50 @@ return view.extend({
 
 			// Backend status
 			if (health.backend_status === 'ok') {
-				statusItems.push(E('div', { 'style': 'color:#155724; margin:0.5em 0' },
+				statusItems.push(E('div', { 'style': 'color: var(--kiss-green, #4caf50); margin:0.5em 0' },
 					'✓ Backend: Running (port ' + (health.port || site.port || '?') + ')'));
 			} else {
 				hasIssues = true;
-				statusItems.push(E('div', { 'style': 'color:#721c24; margin:0.5em 0' },
+				statusItems.push(E('div', { 'style': 'color: var(--kiss-red, #f44336); margin:0.5em 0' },
 					'✗ Backend: ' + (health.backend_status || 'Not responding')));
 			}
 
 			// Frontend status
 			if (health.frontend_status === 'ok') {
-				statusItems.push(E('div', { 'style': 'color:#155724; margin:0.5em 0' },
+				statusItems.push(E('div', { 'style': 'color: var(--kiss-green, #4caf50); margin:0.5em 0' },
 					'✓ Frontend: Accessible via HAProxy'));
 			} else if (health.frontend_status === 'not_configured') {
-				statusItems.push(E('div', { 'style': 'color:#856404; margin:0.5em 0' },
+				statusItems.push(E('div', { 'style': 'color: var(--kiss-orange, #ff9800); margin:0.5em 0' },
 					'○ Frontend: Not exposed (private)'));
 			} else {
 				hasIssues = true;
-				statusItems.push(E('div', { 'style': 'color:#721c24; margin:0.5em 0' },
+				statusItems.push(E('div', { 'style': 'color: var(--kiss-red, #f44336); margin:0.5em 0' },
 					'✗ Frontend: ' + (health.frontend_status || 'Error')));
 			}
 
 			// SSL status
 			if (health.ssl_status === 'valid') {
-				statusItems.push(E('div', { 'style': 'color:#155724; margin:0.5em 0' },
+				statusItems.push(E('div', { 'style': 'color: var(--kiss-green, #4caf50); margin:0.5em 0' },
 					'✓ SSL: Valid' + (health.ssl_days_remaining ? ' (' + health.ssl_days_remaining + ' days)' : '')));
 			} else if (health.ssl_status === 'expiring') {
-				statusItems.push(E('div', { 'style': 'color:#856404; margin:0.5em 0' },
+				statusItems.push(E('div', { 'style': 'color: var(--kiss-orange, #ff9800); margin:0.5em 0' },
 					'! SSL: Expiring soon (' + (health.ssl_days_remaining || '?') + ' days)'));
 			} else if (health.ssl_status === 'not_configured') {
-				statusItems.push(E('div', { 'style': 'color:#888; margin:0.5em 0' },
+				statusItems.push(E('div', { 'style': 'color: var(--kiss-muted); margin:0.5em 0' },
 					'○ SSL: Not configured'));
 			} else if (health.ssl_status) {
 				hasIssues = true;
-				statusItems.push(E('div', { 'style': 'color:#721c24; margin:0.5em 0' },
+				statusItems.push(E('div', { 'style': 'color: var(--kiss-red, #f44336); margin:0.5em 0' },
 					'✗ SSL: ' + health.ssl_status));
 			}
 
 			// Content check
 			if (health.has_content) {
-				statusItems.push(E('div', { 'style': 'color:#155724; margin:0.5em 0' },
+				statusItems.push(E('div', { 'style': 'color: var(--kiss-green, #4caf50); margin:0.5em 0' },
 					'✓ Content: index.html exists'));
 			} else {
 				hasIssues = true;
-				statusItems.push(E('div', { 'style': 'color:#721c24; margin:0.5em 0' },
+				statusItems.push(E('div', { 'style': 'color: var(--kiss-red, #f44336); margin:0.5em 0' },
 					'✗ Content: No index.html'));
 			}
 
@@ -618,12 +618,12 @@ return view.extend({
 
 			var modalContent = [
 				E('h4', { 'style': 'margin-top:0' }, site.name + ' (' + (site.domain || 'no domain') + ')'),
-				E('div', { 'style': 'padding:1em; background:#f8f8f8; border-radius:4px' }, statusItems),
+				E('div', { 'style': 'padding:1em; background: var(--kiss-bg2); border-radius:4px' }, statusItems),
 				E('div', { 'class': 'right', 'style': 'margin-top:1em' }, [
-					E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Close')),
+					E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, _('Close')),
 					' ',
 					E('button', {
-						'class': 'cbi-button cbi-button-action',
+						'class': 'kiss-btn kiss-btn-blue',
 						'click': function() {
 							ui.hideModal();
 							self.handleRepair(site);
@@ -633,10 +633,10 @@ return view.extend({
 			];
 
 			if (hasIssues) {
-				modalContent.splice(1, 0, E('p', { 'style': 'color:#721c24; font-weight:bold' },
+				modalContent.splice(1, 0, E('p', { 'style': 'color: var(--kiss-red, #f44336); font-weight:bold' },
 					_('Issues detected - click Repair to fix')));
 			} else {
-				modalContent.splice(1, 0, E('p', { 'style': 'color:#155724' },
+				modalContent.splice(1, 0, E('p', { 'style': 'color: var(--kiss-green, #4caf50)' },
 					_('All checks passed')));
 			}
 
@@ -664,17 +664,17 @@ return view.extend({
 					_('No repairs needed');
 
 				ui.showModal(_('Repair Complete'), [
-					E('p', { 'style': 'color:#155724' }, '✓ ' + repairMsg),
+					E('p', { 'style': 'color: var(--kiss-green, #4caf50)' }, '✓ ' + repairMsg),
 					E('div', { 'class': 'right', 'style': 'margin-top:1em' }, [
 						E('button', {
-							'class': 'cbi-button',
+							'class': 'kiss-btn',
 							'click': function() {
 								ui.hideModal();
 								self.handleHealthCheck(site);
 							}
 						}, _('Re-check')),
 						' ',
-						E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() {
+						E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': function() {
 							ui.hideModal();
 							window.location.reload();
 						}}, _('Done'))
@@ -693,42 +693,42 @@ return view.extend({
 		var self = this;
 
 		ui.showModal(_('Edit Site: ') + site.name, [
-			E('div', { 'class': 'cbi-section' }, [
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Name')),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', { 'type': 'text', 'id': 'edit-name', 'class': 'cbi-input-text',
+			E('div', { 'style': 'background: var(--kiss-card); padding: 16px; border-radius: 8px; margin-bottom: 16px;' }, [
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px;' }, [
+					E('label', { 'style': 'font-weight: 500; color: var(--kiss-muted);' }, _('Name')),
+					E('div', { 'style': 'flex: 1;' }, [
+						E('input', { 'type': 'text', 'id': 'edit-name', 'style': 'padding: 8px 12px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text);',
 							'value': site.name, 'style': 'width:100%' })
 					])
 				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Domain')),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', { 'type': 'text', 'id': 'edit-domain', 'class': 'cbi-input-text',
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px;' }, [
+					E('label', { 'style': 'font-weight: 500; color: var(--kiss-muted);' }, _('Domain')),
+					E('div', { 'style': 'flex: 1;' }, [
+						E('input', { 'type': 'text', 'id': 'edit-domain', 'style': 'padding: 8px 12px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text);',
 							'value': site.domain || '', 'style': 'width:100%' }),
-						E('div', { 'class': 'cbi-value-description' }, _('e.g. blog.example.com'))
+						E('div', { 'style': 'font-size: 0.85em; color: var(--kiss-muted);' }, _('e.g. blog.example.com'))
 					])
 				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Description')),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', { 'type': 'text', 'id': 'edit-description', 'class': 'cbi-input-text',
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px;' }, [
+					E('label', { 'style': 'font-weight: 500; color: var(--kiss-muted);' }, _('Description')),
+					E('div', { 'style': 'flex: 1;' }, [
+						E('input', { 'type': 'text', 'id': 'edit-description', 'style': 'padding: 8px 12px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text);',
 							'value': site.description || '', 'style': 'width:100%' })
 					])
 				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Enabled')),
-					E('div', { 'class': 'cbi-value-field' }, [
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px;' }, [
+					E('label', { 'style': 'font-weight: 500; color: var(--kiss-muted);' }, _('Enabled')),
+					E('div', { 'style': 'flex: 1;' }, [
 						E('input', { 'type': 'checkbox', 'id': 'edit-enabled',
 							'checked': site.enabled !== '0' && site.enabled !== false })
 					])
 				])
 			]),
 			E('div', { 'class': 'right', 'style': 'margin-top:1em' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, _('Cancel')),
 				' ',
 				E('button', {
-					'class': 'cbi-button cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() {
 						var name = document.getElementById('edit-name').value.trim();
 						var domain = document.getElementById('edit-domain').value.trim();
@@ -778,8 +778,8 @@ return view.extend({
 			E('div', { 'style': 'text-align:center' }, [
 				E('div', { 'style': 'display:flex; gap:0.5em; margin-bottom:1em' }, [
 					E('input', { 'type': 'text', 'readonly': true, 'value': url, 'id': 'share-url',
-						'class': 'cbi-input-text', 'style': 'flex:1' }),
-					E('button', { 'class': 'cbi-button cbi-button-action', 'click': function() {
+						'style': 'padding: 8px 12px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text);', 'style': 'flex:1' }),
+					E('button', { 'class': 'kiss-btn kiss-btn-blue', 'click': function() {
 						if (navigator.clipboard) {
 							navigator.clipboard.writeText(url).then(function() {
 								ui.addNotification(null, E('p', _('URL copied')));
@@ -787,24 +787,24 @@ return view.extend({
 						}
 					}}, _('Copy'))
 				]),
-				E('div', { 'style': 'display:inline-block; padding:1em; background:#f8f8f8; border-radius:8px' }, [
+				E('div', { 'style': 'display:inline-block; padding:1em; background: var(--kiss-bg2); border-radius:8px' }, [
 					E('div', { 'innerHTML': qrSvg })
 				]),
 				E('div', { 'style': 'margin-top:1em; display:flex; gap:0.5em; justify-content:center; flex-wrap:wrap' }, [
 					E('a', { 'href': 'https://twitter.com/intent/tweet?url=' + enc(url) + '&text=' + enc(title),
-						'target': '_blank', 'class': 'cbi-button' }, 'Twitter'),
+						'target': '_blank', 'class': 'kiss-btn' }, 'Twitter'),
 					E('a', { 'href': 'https://t.me/share/url?url=' + enc(url) + '&text=' + enc(title),
-						'target': '_blank', 'class': 'cbi-button' }, 'Telegram'),
+						'target': '_blank', 'class': 'kiss-btn' }, 'Telegram'),
 					E('a', { 'href': 'https://wa.me/?text=' + enc(title + ' ' + url),
-						'target': '_blank', 'class': 'cbi-button' }, 'WhatsApp'),
+						'target': '_blank', 'class': 'kiss-btn' }, 'WhatsApp'),
 					E('a', { 'href': 'mailto:?subject=' + enc(title) + '&body=' + enc(url),
-						'class': 'cbi-button' }, 'Email')
+						'class': 'kiss-btn' }, 'Email')
 				])
 			]),
 			E('div', { 'class': 'right', 'style': 'margin-top:1em' }, [
-				E('a', { 'href': url, 'target': '_blank', 'class': 'cbi-button cbi-button-positive' }, _('Visit Site')),
+				E('a', { 'href': url, 'target': '_blank', 'class': 'kiss-btn kiss-btn-green' }, _('Visit Site')),
 				' ',
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Close'))
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, _('Close'))
 			])
 		]);
 	},

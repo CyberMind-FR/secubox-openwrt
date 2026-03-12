@@ -239,8 +239,8 @@ return view.extend({
 					})
 				]),
 				E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 8px;' }, [
-					E('button', { 'class': 'btn', 'click': function() { cb.checked = false; ui.hideModal(); } }, 'Cancel'),
-					E('button', { 'class': 'btn cbi-button-action', 'click': function() {
+					E('button', { 'class': 'kiss-btn', 'click': function() { cb.checked = false; ui.hideModal(); } }, 'Cancel'),
+					E('button', { 'class': 'kiss-btn kiss-btn-blue', 'click': function() {
 						var name = document.getElementById('tor-name').value;
 						var onionPort = parseInt(document.getElementById('tor-onion-port').value) || 80;
 						ui.hideModal();
@@ -263,8 +263,8 @@ return view.extend({
 				E('p', {}, 'Remove hidden service for ' + torInfo.service + '?'),
 				E('p', { 'style': 'color: #e74c3c;' }, 'The .onion address will be permanently deleted.'),
 				E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 8px; margin-top: 1rem;' }, [
-					E('button', { 'class': 'btn', 'click': function() { cb.checked = true; ui.hideModal(); } }, 'Cancel'),
-					E('button', { 'class': 'btn cbi-button-negative', 'click': function() {
+					E('button', { 'class': 'kiss-btn', 'click': function() { cb.checked = true; ui.hideModal(); } }, 'Cancel'),
+					E('button', { 'class': 'kiss-btn kiss-btn-red', 'click': function() {
 						ui.hideModal();
 						api.torRemove(torInfo.service).then(function(res) {
 							if (res.success) {
@@ -303,8 +303,8 @@ return view.extend({
 					})
 				]),
 				E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 8px;' }, [
-					E('button', { 'class': 'btn', 'click': function() { cb.checked = false; ui.hideModal(); } }, 'Cancel'),
-					E('button', { 'class': 'btn cbi-button-action', 'click': function() {
+					E('button', { 'class': 'kiss-btn', 'click': function() { cb.checked = false; ui.hideModal(); } }, 'Cancel'),
+					E('button', { 'class': 'kiss-btn kiss-btn-blue', 'click': function() {
 						var name = document.getElementById('ssl-name').value;
 						var domain = document.getElementById('ssl-domain').value;
 						if (!domain) {
@@ -333,8 +333,8 @@ return view.extend({
 				E('p', {}, 'Remove HAProxy backend for ' + backendName + '?'),
 				domainName ? E('p', { 'style': 'color: #8892b0;' }, 'Domain: ' + domainName) : null,
 				E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 8px; margin-top: 1rem;' }, [
-					E('button', { 'class': 'btn', 'click': function() { cb.checked = true; ui.hideModal(); } }, 'Cancel'),
-					E('button', { 'class': 'btn cbi-button-negative', 'click': function() {
+					E('button', { 'class': 'kiss-btn', 'click': function() { cb.checked = true; ui.hideModal(); } }, 'Cancel'),
+					E('button', { 'class': 'kiss-btn kiss-btn-red', 'click': function() {
 						ui.hideModal();
 						api.sslRemove(backendName).then(function(res) {
 							if (res.success) {
@@ -364,8 +364,8 @@ return view.extend({
 			ui.showModal('Disable Mesh', [
 				E('p', {}, 'Remove mesh publishing for ' + serviceName + '?'),
 				E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 8px; margin-top: 1rem;' }, [
-					E('button', { 'class': 'btn', 'click': function() { cb.checked = true; ui.hideModal(); } }, 'Cancel'),
-					E('button', { 'class': 'btn cbi-button-negative', 'click': function() {
+					E('button', { 'class': 'kiss-btn', 'click': function() { cb.checked = true; ui.hideModal(); } }, 'Cancel'),
+					E('button', { 'class': 'kiss-btn kiss-btn-red', 'click': function() {
 						ui.hideModal();
 						ui.showModal('Revoking...', [E('p', { 'class': 'spinning' }, 'Removing mesh exposure...')]);
 						api.revoke(serviceName, false, false, true).then(function(res) {
@@ -436,9 +436,9 @@ return view.extend({
 		ui.showModal('Emancipate Service', [
 			content,
 			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 8px; margin-top: 1rem;' }, [
-				E('button', { 'class': 'btn', 'click': ui.hideModal }, 'Cancel'),
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
 				E('button', {
-					'class': 'btn cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'click': ui.createHandlerFn(self, 'doEmancipate', svc)
 				}, 'Emancipate')
 			])

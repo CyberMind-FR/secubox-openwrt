@@ -107,7 +107,7 @@ return baseclass.extend({
 				'style': 'margin-top: 1rem; display: flex; gap: 0.5rem; justify-content: flex-end;'
 			}, [
 				opts.showOpenButton !== false ? E('a', {
-					'class': 'btn cbi-button-neutral',
+					'class': 'kiss-btn',
 					'href': helpUrl,
 					'target': '_blank'
 				}, [
@@ -115,7 +115,7 @@ return baseclass.extend({
 					_('Open in New Tab')
 				]) : null,
 				E('button', {
-					'class': 'btn cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'click': ui.hideModal
 				}, _('Close'))
 			])

@@ -2,6 +2,8 @@
 'require view';
 'require rpc';
 'require poll';
+'require ui';
+'require secubox/kiss-theme';
 
 var callStatus = rpc.declare({
 	object: 'luci.ai-gateway',
@@ -46,82 +48,6 @@ var callRestart = rpc.declare({
 	expect: {}
 });
 
-// KISS Theme CSS
-var kissCSS = `
-	.ai-gateway-container { padding: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-	.ai-gateway-header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
-	.ai-gateway-header h2 { margin: 0; font-size: 1.5em; }
-	.ai-gateway-header .badge { padding: 4px 12px; border-radius: 12px; font-size: 0.8em; font-weight: 600; }
-	.badge-running { background: #22c55e; color: white; }
-	.badge-stopped { background: #ef4444; color: white; }
-	.badge-offline { background: #f59e0b; color: white; }
-
-	.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
-	.stat-card { background: var(--bg-secondary, #f8fafc); border-radius: 12px; padding: 20px; border: 1px solid var(--border-color, #e2e8f0); }
-	.stat-card .label { color: var(--text-secondary, #64748b); font-size: 0.85em; margin-bottom: 4px; }
-	.stat-card .value { font-size: 1.8em; font-weight: 700; color: var(--text-primary, #1e293b); }
-	.stat-card .sublabel { font-size: 0.75em; color: var(--text-secondary, #64748b); margin-top: 4px; }
-
-	.section { margin-bottom: 24px; }
-	.section-title { font-size: 1.1em; font-weight: 600; margin-bottom: 16px; color: var(--text-primary, #1e293b); }
-
-	.providers-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
-	.provider-card { background: var(--bg-secondary, #f8fafc); border-radius: 12px; padding: 16px; border: 1px solid var(--border-color, #e2e8f0); display: flex; justify-content: space-between; align-items: center; }
-	.provider-info { display: flex; flex-direction: column; gap: 4px; }
-	.provider-name { font-weight: 600; font-size: 1.1em; text-transform: capitalize; }
-	.provider-meta { font-size: 0.85em; color: var(--text-secondary, #64748b); }
-	.provider-status { padding: 4px 10px; border-radius: 8px; font-size: 0.8em; font-weight: 500; }
-	.status-available { background: #dcfce7; color: #16a34a; }
-	.status-configured { background: #dbeafe; color: #2563eb; }
-	.status-unavailable { background: #fee2e2; color: #dc2626; }
-	.status-disabled { background: #f1f5f9; color: #64748b; }
-	.status-no_api_key { background: #fef3c7; color: #d97706; }
-
-	.classification-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
-	.legend-item { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: var(--bg-secondary, #f8fafc); border-radius: 8px; border: 1px solid var(--border-color, #e2e8f0); }
-	.legend-dot { width: 12px; height: 12px; border-radius: 50%; }
-	.dot-local { background: #22c55e; }
-	.dot-sanitized { background: #f59e0b; }
-	.dot-cloud { background: #3b82f6; }
-
-	.actions-row { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
-	.btn { padding: 10px 20px; border-radius: 8px; font-weight: 500; cursor: pointer; border: none; transition: all 0.2s; }
-	.btn-primary { background: #3b82f6; color: white; }
-	.btn-primary:hover { background: #2563eb; }
-	.btn-success { background: #22c55e; color: white; }
-	.btn-success:hover { background: #16a34a; }
-	.btn-danger { background: #ef4444; color: white; }
-	.btn-danger:hover { background: #dc2626; }
-	.btn-warning { background: #f59e0b; color: white; }
-	.btn-warning:hover { background: #d97706; }
-	.btn-secondary { background: #64748b; color: white; }
-	.btn-secondary:hover { background: #475569; }
-
-	.audit-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
-	.audit-stat { text-align: center; padding: 16px; background: var(--bg-secondary, #f8fafc); border-radius: 8px; border: 1px solid var(--border-color, #e2e8f0); }
-	.audit-stat .count { font-size: 1.5em; font-weight: 700; }
-	.audit-stat .type { font-size: 0.85em; color: var(--text-secondary, #64748b); }
-
-	.info-box { padding: 16px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; margin-bottom: 16px; }
-	.info-box.anssi { background: #f0fdf4; border-color: #86efac; }
-	.info-box h4 { margin: 0 0 8px 0; color: #1e40af; }
-	.info-box.anssi h4 { color: #166534; }
-	.info-box p { margin: 0; font-size: 0.9em; color: #1e3a5f; }
-	.info-box.anssi p { color: #14532d; }
-
-	@media (prefers-color-scheme: dark) {
-		.stat-card, .provider-card, .legend-item, .audit-stat { background: #1e293b; border-color: #334155; }
-		.stat-card .label, .provider-meta, .audit-stat .type { color: #94a3b8; }
-		.stat-card .value, .provider-name, .section-title { color: #f1f5f9; }
-		.info-box { background: #1e3a5f; border-color: #3b82f6; }
-		.info-box h4 { color: #93c5fd; }
-		.info-box p { color: #bfdbfe; }
-		.info-box.anssi { background: #14532d; border-color: #22c55e; }
-		.info-box.anssi h4 { color: #86efac; }
-		.info-box.anssi p { color: #bbf7d0; }
-	}
-`;
-
 return view.extend({
 	title: 'AI Gateway',
 
@@ -133,115 +59,57 @@ return view.extend({
 		]);
 	},
 
-	render: function(data) {
-		var status = data[0].result || data[0] || {};
-		var providersData = data[1].providers || data[1] || [];
-		var auditStats = data[2].result || data[2] || {};
+	renderNav: function(active) {
+		var tabs = [
+			{ name: 'Overview', path: 'admin/services/ai-gateway/overview' },
+			{ name: 'Providers', path: 'admin/services/ai-gateway/providers' },
+			{ name: 'Classify', path: 'admin/services/ai-gateway/classify' },
+			{ name: 'Audit', path: 'admin/services/ai-gateway/audit' }
+		];
 
-		var container = E('div', { 'class': 'ai-gateway-container' });
+		return E('div', { 'class': 'kiss-tabs' }, tabs.map(function(tab) {
+			var isActive = tab.path.indexOf(active) !== -1;
+			return E('a', {
+				'href': L.url(tab.path),
+				'class': 'kiss-tab' + (isActive ? ' active' : '')
+			}, tab.name);
+		}));
+	},
 
-		// Inject CSS
-		var style = E('style', {}, kissCSS);
-		container.appendChild(style);
-
-		// Header
-		var statusBadge = status.running ?
-			(status.offline_mode ? 'badge-offline' : 'badge-running') : 'badge-stopped';
-		var statusText = status.running ?
-			(status.offline_mode ? 'Offline Mode' : 'Running') : 'Stopped';
-
-		container.appendChild(E('div', { 'class': 'ai-gateway-header' }, [
-			E('h2', {}, 'AI Gateway'),
-			E('span', { 'class': 'badge ' + statusBadge }, statusText)
-		]));
-
-		// ANSSI Info Box
-		container.appendChild(E('div', { 'class': 'info-box anssi' }, [
-			E('h4', {}, 'ANSSI CSPN Compliance'),
-			E('p', {}, 'Data Sovereignty Engine ensures sensitive network data (IPs, MACs, logs, credentials) never leaves the device. Three-tier classification: LOCAL_ONLY (on-device), SANITIZED (EU cloud with PII scrubbing), CLOUD_DIRECT (opt-in external).')
-		]));
-
-		// Actions Row
-		var actionsRow = E('div', { 'class': 'actions-row' });
-
-		if (status.running) {
-			actionsRow.appendChild(E('button', {
-				'class': 'btn btn-danger',
-				'click': this.handleStop.bind(this)
-			}, 'Stop'));
-			actionsRow.appendChild(E('button', {
-				'class': 'btn btn-secondary',
-				'click': this.handleRestart.bind(this)
-			}, 'Restart'));
-		} else {
-			actionsRow.appendChild(E('button', {
-				'class': 'btn btn-success',
-				'click': this.handleStart.bind(this)
-			}, 'Start'));
-		}
-
-		var offlineBtnClass = status.offline_mode ? 'btn-warning' : 'btn-secondary';
-		var offlineBtnText = status.offline_mode ? 'Disable Offline Mode' : 'Enable Offline Mode';
-		actionsRow.appendChild(E('button', {
-			'class': 'btn ' + offlineBtnClass,
-			'click': this.handleToggleOffline.bind(this, !status.offline_mode)
-		}, offlineBtnText));
-
-		container.appendChild(actionsRow);
-
-		// Stats Grid
-		var statsGrid = E('div', { 'class': 'stats-grid' });
-
-		statsGrid.appendChild(E('div', { 'class': 'stat-card' }, [
-			E('div', { 'class': 'label' }, 'Proxy Port'),
-			E('div', { 'class': 'value' }, String(status.port || '4050')),
-			E('div', { 'class': 'sublabel' }, 'OpenAI-compatible API')
-		]));
-
-		statsGrid.appendChild(E('div', { 'class': 'stat-card' }, [
-			E('div', { 'class': 'label' }, 'Providers Enabled'),
-			E('div', { 'class': 'value' }, String(status.providers_enabled || 0)),
-			E('div', { 'class': 'sublabel' }, 'of 6 available')
-		]));
-
+	renderStats: function(status, auditStats) {
+		var c = KissTheme.colors;
 		var totalRequests = (auditStats.local_only || 0) + (auditStats.sanitized || 0) + (auditStats.cloud_direct || 0);
-		statsGrid.appendChild(E('div', { 'class': 'stat-card' }, [
-			E('div', { 'class': 'label' }, 'Total Requests'),
-			E('div', { 'class': 'value' }, String(totalRequests)),
-			E('div', { 'class': 'sublabel' }, 'since last restart')
-		]));
 
-		statsGrid.appendChild(E('div', { 'class': 'stat-card' }, [
-			E('div', { 'class': 'label' }, 'Local Only'),
-			E('div', { 'class': 'value', 'style': 'color: #22c55e;' }, String(auditStats.local_only || 0)),
-			E('div', { 'class': 'sublabel' }, 'data stayed on device')
-		]));
+		return [
+			KissTheme.stat(status.port || '4050', 'API Port', c.blue),
+			KissTheme.stat(status.providers_enabled || 0, 'Providers', c.purple),
+			KissTheme.stat(totalRequests, 'Requests', c.cyan),
+			KissTheme.stat(auditStats.local_only || 0, 'Local Only', c.green)
+		];
+	},
 
-		container.appendChild(statsGrid);
+	renderClassificationLegend: function() {
+		var c = KissTheme.colors;
+		var tiers = [
+			{ color: c.green, label: 'LOCAL_ONLY', desc: 'Never leaves device (IPs, MACs, logs, keys)' },
+			{ color: c.orange, label: 'SANITIZED', desc: 'PII scrubbed, EU cloud opt-in (Mistral)' },
+			{ color: c.blue, label: 'CLOUD_DIRECT', desc: 'Generic queries, any provider opt-in' }
+		];
 
-		// Classification Legend
-		container.appendChild(E('div', { 'class': 'section' }, [
-			E('div', { 'class': 'section-title' }, 'Classification Tiers'),
-			E('div', { 'class': 'classification-legend' }, [
-				E('div', { 'class': 'legend-item' }, [
-					E('span', { 'class': 'legend-dot dot-local' }),
-					E('span', {}, 'LOCAL_ONLY - Never leaves device (IPs, MACs, logs, keys)')
-				]),
-				E('div', { 'class': 'legend-item' }, [
-					E('span', { 'class': 'legend-dot dot-sanitized' }),
-					E('span', {}, 'SANITIZED - PII scrubbed, EU cloud opt-in (Mistral)')
-				]),
-				E('div', { 'class': 'legend-item' }, [
-					E('span', { 'class': 'legend-dot dot-cloud' }),
-					E('span', {}, 'CLOUD_DIRECT - Generic queries, any provider opt-in')
+		return E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px;' }, tiers.map(function(t) {
+			return E('div', { 'style': 'display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--kiss-bg2); border-radius: 6px;' }, [
+				E('span', { 'style': 'width: 12px; height: 12px; border-radius: 50%; background: ' + t.color + ';' }),
+				E('div', {}, [
+					E('span', { 'style': 'font-weight: 600; color: ' + t.color + ';' }, t.label),
+					E('span', { 'style': 'color: var(--kiss-muted); margin-left: 8px; font-size: 12px;' }, t.desc)
 				])
-			])
-		]));
+			]);
+		}));
+	},
 
-		// Providers Section
-		var providersGrid = E('div', { 'class': 'providers-grid' });
-
-		var providerIcons = {
+	renderProviders: function(providers) {
+		var c = KissTheme.colors;
+		var providerMeta = {
 			localai: 'On-Device',
 			mistral: 'EU Sovereign',
 			claude: 'Anthropic',
@@ -250,110 +118,157 @@ return view.extend({
 			xai: 'xAI (Grok)'
 		};
 
-		providersData.forEach(function(provider) {
-			var statusClass = 'status-' + (provider.status || 'disabled');
-			var statusText = (provider.status || 'disabled').replace(/_/g, ' ');
-
-			providersGrid.appendChild(E('div', { 'class': 'provider-card' }, [
-				E('div', { 'class': 'provider-info' }, [
-					E('div', { 'class': 'provider-name' }, provider.name),
-					E('div', { 'class': 'provider-meta' }, [
-						providerIcons[provider.name] || '',
-						' | Priority: ', String(provider.priority),
-						' | Tier: ', (provider.classification || '-').toUpperCase()
-					].join(''))
-				]),
-				E('span', { 'class': 'provider-status ' + statusClass }, statusText)
-			]));
-		});
-
-		container.appendChild(E('div', { 'class': 'section' }, [
-			E('div', { 'class': 'section-title' }, 'Provider Hierarchy'),
-			providersGrid
-		]));
-
-		// Audit Stats Section
-		if (auditStats && (auditStats.local_only || auditStats.sanitized || auditStats.cloud_direct)) {
-			var auditStatsDiv = E('div', { 'class': 'audit-stats' });
-
-			auditStatsDiv.appendChild(E('div', { 'class': 'audit-stat' }, [
-				E('div', { 'class': 'count', 'style': 'color: #22c55e;' }, String(auditStats.local_only || 0)),
-				E('div', { 'class': 'type' }, 'Local Only')
-			]));
-			auditStatsDiv.appendChild(E('div', { 'class': 'audit-stat' }, [
-				E('div', { 'class': 'count', 'style': 'color: #f59e0b;' }, String(auditStats.sanitized || 0)),
-				E('div', { 'class': 'type' }, 'Sanitized')
-			]));
-			auditStatsDiv.appendChild(E('div', { 'class': 'audit-stat' }, [
-				E('div', { 'class': 'count', 'style': 'color: #3b82f6;' }, String(auditStats.cloud_direct || 0)),
-				E('div', { 'class': 'type' }, 'Cloud Direct')
-			]));
-
-			container.appendChild(E('div', { 'class': 'section' }, [
-				E('div', { 'class': 'section-title' }, 'Classification Statistics'),
-				auditStatsDiv
-			]));
+		if (!providers || providers.length === 0) {
+			return E('div', { 'style': 'text-align: center; padding: 24px; color: var(--kiss-muted);' }, 'No providers configured');
 		}
 
-		// Setup polling
-		poll.add(this.pollData.bind(this), 10);
+		return E('div', { 'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px;' }, providers.map(function(p) {
+			var statusColor = p.status === 'available' ? c.green :
+				p.status === 'configured' ? c.blue :
+				p.status === 'no_api_key' ? c.yellow : c.red;
 
-		return container;
+			return E('div', { 'style': 'background: var(--kiss-bg2); padding: 12px 16px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;' }, [
+				E('div', {}, [
+					E('div', { 'style': 'font-weight: 600; text-transform: capitalize;' }, p.name),
+					E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted);' }, [
+						providerMeta[p.name] || '',
+						' | Priority: ' + p.priority,
+						' | Tier: ' + (p.classification || '-').toUpperCase()
+					].join(''))
+				]),
+				KissTheme.badge((p.status || 'disabled').replace(/_/g, ' '), p.status === 'available' ? 'green' : p.status === 'configured' ? 'blue' : 'red')
+			]);
+		}));
 	},
 
-	pollData: function() {
-		var self = this;
-		return Promise.all([
-			callStatus(),
-			callGetProviders(),
-			callGetAuditStats()
-		]).then(function(data) {
-			var container = document.querySelector('.ai-gateway-container');
-			if (container) {
-				var status = data[0].result || data[0] || {};
-				var auditStats = data[2].result || data[2] || {};
+	renderAuditStats: function(auditStats) {
+		var c = KissTheme.colors;
+		return E('div', { 'style': 'display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;' }, [
+			E('div', { 'style': 'text-align: center; padding: 20px; background: var(--kiss-bg2); border-radius: 8px;' }, [
+				E('div', { 'style': 'font-size: 28px; font-weight: 700; color: ' + c.green + ';' }, String(auditStats.local_only || 0)),
+				E('div', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Local Only')
+			]),
+			E('div', { 'style': 'text-align: center; padding: 20px; background: var(--kiss-bg2); border-radius: 8px;' }, [
+				E('div', { 'style': 'font-size: 28px; font-weight: 700; color: ' + c.orange + ';' }, String(auditStats.sanitized || 0)),
+				E('div', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Sanitized')
+			]),
+			E('div', { 'style': 'text-align: center; padding: 20px; background: var(--kiss-bg2); border-radius: 8px;' }, [
+				E('div', { 'style': 'font-size: 28px; font-weight: 700; color: ' + c.blue + ';' }, String(auditStats.cloud_direct || 0)),
+				E('div', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Cloud Direct')
+			])
+		]);
+	},
 
-				// Update stats
-				var statValues = container.querySelectorAll('.stat-card .value');
-				if (statValues.length >= 4) {
-					statValues[1].textContent = String(status.providers_enabled || 0);
-					var totalRequests = (auditStats.local_only || 0) + (auditStats.sanitized || 0) + (auditStats.cloud_direct || 0);
-					statValues[2].textContent = String(totalRequests);
-					statValues[3].textContent = String(auditStats.local_only || 0);
-				}
-			}
-		});
+	renderControls: function(status) {
+		var self = this;
+		var isRunning = status.running;
+		var isOffline = status.offline_mode;
+
+		return E('div', { 'style': 'display: flex; gap: 12px; flex-wrap: wrap;' }, [
+			isRunning ? E('button', {
+				'class': 'kiss-btn kiss-btn-red',
+				'click': function() { self.handleStop(); }
+			}, 'Stop') : E('button', {
+				'class': 'kiss-btn kiss-btn-green',
+				'click': function() { self.handleStart(); }
+			}, 'Start'),
+
+			isRunning ? E('button', {
+				'class': 'kiss-btn',
+				'click': function() { self.handleRestart(); }
+			}, 'Restart') : '',
+
+			E('button', {
+				'class': isOffline ? 'kiss-btn kiss-btn-yellow' : 'kiss-btn',
+				'click': function() { self.handleToggleOffline(!isOffline); }
+			}, isOffline ? 'Disable Offline Mode' : 'Enable Offline Mode')
+		]);
 	},
 
 	handleStart: function() {
-		var self = this;
-		callStart().then(function() {
-			window.location.reload();
-		});
+		ui.showModal('Starting...', [E('p', { 'class': 'spinning' }, 'Starting AI Gateway...')]);
+		callStart().then(function() { ui.hideModal(); location.reload(); });
 	},
 
 	handleStop: function() {
-		var self = this;
-		callStop().then(function() {
-			window.location.reload();
-		});
+		ui.showModal('Stopping...', [E('p', { 'class': 'spinning' }, 'Stopping AI Gateway...')]);
+		callStop().then(function() { ui.hideModal(); location.reload(); });
 	},
 
 	handleRestart: function() {
-		var self = this;
-		callRestart().then(function() {
-			window.location.reload();
-		});
+		ui.showModal('Restarting...', [E('p', { 'class': 'spinning' }, 'Restarting AI Gateway...')]);
+		callRestart().then(function() { ui.hideModal(); location.reload(); });
 	},
 
 	handleToggleOffline: function(enable) {
-		var self = this;
-		callSetOfflineMode(enable ? '1' : '0').then(function() {
-			window.location.reload();
-		});
+		ui.showModal('Updating...', [E('p', { 'class': 'spinning' }, 'Updating offline mode...')]);
+		callSetOfflineMode(enable ? '1' : '0').then(function() { ui.hideModal(); location.reload(); });
 	},
 
-	handleSaveProvider: function(form, ev) {
-		ev.preventDefault();
-	}
+	render: function(data) {
+		var self = this;
+		var status = data[0].result || data[0] || {};
+		var providers = data[1].providers || data[1] || [];
+		var auditStats = data[2].result || data[2] || {};
+		var c = KissTheme.colors;
+
+		var statusText = status.running ? (status.offline_mode ? 'Offline' : 'Running') : 'Stopped';
+		var statusColor = status.running ? (status.offline_mode ? 'yellow' : 'green') : 'red';
+
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'AI Gateway'),
+					KissTheme.badge(statusText, statusColor)
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' }, 'ANSSI CSPN compliant AI proxy with data sovereignty')
+			]),
+
+			// Navigation
+			this.renderNav('overview'),
+
+			// ANSSI Info Box
+			E('div', { 'style': 'padding: 16px; background: rgba(0,200,83,0.1); border: 1px solid rgba(0,200,83,0.3); border-radius: 8px; margin-bottom: 20px;' }, [
+				E('div', { 'style': 'font-weight: 600; color: ' + c.green + '; margin-bottom: 8px;' }, 'ANSSI CSPN Compliance'),
+				E('div', { 'style': 'font-size: 13px; color: var(--kiss-muted);' }, 'Data Sovereignty Engine ensures sensitive network data (IPs, MACs, logs, credentials) never leaves the device. Three-tier classification: LOCAL_ONLY (on-device), SANITIZED (EU cloud with PII scrubbing), CLOUD_DIRECT (opt-in external).')
+			]),
+
+			// Stats row
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'id': 'ai-stats', 'style': 'margin: 20px 0;' }, this.renderStats(status, auditStats)),
+
+			// Controls
+			E('div', { 'style': 'margin-bottom: 20px;' }, this.renderControls(status)),
+
+			// Two column layout
+			E('div', { 'class': 'kiss-grid kiss-grid-2' }, [
+				// Classification Tiers
+				KissTheme.card('Classification Tiers', this.renderClassificationLegend()),
+				// Audit Stats
+				KissTheme.card('Classification Statistics', this.renderAuditStats(auditStats))
+			]),
+
+			// Providers
+			KissTheme.card('Provider Hierarchy', this.renderProviders(providers))
+		];
+
+		// Setup polling
+		poll.add(function() {
+			return Promise.all([callStatus(), callGetAuditStats()]).then(function(d) {
+				var s = d[0].result || d[0] || {};
+				var a = d[1].result || d[1] || {};
+				var statsEl = document.getElementById('ai-stats');
+				if (statsEl) {
+					statsEl.innerHTML = '';
+					self.renderStats(s, a).forEach(function(el) { statsEl.appendChild(el); });
+				}
+			});
+		}, 10);
+
+		return KissTheme.wrap(content, 'admin/services/ai-gateway/overview');
+	},
+
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null
 });

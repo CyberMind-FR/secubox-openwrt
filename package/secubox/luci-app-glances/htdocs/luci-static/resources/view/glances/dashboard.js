@@ -86,7 +86,7 @@ return view.extend({
 				E('div', { 'style': 'display:flex;gap:10px;margin-top:20px;' }, [
 					status.running ?
 						E('button', {
-							'class': 'btn cbi-button-remove',
+							'class': 'kiss-btn kiss-btn-red',
 							'style': 'flex:1;',
 							'click': function() {
 								ui.showModal(_('Stopping...'), [
@@ -99,7 +99,7 @@ return view.extend({
 							}
 						}, _('Stop')) :
 						E('button', {
-							'class': 'btn cbi-button-positive',
+							'class': 'kiss-btn kiss-btn-green',
 							'style': 'flex:1;',
 							'click': function() {
 								ui.showModal(_('Starting...'), [
@@ -112,7 +112,7 @@ return view.extend({
 							}
 						}, _('Start')),
 					E('button', {
-						'class': 'btn cbi-button-action',
+						'class': 'kiss-btn kiss-btn-blue',
 						'style': 'flex:1;',
 						'click': function() {
 							ui.showModal(_('Restarting...'), [

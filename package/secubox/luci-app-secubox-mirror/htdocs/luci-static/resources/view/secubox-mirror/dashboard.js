@@ -237,7 +237,7 @@ return view.extend({
                     ]),
                     E('td', {}, [
                         E('button', {
-                            'class': 'cbi-button cbi-button-neutral',
+                            'class': 'kiss-btn',
                             'style': 'padding: 4px 8px; font-size: 12px;',
                             'click': ui.createHandlerFn(this, function(pid) {
                                 return callResetReputation(pid).then(function() {
@@ -295,7 +295,7 @@ return view.extend({
             E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
                 E('h3', { 'style': 'margin: 0;' }, 'Health Alerts'),
                 E('button', {
-                    'class': 'cbi-button cbi-button-action',
+                    'class': 'kiss-btn kiss-btn-blue',
                     'click': ui.createHandlerFn(this, function() {
                         return callRunHealthCheck().then(function(result) {
                             ui.addNotification(null, E('p', {}, 'Health check completed'));
@@ -335,7 +335,7 @@ return view.extend({
                     E('td', {}, alert.message || '-'),
                     E('td', {}, [
                         !alert.acknowledged ? E('button', {
-                            'class': 'cbi-button cbi-button-neutral',
+                            'class': 'kiss-btn',
                             'style': 'padding: 2px 8px; font-size: 11px;',
                             'click': ui.createHandlerFn(this, function(id) {
                                 return callAckAlert(id).then(function() {

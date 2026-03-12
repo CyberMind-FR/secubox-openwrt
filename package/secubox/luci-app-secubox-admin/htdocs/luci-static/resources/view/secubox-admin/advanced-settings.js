@@ -502,11 +502,11 @@ return view.extend({
 								E('p', {}, 'Save configuration to /etc/config/' + file + '?'),
 								E('div', { 'class': 'right' }, [
 									E('button', {
-										'class': 'btn',
+										'class': 'kiss-btn',
 										'click': ui.hideModal
 									}, 'Cancel'),
 									E('button', {
-										'class': 'btn cbi-button-positive',
+										'class': 'kiss-btn kiss-btn-green',
 										'click': function() {
 											ui.hideModal();
 											ui.showModal(_('Saving'), [
@@ -670,9 +670,9 @@ return view.extend({
 								ui.showModal(_('Confirm'), [
 									E('p', {}, 'Restart network services? This may disconnect you.'),
 									E('div', { 'class': 'right' }, [
-										E('button', { 'class': 'btn', 'click': ui.hideModal }, 'Cancel'),
+										E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
 										E('button', {
-											'class': 'btn cbi-button-negative',
+											'class': 'kiss-btn kiss-btn-red',
 											'click': function() {
 												ui.hideModal();
 												ui.addNotification(null, E('p', 'Restarting services...'), 'info');

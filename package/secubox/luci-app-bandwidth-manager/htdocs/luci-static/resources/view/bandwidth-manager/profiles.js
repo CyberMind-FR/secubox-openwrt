@@ -7,19 +7,27 @@
 'require secubox/kiss-theme';
 
 var PROFILE_ICONS = {
-	'gamepad': { icon: '🎮', color: '#8b5cf6' },
-	'play': { icon: '▶️', color: '#06b6d4' },
-	'cpu': { icon: '🔌', color: '#10b981' },
-	'briefcase': { icon: '💼', color: '#3b82f6' },
-	'child': { icon: '👶', color: '#f59e0b' },
-	'tag': { icon: '🏷️', color: '#6366f1' },
-	'shield': { icon: '🛡️', color: '#ef4444' },
-	'star': { icon: '⭐', color: '#eab308' },
-	'home': { icon: '🏠', color: '#14b8a6' },
-	'globe': { icon: '🌐', color: '#8b5cf6' }
+	'gamepad': { icon: '🎮', color: 'purple' },
+	'play': { icon: '▶️', color: 'cyan' },
+	'cpu': { icon: '🔌', color: 'green' },
+	'briefcase': { icon: '💼', color: 'blue' },
+	'child': { icon: '👶', color: 'orange' },
+	'tag': { icon: '🏷️', color: 'purple' },
+	'shield': { icon: '🛡️', color: 'red' },
+	'star': { icon: '⭐', color: 'orange' },
+	'home': { icon: '🏠', color: 'cyan' },
+	'globe': { icon: '🌐', color: 'purple' }
 };
 
 return L.view.extend({
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null,
+
+	profiles: [],
+	assignments: [],
+	clients: [],
+
 	load: function() {
 		return Promise.all([
 			API.listProfiles(),
@@ -30,210 +38,282 @@ return L.view.extend({
 		]);
 	},
 
+	renderStats: function() {
+		var c = KissTheme.colors;
+		var builtinCount = this.profiles.filter(function(p) { return p.builtin; }).length;
+		var customCount = this.profiles.length - builtinCount;
+		return [
+			KissTheme.stat(this.profiles.length, 'Total Profiles', c.blue),
+			KissTheme.stat(builtinCount, 'Built-in', c.purple),
+			KissTheme.stat(customCount, 'Custom', c.green),
+			KissTheme.stat(this.assignments.length, 'Assignments', c.cyan)
+		];
+	},
+
 	render: function(data) {
 		var profiles = (data[0] && data[0].profiles) || [];
 		var builtinProfiles = (data[1] && data[1].profiles) || [];
-		var assignments = (data[2] && data[2].assignments) || [];
-		var clients = (data[3] && data[3].clients) || [];
+		this.assignments = (data[2] && data[2].assignments) || [];
+		this.clients = (data[3] && data[3].clients) || [];
 		var groups = (data[4] && data[4].groups) || [];
 		var self = this;
 
-		var allProfiles = builtinProfiles.concat(profiles);
+		this.profiles = builtinProfiles.concat(profiles);
 
-		var v = E('div', { 'class': 'cbi-map' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('bandwidth-manager/dashboard.css') }),
-			E('style', {}, this.getCustomStyles()),
-			E('h2', {}, _('Device Profiles')),
-			E('div', { 'class': 'cbi-map-descr' }, _('Create and manage device profiles with custom QoS settings, bandwidth limits, and latency modes'))
-		]);
-
-		// Quick Actions Bar
-		var actionsBar = E('div', { 'class': 'profile-actions' }, [
-			E('button', {
-				'class': 'bw-btn bw-btn-primary',
-				'click': function() { self.showCreateProfileModal(clients, groups); }
-			}, [E('span', {}, '+'), ' ' + _('Create Profile')]),
-			E('button', {
-				'class': 'bw-btn bw-btn-secondary',
-				'click': function() { self.showAssignModal(allProfiles, clients); }
-			}, [E('span', {}, '📱'), ' ' + _('Assign to Device')])
-		]);
-		v.appendChild(actionsBar);
-
-		// Profile Cards Grid
-		var profilesGrid = E('div', { 'class': 'profiles-grid' });
-
-		allProfiles.forEach(function(profile) {
-			var iconInfo = PROFILE_ICONS[profile.icon] || PROFILE_ICONS['tag'];
-			var assignedCount = assignments.filter(function(a) {
-				return a.profile === profile.id;
-			}).length;
-
-			var profileCard = E('div', {
-				'class': 'profile-card' + (profile.builtin ? ' builtin' : ''),
-				'style': '--profile-color: ' + (profile.color || iconInfo.color),
-				'data-profile-id': profile.id
-			}, [
-				E('div', { 'class': 'profile-header' }, [
-					E('div', { 'class': 'profile-icon' }, iconInfo.icon),
-					E('div', { 'class': 'profile-info' }, [
-						E('div', { 'class': 'profile-name' }, profile.name),
-						E('div', { 'class': 'profile-desc' }, profile.description || _('No description'))
-					]),
-					profile.builtin ? E('span', { 'class': 'badge badge-info' }, _('Built-in')) : null
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, _('Device Profiles')),
+					KissTheme.badge(this.profiles.length + ' profiles', 'blue')
 				]),
-				E('div', { 'class': 'profile-stats' }, [
-					E('div', { 'class': 'stat' }, [
-						E('span', { 'class': 'stat-value' }, String(profile.priority)),
-						E('span', { 'class': 'stat-label' }, _('Priority'))
-					]),
-					E('div', { 'class': 'stat' }, [
-						E('span', { 'class': 'stat-value' }, profile.limit_down > 0 ? self.formatSpeed(profile.limit_down) : '∞'),
-						E('span', { 'class': 'stat-label' }, _('Down'))
-					]),
-					E('div', { 'class': 'stat' }, [
-						E('span', { 'class': 'stat-value' }, profile.limit_up > 0 ? self.formatSpeed(profile.limit_up) : '∞'),
-						E('span', { 'class': 'stat-label' }, _('Up'))
-					]),
-					E('div', { 'class': 'stat' }, [
-						E('span', { 'class': 'stat-value' }, String(assignedCount)),
-						E('span', { 'class': 'stat-label' }, _('Devices'))
-					])
-				]),
-				E('div', { 'class': 'profile-features' }, [
-					profile.latency_mode === 'ultra' ? E('span', { 'class': 'feature-badge' }, '⚡ ' + _('Ultra Low Latency')) : null,
-					profile.isolate ? E('span', { 'class': 'feature-badge warning' }, '🔒 ' + _('Isolated')) : null,
-					profile.content_filter ? E('span', { 'class': 'feature-badge' }, '🛡️ ' + _('Filtered')) : null
-				].filter(Boolean)),
-				E('div', { 'class': 'profile-actions-row' }, [
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' },
+					_('Create and manage device profiles with custom QoS settings, bandwidth limits, and latency modes'))
+			]),
+
+			// Stats
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'style': 'margin: 20px 0;' },
+				this.renderStats()),
+
+			// Quick Actions
+			KissTheme.card('Quick Actions',
+				E('div', { 'style': 'display: flex; gap: 12px;' }, [
 					E('button', {
-						'class': 'bw-btn bw-btn-secondary btn-sm',
-						'click': function() { self.showProfileDetails(profile, assignments.filter(function(a) { return a.profile === profile.id; })); }
-					}, _('View')),
-					!profile.builtin ? E('button', {
-						'class': 'bw-btn bw-btn-secondary btn-sm',
-						'click': function() { self.showEditProfileModal(profile); }
-					}, _('Edit')) : null,
+						'class': 'kiss-btn kiss-btn-green',
+						'click': function() { self.showCreateProfileModal(self.clients, groups); }
+					}, '+ ' + _('Create Profile')),
 					E('button', {
-						'class': 'bw-btn bw-btn-secondary btn-sm',
-						'click': function() { self.cloneProfile(profile); }
-					}, _('Clone')),
-					!profile.builtin ? E('button', {
-						'class': 'bw-btn bw-btn-secondary btn-sm btn-danger',
-						'click': function() { self.deleteProfile(profile); }
-					}, _('Delete')) : null
-				].filter(Boolean))
-			]);
+						'class': 'kiss-btn kiss-btn-blue',
+						'click': function() { self.showAssignModal(self.profiles, self.clients); }
+					}, '📱 ' + _('Assign to Device'))
+				])
+			),
 
-			profilesGrid.appendChild(profileCard);
-		});
+			// Profiles Grid
+			this.renderProfilesGrid(),
 
-		v.appendChild(profilesGrid);
+			// Assignments Section
+			this.renderAssignmentsSection()
+		];
 
-		// Assigned Devices Section
-		if (assignments.length > 0) {
-			var assignmentsSection = E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Device Assignments')),
-				E('div', { 'class': 'assignments-list' })
-			]);
+		return KissTheme.wrap(content, 'admin/services/bandwidth-manager/profiles');
+	},
 
-			var assignmentsList = assignmentsSection.querySelector('.assignments-list');
+	renderProfilesGrid: function() {
+		var self = this;
 
-			assignments.forEach(function(assignment) {
-				var profile = allProfiles.find(function(p) { return p.id === assignment.profile; });
-				var iconInfo = profile ? (PROFILE_ICONS[profile.icon] || PROFILE_ICONS['tag']) : PROFILE_ICONS['tag'];
-
-				assignmentsList.appendChild(E('div', { 'class': 'assignment-item' }, [
-					E('div', { 'class': 'device-info' }, [
-						E('div', { 'class': 'device-name' }, assignment.hostname || assignment.mac),
-						E('div', { 'class': 'device-mac' }, assignment.mac),
-						assignment.ip ? E('div', { 'class': 'device-ip' }, assignment.ip) : null
-					]),
-					E('div', { 'class': 'assignment-profile', 'style': '--profile-color: ' + (profile ? profile.color : '#6366f1') }, [
-						E('span', { 'class': 'profile-icon-sm' }, iconInfo.icon),
-						E('span', {}, assignment.profile_name || assignment.profile)
-					]),
-					E('button', {
-						'class': 'bw-btn bw-btn-secondary btn-sm',
-						'click': function() { self.removeAssignment(assignment.mac); }
-					}, '✕')
-				]));
-			});
-
-			v.appendChild(assignmentsSection);
+		if (this.profiles.length === 0) {
+			return KissTheme.card('Profiles',
+				E('p', { 'style': 'color: var(--kiss-muted); text-align: center; padding: 30px;' },
+					_('No profiles available')));
 		}
 
-		return KissTheme.wrap([v], 'admin/services/bandwidth-manager/profiles');
+		var grid = E('div', { 'style': 'display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px;' },
+			this.profiles.map(function(profile) {
+				return self.renderProfileCard(profile);
+			})
+		);
+
+		return KissTheme.card(
+			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+				E('span', {}, 'All Profiles'),
+				KissTheme.badge(this.profiles.length + ' total', 'purple')
+			]),
+			grid
+		);
+	},
+
+	renderProfileCard: function(profile) {
+		var self = this;
+		var iconInfo = PROFILE_ICONS[profile.icon] || PROFILE_ICONS['tag'];
+		var assignedCount = this.assignments.filter(function(a) {
+			return a.profile === profile.id;
+		}).length;
+
+		var features = [];
+		if (profile.latency_mode === 'ultra') features.push(E('span', {}, '⚡ Ultra'));
+		if (profile.isolate) features.push(E('span', {}, '🔒 Isolated'));
+		if (profile.content_filter) features.push(E('span', {}, '🛡️ Filtered'));
+
+		return E('div', {
+			'style': 'background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 12px; padding: 16px; border-left: 4px solid var(--kiss-' + iconInfo.color + ');'
+		}, [
+			// Header
+			E('div', { 'style': 'display: flex; align-items: center; gap: 12px; margin-bottom: 12px;' }, [
+				E('div', {
+					'style': 'width: 44px; height: 44px; background: var(--kiss-bg2); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 24px;'
+				}, iconInfo.icon),
+				E('div', { 'style': 'flex: 1;' }, [
+					E('div', { 'style': 'display: flex; align-items: center; gap: 8px;' }, [
+						E('span', { 'style': 'font-weight: 600;' }, profile.name),
+						profile.builtin ? KissTheme.badge('Built-in', 'blue') : ''
+					]),
+					E('div', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, profile.description || _('No description'))
+				])
+			]),
+
+			// Stats
+			E('div', { 'style': 'display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 12px; background: var(--kiss-bg2); border-radius: 8px; margin-bottom: 12px; text-align: center;' }, [
+				E('div', {}, [
+					E('div', { 'style': 'font-size: 16px; font-weight: 700; color: var(--kiss-purple);' }, String(profile.priority)),
+					E('div', { 'style': 'font-size: 10px; color: var(--kiss-muted); text-transform: uppercase;' }, _('Priority'))
+				]),
+				E('div', {}, [
+					E('div', { 'style': 'font-size: 16px; font-weight: 700; color: var(--kiss-cyan);' }, profile.limit_down > 0 ? this.formatSpeed(profile.limit_down) : '∞'),
+					E('div', { 'style': 'font-size: 10px; color: var(--kiss-muted); text-transform: uppercase;' }, _('Down'))
+				]),
+				E('div', {}, [
+					E('div', { 'style': 'font-size: 16px; font-weight: 700; color: var(--kiss-green);' }, profile.limit_up > 0 ? this.formatSpeed(profile.limit_up) : '∞'),
+					E('div', { 'style': 'font-size: 10px; color: var(--kiss-muted); text-transform: uppercase;' }, _('Up'))
+				]),
+				E('div', {}, [
+					E('div', { 'style': 'font-size: 16px; font-weight: 700; color: var(--kiss-orange);' }, String(assignedCount)),
+					E('div', { 'style': 'font-size: 10px; color: var(--kiss-muted); text-transform: uppercase;' }, _('Devices'))
+				])
+			]),
+
+			// Features
+			features.length > 0 ? E('div', { 'style': 'display: flex; gap: 8px; margin-bottom: 12px; font-size: 12px; color: var(--kiss-muted);' }, features) : '',
+
+			// Actions
+			E('div', { 'style': 'display: flex; gap: 8px; flex-wrap: wrap;' }, [
+				E('button', {
+					'class': 'kiss-btn',
+					'style': 'padding: 6px 12px; font-size: 12px;',
+					'click': function() { self.showProfileDetails(profile, self.assignments.filter(function(a) { return a.profile === profile.id; })); }
+				}, _('View')),
+				!profile.builtin ? E('button', {
+					'class': 'kiss-btn kiss-btn-blue',
+					'style': 'padding: 6px 12px; font-size: 12px;',
+					'click': function() { self.showEditProfileModal(profile); }
+				}, _('Edit')) : '',
+				E('button', {
+					'class': 'kiss-btn kiss-btn-purple',
+					'style': 'padding: 6px 12px; font-size: 12px;',
+					'click': function() { self.cloneProfile(profile); }
+				}, _('Clone')),
+				!profile.builtin ? E('button', {
+					'class': 'kiss-btn kiss-btn-red',
+					'style': 'padding: 6px 12px; font-size: 12px;',
+					'click': function() { self.deleteProfile(profile); }
+				}, _('Delete')) : ''
+			].filter(Boolean))
+		]);
+	},
+
+	renderAssignmentsSection: function() {
+		var self = this;
+
+		if (this.assignments.length === 0) {
+			return '';
+		}
+
+		var rows = this.assignments.map(function(assignment) {
+			var profile = self.profiles.find(function(p) { return p.id === assignment.profile; });
+			var iconInfo = profile ? (PROFILE_ICONS[profile.icon] || PROFILE_ICONS['tag']) : PROFILE_ICONS['tag'];
+
+			return E('tr', {}, [
+				E('td', { 'style': 'font-weight: 500;' }, assignment.hostname || 'Unknown'),
+				E('td', { 'style': 'font-family: monospace; font-size: 12px; color: var(--kiss-muted);' }, assignment.mac),
+				E('td', { 'style': 'color: var(--kiss-muted);' }, assignment.ip || '-'),
+				E('td', {}, [
+					E('span', { 'style': 'display: flex; align-items: center; gap: 6px;' }, [
+						E('span', {}, iconInfo.icon),
+						assignment.profile_name || assignment.profile
+					])
+				]),
+				E('td', {}, [
+					E('button', {
+						'class': 'kiss-btn kiss-btn-red',
+						'style': 'padding: 4px 10px; font-size: 11px;',
+						'click': function() { self.removeAssignment(assignment.mac); }
+					}, '✕')
+				])
+			]);
+		});
+
+		return KissTheme.card(
+			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+				E('span', {}, _('Device Assignments')),
+				KissTheme.badge(this.assignments.length + ' devices', 'cyan')
+			]),
+			E('table', { 'class': 'kiss-table' }, [
+				E('thead', {}, [
+					E('tr', {}, [
+						E('th', {}, _('Device')),
+						E('th', {}, _('MAC')),
+						E('th', {}, _('IP')),
+						E('th', {}, _('Profile')),
+						E('th', { 'style': 'width: 60px;' }, '')
+					])
+				]),
+				E('tbody', {}, rows)
+			])
+		);
 	},
 
 	showCreateProfileModal: function(clients, groups) {
 		var self = this;
+		var inputStyle = 'width: 100%; padding: 8px 12px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text);';
 
-		var body = E('div', { 'class': 'profile-form' }, [
-			E('div', { 'class': 'form-group' }, [
-				E('label', {}, _('Profile Name')),
-				E('input', { 'type': 'text', 'id': 'profile-name', 'class': 'cbi-input-text', 'placeholder': _('e.g., Gaming PC') })
+		var body = E('div', { 'style': 'display: flex; flex-direction: column; gap: 16px;' }, [
+			E('div', {}, [
+				E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('Profile Name')),
+				E('input', { 'type': 'text', 'id': 'profile-name', 'style': inputStyle, 'placeholder': _('e.g., Gaming PC') })
 			]),
-			E('div', { 'class': 'form-group' }, [
-				E('label', {}, _('Description')),
-				E('input', { 'type': 'text', 'id': 'profile-desc', 'class': 'cbi-input-text', 'placeholder': _('Optional description') })
+			E('div', {}, [
+				E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('Description')),
+				E('input', { 'type': 'text', 'id': 'profile-desc', 'style': inputStyle, 'placeholder': _('Optional description') })
 			]),
-			E('div', { 'class': 'form-row' }, [
-				E('div', { 'class': 'form-group half' }, [
-					E('label', {}, _('Icon')),
-					E('select', { 'id': 'profile-icon', 'class': 'cbi-input-select' },
+			E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 16px;' }, [
+				E('div', {}, [
+					E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('Icon')),
+					E('select', { 'id': 'profile-icon', 'style': inputStyle },
 						Object.keys(PROFILE_ICONS).map(function(key) {
 							return E('option', { 'value': key }, PROFILE_ICONS[key].icon + ' ' + key);
 						})
 					)
 				]),
-				E('div', { 'class': 'form-group half' }, [
-					E('label', {}, _('Color')),
-					E('input', { 'type': 'color', 'id': 'profile-color', 'value': '#8b5cf6' })
+				E('div', {}, [
+					E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('Color')),
+					E('input', { 'type': 'color', 'id': 'profile-color', 'value': '#8b5cf6', 'style': 'width: 100%; height: 38px; border-radius: 6px; border: 1px solid var(--kiss-line);' })
 				])
 			]),
-			E('div', { 'class': 'form-group' }, [
-				E('label', {}, _('Priority (1-8, lower = higher priority)')),
-				E('input', { 'type': 'number', 'id': 'profile-priority', 'class': 'cbi-input-text', 'min': '1', 'max': '8', 'value': '5' })
+			E('div', {}, [
+				E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('Priority (1-8, lower = higher priority)')),
+				E('input', { 'type': 'number', 'id': 'profile-priority', 'style': inputStyle, 'min': '1', 'max': '8', 'value': '5' })
 			]),
-			E('div', { 'class': 'form-row' }, [
-				E('div', { 'class': 'form-group half' }, [
-					E('label', {}, _('Download Limit (kbit/s, 0 = unlimited)')),
-					E('input', { 'type': 'number', 'id': 'profile-limit-down', 'class': 'cbi-input-text', 'min': '0', 'value': '0' })
+			E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 16px;' }, [
+				E('div', {}, [
+					E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('Download Limit (kbit/s)')),
+					E('input', { 'type': 'number', 'id': 'profile-limit-down', 'style': inputStyle, 'min': '0', 'value': '0', 'placeholder': '0 = unlimited' })
 				]),
-				E('div', { 'class': 'form-group half' }, [
-					E('label', {}, _('Upload Limit (kbit/s, 0 = unlimited)')),
-					E('input', { 'type': 'number', 'id': 'profile-limit-up', 'class': 'cbi-input-text', 'min': '0', 'value': '0' })
+				E('div', {}, [
+					E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('Upload Limit (kbit/s)')),
+					E('input', { 'type': 'number', 'id': 'profile-limit-up', 'style': inputStyle, 'min': '0', 'value': '0', 'placeholder': '0 = unlimited' })
 				])
 			]),
-			E('div', { 'class': 'form-group' }, [
-				E('label', {}, _('Latency Mode')),
-				E('select', { 'id': 'profile-latency', 'class': 'cbi-input-select' }, [
+			E('div', {}, [
+				E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('Latency Mode')),
+				E('select', { 'id': 'profile-latency', 'style': inputStyle }, [
 					E('option', { 'value': 'normal' }, _('Normal')),
 					E('option', { 'value': 'low' }, _('Low Latency')),
 					E('option', { 'value': 'ultra' }, _('Ultra Low Latency (Gaming)'))
 				])
 			]),
-			E('div', { 'class': 'form-group' }, [
-				E('label', {}, [
+			E('div', {}, [
+				E('label', { 'style': 'display: flex; align-items: center; gap: 8px; cursor: pointer;' }, [
 					E('input', { 'type': 'checkbox', 'id': 'profile-isolate' }),
-					' ' + _('Network Isolation (block LAN communication)')
+					_('Network Isolation (block LAN communication)')
 				])
 			])
 		]);
 
 		ui.showModal(_('Create New Profile'), [
 			body,
-			E('div', { 'class': 'right' }, [
-				E('button', {
-					'class': 'btn',
-					'click': ui.hideModal
-				}, _('Cancel')),
-				' ',
-				E('button', {
-					'class': 'btn cbi-button-action',
-					'click': function() { self.createProfile(); }
-				}, _('Create Profile'))
+			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px;' }, [
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, _('Cancel')),
+				E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': function() { self.createProfile(); } }, _('Create Profile'))
 			])
 		]);
 	},
@@ -268,69 +348,66 @@ return L.view.extend({
 
 	showEditProfileModal: function(profile) {
 		var self = this;
+		var inputStyle = 'width: 100%; padding: 8px 12px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text);';
 
-		var body = E('div', { 'class': 'profile-form' }, [
-			E('div', { 'class': 'form-group' }, [
-				E('label', {}, _('Profile Name')),
-				E('input', { 'type': 'text', 'id': 'edit-profile-name', 'class': 'cbi-input-text', 'value': profile.name })
+		var body = E('div', { 'style': 'display: flex; flex-direction: column; gap: 16px;' }, [
+			E('div', {}, [
+				E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('Profile Name')),
+				E('input', { 'type': 'text', 'id': 'edit-profile-name', 'style': inputStyle, 'value': profile.name })
 			]),
-			E('div', { 'class': 'form-group' }, [
-				E('label', {}, _('Description')),
-				E('input', { 'type': 'text', 'id': 'edit-profile-desc', 'class': 'cbi-input-text', 'value': profile.description || '' })
+			E('div', {}, [
+				E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('Description')),
+				E('input', { 'type': 'text', 'id': 'edit-profile-desc', 'style': inputStyle, 'value': profile.description || '' })
 			]),
-			E('div', { 'class': 'form-row' }, [
-				E('div', { 'class': 'form-group half' }, [
-					E('label', {}, _('Icon')),
-					E('select', { 'id': 'edit-profile-icon', 'class': 'cbi-input-select' },
+			E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 16px;' }, [
+				E('div', {}, [
+					E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('Icon')),
+					E('select', { 'id': 'edit-profile-icon', 'style': inputStyle },
 						Object.keys(PROFILE_ICONS).map(function(key) {
 							return E('option', { 'value': key, 'selected': key === profile.icon }, PROFILE_ICONS[key].icon + ' ' + key);
 						})
 					)
 				]),
-				E('div', { 'class': 'form-group half' }, [
-					E('label', {}, _('Color')),
-					E('input', { 'type': 'color', 'id': 'edit-profile-color', 'value': profile.color || '#8b5cf6' })
+				E('div', {}, [
+					E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('Color')),
+					E('input', { 'type': 'color', 'id': 'edit-profile-color', 'value': profile.color || '#8b5cf6', 'style': 'width: 100%; height: 38px; border-radius: 6px; border: 1px solid var(--kiss-line);' })
 				])
 			]),
-			E('div', { 'class': 'form-group' }, [
-				E('label', {}, _('Priority (1-8)')),
-				E('input', { 'type': 'number', 'id': 'edit-profile-priority', 'class': 'cbi-input-text', 'min': '1', 'max': '8', 'value': String(profile.priority) })
+			E('div', {}, [
+				E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('Priority (1-8)')),
+				E('input', { 'type': 'number', 'id': 'edit-profile-priority', 'style': inputStyle, 'min': '1', 'max': '8', 'value': String(profile.priority) })
 			]),
-			E('div', { 'class': 'form-row' }, [
-				E('div', { 'class': 'form-group half' }, [
-					E('label', {}, _('Download Limit (kbit/s)')),
-					E('input', { 'type': 'number', 'id': 'edit-profile-limit-down', 'class': 'cbi-input-text', 'min': '0', 'value': String(profile.limit_down) })
+			E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 16px;' }, [
+				E('div', {}, [
+					E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('Download Limit (kbit/s)')),
+					E('input', { 'type': 'number', 'id': 'edit-profile-limit-down', 'style': inputStyle, 'min': '0', 'value': String(profile.limit_down) })
 				]),
-				E('div', { 'class': 'form-group half' }, [
-					E('label', {}, _('Upload Limit (kbit/s)')),
-					E('input', { 'type': 'number', 'id': 'edit-profile-limit-up', 'class': 'cbi-input-text', 'min': '0', 'value': String(profile.limit_up) })
+				E('div', {}, [
+					E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('Upload Limit (kbit/s)')),
+					E('input', { 'type': 'number', 'id': 'edit-profile-limit-up', 'style': inputStyle, 'min': '0', 'value': String(profile.limit_up) })
 				])
 			]),
-			E('div', { 'class': 'form-group' }, [
-				E('label', {}, _('Latency Mode')),
-				E('select', { 'id': 'edit-profile-latency', 'class': 'cbi-input-select' }, [
+			E('div', {}, [
+				E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('Latency Mode')),
+				E('select', { 'id': 'edit-profile-latency', 'style': inputStyle }, [
 					E('option', { 'value': 'normal', 'selected': profile.latency_mode === 'normal' }, _('Normal')),
 					E('option', { 'value': 'low', 'selected': profile.latency_mode === 'low' }, _('Low Latency')),
 					E('option', { 'value': 'ultra', 'selected': profile.latency_mode === 'ultra' }, _('Ultra Low Latency'))
 				])
 			]),
-			E('div', { 'class': 'form-group' }, [
-				E('label', {}, [
+			E('div', {}, [
+				E('label', { 'style': 'display: flex; align-items: center; gap: 8px; cursor: pointer;' }, [
 					E('input', { 'type': 'checkbox', 'id': 'edit-profile-isolate', 'checked': profile.isolate }),
-					' ' + _('Network Isolation')
+					_('Network Isolation')
 				])
 			])
 		]);
 
 		ui.showModal(_('Edit Profile: ') + profile.name, [
 			body,
-			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')),
-				' ',
-				E('button', {
-					'class': 'btn cbi-button-action',
-					'click': function() { self.updateProfile(profile.id); }
-				}, _('Save Changes'))
+			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px;' }, [
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, _('Cancel')),
+				E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': function() { self.updateProfile(profile.id); } }, _('Save Changes'))
 			])
 		]);
 	},
@@ -391,19 +468,20 @@ return L.view.extend({
 
 	showAssignModal: function(profiles, clients) {
 		var self = this;
+		var inputStyle = 'width: 100%; padding: 8px 12px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text);';
 
-		var body = E('div', { 'class': 'assign-form' }, [
-			E('div', { 'class': 'form-group' }, [
-				E('label', {}, _('Select Device')),
-				E('select', { 'id': 'assign-device', 'class': 'cbi-input-select' },
+		var body = E('div', { 'style': 'display: flex; flex-direction: column; gap: 16px;' }, [
+			E('div', {}, [
+				E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('Select Device')),
+				E('select', { 'id': 'assign-device', 'style': inputStyle },
 					clients.map(function(client) {
 						return E('option', { 'value': client.mac }, (client.hostname || 'Unknown') + ' (' + client.mac + ')');
 					})
 				)
 			]),
-			E('div', { 'class': 'form-group' }, [
-				E('label', {}, _('Select Profile')),
-				E('select', { 'id': 'assign-profile', 'class': 'cbi-input-select' },
+			E('div', {}, [
+				E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, _('Select Profile')),
+				E('select', { 'id': 'assign-profile', 'style': inputStyle },
 					profiles.map(function(profile) {
 						var iconInfo = PROFILE_ICONS[profile.icon] || PROFILE_ICONS['tag'];
 						return E('option', { 'value': profile.id }, iconInfo.icon + ' ' + profile.name);
@@ -414,13 +492,9 @@ return L.view.extend({
 
 		ui.showModal(_('Assign Profile to Device'), [
 			body,
-			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')),
-				' ',
-				E('button', {
-					'class': 'btn cbi-button-action',
-					'click': function() { self.assignProfile(); }
-				}, _('Assign'))
+			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px;' }, [
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, _('Cancel')),
+				E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': function() { self.assignProfile(); } }, _('Assign'))
 			])
 		]);
 	},
@@ -458,37 +532,55 @@ return L.view.extend({
 	showProfileDetails: function(profile, assignments) {
 		var iconInfo = PROFILE_ICONS[profile.icon] || PROFILE_ICONS['tag'];
 
-		var details = E('div', { 'class': 'profile-details' }, [
-			E('div', { 'class': 'detail-header', 'style': '--profile-color: ' + (profile.color || iconInfo.color) }, [
-				E('span', { 'class': 'profile-icon-lg' }, iconInfo.icon),
+		var detailRows = [
+			{ label: _('Priority'), value: String(profile.priority) },
+			{ label: _('Download Limit'), value: profile.limit_down > 0 ? this.formatSpeed(profile.limit_down) : _('Unlimited') },
+			{ label: _('Upload Limit'), value: profile.limit_up > 0 ? this.formatSpeed(profile.limit_up) : _('Unlimited') },
+			{ label: _('Latency Mode'), value: profile.latency_mode || 'normal' },
+			{ label: _('Network Isolation'), value: profile.isolate ? _('Yes') : _('No') },
+			{ label: _('Assigned Devices'), value: String(assignments.length) }
+		];
+
+		var details = E('div', {}, [
+			// Header
+			E('div', { 'style': 'display: flex; align-items: center; gap: 16px; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--kiss-line);' }, [
+				E('div', {
+					'style': 'width: 64px; height: 64px; background: var(--kiss-bg2); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 32px;'
+				}, iconInfo.icon),
 				E('div', {}, [
-					E('h3', {}, profile.name),
-					E('p', {}, profile.description || _('No description'))
+					E('h3', { 'style': 'margin: 0 0 4px 0; font-size: 20px;' }, profile.name),
+					E('p', { 'style': 'margin: 0; color: var(--kiss-muted);' }, profile.description || _('No description'))
 				])
 			]),
-			E('table', { 'class': 'table' }, [
-				E('tr', {}, [E('td', {}, _('Priority')), E('td', {}, String(profile.priority))]),
-				E('tr', {}, [E('td', {}, _('Download Limit')), E('td', {}, profile.limit_down > 0 ? this.formatSpeed(profile.limit_down) : _('Unlimited'))]),
-				E('tr', {}, [E('td', {}, _('Upload Limit')), E('td', {}, profile.limit_up > 0 ? this.formatSpeed(profile.limit_up) : _('Unlimited'))]),
-				E('tr', {}, [E('td', {}, _('Latency Mode')), E('td', {}, profile.latency_mode)]),
-				E('tr', {}, [E('td', {}, _('Network Isolation')), E('td', {}, profile.isolate ? _('Yes') : _('No'))]),
-				E('tr', {}, [E('td', {}, _('Assigned Devices')), E('td', {}, String(assignments.length))])
-			])
+
+			// Details table
+			E('div', { 'style': 'display: flex; flex-direction: column; gap: 8px;' },
+				detailRows.map(function(row) {
+					return E('div', {
+						'style': 'display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--kiss-line);'
+					}, [
+						E('span', { 'style': 'color: var(--kiss-muted);' }, row.label),
+						E('span', { 'style': 'font-weight: 500;' }, row.value)
+					]);
+				})
+			)
 		]);
 
 		if (assignments.length > 0) {
-			details.appendChild(E('h4', {}, _('Assigned Devices:')));
-			var deviceList = E('ul', { 'class': 'device-list' });
-			assignments.forEach(function(a) {
-				deviceList.appendChild(E('li', {}, (a.hostname || 'Unknown') + ' - ' + a.mac));
-			});
-			details.appendChild(deviceList);
+			details.appendChild(E('h4', { 'style': 'margin: 20px 0 12px 0;' }, _('Assigned Devices:')));
+			details.appendChild(E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' },
+				assignments.map(function(a) {
+					return E('div', {
+						'style': 'padding: 8px 12px; background: var(--kiss-bg); border-radius: 6px; font-family: monospace; font-size: 13px;'
+					}, (a.hostname || 'Unknown') + ' - ' + a.mac);
+				})
+			));
 		}
 
 		ui.showModal(_('Profile Details'), [
 			details,
-			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Close'))
+			E('div', { 'style': 'display: flex; justify-content: flex-end; margin-top: 20px;' }, [
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, _('Close'))
 			])
 		]);
 	},
@@ -500,54 +592,5 @@ return L.view.extend({
 			return (kbits / 1000).toFixed(1) + ' Mbit/s';
 		}
 		return kbits + ' kbit/s';
-	},
-
-	getCustomStyles: function() {
-		return `
-			.profile-actions { margin-bottom: 20px; display: flex; gap: 12px; }
-			.profiles-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; margin-bottom: 24px; }
-			.profile-card { background: var(--bw-light, #15151a); border: 1px solid var(--bw-border, #25252f); border-radius: 12px; padding: 20px; position: relative; overflow: hidden; transition: all 0.2s; }
-			.profile-card::before { content: ""; position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: var(--profile-color, #8b5cf6); }
-			.profile-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2); }
-			.profile-card.builtin { border-style: dashed; }
-			.profile-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-			.profile-icon { font-size: 32px; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: rgba(139, 92, 246, 0.1); border-radius: 12px; }
-			.profile-info { flex: 1; }
-			.profile-name { font-size: 18px; font-weight: 600; color: #fff; }
-			.profile-desc { font-size: 13px; color: #999; margin-top: 4px; }
-			.profile-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; padding: 12px; background: var(--bw-dark, #0a0a0f); border-radius: 8px; }
-			.stat { text-align: center; }
-			.stat-value { display: block; font-size: 18px; font-weight: 700; background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-			.stat-label { font-size: 11px; color: #666; text-transform: uppercase; }
-			.profile-features { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; min-height: 28px; }
-			.feature-badge { font-size: 11px; padding: 4px 8px; background: rgba(139, 92, 246, 0.2); color: #a78bfa; border-radius: 4px; }
-			.feature-badge.warning { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
-			.profile-actions-row { display: flex; gap: 8px; flex-wrap: wrap; }
-			.btn-sm { padding: 6px 12px; font-size: 12px; }
-			.btn-danger { color: #ef4444; }
-			.btn-danger:hover { background: rgba(239, 68, 68, 0.2); }
-			.badge { padding: 4px 8px; border-radius: 4px; font-size: 10px; text-transform: uppercase; font-weight: 600; }
-			.badge-info { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
-			.assignments-list { display: grid; gap: 12px; }
-			.assignment-item { display: flex; align-items: center; justify-content: space-between; background: var(--bw-light, #15151a); border: 1px solid var(--bw-border, #25252f); border-radius: 8px; padding: 12px 16px; }
-			.device-info { flex: 1; }
-			.device-name { font-weight: 600; color: #fff; }
-			.device-mac { font-family: monospace; font-size: 12px; color: #666; }
-			.device-ip { font-size: 12px; color: #999; }
-			.assignment-profile { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: rgba(139, 92, 246, 0.1); border-radius: 6px; margin: 0 12px; }
-			.profile-icon-sm { font-size: 16px; }
-			.form-group { margin-bottom: 16px; }
-			.form-group label { display: block; margin-bottom: 6px; font-weight: 500; color: #ccc; }
-			.form-row { display: flex; gap: 16px; }
-			.form-group.half { flex: 1; }
-			.profile-details .detail-header { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--bw-border, #25252f); }
-			.profile-icon-lg { font-size: 48px; }
-			.device-list { list-style: none; padding: 0; margin: 0; }
-			.device-list li { padding: 8px 12px; background: var(--bw-dark, #0a0a0f); border-radius: 4px; margin-bottom: 8px; font-family: monospace; font-size: 13px; }
-		`;
-	},
-
-	handleSaveApply: null,
-	handleSave: null,
-	handleReset: null
+	}
 });

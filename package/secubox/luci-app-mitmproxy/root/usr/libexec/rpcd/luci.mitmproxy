@@ -7,16 +7,17 @@ CONFIG="mitmproxy"
 LXC_NAME="mitmproxy"
 LXC_PATH="/srv/lxc"
 LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
-MITMPROXY_CACHE="/tmp/secubox/mitmproxy.json"
+MITMPROXY_CACHE="/tmp/secubox/waf-stats.json"
 # WAF input instance data path (for threat stats)
 WAF_DATA_PATH="/srv/mitmproxy-in"
 
-# Read cached status for fast API responses
+# Read cached status for fast API responses (updated every minute by cron)
 get_cached_status() {
 	if [ -f "$MITMPROXY_CACHE" ]; then
 		cat "$MITMPROXY_CACHE"
 	else
-		echo '{"running":0,"threats_today":0,"autobans":0,"pending":0,"wan_enabled":0,"lan_enabled":0,"timestamp":0}'
+		# Fallback: generate minimal stats
+		echo '{"running":false,"threats_today":0,"autobans_today":0,"autobans_total":0,"autobans_pending":0,"autoban_enabled":false,"autoban_sensitivity":"moderate","autoban_duration":"4h","mode":"upstream","updated":null}'
 	fi
 }
 

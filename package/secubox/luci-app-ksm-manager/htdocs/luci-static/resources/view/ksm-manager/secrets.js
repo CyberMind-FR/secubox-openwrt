@@ -1,6 +1,5 @@
 'use strict';
 'require view';
-'require secubox-theme/theme as Theme';
 'require form';
 'require ui';
 'require ksm-manager/api as KSM';
@@ -47,12 +46,13 @@ return view.extend({
 		o.onclick = L.bind(this.handleAddSecret, this);
 
 		// Secrets Table
-		var secretsTable = E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('Stored Secrets')),
-			E('div', { 'class': 'cbi-section-node' }, [
-				this.renderSecretsTable(secrets)
-			])
-		]);
+		var secretsTable = KissTheme.card(
+			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+				E('span', {}, 'Stored Secrets'),
+				KissTheme.badge(secrets.length + ' secrets', 'purple')
+			]),
+			this.renderSecretsTable(secrets)
+		);
 
 		return KissTheme.wrap([
 			m.render(),
@@ -62,46 +62,42 @@ return view.extend({
 
 	renderSecretsTable: function(secrets) {
 		if (!secrets || secrets.length === 0) {
-			return E('div', { 'class': 'cbi-value' }, [
-				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-				E('em', {}, _('No secrets stored.'))
-			]);
+			return E('p', { 'style': 'color: var(--kiss-muted); text-align: center; padding: 20px;' },
+				'No secrets stored.');
 		}
 
-		var table = E('table', { 'class': 'table' }, [
-			E('tr', { 'class': 'tr table-titles' }, [
-				E('th', { 'class': 'th' }, _('Label')),
-				E('th', { 'class': 'th' }, _('Category')),
-				E('th', { 'class': 'th' }, _('Created')),
-				E('th', { 'class': 'th center' }, _('Actions'))
-			])
+		return E('table', { 'class': 'kiss-table' }, [
+			E('thead', {}, E('tr', {}, [
+				E('th', { 'style': 'padding: 10px 12px;' }, _('Label')),
+				E('th', { 'style': 'padding: 10px 12px;' }, _('Category')),
+				E('th', { 'style': 'padding: 10px 12px;' }, _('Created')),
+				E('th', { 'style': 'padding: 10px 12px; text-align: center;' }, _('Actions'))
+			])),
+			E('tbody', {}, secrets.map(L.bind(function(secret) {
+				return E('tr', {}, [
+					E('td', { 'style': 'padding: 10px 12px;' }, secret.label || 'Unnamed'),
+					E('td', { 'style': 'padding: 10px 12px;' }, KissTheme.badge(secret.category || 'other', 'muted')),
+					E('td', { 'style': 'padding: 10px 12px; font-family: monospace; font-size: 12px;' }, KSM.formatTimestamp(secret.created)),
+					E('td', { 'style': 'padding: 10px 12px; text-align: center;' }, [
+						E('button', {
+							'class': 'kiss-btn kiss-btn-blue',
+							'style': 'padding: 4px 10px; font-size: 12px; margin-right: 6px;',
+							'click': L.bind(function() { this.handleViewSecret(secret.id, secret.label); }, this)
+						}, 'View'),
+						E('button', {
+							'class': 'kiss-btn kiss-btn-orange',
+							'style': 'padding: 4px 10px; font-size: 12px; margin-right: 6px;',
+							'click': L.bind(function() { this.handleRotateSecret(secret.id, secret.label); }, this)
+						}, 'Rotate'),
+						E('button', {
+							'class': 'kiss-btn kiss-btn-red',
+							'style': 'padding: 4px 10px; font-size: 12px;',
+							'click': L.bind(function() { this.handleDeleteSecret(secret.id, secret.label); }, this)
+						}, 'Delete')
+					])
+				]);
+			}, this)))
 		]);
-
-		secrets.forEach(L.bind(function(secret) {
-			table.appendChild(E('tr', { 'class': 'tr' }, [
-				E('td', { 'class': 'td' }, secret.label || _('Unnamed')),
-				E('td', { 'class': 'td' }, secret.category || _('Unknown')),
-				E('td', { 'class': 'td' }, KSM.formatTimestamp(secret.created)),
-				E('td', { 'class': 'td center' }, [
-					E('button', {
-						'class': 'cbi-button cbi-button-action',
-						'click': L.bind(function() { this.handleViewSecret(secret.id, secret.label); }, this)
-					}, _('View')),
-					' ',
-					E('button', {
-						'class': 'cbi-button cbi-button-neutral',
-						'click': L.bind(function() { this.handleRotateSecret(secret.id, secret.label); }, this)
-					}, _('Rotate')),
-					' ',
-					E('button', {
-						'class': 'cbi-button cbi-button-negative',
-						'click': L.bind(function() { this.handleDeleteSecret(secret.id, secret.label); }, this)
-					}, _('Delete'))
-				])
-			]));
-		}, this));
-
-		return table;
 	},
 
 	handleAddSecret: function(ev) {
@@ -147,30 +143,32 @@ return view.extend({
 		KSM.retrieveSecret(secretId).then(function(result) {
 			if (result && result.success) {
 				ui.showModal(_('Secret: ') + label, [
-					E('div', { 'class': 'alert-message warning' }, [
-						_('This access is being logged. The secret will auto-hide after 30 seconds.')
+					E('div', {
+						'style': 'background: var(--kiss-orange); color: #000; padding: 12px; border-radius: 6px; margin-bottom: 16px;'
+					}, _('This access is being logged. The secret will auto-hide after 30 seconds.')),
+					E('label', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+						E('span', { 'style': 'font-weight: 500; color: var(--kiss-muted);' }, _('Secret Value')),
+						E('input', {
+							'type': 'text',
+							'value': result.secret_data,
+							'readonly': 'readonly',
+							'style': 'width: 100%; padding: 10px 14px; background: var(--kiss-bg); ' +
+								'border: 1px solid var(--kiss-line); border-radius: 6px; font-family: monospace; color: var(--kiss-text);'
+						})
 					]),
-					E('div', { 'class': 'cbi-value' }, [
-						E('label', { 'class': 'cbi-value-title' }, _('Secret Value') + ':'),
-						E('div', { 'class': 'cbi-value-field' }, [
-							E('input', {
-								'type': 'text',
-								'value': result.secret_data,
-								'readonly': 'readonly',
-								'style': 'width: 100%; font-family: monospace;'
-							})
-						])
-					]),
-					E('div', { 'class': 'right' }, [
+					E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px;' }, [
 						E('button', {
-							'class': 'cbi-button cbi-button-action',
+							'class': 'kiss-btn kiss-btn-cyan',
 							'click': function() {
 								navigator.clipboard.writeText(result.secret_data);
 								ui.addNotification(null, E('p', _('Secret copied to clipboard')), 'info');
 							}
 						}, _('Copy to Clipboard')),
-						' ',
-						E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Close'))
+						E('button', {
+							'class': 'kiss-btn',
+							'style': 'background: var(--kiss-bg2); border: 1px solid var(--kiss-line);',
+							'click': ui.hideModal
+						}, _('Close'))
 					])
 				]);
 
@@ -185,21 +183,20 @@ return view.extend({
 
 	handleRotateSecret: function(secretId, label) {
 		ui.showModal(_('Rotate Secret'), [
-			E('p', {}, _('Enter new secret value for: %s').format(label)),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('New Secret Value') + ':'),
-				E('div', { 'class': 'cbi-value-field' }, [
-					E('input', {
-						'type': 'password',
-						'id': 'new-secret-value',
-						'placeholder': _('New secret value'),
-						'style': 'width: 100%;'
-					})
-				])
+			E('p', { 'style': 'color: var(--kiss-muted);' }, _('Enter new secret value for: %s').format(label)),
+			E('label', { 'style': 'display: flex; flex-direction: column; gap: 6px; margin: 16px 0;' }, [
+				E('span', { 'style': 'font-weight: 500; color: var(--kiss-muted);' }, _('New Secret Value')),
+				E('input', {
+					'type': 'password',
+					'id': 'new-secret-value',
+					'placeholder': _('New secret value'),
+					'style': 'width: 100%; padding: 10px 14px; background: var(--kiss-bg); ' +
+						'border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text);'
+				})
 			]),
-			E('div', { 'class': 'right' }, [
+			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px;' }, [
 				E('button', {
-					'class': 'cbi-button cbi-button-action',
+					'class': 'kiss-btn kiss-btn-orange',
 					'click': function() {
 						var newValue = document.getElementById('new-secret-value').value;
 
@@ -221,27 +218,32 @@ return view.extend({
 						});
 					}
 				}, _('Rotate')),
-				' ',
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel'))
+				E('button', {
+					'class': 'kiss-btn',
+					'style': 'background: var(--kiss-bg2); border: 1px solid var(--kiss-line);',
+					'click': ui.hideModal
+				}, _('Cancel'))
 			])
 		]);
 	},
 
 	handleDeleteSecret: function(secretId, label) {
-		// Simplified - would need actual delete method
 		ui.showModal(_('Confirm Deletion'), [
-			E('p', {}, _('Are you sure you want to delete secret: %s?').format(label)),
-			E('p', {}, _('This action cannot be undone.')),
-			E('div', { 'class': 'right' }, [
+			E('p', { 'style': 'color: var(--kiss-text);' }, _('Are you sure you want to delete secret: %s?').format(label)),
+			E('p', { 'style': 'color: var(--kiss-red);' }, _('This action cannot be undone.')),
+			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px;' }, [
 				E('button', {
-					'class': 'cbi-button cbi-button-negative',
+					'class': 'kiss-btn kiss-btn-red',
 					'click': function() {
 						ui.hideModal();
 						ui.addNotification(null, E('p', _('Delete functionality requires backend implementation')), 'info');
 					}
 				}, _('Delete')),
-				' ',
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel'))
+				E('button', {
+					'class': 'kiss-btn',
+					'style': 'background: var(--kiss-bg2); border: 1px solid var(--kiss-line);',
+					'click': ui.hideModal
+				}, _('Cancel'))
 			])
 		]);
 	},

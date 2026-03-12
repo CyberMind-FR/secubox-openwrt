@@ -65,7 +65,7 @@ return view.extend({
 			}, [
 				E('p', { 'style': 'color:#94a3b8; margin-bottom:1rem' }, data.error),
 				E('button', {
-					'class': 'cbi-button cbi-button-apply',
+					'class': 'kiss-btn kiss-btn-cyan',
 					'click': ui.createHandlerFn(this, function() {
 						return callCheck().then(function() {
 							ui.addNotification(null, E('p', 'Compliance check completed. Refreshing...'));
@@ -165,7 +165,7 @@ return view.extend({
 		// Action Buttons
 		view.appendChild(E('div', { 'style': 'margin-top:2rem; display:flex; gap:1rem;' }, [
 			E('button', {
-				'class': 'cbi-button cbi-button-apply',
+				'class': 'kiss-btn kiss-btn-cyan',
 				'click': ui.createHandlerFn(this, function() {
 					return callCheck().then(function() {
 						ui.addNotification(null, E('p', 'Compliance check completed. Refreshing...'));

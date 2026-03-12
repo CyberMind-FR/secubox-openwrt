@@ -4,6 +4,7 @@
 'require poll';
 'require rpc';
 'require ui';
+'require secubox/kiss-theme';
 
 var callVMStatus = rpc.declare({
 	object: 'luci.vm',
@@ -53,13 +54,6 @@ var callVMExport = rpc.declare({
 	params: ['name', 'format']
 });
 
-// State colors
-var stateConfig = {
-	RUNNING: { color: '#27ae60', icon: '●', label: 'Running' },
-	STOPPED: { color: '#e74c3c', icon: '○', label: 'Stopped' },
-	FROZEN: { color: '#3498db', icon: '◐', label: 'Frozen' }
-};
-
 return view.extend({
 	load: function() {
 		return Promise.all([
@@ -68,267 +62,175 @@ return view.extend({
 		]);
 	},
 
-	renderStatusBar: function(status) {
-		return E('div', { 'class': 'vm-status-bar' }, [
-			E('div', { 'class': 'status-item' }, [
-				E('span', { 'class': 'status-value', 'style': 'color: #3498db' }, String(status.total || 0)),
-				E('span', { 'class': 'status-label' }, 'Total')
-			]),
-			E('div', { 'class': 'status-item' }, [
-				E('span', { 'class': 'status-value', 'style': 'color: #27ae60' }, String(status.running || 0)),
-				E('span', { 'class': 'status-label' }, 'Running')
-			]),
-			E('div', { 'class': 'status-item' }, [
-				E('span', { 'class': 'status-value', 'style': 'color: #e74c3c' }, String(status.stopped || 0)),
-				E('span', { 'class': 'status-label' }, 'Stopped')
-			]),
-			E('div', { 'class': 'status-item' }, [
-				E('span', { 'class': 'status-value', 'style': 'color: #9b59b6' }, (status.disk_used_mb || 0) + 'MB'),
-				E('span', { 'class': 'status-label' }, 'Disk Used')
-			]),
-			E('div', { 'class': 'status-item' }, [
-				E('span', { 'class': 'status-value', 'style': 'color: #1abc9c' }, (status.disk_free_mb || 0) + 'MB'),
-				E('span', { 'class': 'status-label' }, 'Disk Free')
-			])
-		]);
+	renderNav: function(active) {
+		var tabs = [
+			{ name: 'Overview', path: 'admin/services/vm/overview' },
+			{ name: 'Create', path: 'admin/services/vm/create' },
+			{ name: 'Templates', path: 'admin/services/vm/templates' }
+		];
+
+		return E('div', { 'class': 'kiss-tabs' }, tabs.map(function(tab) {
+			var isActive = tab.path.indexOf(active) !== -1;
+			return E('a', {
+				'href': L.url(tab.path),
+				'class': 'kiss-tab' + (isActive ? ' active' : '')
+			}, tab.name);
+		}));
+	},
+
+	renderStats: function(status) {
+		var c = KissTheme.colors;
+		return [
+			KissTheme.stat(status.total || 0, 'Total', c.blue),
+			KissTheme.stat(status.running || 0, 'Running', c.green),
+			KissTheme.stat(status.stopped || 0, 'Stopped', c.red),
+			KissTheme.stat((status.disk_used_mb || 0) + 'MB', 'Used', c.purple)
+		];
 	},
 
 	renderContainerCard: function(container) {
 		var self = this;
-		var stateCfg = stateConfig[container.state] || stateConfig.STOPPED;
+		var c = KissTheme.colors;
 		var isRunning = container.state === 'RUNNING';
 
-		var controls = [];
+		var stateColor = isRunning ? c.green : container.state === 'FROZEN' ? c.blue : c.red;
 
+		var controls = [];
 		if (isRunning) {
 			controls.push(
 				E('button', {
-					'class': 'cbi-button cbi-button-negative',
-					'style': 'margin-right: 5px; padding: 4px 12px; font-size: 12px;',
+					'class': 'kiss-btn kiss-btn-red',
+					'style': 'padding: 4px 10px; font-size: 11px;',
 					'click': ui.createHandlerFn(this, function() {
 						return callVMStop(container.name).then(function() {
 							window.location.reload();
 						});
 					})
-				}, '⏹ Stop'),
+				}, 'Stop'),
 				E('button', {
-					'class': 'cbi-button cbi-button-action',
-					'style': 'margin-right: 5px; padding: 4px 12px; font-size: 12px;',
+					'class': 'kiss-btn',
+					'style': 'padding: 4px 10px; font-size: 11px;',
 					'click': ui.createHandlerFn(this, function() {
 						return callVMRestart(container.name).then(function() {
 							window.location.reload();
 						});
 					})
-				}, '🔄 Restart')
+				}, 'Restart')
 			);
 		} else {
 			controls.push(
 				E('button', {
-					'class': 'cbi-button cbi-button-positive',
-					'style': 'margin-right: 5px; padding: 4px 12px; font-size: 12px;',
+					'class': 'kiss-btn kiss-btn-green',
+					'style': 'padding: 4px 10px; font-size: 11px;',
 					'click': ui.createHandlerFn(this, function() {
 						return callVMStart(container.name).then(function(res) {
 							if (res.success) {
 								window.location.reload();
 							} else {
-								ui.addNotification(null, E('p', {}, res.error || 'Start failed'));
+								ui.addNotification(null, E('p', res.error || 'Start failed'), 'error');
 							}
 						});
 					})
-				}, '▶ Start')
+				}, 'Start')
 			);
 		}
 
 		controls.push(
 			E('button', {
-				'class': 'cbi-button cbi-button-neutral',
-				'style': 'margin-right: 5px; padding: 4px 12px; font-size: 12px;',
+				'class': 'kiss-btn',
+				'style': 'padding: 4px 10px; font-size: 11px;',
 				'click': ui.createHandlerFn(this, function() {
 					return callVMSnapshot(container.name).then(function(res) {
 						if (res.success) {
-							ui.addNotification(null, E('p', {}, 'Snapshot created: ' + res.snapshot));
+							ui.addNotification(null, E('p', 'Snapshot created: ' + res.snapshot), 'success');
 						} else {
-							ui.addNotification(null, E('p', {}, res.error || 'Snapshot failed'));
+							ui.addNotification(null, E('p', res.error || 'Snapshot failed'), 'error');
 						}
 					});
 				})
-			}, '📸 Snapshot'),
+			}, 'Snapshot'),
 			E('button', {
-				'class': 'cbi-button cbi-button-neutral',
-				'style': 'padding: 4px 12px; font-size: 12px;',
+				'class': 'kiss-btn',
+				'style': 'padding: 4px 10px; font-size: 11px;',
 				'click': ui.createHandlerFn(this, function() {
 					return callVMExport(container.name, 'tar').then(function(res) {
 						if (res.success) {
-							ui.addNotification(null, E('p', {}, 'Exported to: ' + res.path + ' (' + res.size + ')'));
+							ui.addNotification(null, E('p', 'Exported: ' + res.path + ' (' + res.size + ')'), 'success');
 						} else {
-							ui.addNotification(null, E('p', {}, res.error || 'Export failed'));
+							ui.addNotification(null, E('p', res.error || 'Export failed'), 'error');
 						}
 					});
 				})
-			}, '📦 Export')
+			}, 'Export')
 		);
 
 		return E('div', {
-			'class': 'vm-container-card',
-			'data-state': container.state
+			'style': 'background: var(--kiss-bg2); border-radius: 8px; padding: 16px; border-left: 3px solid ' + stateColor + ';'
 		}, [
-			E('div', { 'class': 'card-header' }, [
-				E('span', { 'class': 'container-icon' }, '📦'),
-				E('div', { 'class': 'container-info' }, [
-					E('span', { 'class': 'container-name' }, container.name),
-					E('span', { 'class': 'container-size' }, (container.rootfs_mb || 0) + ' MB')
+			E('div', { 'style': 'display: flex; align-items: center; gap: 12px; margin-bottom: 12px;' }, [
+				E('div', { 'style': 'flex: 1;' }, [
+					E('div', { 'style': 'font-weight: 600; font-size: 14px;' }, container.name),
+					E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted);' }, (container.rootfs_mb || 0) + ' MB')
 				]),
-				E('span', {
-					'class': 'container-state',
-					'style': 'color: ' + stateCfg.color,
-					'title': stateCfg.label
-				}, stateCfg.icon + ' ' + stateCfg.label)
+				KissTheme.badge(container.state, isRunning ? 'green' : container.state === 'FROZEN' ? 'blue' : 'red')
 			]),
-			E('div', { 'class': 'card-footer' }, controls)
+			E('div', { 'style': 'display: flex; gap: 8px; flex-wrap: wrap;' }, controls)
 		]);
 	},
 
 	render: function(data) {
+		var self = this;
 		var status = data[0];
 		var containers = data[1];
+		var c = KissTheme.colors;
 
-		// Sort containers: running first, then alphabetically
 		containers.sort(function(a, b) {
 			if (a.state === 'RUNNING' && b.state !== 'RUNNING') return -1;
 			if (a.state !== 'RUNNING' && b.state === 'RUNNING') return 1;
 			return a.name.localeCompare(b.name);
 		});
 
-		var self = this;
-		var view = E('div', { 'class': 'vm-dashboard' }, [
-			E('style', {}, `
-				.vm-dashboard {
-					padding: 20px;
-				}
-				.vm-header {
-					text-align: center;
-					margin-bottom: 30px;
-				}
-				.vm-header h2 {
-					font-size: 2em;
-					margin-bottom: 10px;
-				}
-				.vm-header .subtitle {
-					color: #666;
-					font-size: 1.1em;
-				}
-				.vm-status-bar {
-					display: flex;
-					justify-content: center;
-					gap: 40px;
-					padding: 20px;
-					background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-					border-radius: 12px;
-					margin-bottom: 30px;
-				}
-				.status-item {
-					text-align: center;
-				}
-				.status-value {
-					display: block;
-					font-size: 2em;
-					font-weight: bold;
-				}
-				.status-label {
-					color: #aaa;
-					font-size: 0.9em;
-					text-transform: uppercase;
-				}
-				.vm-grid {
-					display: grid;
-					grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-					gap: 20px;
-				}
-				.vm-container-card {
-					background: #1a1a2e;
-					border-radius: 12px;
-					padding: 20px;
-					border-left: 4px solid #7f8c8d;
-					transition: transform 0.2s, box-shadow 0.2s;
-				}
-				.vm-container-card:hover {
-					transform: translateY(-2px);
-					box-shadow: 0 8px 25px rgba(0,0,0,0.3);
-				}
-				.vm-container-card[data-state="RUNNING"] {
-					border-left-color: #27ae60;
-					background: linear-gradient(135deg, #1a2e1a 0%, #162e16 100%);
-				}
-				.vm-container-card[data-state="STOPPED"] {
-					border-left-color: #e74c3c;
-				}
-				.card-header {
-					display: flex;
-					align-items: center;
-					margin-bottom: 15px;
-				}
-				.container-icon {
-					font-size: 2em;
-					margin-right: 15px;
-				}
-				.container-info {
-					flex: 1;
-				}
-				.container-name {
-					display: block;
-					font-size: 1.2em;
-					font-weight: bold;
-					color: #fff;
-				}
-				.container-size {
-					color: #666;
-					font-size: 0.9em;
-				}
-				.container-state {
-					font-size: 0.9em;
-					font-weight: bold;
-				}
-				.card-footer {
-					display: flex;
-					flex-wrap: wrap;
-					gap: 8px;
-				}
-				.card-footer button {
-					border-radius: 6px;
-				}
-				@media (max-width: 768px) {
-					.vm-status-bar {
-						flex-wrap: wrap;
-						gap: 20px;
-					}
-					.vm-grid {
-						grid-template-columns: 1fr;
-					}
-				}
-			`),
-			E('div', { 'class': 'vm-header' }, [
-				E('h2', {}, '📦 VM Manager'),
-				E('p', { 'class': 'subtitle' }, 'LXC Container Management Dashboard')
-			]),
-			this.renderStatusBar(status),
-			E('h3', { 'style': 'margin-bottom: 15px; color: #aaa;' },
-				'Containers (' + containers.length + ')'
-			),
-			E('div', { 'class': 'vm-grid' },
-				containers.map(function(c) {
-					return self.renderContainerCard(c);
-				})
-			)
-		]);
+		var runningCount = status.running || 0;
+		var totalCount = status.total || 0;
 
-		// Setup polling
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'VM Manager'),
+					KissTheme.badge(runningCount + '/' + totalCount + ' RUNNING', runningCount > 0 ? 'green' : 'red')
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' }, 'LXC Container Management')
+			]),
+
+			// Navigation
+			this.renderNav('overview'),
+
+			// Stats
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'id': 'vm-stats', 'style': 'margin: 20px 0;' }, this.renderStats(status)),
+
+			// Containers grid
+			KissTheme.card('Containers (' + containers.length + ')',
+				containers.length > 0 ?
+					E('div', { 'style': 'display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;' },
+						containers.map(function(c) {
+							return self.renderContainerCard(c);
+						})
+					) :
+					E('div', { 'style': 'text-align: center; padding: 24px; color: var(--kiss-muted);' }, 'No containers found')
+			)
+		];
+
 		poll.add(L.bind(function() {
-			return callVMList().then(L.bind(function(containers) {
-				// Could update cards here
+			return Promise.all([callVMStatus(), callVMList()]).then(L.bind(function(res) {
+				var statsEl = document.getElementById('vm-stats');
+				if (statsEl) {
+					dom.content(statsEl, this.renderStats(res[0]));
+				}
 			}, this));
 		}, this), 30);
 
-		return view;
+		return KissTheme.wrap(content, 'admin/services/vm/overview');
 	},
 
 	handleSaveApply: null,

@@ -1605,8 +1605,8 @@ return view.extend({
 				)
 			]),
 			E('div', { 'class': 'modal-actions' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Close'),
-				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() { self.createMeshBackup(); ui.hideModal(); } }, '📸 New Backup')
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Close'),
+				E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': function() { self.createMeshBackup(); ui.hideModal(); } }, '📸 New Backup')
 			])
 		]);
 	},
@@ -1681,8 +1681,8 @@ return view.extend({
 				])
 			]),
 			E('div', { 'class': 'modal-actions' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
-				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() { ui.hideModal(); } }, 'Save')
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
+				E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': function() { ui.hideModal(); } }, 'Save')
 			])
 		]);
 	},
@@ -1769,8 +1769,8 @@ return view.extend({
 					])
 				]),
 				E('div', { 'class': 'modal-actions' }, [
-					E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
-					E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() {
+					E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
+					E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': function() {
 						var finalUrl = document.getElementById('auto-gitea-url').value;
 						var token = document.getElementById('auto-gitea-token').value;
 
@@ -1971,8 +1971,8 @@ return view.extend({
 				])
 			]),
 			E('div', { 'class': 'modal-actions' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
-				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() {
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
+				E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': function() {
 					var serverUrl = document.getElementById('create-gitea-url').value;
 					var repoName = document.getElementById('create-repo-name').value;
 					var repoDesc = document.getElementById('create-repo-desc').value;
@@ -2070,8 +2070,8 @@ return view.extend({
 				])
 			]),
 			E('div', { 'class': 'modal-actions' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
-				E('button', { 'class': 'cbi-button', 'click': function() {
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
+				E('button', { 'class': 'kiss-btn', 'click': function() {
 					var serverUrl = document.getElementById('gitea-url').value;
 					var repoOwner = document.getElementById('gitea-owner').value;
 					var repoName = document.getElementById('gitea-repo').value;
@@ -2103,7 +2103,7 @@ return view.extend({
 						ui.addNotification(null, E('p', '❌ Error: ' + err.message), 'error');
 					});
 				} }, 'Test Connection'),
-				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() {
+				E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': function() {
 					var serverUrl = document.getElementById('gitea-url').value;
 					var repoOwner = document.getElementById('gitea-owner').value;
 					var repoName = document.getElementById('gitea-repo').value;
@@ -2216,9 +2216,9 @@ return view.extend({
 				)
 			]),
 			E('div', { 'class': 'modal-actions' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Close'),
-				E('button', { 'class': 'cbi-button', 'click': function() { self.syncComponentSource(key); } }, '🔄 Sync'),
-				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() { self.importComponentSource(key); ui.hideModal(); } }, '📥 Import All')
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Close'),
+				E('button', { 'class': 'kiss-btn', 'click': function() { self.syncComponentSource(key); } }, '🔄 Sync'),
+				E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': function() { self.importComponentSource(key); ui.hideModal(); } }, '📥 Import All')
 			])
 		]);
 	},
@@ -2370,8 +2370,8 @@ return view.extend({
 				])
 			]),
 			E('div', { 'class': 'modal-actions' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
-				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() {
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
+				E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': function() {
 					ui.hideModal();
 					ui.addNotification(null, E('p', 'DNS Bridge configuration saved'), 'info');
 				} }, 'Save')
@@ -2428,9 +2428,9 @@ return view.extend({
 				])
 			]),
 			E('div', { 'class': 'modal-actions' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
-				E('button', { 'class': 'cbi-button', 'click': function() { self.syncWGMirror(); ui.hideModal(); } }, '🔄 Sync Now'),
-				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() {
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
+				E('button', { 'class': 'kiss-btn', 'click': function() { self.syncWGMirror(); ui.hideModal(); } }, '🔄 Sync Now'),
+				E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': function() {
 					ui.hideModal();
 					ui.addNotification(null, E('p', 'WireGuard Mirror configuration saved'), 'info');
 				} }, 'Save')
@@ -2742,8 +2742,8 @@ return view.extend({
 				])
 			]),
 			E('div', { 'class': 'modal-actions' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
-				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() {
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
+				E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': function() {
 					var shortUrl = document.getElementById('reg-short-url').value;
 					var target = document.getElementById('reg-target').value;
 					if (shortUrl && target) {
@@ -2786,8 +2786,8 @@ return view.extend({
 				])
 			]),
 			E('div', { 'class': 'modal-actions' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
-				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() {
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
+				E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': function() {
 					registry.baseUrl = document.getElementById('dns-base').value;
 					registry.cacheTTL = parseInt(document.getElementById('dns-ttl').value) || 300;
 					ui.hideModal();
@@ -2822,8 +2822,8 @@ return view.extend({
 				])
 			]),
 			E('div', { 'class': 'modal-actions' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
-				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() {
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
+				E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': function() {
 					ui.hideModal();
 					ui.addNotification(null, E('p', 'Service registered'), 'info');
 				} }, 'Register')
@@ -2840,8 +2840,8 @@ return view.extend({
 				])
 			]),
 			E('div', { 'class': 'modal-actions' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
-				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() {
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
+				E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': function() {
 					ui.hideModal();
 					ui.addNotification(null, E('p', 'Subscribed to service'), 'info');
 				} }, 'Subscribe')
@@ -2858,8 +2858,8 @@ return view.extend({
 				E('option', { 'value': 'backup' }, 'Run Backup')
 			]),
 			E('div', { 'class': 'modal-actions' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
-				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() {
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
+				E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': function() {
 					var cmd = document.getElementById('broadcast-cmd').value;
 					P2PAPI.broadcastCommand(cmd);
 					ui.hideModal();
@@ -2883,8 +2883,8 @@ return view.extend({
 				])
 			]),
 			E('div', { 'class': 'modal-actions' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
-				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() {
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
+				E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': function() {
 					var addr = document.getElementById('peer-addr').value;
 					var name = document.getElementById('peer-name').value;
 					if (addr) {
@@ -2958,8 +2958,8 @@ return view.extend({
 				])
 			]),
 			E('div', { 'class': 'modal-actions' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
-				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() {
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
+				E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': function() {
 					ui.hideModal();
 					self.deployAllRegistry();
 				} }, '🚀 Deploy Now')
@@ -3024,12 +3024,12 @@ return view.extend({
 				])
 			]),
 			E('div', { 'class': 'modal-actions' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
-				E('button', { 'class': 'cbi-button', 'click': function() {
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
+				E('button', { 'class': 'kiss-btn', 'click': function() {
 					ui.hideModal();
 					self.pullAllServices();
 				} }, '📥 Pull from Mesh'),
-				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() {
+				E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': function() {
 					ui.hideModal();
 					self.deployAllServices();
 				} }, '🚀 Deploy to Mesh')

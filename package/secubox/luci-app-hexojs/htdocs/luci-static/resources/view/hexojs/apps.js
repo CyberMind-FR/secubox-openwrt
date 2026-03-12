@@ -43,7 +43,7 @@ return view.extend({
 			E('div', { 'class': 'right', 'style': 'margin-top: 16px;' }, [
 				E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')),
 				E('button', {
-					'class': 'btn cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'style': 'margin-left: 8px;',
 					'click': function() {
 						var title = document.querySelector('#app-title').value;

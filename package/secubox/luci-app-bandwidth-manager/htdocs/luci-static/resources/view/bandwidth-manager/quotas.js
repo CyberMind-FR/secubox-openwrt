@@ -1,6 +1,5 @@
 'use strict';
 'require view';
-'require secubox-theme/theme as Theme';
 'require ui';
 'require form';
 'require bandwidth-manager/api as API';
@@ -86,7 +85,7 @@ return L.view.extend({
 			var mac = this.cfgvalue(section_id, 'mac');
 
 			var resetBtn = E('button', {
-				'class': 'cbi-button cbi-button-action',
+				'class': 'kiss-btn kiss-btn-blue',
 				'click': function(ev) {
 					ev.preventDefault();
 					if (confirm(_('Reset quota counter for this client?'))) {
@@ -108,10 +107,7 @@ return L.view.extend({
 		};
 
 		return m.render().then(function(rendered) {
-			return KissTheme.wrap([
-				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-				rendered
-			], 'admin/services/bandwidth-manager/quotas');
+			return KissTheme.wrap(rendered, 'admin/services/bandwidth-manager/quotas');
 		});
 	},
 

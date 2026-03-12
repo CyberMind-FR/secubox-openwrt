@@ -3,9 +3,6 @@
 'require ui';
 'require rpc';
 'require secubox/api as API';
-'require secubox-theme/theme as Theme';
-'require secubox/nav as SecuNav';
-'require secubox-portal/header as SbHeader';
 'require secubox/kiss-theme';
 
 // P2P Mesh RPC declarations
@@ -49,18 +46,6 @@ var callGiteaGetStatus = rpc.declare({
 	expect: {}
 });
 
-// Load theme resources
-document.head.appendChild(E('link', {
-	'rel': 'stylesheet',
-	'type': 'text/css',
-	'href': L.resource('secubox-theme/secubox-theme.css')
-}));
-
-var secuLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
-	(document.documentElement && document.documentElement.getAttribute('lang')) ||
-	(navigator.language ? navigator.language.split('-')[0] : 'en');
-Theme.init({ language: secuLang });
-
 var TIMEZONES = [
 	{ id: 'UTC', label: 'UTC' },
 	{ id: 'Europe/Paris', label: 'Europe/Paris' },
@@ -76,6 +61,10 @@ var NETWORK_MODES = [
 ];
 
 return view.extend({
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null,
+
 	load: function() {
 		return Promise.all([
 			API.getFirstRunStatus(),
@@ -86,48 +75,55 @@ return view.extend({
 		]);
 	},
 
+	renderStats: function() {
+		var c = KissTheme.colors;
+		var data = this.firstRun || {};
+		var p2pData = this.p2pConfig || {};
+		var completedSteps = (data.password_set ? 1 : 0) + (data.storage_ready ? 1 : 0) +
+			(p2pData.enabled && p2pData.repo_name ? 1 : 0);
+
+		return [
+			KissTheme.stat(completedSteps + '/5', 'Completed', c.green),
+			KissTheme.stat(this.appList.length, 'App Wizards', c.blue),
+			KissTheme.stat(this.profileList.length, 'Profiles', c.purple),
+			KissTheme.stat(data.password_set ? 'Set' : 'Missing', 'Password', data.password_set ? c.green : c.red)
+		];
+	},
+
 	render: function(payload) {
-		console.log('[SecuBox Wizard] Received payload:', payload);
-		console.log('[SecuBox Wizard] Apps data:', payload[1]);
-		console.log('[SecuBox Wizard] Profiles data:', payload[2]);
 		this.firstRun = payload[0] || {};
-		// Handle both array and object formats
 		var allApps = Array.isArray(payload[1]) ? payload[1] : (payload[1] && payload[1].apps) || [];
-		// Filter to only show apps with wizards
 		this.appList = allApps.filter(function(app) { return app.has_wizard === true; });
 		this.profileList = Array.isArray(payload[2]) ? payload[2] : (payload[2] && payload[2].profiles) || [];
 		this.p2pConfig = payload[3] || {};
 		this.giteaStatus = payload[4] || {};
-		console.log('[SecuBox Wizard] Filtered appList (has_wizard only):', this.appList);
-		console.log('[SecuBox Wizard] Parsed profileList:', this.profileList);
-		console.log('[SecuBox Wizard] P2P Config:', this.p2pConfig);
-		console.log('[SecuBox Wizard] Gitea Status:', this.giteaStatus);
-		var container = E('div', { 'class': 'secubox-wizard-page' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/core/variables.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
-			SecuNav.renderTabs('wizard'),
-			this.renderHeader(),
-			this.renderFirstRunCard(),
-			this.renderProfilesCard(),
-			this.renderAppsCard()
-		]);
 
-		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
-		wrapper.appendChild(SbHeader.render());
-		wrapper.appendChild(container);
-		return KissTheme.wrap(wrapper, 'admin/secubox/wizard');
-	},
-
-	renderHeader: function() {
-		return E('div', { 'class': 'sh-page-header sh-page-header-lite' }, [
-			E('div', {}, [
-				E('h2', { 'class': 'sh-page-title' }, [
-					E('span', { 'class': 'sh-page-title-icon' }, '🧭'),
-					_('Setup Wizard')
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, '🧭 Setup Wizard'),
+					KissTheme.badge('First Run', 'blue')
 				]),
-				E('p', { 'class': 'sh-page-subtitle' }, _('Guide the first-run experience and configure apps with manifest-driven wizards.'))
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' },
+					_('Guide the first-run experience and configure apps with manifest-driven wizards.'))
+			]),
+
+			// Stats
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'style': 'margin: 20px 0;' },
+				this.renderStats()),
+
+			// First Run Checklist
+			this.renderFirstRunCard(),
+
+			// Two column layout
+			E('div', { 'class': 'kiss-grid kiss-grid-2', 'style': 'margin-top: 20px;' }, [
+				this.renderProfilesCard(),
+				this.renderAppsCard()
 			])
-		]);
+		];
+
+		return KissTheme.wrap(content, 'admin/secubox/wizard');
 	},
 
 	renderFirstRunCard: function() {
@@ -143,42 +139,61 @@ return view.extend({
 			{ icon: '🌐', label: _('P2P Mesh Backup'), description: _('Auto-configure Gitea repository for mesh config versioning.'), complete: !!(p2pData.enabled && p2pData.repo_name), content: this.renderP2PMeshStep(p2pData, giteaData) }
 		];
 
-		return E('div', { 'class': 'sb-wizard-card' }, [
-			E('div', { 'class': 'sb-wizard-title' }, ['🧩 ', _('First-run Checklist')]),
-			E('div', { 'class': 'sb-wizard-steps' }, steps.map(function(step) {
-				return E('div', { 'class': 'sb-wizard-step' + (step.complete ? ' complete' : '') }, [
-					E('div', { 'class': 'sb-wizard-step-header' }, [
-						E('span', { 'class': 'sb-wizard-step-icon' }, step.icon),
-						E('div', {}, [
-							E('div', { 'class': 'sb-wizard-step-label' }, step.label),
-							E('div', { 'class': 'sb-wizard-step-desc' }, step.description)
-						])
-					]),
-					E('div', { 'class': 'sb-wizard-step-body' }, [step.content])
+		var stepsContent = E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px;' },
+			steps.map(function(step) {
+				var borderColor = step.complete ? 'var(--kiss-green)' : 'var(--kiss-line)';
+				return E('div', {
+					'style': 'display: flex; align-items: flex-start; gap: 16px; padding: 16px; background: var(--kiss-bg); border-radius: 8px; border-left: 3px solid ' + borderColor + ';'
+				}, [
+					E('div', {
+						'style': 'width: 40px; height: 40px; background: var(--kiss-bg2); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0;'
+					}, step.icon),
+					E('div', { 'style': 'flex: 1;' }, [
+						E('div', { 'style': 'display: flex; align-items: center; gap: 8px; margin-bottom: 4px;' }, [
+							E('span', { 'style': 'font-weight: 600;' }, step.label),
+							step.complete ? KissTheme.badge('Done', 'green') : ''
+						]),
+						E('div', { 'style': 'font-size: 13px; color: var(--kiss-muted); margin-bottom: 12px;' }, step.description),
+						step.content
+					])
 				]);
-			}, this))
-		]);
+			})
+		);
+
+		return KissTheme.card(
+			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+				E('span', {}, '🧩 ' + _('First-run Checklist')),
+				KissTheme.badge(steps.filter(function(s) { return s.complete; }).length + '/' + steps.length + ' complete', 'blue')
+			]),
+			stepsContent
+		);
 	},
 
 	renderPasswordStep: function(data) {
-		return E('div', { 'class': 'sb-wizard-inline' }, [
-			E('div', { 'class': 'sb-wizard-status ' + (data.password_set ? 'ok' : 'warn') }, data.password_set ? _('Password set') : _('Password missing')),
+		return E('div', { 'style': 'display: flex; align-items: center; gap: 12px;' }, [
+			data.password_set ?
+				KissTheme.badge('Password set', 'green') :
+				KissTheme.badge('Password missing', 'red'),
 			E('a', {
-				'class': 'cbi-button cbi-button-action',
-				'href': L.url('admin', 'system', 'admin')
+				'class': 'kiss-btn kiss-btn-blue',
+				'href': L.url('admin', 'system', 'admin'),
+				'style': 'text-decoration: none;'
 			}, _('Open password page'))
 		]);
 	},
 
 	renderTimezoneStep: function(data) {
 		var selected = data.timezone || 'UTC';
-		var select = E('select', { 'class': 'sb-wizard-select', 'id': 'wizard-timezone' }, TIMEZONES.map(function(zone) {
+		var select = E('select', {
+			'id': 'wizard-timezone',
+			'style': 'padding: 8px 12px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text); min-width: 180px;'
+		}, TIMEZONES.map(function(zone) {
 			return E('option', { 'value': zone.id, 'selected': zone.id === selected }, zone.label);
 		}));
-		return E('div', { 'class': 'sb-wizard-inline' }, [
+		return E('div', { 'style': 'display: flex; align-items: center; gap: 12px;' }, [
 			select,
 			E('button', {
-				'class': 'cbi-button cbi-button-action',
+				'class': 'kiss-btn kiss-btn-green',
 				'click': this.applyTimezone.bind(this)
 			}, _('Apply'))
 		]);
@@ -186,27 +201,31 @@ return view.extend({
 
 	renderStorageStep: function(data) {
 		var input = E('input', {
-			'class': 'sb-wizard-input',
+			'type': 'text',
 			'id': 'wizard-storage',
-			'value': data.storage_path || '/srv/secubox'
+			'value': data.storage_path || '/srv/secubox',
+			'style': 'padding: 8px 12px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text); min-width: 200px; font-family: monospace;'
 		});
-		return E('div', { 'class': 'sb-wizard-inline' }, [
+		return E('div', { 'style': 'display: flex; align-items: center; gap: 12px;' }, [
 			input,
 			E('button', {
-				'class': 'cbi-button cbi-button-action',
+				'class': 'kiss-btn kiss-btn-green',
 				'click': this.prepareStorage.bind(this)
 			}, _('Prepare'))
 		]);
 	},
 
 	renderModeStep: function(data) {
-		var select = E('select', { 'class': 'sb-wizard-select', 'id': 'wizard-network-mode' }, NETWORK_MODES.map(function(mode) {
+		var select = E('select', {
+			'id': 'wizard-network-mode',
+			'style': 'padding: 8px 12px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text); min-width: 180px;'
+		}, NETWORK_MODES.map(function(mode) {
 			return E('option', { 'value': mode.id, 'selected': mode.id === data.network_mode }, mode.label);
 		}));
-		return E('div', { 'class': 'sb-wizard-inline' }, [
+		return E('div', { 'style': 'display: flex; align-items: center; gap: 12px;' }, [
 			select,
 			E('button', {
-				'class': 'cbi-button cbi-button-action',
+				'class': 'kiss-btn kiss-btn-blue',
 				'click': this.applyNetworkMode.bind(this)
 			}, _('Switch'))
 		]);
@@ -218,36 +237,38 @@ return view.extend({
 		var repoConfigured = p2pData && p2pData.enabled && p2pData.repo_name;
 
 		if (repoConfigured) {
-			return E('div', { 'class': 'sb-wizard-inline' }, [
-				E('div', { 'class': 'sb-wizard-status ok' }, [
+			return E('div', { 'style': 'display: flex; align-items: center; gap: 12px;' }, [
+				E('span', { 'style': 'color: var(--kiss-green);' }, [
 					_('Repository: '),
 					E('strong', {}, (p2pData.repo_owner || 'user') + '/' + p2pData.repo_name)
 				]),
 				E('a', {
-					'class': 'cbi-button cbi-button-action',
-					'href': L.url('admin', 'secubox', 'p2p-hub')
+					'class': 'kiss-btn kiss-btn-purple',
+					'href': L.url('admin', 'secubox', 'p2p-hub'),
+					'style': 'text-decoration: none;'
 				}, _('Open P2P Hub'))
 			]);
 		}
 
 		if (!giteaRunning) {
-			return E('div', { 'class': 'sb-wizard-inline' }, [
-				E('div', { 'class': 'sb-wizard-status warn' }, _('Gitea not running')),
+			return E('div', { 'style': 'display: flex; align-items: center; gap: 12px;' }, [
+				KissTheme.badge('Gitea not running', 'orange'),
 				E('a', {
-					'class': 'cbi-button cbi-button-action',
-					'href': L.url('admin', 'services', 'gitea')
+					'class': 'kiss-btn kiss-btn-blue',
+					'href': L.url('admin', 'services', 'gitea'),
+					'style': 'text-decoration: none;'
 				}, _('Start Gitea'))
 			]);
 		}
 
 		// Gitea running but repo not configured - show auto-setup
-		return E('div', { 'class': 'sb-wizard-inline' }, [
-			E('div', { 'class': 'sb-wizard-status warn' }, _('Not configured')),
+		return E('div', { 'style': 'display: flex; align-items: center; gap: 12px;' }, [
+			KissTheme.badge('Not configured', 'orange'),
 			E('button', {
-				'class': 'cbi-button cbi-button-action',
+				'class': 'kiss-btn kiss-btn-green',
 				'id': 'btn-p2p-auto-setup',
 				'click': function() { self.autoSetupP2PMesh(); }
-			}, _('🚀 Auto Setup'))
+			}, '🚀 ' + _('Auto Setup'))
 		]);
 	},
 
@@ -319,50 +340,85 @@ return view.extend({
 	},
 
 	renderAppsCard: function() {
+		var self = this;
 		var apps = this.appList || [];
-		return E('div', { 'class': 'sb-wizard-card' }, [
-			E('div', { 'class': 'sb-wizard-title' }, ['📦 ', _('App Wizards')]),
-			apps.length ? E('div', { 'class': 'sb-app-grid' }, apps.map(this.renderAppCard, this)) :
-			E('div', { 'class': 'secubox-empty-state' }, [
-				E('div', { 'class': 'secubox-empty-icon' }, '📭'),
-				E('div', { 'class': 'secubox-empty-title' }, _('No manifests detected')),
-				E('div', { 'class': 'secubox-empty-text' }, _('Install manifests under /usr/share/secubox/plugins/.'))
-			])
-		]);
+
+		var content;
+		if (apps.length) {
+			content = E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px;' },
+				apps.map(function(app) { return self.renderAppCard(app); }));
+		} else {
+			content = E('div', { 'style': 'text-align: center; padding: 40px 20px;' }, [
+				E('div', { 'style': 'font-size: 48px; margin-bottom: 16px;' }, '📭'),
+				E('div', { 'style': 'font-weight: 600; margin-bottom: 8px;' }, _('No manifests detected')),
+				E('div', { 'style': 'color: var(--kiss-muted); font-size: 13px;' },
+					_('Install manifests under /usr/share/secubox/plugins/.'))
+			]);
+		}
+
+		return KissTheme.card(
+			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+				E('span', {}, '📦 ' + _('App Wizards')),
+				KissTheme.badge(apps.length + ' apps', 'blue')
+			]),
+			content
+		);
 	},
 
 	renderProfilesCard: function() {
+		var self = this;
 		var profiles = this.profileList || [];
-		return E('div', { 'class': 'sb-wizard-card' }, [
-			E('div', { 'class': 'sb-wizard-title' }, ['🧱 ', _('Profiles')]),
-			profiles.length ? E('div', { 'class': 'sb-app-grid' }, profiles.map(this.renderProfileCard, this)) :
-			E('div', { 'class': 'secubox-empty-state' }, [
-				E('div', { 'class': 'secubox-empty-icon' }, '📭'),
-				E('div', { 'class': 'secubox-empty-title' }, _('No profiles available')),
-				E('div', { 'class': 'secubox-empty-text' }, _('Profiles are stored in /usr/share/secubox/profiles/.'))
+
+		var content;
+		if (profiles.length) {
+			content = E('div', {}, [
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px;' },
+					profiles.map(function(profile) { return self.renderProfileCard(profile); })),
+				E('div', { 'style': 'margin-top: 16px; text-align: right;' }, [
+					E('button', {
+						'class': 'kiss-btn kiss-btn-orange',
+						'click': this.rollbackProfile.bind(this)
+					}, _('Rollback last profile'))
+				])
+			]);
+		} else {
+			content = E('div', { 'style': 'text-align: center; padding: 40px 20px;' }, [
+				E('div', { 'style': 'font-size: 48px; margin-bottom: 16px;' }, '📭'),
+				E('div', { 'style': 'font-weight: 600; margin-bottom: 8px;' }, _('No profiles available')),
+				E('div', { 'style': 'color: var(--kiss-muted); font-size: 13px;' },
+					_('Profiles are stored in /usr/share/secubox/profiles/.'))
+			]);
+		}
+
+		return KissTheme.card(
+			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+				E('span', {}, '🧱 ' + _('Profiles')),
+				KissTheme.badge(profiles.length + ' profiles', 'purple')
 			]),
-			profiles.length ? E('div', { 'class': 'right', 'style': 'margin-top:12px;' }, [
-				E('button', {
-					'class': 'cbi-button cbi-button-action',
-					'click': this.rollbackProfile.bind(this)
-				}, _('Rollback last profile'))
-			]) : ''
-		]);
+			content
+		);
 	},
 
 	renderProfileCard: function(profile) {
 		var apps = profile.apps || [];
-		return E('div', { 'class': 'sb-app-card' }, [
-			E('div', { 'class': 'sb-app-card-info' }, [
-				E('div', { 'class': 'sb-app-name' }, [profile.name || profile.id]),
-				E('div', { 'class': 'sb-app-desc' }, profile.description || ''),
-				E('div', { 'class': 'sb-app-desc' }, _('Network mode: %s').format(profile.network_mode || '—')),
-				apps.length ? E('div', { 'class': 'sb-app-desc' }, _('Apps: %s').format(apps.join(', '))) : ''
+		var stateColor = profile.state === 'installed' ? 'green' : 'muted';
+
+		return E('div', {
+			'style': 'display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--kiss-bg); border-radius: 8px;'
+		}, [
+			E('div', { 'style': 'flex: 1;' }, [
+				E('div', { 'style': 'font-weight: 600; margin-bottom: 4px;' }, profile.name || profile.id),
+				E('div', { 'style': 'font-size: 13px; color: var(--kiss-muted);' }, profile.description || ''),
+				E('div', { 'style': 'font-size: 12px; color: var(--kiss-muted); margin-top: 4px;' }, [
+					_('Mode: ') + (profile.network_mode || '—'),
+					apps.length ? ' | ' + _('Apps: ') + apps.join(', ') : ''
+				])
 			]),
-			E('div', { 'class': 'sb-app-actions' }, [
-				E('span', { 'class': 'sb-app-state' + (profile.state === 'installed' ? ' ok' : '') }, profile.state || 'n/a'),
+			E('div', { 'style': 'display: flex; align-items: center; gap: 12px;' }, [
+				KissTheme.badge(profile.state || 'n/a', stateColor),
 				E('button', {
-					'class': 'cbi-button cbi-button-action',
+					'class': 'kiss-btn kiss-btn-green',
+					'style': 'padding: 6px 12px; font-size: 12px;',
 					'click': this.applyProfile.bind(this, profile.id)
 				}, _('Apply'))
 			])
@@ -370,14 +426,25 @@ return view.extend({
 	},
 
 	renderAppCard: function(app) {
-		return E('div', { 'class': 'sb-app-card' }, [
-			E('div', { 'class': 'sb-app-card-info' }, [
-				E('div', { 'class': 'sb-app-name' }, [app.name || app.id, app.version ? E('span', { 'class': 'sb-app-version' }, 'v' + app.version) : '']),
-				E('div', { 'class': 'sb-app-desc' }, app.description || '')
+		var stateColor = app.state === 'installed' ? 'green' : 'muted';
+
+		return E('div', {
+			'style': 'display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--kiss-bg); border-radius: 8px;'
+		}, [
+			E('div', { 'style': 'flex: 1;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 8px; margin-bottom: 4px;' }, [
+					E('span', { 'style': 'font-weight: 600;' }, app.name || app.id),
+					app.version ? E('span', { 'style': 'font-size: 11px; color: var(--kiss-muted);' }, 'v' + app.version) : ''
+				]),
+				E('div', { 'style': 'font-size: 13px; color: var(--kiss-muted);' }, app.description || '')
 			]),
-			E('div', { 'class': 'sb-app-actions' }, [
-				E('span', { 'class': 'sb-app-state' + (app.state === 'installed' ? ' ok' : '') }, app.state || 'n/a'),
-				(app.has_wizard ? E('button', { 'class': 'cbi-button cbi-button-action', 'click': this.openAppWizard.bind(this, app) }, _('Configure')) : '')
+			E('div', { 'style': 'display: flex; align-items: center; gap: 12px;' }, [
+				KissTheme.badge(app.state || 'n/a', stateColor),
+				app.has_wizard ? E('button', {
+					'class': 'kiss-btn kiss-btn-blue',
+					'style': 'padding: 6px 12px; font-size: 12px;',
+					'click': this.openAppWizard.bind(this, app)
+				}, _('Configure')) : ''
 			])
 		]);
 	},
@@ -423,26 +490,26 @@ return view.extend({
 				ui.addNotification(null, E('p', {}, _('No wizard metadata for this app.')), 'warn');
 				return;
 			}
-			var form = E('div', { 'class': 'sb-app-wizard-form' }, fields.map(function(field) {
-				return E('div', { 'class': 'sb-form-group' }, [
-					E('label', {}, field.label || field.id),
+			var form = E('div', { 'style': 'display: flex; flex-direction: column; gap: 16px;' }, fields.map(function(field) {
+				return E('div', {}, [
+					E('label', { 'style': 'display: block; margin-bottom: 6px; font-weight: 500;' }, field.label || field.id),
 					E('input', {
-						'class': 'sb-wizard-input',
 						'name': field.id,
 						'type': field.type || 'text',
-						'placeholder': field.placeholder || ''
+						'placeholder': field.placeholder || '',
+						'style': 'width: 100%; padding: 8px 12px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text);'
 					})
 				]);
 			}));
 			ui.showModal(_('Configure %s').format(app.name || app.id), [
 				form,
-				E('div', { 'class': 'right', 'style': 'margin-top:16px;' }, [
+				E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px;' }, [
 					E('button', {
-						'class': 'cbi-button cbi-button-cancel',
+						'class': 'kiss-btn',
 						'click': ui.hideModal
 					}, _('Cancel')),
 					E('button', {
-						'class': 'cbi-button cbi-button-action',
+						'class': 'kiss-btn kiss-btn-green',
 						'click': function() {
 							self.submitAppWizard(app.id, form, fields);
 						}

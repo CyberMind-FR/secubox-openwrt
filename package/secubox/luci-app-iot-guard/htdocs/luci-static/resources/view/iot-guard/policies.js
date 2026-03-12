@@ -73,9 +73,9 @@ return view.extend({
 		ui.showModal('Add Vendor Rule', [
 			form,
 			E('div', { 'class': 'right', 'style': 'margin-top: 20px;' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
 				E('button', {
-					'class': 'cbi-button cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'style': 'margin-left: 10px;',
 					'click': function() {
 						var name = document.getElementById('rule-name').value.trim().replace(/[^a-z0-9_]/gi, '_');
@@ -128,7 +128,7 @@ return view.extend({
 				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid #333;' }, r.auto_isolate ? 'Yes' : 'No'),
 				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid #333;' }, [
 					E('button', {
-						'class': 'cbi-button cbi-button-negative btn-sm',
+						'class': 'kiss-btn kiss-btn-red btn-sm',
 						'style': 'padding: 2px 8px; font-size: 12px;',
 						'click': function() { self.handleDeleteRule(r.name); }
 					}, 'Delete')
@@ -143,7 +143,7 @@ return view.extend({
 
 			E('div', { 'style': 'margin-bottom: 20px;' }, [
 				E('button', {
-					'class': 'cbi-button cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'click': L.bind(this.handleAddRule, this)
 				}, 'Add Vendor Rule')
 			]),

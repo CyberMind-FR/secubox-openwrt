@@ -113,41 +113,38 @@ return view.extend({
 
 		return m.render().then(function(rendered) {
 			// Add "Test Credentials" button after the form
-			var testBtn = E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Connection Test')),
-				E('div', { 'class': 'cbi-section-node' }, [
-					E('div', { 'style': 'display:flex; gap:1em; align-items:center;' }, [
-						E('button', {
-							'class': 'cbi-button cbi-button-action',
-							'click': function(ev) {
-								var btn = ev.target;
-								btn.disabled = true;
-								btn.textContent = _('Testing...');
+			var testBtn = KissTheme.card('Connection Test',
+				E('div', { 'style': 'display: flex; gap: 12px; align-items: center;' }, [
+					E('button', {
+						'class': 'kiss-btn kiss-btn-cyan',
+						'click': function(ev) {
+							var btn = ev.target;
+							btn.disabled = true;
+							btn.textContent = _('Testing...');
 
-								callTestCredentials().then(function(res) {
-									btn.disabled = false;
-									btn.textContent = _('Test Credentials');
+							callTestCredentials().then(function(res) {
+								btn.disabled = false;
+								btn.textContent = _('Test Credentials');
 
-									if (res && res.success) {
-										ui.addNotification(null,
-											E('p', {}, _('Credentials are valid.')), 'info');
-									} else {
-										ui.addNotification(null,
-											E('p', {}, _('Credential test failed: ') +
-												(res ? res.error : _('Unknown error'))), 'danger');
-									}
-								}).catch(function(err) {
-									btn.disabled = false;
-									btn.textContent = _('Test Credentials');
+								if (res && res.success) {
 									ui.addNotification(null,
-										E('p', {}, _('RPC error: ') + err.message), 'danger');
-								});
-							}
-						}, _('Test Credentials')),
-						E('span', { 'id': 'test-result' }, '')
-					])
+										E('p', {}, _('Credentials are valid.')), 'info');
+								} else {
+									ui.addNotification(null,
+										E('p', {}, _('Credential test failed: ') +
+											(res ? res.error : _('Unknown error'))), 'danger');
+								}
+							}).catch(function(err) {
+								btn.disabled = false;
+								btn.textContent = _('Test Credentials');
+								ui.addNotification(null,
+									E('p', {}, _('RPC error: ') + err.message), 'danger');
+							});
+						}
+					}, _('Test Credentials')),
+					E('span', { 'id': 'test-result', 'style': 'color: var(--kiss-muted);' }, '')
 				])
-			]);
+			);
 
 			var container = E('div', {}, [rendered, testBtn]);
 			return KissTheme.wrap(container, 'admin/secubox/network/dns-provider/settings');

@@ -3,173 +3,72 @@
 'require rpc';
 'require ui';
 'require poll';
+'require secubox/kiss-theme';
 
-var callStatus = rpc.declare({
-	object: 'luci.saas-relay',
-	method: 'status',
-	expect: {}
-});
-
-var callListServices = rpc.declare({
-	object: 'luci.saas-relay',
-	method: 'list_services',
-	expect: {}
-});
-
-var callServiceEnable = rpc.declare({
-	object: 'luci.saas-relay',
-	method: 'service_enable',
-	params: ['id'],
-	expect: {}
-});
-
-var callServiceDisable = rpc.declare({
-	object: 'luci.saas-relay',
-	method: 'service_disable',
-	params: ['id'],
-	expect: {}
-});
-
-var callServiceAdd = rpc.declare({
-	object: 'luci.saas-relay',
-	method: 'service_add',
-	params: ['id', 'name', 'domain', 'emoji'],
-	expect: {}
-});
-
-var callServiceDelete = rpc.declare({
-	object: 'luci.saas-relay',
-	method: 'service_delete',
-	params: ['id'],
-	expect: {}
-});
-
-var callStart = rpc.declare({
-	object: 'luci.saas-relay',
-	method: 'start',
-	expect: {}
-});
-
-var callStop = rpc.declare({
-	object: 'luci.saas-relay',
-	method: 'stop',
-	expect: {}
-});
-
-var callSetup = rpc.declare({
-	object: 'luci.saas-relay',
-	method: 'setup',
-	expect: {}
-});
-
-var callListCookies = rpc.declare({
-	object: 'luci.saas-relay',
-	method: 'list_cookies',
-	params: ['service'],
-	expect: {}
-});
-
-var callImportCookies = rpc.declare({
-	object: 'luci.saas-relay',
-	method: 'import_cookies',
-	params: ['service', 'cookies'],
-	expect: {}
-});
-
-var callClearCookies = rpc.declare({
-	object: 'luci.saas-relay',
-	method: 'clear_cookies',
-	params: ['service'],
-	expect: {}
-});
-
-var callGetLog = rpc.declare({
-	object: 'luci.saas-relay',
-	method: 'get_log',
-	params: ['lines'],
-	expect: {}
-});
+var callStatus = rpc.declare({ object: 'luci.saas-relay', method: 'status', expect: {} });
+var callListServices = rpc.declare({ object: 'luci.saas-relay', method: 'list_services', expect: {} });
+var callServiceEnable = rpc.declare({ object: 'luci.saas-relay', method: 'service_enable', params: ['id'], expect: {} });
+var callServiceDisable = rpc.declare({ object: 'luci.saas-relay', method: 'service_disable', params: ['id'], expect: {} });
+var callServiceAdd = rpc.declare({ object: 'luci.saas-relay', method: 'service_add', params: ['id', 'name', 'domain', 'emoji'], expect: {} });
+var callServiceDelete = rpc.declare({ object: 'luci.saas-relay', method: 'service_delete', params: ['id'], expect: {} });
+var callStart = rpc.declare({ object: 'luci.saas-relay', method: 'start', expect: {} });
+var callStop = rpc.declare({ object: 'luci.saas-relay', method: 'stop', expect: {} });
+var callSetup = rpc.declare({ object: 'luci.saas-relay', method: 'setup', expect: {} });
+var callListCookies = rpc.declare({ object: 'luci.saas-relay', method: 'list_cookies', params: ['service'], expect: {} });
+var callImportCookies = rpc.declare({ object: 'luci.saas-relay', method: 'import_cookies', params: ['service', 'cookies'], expect: {} });
+var callClearCookies = rpc.declare({ object: 'luci.saas-relay', method: 'clear_cookies', params: ['service'], expect: {} });
+var callGetLog = rpc.declare({ object: 'luci.saas-relay', method: 'get_log', params: ['lines'], expect: {} });
 
 return view.extend({
 	load: function() {
-		return Promise.all([
-			callStatus(),
-			callListServices()
-		]);
+		return Promise.all([callStatus(), callListServices()]);
 	},
 
-	renderStatusCard: function(status) {
-		var statusEmoji = status.status === 'running' ? '✅' : '⏸️';
-		var enabledEmoji = status.enabled ? '🔓' : '🔐';
-
-		return E('div', { 'class': 'cbi-section', 'style': 'background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: #e0e0e0; border-radius: 12px; padding: 20px; margin-bottom: 20px;' }, [
-			E('h3', { 'style': 'color: #f97316; margin-bottom: 15px;' }, '🔄 SaaS Relay Status'),
-			E('div', { 'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;' }, [
-				E('div', { 'class': 'stat-box', 'style': 'background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; text-align: center;' }, [
-					E('div', { 'style': 'font-size: 2em;' }, statusEmoji),
-					E('div', { 'style': 'font-size: 0.9em; color: #999;' }, 'Status'),
-					E('div', { 'style': 'font-weight: bold;' }, status.status || 'Unknown')
-				]),
-				E('div', { 'class': 'stat-box', 'style': 'background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; text-align: center;' }, [
-					E('div', { 'style': 'font-size: 2em;' }, '🔗'),
-					E('div', { 'style': 'font-size: 0.9em; color: #999;' }, 'Services'),
-					E('div', { 'style': 'font-weight: bold;' }, (status.enabled_services || 0) + ' / ' + (status.service_count || 0))
-				]),
-				E('div', { 'class': 'stat-box', 'style': 'background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; text-align: center;' }, [
-					E('div', { 'style': 'font-size: 2em;' }, '🍪'),
-					E('div', { 'style': 'font-size: 0.9em; color: #999;' }, 'Cookies'),
-					E('div', { 'style': 'font-weight: bold;' }, status.total_cookies || 0)
-				]),
-				E('div', { 'class': 'stat-box', 'style': 'background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; text-align: center;' }, [
-					E('div', { 'style': 'font-size: 2em;' }, '🌐'),
-					E('div', { 'style': 'font-size: 0.9em; color: #999;' }, 'Port'),
-					E('div', { 'style': 'font-weight: bold;' }, status.proxy_port || 8890)
-				])
-			])
-		]);
+	renderStats: function(status) {
+		var c = KissTheme.colors;
+		return [
+			KissTheme.stat(status.status === 'running' ? 'UP' : 'DOWN', 'Status', status.status === 'running' ? c.green : c.red),
+			KissTheme.stat((status.enabled_services || 0) + '/' + (status.service_count || 0), 'Services', c.blue),
+			KissTheme.stat(status.total_cookies || 0, 'Cookies', c.orange),
+			KissTheme.stat(status.proxy_port || 8890, 'Port', c.purple)
+		];
 	},
 
 	renderServiceCard: function(service) {
 		var self = this;
-		var statusEmoji = service.enabled ? '🟢' : '🔴';
-		var cookieEmoji = service.cookie_count > 0 ? '🍪' : '⚪';
 
-		var card = E('div', {
-			'class': 'service-card',
-			'style': 'background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 15px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;'
+		return E('div', {
+			'style': 'background: var(--kiss-bg2); border-radius: 8px; padding: 16px; border-left: 3px solid ' + (service.enabled ? 'var(--kiss-green)' : 'var(--kiss-muted)') + ';'
 		}, [
-			E('div', { 'style': 'display: flex; align-items: center; gap: 15px;' }, [
-				E('span', { 'style': 'font-size: 2em;' }, service.emoji || '🔗'),
-				E('div', {}, [
-					E('div', { 'style': 'font-weight: bold; font-size: 1.1em;' }, [
-						statusEmoji, ' ', service.name
+			E('div', { 'style': 'display: flex; align-items: center; gap: 12px; margin-bottom: 12px;' }, [
+				E('span', { 'style': 'font-size: 1.5em;' }, service.emoji || '🔗'),
+				E('div', { 'style': 'flex: 1;' }, [
+					E('div', { 'style': 'display: flex; align-items: center; gap: 8px;' }, [
+						KissTheme.badge(service.enabled ? 'ON' : 'OFF', service.enabled ? 'green' : 'red'),
+						E('span', { 'style': 'font-weight: 600;' }, service.name)
 					]),
-					E('div', { 'style': 'color: #666; font-size: 0.9em;' }, service.domain),
-					E('div', { 'style': 'color: #999; font-size: 0.8em;' }, [
-						cookieEmoji, ' ', service.cookie_count, ' cookies'
-					])
+					E('div', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, service.domain),
+					E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted);' }, (service.cookie_count || 0) + ' cookies')
 				])
 			]),
-			E('div', { 'style': 'display: flex; gap: 8px;' }, [
+			E('div', { 'style': 'display: flex; gap: 6px;' }, [
 				E('button', {
-					'class': 'cbi-button',
-					'style': 'padding: 5px 10px;',
+					'class': service.enabled ? 'kiss-btn kiss-btn-red' : 'kiss-btn kiss-btn-green',
+					'style': 'padding: 4px 10px; font-size: 11px;',
 					'click': function() { self.toggleService(service); }
-				}, service.enabled ? '🔐 Disable' : '🔓 Enable'),
+				}, service.enabled ? 'Disable' : 'Enable'),
 				E('button', {
-					'class': 'cbi-button',
-					'style': 'padding: 5px 10px;',
+					'class': 'kiss-btn',
+					'style': 'padding: 4px 10px; font-size: 11px;',
 					'click': function() { self.manageCookies(service); }
-				}, '🍪 Cookies'),
+				}, 'Cookies'),
 				E('button', {
-					'class': 'cbi-button cbi-button-remove',
-					'style': 'padding: 5px 10px;',
+					'class': 'kiss-btn kiss-btn-red',
+					'style': 'padding: 4px 10px; font-size: 11px;',
 					'click': function() { self.deleteService(service.id); }
-				}, '🗑️')
+				}, 'Del')
 			])
 		]);
-
-		return card;
 	},
 
 	toggleService: function(service) {
@@ -178,106 +77,119 @@ return view.extend({
 
 		action({ id: service.id }).then(function(result) {
 			if (result.success) {
-				ui.addNotification(null, E('p', result.emoji + ' ' + result.message), 'success');
+				ui.addNotification(null, E('p', result.message), 'success');
 				self.refreshView();
 			} else {
-				ui.addNotification(null, E('p', '❌ ' + (result.error || 'Failed')), 'error');
+				ui.addNotification(null, E('p', result.error || 'Failed'), 'error');
 			}
 		});
 	},
 
 	deleteService: function(id) {
 		var self = this;
-		if (!confirm('🗑️ Delete service "' + id + '" and its cookies?')) return;
+		if (!confirm('Delete service "' + id + '" and its cookies?')) return;
 
 		callServiceDelete({ id: id }).then(function(result) {
 			if (result.success) {
-				ui.addNotification(null, E('p', result.emoji + ' ' + result.message), 'success');
+				ui.addNotification(null, E('p', result.message), 'success');
 				self.refreshView();
 			}
 		});
 	},
 
 	manageCookies: function(service) {
-		var self = this;
-
 		callListCookies({ service: service.id }).then(function(result) {
-			var content = E('div', {}, [
-				E('h4', {}, '🍪 Cookies for ' + service.name),
-				E('p', {}, 'Current: ' + (result.count || 0) + ' cookies'),
-				E('hr'),
-				E('h5', {}, 'Import Cookies (JSON format)'),
-				E('textarea', {
-					'id': 'cookie-import-text',
-					'style': 'width: 100%; height: 150px; font-family: monospace;',
-					'placeholder': '{"cookie_name": "cookie_value", ...}'
-				}, result.cookies !== '{}' ? result.cookies : ''),
-				E('div', { 'style': 'margin-top: 10px; display: flex; gap: 10px;' }, [
-					E('button', {
-						'class': 'cbi-button cbi-button-action',
-						'click': function() {
-							var cookies = document.getElementById('cookie-import-text').value;
-							try {
-								JSON.parse(cookies);
-								callImportCookies({ service: service.id, cookies: cookies }).then(function(res) {
-									if (res.success) {
-										ui.addNotification(null, E('p', res.emoji + ' ' + res.message), 'success');
+			ui.showModal('Cookies for ' + service.name, [
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px;' }, [
+					E('p', { 'style': 'margin: 0; color: var(--kiss-muted);' }, 'Current: ' + (result.count || 0) + ' cookies'),
+					E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+						E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Import Cookies (JSON)'),
+						E('textarea', {
+							'id': 'cookie-import-text',
+							'style': 'width: 100%; height: 150px; font-family: monospace; font-size: 11px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px; border-radius: 6px;',
+							'placeholder': '{"cookie_name": "cookie_value", ...}'
+						}, result.cookies !== '{}' ? result.cookies : '')
+					]),
+					E('div', { 'style': 'display: flex; gap: 8px;' }, [
+						E('button', {
+							'class': 'kiss-btn kiss-btn-blue',
+							'click': function() {
+								var cookies = document.getElementById('cookie-import-text').value;
+								try {
+									JSON.parse(cookies);
+									callImportCookies({ service: service.id, cookies: cookies }).then(function(res) {
+										if (res.success) {
+											ui.addNotification(null, E('p', res.message), 'success');
+											ui.hideModal();
+										}
+									});
+								} catch (e) {
+									ui.addNotification(null, E('p', 'Invalid JSON'), 'error');
+								}
+							}
+						}, 'Import'),
+						E('button', {
+							'class': 'kiss-btn kiss-btn-red',
+							'click': function() {
+								if (confirm('Clear all cookies for ' + service.name + '?')) {
+									callClearCookies({ service: service.id }).then(function(res) {
+										ui.addNotification(null, E('p', res.message), 'success');
 										ui.hideModal();
-									}
-								});
-							} catch (e) {
-								ui.addNotification(null, E('p', '❌ Invalid JSON'), 'error');
+									});
+								}
 							}
-						}
-					}, '📥 Import'),
-					E('button', {
-						'class': 'cbi-button cbi-button-remove',
-						'click': function() {
-							if (confirm('Clear all cookies for ' + service.name + '?')) {
-								callClearCookies({ service: service.id }).then(function(res) {
-									ui.addNotification(null, E('p', res.emoji + ' ' + res.message), 'success');
-									ui.hideModal();
-								});
-							}
-						}
-					}, '🗑️ Clear'),
-					E('button', {
-						'class': 'cbi-button',
-						'click': ui.hideModal
-					}, 'Close')
+						}, 'Clear'),
+						E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Close')
+					])
 				])
 			]);
-
-			ui.showModal('Cookie Manager', content);
 		});
 	},
 
 	addService: function() {
 		var self = this;
 
-		var content = E('div', {}, [
-			E('h4', {}, '➕ Add New Service'),
-			E('div', { 'style': 'display: grid; gap: 10px;' }, [
-				E('label', {}, [
-					'ID (lowercase, no spaces):',
-					E('input', { 'type': 'text', 'id': 'new-svc-id', 'style': 'width: 100%; padding: 5px;' })
+		ui.showModal('Add Service', [
+			E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px;' }, [
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+					E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'ID (lowercase, no spaces)'),
+					E('input', {
+						'type': 'text',
+						'id': 'new-svc-id',
+						'style': 'background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px 12px; border-radius: 6px;'
+					})
 				]),
-				E('label', {}, [
-					'Name:',
-					E('input', { 'type': 'text', 'id': 'new-svc-name', 'style': 'width: 100%; padding: 5px;' })
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+					E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Name'),
+					E('input', {
+						'type': 'text',
+						'id': 'new-svc-name',
+						'style': 'background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px 12px; border-radius: 6px;'
+					})
 				]),
-				E('label', {}, [
-					'Domain:',
-					E('input', { 'type': 'text', 'id': 'new-svc-domain', 'style': 'width: 100%; padding: 5px;', 'placeholder': 'example.com' })
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+					E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Domain'),
+					E('input', {
+						'type': 'text',
+						'id': 'new-svc-domain',
+						'placeholder': 'example.com',
+						'style': 'background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px 12px; border-radius: 6px;'
+					})
 				]),
-				E('label', {}, [
-					'Emoji:',
-					E('input', { 'type': 'text', 'id': 'new-svc-emoji', 'style': 'width: 100%; padding: 5px;', 'placeholder': '🔗', 'value': '🔗' })
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+					E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Emoji'),
+					E('input', {
+						'type': 'text',
+						'id': 'new-svc-emoji',
+						'value': '🔗',
+						'style': 'width: 60px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px 12px; border-radius: 6px;'
+					})
 				])
 			]),
-			E('div', { 'style': 'margin-top: 15px; display: flex; gap: 10px;' }, [
+			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;' }, [
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
 				E('button', {
-					'class': 'cbi-button cbi-button-action',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() {
 						var id = document.getElementById('new-svc-id').value;
 						var name = document.getElementById('new-svc-name').value;
@@ -285,39 +197,33 @@ return view.extend({
 						var emoji = document.getElementById('new-svc-emoji').value || '🔗';
 
 						if (!id || !name || !domain) {
-							ui.addNotification(null, E('p', '❌ All fields required'), 'error');
+							ui.addNotification(null, E('p', 'All fields required'), 'error');
 							return;
 						}
 
 						callServiceAdd({ id: id, name: name, domain: domain, emoji: emoji }).then(function(res) {
 							if (res.success) {
-								ui.addNotification(null, E('p', res.emoji + ' ' + res.message), 'success');
+								ui.addNotification(null, E('p', res.message), 'success');
 								ui.hideModal();
 								self.refreshView();
 							} else {
-								ui.addNotification(null, E('p', '❌ ' + res.error), 'error');
+								ui.addNotification(null, E('p', res.error), 'error');
 							}
 						});
 					}
-				}, '➕ Add Service'),
-				E('button', {
-					'class': 'cbi-button',
-					'click': ui.hideModal
-				}, 'Cancel')
+				}, 'Add')
 			])
 		]);
-
-		ui.showModal('Add Service', content);
 	},
 
 	startRelay: function() {
 		var self = this;
 		callStart().then(function(result) {
 			if (result.success) {
-				ui.addNotification(null, E('p', result.emoji + ' ' + result.message), 'success');
+				ui.addNotification(null, E('p', result.message), 'success');
 				self.refreshView();
 			} else {
-				ui.addNotification(null, E('p', '❌ ' + result.error), 'error');
+				ui.addNotification(null, E('p', result.error), 'error');
 			}
 		});
 	},
@@ -326,22 +232,10 @@ return view.extend({
 		var self = this;
 		callStop().then(function(result) {
 			if (result.success) {
-				ui.addNotification(null, E('p', result.emoji + ' ' + result.message), 'success');
+				ui.addNotification(null, E('p', result.message), 'success');
 				self.refreshView();
 			} else {
-				ui.addNotification(null, E('p', '❌ ' + result.error), 'error');
-			}
-		});
-	},
-
-	setupRelay: function() {
-		var self = this;
-		callSetup().then(function(result) {
-			if (result.success) {
-				ui.addNotification(null, E('p', result.emoji + ' ' + result.message), 'success');
-				self.refreshView();
-			} else {
-				ui.addNotification(null, E('p', '❌ ' + result.error), 'error');
+				ui.addNotification(null, E('p', result.error), 'error');
 			}
 		});
 	},
@@ -351,20 +245,14 @@ return view.extend({
 			var entries = result.entries || [];
 			var logContent = entries.length > 0 ? entries.join('\n') : 'No activity logged';
 
-			var content = E('div', {}, [
-				E('h4', {}, '📋 Activity Log'),
+			ui.showModal('Activity Log', [
 				E('pre', {
-					'style': 'background: #1a1a2e; color: #e0e0e0; padding: 15px; border-radius: 8px; max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 0.85em;'
+					'style': 'background: var(--kiss-bg); color: var(--kiss-text); padding: 16px; border-radius: 8px; max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 11px;'
 				}, logContent),
-				E('div', { 'style': 'margin-top: 10px;' }, [
-					E('button', {
-						'class': 'cbi-button',
-						'click': ui.hideModal
-					}, 'Close')
+				E('div', { 'style': 'display: flex; justify-content: flex-end; margin-top: 12px;' }, [
+					E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Close')
 				])
 			]);
-
-			ui.showModal('Activity Log', content);
 		});
 	},
 
@@ -374,17 +262,24 @@ return view.extend({
 			var status = results[0];
 			var services = results[1].services || [];
 
-			// Update status card
-			var statusContainer = document.getElementById('status-container');
-			statusContainer.innerHTML = '';
-			statusContainer.appendChild(self.renderStatusCard(status));
+			var statsEl = document.getElementById('relay-stats');
+			if (statsEl) {
+				statsEl.innerHTML = '';
+				self.renderStats(status).forEach(function(el) { statsEl.appendChild(el); });
+			}
 
-			// Update services
-			var servicesContainer = document.getElementById('services-container');
-			servicesContainer.innerHTML = '';
-			services.forEach(function(svc) {
-				servicesContainer.appendChild(self.renderServiceCard(svc));
-			});
+			var servicesEl = document.getElementById('services-container');
+			if (servicesEl) {
+				servicesEl.innerHTML = '';
+				if (services.length === 0) {
+					servicesEl.appendChild(E('div', { 'style': 'text-align: center; padding: 24px; color: var(--kiss-muted);' },
+						'No services configured. Click "Add Service" to get started.'));
+				} else {
+					services.forEach(function(svc) {
+						servicesEl.appendChild(self.renderServiceCard(svc));
+					});
+				}
+			}
 		});
 	},
 
@@ -393,62 +288,40 @@ return view.extend({
 		var status = data[0] || {};
 		var services = (data[1] && data[1].services) || [];
 
-		var view = E('div', { 'class': 'cbi-map' }, [
-			E('h2', { 'class': 'cbi-map-title' }, '🔄 SaaS Relay'),
-			E('div', { 'class': 'cbi-map-descr' },
-				'Shared browser session proxy for team access to external SaaS services. Uses SecuBox authentication with mitmproxy cookie injection.'),
-
-			// Control buttons
-			E('div', { 'style': 'margin: 20px 0; display: flex; gap: 10px; flex-wrap: wrap;' }, [
-				E('button', {
-					'class': 'cbi-button cbi-button-action',
-					'click': function() { self.startRelay(); }
-				}, '▶️ Start'),
-				E('button', {
-					'class': 'cbi-button',
-					'click': function() { self.stopRelay(); }
-				}, '⏹️ Stop'),
-				E('button', {
-					'class': 'cbi-button',
-					'click': function() { self.setupRelay(); }
-				}, '⚙️ Setup'),
-				E('button', {
-					'class': 'cbi-button cbi-button-add',
-					'click': function() { self.addService(); }
-				}, '➕ Add Service'),
-				E('button', {
-					'class': 'cbi-button',
-					'click': function() { self.showLog(); }
-				}, '📋 View Log'),
-				E('button', {
-					'class': 'cbi-button',
-					'click': function() { self.refreshView(); }
-				}, '🔄 Refresh')
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'SaaS Relay'),
+					KissTheme.badge(status.status === 'running' ? 'RUNNING' : 'STOPPED', status.status === 'running' ? 'green' : 'red')
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' }, 'Shared browser session proxy for SaaS services')
 			]),
 
-			// Status card container
-			E('div', { 'id': 'status-container' }),
+			// Stats
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'id': 'relay-stats', 'style': 'margin: 20px 0;' }, this.renderStats(status)),
 
-			// Services section
-			E('h3', { 'style': 'margin-top: 20px;' }, '🔗 Connected Services'),
-			E('div', { 'id': 'services-container' })
-		]);
+			// Actions
+			E('div', { 'style': 'display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px;' }, [
+				E('button', { 'class': 'kiss-btn kiss-btn-green', 'click': function() { self.startRelay(); } }, 'Start'),
+				E('button', { 'class': 'kiss-btn kiss-btn-red', 'click': function() { self.stopRelay(); } }, 'Stop'),
+				E('button', { 'class': 'kiss-btn kiss-btn-blue', 'click': function() { self.addService(); } }, '+ Add Service'),
+				E('button', { 'class': 'kiss-btn', 'click': function() { self.showLog(); } }, 'View Log'),
+				E('button', { 'class': 'kiss-btn', 'click': function() { self.refreshView(); } }, 'Refresh')
+			]),
 
-		// Render initial content
-		var statusContainer = view.querySelector('#status-container');
-		statusContainer.appendChild(this.renderStatusCard(status));
+			// Services
+			KissTheme.card('Services (' + services.length + ')',
+				E('div', { 'id': 'services-container', 'style': 'display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;' },
+					services.length > 0 ?
+						services.map(function(svc) { return self.renderServiceCard(svc); }) :
+						[E('div', { 'style': 'text-align: center; padding: 24px; color: var(--kiss-muted); grid-column: 1 / -1;' },
+							'No services configured. Click "Add Service" to get started.')]
+				)
+			)
+		];
 
-		var servicesContainer = view.querySelector('#services-container');
-		if (services.length === 0) {
-			servicesContainer.appendChild(E('p', { 'style': 'color: #666; text-align: center; padding: 20px;' },
-				'No services configured. Click "➕ Add Service" to get started.'));
-		} else {
-			services.forEach(function(svc) {
-				servicesContainer.appendChild(self.renderServiceCard(svc));
-			});
-		}
-
-		return view;
+		return KissTheme.wrap(content, 'admin/services/saas-relay/overview');
 	},
 
 	handleSaveApply: null,

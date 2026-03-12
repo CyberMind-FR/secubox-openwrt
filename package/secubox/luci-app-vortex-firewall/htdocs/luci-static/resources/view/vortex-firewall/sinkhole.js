@@ -228,7 +228,7 @@ return view.extend({
 			E('div', { 'style': 'display:flex;justify-content:space-between;align-items:center;margin-bottom:16px' }, [
 				E('h3', { 'style': 'margin:0' }, '\uD83D\uDCCB Event Log'),
 				E('button', {
-					'class': 'cbi-button cbi-button-negative',
+					'class': 'kiss-btn kiss-btn-red',
 					'style': 'padding:4px 12px;font-size:12px',
 					'click': function() { self.handleClearEvents(); }
 				}, '\uD83D\uDDD1 Clear Log')
@@ -271,9 +271,9 @@ return view.extend({
 		ui.showModal('Clear Event Log', [
 			E('p', {}, 'Are you sure you want to clear all sinkhole events? This action cannot be undone.'),
 			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
 				E('button', {
-					'class': 'cbi-button cbi-button-negative',
+					'class': 'kiss-btn kiss-btn-red',
 					'click': function() {
 						ui.hideModal();
 						callSinkholeClear().then(function(result) {

@@ -3,6 +3,7 @@
 'require rpc';
 'require ui';
 'require uci';
+'require secubox/kiss-theme';
 
 var callListJingles = rpc.declare({
 	object: 'luci.webradio',
@@ -25,10 +26,63 @@ var callUpload = rpc.declare({
 });
 
 return view.extend({
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null,
+
 	load: function() {
 		return Promise.all([
 			callListJingles(),
 			uci.load('webradio')
+		]);
+	},
+
+	renderStats: function(jingleCount, enabled, interval) {
+		var c = KissTheme.colors;
+		return [
+			KissTheme.stat(jingleCount, 'Jingles', c.purple),
+			KissTheme.stat(enabled ? 'On' : 'Off', 'Auto-Play', enabled ? c.green : c.muted),
+			KissTheme.stat(interval + 'm', 'Interval', c.blue)
+		];
+	},
+
+	renderJingleList: function(jingles) {
+		if (!jingles || jingles.length === 0) {
+			return E('p', { 'style': 'color: var(--kiss-muted);' },
+				'No jingles found. Upload audio files to use as jingles.');
+		}
+
+		var self = this;
+		var rows = jingles.map(function(jingle) {
+			return E('tr', {}, [
+				E('td', { 'style': 'font-weight: 600;' }, jingle.name),
+				E('td', { 'style': 'color: var(--kiss-muted);' }, jingle.size || '-'),
+				E('td', { 'style': 'width: 180px;' }, [
+					E('div', { 'style': 'display: flex; gap: 8px;' }, [
+						E('button', {
+							'class': 'kiss-btn kiss-btn-blue',
+							'style': 'padding: 4px 10px; font-size: 11px;',
+							'click': ui.createHandlerFn(self, 'handlePlay', jingle.name)
+						}, 'Play Now'),
+						E('button', {
+							'class': 'kiss-btn kiss-btn-red',
+							'style': 'padding: 4px 10px; font-size: 11px;',
+							'click': ui.createHandlerFn(self, 'handleDelete', jingle.path)
+						}, 'Delete')
+					])
+				])
+			]);
+		});
+
+		return E('table', { 'class': 'kiss-table' }, [
+			E('thead', {}, [
+				E('tr', {}, [
+					E('th', {}, 'Name'),
+					E('th', {}, 'Size'),
+					E('th', {}, 'Actions')
+				])
+			]),
+			E('tbody', {}, rows)
 		]);
 	},
 
@@ -37,137 +91,102 @@ return view.extend({
 		var jingleData = data[0] || {};
 		var jingles = jingleData.jingles || [];
 		var jingleDir = jingleData.directory || '/srv/webradio/jingles';
+		var enabled = uci.get('webradio', 'jingles', 'enabled') === '1';
+		var interval = uci.get('webradio', 'jingles', 'interval') || '30';
 
 		var content = [
-			E('h2', {}, 'Jingle Management'),
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'Jingle Management'),
+					KissTheme.badge(jingles.length + ' Files', 'purple')
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' },
+					'Manage station jingles and identifiers')
+			]),
+
+			// Stats
+			E('div', { 'class': 'kiss-grid kiss-grid-3', 'style': 'margin: 20px 0;' },
+				this.renderStats(jingles.length, enabled, interval)),
 
 			// Settings
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, 'Jingle Settings'),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Enable Jingles'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
-							'type': 'checkbox',
-							'id': 'jingles-enabled',
-							'checked': uci.get('webradio', 'jingles', 'enabled') === '1'
-						}),
-						E('span', { 'style': 'margin-left: 10px;' },
-							'Enable automatic jingle rotation')
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Jingles Directory'),
-					E('div', { 'class': 'cbi-value-field' }, [
+			KissTheme.card('Jingle Settings',
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 16px;' }, [
+					E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+						E('label', { 'style': 'display: flex; align-items: center; gap: 10px;' }, [
+							E('input', {
+								'type': 'checkbox',
+								'id': 'jingles-enabled',
+								'checked': enabled
+							}),
+							E('span', {}, 'Enable automatic jingle rotation')
+						])
+					]),
+					E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+						E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Jingles Directory'),
 						E('input', {
 							'type': 'text',
 							'id': 'jingle-dir',
-							'class': 'cbi-input-text',
 							'value': jingleDir,
-							'style': 'width: 300px;'
+							'style': 'background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 10px 12px; border-radius: 6px;'
 						})
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Interval (minutes)'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
-							'type': 'number',
-							'id': 'jingle-interval',
-							'class': 'cbi-input-text',
-							'value': uci.get('webradio', 'jingles', 'interval') || '30',
-							'min': '5',
-							'max': '120',
-							'style': 'width: 100px;'
-						}),
-						E('span', { 'style': 'margin-left: 10px; color: #666;' },
-							'Time between automatic jingles')
-					])
-				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Between Tracks'),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
-							'type': 'checkbox',
-							'id': 'jingle-between',
-							'checked': uci.get('webradio', 'jingles', 'between_tracks') === '1'
-						}),
-						E('span', { 'style': 'margin-left: 10px;' },
-							'Play jingle between every N tracks')
-					])
-				]),
-				E('button', {
-					'class': 'btn cbi-button-action',
-					'style': 'margin-top: 10px;',
-					'click': ui.createHandlerFn(this, 'handleSaveSettings')
-				}, 'Save Settings')
-			]),
+					]),
+					E('div', { 'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px;' }, [
+						E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+							E('label', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Interval (minutes)'),
+							E('input', {
+								'type': 'number',
+								'id': 'jingle-interval',
+								'value': interval,
+								'min': '5',
+								'max': '120',
+								'style': 'background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 10px 12px; border-radius: 6px;'
+							})
+						]),
+						E('div', { 'style': 'display: flex; flex-direction: column; gap: 6px;' }, [
+							E('label', { 'style': 'display: flex; align-items: center; gap: 10px; margin-top: 22px;' }, [
+								E('input', {
+									'type': 'checkbox',
+									'id': 'jingle-between',
+									'checked': uci.get('webradio', 'jingles', 'between_tracks') === '1'
+								}),
+								E('span', { 'style': 'font-size: 13px;' }, 'Play between tracks')
+							])
+						])
+					]),
+					E('button', {
+						'class': 'kiss-btn kiss-btn-blue',
+						'style': 'align-self: flex-start;',
+						'click': ui.createHandlerFn(this, 'handleSaveSettings')
+					}, 'Save Settings')
+				])
+			),
 
 			// Upload
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, 'Upload Jingle'),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'File'),
-					E('div', { 'class': 'cbi-value-field' }, [
+			KissTheme.card('Upload Jingle',
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px;' }, [
+					E('div', { 'style': 'display: flex; gap: 12px; align-items: center;' }, [
 						E('input', {
 							'type': 'file',
 							'id': 'jingle-file',
-							'accept': 'audio/*'
+							'accept': 'audio/*',
+							'style': 'color: var(--kiss-text);'
 						}),
 						E('button', {
-							'class': 'btn cbi-button-positive',
-							'style': 'margin-left: 10px;',
+							'class': 'kiss-btn kiss-btn-green',
 							'click': ui.createHandlerFn(this, 'handleUpload')
 						}, 'Upload')
-					])
-				]),
-				E('p', { 'style': 'color: #666; font-size: 0.9em;' },
-					'Supported formats: MP3, OGG, WAV. Keep jingles short (5-30 seconds).')
-			]),
+					]),
+					E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted);' },
+						'Supported formats: MP3, OGG, WAV. Keep jingles short (5-30 seconds).')
+				])
+			),
 
 			// Jingle list
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, 'Available Jingles (' + jingles.length + ')'),
-				this.renderJingleList(jingles)
-			])
+			KissTheme.card('Available Jingles (' + jingles.length + ')', this.renderJingleList(jingles))
 		];
 
-		return E('div', { 'class': 'cbi-map' }, content);
-	},
-
-	renderJingleList: function(jingles) {
-		if (!jingles || jingles.length === 0) {
-			return E('p', { 'style': 'color: #666;' },
-				'No jingles found. Upload audio files to use as jingles.');
-		}
-
-		var self = this;
-		var rows = jingles.map(function(jingle) {
-			return E('div', { 'class': 'tr' }, [
-				E('div', { 'class': 'td', 'style': 'font-weight: bold;' }, jingle.name),
-				E('div', { 'class': 'td' }, jingle.size || '-'),
-				E('div', { 'class': 'td', 'style': 'width: 150px;' }, [
-					E('button', {
-						'class': 'btn cbi-button-action',
-						'style': 'padding: 2px 8px; margin-right: 5px;',
-						'click': ui.createHandlerFn(self, 'handlePlay', jingle.name)
-					}, 'Play Now'),
-					E('button', {
-						'class': 'btn cbi-button-remove',
-						'style': 'padding: 2px 8px;',
-						'click': ui.createHandlerFn(self, 'handleDelete', jingle.path)
-					}, 'Delete')
-				])
-			]);
-		});
-
-		return E('div', { 'class': 'table' }, [
-			E('div', { 'class': 'tr cbi-section-table-titles' }, [
-				E('div', { 'class': 'th' }, 'Name'),
-				E('div', { 'class': 'th' }, 'Size'),
-				E('div', { 'class': 'th' }, 'Actions')
-			])
-		].concat(rows));
+		return KissTheme.wrap(content, 'admin/services/webradio/jingles');
 	},
 
 	handleSaveSettings: function() {
@@ -198,8 +217,6 @@ return view.extend({
 			return;
 		}
 
-		var jingleDir = document.getElementById('jingle-dir').value;
-
 		ui.showModal('Uploading', [
 			E('p', { 'class': 'spinning' }, 'Uploading ' + file.name + '...')
 		]);
@@ -207,10 +224,6 @@ return view.extend({
 		var reader = new FileReader();
 		reader.onload = function() {
 			var base64 = reader.result.split(',')[1];
-
-			// We'll store in jingles dir - modify the upload call
-			// For now, use existing upload which goes to music dir
-			// The user can move files manually, or we add jingle-specific upload
 
 			callUpload(file.name, base64).then(function(res) {
 				ui.hideModal();
@@ -244,12 +257,6 @@ return view.extend({
 	},
 
 	handleDelete: function(path) {
-		// This would need a delete_jingle RPCD method
-		// For now just show info
 		ui.addNotification(null, E('p', 'To delete, use SSH: rm "' + path + '"'), 'info');
-	},
-
-	handleSaveApply: null,
-	handleSave: null,
-	handleReset: null
+	}
 });

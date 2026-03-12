@@ -3,6 +3,7 @@
 'require dom';
 'require poll';
 'require wazuh.api as api';
+'require secubox/kiss-theme';
 
 return view.extend({
     handleSaveApply: null,
@@ -13,117 +14,110 @@ return view.extend({
         return api.getAlerts(50, 0);
     },
 
-    render: function(data) {
-        var alerts = data.alerts || [];
+    renderNav: function(active) {
+        var tabs = [
+            { name: 'Overview', path: 'admin/services/wazuh/overview' },
+            { name: 'Alerts', path: 'admin/services/wazuh/alerts' },
+            { name: 'File Integrity', path: 'admin/services/wazuh/fim' },
+            { name: 'Agents', path: 'admin/services/wazuh/agents' }
+        ];
+
+        return E('div', { 'class': 'kiss-tabs' }, tabs.map(function(tab) {
+            var isActive = tab.path.indexOf(active) !== -1;
+            return E('a', {
+                'href': L.url(tab.path),
+                'class': 'kiss-tab' + (isActive ? ' active' : '')
+            }, tab.name);
+        }));
+    },
+
+    renderFilters: function() {
         var self = this;
-
-        var view = E('div', { 'class': 'cbi-map' }, [
-            E('h2', {}, _('Wazuh Security Alerts')),
-            E('div', { 'class': 'cbi-map-descr' },
-                _('Real-time security events from Wazuh SIEM/XDR')
-            ),
-
-            // Filter Controls
-            E('div', { 'class': 'cbi-section' }, [
-                E('div', { 'style': 'display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;' }, [
-                    E('label', {}, _('Filter by Level:')),
-                    E('select', {
-                        'id': 'level-filter',
-                        'class': 'cbi-input-select',
-                        'change': L.bind(this.handleFilterChange, this)
-                    }, [
-                        E('option', { 'value': '0' }, _('All Levels')),
-                        E('option', { 'value': '12' }, _('Critical (12+)')),
-                        E('option', { 'value': '9' }, _('High (9+)')),
-                        E('option', { 'value': '5' }, _('Medium (5+)')),
-                        E('option', { 'value': '1' }, _('Low (1+)'))
-                    ]),
-
-                    E('label', { 'style': 'margin-left: 1rem;' }, _('Count:')),
-                    E('select', {
-                        'id': 'count-filter',
-                        'class': 'cbi-input-select',
-                        'change': L.bind(this.handleFilterChange, this)
-                    }, [
-                        E('option', { 'value': '20' }, '20'),
-                        E('option', { 'value': '50', 'selected': 'selected' }, '50'),
-                        E('option', { 'value': '100' }, '100'),
-                        E('option', { 'value': '200' }, '200')
-                    ]),
-
-                    E('button', {
-                        'class': 'btn cbi-button cbi-button-action',
-                        'style': 'margin-left: 1rem;',
-                        'click': L.bind(this.handleRefresh, this)
-                    }, _('Refresh'))
+        return E('div', { 'style': 'display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-bottom: 20px;' }, [
+            E('div', { 'style': 'display: flex; align-items: center; gap: 8px;' }, [
+                E('label', { 'style': 'color: var(--kiss-muted); font-size: 13px;' }, 'Level:'),
+                E('select', {
+                    'id': 'level-filter',
+                    'class': 'kiss-select',
+                    'style': 'background: var(--kiss-card); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 6px 12px; border-radius: 6px;',
+                    'change': function() { self.handleFilterChange(); }
+                }, [
+                    E('option', { 'value': '0' }, 'All Levels'),
+                    E('option', { 'value': '12' }, 'Critical (12+)'),
+                    E('option', { 'value': '9' }, 'High (9+)'),
+                    E('option', { 'value': '5' }, 'Medium (5+)'),
+                    E('option', { 'value': '1' }, 'Low (1+)')
                 ])
             ]),
-
-            // Alerts Table
-            E('div', { 'class': 'cbi-section' }, [
-                E('div', { 'id': 'alerts-container' }, [
-                    this.renderAlertsTable(alerts)
+            E('div', { 'style': 'display: flex; align-items: center; gap: 8px;' }, [
+                E('label', { 'style': 'color: var(--kiss-muted); font-size: 13px;' }, 'Count:'),
+                E('select', {
+                    'id': 'count-filter',
+                    'class': 'kiss-select',
+                    'style': 'background: var(--kiss-card); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 6px 12px; border-radius: 6px;'
+                }, [
+                    E('option', { 'value': '20' }, '20'),
+                    E('option', { 'value': '50', 'selected': 'selected' }, '50'),
+                    E('option', { 'value': '100' }, '100'),
+                    E('option', { 'value': '200' }, '200')
                 ])
             ]),
-
-            // Legend
-            E('div', { 'class': 'cbi-section' }, [
-                E('h4', {}, _('Severity Legend')),
-                E('div', { 'style': 'display: flex; gap: 1rem; flex-wrap: wrap;' }, [
-                    E('span', { 'class': 'badge danger', 'style': 'padding: 0.3rem 0.6rem;' }, _('Critical (12+)')),
-                    E('span', { 'class': 'badge warning', 'style': 'padding: 0.3rem 0.6rem;' }, _('High (9-11)')),
-                    E('span', { 'class': 'badge notice', 'style': 'padding: 0.3rem 0.6rem;' }, _('Medium (5-8)')),
-                    E('span', { 'class': 'badge info', 'style': 'padding: 0.3rem 0.6rem;' }, _('Low (1-4)'))
-                ])
-            ])
+            E('button', {
+                'class': 'kiss-btn kiss-btn-blue',
+                'click': function() { self.handleRefresh(); }
+            }, 'Refresh')
         ]);
-
-        // Setup auto-refresh
-        poll.add(L.bind(this.pollAlerts, this), 60);
-
-        return view;
     },
 
     renderAlertsTable: function(alerts) {
+        var c = KissTheme.colors;
         if (!alerts || alerts.length === 0) {
-            return E('div', { 'class': 'cbi-value', 'style': 'text-align: center; padding: 2rem;' },
-                _('No alerts found')
-            );
+            return E('div', { 'style': 'text-align: center; padding: 32px; color: var(--kiss-muted);' }, 'No alerts found');
         }
 
-        var rows = [
-            E('tr', { 'class': 'tr' }, [
-                E('th', { 'class': 'th', 'style': 'width: 60px;' }, _('Level')),
-                E('th', { 'class': 'th', 'style': 'width: 150px;' }, _('Time')),
-                E('th', { 'class': 'th', 'style': 'width: 100px;' }, _('Agent')),
-                E('th', { 'class': 'th', 'style': 'width: 120px;' }, _('Rule ID')),
-                E('th', { 'class': 'th' }, _('Description')),
-                E('th', { 'class': 'th', 'style': 'width: 150px;' }, _('Source'))
-            ])
+        return E('table', { 'class': 'kiss-table' }, [
+            E('thead', {}, E('tr', {}, [
+                E('th', { 'style': 'width: 60px;' }, 'Level'),
+                E('th', { 'style': 'width: 140px;' }, 'Time'),
+                E('th', { 'style': 'width: 100px;' }, 'Agent'),
+                E('th', { 'style': 'width: 100px;' }, 'Rule ID'),
+                E('th', {}, 'Description'),
+                E('th', { 'style': 'width: 140px;' }, 'Source')
+            ])),
+            E('tbody', {}, alerts.map(function(alert) {
+                var level = alert.rule_level || 0;
+                var levelColor = level >= 12 ? c.red : level >= 9 ? c.orange : level >= 5 ? c.yellow : c.muted;
+                var levelLabel = level >= 12 ? 'CRIT' : level >= 9 ? 'HIGH' : level >= 5 ? 'MED' : 'LOW';
+
+                return E('tr', {}, [
+                    E('td', {}, E('span', {
+                        'style': 'display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; background: ' + levelColor + '20; color: ' + levelColor + ';'
+                    }, String(level))),
+                    E('td', { 'style': 'font-family: monospace; font-size: 11px; color: var(--kiss-muted);' }, api.formatTime(alert.timestamp)),
+                    E('td', { 'style': 'font-size: 12px;' }, alert.agent_name || '-'),
+                    E('td', {}, E('code', { 'style': 'background: var(--kiss-bg2); padding: 2px 6px; border-radius: 4px; font-size: 11px;' }, alert.rule_id || '-')),
+                    E('td', { 'style': 'font-size: 12px; color: var(--kiss-text);' }, alert.rule_description || '-'),
+                    E('td', { 'style': 'font-family: monospace; font-size: 11px; color: var(--kiss-cyan);' }, alert.src_ip || alert.data_srcip || '-')
+                ]);
+            }))
+        ]);
+    },
+
+    renderLegend: function() {
+        var c = KissTheme.colors;
+        var levels = [
+            { label: 'Critical (12+)', color: c.red },
+            { label: 'High (9-11)', color: c.orange },
+            { label: 'Medium (5-8)', color: c.yellow },
+            { label: 'Low (1-4)', color: c.muted }
         ];
 
-        var self = this;
-        alerts.forEach(function(alert) {
-            var levelInfo = api.formatLevel(alert.rule_level || 0);
-            rows.push(E('tr', { 'class': 'tr' }, [
-                E('td', { 'class': 'td' }, [
-                    E('span', { 'class': 'badge ' + levelInfo.class }, String(alert.rule_level || 0))
-                ]),
-                E('td', { 'class': 'td', 'style': 'font-size: 0.85em;' },
-                    api.formatTime(alert.timestamp)
-                ),
-                E('td', { 'class': 'td' }, alert.agent_name || '-'),
-                E('td', { 'class': 'td' }, [
-                    E('code', {}, alert.rule_id || '-')
-                ]),
-                E('td', { 'class': 'td' }, alert.rule_description || '-'),
-                E('td', { 'class': 'td', 'style': 'font-family: monospace; font-size: 0.85em;' },
-                    alert.src_ip || alert.data_srcip || '-'
-                )
-            ]));
-        });
-
-        return E('table', { 'class': 'table' }, rows);
+        return E('div', { 'style': 'display: flex; gap: 16px; flex-wrap: wrap; padding: 12px 0;' }, levels.map(function(l) {
+            return E('span', { 'style': 'display: flex; align-items: center; gap: 6px; font-size: 12px;' }, [
+                E('span', { 'style': 'width: 12px; height: 12px; border-radius: 3px; background: ' + l.color + ';' }),
+                E('span', { 'style': 'color: var(--kiss-muted);' }, l.label)
+            ]);
+        }));
     },
 
     handleFilterChange: function() {
@@ -138,7 +132,11 @@ return view.extend({
 
         var container = document.getElementById('alerts-container');
         if (container) {
-            container.innerHTML = '<div style="text-align: center; padding: 2rem;">Loading...</div>';
+            container.innerHTML = '';
+            container.appendChild(E('div', { 'style': 'text-align: center; padding: 32px; color: var(--kiss-muted);' }, [
+                E('span', { 'class': 'spinning' }),
+                ' Loading alerts...'
+            ]));
         }
 
         var self = this;
@@ -152,5 +150,38 @@ return view.extend({
 
     pollAlerts: function() {
         return this.handleRefresh();
+    },
+
+    render: function(data) {
+        var alerts = data.alerts || [];
+        var self = this;
+
+        var content = [
+            // Header
+            E('div', { 'style': 'margin-bottom: 24px;' }, [
+                E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+                    E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'Security Alerts'),
+                    KissTheme.badge(alerts.length + ' events', 'blue')
+                ]),
+                E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' }, 'Real-time security events from Wazuh SIEM/XDR')
+            ]),
+
+            // Navigation
+            this.renderNav('alerts'),
+
+            // Filters
+            this.renderFilters(),
+
+            // Alerts table card
+            KissTheme.card('Alert Events', E('div', { 'id': 'alerts-container' }, this.renderAlertsTable(alerts))),
+
+            // Legend
+            KissTheme.card('Severity Legend', this.renderLegend())
+        ];
+
+        // Setup auto-refresh
+        poll.add(L.bind(this.pollAlerts, this), 60);
+
+        return KissTheme.wrap(content, 'admin/services/wazuh/alerts');
     }
 });

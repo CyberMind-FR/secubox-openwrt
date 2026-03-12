@@ -134,15 +134,15 @@ return view.extend({
 			E('h3', {}, 'Quick Actions'),
 			E('div', { 'class': 'vf-actions' }, [
 				E('button', {
-					'class': 'cbi-button cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'click': function() { self.handleUpdateFeeds(); }
 				}, '\uD83D\uDD04 Update Feeds'),
 				E('button', {
-					'class': 'cbi-button cbi-button-add',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() { self.handleBlockDomain(); }
 				}, '\u2795 Block Domain'),
 				E('button', {
-					'class': 'cbi-button',
+					'class': 'kiss-btn',
 					'click': function() { self.handleSearchDomain(); }
 				}, '\uD83D\uDD0D Search Domain')
 			])
@@ -291,9 +291,9 @@ return view.extend({
 				])
 			]),
 			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
 				E('button', {
-					'class': 'cbi-button cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() {
 						var domain = document.getElementById('block-domain-input').value.trim();
 						var reason = document.getElementById('block-reason-input').value;
@@ -329,9 +329,9 @@ return view.extend({
 				E('div', { 'id': 'search-result', 'style': 'padding:10px;display:none' })
 			]),
 			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Close'),
+				E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Close'),
 				E('button', {
-					'class': 'cbi-button cbi-button-action',
+					'class': 'kiss-btn kiss-btn-blue',
 					'click': function() {
 						var domain = document.getElementById('search-domain-input').value.trim();
 						var resultDiv = document.getElementById('search-result');

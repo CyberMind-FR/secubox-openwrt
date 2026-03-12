@@ -98,8 +98,8 @@ return view.extend({
 				port = E('input', { type: 'number', placeholder: '4000', style: 'width:100%;padding:8px;background:#111827;border:1px solid #1e293b;border-radius:4px;color:#e2e8f0' })
 			]),
 			E('div', { style: 'display:flex;gap:8px;justify-content:flex-end' }, [
-				E('button', { class: 'cbi-button', click: ui.hideModal }, 'Cancel'),
-				E('button', { class: 'cbi-button cbi-button-positive', click: function() {
+				E('button', { class: 'kiss-btn', click: ui.hideModal }, 'Cancel'),
+				E('button', { class: 'kiss-btn kiss-btn-green', click: function() {
 					if (!name.value) return;
 					ui.showModal('Creating...', [E('p', { class: 'spinning' }, 'Please wait...')]);
 					api.createInstance(name.value, title.value, port.value ? +port.value : null).then(function(r) {
@@ -127,8 +127,8 @@ return view.extend({
 				branch = E('input', { type: 'text', value: 'main', style: 'width:100%;padding:8px;background:#111827;border:1px solid #1e293b;border-radius:4px;color:#e2e8f0' })
 			]),
 			E('div', { style: 'display:flex;gap:8px;justify-content:flex-end' }, [
-				E('button', { class: 'cbi-button', click: ui.hideModal }, 'Cancel'),
-				E('button', { class: 'cbi-button cbi-button-positive', click: function() {
+				E('button', { class: 'kiss-btn', click: ui.hideModal }, 'Cancel'),
+				E('button', { class: 'kiss-btn kiss-btn-green', click: function() {
 					if (!repo.value) return;
 					ui.showModal('Cloning...', [E('p', { class: 'spinning' }, 'Please wait...')]);
 					(src === 'github' ? api.gitHubClone : api.gitClone)(repo.value, inst.value, branch.value).then(function(r) {

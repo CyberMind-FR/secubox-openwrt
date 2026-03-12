@@ -354,11 +354,11 @@ return view.extend({
 
 			E('div', { 'style': 'display: flex; gap: 10px;' }, [
 				E('button', {
-					'class': 'cbi-button cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() { self.submitReport(); }
 				}, 'Submit Report'),
 				E('button', {
-					'class': 'cbi-button',
+					'class': 'kiss-btn',
 					'click': function() { ui.hideModal(); }
 				}, 'Cancel')
 			])
@@ -421,11 +421,11 @@ return view.extend({
 
 			E('div', { 'style': 'display: flex; gap: 10px;' }, [
 				E('button', {
-					'class': 'cbi-button cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() { self.submitResolution(issue.id); }
 				}, 'Submit Resolution'),
 				E('button', {
-					'class': 'cbi-button',
+					'class': 'kiss-btn',
 					'click': function() { ui.hideModal(); }
 				}, 'Cancel')
 			])
@@ -512,7 +512,7 @@ return view.extend({
 
 			E('div', { 'style': 'display: flex; gap: 10px;' }, [
 				E('button', {
-					'class': 'cbi-button',
+					'class': 'kiss-btn',
 					'click': function() { ui.hideModal(); }
 				}, 'Close')
 			])
@@ -564,7 +564,7 @@ return view.extend({
 
 			content.push(E('div', { 'style': 'display: flex; gap: 10px; margin-top: 20px;' }, [
 				E('button', {
-					'class': 'cbi-button',
+					'class': 'kiss-btn',
 					'click': function() { ui.hideModal(); }
 				}, 'Close')
 			]));

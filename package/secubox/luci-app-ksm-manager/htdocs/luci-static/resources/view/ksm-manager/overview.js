@@ -1,6 +1,5 @@
 'use strict';
 'require view';
-'require secubox-theme/theme as Theme';
 'require poll';
 'require ui';
 'require ksm-manager/api as KSM';
@@ -25,45 +24,28 @@ return view.extend({
 			var status = data[0];
 			var hsmDevices = data[1];
 
-			// Update status cards
-			var statusCard = document.getElementById('ksm-status');
-			if (statusCard) {
-				statusCard.innerHTML = '';
-
-				var cards = [
-					{
-						title: _('Keystore Status'),
-						value: status.keystore_unlocked ? _('Unlocked') : _('Locked'),
-						color: status.keystore_unlocked ? 'green' : 'red'
-					},
-					{
-						title: _('Total Keys'),
-						value: status.keys_count || 0,
-						color: 'blue'
-					},
-					{
-						title: _('HSM Connected'),
-						value: status.hsm_connected ? _('Yes') : _('No'),
-						color: status.hsm_connected ? 'green' : 'gray'
-					},
-					{
-						title: _('HSM Devices'),
-						value: hsmDevices.devices ? hsmDevices.devices.length : 0,
-						color: 'purple'
-					}
-				];
-
-				cards.forEach(function(card) {
-					var cardDiv = E('div', { 'class': 'cbi-value' }, [
-						E('label', { 'class': 'cbi-value-title' }, card.title + ':'),
-						E('div', { 'class': 'cbi-value-field' }, [
-							E('strong', { 'style': 'color: ' + card.color }, String(card.value))
-						])
-					]);
-					statusCard.appendChild(cardDiv);
-				});
+			var statsEl = document.getElementById('ksm-stats');
+			if (statsEl) {
+				var c = KissTheme.colors;
+				statsEl.innerHTML = '';
+				[
+					KissTheme.stat(status.running ? 'Running' : 'Stopped', 'Service', status.running ? c.green : c.red),
+					KissTheme.stat(status.keystore_unlocked ? 'Unlocked' : 'Locked', 'Keystore', status.keystore_unlocked ? c.green : c.red),
+					KissTheme.stat(status.keys_count || 0, 'Keys', c.blue),
+					KissTheme.stat(hsmDevices.devices ? hsmDevices.devices.length : 0, 'HSM Devices', c.purple)
+				].forEach(function(el) { statsEl.appendChild(el); });
 			}
 		});
+	},
+
+	renderStats: function(status, hsmDevices) {
+		var c = KissTheme.colors;
+		return [
+			KissTheme.stat(status.running ? 'Running' : 'Stopped', 'Service', status.running ? c.green : c.red),
+			KissTheme.stat(status.keystore_unlocked ? 'Unlocked' : 'Locked', 'Keystore', status.keystore_unlocked ? c.green : c.red),
+			KissTheme.stat(status.keys_count || 0, 'Keys', c.blue),
+			KissTheme.stat(hsmDevices.devices ? hsmDevices.devices.length : 0, 'HSM Devices', c.purple)
+		];
 	},
 
 	render: function(data) {
@@ -73,189 +55,153 @@ return view.extend({
 		var certificates = data[3];
 		var auditLogs = data[4];
 
-		// Setup auto-refresh
 		poll.add(L.bind(this.pollStatus, this), 10);
 
-		var view = E([], [
-			E('h2', {}, _('Key Storage Manager - Dashboard')),
-			E('p', {}, _('Centralized cryptographic key management with hardware security module support.')),
-
-			// Status Cards
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('System Status')),
-				E('div', { 'id': 'ksm-status', 'class': 'cbi-section-node' }, [
-					E('div', { 'class': 'cbi-value' }, [
-						E('label', { 'class': 'cbi-value-title' }, _('Service Status') + ':'),
-						E('div', { 'class': 'cbi-value-field' }, [
-							E('strong', { 'style': 'color: ' + (status.running ? 'green' : 'red') },
-								status.running ? _('Running') : _('Stopped'))
-						])
-					]),
-					E('div', { 'class': 'cbi-value' }, [
-						E('label', { 'class': 'cbi-value-title' }, _('Keystore Status') + ':'),
-						E('div', { 'class': 'cbi-value-field' }, [
-							E('strong', { 'style': 'color: ' + (status.keystore_unlocked ? 'green' : 'red') },
-								status.keystore_unlocked ? _('Unlocked') : _('Locked'))
-						])
-					]),
-					E('div', { 'class': 'cbi-value' }, [
-						E('label', { 'class': 'cbi-value-title' }, _('Total Keys') + ':'),
-						E('div', { 'class': 'cbi-value-field' }, [
-							E('strong', { 'style': 'color: blue' }, String(status.keys_count || 0))
-						])
-					]),
-					E('div', { 'class': 'cbi-value' }, [
-						E('label', { 'class': 'cbi-value-title' }, _('HSM Connected') + ':'),
-						E('div', { 'class': 'cbi-value-field' }, [
-							E('strong', { 'style': 'color: ' + (status.hsm_connected ? 'green' : 'gray') },
-								status.hsm_connected ? _('Yes') : _('No'))
-						])
-					])
-				])
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'Key Storage Manager'),
+					KissTheme.badge('Security', 'purple')
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' },
+					'Centralized cryptographic key management with HSM support')
 			]),
 
-			// System Information
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('System Information')),
-				E('div', { 'class': 'cbi-section-node' }, [
-					E('div', { 'class': 'cbi-value' }, [
-						E('label', { 'class': 'cbi-value-title' }, _('OpenSSL Version') + ':'),
-						E('div', { 'class': 'cbi-value-field' }, info.openssl_version || _('Unknown'))
-					]),
-					E('div', { 'class': 'cbi-value' }, [
-						E('label', { 'class': 'cbi-value-title' }, _('GPG Version') + ':'),
-						E('div', { 'class': 'cbi-value-field' }, info.gpg_version || _('Unknown'))
-					]),
-					E('div', { 'class': 'cbi-value' }, [
-						E('label', { 'class': 'cbi-value-title' }, _('HSM Support') + ':'),
-						E('div', { 'class': 'cbi-value-field' }, info.hsm_support ? _('Enabled') : _('Disabled'))
-					])
-				])
-			]),
+			// Stats
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'id': 'ksm-stats', 'style': 'margin: 20px 0;' },
+				this.renderStats(status, hsmDevices)),
 
-			// HSM Devices
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Hardware Security Modules')),
-				E('div', { 'class': 'cbi-section-node' },
-					hsmDevices.devices && hsmDevices.devices.length > 0 ?
-						hsmDevices.devices.map(function(device) {
-							var typeIcon = device.type === 'nitrokey' ? '🔐' : '🔑';
-							return E('div', { 'class': 'cbi-value' }, [
-								E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-								E('label', { 'class': 'cbi-value-title' }, typeIcon + ' ' + device.serial + ':'),
-								E('div', { 'class': 'cbi-value-field' }, [
-									E('span', {}, device.type.toUpperCase() + ' '),
-									E('span', { 'style': 'color: gray' }, 'v' + device.version)
-								])
-							]);
-						}) :
-						E('div', { 'class': 'cbi-value' }, [
-							E('em', {}, _('No HSM devices detected. Connect a Nitrokey or YubiKey device.'))
-						])
+			// Two column layout
+			E('div', { 'class': 'kiss-grid kiss-grid-2', 'style': 'margin-top: 20px;' }, [
+				// System Information
+				KissTheme.card('System Information', E('div', { 'style': 'display: flex; flex-direction: column; gap: 12px;' }, [
+					E('div', { 'style': 'display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--kiss-line);' }, [
+						E('span', { 'style': 'color: var(--kiss-muted);' }, 'OpenSSL Version'),
+						E('span', { 'style': 'font-family: monospace;' }, info.openssl_version || 'Unknown')
+					]),
+					E('div', { 'style': 'display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--kiss-line);' }, [
+						E('span', { 'style': 'color: var(--kiss-muted);' }, 'GPG Version'),
+						E('span', { 'style': 'font-family: monospace;' }, info.gpg_version || 'Unknown')
+					]),
+					E('div', { 'style': 'display: flex; justify-content: space-between; padding: 10px 0;' }, [
+						E('span', { 'style': 'color: var(--kiss-muted);' }, 'HSM Support'),
+						KissTheme.badge(info.hsm_support ? 'Enabled' : 'Disabled', info.hsm_support ? 'green' : 'muted')
+					])
+				])),
+
+				// HSM Devices
+				KissTheme.card(
+					E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+						E('span', {}, 'Hardware Security Modules'),
+						KissTheme.badge((hsmDevices.devices || []).length + ' devices', 'purple')
+					]),
+					this.renderHsmDevices(hsmDevices.devices || [])
 				)
 			]),
 
-			// Expiring Certificates
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Certificate Expiration Alerts')),
-				E('div', { 'class': 'cbi-section-node' },
-					this.renderExpiringCertificates(certificates.certificates || [])
-				)
-			]),
+			// Certificate Alerts
+			KissTheme.card('Certificate Expiration Alerts', this.renderExpiringCertificates(certificates.certificates || [])),
 
 			// Recent Activity
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Recent Activity')),
-				E('div', { 'class': 'cbi-section-node' },
-					this.renderRecentActivity(auditLogs.logs || [])
-				)
-			]),
+			KissTheme.card('Recent Activity', this.renderRecentActivity(auditLogs.logs || [])),
 
 			// Quick Actions
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Quick Actions')),
-				E('div', { 'class': 'cbi-section-node' }, [
-					E('button', {
-						'class': 'cbi-button cbi-button-apply',
-						'click': function() { window.location.href = L.url('admin/security/ksm-manager/keys'); }
-					}, _('Manage Keys')),
-					' ',
-					E('button', {
-						'class': 'cbi-button cbi-button-action',
-						'click': function() { window.location.href = L.url('admin/security/ksm-manager/hsm'); }
-					}, _('Configure HSM')),
-					' ',
-					E('button', {
-						'class': 'cbi-button cbi-button-action',
-						'click': function() { window.location.href = L.url('admin/security/ksm-manager/certificates'); }
-					}, _('Manage Certificates')),
-					' ',
-					E('button', {
-						'class': 'cbi-button cbi-button-action',
-						'click': function() { window.location.href = L.url('admin/security/ksm-manager/secrets'); }
-					}, _('Manage Secrets'))
-				])
-			])
-		]);
+			KissTheme.card('Quick Actions', E('div', { 'style': 'display: flex; gap: 12px; flex-wrap: wrap;' }, [
+				E('button', {
+					'class': 'kiss-btn kiss-btn-green',
+					'click': function() { window.location.href = L.url('admin/security/ksm-manager/keys'); }
+				}, 'Manage Keys'),
+				E('button', {
+					'class': 'kiss-btn kiss-btn-purple',
+					'click': function() { window.location.href = L.url('admin/security/ksm-manager/hsm'); }
+				}, 'Configure HSM'),
+				E('button', {
+					'class': 'kiss-btn kiss-btn-cyan',
+					'click': function() { window.location.href = L.url('admin/security/ksm-manager/certificates'); }
+				}, 'Manage Certificates'),
+				E('button', {
+					'class': 'kiss-btn kiss-btn-blue',
+					'click': function() { window.location.href = L.url('admin/security/ksm-manager/secrets'); }
+				}, 'Manage Secrets')
+			]))
+		];
 
-		return KissTheme.wrap([view], 'admin/secubox/ksm/overview');
+		return KissTheme.wrap(content, 'admin/secubox/ksm/overview');
+	},
+
+	renderHsmDevices: function(devices) {
+		if (!devices || devices.length === 0) {
+			return E('p', { 'style': 'color: var(--kiss-muted); text-align: center; padding: 20px;' },
+				'No HSM devices detected. Connect a Nitrokey or YubiKey device.');
+		}
+
+		return E('div', { 'style': 'display: flex; flex-direction: column; gap: 10px;' },
+			devices.map(function(device) {
+				return E('div', {
+					'style': 'display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--kiss-bg); border-radius: 6px;'
+				}, [
+					E('span', { 'style': 'font-size: 20px;' }, device.type === 'nitrokey' ? '🔐' : '🔑'),
+					E('div', { 'style': 'flex: 1;' }, [
+						E('div', { 'style': 'font-weight: 500;' }, device.type.toUpperCase()),
+						E('div', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'Serial: ' + device.serial)
+					]),
+					KissTheme.badge('v' + device.version, 'muted')
+				]);
+			})
+		);
 	},
 
 	renderExpiringCertificates: function(certificates) {
 		var expiring = certificates.filter(function(cert) {
-			// Simple check - in production would parse dates properly
 			return cert.valid_until;
 		}).slice(0, 5);
 
 		if (expiring.length === 0) {
-			return E('div', { 'class': 'cbi-value' }, [
-				E('em', {}, _('No expiring certificates'))
-			]);
+			return E('p', { 'style': 'color: var(--kiss-muted); text-align: center; padding: 20px;' },
+				'No expiring certificates');
 		}
 
-		return E('div', { 'class': 'table' }, [
-			E('div', { 'class': 'tr table-titles' }, [
-				E('div', { 'class': 'th' }, _('Subject')),
-				E('div', { 'class': 'th' }, _('Issuer')),
-				E('div', { 'class': 'th' }, _('Expires'))
-			]),
-			expiring.map(function(cert) {
-				return E('div', { 'class': 'tr' }, [
-					E('div', { 'class': 'td' }, cert.subject || _('Unknown')),
-					E('div', { 'class': 'td' }, cert.issuer || _('Unknown')),
-					E('div', { 'class': 'td' }, cert.valid_until || _('Unknown'))
+		return E('table', { 'class': 'kiss-table' }, [
+			E('thead', {}, E('tr', {}, [
+				E('th', { 'style': 'padding: 10px 12px;' }, _('Subject')),
+				E('th', { 'style': 'padding: 10px 12px;' }, _('Issuer')),
+				E('th', { 'style': 'padding: 10px 12px;' }, _('Expires'))
+			])),
+			E('tbody', {}, expiring.map(function(cert) {
+				return E('tr', {}, [
+					E('td', { 'style': 'padding: 10px 12px;' }, cert.subject || 'Unknown'),
+					E('td', { 'style': 'padding: 10px 12px;' }, cert.issuer || 'Unknown'),
+					E('td', { 'style': 'padding: 10px 12px;' }, cert.valid_until || 'Unknown')
 				]);
-			})
+			}))
 		]);
 	},
 
 	renderRecentActivity: function(logs) {
 		if (!logs || logs.length === 0) {
-			return E('div', { 'class': 'cbi-value' }, [
-				E('em', {}, _('No recent activity'))
-			]);
+			return E('p', { 'style': 'color: var(--kiss-muted); text-align: center; padding: 20px;' },
+				'No recent activity');
 		}
 
-		return E('div', { 'class': 'table' }, [
-			E('div', { 'class': 'tr table-titles' }, [
-				E('div', { 'class': 'th' }, _('Time')),
-				E('div', { 'class': 'th' }, _('User')),
-				E('div', { 'class': 'th' }, _('Action')),
-				E('div', { 'class': 'th' }, _('Resource')),
-				E('div', { 'class': 'th' }, _('Status'))
-			]),
-			logs.slice(0, 10).map(function(log) {
+		return E('table', { 'class': 'kiss-table' }, [
+			E('thead', {}, E('tr', {}, [
+				E('th', { 'style': 'padding: 10px 12px;' }, _('Time')),
+				E('th', { 'style': 'padding: 10px 12px;' }, _('User')),
+				E('th', { 'style': 'padding: 10px 12px;' }, _('Action')),
+				E('th', { 'style': 'padding: 10px 12px;' }, _('Resource')),
+				E('th', { 'style': 'padding: 10px 12px;' }, _('Status'))
+			])),
+			E('tbody', {}, logs.slice(0, 10).map(function(log) {
 				var statusColor = log.status === 'success' ? 'green' : 'red';
-				return E('div', { 'class': 'tr' }, [
-					E('div', { 'class': 'td' }, KSM.formatTimestamp(log.timestamp)),
-					E('div', { 'class': 'td' }, log.user || _('Unknown')),
-					E('div', { 'class': 'td' }, log.action || _('Unknown')),
-					E('div', { 'class': 'td' }, log.resource || _('Unknown')),
-					E('div', { 'class': 'td' }, [
-						E('span', { 'style': 'color: ' + statusColor }, log.status || _('Unknown'))
-					])
+				return E('tr', {}, [
+					E('td', { 'style': 'padding: 10px 12px; font-family: monospace; font-size: 12px;' }, KSM.formatTimestamp(log.timestamp)),
+					E('td', { 'style': 'padding: 10px 12px;' }, log.user || 'Unknown'),
+					E('td', { 'style': 'padding: 10px 12px;' }, log.action || 'Unknown'),
+					E('td', { 'style': 'padding: 10px 12px;' }, log.resource || 'Unknown'),
+					E('td', { 'style': 'padding: 10px 12px;' }, KissTheme.badge(log.status || 'Unknown', statusColor))
 				]);
-			})
+			}))
 		]);
 	},
 

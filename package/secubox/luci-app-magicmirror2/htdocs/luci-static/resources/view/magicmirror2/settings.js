@@ -288,7 +288,7 @@ return view.extend({
 				'style': 'display: flex; gap: 12px; margin-bottom: 20px; padding: 16px; background: #141419; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px;'
 			}, [
 				E('button', {
-					'class': 'cbi-button',
+					'class': 'kiss-btn',
 					'style': 'background: linear-gradient(135deg, #9b59b6, #8e44ad); color: white;',
 					'click': function() {
 						ui.showModal(_('Regenerating...'), [
@@ -305,7 +305,7 @@ return view.extend({
 					}
 				}, ['🔧 ', _('Regenerate Config')]),
 				E('button', {
-					'class': 'cbi-button',
+					'class': 'kiss-btn',
 					'style': 'background: linear-gradient(135deg, #3498db, #2980b9); color: white;',
 					'click': function() {
 						if (!status.running) {

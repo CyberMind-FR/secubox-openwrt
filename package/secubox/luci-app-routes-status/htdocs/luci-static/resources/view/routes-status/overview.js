@@ -64,11 +64,11 @@ return view.extend({
 		var self = this;
 
 		ui.showModal(_('Add Route'), [
-			E('div', { 'class': 'cbi-section' }, [
+			E('div', { 'style': 'margin-bottom: 16px;' }, [
 				E('p', {}, _('Add mitmproxy route for: ') + domain),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Port')),
-					E('div', { 'class': 'cbi-value-field' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 12px; margin: 12px 0;' }, [
+					E('label', { 'style': 'font-weight: 500; color: var(--kiss-muted); min-width: 80px;' }, _('Port')),
+					E('div', { 'style': 'flex: 1;' }, [
 						E('input', { 'type': 'number', 'id': 'route-port', 'value': port || '443', 'style': 'width:80px;' })
 					])
 				])
@@ -76,7 +76,7 @@ return view.extend({
 			E('div', { 'class': 'right' }, [
 				E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')),
 				E('button', {
-					'class': 'btn cbi-button-positive',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() {
 						var p = parseInt(document.getElementById('route-port').value, 10);
 						if (p > 0) {
@@ -247,7 +247,7 @@ return view.extend({
 				]),
 				E('span', { 'class': 'service-badge' }, ['🖥️ ', data.host_ip || '192.168.255.1']),
 				E('button', {
-					'class': 'btn cbi-button-action',
+					'class': 'kiss-btn kiss-btn-cyan',
 					'click': function() { self.handleSync(); },
 					'style': 'margin-left: auto;'
 				}, '🔄 ' + _('Sync'))
@@ -271,7 +271,7 @@ return view.extend({
 			this.totalVhosts > vhosts.length ? E('div', { 'class': 'load-more' }, [
 				E('button', {
 					'id': 'load-more-btn',
-					'class': 'btn cbi-button-neutral',
+					'class': 'kiss-btn',
 					'click': function() { self.handleLoadMore(); }
 				}, [
 					'📥 ', _('Load More'),

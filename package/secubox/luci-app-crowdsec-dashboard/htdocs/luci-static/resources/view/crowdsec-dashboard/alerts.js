@@ -229,12 +229,12 @@ return view.extend({
 			E('p', { 'style': 'font-size: 12px; color: #666;' }, 'Reason: ' + reason),
 			E('div', { 'class': 'right' }, [
 				E('button', {
-					'class': 'cbi-button',
+					'class': 'kiss-btn',
 					'click': ui.hideModal
 				}, 'Cancel'),
 				' ',
 				E('button', {
-					'class': 'cbi-button cbi-button-negative',
+					'class': 'kiss-btn kiss-btn-red',
 					'click': function() {
 						ui.hideModal();
 						ui.showModal('Banning...', [

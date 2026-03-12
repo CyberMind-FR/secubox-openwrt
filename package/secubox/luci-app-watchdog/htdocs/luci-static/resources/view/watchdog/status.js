@@ -4,6 +4,7 @@
 'require ui';
 'require poll';
 'require dom';
+'require secubox/kiss-theme';
 
 var callGetStatus = rpc.declare({
     object: 'luci.watchdog',
@@ -44,29 +45,6 @@ var callClearLogs = rpc.declare({
     expect: {}
 });
 
-function renderStatusBadge(state, critical) {
-    var color = state === 'running' ? '#00ff88' : (critical ? '#ff0066' : '#ffaa00');
-    var text = state === 'running' ? 'RUNNING' : 'STOPPED';
-    return E('span', {
-        'style': 'background: ' + color + '; color: #000; padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;'
-    }, text);
-}
-
-function renderHealthBadge(healthy) {
-    var color = healthy ? '#00ff88' : '#ff0066';
-    var text = healthy ? 'HEALTHY' : 'UNHEALTHY';
-    return E('span', {
-        'style': 'background: ' + color + '; color: #000; padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;'
-    }, text);
-}
-
-function renderCriticalBadge(critical) {
-    if (!critical) return '';
-    return E('span', {
-        'style': 'background: #ff0066; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-left: 8px;'
-    }, 'CRITICAL');
-}
-
 return view.extend({
     load: function() {
         return Promise.all([
@@ -75,83 +53,134 @@ return view.extend({
         ]);
     },
 
-    pollStatus: function() {
-        var self = this;
-        poll.add(function() {
-            return callGetStatus().then(function(status) {
-                self.updateDashboard(status);
-            });
-        }, 10);
+    renderStats: function(status) {
+        var c = KissTheme.colors;
+        var containers = status.containers || [];
+        var services = status.services || [];
+        var endpoints = status.endpoints || [];
+
+        var containersUp = containers.filter(function(c) { return c.state === 'running'; }).length;
+        var servicesUp = services.filter(function(s) { return s.state === 'running'; }).length;
+        var endpointsHealthy = endpoints.filter(function(e) { return e.healthy; }).length;
+        var critical = containers.filter(function(c) { return c.critical && c.state !== 'running'; }).length +
+                       services.filter(function(s) { return s.critical && s.state !== 'running'; }).length;
+
+        return [
+            KissTheme.stat(containersUp + '/' + containers.length, 'Containers', containersUp === containers.length ? c.green : c.orange),
+            KissTheme.stat(servicesUp + '/' + services.length, 'Services', servicesUp === services.length ? c.green : c.orange),
+            KissTheme.stat(endpointsHealthy + '/' + endpoints.length, 'Endpoints', endpointsHealthy === endpoints.length ? c.green : c.orange),
+            KissTheme.stat(critical, 'Critical', critical > 0 ? c.red : c.muted)
+        ];
     },
 
-    updateDashboard: function(status) {
-        // Update watchdog status
-        var watchdogStatus = document.getElementById('watchdog-status');
-        if (watchdogStatus) {
-            var running = status.running;
-            watchdogStatus.innerHTML = '';
-            watchdogStatus.appendChild(E('span', {
-                'style': 'color: ' + (running ? '#00ff88' : '#ff0066') + '; font-weight: bold;'
-            }, running ? 'ACTIVE' : 'INACTIVE'));
+    renderContainers: function(containers) {
+        var self = this;
+        if (!containers || containers.length === 0) {
+            return E('div', { 'style': 'text-align: center; padding: 24px; color: var(--kiss-muted);' }, 'No containers configured');
         }
 
-        // Update containers
-        var containersTable = document.getElementById('containers-body');
-        if (containersTable && status.containers) {
-            containersTable.innerHTML = '';
-            status.containers.forEach(function(c) {
-                var row = E('tr', {}, [
-                    E('td', {}, c.name),
-                    E('td', {}, [renderStatusBadge(c.state, c.critical), renderCriticalBadge(c.critical)]),
-                    E('td', {}, c.pid > 0 ? String(c.pid) : '-'),
+        return E('table', { 'class': 'kiss-table' }, [
+            E('thead', {}, E('tr', {}, [
+                E('th', {}, 'Container'),
+                E('th', {}, 'Status'),
+                E('th', {}, 'PID'),
+                E('th', { 'style': 'width: 100px;' }, 'Actions')
+            ])),
+            E('tbody', { 'id': 'containers-body' }, containers.map(function(c) {
+                var isRunning = c.state === 'running';
+                return E('tr', {}, [
                     E('td', {}, [
-                        E('button', {
-                            'class': 'cbi-button cbi-button-action',
-                            'click': ui.createHandlerFn(this, 'handleRestartContainer', c.name),
-                            'style': 'padding: 2px 8px; font-size: 11px;'
-                        }, 'Restart')
-                    ])
+                        E('span', { 'style': 'font-weight: 600;' }, c.name),
+                        c.critical ? E('span', { 'style': 'margin-left: 8px; font-size: 10px; color: var(--kiss-red);' }, 'CRITICAL') : ''
+                    ]),
+                    E('td', {}, KissTheme.badge(isRunning ? 'RUNNING' : 'STOPPED', isRunning ? 'green' : 'red')),
+                    E('td', { 'style': 'font-family: monospace; color: var(--kiss-muted);' }, c.pid > 0 ? String(c.pid) : '-'),
+                    E('td', {}, E('button', {
+                        'class': 'kiss-btn',
+                        'style': 'padding: 4px 12px; font-size: 11px;',
+                        'click': function() { self.handleRestartContainer(c.name); }
+                    }, 'Restart'))
                 ]);
-                containersTable.appendChild(row);
-            });
+            }))
+        ]);
+    },
+
+    renderServices: function(services) {
+        var self = this;
+        if (!services || services.length === 0) {
+            return E('div', { 'style': 'text-align: center; padding: 24px; color: var(--kiss-muted);' }, 'No services configured');
         }
 
-        // Update services
-        var servicesTable = document.getElementById('services-body');
-        if (servicesTable && status.services) {
-            servicesTable.innerHTML = '';
-            status.services.forEach(function(s) {
-                var row = E('tr', {}, [
-                    E('td', {}, s.name),
-                    E('td', {}, s.process),
-                    E('td', {}, [renderStatusBadge(s.state, s.critical), renderCriticalBadge(s.critical)]),
-                    E('td', {}, s.pid > 0 ? String(s.pid) : '-'),
+        return E('table', { 'class': 'kiss-table' }, [
+            E('thead', {}, E('tr', {}, [
+                E('th', {}, 'Service'),
+                E('th', {}, 'Process'),
+                E('th', {}, 'Status'),
+                E('th', {}, 'PID'),
+                E('th', { 'style': 'width: 100px;' }, 'Actions')
+            ])),
+            E('tbody', { 'id': 'services-body' }, services.map(function(s) {
+                var isRunning = s.state === 'running';
+                return E('tr', {}, [
                     E('td', {}, [
-                        E('button', {
-                            'class': 'cbi-button cbi-button-action',
-                            'click': ui.createHandlerFn(this, 'handleRestartService', s.name),
-                            'style': 'padding: 2px 8px; font-size: 11px;'
-                        }, 'Restart')
-                    ])
+                        E('span', { 'style': 'font-weight: 600;' }, s.name),
+                        s.critical ? E('span', { 'style': 'margin-left: 8px; font-size: 10px; color: var(--kiss-red);' }, 'CRITICAL') : ''
+                    ]),
+                    E('td', { 'style': 'font-family: monospace; font-size: 12px; color: var(--kiss-muted);' }, s.process),
+                    E('td', {}, KissTheme.badge(isRunning ? 'RUNNING' : 'STOPPED', isRunning ? 'green' : 'red')),
+                    E('td', { 'style': 'font-family: monospace; color: var(--kiss-muted);' }, s.pid > 0 ? String(s.pid) : '-'),
+                    E('td', {}, E('button', {
+                        'class': 'kiss-btn',
+                        'style': 'padding: 4px 12px; font-size: 11px;',
+                        'click': function() { self.handleRestartService(s.name); }
+                    }, 'Restart'))
                 ]);
-                servicesTable.appendChild(row);
-            });
+            }))
+        ]);
+    },
+
+    renderEndpoints: function(endpoints) {
+        if (!endpoints || endpoints.length === 0) {
+            return E('div', { 'style': 'text-align: center; padding: 24px; color: var(--kiss-muted);' }, 'No endpoints configured');
         }
 
-        // Update endpoints
-        var endpointsTable = document.getElementById('endpoints-body');
-        if (endpointsTable && status.endpoints) {
-            endpointsTable.innerHTML = '';
-            status.endpoints.forEach(function(e) {
-                var row = E('tr', {}, [
-                    E('td', {}, e.name),
-                    E('td', {}, e.host),
-                    E('td', {}, 'HTTP ' + e.code),
-                    E('td', {}, renderHealthBadge(e.healthy))
+        return E('table', { 'class': 'kiss-table' }, [
+            E('thead', {}, E('tr', {}, [
+                E('th', {}, 'Name'),
+                E('th', {}, 'Host'),
+                E('th', {}, 'Response'),
+                E('th', {}, 'Health')
+            ])),
+            E('tbody', { 'id': 'endpoints-body' }, endpoints.map(function(e) {
+                return E('tr', {}, [
+                    E('td', { 'style': 'font-weight: 600;' }, e.name),
+                    E('td', { 'style': 'font-family: monospace; font-size: 12px; color: var(--kiss-cyan);' }, e.host),
+                    E('td', { 'style': 'font-family: monospace; font-size: 12px;' }, 'HTTP ' + e.code),
+                    E('td', {}, KissTheme.badge(e.healthy ? 'HEALTHY' : 'UNHEALTHY', e.healthy ? 'green' : 'red'))
                 ]);
-                endpointsTable.appendChild(row);
-            });
-        }
+            }))
+        ]);
+    },
+
+    renderLogs: function(logs) {
+        var self = this;
+        var lines = (logs && logs.lines) || [];
+        return E('div', {}, [
+            E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 12px;' }, [
+                E('button', {
+                    'class': 'kiss-btn',
+                    'click': function() { self.handleRefreshLogs(); }
+                }, 'Refresh'),
+                E('button', {
+                    'class': 'kiss-btn kiss-btn-red',
+                    'click': function() { self.handleClearLogs(); }
+                }, 'Clear')
+            ]),
+            E('div', {
+                'id': 'logs-area',
+                'style': 'background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 6px; padding: 12px; font-family: monospace; font-size: 11px; color: var(--kiss-green); max-height: 250px; overflow-y: auto; white-space: pre-wrap;'
+            }, lines.join('\n') || 'No logs available')
+        ]);
     },
 
     handleRestartContainer: function(name) {
@@ -163,9 +192,9 @@ return view.extend({
         return callRestartContainer(name).then(function(result) {
             ui.hideModal();
             if (result.success) {
-                ui.addNotification(null, E('p', {}, 'Container ' + name + ' restarted successfully'), 'success');
+                ui.addNotification(null, E('p', {}, 'Container ' + name + ' restarted'), 'success');
             } else {
-                ui.addNotification(null, E('p', {}, 'Failed to restart ' + name + ': ' + (result.error || 'Unknown error')), 'error');
+                ui.addNotification(null, E('p', {}, 'Failed: ' + (result.error || 'Unknown error')), 'error');
             }
             return callGetStatus().then(function(status) {
                 self.updateDashboard(status);
@@ -182,9 +211,9 @@ return view.extend({
         return callRestartService(name).then(function(result) {
             ui.hideModal();
             if (result.success) {
-                ui.addNotification(null, E('p', {}, 'Service ' + name + ' restarted successfully'), 'success');
+                ui.addNotification(null, E('p', {}, 'Service ' + name + ' restarted'), 'success');
             } else {
-                ui.addNotification(null, E('p', {}, 'Failed to restart ' + name + ': ' + (result.error || 'Unknown error')), 'error');
+                ui.addNotification(null, E('p', {}, 'Failed: ' + (result.error || 'Unknown error')), 'error');
             }
             return callGetStatus().then(function(status) {
                 self.updateDashboard(status);
@@ -212,7 +241,7 @@ return view.extend({
             ui.addNotification(null, E('p', {}, 'Logs cleared'), 'success');
             var logsArea = document.getElementById('logs-area');
             if (logsArea) {
-                logsArea.value = '';
+                logsArea.textContent = 'No logs available';
             }
         });
     },
@@ -221,157 +250,94 @@ return view.extend({
         return callGetLogs(50).then(function(result) {
             var logsArea = document.getElementById('logs-area');
             if (logsArea && result.lines) {
-                logsArea.value = result.lines.join('\n');
+                logsArea.textContent = result.lines.join('\n');
                 logsArea.scrollTop = logsArea.scrollHeight;
             }
         });
     },
 
+    updateDashboard: function(status) {
+        var self = this;
+        var c = KissTheme.colors;
+
+        // Update stats
+        var statsEl = document.getElementById('watchdog-stats');
+        if (statsEl) {
+            dom.content(statsEl, this.renderStats(status));
+        }
+
+        // Update containers
+        var containersEl = document.getElementById('containers-body');
+        if (containersEl && status.containers) {
+            dom.content(containersEl.parentNode.parentNode, this.renderContainers(status.containers));
+        }
+
+        // Update services
+        var servicesEl = document.getElementById('services-body');
+        if (servicesEl && status.services) {
+            dom.content(servicesEl.parentNode.parentNode, this.renderServices(status.services));
+        }
+
+        // Update endpoints
+        var endpointsEl = document.getElementById('endpoints-body');
+        if (endpointsEl && status.endpoints) {
+            dom.content(endpointsEl.parentNode.parentNode, this.renderEndpoints(status.endpoints));
+        }
+    },
+
     render: function(data) {
+        var self = this;
         var status = data[0] || {};
         var logs = data[1] || {};
-        var self = this;
+        var c = KissTheme.colors;
 
-        var view = E('div', { 'class': 'cbi-map' }, [
-            E('h2', {}, 'SecuBox Watchdog'),
-            E('div', { 'class': 'cbi-map-descr' }, 'Service health monitoring and auto-recovery dashboard'),
+        var isRunning = status.running;
 
-            // Status overview
-            E('div', { 'class': 'cbi-section', 'style': 'background: linear-gradient(135deg, #1a1a2e 0%, #0f0f1a 100%); border: 1px solid #333; border-radius: 8px; padding: 16px; margin-bottom: 20px;' }, [
-                E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
-                    E('div', {}, [
-                        E('span', { 'style': 'color: #888;' }, 'Watchdog Status: '),
-                        E('span', { 'id': 'watchdog-status', 'style': 'color: ' + (status.running ? '#00ff88' : '#ff0066') + '; font-weight: bold;' },
-                            status.running ? 'ACTIVE' : 'INACTIVE'),
-                        E('span', { 'style': 'color: #888; margin-left: 20px;' }, 'Check Interval: '),
-                        E('span', { 'style': 'color: #00ffff;' }, (status.interval || 60) + 's')
-                    ]),
-                    E('div', {}, [
-                        E('button', {
-                            'class': 'cbi-button cbi-button-action',
-                            'click': ui.createHandlerFn(this, 'handleRunCheck')
-                        }, 'Run Check Now')
-                    ])
-                ])
-            ]),
-
-            // Containers section
-            E('div', { 'class': 'cbi-section' }, [
-                E('h3', {}, 'LXC Containers'),
-                E('table', { 'class': 'table cbi-section-table' }, [
-                    E('thead', {}, [
-                        E('tr', { 'class': 'tr table-titles' }, [
-                            E('th', { 'class': 'th' }, 'Container'),
-                            E('th', { 'class': 'th' }, 'Status'),
-                            E('th', { 'class': 'th' }, 'PID'),
-                            E('th', { 'class': 'th' }, 'Actions')
-                        ])
-                    ]),
-                    E('tbody', { 'id': 'containers-body' },
-                        (status.containers || []).map(function(c) {
-                            return E('tr', { 'class': 'tr' }, [
-                                E('td', { 'class': 'td' }, c.name),
-                                E('td', { 'class': 'td' }, [renderStatusBadge(c.state, c.critical), renderCriticalBadge(c.critical)]),
-                                E('td', { 'class': 'td' }, c.pid > 0 ? String(c.pid) : '-'),
-                                E('td', { 'class': 'td' }, [
-                                    E('button', {
-                                        'class': 'cbi-button cbi-button-action',
-                                        'click': ui.createHandlerFn(self, 'handleRestartContainer', c.name),
-                                        'style': 'padding: 2px 8px; font-size: 11px;'
-                                    }, 'Restart')
-                                ])
-                            ]);
-                        })
-                    )
-                ])
-            ]),
-
-            // Services section
-            E('div', { 'class': 'cbi-section' }, [
-                E('h3', {}, 'Host Services'),
-                E('table', { 'class': 'table cbi-section-table' }, [
-                    E('thead', {}, [
-                        E('tr', { 'class': 'tr table-titles' }, [
-                            E('th', { 'class': 'th' }, 'Service'),
-                            E('th', { 'class': 'th' }, 'Process'),
-                            E('th', { 'class': 'th' }, 'Status'),
-                            E('th', { 'class': 'th' }, 'PID'),
-                            E('th', { 'class': 'th' }, 'Actions')
-                        ])
-                    ]),
-                    E('tbody', { 'id': 'services-body' },
-                        (status.services || []).map(function(s) {
-                            return E('tr', { 'class': 'tr' }, [
-                                E('td', { 'class': 'td' }, s.name),
-                                E('td', { 'class': 'td' }, s.process),
-                                E('td', { 'class': 'td' }, [renderStatusBadge(s.state, s.critical), renderCriticalBadge(s.critical)]),
-                                E('td', { 'class': 'td' }, s.pid > 0 ? String(s.pid) : '-'),
-                                E('td', { 'class': 'td' }, [
-                                    E('button', {
-                                        'class': 'cbi-button cbi-button-action',
-                                        'click': ui.createHandlerFn(self, 'handleRestartService', s.name),
-                                        'style': 'padding: 2px 8px; font-size: 11px;'
-                                    }, 'Restart')
-                                ])
-                            ]);
-                        })
-                    )
-                ])
-            ]),
-
-            // Endpoints section
-            E('div', { 'class': 'cbi-section' }, [
-                E('h3', {}, 'HTTPS Endpoints'),
-                E('table', { 'class': 'table cbi-section-table' }, [
-                    E('thead', {}, [
-                        E('tr', { 'class': 'tr table-titles' }, [
-                            E('th', { 'class': 'th' }, 'Name'),
-                            E('th', { 'class': 'th' }, 'Host'),
-                            E('th', { 'class': 'th' }, 'Response'),
-                            E('th', { 'class': 'th' }, 'Health')
-                        ])
-                    ]),
-                    E('tbody', { 'id': 'endpoints-body' },
-                        (status.endpoints || []).map(function(e) {
-                            return E('tr', { 'class': 'tr' }, [
-                                E('td', { 'class': 'td' }, e.name),
-                                E('td', { 'class': 'td' }, e.host),
-                                E('td', { 'class': 'td' }, 'HTTP ' + e.code),
-                                E('td', { 'class': 'td' }, renderHealthBadge(e.healthy))
-                            ]);
-                        })
-                    )
-                ])
-            ]),
-
-            // Logs section
-            E('div', { 'class': 'cbi-section' }, [
-                E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
-                    E('h3', {}, 'Alert Logs'),
-                    E('div', {}, [
-                        E('button', {
-                            'class': 'cbi-button',
-                            'click': ui.createHandlerFn(this, 'handleRefreshLogs'),
-                            'style': 'margin-right: 8px;'
-                        }, 'Refresh'),
-                        E('button', {
-                            'class': 'cbi-button cbi-button-negative',
-                            'click': ui.createHandlerFn(this, 'handleClearLogs')
-                        }, 'Clear')
-                    ])
+        var content = [
+            // Header
+            E('div', { 'style': 'margin-bottom: 24px;' }, [
+                E('div', { 'style': 'display: flex; align-items: center; gap: 16px; flex-wrap: wrap;' }, [
+                    E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'SecuBox Watchdog'),
+                    KissTheme.badge(isRunning ? 'ACTIVE' : 'INACTIVE', isRunning ? 'green' : 'red'),
+                    E('span', { 'style': 'color: var(--kiss-muted); font-size: 13px;' }, 'Interval: ' + (status.interval || 60) + 's')
                 ]),
-                E('textarea', {
-                    'id': 'logs-area',
-                    'readonly': 'readonly',
-                    'style': 'width: 100%; height: 200px; background: #0f0f1a; color: #00ff88; font-family: monospace; font-size: 12px; border: 1px solid #333; border-radius: 4px; padding: 8px;'
-                }, (logs.lines || []).join('\n'))
-            ])
-        ]);
+                E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' }, 'Service health monitoring and auto-recovery')
+            ]),
+
+            // Stats row
+            E('div', { 'class': 'kiss-grid kiss-grid-4', 'id': 'watchdog-stats', 'style': 'margin: 20px 0;' }, this.renderStats(status)),
+
+            // Quick Actions
+            E('div', { 'style': 'margin-bottom: 20px;' }, [
+                E('button', {
+                    'class': 'kiss-btn kiss-btn-green',
+                    'click': function() { self.handleRunCheck(); }
+                }, 'Run Health Check Now')
+            ]),
+
+            // Two column layout
+            E('div', { 'class': 'kiss-grid kiss-grid-2' }, [
+                // Containers
+                KissTheme.card('LXC Containers', E('div', { 'id': 'containers-card' }, this.renderContainers(status.containers))),
+                // Services
+                KissTheme.card('Host Services', E('div', { 'id': 'services-card' }, this.renderServices(status.services)))
+            ]),
+
+            // Endpoints
+            KissTheme.card('HTTPS Endpoints', E('div', { 'id': 'endpoints-card' }, this.renderEndpoints(status.endpoints))),
+
+            // Logs
+            KissTheme.card('Alert Logs', this.renderLogs(logs))
+        ];
 
         // Start polling
-        this.pollStatus();
+        poll.add(function() {
+            return callGetStatus().then(function(status) {
+                self.updateDashboard(status);
+            });
+        }, 10);
 
-        return view;
+        return KissTheme.wrap(content, 'admin/system/watchdog/status');
     },
 
     handleSaveApply: null,
