@@ -44,12 +44,12 @@ var callScan = rpc.declare({
 	expect: {}
 });
 
-// Risk level colors
+// Risk level colors - use CSS variable names for inline styles
 var RISK_COLORS = {
-	high: '#ff4444',
-	medium: '#ffaa00',
-	low: '#44cc44',
-	unknown: '#888888'
+	high: 'var(--kiss-red)',
+	medium: 'var(--kiss-orange)',
+	low: 'var(--kiss-green)',
+	unknown: 'var(--kiss-muted)'
 };
 
 return view.extend({
@@ -96,12 +96,12 @@ return view.extend({
 		var cloudList = (device.cloud_deps || []).map(function(c) {
 			return E('li', { 'style': 'margin: 5px 0;' }, [
 				E('span', {}, c.domain),
-				E('span', { 'style': 'color: #888; margin-left: 10px;' }, '(' + c.query_count + ' queries)')
+				E('span', { 'style': 'color: var(--kiss-muted); margin-left: 10px;' }, '(' + c.query_count + ' queries)')
 			]);
 		});
 
 		var anomalyList = (device.anomalies || []).map(function(a) {
-			var sevColor = a.severity === 'high' ? '#ff4444' : (a.severity === 'medium' ? '#ffaa00' : '#888');
+			var sevColor = a.severity === 'high' ? 'var(--kiss-red)' : (a.severity === 'medium' ? 'var(--kiss-orange)' : 'var(--kiss-muted)');
 			return E('li', { 'style': 'margin: 5px 0;' }, [
 				E('span', { 'style': 'color: ' + sevColor + ';' }, '[' + a.severity + '] '),
 				E('span', {}, a.type + ': ' + a.description)
@@ -203,19 +203,19 @@ return view.extend({
 		var rows = devices.map(function(d) {
 			var riskColor = RISK_COLORS[d.risk_level] || RISK_COLORS.unknown;
 			var status = d.blocked ? 'Blocked' : (d.isolated ? 'Isolated' : (d.trusted ? 'Trusted' : 'Active'));
-			var statusColor = d.blocked ? '#ff4444' : (d.isolated ? '#ffaa00' : (d.trusted ? '#44cc44' : '#888'));
+			var statusColor = d.blocked ? 'var(--kiss-red)' : (d.isolated ? 'var(--kiss-orange)' : (d.trusted ? 'var(--kiss-green)' : 'var(--kiss-muted)'));
 
 			return E('tr', { 'style': 'cursor: pointer;', 'click': function() { self.handleShowDetail(d.mac); } }, [
-				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid #333;' }, d.mac),
-				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid #333;' }, d.ip || '-'),
-				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid #333;' }, d.hostname || '-'),
-				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid #333;' }, d.vendor ? (d.vendor.length > 25 ? d.vendor.substring(0, 22) + '...' : d.vendor) : '-'),
-				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid #333;' }, d.device_class),
-				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid #333; color: ' + riskColor + ';' }, d.risk_level),
-				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid #333; text-align: center;' }, d.risk_score),
-				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid #333;' }, d.zone),
-				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid #333; color: ' + statusColor + ';' }, status),
-				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid #333;' }, [
+				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid var(--kiss-line);' }, d.mac),
+				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid var(--kiss-line);' }, d.ip || '-'),
+				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid var(--kiss-line);' }, d.hostname || '-'),
+				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid var(--kiss-line);' }, d.vendor ? (d.vendor.length > 25 ? d.vendor.substring(0, 22) + '...' : d.vendor) : '-'),
+				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid var(--kiss-line);' }, d.device_class),
+				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid var(--kiss-line); color: ' + riskColor + ';' }, d.risk_level),
+				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid var(--kiss-line); text-align: center;' }, d.risk_score),
+				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid var(--kiss-line);' }, d.zone),
+				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid var(--kiss-line); color: ' + statusColor + ';' }, status),
+				E('td', { 'style': 'padding: 10px; border-bottom: 1px solid var(--kiss-line);' }, [
 					!d.isolated && !d.blocked ? E('button', {
 						'class': 'kiss-btn kiss-btn-blue btn-sm',
 						'style': 'padding: 2px 8px; font-size: 12px; margin-right: 5px;',
@@ -237,14 +237,14 @@ return view.extend({
 					'class': 'kiss-btn kiss-btn-blue',
 					'click': L.bind(this.handleScan, this)
 				}, 'Scan Network'),
-				E('span', { 'style': 'margin-left: 15px; color: #888;' }, devices.length + ' devices')
+				E('span', { 'style': 'margin-left: 15px; color: var(--kiss-muted);' }, devices.length + ' devices')
 			]),
 
 			devices.length === 0 ?
-				E('div', { 'style': 'padding: 30px; text-align: center; color: #888;' },
+				E('div', { 'style': 'padding: 30px; text-align: center; color: var(--kiss-muted);' },
 					'No devices found. Click "Scan Network" to discover IoT devices.') :
 				E('table', { 'style': 'width: 100%; border-collapse: collapse;' }, [
-					E('thead', {}, E('tr', { 'style': 'background: #222;' }, [
+					E('thead', {}, E('tr', { 'style': 'background: var(--kiss-bg2);' }, [
 						E('th', { 'style': 'padding: 10px; text-align: left;' }, 'MAC'),
 						E('th', { 'style': 'padding: 10px; text-align: left;' }, 'IP'),
 						E('th', { 'style': 'padding: 10px; text-align: left;' }, 'Hostname'),

@@ -24,13 +24,13 @@ var MM2_NAV = [
 function renderMM2Nav(activeId) {
 	return E('div', {
 		'class': 'mm2-app-nav',
-		'style': 'display:flex;gap:8px;margin-bottom:20px;padding:12px 16px;background:#141419;border:1px solid rgba(255,255,255,0.08);border-radius:12px;'
+		'style': 'display:flex;gap:8px;margin-bottom:20px;padding:12px 16px;background:var(--kiss-bg);border:1px solid var(--kiss-line);border-radius:12px;'
 	}, MM2_NAV.map(function(item) {
 		var isActive = activeId === item.id;
 		return E('a', {
 			'href': L.url('admin', 'secubox', 'services', 'magicmirror2', item.id),
 			'style': 'display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:500;transition:all 0.2s;' +
-				(isActive ? 'background:linear-gradient(135deg,#9b59b6,#8e44ad);color:white;' : 'color:#a0a0b0;background:transparent;')
+				(isActive ? 'background:var(--kiss-purple);color:white;' : 'color:var(--kiss-muted);background:transparent;')
 		}, [
 			E('span', {}, item.icon),
 			E('span', {}, _(item.label))
@@ -260,24 +260,24 @@ return view.extend({
 
 			// Add custom styles for form
 			wrapper.appendChild(E('style', {}, [
-				'.cbi-map { background: #141419; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 20px; }',
+				'.cbi-map { background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 12px; padding: 20px; }',
 				'.cbi-section { margin-bottom: 20px; }',
 				'.cbi-section-node { background: rgba(255,255,255,0.02); border-radius: 8px; padding: 16px; }',
 				'.cbi-tabmenu { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }',
 				'.cbi-tabmenu li { list-style: none; }',
-				'.cbi-tabmenu li a { display: block; padding: 10px 20px; background: rgba(255,255,255,0.05); border-radius: 8px; color: #a0a0b0; text-decoration: none; font-weight: 500; }',
-				'.cbi-tabmenu li.cbi-tab a { background: linear-gradient(135deg, #9b59b6, #8e44ad); color: white; }',
+				'.cbi-tabmenu li a { display: block; padding: 10px 20px; background: var(--kiss-bg2); border-radius: 8px; color: var(--kiss-muted); text-decoration: none; font-weight: 500; }',
+				'.cbi-tabmenu li.cbi-tab a { background: var(--kiss-purple); color: white; }',
 				'.cbi-value { display: flex; align-items: center; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }',
 				'.cbi-value:last-child { border-bottom: none; }',
-				'.cbi-value-title { flex: 0 0 200px; font-weight: 500; color: #fff; }',
+				'.cbi-value-title { flex: 0 0 200px; font-weight: 500; color: var(--kiss-text); }',
 				'.cbi-value-field { flex: 1; }',
-				'.cbi-value-description { font-size: 12px; color: #a0a0b0; margin-top: 4px; }',
-				'.cbi-input-text, .cbi-input-select, .cbi-input-password { width: 100%; padding: 10px 14px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: white; font-size: 14px; }',
-				'.cbi-input-text:focus, .cbi-input-select:focus, .cbi-input-password:focus { outline: none; border-color: #9b59b6; }',
+				'.cbi-value-description { font-size: 12px; color: var(--kiss-muted); margin-top: 4px; }',
+				'.cbi-input-text, .cbi-input-select, .cbi-input-password { width: 100%; padding: 10px 14px; background: var(--kiss-bg2); border: 1px solid var(--kiss-line); border-radius: 6px; color: var(--kiss-text); font-size: 14px; }',
+				'.cbi-input-text:focus, .cbi-input-select:focus, .cbi-input-password:focus { outline: none; border-color: var(--kiss-purple); }',
 				'.cbi-button { padding: 10px 20px; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s; }',
-				'.cbi-button-save, .cbi-button-apply { background: linear-gradient(135deg, #27ae60, #229954); color: white; }',
-				'.cbi-button-reset { background: rgba(255,255,255,0.1); color: white; }',
-				'.cbi-checkbox { accent-color: #9b59b6; }',
+				'.cbi-button-save, .cbi-button-apply { background: var(--kiss-green); color: white; }',
+				'.cbi-button-reset { background: var(--kiss-bg2); color: var(--kiss-text); }',
+				'.cbi-checkbox { accent-color: var(--kiss-purple); }',
 				'.cbi-dynlist { display: flex; flex-direction: column; gap: 8px; }',
 				'.cbi-dynlist > .item { display: flex; gap: 8px; align-items: center; }',
 				'.cbi-dynlist > .item > input { flex: 1; }'
@@ -285,11 +285,11 @@ return view.extend({
 
 			// Regenerate config button
 			var actionBar = E('div', {
-				'style': 'display: flex; gap: 12px; margin-bottom: 20px; padding: 16px; background: #141419; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px;'
+				'style': 'display: flex; gap: 12px; margin-bottom: 20px; padding: 16px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 12px;'
 			}, [
 				E('button', {
 					'class': 'kiss-btn',
-					'style': 'background: linear-gradient(135deg, #9b59b6, #8e44ad); color: white;',
+					'class': 'kiss-btn kiss-btn-purple',
 					'click': function() {
 						ui.showModal(_('Regenerating...'), [
 							E('p', { 'class': 'spinning' }, _('Regenerating MagicMirror2 config.js...'))
@@ -306,7 +306,7 @@ return view.extend({
 				}, ['🔧 ', _('Regenerate Config')]),
 				E('button', {
 					'class': 'kiss-btn',
-					'style': 'background: linear-gradient(135deg, #3498db, #2980b9); color: white;',
+					'class': 'kiss-btn kiss-btn-blue',
 					'click': function() {
 						if (!status.running) {
 							ui.addNotification(null, E('p', {}, _('Service is not running')), 'warning');

@@ -22,13 +22,13 @@ var MM2_NAV = [
 function renderMM2Nav(activeId) {
 	return E('div', {
 		'class': 'mm2-app-nav',
-		'style': 'display:flex;gap:8px;margin-bottom:20px;padding:12px 16px;background:#141419;border:1px solid rgba(255,255,255,0.08);border-radius:12px;'
+		'style': 'display:flex;gap:8px;margin-bottom:20px;padding:12px 16px;background:var(--kiss-bg);border:1px solid var(--kiss-line);border-radius:12px;'
 	}, MM2_NAV.map(function(item) {
 		var isActive = activeId === item.id;
 		return E('a', {
 			'href': L.url('admin', 'secubox', 'services', 'magicmirror2', item.id),
 			'style': 'display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:500;transition:all 0.2s;' +
-				(isActive ? 'background:linear-gradient(135deg,#9b59b6,#8e44ad);color:white;' : 'color:#a0a0b0;background:transparent;')
+				(isActive ? 'background:var(--kiss-purple);color:white;' : 'color:var(--kiss-muted);background:transparent;')
 		}, [
 			E('span', {}, item.icon),
 			E('span', {}, _(item.label))
@@ -55,14 +55,14 @@ return view.extend({
 		if (!status.running) {
 			content = E('div', {
 				'class': 'mm2-card',
-				'style': 'text-align: center; padding: 60px 20px; background: #141419; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px;'
+				'style': 'text-align: center; padding: 60px 20px; background: var(--kiss-bg); border: 1px solid var(--kiss-line); border-radius: 12px;'
 			}, [
 				E('div', { 'style': 'font-size: 64px; margin-bottom: 20px;' }, '⚠️'),
-				E('h2', { 'style': 'margin: 0 0 10px 0; color: #f39c12;' }, _('MagicMirror2 is not running')),
-				E('p', { 'style': 'color: #a0a0b0; margin: 0 0 20px 0;' }, _('Start the service to view the display')),
+				E('h2', { 'style': 'margin: 0 0 10px 0; color: var(--kiss-orange);' }, _('MagicMirror2 is not running')),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 0 0 20px 0;' }, _('Start the service to view the display')),
 				E('button', {
 					'class': 'mm2-btn mm2-btn-success',
-					'style': 'display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; background: linear-gradient(135deg, #27ae60, #229954); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer;',
+					'class': 'kiss-btn kiss-btn-green',
 					'click': function() {
 						ui.showModal(_('Starting...'), [
 							E('p', { 'class': 'spinning' }, _('Starting MagicMirror2...'))
@@ -80,10 +80,10 @@ return view.extend({
 			content = E('div', { 'style': 'display: flex; flex-direction: column; height: calc(100vh - 200px); min-height: 600px;' }, [
 				// Toolbar
 				E('div', {
-					'style': 'display: flex; align-items: center; gap: 12px; margin-bottom: 12px; padding: 12px 16px; background: #141419; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08);'
+					'style': 'display: flex; align-items: center; gap: 12px; margin-bottom: 12px; padding: 12px 16px; background: var(--kiss-bg); border-radius: 8px; border: 1px solid var(--kiss-line);'
 				}, [
-					E('span', { 'style': 'color: #27ae60; font-weight: 500;' }, '● ' + _('Live Preview')),
-					E('span', { 'style': 'color: #a0a0b0; font-size: 13px;' }, iframeSrc),
+					E('span', { 'style': 'color: var(--kiss-green); font-weight: 500;' }, '● ' + _('Live Preview')),
+					E('span', { 'style': 'color: var(--kiss-muted); font-size: 13px;' }, iframeSrc),
 					E('div', { 'style': 'flex: 1;' }),
 					E('button', {
 						'style': 'display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: rgba(255,255,255,0.1); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px;',
@@ -93,7 +93,7 @@ return view.extend({
 						}
 					}, ['🔄 ', _('Refresh')]),
 					E('a', {
-						'style': 'display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: linear-gradient(135deg, #9b59b6, #8e44ad); color: white; border: none; border-radius: 6px; text-decoration: none; font-size: 13px;',
+						'class': 'kiss-btn kiss-btn-purple',
 						'href': iframeSrc,
 						'target': '_blank'
 					}, ['↗ ', _('Fullscreen')])
@@ -101,7 +101,7 @@ return view.extend({
 
 				// Iframe container
 				E('div', {
-					'style': 'flex: 1; border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.1); background: #000;'
+					'style': 'flex: 1; border-radius: 12px; overflow: hidden; border: 1px solid var(--kiss-line); background: #000;'
 				}, [
 					E('iframe', {
 						'class': 'mm2-iframe',
