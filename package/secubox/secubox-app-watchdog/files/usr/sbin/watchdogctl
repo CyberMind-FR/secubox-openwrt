@@ -1,0 +1,668 @@
+#!/bin/sh
+# SecuBox Watchdog Control
+# Service health monitoring and auto-recovery
+
+. /lib/functions.sh
+
+CONFIG_NAME="watchdog"
+LOG_FILE="/var/log/watchdog.log"
+ALERT_STATE_DIR="/tmp/watchdog"
+VERSION="1.0.0"
+
+# Colors for terminal output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+# Load configuration
+load_config() {
+    config_load "$CONFIG_NAME"
+    config_get LOG_FILE main log_file '/var/log/watchdog.log'
+    config_get ALERT_COOLDOWN main alert_cooldown '300'
+    config_get MAX_LOG_LINES main max_log_lines '1000'
+    mkdir -p "$ALERT_STATE_DIR"
+}
+
+# Logging
+log_msg() {
+    local level="$1"
+    local msg="$2"
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "[$timestamp] [$level] $msg" >> "$LOG_FILE"
+
+    # Rotate log if too large
+    local lines=$(wc -l < "$LOG_FILE" 2>/dev/null || echo 0)
+    if [ "$lines" -gt "$MAX_LOG_LINES" ]; then
+        tail -n "$((MAX_LOG_LINES / 2))" "$LOG_FILE" > "$LOG_FILE.tmp"
+        mv "$LOG_FILE.tmp" "$LOG_FILE"
+    fi
+}
+
+log_alert() {
+    log_msg "ALERT" "$1"
+    echo -e "${RED}SPUNK ALERT${NC} - $1" >&2
+}
+
+log_info() {
+    log_msg "INFO" "$1"
+}
+
+log_ok() {
+    log_msg "OK" "$1"
+}
+
+# Check if we should alert (cooldown)
+should_alert() {
+    local service="$1"
+    local state_file="$ALERT_STATE_DIR/$service.alert"
+
+    if [ -f "$state_file" ]; then
+        local last_alert=$(cat "$state_file")
+        local now=$(date +%s)
+        local diff=$((now - last_alert))
+        [ "$diff" -lt "$ALERT_COOLDOWN" ] && return 1
+    fi
+
+    date +%s > "$state_file"
+    return 0
+}
+
+clear_alert() {
+    local service="$1"
+    rm -f "$ALERT_STATE_DIR/$service.alert"
+}
+
+# Check LXC container status
+check_container() {
+    local section="$1"
+    local enabled name critical start_service service_name
+
+    config_get enabled "$section" enabled '0'
+    [ "$enabled" = "1" ] || return 0
+
+    config_get name "$section" name
+    config_get critical "$section" critical '0'
+    config_get start_service "$section" start_service '0'
+    config_get service_name "$section" service_name ''
+
+    local state=$(lxc-info -n "$name" 2>/dev/null | grep "State:" | awk '{print $2}')
+
+    if [ "$state" = "RUNNING" ]; then
+        clear_alert "container_$name"
+        return 0
+    else
+        if should_alert "container_$name"; then
+            log_alert "Container $name is $state"
+        fi
+        return 1
+    fi
+}
+
+# Restart LXC container
+restart_container() {
+    local section="$1"
+    local name start_service service_name
+
+    config_get name "$section" name
+    config_get start_service "$section" start_service '0'
+    config_get service_name "$section" service_name ''
+
+    log_info "Restarting container: $name"
+
+    # Stop if running
+    lxc-stop -n "$name" 2>/dev/null
+    sleep 1
+
+    # Start container
+    lxc-start -n "$name" 2>/dev/null
+    sleep 2
+
+    # Start service inside if configured
+    if [ "$start_service" = "1" ] && [ -n "$service_name" ]; then
+        sleep 2
+        lxc-attach -n "$name" -- /etc/init.d/"$service_name" start 2>/dev/null
+        log_info "Started $service_name service inside $name"
+    fi
+
+    # Verify
+    local state=$(lxc-info -n "$name" 2>/dev/null | grep "State:" | awk '{print $2}')
+    if [ "$state" = "RUNNING" ]; then
+        log_ok "Container $name recovered successfully"
+        return 0
+    else
+        log_alert "Container $name failed to start"
+        return 1
+    fi
+}
+
+# Check host service status
+check_service() {
+    local section="$1"
+    local enabled name process critical
+
+    config_get enabled "$section" enabled '0'
+    [ "$enabled" = "1" ] || return 0
+
+    config_get name "$section" name
+    config_get process "$section" process
+    config_get critical "$section" critical '0'
+
+    if pgrep "$process" >/dev/null 2>&1; then
+        clear_alert "service_$name"
+        return 0
+    else
+        if should_alert "service_$name"; then
+            log_alert "Service $name is not running"
+        fi
+        return 1
+    fi
+}
+
+# Restart host service
+restart_service() {
+    local section="$1"
+    local name process init_script
+
+    config_get name "$section" name
+    config_get process "$section" process
+    config_get init_script "$section" init_script
+
+    log_info "Restarting service: $name"
+
+    if [ -x "$init_script" ]; then
+        "$init_script" restart 2>/dev/null
+        sleep 2
+
+        if pgrep "$process" >/dev/null 2>&1; then
+            log_ok "Service $name recovered successfully"
+            return 0
+        else
+            log_alert "Service $name failed to restart"
+            return 1
+        fi
+    else
+        log_alert "No init script found for $name"
+        return 1
+    fi
+}
+
+# Check HTTPS endpoint
+check_endpoint() {
+    local section="$1"
+    local enabled name host expected_codes
+
+    config_get enabled "$section" enabled '0'
+    [ "$enabled" = "1" ] || return 0
+
+    config_get name "$section" name
+    config_get host "$section" host
+    config_get expected_codes "$section" expected_codes '200'
+
+    local code=$(curl -sk -o /dev/null -w "%{http_code}" -H "Host: $host" https://127.0.0.1/ 2>/dev/null)
+
+    local match=0
+    for expected in $expected_codes; do
+        [ "$code" = "$expected" ] && match=1 && break
+    done
+
+    if [ "$match" = "1" ]; then
+        clear_alert "endpoint_$host"
+        return 0
+    else
+        if should_alert "endpoint_$host"; then
+            log_alert "Endpoint $name ($host) returned HTTP $code"
+        fi
+        return 1
+    fi
+}
+
+# Run single check cycle
+run_check() {
+    local auto_recover="${1:-0}"
+    local failed=0
+
+    # Temp file to track failed items
+    local failed_containers="/tmp/watchdog_failed_containers"
+    local failed_services="/tmp/watchdog_failed_services"
+    > "$failed_containers"
+    > "$failed_services"
+
+    # Check containers and record failures
+    local check_and_record_container
+    check_and_record_container() {
+        local section="$1"
+        local enabled name
+
+        config_get enabled "$section" enabled '0'
+        [ "$enabled" = "1" ] || return 0
+
+        config_get name "$section" name
+
+        local state=$(lxc-info -n "$name" 2>/dev/null | grep "State:" | awk '{print $2}')
+
+        if [ "$state" = "RUNNING" ]; then
+            clear_alert "container_$name"
+        else
+            if should_alert "container_$name"; then
+                log_alert "Container $name is $state"
+            fi
+            echo "$section" >> "$failed_containers"
+            failed=1
+        fi
+    }
+    config_foreach check_and_record_container container
+
+    # Check services and record failures
+    local check_and_record_service
+    check_and_record_service() {
+        local section="$1"
+        local enabled name process
+
+        config_get enabled "$section" enabled '0'
+        [ "$enabled" = "1" ] || return 0
+
+        config_get name "$section" name
+        config_get process "$section" process
+
+        if pgrep "$process" >/dev/null 2>&1; then
+            clear_alert "service_$name"
+        else
+            if should_alert "service_$name"; then
+                log_alert "Service $name is not running"
+            fi
+            echo "$section" >> "$failed_services"
+            failed=1
+        fi
+    }
+    config_foreach check_and_record_service service
+
+    # Check endpoints
+    config_foreach check_endpoint endpoint || failed=1
+
+    # Auto-recovery if enabled
+    if [ "$auto_recover" = "1" ]; then
+        # Restart failed containers
+        while read section; do
+            [ -n "$section" ] && restart_container "$section"
+        done < "$failed_containers"
+
+        # Restart failed services
+        while read section; do
+            [ -n "$section" ] && restart_service "$section"
+        done < "$failed_services"
+    fi
+
+    rm -f "$failed_containers" "$failed_services"
+    return $failed
+}
+
+# Get status of a single container
+get_container_status() {
+    local name="$1"
+    local state=$(lxc-info -n "$name" 2>/dev/null | grep "State:" | awk '{print $2}')
+    local pid=$(lxc-info -n "$name" 2>/dev/null | grep "PID:" | awk '{print $2}')
+
+    if [ "$state" = "RUNNING" ]; then
+        echo "running:$pid"
+    else
+        echo "stopped:0"
+    fi
+}
+
+# Get status of a single service
+get_service_status() {
+    local process="$1"
+    local pid=$(pgrep "$process" 2>/dev/null | head -1)
+
+    if [ -n "$pid" ]; then
+        echo "running:$pid"
+    else
+        echo "stopped:0"
+    fi
+}
+
+# Get endpoint status
+get_endpoint_status() {
+    local host="$1"
+    local code=$(curl -sk -o /dev/null -w "%{http_code}" -H "Host: $host" --connect-timeout 5 https://127.0.0.1/ 2>/dev/null)
+    echo "$code"
+}
+
+# Show status command
+cmd_status() {
+    load_config
+
+    echo ""
+    echo -e "${CYAN}SecuBox Watchdog Status${NC}"
+    echo "========================"
+    echo ""
+
+    echo -e "${CYAN}LXC Containers:${NC}"
+    echo "---------------"
+    config_load "$CONFIG_NAME"
+
+    local container_status
+    container_status() {
+        local section="$1"
+        local enabled name
+        config_get enabled "$section" enabled '0'
+        [ "$enabled" = "1" ] || return 0
+        config_get name "$section" name
+
+        local result=$(get_container_status "$name")
+        local state=$(echo "$result" | cut -d: -f1)
+        local pid=$(echo "$result" | cut -d: -f2)
+
+        if [ "$state" = "running" ]; then
+            printf "  %-20s ${GREEN}RUNNING${NC} (PID: %s)\n" "$name:" "$pid"
+        else
+            printf "  %-20s ${RED}STOPPED${NC}\n" "$name:"
+        fi
+    }
+    config_foreach container_status container
+
+    echo ""
+    echo -e "${CYAN}Host Services:${NC}"
+    echo "--------------"
+
+    local service_status
+    service_status() {
+        local section="$1"
+        local enabled name process
+        config_get enabled "$section" enabled '0'
+        [ "$enabled" = "1" ] || return 0
+        config_get name "$section" name
+        config_get process "$section" process
+
+        local result=$(get_service_status "$process")
+        local state=$(echo "$result" | cut -d: -f1)
+        local pid=$(echo "$result" | cut -d: -f2)
+
+        if [ "$state" = "running" ]; then
+            printf "  %-20s ${GREEN}RUNNING${NC} (PID: %s)\n" "$name:" "$pid"
+        else
+            printf "  %-20s ${RED}NOT RUNNING${NC}\n" "$name:"
+        fi
+    }
+    config_foreach service_status service
+
+    echo ""
+    echo -e "${CYAN}HTTPS Endpoints:${NC}"
+    echo "----------------"
+
+    local endpoint_status
+    endpoint_status() {
+        local section="$1"
+        local enabled name host expected_codes
+        config_get enabled "$section" enabled '0'
+        [ "$enabled" = "1" ] || return 0
+        config_get name "$section" name
+        config_get host "$section" host
+        config_get expected_codes "$section" expected_codes '200'
+
+        local code=$(get_endpoint_status "$host")
+
+        local match=0
+        for expected in $expected_codes; do
+            [ "$code" = "$expected" ] && match=1 && break
+        done
+
+        if [ "$match" = "1" ]; then
+            printf "  %-25s ${GREEN}HTTP %s${NC}\n" "$host:" "$code"
+        else
+            printf "  %-25s ${RED}HTTP %s${NC}\n" "$host:" "$code"
+        fi
+    }
+    config_foreach endpoint_status endpoint
+
+    echo ""
+}
+
+# JSON status output for RPCD
+cmd_json_status() {
+    load_config
+
+    local json='{"containers":['
+    local first=1
+
+    local container_json
+    container_json() {
+        local section="$1"
+        local enabled name critical
+        config_get enabled "$section" enabled '0'
+        [ "$enabled" = "1" ] || return 0
+        config_get name "$section" name
+        config_get critical "$section" critical '0'
+
+        local result=$(get_container_status "$name")
+        local state=$(echo "$result" | cut -d: -f1)
+        local pid=$(echo "$result" | cut -d: -f2)
+
+        [ "$first" = "0" ] && json="$json,"
+        first=0
+        json="$json{\"name\":\"$name\",\"state\":\"$state\",\"pid\":$pid,\"critical\":$critical}"
+    }
+    config_foreach container_json container
+
+    json="$json],\"services\":["
+    first=1
+
+    local service_json
+    service_json() {
+        local section="$1"
+        local enabled name process critical
+        config_get enabled "$section" enabled '0'
+        [ "$enabled" = "1" ] || return 0
+        config_get name "$section" name
+        config_get process "$section" process
+        config_get critical "$section" critical '0'
+
+        local result=$(get_service_status "$process")
+        local state=$(echo "$result" | cut -d: -f1)
+        local pid=$(echo "$result" | cut -d: -f2)
+
+        [ "$first" = "0" ] && json="$json,"
+        first=0
+        json="$json{\"name\":\"$name\",\"process\":\"$process\",\"state\":\"$state\",\"pid\":$pid,\"critical\":$critical}"
+    }
+    config_foreach service_json service
+
+    json="$json],\"endpoints\":["
+    first=1
+
+    local endpoint_json
+    endpoint_json() {
+        local section="$1"
+        local enabled name host expected_codes
+        config_get enabled "$section" enabled '0'
+        [ "$enabled" = "1" ] || return 0
+        config_get name "$section" name
+        config_get host "$section" host
+        config_get expected_codes "$section" expected_codes '200'
+
+        local code=$(get_endpoint_status "$host")
+
+        local healthy=0
+        for expected in $expected_codes; do
+            [ "$code" = "$expected" ] && healthy=1 && break
+        done
+
+        [ "$first" = "0" ] && json="$json,"
+        first=0
+        json="$json{\"name\":\"$name\",\"host\":\"$host\",\"code\":$code,\"healthy\":$healthy}"
+    }
+    config_foreach endpoint_json endpoint
+
+    json="$json]}"
+    echo "$json"
+}
+
+# Check command (single cycle)
+cmd_check() {
+    load_config
+    local auto_recover="${1:-0}"
+
+    echo "Running health check..."
+    if run_check "$auto_recover"; then
+        echo -e "${GREEN}All systems healthy${NC}"
+        return 0
+    else
+        echo -e "${RED}Issues detected${NC}"
+        return 1
+    fi
+}
+
+# Watch command (continuous loop)
+cmd_watch() {
+    load_config
+    config_get interval main interval '60'
+
+    echo "Starting watchdog (interval: ${interval}s)..."
+    log_info "Watchdog started (interval: ${interval}s)"
+
+    while true; do
+        run_check 1
+        sleep "$interval"
+    done
+}
+
+# Restart a specific container
+cmd_restart_container() {
+    local name="$1"
+    [ -z "$name" ] && echo "Usage: watchdogctl restart-container <name>" && return 1
+
+    load_config
+
+    echo "Restarting container: $name"
+    lxc-stop -n "$name" 2>/dev/null
+    sleep 1
+    lxc-start -n "$name" 2>/dev/null
+    sleep 2
+
+    # Check for service start
+    local start_service
+    start_service() {
+        local section="$1"
+        local c_name service_name start_svc
+        config_get c_name "$section" name
+        [ "$c_name" = "$name" ] || return 0
+        config_get start_svc "$section" start_service '0'
+        config_get service_name "$section" service_name ''
+
+        if [ "$start_svc" = "1" ] && [ -n "$service_name" ]; then
+            sleep 2
+            lxc-attach -n "$name" -- /etc/init.d/"$service_name" start 2>/dev/null
+            echo "Started $service_name service inside container"
+        fi
+    }
+    config_foreach start_service container
+
+    local state=$(lxc-info -n "$name" 2>/dev/null | grep "State:" | awk '{print $2}')
+    if [ "$state" = "RUNNING" ]; then
+        echo -e "${GREEN}Container $name is now running${NC}"
+    else
+        echo -e "${RED}Container $name failed to start${NC}"
+        return 1
+    fi
+}
+
+# Restart a specific service
+cmd_restart_service() {
+    local name="$1"
+    [ -z "$name" ] && echo "Usage: watchdogctl restart-service <name>" && return 1
+
+    load_config
+
+    local do_restart
+    do_restart() {
+        local section="$1"
+        local s_name init_script process
+        config_get s_name "$section" name
+        [ "$s_name" = "$name" ] || return 0
+        config_get init_script "$section" init_script
+        config_get process "$section" process
+
+        if [ -x "$init_script" ]; then
+            echo "Restarting service: $name"
+            "$init_script" restart 2>/dev/null
+            sleep 2
+
+            if pgrep "$process" >/dev/null 2>&1; then
+                echo -e "${GREEN}Service $name is now running${NC}"
+            else
+                echo -e "${RED}Service $name failed to start${NC}"
+            fi
+        fi
+    }
+    config_foreach do_restart service
+}
+
+# Show logs
+cmd_logs() {
+    local lines="${1:-50}"
+    if [ -f "$LOG_FILE" ]; then
+        tail -n "$lines" "$LOG_FILE"
+    else
+        echo "No log file found"
+    fi
+}
+
+# Clear logs
+cmd_clear_logs() {
+    > "$LOG_FILE"
+    rm -f "$ALERT_STATE_DIR"/*.alert
+    echo "Logs cleared"
+}
+
+# Main
+case "$1" in
+    status)
+        cmd_status
+        ;;
+    json-status)
+        cmd_json_status
+        ;;
+    check)
+        cmd_check 0
+        ;;
+    check-recover)
+        cmd_check 1
+        ;;
+    watch)
+        cmd_watch
+        ;;
+    restart-container)
+        cmd_restart_container "$2"
+        ;;
+    restart-service)
+        cmd_restart_service "$2"
+        ;;
+    logs)
+        cmd_logs "$2"
+        ;;
+    clear-logs)
+        cmd_clear_logs
+        ;;
+    version)
+        echo "watchdogctl version $VERSION"
+        ;;
+    *)
+        echo "SecuBox Watchdog Control v$VERSION"
+        echo ""
+        echo "Usage: watchdogctl <command> [options]"
+        echo ""
+        echo "Commands:"
+        echo "  status              Show current status of all monitored services"
+        echo "  json-status         Output status as JSON (for RPCD)"
+        echo "  check               Run single health check (no auto-recovery)"
+        echo "  check-recover       Run single health check with auto-recovery"
+        echo "  watch               Start continuous monitoring loop"
+        echo "  restart-container   Restart a specific container"
+        echo "  restart-service     Restart a specific service"
+        echo "  logs [N]            Show last N log lines (default: 50)"
+        echo "  clear-logs          Clear all logs and alert states"
+        echo "  version             Show version"
+        ;;
+esac

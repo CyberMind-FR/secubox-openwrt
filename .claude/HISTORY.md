@@ -4743,3 +4743,120 @@ git checkout HEAD -- index.html
     - RPCD method: `start_terminal` returns terminal connection info
     - Menu entry: Remote Control → Remote Support → Web Terminal
     - Fullscreen toggle and refresh controls
+
+95. **HERMÈS·360 Full I-Ching Translation (2026-03-11)**
+    - Added full translations for all 64 hexagrams in 5 languages (DE, ES, PT, ZH, JA):
+      - Image texts (_i): symbolic imagery section - 320 translations
+      - Description texts (_d): hexagram meaning - 320 translations  
+      - Judgment texts (_j): oracle guidance - 320 translations
+      - Total: 960 new translation fields
+    - Visual enhancements from wall.maegia.tv:
+      - Canvas CSS filters: saturate(1.3) brightness(1.15) contrast(1.05)
+      - Hover effect: saturate(1.4) brightness(1.25) contrast(1.08)
+    - Added grid rendering during coin toss animation (drawGrid function)
+    - File size: 1.7MB (up from 1.6MB with all translations)
+    - Deployed to: https://lldh360.maegia.tv/
+
+96. **HERMÈS·360 Language Switching Fix (2026-03-12)**
+    - Fixed language switching for all hexagram texts (was only FR/EN, now all 7 languages)
+    - Updated `getHexD`, `getHexJ`, `getHexI` functions to use dynamic field lookup (`LANG + '_d'`)
+    - Added 320 hexagram name translations to `HNAMES_I18N` (DE/ES/PT/ZH/JA × 64)
+    - Removed white background from canvas wrapper (`.cvwrap{background:transparent}`)
+    - Mutation section now displays localized hexagram names
+    - All 960 translations (descriptions, judgments, images) now accessible via language selector
+
+97. **Streamlit Forge Phase 2 - Gitea Integration (2026-03-12)**
+    - **CLI Commands**:
+      - `slforge edit <app>` - Opens Gitea web editor, auto-creates repo if needed
+      - `slforge pull <app>` - Pulls latest from Gitea, auto-restarts if running
+      - `slforge push <app> [-m "msg"]` - Commits and pushes local changes to Gitea
+      - `slforge preview <app>` - Generates HTML/SVG preview of running app
+    - **Gitea API Integration**:
+      - `gitea_api()` helper function with token auth
+      - `gitea_ensure_org()` creates streamlit-apps org if missing
+      - `gitea_create_repo()` initializes git repo and pushes to Gitea
+      - Reads token from `/etc/config/gitea` UCI config
+    - **RPCD Methods** (5 new):
+      - `gitea_status` - Check Gitea availability and version
+      - `edit` - Get Gitea editor URL for app
+      - `pull` - Pull changes from Gitea
+      - `push` - Push changes to Gitea
+      - `preview` - Generate app preview
+    - **LuCI Dashboard Updates**:
+      - Gitea status card (version, online/offline)
+      - Edit button (purple) opens Gitea editor modal
+      - Pull button syncs latest changes
+      - Modal shows direct link to Gitea editor
+    - **Dependencies**: Git credentials configured via `.git-credentials`
+    - **ACL**: Updated with new methods for read/write
+98. **RTTY Remote Control Phase 4 - Session Replay (2026-03-12)**
+    - **Avatar-Tap Integration**:
+      - Session capture via mitmproxy WAF (passive, no traffic modification)
+      - UCI config integration for database path (`/srv/lxc/streamlit/rootfs/srv/avatar-tap/sessions.db`)
+      - Captures: auth headers, cookies, tokens, session data
+    - **CLI Commands** (rttyctl):
+      - `tap-sessions [domain]` - List captured sessions with optional domain filter
+      - `tap-show <id>` - Show detailed session info (headers, cookies)
+      - `tap-replay <id> <node>` - Replay captured session to remote mesh node
+      - `tap-export <id> [file]` - Export session as JSON
+      - `tap-import <file>` - Import session from JSON file
+      - `json-tap-sessions` / `json-tap-session` - JSON output for RPCD
+    - **RPCD Methods** (6 new):
+      - `get_tap_status` - Avatar-Tap running state, session count, database path
+      - `get_tap_sessions` - List all captured sessions
+      - `get_tap_session` - Get single session details
+      - `replay_to_node` - Replay session to target mesh node
+      - `export_session` - Export session as base64 JSON
+      - `import_session` - Import session from base64 JSON
+    - **LuCI View** (`session-replay.js`):
+      - Stats cards: total sessions, unique domains, recent activity, tap status
+      - Sessions table with domain, method, path, captured time, use count
+      - Filters: domain search, HTTP method dropdown
+      - Replay panel: node selector, custom IP support, execution preview
+      - View modal: session details with masked auth data
+      - Import/Export: JSON file upload/download
+    - **Menu**: System Hub → Session Replay
+    - **ACL**: Updated with read (get_tap_*) and write (replay_*, export_, import_) permissions
+    - **Tested**: 10 captured sessions from photos.gk2, cloud.gk2, api.anthropic.com, chatgpt.com
+
+99. **SecuBox Watchdog - Service Health Monitor (2026-03-12)**
+    - Created `secubox-app-watchdog` package for service health monitoring and auto-recovery
+    - Created `luci-app-watchdog` package for LuCI dashboard integration
+    - **Monitored Components**:
+      - LXC Containers: haproxy, mitmproxy-in, mitmproxy-out, streamlit
+      - Host Services: crowdsec, uhttpd, dnsmasq
+      - HTTPS Endpoints: gk2.secubox.in, admin.gk2.secubox.in, lldh360.maegia.tv
+    - **CLI Tool** (`watchdogctl`):
+      - `status` - Show status of all monitored services with color output
+      - `check` - Single health check without recovery
+      - `check-recover` - Health check with automatic restart of failed services
+      - `watch` - Continuous monitoring loop (procd managed)
+      - `restart-container <name>` - Manual container restart
+      - `restart-service <name>` - Manual service restart
+      - `logs [N]` - View last N log entries
+      - `clear-logs` - Clear log file and alert states
+    - **Features**:
+      - Alert cooldown to prevent spam (configurable, default 300s)
+      - Log rotation (configurable max lines)
+      - Critical service flagging
+      - Container service start after LXC start (e.g., haproxy inside container)
+    - **RPCD Methods**:
+      - `status` - Full status with containers, services, endpoints
+      - `get_containers` / `get_services` / `get_endpoints` - Individual lists
+      - `restart_container` / `restart_service` - Remote restart via ubus
+      - `check` - Trigger health check
+      - `get_logs` / `clear_logs` - Log management
+    - **LuCI Dashboard** (`watchdog/status.js`):
+      - Real-time status with 10s polling
+      - Containers table with restart buttons
+      - Services table with restart buttons
+      - Endpoints table with health indicators
+      - Alert logs viewer with refresh/clear
+      - "Run Check Now" button
+    - **Auto-Recovery**: Cron job runs every minute, procd service runs continuous loop
+    - **Files**:
+      - `/etc/config/watchdog` - UCI configuration
+      - `/usr/sbin/watchdogctl` - CLI tool
+      - `/etc/init.d/watchdog` - procd service
+      - `/etc/cron.d/watchdog` - Cron backup
+      - `/usr/libexec/rpcd/luci.watchdog` - RPCD backend

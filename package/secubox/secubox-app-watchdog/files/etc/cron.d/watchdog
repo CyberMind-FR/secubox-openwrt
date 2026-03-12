@@ -1,0 +1,3 @@
+# SecuBox Watchdog - Health check cron job
+# Runs every minute to check and auto-recover services
+* * * * * root /usr/sbin/watchdogctl check-recover >/dev/null 2>&1

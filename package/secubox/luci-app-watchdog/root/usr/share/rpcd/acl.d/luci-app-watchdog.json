@@ -1,0 +1,29 @@
+{
+    "luci-app-watchdog": {
+        "description": "Grant access to SecuBox Watchdog",
+        "read": {
+            "ubus": {
+                "luci.watchdog": [
+                    "status",
+                    "get_containers",
+                    "get_services",
+                    "get_endpoints",
+                    "get_logs",
+                    "get_config"
+                ]
+            },
+            "uci": ["watchdog"]
+        },
+        "write": {
+            "ubus": {
+                "luci.watchdog": [
+                    "restart_container",
+                    "restart_service",
+                    "check",
+                    "clear_logs"
+                ]
+            },
+            "uci": ["watchdog"]
+        }
+    }
+}

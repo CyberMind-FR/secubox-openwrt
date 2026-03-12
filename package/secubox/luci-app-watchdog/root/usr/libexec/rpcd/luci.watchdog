@@ -1,0 +1,522 @@
+#!/bin/sh
+# RPCD backend for SecuBox Watchdog
+# Provides LuCI integration for watchdog status and control
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+CONFIG_NAME="watchdog"
+LOG_FILE="/var/log/watchdog.log"
+ALERT_STATE_DIR="/tmp/watchdog"
+
+# Get container status
+get_container_status() {
+    local name="$1"
+    local state=$(lxc-info -n "$name" 2>/dev/null | grep "State:" | awk '{print $2}')
+    local pid=$(lxc-info -n "$name" 2>/dev/null | grep "PID:" | awk '{print $2}')
+
+    if [ "$state" = "RUNNING" ]; then
+        echo "running:${pid:-0}"
+    else
+        echo "stopped:0"
+    fi
+}
+
+# Get service status
+get_service_status() {
+    local process="$1"
+    local pid=$(pgrep "$process" 2>/dev/null | head -1)
+
+    if [ -n "$pid" ]; then
+        echo "running:$pid"
+    else
+        echo "stopped:0"
+    fi
+}
+
+# Get endpoint status
+get_endpoint_http_code() {
+    local host="$1"
+    local code=$(curl -sk -o /dev/null -w "%{http_code}" -H "Host: $host" --connect-timeout 5 https://127.0.0.1/ 2>/dev/null)
+    echo "${code:-0}"
+}
+
+# Method: list
+method_list() {
+    json_init
+    json_add_object "status"
+    json_close_object
+    json_add_object "get_containers"
+    json_close_object
+    json_add_object "get_services"
+    json_close_object
+    json_add_object "get_endpoints"
+    json_close_object
+    json_add_object "get_logs"
+        json_add_int "lines" 50
+    json_close_object
+    json_add_object "restart_container"
+        json_add_string "name" "string"
+    json_close_object
+    json_add_object "restart_service"
+        json_add_string "name" "string"
+    json_close_object
+    json_add_object "check"
+    json_close_object
+    json_add_object "clear_logs"
+    json_close_object
+    json_add_object "get_config"
+    json_close_object
+    json_dump
+}
+
+# Method: status - Full status overview
+method_status() {
+    config_load "$CONFIG_NAME"
+
+    local enabled interval
+    config_get enabled main enabled '0'
+    config_get interval main interval '60'
+
+    # Check if watchdog process is running
+    local running=0
+    pgrep -f "watchdogctl watch" >/dev/null && running=1
+
+    json_init
+    json_add_boolean "enabled" "$enabled"
+    json_add_boolean "running" "$running"
+    json_add_int "interval" "$interval"
+
+    # Containers
+    json_add_array "containers"
+    local add_container
+    add_container() {
+        local section="$1"
+        local c_enabled c_name c_critical
+
+        config_get c_enabled "$section" enabled '0'
+        [ "$c_enabled" = "1" ] || return 0
+
+        config_get c_name "$section" name
+        config_get c_critical "$section" critical '0'
+
+        local result=$(get_container_status "$c_name")
+        local state=$(echo "$result" | cut -d: -f1)
+        local pid=$(echo "$result" | cut -d: -f2)
+
+        json_add_object ""
+        json_add_string "name" "$c_name"
+        json_add_string "state" "$state"
+        json_add_int "pid" "$pid"
+        json_add_boolean "critical" "$c_critical"
+        json_close_object
+    }
+    config_foreach add_container container
+    json_close_array
+
+    # Services
+    json_add_array "services"
+    local add_service
+    add_service() {
+        local section="$1"
+        local s_enabled s_name s_process s_critical
+
+        config_get s_enabled "$section" enabled '0'
+        [ "$s_enabled" = "1" ] || return 0
+
+        config_get s_name "$section" name
+        config_get s_process "$section" process
+        config_get s_critical "$section" critical '0'
+
+        local result=$(get_service_status "$s_process")
+        local state=$(echo "$result" | cut -d: -f1)
+        local pid=$(echo "$result" | cut -d: -f2)
+
+        json_add_object ""
+        json_add_string "name" "$s_name"
+        json_add_string "process" "$s_process"
+        json_add_string "state" "$state"
+        json_add_int "pid" "$pid"
+        json_add_boolean "critical" "$s_critical"
+        json_close_object
+    }
+    config_foreach add_service service
+    json_close_array
+
+    # Endpoints
+    json_add_array "endpoints"
+    local add_endpoint
+    add_endpoint() {
+        local section="$1"
+        local e_enabled e_name e_host e_expected
+
+        config_get e_enabled "$section" enabled '0'
+        [ "$e_enabled" = "1" ] || return 0
+
+        config_get e_name "$section" name
+        config_get e_host "$section" host
+        config_get e_expected "$section" expected_codes '200'
+
+        local code=$(get_endpoint_http_code "$e_host")
+
+        local healthy=0
+        for exp in $e_expected; do
+            [ "$code" = "$exp" ] && healthy=1 && break
+        done
+
+        json_add_object ""
+        json_add_string "name" "$e_name"
+        json_add_string "host" "$e_host"
+        json_add_int "code" "$code"
+        json_add_boolean "healthy" "$healthy"
+        json_close_object
+    }
+    config_foreach add_endpoint endpoint
+    json_close_array
+
+    json_dump
+}
+
+# Method: get_containers
+method_get_containers() {
+    config_load "$CONFIG_NAME"
+
+    json_init
+    json_add_array "containers"
+
+    local add_container
+    add_container() {
+        local section="$1"
+        local c_enabled c_name c_critical c_start_service c_service_name
+
+        config_get c_enabled "$section" enabled '0'
+        config_get c_name "$section" name
+        config_get c_critical "$section" critical '0'
+        config_get c_start_service "$section" start_service '0'
+        config_get c_service_name "$section" service_name ''
+
+        local result=$(get_container_status "$c_name")
+        local state=$(echo "$result" | cut -d: -f1)
+        local pid=$(echo "$result" | cut -d: -f2)
+
+        json_add_object ""
+        json_add_string "id" "$section"
+        json_add_string "name" "$c_name"
+        json_add_string "state" "$state"
+        json_add_int "pid" "$pid"
+        json_add_boolean "enabled" "$c_enabled"
+        json_add_boolean "critical" "$c_critical"
+        json_add_boolean "start_service" "$c_start_service"
+        json_add_string "service_name" "$c_service_name"
+        json_close_object
+    }
+    config_foreach add_container container
+    json_close_array
+
+    json_dump
+}
+
+# Method: get_services
+method_get_services() {
+    config_load "$CONFIG_NAME"
+
+    json_init
+    json_add_array "services"
+
+    local add_service
+    add_service() {
+        local section="$1"
+        local s_enabled s_name s_process s_critical s_init_script
+
+        config_get s_enabled "$section" enabled '0'
+        config_get s_name "$section" name
+        config_get s_process "$section" process
+        config_get s_critical "$section" critical '0'
+        config_get s_init_script "$section" init_script ''
+
+        local result=$(get_service_status "$s_process")
+        local state=$(echo "$result" | cut -d: -f1)
+        local pid=$(echo "$result" | cut -d: -f2)
+
+        json_add_object ""
+        json_add_string "id" "$section"
+        json_add_string "name" "$s_name"
+        json_add_string "process" "$s_process"
+        json_add_string "state" "$state"
+        json_add_int "pid" "$pid"
+        json_add_boolean "enabled" "$s_enabled"
+        json_add_boolean "critical" "$s_critical"
+        json_add_string "init_script" "$s_init_script"
+        json_close_object
+    }
+    config_foreach add_service service
+    json_close_array
+
+    json_dump
+}
+
+# Method: get_endpoints
+method_get_endpoints() {
+    config_load "$CONFIG_NAME"
+
+    json_init
+    json_add_array "endpoints"
+
+    local add_endpoint
+    add_endpoint() {
+        local section="$1"
+        local e_enabled e_name e_host e_expected e_critical
+
+        config_get e_enabled "$section" enabled '0'
+        config_get e_name "$section" name
+        config_get e_host "$section" host
+        config_get e_expected "$section" expected_codes '200'
+        config_get e_critical "$section" critical '0'
+
+        local code=$(get_endpoint_http_code "$e_host")
+
+        local healthy=0
+        for exp in $e_expected; do
+            [ "$code" = "$exp" ] && healthy=1 && break
+        done
+
+        json_add_object ""
+        json_add_string "id" "$section"
+        json_add_string "name" "$e_name"
+        json_add_string "host" "$e_host"
+        json_add_int "code" "$code"
+        json_add_boolean "enabled" "$e_enabled"
+        json_add_boolean "healthy" "$healthy"
+        json_add_boolean "critical" "$e_critical"
+        json_add_string "expected_codes" "$e_expected"
+        json_close_object
+    }
+    config_foreach add_endpoint endpoint
+    json_close_array
+
+    json_dump
+}
+
+# Method: get_logs
+method_get_logs() {
+    local lines="${1:-50}"
+
+    json_init
+
+    if [ -f "$LOG_FILE" ]; then
+        local log_content=$(tail -n "$lines" "$LOG_FILE" 2>/dev/null | sed 's/"/\\"/g' | tr '\n' '\n')
+        json_add_array "lines"
+        tail -n "$lines" "$LOG_FILE" 2>/dev/null | while IFS= read -r line; do
+            json_add_string "" "$line"
+        done
+        json_close_array
+        json_add_int "total" "$(wc -l < "$LOG_FILE" 2>/dev/null || echo 0)"
+    else
+        json_add_array "lines"
+        json_close_array
+        json_add_int "total" 0
+    fi
+
+    json_dump
+}
+
+# Method: restart_container
+method_restart_container() {
+    local name="$1"
+
+    json_init
+
+    if [ -z "$name" ]; then
+        json_add_boolean "success" 0
+        json_add_string "error" "Container name required"
+        json_dump
+        return
+    fi
+
+    # Stop container
+    lxc-stop -n "$name" 2>/dev/null
+    sleep 1
+
+    # Start container
+    lxc-start -n "$name" 2>/dev/null
+    sleep 2
+
+    # Check for service start
+    config_load "$CONFIG_NAME"
+    local start_service
+    start_service() {
+        local section="$1"
+        local c_name service_name start_svc
+        config_get c_name "$section" name
+        [ "$c_name" = "$name" ] || return 0
+        config_get start_svc "$section" start_service '0'
+        config_get service_name "$section" service_name ''
+
+        if [ "$start_svc" = "1" ] && [ -n "$service_name" ]; then
+            sleep 2
+            lxc-attach -n "$name" -- /etc/init.d/"$service_name" start 2>/dev/null
+        fi
+    }
+    config_foreach start_service container
+
+    local state=$(lxc-info -n "$name" 2>/dev/null | grep "State:" | awk '{print $2}')
+
+    if [ "$state" = "RUNNING" ]; then
+        json_add_boolean "success" 1
+        json_add_string "state" "running"
+    else
+        json_add_boolean "success" 0
+        json_add_string "error" "Container failed to start"
+        json_add_string "state" "$state"
+    fi
+
+    json_dump
+}
+
+# Method: restart_service
+method_restart_service() {
+    local name="$1"
+
+    json_init
+
+    if [ -z "$name" ]; then
+        json_add_boolean "success" 0
+        json_add_string "error" "Service name required"
+        json_dump
+        return
+    fi
+
+    config_load "$CONFIG_NAME"
+
+    local found=0
+    local do_restart
+    do_restart() {
+        local section="$1"
+        local s_name init_script process
+        config_get s_name "$section" name
+        [ "$s_name" = "$name" ] || return 0
+        found=1
+
+        config_get init_script "$section" init_script
+        config_get process "$section" process
+
+        if [ -x "$init_script" ]; then
+            "$init_script" restart 2>/dev/null
+            sleep 2
+
+            if pgrep "$process" >/dev/null 2>&1; then
+                json_add_boolean "success" 1
+                json_add_string "state" "running"
+            else
+                json_add_boolean "success" 0
+                json_add_string "error" "Service failed to start"
+            fi
+        else
+            json_add_boolean "success" 0
+            json_add_string "error" "Init script not found"
+        fi
+    }
+    config_foreach do_restart service
+
+    if [ "$found" = "0" ]; then
+        json_add_boolean "success" 0
+        json_add_string "error" "Service not found in configuration"
+    fi
+
+    json_dump
+}
+
+# Method: check - Run single health check
+method_check() {
+    /usr/sbin/watchdogctl check-recover >/dev/null 2>&1
+
+    json_init
+    json_add_boolean "success" 1
+    json_add_string "message" "Health check completed"
+    json_dump
+}
+
+# Method: clear_logs
+method_clear_logs() {
+    > "$LOG_FILE" 2>/dev/null
+    rm -f "$ALERT_STATE_DIR"/*.alert 2>/dev/null
+
+    json_init
+    json_add_boolean "success" 1
+    json_dump
+}
+
+# Method: get_config
+method_get_config() {
+    config_load "$CONFIG_NAME"
+
+    local enabled interval alert_cooldown max_log_lines
+
+    config_get enabled main enabled '0'
+    config_get interval main interval '60'
+    config_get alert_cooldown main alert_cooldown '300'
+    config_get max_log_lines main max_log_lines '1000'
+
+    json_init
+    json_add_boolean "enabled" "$enabled"
+    json_add_int "interval" "$interval"
+    json_add_int "alert_cooldown" "$alert_cooldown"
+    json_add_int "max_log_lines" "$max_log_lines"
+    json_dump
+}
+
+# Main dispatcher
+case "$1" in
+    list)
+        method_list
+        ;;
+    call)
+        case "$2" in
+            status)
+                method_status
+                ;;
+            get_containers)
+                method_get_containers
+                ;;
+            get_services)
+                method_get_services
+                ;;
+            get_endpoints)
+                method_get_endpoints
+                ;;
+            get_logs)
+                read -r input
+                json_load "$input"
+                json_get_var lines lines 50
+                method_get_logs "$lines"
+                ;;
+            restart_container)
+                read -r input
+                json_load "$input"
+                json_get_var name name
+                method_restart_container "$name"
+                ;;
+            restart_service)
+                read -r input
+                json_load "$input"
+                json_get_var name name
+                method_restart_service "$name"
+                ;;
+            check)
+                method_check
+                ;;
+            clear_logs)
+                method_clear_logs
+                ;;
+            get_config)
+                method_get_config
+                ;;
+            *)
+                echo '{"error":"Unknown method"}'
+                ;;
+        esac
+        ;;
+    *)
+        echo '{"error":"Unknown command"}'
+        ;;
+esac

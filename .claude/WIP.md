@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-11 (Meta Cataloger - Virtual Books)_
+_Last updated: 2026-03-12 (SecuBox Watchdog)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -8,7 +8,49 @@ _Last updated: 2026-03-11 (Meta Cataloger - Virtual Books)_
 
 ## Recently Completed
 
+### 2026-03-12
+
+- **SecuBox Watchdog - Service Health Monitor (Complete)**
+  - New `secubox-app-watchdog` + `luci-app-watchdog` packages
+  - Monitors: LXC containers (haproxy, mitmproxy-in/out, streamlit), host services (crowdsec, uhttpd, dnsmasq), HTTPS endpoints
+  - CLI: watchdogctl status/check/check-recover/watch/restart-container/restart-service/logs
+  - Auto-recovery: detects stopped containers/services and restarts them
+  - RPCD: status, get_containers, get_services, get_endpoints, restart_*, check, get_logs
+  - LuCI Dashboard: Real-time status with 10s polling, restart buttons, log viewer
+  - Alert cooldown and log rotation
+  - Procd service + cron fallback
+  - Fixed HAProxy missing backends (luci_direct, fallback) and port mismatch
+
+- **RTTY Remote Control Phase 4 - Session Replay (Complete)**
+  - Avatar-Tap integration: passive session capture via mitmproxy WAF
+  - CLI: tap-sessions, tap-show, tap-replay, tap-export, tap-import
+  - RPCD: 6 new methods (get_tap_status, get_tap_sessions, get_tap_session, replay_to_node, export_session, import_session)
+  - LuCI: session-replay.js view with stats, filters, replay panel, import/export
+  - Menu: System Hub → Session Replay
+  - Tested: 10 captured sessions from multiple domains
+
 ### 2026-03-11
+
+- **Streamlit Forge Phase 2 - Gitea Integration (Complete)**
+  - CLI: `slforge edit/pull/push/preview` commands
+  - Gitea API integration with token auth
+  - Auto-creates org/repo on first edit
+  - RPCD: 5 new methods (gitea_status, edit, pull, push, preview)
+  - LuCI: Gitea status card, Edit/Pull buttons, editor modal
+  - Preview generation: HTML capture + SVG placeholder
+
+- **HERMÈS·360 Full I-Ching Translation**
+  - All 64 hexagrams translated in 5 languages (DE, ES, PT, ZH, JA):
+    - Image texts (_i): 320 translations - symbolic imagery
+    - Description texts (_d): 320 translations - hexagram meaning
+    - Judgment texts (_j): 320 translations - oracle guidance
+    - Total: 960 new translation fields added
+  - Visual enhancements from wall.maegia.tv:
+    - Canvas CSS filters: saturate(1.3) brightness(1.15) contrast(1.05)
+    - Hover effect: saturate(1.4) brightness(1.25) contrast(1.08)
+  - Added grid rendering during coin toss animation (drawGrid function)
+  - File size: 1.7MB (up from 1.6MB)
+  - Deployed to: https://lldh360.maegia.tv/
 
 - **Meta Cataloger Phase 2 & 3 (Complete)**
   - **Phase 2: RPCD + LuCI**
@@ -438,14 +480,7 @@ _Last updated: 2026-03-11 (Meta Cataloger - Virtual Books)_
 
 ## In Progress
 
-- **Meta Cataloger Phase 3** - Enhanced landing page with search, entry management UI
-
-- **Streamlit Forge Phase 2** - Preview generation, Gitea push/pull
-
-- **RTTY Remote Control Module (Phase 4 - Session Replay)**
-  - Avatar-tap integration for session capture
-  - Replay captured sessions to target nodes
-  - Session export/import functionality
+(No active tasks)
 
 ---
 
