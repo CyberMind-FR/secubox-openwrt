@@ -31,5 +31,16 @@
         "depends": {
             "acl": ["luci-app-rtty-remote"]
         }
+    },
+    "admin/secubox/system/system-hub/session-replay": {
+        "title": "Session Replay",
+        "order": 18,
+        "action": {
+            "type": "view",
+            "path": "rtty-remote/session-replay"
+        },
+        "depends": {
+            "acl": ["luci-app-rtty-remote"]
+        }
     }
 }

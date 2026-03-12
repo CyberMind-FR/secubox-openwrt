@@ -11,10 +11,13 @@
                     "get_sessions",
                     "get_settings",
                     "token_list",
-                    "token_validate"
+                    "token_validate",
+                    "get_tap_sessions",
+                    "get_tap_session",
+                    "get_tap_status"
                 ]
             },
-            "uci": ["rtty-remote"]
+            "uci": ["rtty-remote", "avatar-tap"]
         },
         "write": {
             "ubus": {
@@ -28,7 +31,10 @@
                     "start_terminal",
                     "token_generate",
                     "token_revoke",
-                    "token_rpc"
+                    "token_rpc",
+                    "replay_to_node",
+                    "export_session",
+                    "import_session"
                 ]
             },
             "uci": ["rtty-remote"]

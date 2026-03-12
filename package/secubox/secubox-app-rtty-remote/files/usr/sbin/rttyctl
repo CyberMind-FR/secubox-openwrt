@@ -662,7 +662,15 @@ cmd_sessions() {
 # Avatar-Tap Integration - Session Capture & Replay
 #------------------------------------------------------------------------------
 
-AVATAR_TAP_DB="/srv/avatar-tap/sessions.db"
+# Load avatar-tap database path from UCI config
+get_avatar_tap_db() {
+    config_load avatar-tap 2>/dev/null
+    local db_path
+    config_get db_path main db_path '/srv/avatar-tap/sessions.db'
+    echo "$db_path"
+}
+
+AVATAR_TAP_DB=$(get_avatar_tap_db)
 
 cmd_tap_sessions() {
     local domain_filter="$1"

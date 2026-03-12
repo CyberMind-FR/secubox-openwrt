@@ -442,6 +442,32 @@ method_token_rpc() {
 # Avatar-Tap Session Integration
 #------------------------------------------------------------------------------
 
+# Get Avatar-Tap status
+method_get_tap_status() {
+    local running=0
+    pgrep -f "mitmdump.*tap.py" >/dev/null && running=1
+
+    # Get database path from UCI
+    config_load avatar-tap
+    local db_path
+    config_get db_path main db_path '/srv/avatar-tap/sessions.db'
+
+    local sessions=0
+    local recent=0
+
+    if [ -f "$db_path" ]; then
+        sessions=$(sqlite3 "$db_path" "SELECT COUNT(*) FROM sessions" 2>/dev/null || echo 0)
+        recent=$(sqlite3 "$db_path" "SELECT COUNT(*) FROM sessions WHERE captured_at > strftime('%s','now','-1 hour')" 2>/dev/null || echo 0)
+    fi
+
+    json_init
+    json_add_boolean "running" "$running"
+    json_add_int "sessions" "$sessions"
+    json_add_int "recent" "$recent"
+    json_add_string "db_path" "$db_path"
+    json_dump
+}
+
 # Get captured sessions from avatar-tap
 method_get_tap_sessions() {
     local domain
@@ -589,7 +615,13 @@ case "$1" in
     "token_list": {},
     "token_validate": {"code": "string"},
     "token_revoke": {"code": "string"},
-    "token_rpc": {"code": "string", "object": "string", "method": "string", "params": "string"}
+    "token_rpc": {"code": "string", "object": "string", "method": "string", "params": "string"},
+    "get_tap_sessions": {},
+    "get_tap_session": {"session_id": "integer"},
+    "replay_to_node": {"session_id": "integer", "target_node": "string"},
+    "export_session": {"session_id": "integer"},
+    "import_session": {"content": "string"},
+    "get_tap_status": {}
 }
 EOF
         ;;
@@ -613,6 +645,12 @@ EOF
             token_validate) method_token_validate ;;
             token_revoke)   method_token_revoke ;;
             token_rpc)      method_token_rpc ;;
+            get_tap_sessions)  method_get_tap_sessions ;;
+            get_tap_session)   method_get_tap_session ;;
+            replay_to_node)    method_replay_to_node ;;
+            export_session)    method_export_session ;;
+            import_session)    method_import_session ;;
+            get_tap_status)    method_get_tap_status ;;
             *)
                 echo '{"error":"Unknown method"}'
                 ;;
