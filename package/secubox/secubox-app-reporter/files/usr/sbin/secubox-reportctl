@@ -136,6 +136,9 @@ generate_dev_report() {
             "$health_score" "$history_entries" "$wip_entries" "$roadmap_data"
     fi
 
+    # Ensure web-readable permissions
+    chmod 644 "$output_file"
+
     log_ok "Generated: $output_file"
     echo "$output_file"
 }
@@ -198,6 +201,9 @@ generate_services_report() {
             "$tor_count" "$dns_count" "$mesh_count" \
             "$tor_services" "$dns_services" "$mesh_services"
     fi
+
+    # Ensure web-readable permissions
+    chmod 644 "$output_file"
 
     log_ok "Generated: $output_file"
     echo "$output_file"
