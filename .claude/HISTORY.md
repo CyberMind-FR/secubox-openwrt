@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-03-11 (Streamlit Control Phase 3, CrowdSec bugfix)_
+_Last updated: 2026-03-13 (Config Vault + System Hardware Report)_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -4960,3 +4960,34 @@ git checkout HEAD -- index.html
       - `/usr/share/config-vault/hooks/uci-track` - Change tracking hook
       - `/srv/config-vault/` - Git repository with versioned configs
       - `/usr/libexec/rpcd/luci.config-vault` - RPCD backend
+
+102. **System Hardware Report (2026-03-13)**
+    - Extended `secubox-app-reporter` with new system hardware report type
+    - **Purpose**: Detailed system diagnostics, health monitoring, environmental impact awareness
+    - **CLI**: `secubox-reportctl generate system`
+    - **Features**:
+      - CPU/Memory/Disk/Temperature gauges with animated rings
+      - 24-bar CPU load histogram visualization
+      - Environmental impact card (power/kWh/CO₂ estimates)
+      - Health recommendations based on system metrics
+      - Top processes table with status indicators
+      - Network interface stats (RX/TX per interface)
+      - Debug log viewer with severity highlighting
+    - **Data Collectors** (`system-collector.sh`):
+      - `get_cpu_usage` - /proc/stat based CPU percentage
+      - `get_memory_info` - MemTotal/MemAvailable from /proc/meminfo
+      - `get_disk_info` - Root filesystem usage via df
+      - `get_temperature` - Thermal zone readings
+      - `get_cpu_freq/model/cores` - CPU specifications
+      - `estimate_power_watts` - ARM appliance power estimation
+      - `generate_recommendations` - Threshold-based health tips
+      - `get_debug_log` - Logread output with severity parsing
+    - **Template**: `system-status.html.tpl` with KissTheme dark styling
+    - **Files**:
+      - `/usr/share/secubox-reporter/lib/system-collector.sh` - Data collection functions
+      - `/usr/share/secubox-reporter/templates/system-status.html.tpl` - HTML template
+    - **Technical Notes**:
+      - BusyBox/ash compatible (no bash-specific syntax)
+      - Uses awk for multiline HTML substitutions (sed limitations)
+      - Temp files for dynamic content generation
+      - /proc filesystem based for OpenWrt compatibility

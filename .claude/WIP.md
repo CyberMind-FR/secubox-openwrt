@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-13 (SecuBox Report Generator)_
+_Last updated: 2026-03-13 (Config Vault + System Hardware Report)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -9,6 +9,29 @@ _Last updated: 2026-03-13 (SecuBox Report Generator)_
 ## Recently Completed
 
 ### 2026-03-13
+
+- **Configuration Vault System (Complete)**
+  - New `secubox-app-config-vault` + `luci-app-config-vault` packages
+  - Git-based config versioning with auto-commit and auto-push
+  - 9 configuration modules: users, network, services, security, system, containers, reporter, dns, mesh
+  - CLI: `configvaultctl init|backup|restore|push|pull|status|history|diff|modules|export-clone|import-clone`
+  - RPCD: status, modules, history, diff, backup, restore, push, pull, init, export_clone
+  - Gitea integration: Private repo sync (`gandalf/secubox-config-vault`)
+  - LuCI Dashboard: KISS-themed with status rings, module table, commit history, quick actions
+  - Export/import clone tarballs for device provisioning and cloning
+  - Menu: SecuBox → System → Config Vault
+
+- **System Hardware Report (Complete)**
+  - Added new report type to `secubox-app-reporter`
+  - CLI: `secubox-reportctl generate system`
+  - CPU/Memory/Disk/Temperature gauges with animated rings
+  - Environmental impact card: Power usage (W), daily kWh, CO₂ emissions
+  - CPU load histogram (24-bar visualization)
+  - Health recommendations based on system metrics
+  - Top processes table and debug log viewer
+  - Network interface stats (RX/TX per interface)
+  - BusyBox-compatible collectors using /proc filesystem
+  - KissTheme dark styling with responsive layout
 
 - **SecuBox Report Generator (Complete)**
   - New `secubox-app-reporter` + `luci-app-reporter` packages
@@ -504,8 +527,8 @@ _Last updated: 2026-03-13 (SecuBox Report Generator)_
 
 ### v1.0 Release Prep
 
-1. **Session Replay** - Avatar-tap integration for session capture/replay
-2. **Remote ttyd Deployment** - Auto-install ttyd on mesh nodes
+1. **Remote ttyd Deployment** - Auto-install ttyd on mesh nodes
+2. **Device Provisioning** - Use Config Vault export-clone for SecuBox replication
 
 ### v1.1+ Extended Mesh
 
