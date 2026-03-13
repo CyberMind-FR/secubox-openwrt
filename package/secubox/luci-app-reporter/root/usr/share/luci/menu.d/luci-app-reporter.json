@@ -7,7 +7,7 @@
             "path": "reporter/overview"
         },
         "depends": {
-            "acl": ["luci-app-reporter"]
+            "acl": ["luci-app-secubox", "luci-app-reporter"]
         }
     }
 }
