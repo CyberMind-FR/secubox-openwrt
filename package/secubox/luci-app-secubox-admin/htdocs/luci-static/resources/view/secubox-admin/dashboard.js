@@ -307,13 +307,13 @@ return view.extend({
 						'target': '_blank',
 						'class': 'service-link',
 						'style': 'display:inline-flex;align-items:center;gap:8px;padding:10px 16px;' +
-							'background:rgba(102,126,234,0.1);border:1px solid rgba(102,126,234,0.3);' +
-							'border-radius:8px;text-decoration:none;color:#e0e0e0;font-size:14px;' +
+							'background:color-mix(in srgb, var(--kiss-purple) 10%, transparent);border:1px solid color-mix(in srgb, var(--kiss-purple) 30%, transparent);' +
+							'border-radius:8px;text-decoration:none;color:var(--kiss-text);font-size:14px;' +
 							'transition:all 0.2s;margin:4px;'
 					}, [
 						E('span', { 'style': 'font-size:18px;' }, svc.icon || '⚡'),
 						E('span', {}, svc.name),
-						E('span', { 'style': 'color:#888;font-size:12px;' }, ':' + svc.port)
+						E('span', { 'style': 'color:var(--kiss-muted);font-size:12px;' }, ':' + svc.port)
 					]));
 				});
 			}
