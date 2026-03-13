@@ -209,6 +209,102 @@ generate_services_report() {
     echo "$output_file"
 }
 
+# Generate meta status report (combined dashboard)
+generate_meta_report() {
+    local output_file="$1"
+    local theme="${2:-dark}"
+
+    log_info "Generating Meta Status Report..."
+
+    mkdir -p "$(dirname "$output_file")"
+
+    local hostname=$(get_hostname)
+    local version=$(get_version)
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+
+    # Health score
+    local health_score=0
+    if command -v ubus >/dev/null 2>&1; then
+        health_score=$(ubus call luci.secubox-core get_full_health_report 2>/dev/null | \
+            jsonfilter -e '@.health_score' 2>/dev/null || echo "0")
+    fi
+    [ -z "$health_score" ] && health_score=0
+
+    # Service counts
+    local tor_count=0
+    local dns_count=0
+    local mesh_count=0
+
+    [ -d /var/lib/tor/hidden_services ] && tor_count=$(ls -1 /var/lib/tor/hidden_services 2>/dev/null | wc -l)
+    dns_count=$(uci show haproxy 2>/dev/null | grep '=vhost$' | wc -l)
+    command -v secubox-p2p >/dev/null 2>&1 && mesh_count=$(secubox-p2p shared-services 2>/dev/null | wc -l)
+
+    local total_services=$((tor_count + dns_count + mesh_count))
+    local services_pct=100
+    [ $total_services -gt 0 ] && services_pct=$((total_services * 100 / 300))
+    [ $services_pct -gt 100 ] && services_pct=100
+
+    # Calculate percentages for bars
+    local tor_pct=0 dns_pct=0 mesh_pct=0
+    [ $total_services -gt 0 ] && {
+        tor_pct=$((tor_count * 100 / total_services))
+        dns_pct=$((dns_count * 100 / total_services))
+        mesh_pct=$((mesh_count * 100 / total_services))
+    }
+
+    # System stats
+    local packages_count=$(opkg list-installed 2>/dev/null | wc -l)
+    local containers_count=$(lxc-ls 2>/dev/null | wc -w)
+    local uptime_pct=99
+
+    # Dev stats
+    local features_done=0
+    local wip_count=0
+    [ -f "$REPO_PATH/.claude/HISTORY.md" ] && features_done=$(grep -c "^\*\*" "$REPO_PATH/.claude/HISTORY.md" 2>/dev/null || echo 0)
+    [ -f "$REPO_PATH/.claude/WIP.md" ] && wip_count=$(grep -c "^- \*\*" "$REPO_PATH/.claude/WIP.md" 2>/dev/null || echo 0)
+
+    # Collect formatted data
+    local history_entries=$(collect_history "$REPO_PATH/.claude/HISTORY.md" 2>/dev/null || echo '<p class="muted">No history data</p>')
+    local wip_entries=$(collect_wip "$REPO_PATH/.claude/WIP.md" 2>/dev/null || echo '<p class="muted">No WIP data</p>')
+    local roadmap_data=$(collect_roadmap "$REPO_PATH/.claude/ROADMAP.md" 2>/dev/null || echo '<p class="muted">No roadmap data</p>')
+    local tor_services=$(collect_tor_services 2>/dev/null || echo '<p class="muted">No Tor services</p>')
+    local dns_services=$(collect_dns_services 10 2>/dev/null || echo '<p class="muted">No DNS services</p>')
+
+    # Generate from template
+    if [ -f "$TPL_DIR/meta-status.html.tpl" ]; then
+        sed -e "s|{{HOSTNAME}}|$hostname|g" \
+            -e "s|{{VERSION}}|$version|g" \
+            -e "s|{{TIMESTAMP}}|$timestamp|g" \
+            -e "s|{{HEALTH_SCORE}}|$health_score|g" \
+            -e "s|{{TOTAL_SERVICES}}|$total_services|g" \
+            -e "s|{{SERVICES_PCT}}|$services_pct|g" \
+            -e "s|{{UPTIME_PCT}}|$uptime_pct|g" \
+            -e "s|{{TOR_COUNT}}|$tor_count|g" \
+            -e "s|{{DNS_COUNT}}|$dns_count|g" \
+            -e "s|{{MESH_COUNT}}|$mesh_count|g" \
+            -e "s|{{TOR_PCT}}|$tor_pct|g" \
+            -e "s|{{DNS_PCT}}|$dns_pct|g" \
+            -e "s|{{MESH_PCT}}|$mesh_pct|g" \
+            -e "s|{{PACKAGES_COUNT}}|$packages_count|g" \
+            -e "s|{{CONTAINERS_COUNT}}|$containers_count|g" \
+            -e "s|{{FEATURES_DONE}}|$features_done|g" \
+            -e "s|{{WIP_COUNT}}|$wip_count|g" \
+            -e "s|{{HISTORY_ENTRIES}}|$history_entries|g" \
+            -e "s|{{WIP_ENTRIES}}|$wip_entries|g" \
+            -e "s|{{ROADMAP_DATA}}|$roadmap_data|g" \
+            -e "s|{{TOR_SERVICES}}|$tor_services|g" \
+            -e "s|{{DNS_SERVICES}}|$dns_services|g" \
+            "$TPL_DIR/meta-status.html.tpl" > "$output_file"
+    else
+        log_err "Meta template not found: $TPL_DIR/meta-status.html.tpl"
+        return 1
+    fi
+
+    chmod 644 "$output_file"
+    log_ok "Generated: $output_file"
+    echo "$output_file"
+}
+
 # Command: generate
 cmd_generate() {
     local report_type="$1"
@@ -233,13 +329,16 @@ cmd_generate() {
         services)
             generate_services_report "$output_path/services-status-$timestamp.html" "$theme"
             ;;
+        meta)
+            generate_meta_report "$output_path/meta-status-$timestamp.html" "$theme"
+            ;;
         all)
             generate_dev_report "$output_path/dev-status-$timestamp.html" "$theme"
             generate_services_report "$output_path/services-status-$timestamp.html" "$theme"
             ;;
         *)
             log_err "Unknown report type: $report_type"
-            echo "Valid types: dev, services, all"
+            echo "Valid types: dev, services, meta, all"
             return 1
             ;;
     esac
