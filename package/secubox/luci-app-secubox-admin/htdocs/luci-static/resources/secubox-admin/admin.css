@@ -1,31 +1,31 @@
 /* SecuBox Admin - Enhanced SecuBox Theme */
 
 :root {
-	/* SecuBox Brand Colors */
-	--sb-primary: #6366f1;
+	/* SecuBox Brand Colors - Use KissTheme variables */
+	--sb-primary: var(--kiss-purple, #6366f1);
 	--sb-primary-light: #818cf8;
 	--sb-primary-dark: #4f46e5;
 	--sb-secondary: #8b5cf6;
 	--sb-secondary-light: #a78bfa;
 	--sb-accent: #3b82f6;
-	--sb-accent-cyan: #06b6d4;
-	--sb-success: #10b981;
+	--sb-accent-cyan: var(--kiss-cyan, #06b6d4);
+	--sb-success: var(--kiss-green, #10b981);
 	--sb-warning: #f59e0b;
-	--sb-danger: #ef4444;
+	--sb-danger: var(--kiss-red, #ef4444);
 
-	/* Backgrounds */
-	--sb-bg: #f9fafb;
-	--sb-bg-secondary: #ffffff;
-	--sb-bg-tertiary: #f3f4f6;
+	/* Backgrounds - Dark theme using KissTheme */
+	--sb-bg: var(--kiss-bg, #0f0f23);
+	--sb-bg-secondary: var(--kiss-bg, #0f0f23);
+	--sb-bg-tertiary: color-mix(in srgb, var(--kiss-bg, #0f0f23) 90%, white 10%);
 
-	/* Text */
-	--sb-text: #1f2937;
-	--sb-text-secondary: #6b7280;
-	--sb-text-dim: #9ca3af;
+	/* Text - Light on dark using KissTheme */
+	--sb-text: var(--kiss-text, #e5e7eb);
+	--sb-text-secondary: var(--kiss-muted, #9ca3af);
+	--sb-text-dim: var(--kiss-muted, #9ca3af);
 
-	/* Borders */
-	--sb-border: #e5e7eb;
-	--sb-border-light: #f3f4f6;
+	/* Borders - Using KissTheme line color */
+	--sb-border: var(--kiss-line, rgba(99, 102, 241, 0.2));
+	--sb-border-light: var(--kiss-line, rgba(99, 102, 241, 0.15));
 
 	/* Gradients */
 	--sb-gradient-primary: linear-gradient(135deg, #6366f1, #8b5cf6);
