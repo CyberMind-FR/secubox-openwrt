@@ -1,0 +1,11 @@
+# SecuBox Report Generator - Scheduled Reports
+# Managed by: secubox-reportctl schedule
+
+# Daily development report at 6 AM (disabled by default)
+#DAILY_DEV#0 6 * * * root /usr/sbin/secubox-reportctl send dev >/dev/null 2>&1
+
+# Weekly services report on Monday at 7 AM (disabled by default)
+#WEEKLY_SERVICES#0 7 * * 1 root /usr/sbin/secubox-reportctl send services >/dev/null 2>&1
+
+# Monthly full report on 1st at 8 AM (disabled by default)
+#MONTHLY_ALL#0 8 1 * * root /usr/sbin/secubox-reportctl send all >/dev/null 2>&1
