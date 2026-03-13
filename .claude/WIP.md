@@ -1,12 +1,25 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-12 (SecuBox Watchdog)_
+_Last updated: 2026-03-13 (SecuBox Report Generator)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
 ---
 
 ## Recently Completed
+
+### 2026-03-13
+
+- **SecuBox Report Generator (Complete)**
+  - New `secubox-app-reporter` package for automated status reporting
+  - Two report types:
+    - Development Status: health score, HISTORY.md completions, WIP items, roadmap
+    - Services Distribution: Tor services (5), DNS/SSL vhosts (243), mesh services (1)
+  - CLI: `secubox-reportctl generate|send|schedule|status|preview|list|clean`
+  - Email delivery via msmtp/sendmail with MIME multipart HTML
+  - KissTheme dark styling with responsive layout
+  - UCI config for SMTP and cron scheduling
+  - Deployed and tested on router: `/www/reports/`
 
 ### 2026-03-12
 

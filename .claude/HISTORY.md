@@ -4860,3 +4860,31 @@ git checkout HEAD -- index.html
       - `/etc/init.d/watchdog` - procd service
       - `/etc/cron.d/watchdog` - Cron backup
       - `/usr/libexec/rpcd/luci.watchdog` - RPCD backend
+
+100. **SecuBox Report Generator (2026-03-13)**
+    - New `secubox-app-reporter` package for automated status reporting
+    - **Two Report Types**:
+      - Development Status: health score, HISTORY.md completions, WIP items, roadmap progress
+      - Services Distribution: Tor hidden services (5), DNS/SSL vhosts (243), mesh services (1)
+    - **CLI** (`/usr/sbin/secubox-reportctl`):
+      - `generate <type>` - Generate report (dev|services|all)
+      - `send <type>` - Generate + email report
+      - `schedule <type>` - Set cron (daily|weekly|off)
+      - `status` - Show generator status
+      - `preview <type>` - Output to stdout
+      - `list` - List generated reports
+      - `clean` - Remove old reports
+    - **Email Integration**:
+      - msmtp/sendmail backend
+      - MIME multipart HTML emails
+      - UCI config for SMTP credentials
+    - **HTML Output**:
+      - KissTheme dark styling
+      - Responsive card layout
+      - Stats badges and health indicators
+    - **Files**:
+      - `/etc/config/secubox-reporter` - UCI configuration
+      - `/usr/sbin/secubox-reportctl` - CLI tool
+      - `/usr/share/secubox-reporter/lib/` - collectors.sh, formatters.sh, mailer.sh
+      - `/usr/share/secubox-reporter/templates/` - HTML templates
+      - `/etc/cron.d/secubox-reporter` - Scheduled reports
