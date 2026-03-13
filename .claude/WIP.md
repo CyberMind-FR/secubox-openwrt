@@ -11,15 +11,18 @@ _Last updated: 2026-03-13 (SecuBox Report Generator)_
 ### 2026-03-13
 
 - **SecuBox Report Generator (Complete)**
-  - New `secubox-app-reporter` package for automated status reporting
+  - New `secubox-app-reporter` + `luci-app-reporter` packages
   - Two report types:
     - Development Status: health score, HISTORY.md completions, WIP items, roadmap
     - Services Distribution: Tor services (5), DNS/SSL vhosts (243), mesh services (1)
   - CLI: `secubox-reportctl generate|send|schedule|status|preview|list|clean`
+  - RPCD: status, list_reports, generate, send, schedule, delete_report, test_email
+  - LuCI Dashboard: KISS-themed overview, quick actions, reports list, schedule config
   - Email delivery via msmtp/sendmail with MIME multipart HTML
   - KissTheme dark styling with responsive layout
   - UCI config for SMTP and cron scheduling
   - Deployed and tested on router: `/www/reports/`
+  - Menu: SecuBox → System → Report Generator
 
 ### 2026-03-12
 

@@ -4882,9 +4882,24 @@ git checkout HEAD -- index.html
       - KissTheme dark styling
       - Responsive card layout
       - Stats badges and health indicators
+    - **LuCI Dashboard** (`luci-app-reporter`):
+      - KISS-themed overview with status cards
+      - Quick action cards for dev/services/all reports
+      - Generate and Send buttons with email support
+      - Reports list with view/delete actions
+      - Schedule configuration (daily/weekly/off)
+      - Email configuration status and test button
+    - **RPCD Methods**:
+      - `status` - Generator status and report counts
+      - `list_reports` - List generated reports with metadata
+      - `generate/send` - Create reports (optionally email)
+      - `schedule` - Configure cron schedules
+      - `delete_report` - Remove report files
+      - `test_email` - Send test email
     - **Files**:
       - `/etc/config/secubox-reporter` - UCI configuration
       - `/usr/sbin/secubox-reportctl` - CLI tool
       - `/usr/share/secubox-reporter/lib/` - collectors.sh, formatters.sh, mailer.sh
       - `/usr/share/secubox-reporter/templates/` - HTML templates
       - `/etc/cron.d/secubox-reporter` - Scheduled reports
+      - `/usr/libexec/rpcd/luci.reporter` - RPCD backend
