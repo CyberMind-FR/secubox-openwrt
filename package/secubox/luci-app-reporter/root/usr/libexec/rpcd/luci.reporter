@@ -1,0 +1,523 @@
+#!/bin/sh
+# RPCD backend for SecuBox Report Generator
+# Provides LuCI integration for report generation and management
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+CONFIG_NAME="secubox-reporter"
+OUTPUT_DIR="/www/reports"
+REPORTCTL="/usr/sbin/secubox-reportctl"
+
+# Method: list
+method_list() {
+    json_init
+    json_add_object "status"
+    json_close_object
+    json_add_object "list_reports"
+    json_close_object
+    json_add_object "get_report"
+        json_add_string "filename" "string"
+    json_close_object
+    json_add_object "preview"
+        json_add_string "type" "string"
+    json_close_object
+    json_add_object "generate"
+        json_add_string "type" "string"
+    json_close_object
+    json_add_object "send"
+        json_add_string "type" "string"
+    json_close_object
+    json_add_object "schedule"
+        json_add_string "type" "string"
+        json_add_string "frequency" "string"
+    json_close_object
+    json_add_object "delete_report"
+        json_add_string "filename" "string"
+    json_close_object
+    json_add_object "test_email"
+    json_close_object
+    json_add_object "get_config"
+    json_close_object
+    json_dump
+}
+
+# Method: status - Get generator status
+method_status() {
+    config_load "$CONFIG_NAME"
+
+    local enabled output_dir theme
+    local recipient smtp_server
+    local dev_schedule services_schedule
+
+    config_get enabled global enabled '0'
+    config_get output_dir global output_dir '/www/reports'
+    config_get theme global theme 'dark'
+
+    config_get recipient email recipient ''
+    config_get smtp_server email smtp_server ''
+
+    # Check schedules from cron
+    dev_schedule="off"
+    services_schedule="off"
+    if [ -f /etc/cron.d/secubox-reporter ]; then
+        grep -q "generate dev" /etc/cron.d/secubox-reporter && dev_schedule="daily"
+        grep -q "generate services" /etc/cron.d/secubox-reporter && services_schedule="weekly"
+    fi
+
+    # Count reports
+    local report_count=0
+    [ -d "$output_dir" ] && report_count=$(ls -1 "$output_dir"/*.html 2>/dev/null | wc -l)
+
+    # Check for most recent reports
+    local last_dev=""
+    local last_services=""
+    local last_dev_time=""
+    local last_services_time=""
+
+    if [ -f "$output_dir/dev-status.html" ]; then
+        last_dev="dev-status.html"
+        last_dev_time=$(stat -c %Y "$output_dir/dev-status.html" 2>/dev/null || echo "0")
+    fi
+
+    if [ -f "$output_dir/services-status.html" ]; then
+        last_services="services-status.html"
+        last_services_time=$(stat -c %Y "$output_dir/services-status.html" 2>/dev/null || echo "0")
+    fi
+
+    json_init
+    json_add_boolean "enabled" "$enabled"
+    json_add_string "theme" "$theme"
+    json_add_string "output_dir" "$output_dir"
+    json_add_int "report_count" "$report_count"
+
+    json_add_object "schedules"
+    json_add_string "dev" "$dev_schedule"
+    json_add_string "services" "$services_schedule"
+    json_close_object
+
+    json_add_object "email"
+    json_add_string "recipient" "$recipient"
+    json_add_string "smtp_server" "$smtp_server"
+    json_add_boolean "configured" "$([ -n "$smtp_server" ] && echo 1 || echo 0)"
+    json_close_object
+
+    json_add_object "last_reports"
+    json_add_string "dev" "$last_dev"
+    json_add_int "dev_time" "${last_dev_time:-0}"
+    json_add_string "services" "$last_services"
+    json_add_int "services_time" "${last_services_time:-0}"
+    json_close_object
+
+    json_dump
+}
+
+# Method: list_reports - List all generated reports
+method_list_reports() {
+    config_load "$CONFIG_NAME"
+    local output_dir
+    config_get output_dir global output_dir '/www/reports'
+
+    json_init
+    json_add_array "reports"
+
+    if [ -d "$output_dir" ]; then
+        for f in "$output_dir"/*.html; do
+            [ -f "$f" ] || continue
+            local filename=$(basename "$f")
+            local size=$(stat -c %s "$f" 2>/dev/null || echo "0")
+            local mtime=$(stat -c %Y "$f" 2>/dev/null || echo "0")
+            local type="unknown"
+
+            case "$filename" in
+                dev-*) type="dev" ;;
+                services-*) type="services" ;;
+            esac
+
+            json_add_object ""
+            json_add_string "filename" "$filename"
+            json_add_string "type" "$type"
+            json_add_int "size" "$size"
+            json_add_int "mtime" "$mtime"
+            json_add_string "url" "/reports/$filename"
+            json_close_object
+        done
+    fi
+
+    json_close_array
+    json_dump
+}
+
+# Method: get_report - Get report content
+method_get_report() {
+    local filename="$1"
+
+    json_init
+
+    if [ -z "$filename" ]; then
+        json_add_boolean "success" 0
+        json_add_string "error" "Filename required"
+        json_dump
+        return
+    fi
+
+    # Sanitize filename (prevent path traversal)
+    filename=$(basename "$filename")
+
+    config_load "$CONFIG_NAME"
+    local output_dir
+    config_get output_dir global output_dir '/www/reports'
+
+    local filepath="$output_dir/$filename"
+
+    if [ ! -f "$filepath" ]; then
+        json_add_boolean "success" 0
+        json_add_string "error" "Report not found"
+        json_dump
+        return
+    fi
+
+    # Get file info
+    local size=$(stat -c %s "$filepath" 2>/dev/null || echo "0")
+    local mtime=$(stat -c %Y "$filepath" 2>/dev/null || echo "0")
+
+    json_add_boolean "success" 1
+    json_add_string "filename" "$filename"
+    json_add_int "size" "$size"
+    json_add_int "mtime" "$mtime"
+    json_add_string "url" "/reports/$filename"
+
+    json_dump
+}
+
+# Method: preview - Preview report (generate to stdout)
+method_preview() {
+    local type="$1"
+
+    json_init
+
+    if [ -z "$type" ]; then
+        json_add_boolean "success" 0
+        json_add_string "error" "Report type required (dev|services)"
+        json_dump
+        return
+    fi
+
+    case "$type" in
+        dev|services|all)
+            local preview=$("$REPORTCTL" preview "$type" 2>&1)
+            local result=$?
+
+            if [ $result -eq 0 ]; then
+                json_add_boolean "success" 1
+                json_add_string "type" "$type"
+                # Store preview in temp file and return path (content too large for jshn)
+                local tmpfile="/tmp/reporter-preview-$$.html"
+                echo "$preview" > "$tmpfile"
+                json_add_string "preview_file" "$tmpfile"
+            else
+                json_add_boolean "success" 0
+                json_add_string "error" "Preview failed: $preview"
+            fi
+            ;;
+        *)
+            json_add_boolean "success" 0
+            json_add_string "error" "Invalid type. Use: dev, services, or all"
+            ;;
+    esac
+
+    json_dump
+}
+
+# Method: generate - Generate a report
+method_generate() {
+    local type="$1"
+
+    json_init
+
+    if [ -z "$type" ]; then
+        json_add_boolean "success" 0
+        json_add_string "error" "Report type required (dev|services|all)"
+        json_dump
+        return
+    fi
+
+    case "$type" in
+        dev|services|all)
+            local output=$("$REPORTCTL" generate "$type" 2>&1)
+            local result=$?
+
+            if [ $result -eq 0 ]; then
+                json_add_boolean "success" 1
+                json_add_string "type" "$type"
+                json_add_string "message" "Report generated successfully"
+
+                # Return generated file info
+                config_load "$CONFIG_NAME"
+                local output_dir
+                config_get output_dir global output_dir '/www/reports'
+
+                if [ "$type" = "dev" ] || [ "$type" = "all" ]; then
+                    json_add_string "dev_url" "/reports/dev-status.html"
+                fi
+                if [ "$type" = "services" ] || [ "$type" = "all" ]; then
+                    json_add_string "services_url" "/reports/services-status.html"
+                fi
+            else
+                json_add_boolean "success" 0
+                json_add_string "error" "Generation failed: $output"
+            fi
+            ;;
+        *)
+            json_add_boolean "success" 0
+            json_add_string "error" "Invalid type. Use: dev, services, or all"
+            ;;
+    esac
+
+    json_dump
+}
+
+# Method: send - Generate and send report via email
+method_send() {
+    local type="$1"
+
+    json_init
+
+    if [ -z "$type" ]; then
+        json_add_boolean "success" 0
+        json_add_string "error" "Report type required (dev|services|all)"
+        json_dump
+        return
+    fi
+
+    case "$type" in
+        dev|services|all)
+            local output=$("$REPORTCTL" send "$type" 2>&1)
+            local result=$?
+
+            if [ $result -eq 0 ]; then
+                json_add_boolean "success" 1
+                json_add_string "type" "$type"
+                json_add_string "message" "Report generated and sent"
+            else
+                json_add_boolean "success" 0
+                json_add_string "error" "Send failed: $output"
+            fi
+            ;;
+        *)
+            json_add_boolean "success" 0
+            json_add_string "error" "Invalid type. Use: dev, services, or all"
+            ;;
+    esac
+
+    json_dump
+}
+
+# Method: schedule - Set report schedule
+method_schedule() {
+    local type="$1"
+    local frequency="$2"
+
+    json_init
+
+    if [ -z "$type" ] || [ -z "$frequency" ]; then
+        json_add_boolean "success" 0
+        json_add_string "error" "Type and frequency required"
+        json_dump
+        return
+    fi
+
+    case "$type" in
+        dev|services)
+            local output=$("$REPORTCTL" schedule "$type" "$frequency" 2>&1)
+            local result=$?
+
+            if [ $result -eq 0 ]; then
+                json_add_boolean "success" 1
+                json_add_string "type" "$type"
+                json_add_string "frequency" "$frequency"
+                json_add_string "message" "Schedule updated"
+            else
+                json_add_boolean "success" 0
+                json_add_string "error" "Schedule failed: $output"
+            fi
+            ;;
+        *)
+            json_add_boolean "success" 0
+            json_add_string "error" "Invalid type. Use: dev or services"
+            ;;
+    esac
+
+    json_dump
+}
+
+# Method: delete_report - Delete a report file
+method_delete_report() {
+    local filename="$1"
+
+    json_init
+
+    if [ -z "$filename" ]; then
+        json_add_boolean "success" 0
+        json_add_string "error" "Filename required"
+        json_dump
+        return
+    fi
+
+    # Sanitize filename
+    filename=$(basename "$filename")
+
+    config_load "$CONFIG_NAME"
+    local output_dir
+    config_get output_dir global output_dir '/www/reports'
+
+    local filepath="$output_dir/$filename"
+
+    if [ ! -f "$filepath" ]; then
+        json_add_boolean "success" 0
+        json_add_string "error" "Report not found"
+        json_dump
+        return
+    fi
+
+    rm -f "$filepath"
+
+    if [ ! -f "$filepath" ]; then
+        json_add_boolean "success" 1
+        json_add_string "message" "Report deleted"
+    else
+        json_add_boolean "success" 0
+        json_add_string "error" "Failed to delete report"
+    fi
+
+    json_dump
+}
+
+# Method: test_email - Test email configuration
+method_test_email() {
+    # Source the mailer library
+    . /usr/share/secubox-reporter/lib/mailer.sh
+
+    json_init
+
+    local output=$(test_email 2>&1)
+    local result=$?
+
+    if [ $result -eq 0 ]; then
+        json_add_boolean "success" 1
+        json_add_string "message" "$output"
+    else
+        json_add_boolean "success" 0
+        json_add_string "error" "$output"
+    fi
+
+    json_dump
+}
+
+# Method: get_config - Get configuration
+method_get_config() {
+    config_load "$CONFIG_NAME"
+
+    local enabled output_dir theme history_file
+    local recipient smtp_server smtp_port smtp_user smtp_tls
+
+    config_get enabled global enabled '0'
+    config_get output_dir global output_dir '/www/reports'
+    config_get theme global theme 'dark'
+
+    config_get recipient email recipient ''
+    config_get smtp_server email smtp_server ''
+    config_get smtp_port email smtp_port '587'
+    config_get smtp_user email smtp_user ''
+    config_get smtp_tls email smtp_tls '1'
+
+    config_get history_file sources history_file ''
+
+    json_init
+
+    json_add_object "global"
+    json_add_boolean "enabled" "$enabled"
+    json_add_string "output_dir" "$output_dir"
+    json_add_string "theme" "$theme"
+    json_close_object
+
+    json_add_object "email"
+    json_add_string "recipient" "$recipient"
+    json_add_string "smtp_server" "$smtp_server"
+    json_add_int "smtp_port" "$smtp_port"
+    json_add_string "smtp_user" "$smtp_user"
+    json_add_boolean "smtp_tls" "$smtp_tls"
+    json_close_object
+
+    json_add_object "sources"
+    json_add_string "history_file" "$history_file"
+    json_close_object
+
+    json_dump
+}
+
+# Main dispatcher
+case "$1" in
+    list)
+        method_list
+        ;;
+    call)
+        case "$2" in
+            status)
+                method_status
+                ;;
+            list_reports)
+                method_list_reports
+                ;;
+            get_report)
+                read -r input
+                json_load "$input"
+                json_get_var filename filename
+                method_get_report "$filename"
+                ;;
+            preview)
+                read -r input
+                json_load "$input"
+                json_get_var type type
+                method_preview "$type"
+                ;;
+            generate)
+                read -r input
+                json_load "$input"
+                json_get_var type type
+                method_generate "$type"
+                ;;
+            send)
+                read -r input
+                json_load "$input"
+                json_get_var type type
+                method_send "$type"
+                ;;
+            schedule)
+                read -r input
+                json_load "$input"
+                json_get_var type type
+                json_get_var frequency frequency
+                method_schedule "$type" "$frequency"
+                ;;
+            delete_report)
+                read -r input
+                json_load "$input"
+                json_get_var filename filename
+                method_delete_report "$filename"
+                ;;
+            test_email)
+                method_test_email
+                ;;
+            get_config)
+                method_get_config
+                ;;
+            *)
+                echo '{"error":"Unknown method"}'
+                ;;
+        esac
+        ;;
+    *)
+        echo '{"error":"Unknown command"}'
+        ;;
+esac

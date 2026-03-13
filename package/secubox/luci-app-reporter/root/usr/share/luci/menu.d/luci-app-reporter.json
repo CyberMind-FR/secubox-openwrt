@@ -1,0 +1,13 @@
+{
+    "admin/secubox/system/reporter": {
+        "title": "Report Generator",
+        "order": 6,
+        "action": {
+            "type": "view",
+            "path": "reporter/overview"
+        },
+        "depends": {
+            "acl": ["luci-app-reporter"]
+        }
+    }
+}

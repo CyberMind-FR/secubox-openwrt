@@ -1,0 +1,29 @@
+{
+    "luci-app-reporter": {
+        "description": "Grant access to SecuBox Report Generator",
+        "read": {
+            "ubus": {
+                "luci.reporter": [
+                    "status",
+                    "list_reports",
+                    "get_report",
+                    "preview",
+                    "get_config"
+                ]
+            },
+            "uci": ["secubox-reporter"]
+        },
+        "write": {
+            "ubus": {
+                "luci.reporter": [
+                    "generate",
+                    "send",
+                    "schedule",
+                    "delete_report",
+                    "test_email"
+                ]
+            },
+            "uci": ["secubox-reporter"]
+        }
+    }
+}
