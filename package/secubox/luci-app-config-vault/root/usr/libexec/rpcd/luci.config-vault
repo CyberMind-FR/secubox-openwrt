@@ -1,0 +1,264 @@
+#!/bin/sh
+# RPCD backend for Configuration Vault
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+VAULT_CTL="/usr/sbin/configvaultctl"
+
+handle_status() {
+    local enabled vault_path auto_commit auto_push gitea_url gitea_repo
+
+    json_init
+
+    config_load config-vault
+    config_get enabled global enabled "0"
+    config_get vault_path global vault_path "/srv/config-vault"
+    config_get auto_commit global auto_commit "1"
+    config_get auto_push global auto_push "1"
+    config_get gitea_url gitea url ""
+    config_get gitea_repo gitea repo ""
+
+    json_add_boolean enabled "$enabled"
+    json_add_string vault_path "$vault_path"
+    json_add_boolean auto_commit "$auto_commit"
+    json_add_boolean auto_push "$auto_push"
+    json_add_string gitea_url "$gitea_url"
+    json_add_string gitea_repo "$gitea_repo"
+
+    if [ -d "$vault_path/.git" ]; then
+        cd "$vault_path"
+        json_add_boolean initialized 1
+        json_add_string branch "$(git branch --show-current 2>/dev/null)"
+        json_add_string last_commit "$(git log -1 --format='%h' 2>/dev/null)"
+        json_add_string last_commit_date "$(git log -1 --format='%ci' 2>/dev/null)"
+        json_add_string last_commit_msg "$(git log -1 --format='%s' 2>/dev/null)"
+        json_add_int uncommitted "$(git status --porcelain 2>/dev/null | wc -l)"
+        json_add_int total_commits "$(git rev-list --count HEAD 2>/dev/null || echo 0)"
+    else
+        json_add_boolean initialized 0
+    fi
+
+    json_dump
+}
+
+add_config_json() {
+    local cfg="$1"
+    json_add_object
+    json_add_string name "$cfg"
+    [ -f "/etc/config/$cfg" ] && json_add_boolean exists 1 || json_add_boolean exists 0
+    json_close_object
+}
+
+list_module_json() {
+    local section="$1"
+    local enabled description files last_backup
+
+    config_get enabled "$section" enabled "1"
+    config_get description "$section" description ""
+
+    json_add_object
+    json_add_string name "$section"
+    json_add_string description "$description"
+    json_add_boolean enabled "$enabled"
+
+    files=0
+    [ -d "$VAULT_PATH/$section" ] && files=$(find "$VAULT_PATH/$section" -type f 2>/dev/null | wc -l)
+    json_add_int files "$files"
+
+    last_backup=""
+    [ -f "$VAULT_PATH/$section/manifest.json" ] && {
+        last_backup=$(jsonfilter -i "$VAULT_PATH/$section/manifest.json" -e '@.backed_up' 2>/dev/null)
+    }
+    json_add_string last_backup "$last_backup"
+
+    json_add_array configs
+    config_list_foreach "$section" config add_config_json
+    json_close_array
+
+    json_close_object
+}
+
+handle_modules() {
+    json_init
+    json_add_array modules
+
+    config_load config-vault
+    config_get VAULT_PATH global vault_path "/srv/config-vault"
+    export VAULT_PATH
+
+    config_foreach list_module_json module
+
+    json_close_array
+    json_dump
+}
+
+handle_history() {
+    local count vault_path
+
+    read -r input
+    json_load "$input"
+    json_get_var count count
+    [ -z "$count" ] && count=20
+
+    json_init
+    json_add_array commits
+
+    config_load config-vault
+    config_get vault_path global vault_path "/srv/config-vault"
+
+    if [ -d "$vault_path/.git" ]; then
+        cd "$vault_path"
+        git log --format='%H|%h|%ci|%s' -n "$count" 2>/dev/null | while IFS='|' read hash short date msg; do
+            json_add_object
+            json_add_string hash "$hash"
+            json_add_string short "$short"
+            json_add_string date "$date"
+            json_add_string message "$msg"
+            json_close_object
+        done
+    fi
+
+    json_close_array
+    json_dump
+}
+
+handle_diff() {
+    local vault_path diff_output
+
+    config_load config-vault
+    config_get vault_path global vault_path "/srv/config-vault"
+
+    json_init
+
+    if [ -d "$vault_path/.git" ]; then
+        cd "$vault_path"
+        diff_output=$(git diff 2>/dev/null | head -200)
+        json_add_string diff "$diff_output"
+        json_add_int changed_files "$(git status --porcelain 2>/dev/null | wc -l)"
+    else
+        json_add_string diff ""
+        json_add_int changed_files 0
+    fi
+
+    json_dump
+}
+
+handle_backup() {
+    local module output rc
+
+    read -r input
+    json_load "$input"
+    json_get_var module module
+
+    json_init
+
+    if [ -n "$module" ]; then
+        output=$($VAULT_CTL backup "$module" 2>&1)
+    else
+        output=$($VAULT_CTL backup 2>&1)
+    fi
+
+    rc=$?
+    [ $rc -eq 0 ] && json_add_boolean success 1 || json_add_boolean success 0
+    json_add_string output "$output"
+
+    json_dump
+}
+
+handle_restore() {
+    local module output rc
+
+    read -r input
+    json_load "$input"
+    json_get_var module module
+
+    json_init
+
+    if [ -z "$module" ]; then
+        json_add_boolean success 0
+        json_add_string error "Module name required"
+    else
+        output=$($VAULT_CTL restore "$module" 2>&1)
+        rc=$?
+        [ $rc -eq 0 ] && json_add_boolean success 1 || json_add_boolean success 0
+        json_add_string output "$output"
+    fi
+
+    json_dump
+}
+
+handle_push() {
+    local output rc
+
+    json_init
+    output=$($VAULT_CTL push 2>&1)
+    rc=$?
+    [ $rc -eq 0 ] && json_add_boolean success 1 || json_add_boolean success 0
+    json_add_string output "$output"
+    json_dump
+}
+
+handle_pull() {
+    local output rc
+
+    json_init
+    output=$($VAULT_CTL pull 2>&1)
+    rc=$?
+    [ $rc -eq 0 ] && json_add_boolean success 1 || json_add_boolean success 0
+    json_add_string output "$output"
+    json_dump
+}
+
+handle_init() {
+    local output rc
+
+    json_init
+    output=$($VAULT_CTL init 2>&1)
+    rc=$?
+    [ $rc -eq 0 ] && json_add_boolean success 1 || json_add_boolean success 0
+    json_add_string output "$output"
+    json_dump
+}
+
+handle_export_clone() {
+    local path output rc
+
+    read -r input
+    json_load "$input"
+    json_get_var path path
+    [ -z "$path" ] && path="/tmp/secubox-clone-$(date +%Y%m%d).tar.gz"
+
+    json_init
+    output=$($VAULT_CTL export-clone "$path" 2>&1)
+    rc=$?
+    [ $rc -eq 0 ] && json_add_boolean success 1 || json_add_boolean success 0
+    json_add_string output "$output"
+    json_add_string path "$path"
+
+    if [ -f "$path" ]; then
+        json_add_int size "$(stat -c%s "$path" 2>/dev/null || echo 0)"
+    fi
+
+    json_dump
+}
+
+case "$1" in
+    list)
+        echo '{"status":{},"modules":{},"history":{"count":"int"},"diff":{},"backup":{"module":"str"},"restore":{"module":"str"},"push":{},"pull":{},"init":{},"export_clone":{"path":"str"}}'
+        ;;
+    call)
+        case "$2" in
+            status)       handle_status ;;
+            modules)      handle_modules ;;
+            history)      handle_history ;;
+            diff)         handle_diff ;;
+            backup)       handle_backup ;;
+            restore)      handle_restore ;;
+            push)         handle_push ;;
+            pull)         handle_pull ;;
+            init)         handle_init ;;
+            export_clone) handle_export_clone ;;
+        esac
+        ;;
+esac

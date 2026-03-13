@@ -4903,3 +4903,60 @@ git checkout HEAD -- index.html
       - `/usr/share/secubox-reporter/templates/` - HTML templates
       - `/etc/cron.d/secubox-reporter` - Scheduled reports
       - `/usr/libexec/rpcd/luci.reporter` - RPCD backend
+
+101. **Configuration Vault System (2026-03-13)**
+    - New `secubox-app-config-vault` package for versioned configuration backup
+    - **Purpose**: Certification compliance, audit trail, cloning support for deployable SecuBox appliances
+    - **Module-Based Organization**:
+      - `users` - User Management & SSO (secubox-users, rpcd)
+      - `network` - Network Configuration (network, firewall, dhcp)
+      - `services` - Service Exposure & Distribution (secubox-exposure, haproxy, tor)
+      - `security` - Security & WAF (crowdsec, mitmproxy)
+      - `system` - System Settings (system, uhttpd)
+      - `containers` - LXC Containers (lxc, lxc-auto + flat configs)
+      - `reporter` - Report Generator (secubox-reporter)
+      - `dns` - DNS & Domains (dns-provider, dnsmasq)
+      - `mesh` - P2P Mesh Network (vortex, yggdrasil, wireguard)
+    - **Gitea Integration**:
+      - Auto-sync to private repository `gandalf/secubox-config-vault`
+      - Push on commit (auto-push enabled)
+      - Pull for recovery/restore
+    - **CLI** (`/usr/sbin/configvaultctl`):
+      - `init` - Initialize vault repository
+      - `backup [module]` - Backup configs (all or specific module)
+      - `restore <module>` - Restore module configs from vault
+      - `push` - Push changes to Gitea
+      - `pull` - Pull latest from Gitea
+      - `status` - Show vault status
+      - `history [n]` - Show last n config changes
+      - `diff` - Show uncommitted changes
+      - `modules` - List configured modules
+      - `track <config>` - Track a config change (used by hooks)
+      - `export-clone [file]` - Create deployment clone package
+      - `import-clone <file>` - Import clone package
+    - **Export/Import for Cloning**:
+      - `export-clone` creates tar.gz with all configs + manifests
+      - `import-clone` restores configs from clone package
+      - Enables producing ready-to-use SecuBox installations
+    - **LuCI Dashboard** (`luci-app-config-vault`):
+      - KISS-themed overview with status rings
+      - Quick actions: Backup All, Push/Pull to Gitea, Export Clone
+      - Modules table with per-module backup buttons
+      - Change history showing all commits
+      - Repository info (branch, remote, last commit)
+    - **RPCD Methods**:
+      - `status` - Vault status and git info
+      - `modules` - List modules with file counts
+      - `history` - Commit history
+      - `diff` - Uncommitted changes
+      - `backup/restore` - Module operations
+      - `push/pull` - Gitea sync
+      - `init` - Initialize vault
+      - `export_clone` - Create clone package
+    - **Files**:
+      - `/etc/config/config-vault` - UCI configuration
+      - `/usr/sbin/configvaultctl` - CLI tool
+      - `/usr/share/config-vault/lib/gitea.sh` - Gitea helpers
+      - `/usr/share/config-vault/hooks/uci-track` - Change tracking hook
+      - `/srv/config-vault/` - Git repository with versioned configs
+      - `/usr/libexec/rpcd/luci.config-vault` - RPCD backend

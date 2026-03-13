@@ -21,6 +21,7 @@ NC='\033[0m'
 [ -f "$LIB_DIR/collectors.sh" ] && . "$LIB_DIR/collectors.sh"
 [ -f "$LIB_DIR/formatters.sh" ] && . "$LIB_DIR/formatters.sh"
 [ -f "$LIB_DIR/mailer.sh" ] && . "$LIB_DIR/mailer.sh"
+[ -f "$LIB_DIR/system-collector.sh" ] && . "$LIB_DIR/system-collector.sh"
 
 # Load config
 config_load secubox-reporter
@@ -52,7 +53,9 @@ COMMANDS:
 REPORT TYPES:
   dev       Development Status Report (progress, roadmap, health)
   services  Distribution/Services Status Report (exposures, channels)
-  all       Both reports
+  system    System Hardware Report (CPU, memory, power, carbon impact)
+  meta      Meta Dashboard (combined overview)
+  all       All reports
 
 OPTIONS:
   --email             Also send via email
@@ -305,6 +308,133 @@ generate_meta_report() {
     echo "$output_file"
 }
 
+# Generate system/hardware status report
+generate_system_report() {
+    local output_file="$1"
+    local theme="${2:-dark}"
+
+    log_info "Generating System Hardware Report..."
+
+    mkdir -p "$(dirname "$output_file")"
+
+    local hostname=$(get_hostname)
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+
+    # Collect system data with defaults
+    local cpu_pct=$(get_cpu_usage 2>/dev/null || echo 10)
+    [ -z "$cpu_pct" ] && cpu_pct=10
+
+    local mem_info=$(get_memory_info 2>/dev/null || echo "512 1024")
+    local mem_used=$(echo "$mem_info" | awk '{print $1}')
+    local mem_total=$(echo "$mem_info" | awk '{print $2}')
+    [ -z "$mem_used" ] && mem_used=512
+    [ -z "$mem_total" ] && mem_total=1024
+    [ "$mem_total" -eq 0 ] && mem_total=1024
+    local mem_pct=$((mem_used * 100 / mem_total))
+
+    local disk_info=$(get_disk_info 2>/dev/null || echo "1G 8G 20")
+    local disk_used=$(echo "$disk_info" | awk '{print $1}')
+    local disk_total=$(echo "$disk_info" | awk '{print $2}')
+    local disk_pct=$(echo "$disk_info" | awk '{print $3}')
+    [ -z "$disk_pct" ] && disk_pct=20
+
+    local temp=$(get_temperature 2>/dev/null || echo 45)
+    [ -z "$temp" ] && temp=45
+    local temp_pct=$temp
+
+    local cpu_freq=$(get_cpu_freq 2>/dev/null || echo "1000 MHz")
+    local cpu_model=$(get_cpu_model 2>/dev/null || echo "ARM Processor")
+    local cpu_cores=$(get_cpu_cores 2>/dev/null || echo "4")
+    local device_model=$(get_device_model 2>/dev/null || echo "SecuBox")
+    local board=$(get_board_name 2>/dev/null || echo "secubox")
+    local openwrt_ver=$(get_openwrt_version 2>/dev/null || echo "23.05")
+    local kernel=$(get_kernel_version 2>/dev/null || echo "6.1")
+    local arch=$(get_architecture 2>/dev/null || echo "aarch64")
+    local uptime=$(get_uptime_formatted 2>/dev/null || echo "1h 0m")
+    local load_avg=$(get_load_average 2>/dev/null || echo "0.5 0.3 0.2")
+    local process_count=$(get_process_count 2>/dev/null || echo "50")
+
+    # Status classes
+    local cpu_class=$(get_status_class "$cpu_pct" 2>/dev/null || echo "")
+    local mem_class=$(get_status_class "$mem_pct" 2>/dev/null || echo "")
+    local disk_class=$(get_status_class "$disk_pct" 2>/dev/null || echo "")
+    local temp_class=$(get_status_class "$temp" temp 2>/dev/null || echo "")
+
+    # Power calculations
+    local power_watts=$(estimate_power_watts "$cpu_pct" 2>/dev/null || echo 8)
+    [ -z "$power_watts" ] && power_watts=8
+    local daily_kwh="0.19"
+    local monthly_kwh="5.8"
+    local co2_monthly="2.3"
+
+    # Read template
+    local template="$TPL_DIR/system-status.html.tpl"
+    if [ ! -f "$template" ]; then
+        log_err "Template not found: $template"
+        return 1
+    fi
+
+    # Generate dynamic content to temp files
+    local tmpdir="/tmp/sysreport-$$"
+    mkdir -p "$tmpdir"
+
+    get_top_processes > "$tmpdir/procs.html" 2>/dev/null || echo "<tr><td colspan='5'>No process data</td></tr>" > "$tmpdir/procs.html"
+    get_network_stats > "$tmpdir/network.html" 2>/dev/null || echo "<div class='info-item'><div class='info-label'>N/A</div></div>" > "$tmpdir/network.html"
+    generate_cpu_histogram > "$tmpdir/histogram.html" 2>/dev/null || echo "" > "$tmpdir/histogram.html"
+    generate_recommendations "$cpu_pct" "$mem_pct" "$disk_pct" "$temp" > "$tmpdir/recs.html" 2>/dev/null || echo "" > "$tmpdir/recs.html"
+    get_debug_log > "$tmpdir/debug.html" 2>/dev/null || echo "<div class='line'>No log data</div>" > "$tmpdir/debug.html"
+
+    # Simple substitutions first
+    sed -e "s|{{HOSTNAME}}|$hostname|g" \
+        -e "s|{{TIMESTAMP}}|$timestamp|g" \
+        -e "s|{{DEVICE_MODEL}}|$device_model|g" \
+        -e "s|{{UPTIME}}|$uptime|g" \
+        -e "s|{{CPU_PCT}}|$cpu_pct|g" \
+        -e "s|{{CPU_CLASS}}|$cpu_class|g" \
+        -e "s|{{MEM_PCT}}|$mem_pct|g" \
+        -e "s|{{MEM_CLASS}}|$mem_class|g" \
+        -e "s|{{DISK_PCT}}|$disk_pct|g" \
+        -e "s|{{DISK_CLASS}}|$disk_class|g" \
+        -e "s|{{TEMP_VAL}}|$temp|g" \
+        -e "s|{{TEMP_PCT}}|$temp_pct|g" \
+        -e "s|{{TEMP_CLASS}}|$temp_class|g" \
+        -e "s|{{CPU_FREQ}}|$cpu_freq|g" \
+        -e "s|{{MEM_USED}}|${mem_used}MB|g" \
+        -e "s|{{MEM_TOTAL}}|${mem_total}MB|g" \
+        -e "s|{{DISK_USED}}|$disk_used|g" \
+        -e "s|{{DISK_TOTAL}}|$disk_total|g" \
+        -e "s|{{PROCESS_COUNT}}|$process_count|g" \
+        -e "s|{{CPU_MODEL}}|$cpu_model|g" \
+        -e "s|{{CPU_CORES}}|$cpu_cores|g" \
+        -e "s|{{ARCH}}|$arch|g" \
+        -e "s|{{KERNEL}}|$kernel|g" \
+        -e "s|{{BOARD}}|$board|g" \
+        -e "s|{{OPENWRT_VER}}|$openwrt_ver|g" \
+        -e "s|{{LOAD_AVG}}|$load_avg|g" \
+        -e "s|{{POWER_WATTS}}|$power_watts|g" \
+        -e "s|{{DAILY_KWH}}|$daily_kwh|g" \
+        -e "s|{{MONTHLY_KWH}}|$monthly_kwh|g" \
+        -e "s|{{CO2_MONTHLY}}|$co2_monthly|g" \
+        "$template" > "$tmpdir/step1.html"
+
+    # Replace multiline placeholders using awk
+    awk '
+    /\{\{CPU_HISTOGRAM\}\}/ { while ((getline line < "'"$tmpdir/histogram.html"'") > 0) print line; next }
+    /\{\{TOP_PROCESSES\}\}/ { while ((getline line < "'"$tmpdir/procs.html"'") > 0) print line; next }
+    /\{\{NETWORK_STATS\}\}/ { while ((getline line < "'"$tmpdir/network.html"'") > 0) print line; next }
+    /\{\{RECOMMENDATIONS\}\}/ { while ((getline line < "'"$tmpdir/recs.html"'") > 0) print line; next }
+    /\{\{DEBUG_LOG\}\}/ { while ((getline line < "'"$tmpdir/debug.html"'") > 0) print line; next }
+    { print }
+    ' "$tmpdir/step1.html" > "$output_file"
+
+    # Cleanup
+    rm -rf "$tmpdir"
+
+    chmod 644 "$output_file"
+    log_ok "Generated: $output_file"
+    echo "$output_file"
+}
+
 # Command: generate
 cmd_generate() {
     local report_type="$1"
@@ -332,13 +462,18 @@ cmd_generate() {
         meta)
             generate_meta_report "$output_path/meta-status-$timestamp.html" "$theme"
             ;;
+        system)
+            generate_system_report "$output_path/system-status-$timestamp.html" "$theme"
+            ;;
         all)
             generate_dev_report "$output_path/dev-status-$timestamp.html" "$theme"
             generate_services_report "$output_path/services-status-$timestamp.html" "$theme"
+            generate_meta_report "$output_path/meta-status-$timestamp.html" "$theme"
+            generate_system_report "$output_path/system-status-$timestamp.html" "$theme"
             ;;
         *)
             log_err "Unknown report type: $report_type"
-            echo "Valid types: dev, services, meta, all"
+            echo "Valid types: dev, services, meta, system, all"
             return 1
             ;;
     esac

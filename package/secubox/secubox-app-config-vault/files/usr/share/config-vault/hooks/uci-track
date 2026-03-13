@@ -1,0 +1,18 @@
+#!/bin/sh
+# UCI Change Tracking Hook
+# Called when configs are modified via LuCI/uci commit
+#
+# Usage: uci-track <config> [action] [user]
+
+CONFIG="$1"
+ACTION="${2:-commit}"
+USER="${3:-$(logread -l 1 | grep -oE 'luci:.*' | cut -d: -f2 | cut -d' ' -f1)}"
+
+[ -z "$CONFIG" ] && exit 0
+
+# Check if vault is enabled
+ENABLED=$(uci -q get config-vault.global.enabled)
+[ "$ENABLED" = "1" ] || exit 0
+
+# Track the change
+/usr/sbin/configvaultctl track "$CONFIG" "$ACTION" "$USER"
