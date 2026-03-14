@@ -1,0 +1,354 @@
+#!/bin/sh
+# ═══════════════════════════════════════════════════════════════════════════════
+#  SABnzbd Controller - Usenet NZB Downloader
+#  LXC container management for SABnzbd
+# ═══════════════════════════════════════════════════════════════════════════════
+
+CONTAINER_NAME="sabnzbd"
+CONTAINER_DIR="/srv/lxc/$CONTAINER_NAME"
+DATA_DIR="/srv/sabnzbd"
+DOWNLOAD_DIR="/srv/downloads/usenet"
+DOCKER_IMAGE="linuxserver/sabnzbd:latest"
+CONFIG="sabnzbd"
+
+# Logging
+log_info() { logger -t sabnzbd -p user.info "$*"; echo "[INFO] $*"; }
+log_error() { logger -t sabnzbd -p user.error "$*"; echo "[ERROR] $*" >&2; }
+log_ok() { echo "[OK] $*"; }
+
+# UCI helpers
+uci_get() { uci -q get "$CONFIG.$1"; }
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Install container from Docker image
+# ─────────────────────────────────────────────────────────────────────────────────
+cmd_install() {
+    log_info "Installing SABnzbd container..."
+
+    # Check for podman or docker
+    local runtime=""
+    if command -v podman >/dev/null 2>&1; then
+        runtime="podman"
+    elif command -v docker >/dev/null 2>&1; then
+        runtime="docker"
+    else
+        log_error "Neither podman nor docker found. Install one first."
+        return 1
+    fi
+
+    # Create directories
+    mkdir -p "$CONTAINER_DIR/rootfs"
+    mkdir -p "$DATA_DIR/config"
+    mkdir -p "$DOWNLOAD_DIR"/{complete,incomplete,nzb}
+
+    # Pull and extract image
+    log_info "Pulling Docker image: $DOCKER_IMAGE"
+    if [ "$runtime" = "podman" ]; then
+        podman pull "$DOCKER_IMAGE" || { log_error "Failed to pull image"; return 1; }
+        local container_id=$(podman create "$DOCKER_IMAGE")
+        podman export "$container_id" | tar -xf - -C "$CONTAINER_DIR/rootfs"
+        podman rm "$container_id" >/dev/null
+    else
+        docker pull "$DOCKER_IMAGE" || { log_error "Failed to pull image"; return 1; }
+        local container_id=$(docker create "$DOCKER_IMAGE")
+        docker export "$container_id" | tar -xf - -C "$CONTAINER_DIR/rootfs"
+        docker rm "$container_id" >/dev/null
+    fi
+
+    # Create LXC config
+    local memory=$(uci_get main.memory)
+    [ -z "$memory" ] && memory="512M"
+
+    cat > "$CONTAINER_DIR/config" <<EOF
+lxc.uts.name = $CONTAINER_NAME
+lxc.rootfs.path = dir:$CONTAINER_DIR/rootfs
+lxc.init.cmd = /init
+
+# Network - share host namespace
+lxc.namespace.share.net = 1
+
+# Capabilities
+lxc.cap.drop = sys_admin sys_boot sys_module sys_rawio sys_time
+
+# Memory limit
+lxc.cgroup2.memory.max = $memory
+
+# Mounts
+lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+lxc.mount.entry = $DATA_DIR/config config none bind,create=dir 0 0
+lxc.mount.entry = $DOWNLOAD_DIR downloads none bind,create=dir 0 0
+lxc.mount.entry = tmpfs tmp tmpfs defaults 0 0
+lxc.mount.entry = tmpfs run tmpfs defaults 0 0
+
+# Environment
+lxc.environment = PUID=1000
+lxc.environment = PGID=1000
+lxc.environment = TZ=Europe/Paris
+EOF
+
+    # Create startup wrapper
+    cat > "$CONTAINER_DIR/rootfs/start-sabnzbd.sh" <<'STARTEOF'
+#!/bin/bash
+export HOME=/config
+export SABNZBD_HOME=/config
+cd /app/sabnzbd
+exec python3 SABnzbd.py --config-file /config/sabnzbd.ini --server 0.0.0.0:8085 --browser 0
+STARTEOF
+    chmod +x "$CONTAINER_DIR/rootfs/start-sabnzbd.sh"
+
+    log_ok "SABnzbd container installed"
+    log_info "Run: sabnzbdctl start"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Start container
+# ─────────────────────────────────────────────────────────────────────────────────
+cmd_start() {
+    if ! [ -d "$CONTAINER_DIR/rootfs" ]; then
+        log_error "Container not installed. Run: sabnzbdctl install"
+        return 1
+    fi
+
+    if lxc-info -n "$CONTAINER_NAME" 2>/dev/null | grep -q "RUNNING"; then
+        log_info "SABnzbd already running"
+        return 0
+    fi
+
+    log_info "Starting SABnzbd..."
+    lxc-start -n "$CONTAINER_NAME" -d -f "$CONTAINER_DIR/config"
+
+    # Wait for startup
+    sleep 3
+    if lxc-info -n "$CONTAINER_NAME" 2>/dev/null | grep -q "RUNNING"; then
+        local port=$(uci_get main.port)
+        [ -z "$port" ] && port="8085"
+        log_ok "SABnzbd started on http://127.0.0.1:$port/"
+    else
+        log_error "Failed to start SABnzbd"
+        return 1
+    fi
+}
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Stop container
+# ─────────────────────────────────────────────────────────────────────────────────
+cmd_stop() {
+    if ! lxc-info -n "$CONTAINER_NAME" 2>/dev/null | grep -q "RUNNING"; then
+        log_info "SABnzbd not running"
+        return 0
+    fi
+
+    log_info "Stopping SABnzbd..."
+    lxc-stop -n "$CONTAINER_NAME" -t 30
+    log_ok "SABnzbd stopped"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Restart container
+# ─────────────────────────────────────────────────────────────────────────────────
+cmd_restart() {
+    cmd_stop
+    sleep 2
+    cmd_start
+}
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Status
+# ─────────────────────────────────────────────────────────────────────────────────
+cmd_status() {
+    echo "=== SABnzbd Status ==="
+
+    # Container state
+    if lxc-info -n "$CONTAINER_NAME" 2>/dev/null | grep -q "RUNNING"; then
+        echo "Container: RUNNING"
+    else
+        echo "Container: STOPPED"
+        return 0
+    fi
+
+    # API status
+    local port=$(uci_get main.port)
+    [ -z "$port" ] && port="8085"
+    local api_key=$(cat "$DATA_DIR/config/sabnzbd.ini" 2>/dev/null | grep "^api_key" | cut -d'=' -f2 | tr -d ' ')
+
+    if [ -n "$api_key" ]; then
+        local status=$(curl -s "http://127.0.0.1:$port/api?mode=queue&output=json&apikey=$api_key" 2>/dev/null)
+        if [ -n "$status" ]; then
+            local speed=$(echo "$status" | jsonfilter -e '@.queue.speed' 2>/dev/null)
+            local queue_size=$(echo "$status" | jsonfilter -e '@.queue.noofslots' 2>/dev/null)
+            local disk_free=$(echo "$status" | jsonfilter -e '@.queue.diskspace1' 2>/dev/null)
+
+            echo "Speed: ${speed:-0}"
+            echo "Queue: ${queue_size:-0} items"
+            echo "Disk Free: ${disk_free:-?} GB"
+        fi
+    fi
+
+    echo "Web UI: http://127.0.0.1:$port/"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Logs
+# ─────────────────────────────────────────────────────────────────────────────────
+cmd_logs() {
+    local lines="${1:-50}"
+    if [ -f "$DATA_DIR/config/logs/sabnzbd.log" ]; then
+        tail -n "$lines" "$DATA_DIR/config/logs/sabnzbd.log"
+    else
+        log_info "No logs yet. SABnzbd may not have run."
+    fi
+}
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Shell access
+# ─────────────────────────────────────────────────────────────────────────────────
+cmd_shell() {
+    if ! lxc-info -n "$CONTAINER_NAME" 2>/dev/null | grep -q "RUNNING"; then
+        log_error "Container not running"
+        return 1
+    fi
+    lxc-attach -n "$CONTAINER_NAME" -- /bin/bash
+}
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Configure NNTP server from UCI
+# ─────────────────────────────────────────────────────────────────────────────────
+cmd_add_server() {
+    local ini_file="$DATA_DIR/config/sabnzbd.ini"
+
+    if [ ! -f "$ini_file" ]; then
+        log_error "SABnzbd config not found. Start SABnzbd first to create initial config."
+        return 1
+    fi
+
+    # Read NNTP config from UCI
+    local name=$(uci_get eweka.name)
+    local host=$(uci_get eweka.host)
+    local port=$(uci_get eweka.port)
+    local ssl=$(uci_get eweka.ssl)
+    local username=$(uci_get eweka.username)
+    local password=$(uci_get eweka.password)
+    local connections=$(uci_get eweka.connections)
+
+    [ -z "$host" ] && { log_error "No NNTP server configured in UCI"; return 1; }
+
+    log_info "Adding NNTP server: $name ($host)"
+
+    # SABnzbd uses INI format with [servers] section
+    # We'll add via API if running, otherwise manual config
+    local api_port=$(uci_get main.port)
+    [ -z "$api_port" ] && api_port="8085"
+    local api_key=$(grep "^api_key" "$ini_file" 2>/dev/null | cut -d'=' -f2 | tr -d ' ')
+
+    if [ -n "$api_key" ] && curl -s "http://127.0.0.1:$api_port/api?mode=version&apikey=$api_key" >/dev/null 2>&1; then
+        # Use API to add server
+        curl -s "http://127.0.0.1:$api_port/api?mode=set_config&section=servers&keyword=eweka&apikey=$api_key" \
+            -d "name=$name" \
+            -d "host=$host" \
+            -d "port=$port" \
+            -d "ssl=$ssl" \
+            -d "username=$username" \
+            -d "password=$password" \
+            -d "connections=$connections" \
+            -d "enable=1" >/dev/null
+
+        log_ok "NNTP server added via API"
+    else
+        log_info "SABnzbd not running. Server will be configured on first start."
+    fi
+}
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Configure HAProxy exposure
+# ─────────────────────────────────────────────────────────────────────────────────
+cmd_configure_haproxy() {
+    local domain=$(uci_get exposure.domain)
+    [ -z "$domain" ] && domain="sabnzbd.gk2.secubox.in"
+
+    local port=$(uci_get main.port)
+    [ -z "$port" ] && port="8085"
+
+    log_info "Configuring HAProxy for $domain"
+
+    # Create backend
+    uci set haproxy.sabnzbd_web=backend
+    uci set haproxy.sabnzbd_web.name='sabnzbd_web'
+    uci set haproxy.sabnzbd_web.mode='http'
+    uci set haproxy.sabnzbd_web.server="sabnzbd 127.0.0.1:$port weight 100 check"
+
+    # Create vhost
+    local vhost_id=$(echo "$domain" | tr '.' '_')
+    uci set "haproxy.$vhost_id=vhost"
+    uci set "haproxy.$vhost_id.domain=$domain"
+    uci set "haproxy.$vhost_id.backend=mitmproxy_inspector"
+    uci set "haproxy.$vhost_id.original_backend=sabnzbd_web"
+    uci set "haproxy.$vhost_id.ssl=1"
+    uci set "haproxy.$vhost_id.ssl_redirect=1"
+    uci set "haproxy.$vhost_id.acme=1"
+    uci commit haproxy
+
+    # Add mitmproxy route
+    if [ -f /srv/mitmproxy/haproxy-routes.json ]; then
+        python3 -c "
+import json
+with open('/srv/mitmproxy/haproxy-routes.json') as f:
+    routes = json.load(f)
+routes['$domain'] = ['127.0.0.1', $port]
+with open('/srv/mitmproxy/haproxy-routes.json', 'w') as f:
+    json.dump(routes, f, indent=2)
+" 2>/dev/null
+    fi
+
+    # Reload
+    haproxyctl reload 2>/dev/null || true
+    /etc/init.d/mitmproxy restart 2>/dev/null || true
+
+    log_ok "HAProxy configured: https://$domain/"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Uninstall
+# ─────────────────────────────────────────────────────────────────────────────────
+cmd_uninstall() {
+    log_info "Uninstalling SABnzbd..."
+
+    cmd_stop 2>/dev/null
+
+    rm -rf "$CONTAINER_DIR"
+    log_info "Container removed. Data preserved in $DATA_DIR"
+
+    log_ok "SABnzbd uninstalled"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Main
+# ─────────────────────────────────────────────────────────────────────────────────
+case "$1" in
+    install)    cmd_install ;;
+    start)      cmd_start ;;
+    stop)       cmd_stop ;;
+    restart)    cmd_restart ;;
+    status)     cmd_status ;;
+    logs)       shift; cmd_logs "$@" ;;
+    shell)      cmd_shell ;;
+    add-server) cmd_add_server ;;
+    configure-haproxy) cmd_configure_haproxy ;;
+    uninstall)  cmd_uninstall ;;
+    *)
+        echo "SABnzbd Controller - Usenet NZB Downloader"
+        echo ""
+        echo "Usage: sabnzbdctl <command>"
+        echo ""
+        echo "Commands:"
+        echo "  install           Install container from Docker image"
+        echo "  start             Start SABnzbd"
+        echo "  stop              Stop SABnzbd"
+        echo "  restart           Restart SABnzbd"
+        echo "  status            Show status and queue info"
+        echo "  logs [n]          Show last n log lines (default 50)"
+        echo "  shell             Interactive shell in container"
+        echo "  add-server        Configure NNTP server from UCI"
+        echo "  configure-haproxy Setup HAProxy reverse proxy"
+        echo "  uninstall         Remove container (keeps data)"
+        ;;
+esac

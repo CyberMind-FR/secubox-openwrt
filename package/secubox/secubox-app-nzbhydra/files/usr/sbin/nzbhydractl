@@ -1,0 +1,352 @@
+#!/bin/sh
+# ═══════════════════════════════════════════════════════════════════════════════
+#  NZBHydra2 Controller - Usenet Meta Search
+#  LXC container management for NZBHydra2
+# ═══════════════════════════════════════════════════════════════════════════════
+
+CONTAINER_NAME="nzbhydra"
+CONTAINER_DIR="/srv/lxc/$CONTAINER_NAME"
+DATA_DIR="/srv/nzbhydra"
+DOCKER_IMAGE="linuxserver/nzbhydra2:latest"
+CONFIG="nzbhydra"
+
+# Logging
+log_info() { logger -t nzbhydra -p user.info "$*"; echo "[INFO] $*"; }
+log_error() { logger -t nzbhydra -p user.error "$*"; echo "[ERROR] $*" >&2; }
+log_ok() { echo "[OK] $*"; }
+
+# UCI helpers
+uci_get() { uci -q get "$CONFIG.$1"; }
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Install container from Docker image
+# ─────────────────────────────────────────────────────────────────────────────────
+cmd_install() {
+    log_info "Installing NZBHydra2 container..."
+
+    # Check for podman or docker
+    local runtime=""
+    if command -v podman >/dev/null 2>&1; then
+        runtime="podman"
+    elif command -v docker >/dev/null 2>&1; then
+        runtime="docker"
+    else
+        log_error "Neither podman nor docker found. Install one first."
+        return 1
+    fi
+
+    # Create directories
+    mkdir -p "$CONTAINER_DIR/rootfs"
+    mkdir -p "$DATA_DIR/config"
+
+    # Pull and extract image
+    log_info "Pulling Docker image: $DOCKER_IMAGE"
+    if [ "$runtime" = "podman" ]; then
+        podman pull "$DOCKER_IMAGE" || { log_error "Failed to pull image"; return 1; }
+        local container_id=$(podman create "$DOCKER_IMAGE")
+        podman export "$container_id" | tar -xf - -C "$CONTAINER_DIR/rootfs"
+        podman rm "$container_id" >/dev/null
+    else
+        docker pull "$DOCKER_IMAGE" || { log_error "Failed to pull image"; return 1; }
+        local container_id=$(docker create "$DOCKER_IMAGE")
+        docker export "$container_id" | tar -xf - -C "$CONTAINER_DIR/rootfs"
+        docker rm "$container_id" >/dev/null
+    fi
+
+    # Create LXC config
+    local memory=$(uci_get main.memory)
+    [ -z "$memory" ] && memory="256M"
+
+    cat > "$CONTAINER_DIR/config" <<EOF
+lxc.uts.name = $CONTAINER_NAME
+lxc.rootfs.path = dir:$CONTAINER_DIR/rootfs
+lxc.init.cmd = /init
+
+# Network - share host namespace
+lxc.namespace.share.net = 1
+
+# Capabilities
+lxc.cap.drop = sys_admin sys_boot sys_module sys_rawio sys_time
+
+# Memory limit
+lxc.cgroup2.memory.max = $memory
+
+# Mounts
+lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+lxc.mount.entry = $DATA_DIR/config config none bind,create=dir 0 0
+lxc.mount.entry = tmpfs tmp tmpfs defaults 0 0
+lxc.mount.entry = tmpfs run tmpfs defaults 0 0
+
+# Environment
+lxc.environment = PUID=1000
+lxc.environment = PGID=1000
+lxc.environment = TZ=Europe/Paris
+EOF
+
+    log_ok "NZBHydra2 container installed"
+    log_info "Run: nzbhydractl start"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Start container
+# ─────────────────────────────────────────────────────────────────────────────────
+cmd_start() {
+    if ! [ -d "$CONTAINER_DIR/rootfs" ]; then
+        log_error "Container not installed. Run: nzbhydractl install"
+        return 1
+    fi
+
+    if lxc-info -n "$CONTAINER_NAME" 2>/dev/null | grep -q "RUNNING"; then
+        log_info "NZBHydra2 already running"
+        return 0
+    fi
+
+    log_info "Starting NZBHydra2..."
+    lxc-start -n "$CONTAINER_NAME" -d -f "$CONTAINER_DIR/config"
+
+    # Wait for startup
+    sleep 5
+    if lxc-info -n "$CONTAINER_NAME" 2>/dev/null | grep -q "RUNNING"; then
+        local port=$(uci_get main.port)
+        [ -z "$port" ] && port="5076"
+        log_ok "NZBHydra2 started on http://127.0.0.1:$port/"
+    else
+        log_error "Failed to start NZBHydra2"
+        return 1
+    fi
+}
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Stop container
+# ─────────────────────────────────────────────────────────────────────────────────
+cmd_stop() {
+    if ! lxc-info -n "$CONTAINER_NAME" 2>/dev/null | grep -q "RUNNING"; then
+        log_info "NZBHydra2 not running"
+        return 0
+    fi
+
+    log_info "Stopping NZBHydra2..."
+    lxc-stop -n "$CONTAINER_NAME" -t 30
+    log_ok "NZBHydra2 stopped"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Restart container
+# ─────────────────────────────────────────────────────────────────────────────────
+cmd_restart() {
+    cmd_stop
+    sleep 2
+    cmd_start
+}
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Status
+# ─────────────────────────────────────────────────────────────────────────────────
+cmd_status() {
+    echo "=== NZBHydra2 Status ==="
+
+    # Container state
+    if lxc-info -n "$CONTAINER_NAME" 2>/dev/null | grep -q "RUNNING"; then
+        echo "Container: RUNNING"
+    else
+        echo "Container: STOPPED"
+        return 0
+    fi
+
+    local port=$(uci_get main.port)
+    [ -z "$port" ] && port="5076"
+
+    # Check if API responds
+    if curl -s "http://127.0.0.1:$port/api?t=caps" >/dev/null 2>&1; then
+        echo "API: OK"
+    else
+        echo "API: Not responding"
+    fi
+
+    echo "Web UI: http://127.0.0.1:$port/"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Logs
+# ─────────────────────────────────────────────────────────────────────────────────
+cmd_logs() {
+    local lines="${1:-50}"
+    if [ -f "$DATA_DIR/config/logs/nzbhydra2.log" ]; then
+        tail -n "$lines" "$DATA_DIR/config/logs/nzbhydra2.log"
+    else
+        log_info "No logs yet. NZBHydra may not have run."
+    fi
+}
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Shell access
+# ─────────────────────────────────────────────────────────────────────────────────
+cmd_shell() {
+    if ! lxc-info -n "$CONTAINER_NAME" 2>/dev/null | grep -q "RUNNING"; then
+        log_error "Container not running"
+        return 1
+    fi
+    lxc-attach -n "$CONTAINER_NAME" -- /bin/bash
+}
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Link SABnzbd as downloader
+# ─────────────────────────────────────────────────────────────────────────────────
+cmd_link_sabnzbd() {
+    log_info "Linking SABnzbd..."
+
+    # Get SABnzbd API key
+    local sab_ini="/srv/sabnzbd/config/sabnzbd.ini"
+    if [ ! -f "$sab_ini" ]; then
+        log_error "SABnzbd not configured. Start SABnzbd first."
+        return 1
+    fi
+
+    local sab_api=$(grep "^api_key" "$sab_ini" 2>/dev/null | cut -d'=' -f2 | tr -d ' ')
+    local sab_port=$(uci -q get sabnzbd.main.port)
+    [ -z "$sab_port" ] && sab_port="8085"
+
+    if [ -z "$sab_api" ]; then
+        log_error "SABnzbd API key not found. Configure SABnzbd first."
+        return 1
+    fi
+
+    # Update UCI
+    uci set "nzbhydra.sabnzbd.host=http://127.0.0.1:$sab_port"
+    uci set "nzbhydra.sabnzbd.api_key=$sab_api"
+    uci commit nzbhydra
+
+    log_ok "SABnzbd linked: http://127.0.0.1:$sab_port"
+    log_info "Restart NZBHydra to apply changes"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Search
+# ─────────────────────────────────────────────────────────────────────────────────
+cmd_search() {
+    local query="$1"
+    [ -z "$query" ] && { log_error "Usage: nzbhydractl search <query>"; return 1; }
+
+    local port=$(uci_get main.port)
+    [ -z "$port" ] && port="5076"
+
+    log_info "Searching: $query"
+
+    local result=$(curl -s "http://127.0.0.1:$port/api?t=search&q=$(echo "$query" | sed 's/ /%20/g')" 2>/dev/null)
+
+    if [ -n "$result" ]; then
+        echo "$result" | python3 -c "
+import sys, xml.etree.ElementTree as ET
+xml = sys.stdin.read()
+try:
+    root = ET.fromstring(xml)
+    items = root.findall('.//item')
+    for i, item in enumerate(items[:10], 1):
+        title = item.find('title').text if item.find('title') is not None else 'N/A'
+        size = item.find('enclosure').get('length', '0') if item.find('enclosure') is not None else '0'
+        size_mb = int(size) // (1024*1024)
+        print(f'{i}. {title} ({size_mb} MB)')
+except Exception as e:
+    print(f'Error parsing: {e}')
+" 2>/dev/null
+    else
+        log_error "Search failed or no results"
+    fi
+}
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Configure HAProxy exposure
+# ─────────────────────────────────────────────────────────────────────────────────
+cmd_configure_haproxy() {
+    local domain=$(uci_get exposure.domain)
+    [ -z "$domain" ] && domain="nzbhydra.gk2.secubox.in"
+
+    local port=$(uci_get main.port)
+    [ -z "$port" ] && port="5076"
+
+    log_info "Configuring HAProxy for $domain"
+
+    # Create backend
+    uci set haproxy.nzbhydra_web=backend
+    uci set haproxy.nzbhydra_web.name='nzbhydra_web'
+    uci set haproxy.nzbhydra_web.mode='http'
+    uci set haproxy.nzbhydra_web.server="nzbhydra 127.0.0.1:$port weight 100 check"
+
+    # Create vhost
+    local vhost_id=$(echo "$domain" | tr '.' '_')
+    uci set "haproxy.$vhost_id=vhost"
+    uci set "haproxy.$vhost_id.domain=$domain"
+    uci set "haproxy.$vhost_id.backend=mitmproxy_inspector"
+    uci set "haproxy.$vhost_id.original_backend=nzbhydra_web"
+    uci set "haproxy.$vhost_id.ssl=1"
+    uci set "haproxy.$vhost_id.ssl_redirect=1"
+    uci set "haproxy.$vhost_id.acme=1"
+    uci commit haproxy
+
+    # Add mitmproxy route
+    if [ -f /srv/mitmproxy/haproxy-routes.json ]; then
+        python3 -c "
+import json
+with open('/srv/mitmproxy/haproxy-routes.json') as f:
+    routes = json.load(f)
+routes['$domain'] = ['127.0.0.1', $port]
+with open('/srv/mitmproxy/haproxy-routes.json', 'w') as f:
+    json.dump(routes, f, indent=2)
+" 2>/dev/null
+    fi
+
+    # Reload
+    haproxyctl reload 2>/dev/null || true
+    /etc/init.d/mitmproxy restart 2>/dev/null || true
+
+    log_ok "HAProxy configured: https://$domain/"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Uninstall
+# ─────────────────────────────────────────────────────────────────────────────────
+cmd_uninstall() {
+    log_info "Uninstalling NZBHydra2..."
+
+    cmd_stop 2>/dev/null
+
+    rm -rf "$CONTAINER_DIR"
+    log_info "Container removed. Data preserved in $DATA_DIR"
+
+    log_ok "NZBHydra2 uninstalled"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Main
+# ─────────────────────────────────────────────────────────────────────────────────
+case "$1" in
+    install)    cmd_install ;;
+    start)      cmd_start ;;
+    stop)       cmd_stop ;;
+    restart)    cmd_restart ;;
+    status)     cmd_status ;;
+    logs)       shift; cmd_logs "$@" ;;
+    shell)      cmd_shell ;;
+    search)     shift; cmd_search "$@" ;;
+    link-sabnzbd) cmd_link_sabnzbd ;;
+    configure-haproxy) cmd_configure_haproxy ;;
+    uninstall)  cmd_uninstall ;;
+    *)
+        echo "NZBHydra2 Controller - Usenet Meta Search"
+        echo ""
+        echo "Usage: nzbhydractl <command>"
+        echo ""
+        echo "Commands:"
+        echo "  install           Install container from Docker image"
+        echo "  start             Start NZBHydra2"
+        echo "  stop              Stop NZBHydra2"
+        echo "  restart           Restart NZBHydra2"
+        echo "  status            Show status"
+        echo "  logs [n]          Show last n log lines (default 50)"
+        echo "  shell             Interactive shell in container"
+        echo "  search <query>    Search indexers"
+        echo "  link-sabnzbd      Configure SABnzbd as downloader"
+        echo "  configure-haproxy Setup HAProxy reverse proxy"
+        echo "  uninstall         Remove container (keeps data)"
+        ;;
+esac

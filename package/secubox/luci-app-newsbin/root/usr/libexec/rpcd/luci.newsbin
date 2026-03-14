@@ -1,0 +1,285 @@
+#!/bin/sh
+# RPCD handler for Newsbin - Usenet Search & Download
+
+. /usr/share/libubox/jshn.sh
+
+SAB_PORT="8085"
+HYDRA_PORT="5076"
+SAB_CONFIG="/srv/sabnzbd/config/sabnzbd.ini"
+
+get_sab_api() {
+    grep "^api_key" "$SAB_CONFIG" 2>/dev/null | cut -d'=' -f2 | tr -d ' '
+}
+
+case "$1" in
+    list)
+        echo '{"status":{},"queue":{},"history":{},"search":{"query":"string"},"add_nzb":{"url":"string","category":"string"},"pause":{},"resume":{},"remove":{"nzo_id":"string"},"config":{}}'
+        ;;
+    call)
+        case "$2" in
+            status)
+                json_init
+
+                # SABnzbd status
+                local sab_running="false"
+                local sab_speed="0"
+                local sab_queue="0"
+                local sab_disk="0"
+
+                if lxc-info -n sabnzbd 2>/dev/null | grep -q "RUNNING"; then
+                    sab_running="true"
+                    local api_key=$(get_sab_api)
+                    if [ -n "$api_key" ]; then
+                        local sab_data=$(curl -s "http://127.0.0.1:$SAB_PORT/api?mode=queue&output=json&apikey=$api_key" 2>/dev/null)
+                        if [ -n "$sab_data" ]; then
+                            sab_speed=$(echo "$sab_data" | jsonfilter -e '@.queue.speed' 2>/dev/null || echo "0")
+                            sab_queue=$(echo "$sab_data" | jsonfilter -e '@.queue.noofslots' 2>/dev/null || echo "0")
+                            sab_disk=$(echo "$sab_data" | jsonfilter -e '@.queue.diskspace1' 2>/dev/null || echo "0")
+                        fi
+                    fi
+                fi
+
+                # NZBHydra status
+                local hydra_running="false"
+                if lxc-info -n nzbhydra 2>/dev/null | grep -q "RUNNING"; then
+                    hydra_running="true"
+                fi
+
+                json_add_object "sabnzbd"
+                json_add_boolean "running" "$sab_running"
+                json_add_string "speed" "$sab_speed"
+                json_add_int "queue_size" "$sab_queue"
+                json_add_string "disk_free" "$sab_disk"
+                json_add_string "url" "http://127.0.0.1:$SAB_PORT/"
+                json_close_object
+
+                json_add_object "nzbhydra"
+                json_add_boolean "running" "$hydra_running"
+                json_add_string "url" "http://127.0.0.1:$HYDRA_PORT/"
+                json_close_object
+
+                json_dump
+                ;;
+
+            queue)
+                json_init
+                json_add_array "items"
+
+                local api_key=$(get_sab_api)
+                if [ -n "$api_key" ]; then
+                    local queue_data=$(curl -s "http://127.0.0.1:$SAB_PORT/api?mode=queue&output=json&apikey=$api_key" 2>/dev/null)
+                    if [ -n "$queue_data" ]; then
+                        echo "$queue_data" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    for slot in data.get('queue', {}).get('slots', []):
+        print(json.dumps({
+            'nzo_id': slot.get('nzo_id', ''),
+            'filename': slot.get('filename', ''),
+            'size': slot.get('size', ''),
+            'percentage': slot.get('percentage', '0'),
+            'status': slot.get('status', ''),
+            'timeleft': slot.get('timeleft', '')
+        }))
+except:
+    pass
+" 2>/dev/null | while read item; do
+                            echo "$item" | {
+                                read line
+                                json_add_object ""
+                                local nzo_id=$(echo "$line" | jsonfilter -e '@.nzo_id')
+                                local filename=$(echo "$line" | jsonfilter -e '@.filename')
+                                local size=$(echo "$line" | jsonfilter -e '@.size')
+                                local percentage=$(echo "$line" | jsonfilter -e '@.percentage')
+                                local status=$(echo "$line" | jsonfilter -e '@.status')
+                                local timeleft=$(echo "$line" | jsonfilter -e '@.timeleft')
+                                json_add_string "nzo_id" "$nzo_id"
+                                json_add_string "filename" "$filename"
+                                json_add_string "size" "$size"
+                                json_add_string "percentage" "$percentage"
+                                json_add_string "status" "$status"
+                                json_add_string "timeleft" "$timeleft"
+                                json_close_object
+                            }
+                        done
+                    fi
+                fi
+
+                json_close_array
+                json_dump
+                ;;
+
+            history)
+                json_init
+                json_add_array "items"
+
+                local api_key=$(get_sab_api)
+                if [ -n "$api_key" ]; then
+                    local hist_data=$(curl -s "http://127.0.0.1:$SAB_PORT/api?mode=history&limit=20&output=json&apikey=$api_key" 2>/dev/null)
+                    if [ -n "$hist_data" ]; then
+                        echo "$hist_data" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    for slot in data.get('history', {}).get('slots', []):
+        print(json.dumps({
+            'nzo_id': slot.get('nzo_id', ''),
+            'name': slot.get('name', ''),
+            'size': slot.get('size', ''),
+            'status': slot.get('status', ''),
+            'completed': slot.get('completed', 0)
+        }))
+except:
+    pass
+" 2>/dev/null | while read item; do
+                            echo "$item" | {
+                                read line
+                                json_add_object ""
+                                local nzo_id=$(echo "$line" | jsonfilter -e '@.nzo_id')
+                                local name=$(echo "$line" | jsonfilter -e '@.name')
+                                local size=$(echo "$line" | jsonfilter -e '@.size')
+                                local status=$(echo "$line" | jsonfilter -e '@.status')
+                                json_add_string "nzo_id" "$nzo_id"
+                                json_add_string "name" "$name"
+                                json_add_string "size" "$size"
+                                json_add_string "status" "$status"
+                                json_close_object
+                            }
+                        done
+                    fi
+                fi
+
+                json_close_array
+                json_dump
+                ;;
+
+            search)
+                read -r input
+                json_load "$input"
+                json_get_var query query
+
+                json_init
+                json_add_array "results"
+
+                if [ -n "$query" ]; then
+                    local search_url="http://127.0.0.1:$HYDRA_PORT/api?t=search&q=$(echo "$query" | sed 's/ /%20/g')"
+                    local result=$(curl -s "$search_url" 2>/dev/null)
+
+                    if [ -n "$result" ]; then
+                        echo "$result" | python3 -c "
+import sys, xml.etree.ElementTree as ET, json
+xml = sys.stdin.read()
+try:
+    root = ET.fromstring(xml)
+    for item in root.findall('.//item')[:20]:
+        title = item.find('title').text if item.find('title') is not None else ''
+        link = item.find('link').text if item.find('link') is not None else ''
+        size = item.find('enclosure').get('length', '0') if item.find('enclosure') is not None else '0'
+        print(json.dumps({'title': title, 'link': link, 'size': int(size)}))
+except:
+    pass
+" 2>/dev/null | while read item; do
+                            echo "$item" | {
+                                read line
+                                json_add_object ""
+                                local title=$(echo "$line" | jsonfilter -e '@.title')
+                                local link=$(echo "$line" | jsonfilter -e '@.link')
+                                local size=$(echo "$line" | jsonfilter -e '@.size')
+                                json_add_string "title" "$title"
+                                json_add_string "link" "$link"
+                                json_add_int "size" "$size"
+                                json_close_object
+                            }
+                        done
+                    fi
+                fi
+
+                json_close_array
+                json_dump
+                ;;
+
+            add_nzb)
+                read -r input
+                json_load "$input"
+                json_get_var url url
+                json_get_var category category
+
+                json_init
+
+                if [ -z "$url" ]; then
+                    json_add_boolean "success" 0
+                    json_add_string "error" "URL required"
+                else
+                    local api_key=$(get_sab_api)
+                    local add_url="http://127.0.0.1:$SAB_PORT/api?mode=addurl&name=$(echo "$url" | sed 's/&/%26/g')&apikey=$api_key"
+                    [ -n "$category" ] && add_url="$add_url&cat=$category"
+
+                    local result=$(curl -s "$add_url" 2>/dev/null)
+                    if echo "$result" | grep -q "ok"; then
+                        json_add_boolean "success" 1
+                        json_add_string "message" "NZB added to queue"
+                    else
+                        json_add_boolean "success" 0
+                        json_add_string "error" "Failed to add NZB"
+                    fi
+                fi
+
+                json_dump
+                ;;
+
+            pause)
+                local api_key=$(get_sab_api)
+                curl -s "http://127.0.0.1:$SAB_PORT/api?mode=pause&apikey=$api_key" >/dev/null 2>&1
+                json_init
+                json_add_boolean "success" 1
+                json_dump
+                ;;
+
+            resume)
+                local api_key=$(get_sab_api)
+                curl -s "http://127.0.0.1:$SAB_PORT/api?mode=resume&apikey=$api_key" >/dev/null 2>&1
+                json_init
+                json_add_boolean "success" 1
+                json_dump
+                ;;
+
+            remove)
+                read -r input
+                json_load "$input"
+                json_get_var nzo_id nzo_id
+
+                local api_key=$(get_sab_api)
+                curl -s "http://127.0.0.1:$SAB_PORT/api?mode=queue&name=delete&value=$nzo_id&apikey=$api_key" >/dev/null 2>&1
+
+                json_init
+                json_add_boolean "success" 1
+                json_dump
+                ;;
+
+            config)
+                json_init
+
+                # NNTP servers
+                json_add_array "servers"
+                for section in $(uci show sabnzbd 2>/dev/null | grep "=nntp$" | sed 's/sabnzbd\.\(.*\)=nntp/\1/'); do
+                    json_add_object ""
+                    json_add_string "id" "$section"
+                    json_add_string "name" "$(uci -q get sabnzbd.$section.name)"
+                    json_add_string "host" "$(uci -q get sabnzbd.$section.host)"
+                    json_add_string "port" "$(uci -q get sabnzbd.$section.port)"
+                    json_add_boolean "ssl" "$(uci -q get sabnzbd.$section.ssl)"
+                    json_add_string "connections" "$(uci -q get sabnzbd.$section.connections)"
+                    json_close_object
+                done
+                json_close_array
+
+                json_dump
+                ;;
+
+            *)
+                echo '{"error":"Unknown method"}'
+                ;;
+        esac
+        ;;
+esac
