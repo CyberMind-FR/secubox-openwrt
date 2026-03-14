@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-14 (Streamlit Launcher)_
+_Last updated: 2026-03-14 (Module Manifest NFO)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -9,6 +9,22 @@ _Last updated: 2026-03-14 (Streamlit Launcher)_
 ## Recently Completed
 
 ### 2026-03-14
+
+- **Module Manifest (NFO) System Extension (Complete)**
+  - Flat-file UCI-style `.nfo` manifest format for Streamlit/MetaBlog apps
+  - Sections: identity, description, tags, runtime, dependencies, exposure, launcher, settings, dynamics, mesh, media
+  - `[dynamics]` section for AI/generative content integration with prompt_context, capabilities, input/output types
+  - NFO parser library: `/usr/share/streamlit-forge/lib/nfo-parser.sh`
+  - NFO validator library: `/usr/share/streamlit-forge/lib/nfo-validator.sh` (type-specific validation)
+  - `slforge nfo` commands: init, init-all, info, edit, validate, json, install
+  - `metablogizerctl nfo` commands: init, init-all, info, edit, validate, sync, json
+  - Batch NFO generation for all installed apps/sites
+  - RPCD methods: nfo_read, nfo_write, nfo_validate for LuCI integration
+  - Reusable NFO viewer component (`nfo-viewer.js`) with collapsible sections
+  - LuCI editor modal for NFO editing in Streamlit Forge
+  - Hub generator reads full NFO metadata for category/description/capabilities
+  - Metacatalog search enhanced with NFO indexing and filters
+  - Full spec at `/usr/share/streamlit-forge/NFO-SPEC.md`
 
 - **Streamlit On-Demand Launcher (Complete)**
   - New `secubox-app-streamlit-launcher` package

@@ -228,3 +228,117 @@ slforge launcher always-on dashboard
 5. Memory pressure triggers low-priority app shutdown
 
 See `secubox-app-streamlit-launcher` README for full configuration.
+
+## Module Manifest (NFO)
+
+Apps can include a `README.nfo` manifest with metadata for:
+- **Identity** - Name, version, author, license
+- **Classification** - Category, keywords, tags
+- **Runtime** - Port, memory, dependencies
+- **Dynamics** - AI context for generative content integration
+
+### NFO Commands
+
+```bash
+# Generate README.nfo for existing app
+slforge nfo init myapp
+
+# View NFO summary
+slforge nfo info myapp
+
+# Edit manifest
+slforge nfo edit myapp
+
+# Validate manifest
+slforge nfo validate myapp
+
+# Export as JSON (for APIs)
+slforge nfo json myapp
+
+# Install app from directory with NFO
+slforge nfo install /path/to/myapp
+```
+
+### NFO File Structure
+
+```nfo
+[identity]
+id=myapp
+name=My Application
+version=1.0.0
+author=CyberMind
+
+[description]
+short=A dashboard for system metrics
+long=<<EOF
+Multi-line detailed description...
+EOF
+
+[tags]
+category=administration
+keywords=dashboard,monitoring,metrics
+
+[runtime]
+type=streamlit
+port=8501
+memory=512M
+
+[dynamics]
+prompt_context=<<EOF
+This app displays system metrics.
+Users can ask for charts or data exports.
+EOF
+capabilities=data-visualization,export
+input_types=api,json
+output_types=charts,tables,csv
+```
+
+### Bundled Installer
+
+Apps can include an `install.sh` that reads the NFO:
+
+```bash
+# Install from directory
+cd /path/to/myapp
+./install.sh
+
+# Or use slforge
+slforge nfo install /path/to/myapp
+```
+
+See `/usr/share/streamlit-forge/NFO-SPEC.md` for full specification.
+
+### Generative AI Integration
+
+The `[dynamics]` section provides context for AI assistants:
+
+```nfo
+[dynamics]
+prompt_context=<<EOF
+This app is a data visualization dashboard.
+It can display charts, tables, and export data.
+Available data: CPU, memory, network metrics.
+EOF
+
+capabilities=data-visualization,real-time-updates,export
+input_types=json,api,prometheus
+output_types=charts,tables,csv,pdf
+```
+
+AI systems can read this context to understand what the app does and how to assist users.
+
+## File Locations
+
+| Path | Description |
+|------|-------------|
+| `/etc/config/streamlit-forge` | UCI configuration |
+| `/usr/sbin/slforge` | CLI tool |
+| `/srv/streamlit/apps/` | App source directories |
+| `/srv/streamlit/apps/<app>/README.nfo` | App manifest |
+| `/srv/streamlit/previews/` | Generated previews |
+| `/usr/share/streamlit-forge/templates/` | App templates |
+| `/usr/share/streamlit-forge/lib/nfo-parser.sh` | NFO parser library |
+| `/usr/share/streamlit-forge/nfo-template.nfo` | NFO template |
+| `/usr/share/streamlit-forge/install.sh` | Bundled installer |
+| `/var/run/streamlit-*.pid` | PID files |
+| `/var/log/streamlit-*.log` | App logs |

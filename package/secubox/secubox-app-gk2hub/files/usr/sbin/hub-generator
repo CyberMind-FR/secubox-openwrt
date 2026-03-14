@@ -1,11 +1,72 @@
 #!/bin/sh
-# SecuBox Hub Generator v5 - MetaBlogizer + Streamlit + PeerTube videos
+# SecuBox Hub Generator v6 - MetaBlogizer + Streamlit + PeerTube + NFO Support
 
 OUTPUT="/www/gk2-hub/index.html"
 TEMP="/tmp/hub_gen_$$.html"
 DATE=$(date "+%Y-%m-%d %H:%M")
 PEERTUBE_API="http://192.168.255.1:9001/api/v1"
 PEERTUBE_URL="https://tube.gk2.secubox.in"
+STREAMLIT_APPS_DIR="/srv/streamlit/apps"
+METABLOG_SITES_DIR="/srv/metablogizer/sites"
+
+# Load NFO parser if available
+NFO_PARSER="/usr/share/streamlit-forge/lib/nfo-parser.sh"
+[ -f "$NFO_PARSER" ] && . "$NFO_PARSER"
+
+# Get app info from NFO file
+# Usage: get_nfo_info <app_dir> <section> <field> <default>
+get_nfo_info() {
+    local app_dir="$1"
+    local section="$2"
+    local field="$3"
+    local default="$4"
+
+    local nfo_file="$app_dir/README.nfo"
+    [ ! -f "$nfo_file" ] && { echo "$default"; return; }
+
+    # Use nfo_get from parser if available
+    if type nfo_get >/dev/null 2>&1; then
+        local val=$(nfo_get "$nfo_file" "$section" "$field" 2>/dev/null)
+        [ -n "$val" ] && echo "$val" || echo "$default"
+        return
+    fi
+
+    # Fallback: section-aware grep parsing
+    awk -v section="$section" -v field="$field" '
+        /^\[/ { in_section = ($0 ~ "\\[" section "\\]") }
+        in_section && /^[a-zA-Z_]+=/ {
+            split($0, kv, "=")
+            gsub(/^[ \t]+|[ \t]+$/, "", kv[1])
+            if (kv[1] == field) {
+                gsub(/^[^=]+=/, "")
+                gsub(/^[ \t]+|[ \t]+$/, "")
+                print
+                exit
+            }
+        }
+    ' "$nfo_file" 2>/dev/null | head -1
+
+    # Return default if nothing found
+    [ -z "$(cat /dev/stdin)" ] && echo "$default"
+}
+
+# Get all NFO metadata for an app
+# Returns: category|description|keywords|capabilities|audience
+get_nfo_full() {
+    local app_dir="$1"
+    local nfo_file="$app_dir/README.nfo"
+
+    [ ! -f "$nfo_file" ] && return 1
+
+    local category=$(get_nfo_info "$app_dir" "tags" "category" "")
+    local desc=$(get_nfo_info "$app_dir" "description" "short" "")
+    local keywords=$(get_nfo_info "$app_dir" "tags" "keywords" "")
+    local capabilities=$(get_nfo_info "$app_dir" "dynamics" "capabilities" "")
+    local audience=$(get_nfo_info "$app_dir" "tags" "audience" "")
+    local icon=$(get_nfo_info "$app_dir" "media" "icon" "")
+
+    echo "${category}|${desc}|${keywords}|${capabilities}|${audience}|${icon}"
+}
 
 categorize_site() {
     local name=$(echo "$1" | tr '[:upper:]' '[:lower:]')
@@ -125,6 +186,10 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .card-cat.meta{background:linear-gradient(135deg,var(--accent),var(--accent2))}
 .card-cat.streamlit{background:linear-gradient(135deg,var(--accent3),#059669)}
 .card-cat.video{background:linear-gradient(135deg,var(--accent4),#ea580c)}
+.card-desc{font-size:0.75rem;color:var(--muted);margin:4px 0;line-height:1.3;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.card-caps{display:flex;flex-wrap:wrap;gap:3px;margin-top:6px}
+.cap-badge{font-size:0.6rem;padding:2px 6px;background:rgba(124,58,237,0.2);color:var(--accent2);border-radius:10px;border:1px solid rgba(124,58,237,0.3)}
+.card-keywords{font-size:0.65rem;color:var(--muted);margin-top:4px;font-style:italic}
 .lock-badge{position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.7);padding:4px 8px;border-radius:4px;font-size:0.8rem}
 .site-card[data-protected]{display:none}
 .site-card[data-protected].unlocked{display:flex}
@@ -198,10 +263,71 @@ uci show streamlit 2>/dev/null | grep "=instance$" | sed "s/streamlit\.\(.*\)=in
     enabled=$(uci -q get "streamlit.$app.enabled")
     [ "$enabled" != "1" ] && continue
     [ -z "$domain" ] && continue
-    cat=$(categorize_site "$name")
+
+    # Get full NFO metadata
+    app_dir="$STREAMLIT_APPS_DIR/$name"
+    nfo_data=$(get_nfo_full "$app_dir" 2>/dev/null)
+
+    if [ -n "$nfo_data" ]; then
+        nfo_cat=$(echo "$nfo_data" | cut -d'|' -f1)
+        nfo_desc=$(echo "$nfo_data" | cut -d'|' -f2)
+        nfo_keywords=$(echo "$nfo_data" | cut -d'|' -f3)
+        nfo_caps=$(echo "$nfo_data" | cut -d'|' -f4)
+        nfo_audience=$(echo "$nfo_data" | cut -d'|' -f5)
+    else
+        nfo_cat=""
+        nfo_desc=""
+        nfo_keywords=""
+        nfo_caps=""
+        nfo_audience=""
+    fi
+
+    if [ -n "$nfo_cat" ]; then
+        cat="$nfo_cat"
+    else
+        cat=$(categorize_site "$name")
+    fi
     emoji=$(get_emoji "$cat")
     echo "$cat" >> "$CAT_FILE"
-    printf '%s\t%s\t%s\t%s\tstreamlit\t-\t-\n' "$domain" "$name" "$cat" "$emoji" >> "$SITES_FILE"
+    # Format: domain name cat emoji type thumb protected desc keywords caps
+    printf '%s\t%s\t%s\t%s\tstreamlit\t-\t-\t%s\t%s\t%s\n' "$domain" "$name" "$cat" "$emoji" "$nfo_desc" "$nfo_keywords" "$nfo_caps" >> "$SITES_FILE"
+done
+
+# Also check streamlit-forge config
+uci show streamlit-forge 2>/dev/null | grep "=app$" | sed "s/streamlit-forge\.\(.*\)=app/\1/" | while read app; do
+    name=$(uci -q get "streamlit-forge.$app.name")
+    domain=$(uci -q get "streamlit-forge.$app.domain")
+    enabled=$(uci -q get "streamlit-forge.$app.enabled")
+    [ "$enabled" != "1" ] && continue
+    [ -z "$domain" ] && continue
+
+    # Check if already added from streamlit config
+    grep -q "	$name	" "$SITES_FILE" 2>/dev/null && continue
+
+    # Get full NFO metadata
+    app_dir="$STREAMLIT_APPS_DIR/$name"
+    nfo_data=$(get_nfo_full "$app_dir" 2>/dev/null)
+
+    if [ -n "$nfo_data" ]; then
+        nfo_cat=$(echo "$nfo_data" | cut -d'|' -f1)
+        nfo_desc=$(echo "$nfo_data" | cut -d'|' -f2)
+        nfo_keywords=$(echo "$nfo_data" | cut -d'|' -f3)
+        nfo_caps=$(echo "$nfo_data" | cut -d'|' -f4)
+    else
+        nfo_cat=""
+        nfo_desc=""
+        nfo_keywords=""
+        nfo_caps=""
+    fi
+
+    if [ -n "$nfo_cat" ]; then
+        cat="$nfo_cat"
+    else
+        cat=$(categorize_site "$name")
+    fi
+    emoji=$(get_emoji "$cat")
+    echo "$cat" >> "$CAT_FILE"
+    printf '%s\t%s\t%s\t%s\tstreamlit\t-\t-\t%s\t%s\t%s\n' "$domain" "$name" "$cat" "$emoji" "$nfo_desc" "$nfo_keywords" "$nfo_caps" >> "$SITES_FILE"
 done
 
 # PeerTube videos
@@ -305,12 +431,15 @@ echo '</div>' >> "$TEMP"
 # Sites grid
 echo '<div class="view-grid" id="viewContainer"><div class="sites-grid" id="sitesGrid">' >> "$TEMP"
 
-while IFS='	' read -r url name cat emoji type thumb protected; do
+while IFS='	' read -r url name cat emoji type thumb protected nfo_desc nfo_keywords nfo_caps; do
     [ -z "$url" ] && continue
 
     # Handle placeholder values (- means empty, used for BusyBox read compatibility)
     [ "$thumb" = "-" ] && thumb=""
     [ "$protected" = "-" ] && protected=""
+    [ "$nfo_desc" = "-" ] && nfo_desc=""
+    [ "$nfo_keywords" = "-" ] && nfo_keywords=""
+    [ "$nfo_caps" = "-" ] && nfo_caps=""
 
     # For videos, 'thumb' is thumbnail URL and 'protected' is duration
     duration=""
@@ -349,8 +478,27 @@ while IFS='	' read -r url name cat emoji type thumb protected; do
         domain_display="$url"
     fi
 
+    # Build description HTML
+    desc_html=""
+    if [ -n "$nfo_desc" ]; then
+        desc_html="<div class=\"card-desc\">$nfo_desc</div>"
+    fi
+
+    # Build capabilities badges HTML
+    caps_html=""
+    if [ -n "$nfo_caps" ]; then
+        caps_html="<div class=\"card-caps\">"
+        for cap in $(echo "$nfo_caps" | tr ',' ' '); do
+            [ -n "$cap" ] && caps_html="$caps_html<span class=\"cap-badge\">$cap</span>"
+        done
+        caps_html="$caps_html</div>"
+    fi
+
+    # Include keywords in search data
+    search_data="$url $name $cat $type $nfo_keywords $nfo_caps"
+
     cat >> "$TEMP" << CARD
-<a href="$link_url" class="$card_class" target="_blank" data-category="$cat" data-type="$type" data-search="$url $name $cat $type" $protected_attr>
+<a href="$link_url" class="$card_class" target="_blank" data-category="$cat" data-type="$type" data-search="$search_data" $protected_attr>
     <div class="card-preview">
         $preview_html
         $protected_badge
@@ -358,7 +506,9 @@ while IFS='	' read -r url name cat emoji type thumb protected; do
     <div class="card-content">
         <div class="card-title">$name</div>
         <div class="card-domain">$domain_display</div>
+        $desc_html
         <span class="$cat_class">$emoji $cat</span>
+        $caps_html
     </div>
 </a>
 CARD

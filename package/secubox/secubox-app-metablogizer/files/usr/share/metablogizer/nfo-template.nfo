@@ -1,0 +1,178 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+#   ███╗   ███╗███████╗████████╗ █████╗ ██████╗ ██╗      ██████╗  ██████╗
+#   ████╗ ████║██╔════╝╚══██╔══╝██╔══██╗██╔══██╗██║     ██╔═══██╗██╔════╝
+#   ██╔████╔██║█████╗     ██║   ███████║██████╔╝██║     ██║   ██║██║  ███╗
+#   ██║╚██╔╝██║██╔══╝     ██║   ██╔══██║██╔══██╗██║     ██║   ██║██║   ██║
+#   ██║ ╚═╝ ██║███████╗   ██║   ██║  ██║██████╔╝███████╗╚██████╔╝╚██████╔╝
+#   ╚═╝     ╚═╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚═════╝ ╚══════╝ ╚═════╝  ╚═════╝
+#   ─────────────────────────────────────────────────────────────────────────────
+#   {{APP_NAME}} v{{VERSION}}
+#   {{SHORT_DESC}}
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+#   SecuBox Module Manifest - Flat-File UCI Format
+#   Generated: {{DATE}}
+#   Type: metablog
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  IDENTITY                                                                   │
+# └─────────────────────────────────────────────────────────────────────────────┘
+[identity]
+id={{APP_ID}}
+name={{APP_NAME}}
+version=1.0.0
+author=CyberMind
+maintainer=contact@cybermind.fr
+created={{DATE}}
+updated={{DATE}}
+license=MIT
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  DESCRIPTION                                                                │
+# └─────────────────────────────────────────────────────────────────────────────┘
+[description]
+short={{SHORT_DESC}}
+long=<<EOF
+Detailed description of this MetaBlog site.
+Include information about content, audience, and purpose.
+EOF
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  CLASSIFICATION                                                             │
+# └─────────────────────────────────────────────────────────────────────────────┘
+[tags]
+category=blog
+subcategory=general
+keywords=blog,content,articles
+audience=general
+maturity=stable
+language=fr
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  RUNTIME CONFIGURATION                                                      │
+# └─────────────────────────────────────────────────────────────────────────────┘
+[runtime]
+type=metablog
+framework=metablogizer
+engine=static
+generator=hugo
+theme=cybermind
+build_command=
+watch_mode=0
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  CONTENT SETTINGS                                                           │
+# └─────────────────────────────────────────────────────────────────────────────┘
+[content]
+# Content structure
+posts_dir=content/posts
+pages_dir=content/pages
+media_dir=content/media
+data_dir=data
+
+# Content types supported
+content_types=markdown,html,json
+
+# Taxonomies
+taxonomies=tags,categories,series
+
+# Pagination
+posts_per_page=10
+
+# Feed settings
+rss_enabled=1
+rss_limit=20
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  EXPOSURE SETTINGS                                                          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+[exposure]
+auto_expose=0
+domain_prefix={{APP_ID}}
+ssl=1
+auth_required=0
+auth_method=basic
+waf_enabled=1
+cache_enabled=1
+cache_ttl=3600
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  REFERENCES                                                                 │
+# └─────────────────────────────────────────────────────────────────────────────┘
+[references]
+homepage=
+documentation=
+source=
+issues=
+social_twitter=
+social_mastodon=
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  CUSTOM SETTINGS                                                            │
+# └─────────────────────────────────────────────────────────────────────────────┘
+[settings]
+theme=dark
+locale=fr
+analytics_enabled=0
+comments_enabled=0
+search_enabled=1
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  GENERATIVE AI DYNAMICS                                                     │
+# └─────────────────────────────────────────────────────────────────────────────┘
+[dynamics]
+# Context for AI assistants generating content
+prompt_context=<<EOF
+This is a MetaBlog site focused on [topic].
+Content style: informative, professional.
+Target audience: [describe audience].
+Tone: [formal/casual/technical].
+EOF
+
+# Content generation capabilities
+capabilities=article-generation,summarization,translation
+
+# Content topics/themes
+topics=
+
+# Writing style guidelines
+style_guide=<<EOF
+- Use clear, concise language
+- Include code examples where relevant
+- Add images and diagrams
+- Structure with headers
+EOF
+
+# Auto-generation rules
+auto_generate=0
+generation_schedule=
+generation_sources=
+
+# Integration with external content
+feed_sources=
+api_sources=
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  MESH CATALOG                                                               │
+# └─────────────────────────────────────────────────────────────────────────────┘
+[mesh]
+publish=0
+visibility=private
+syndicate=0
+federation=local
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  MEDIA & BRANDING                                                           │
+# └─────────────────────────────────────────────────────────────────────────────┘
+[media]
+favicon=
+logo=
+og_image=
+screenshots=
+banner=
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#   END OF MANIFEST
+# ═══════════════════════════════════════════════════════════════════════════════

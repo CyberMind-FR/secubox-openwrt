@@ -5017,3 +5017,70 @@ git checkout HEAD -- index.html
       - `/etc/init.d/streamlit-launcher` - Procd service
       - `/tmp/streamlit-access/` - Access tracking files
       - `/usr/share/streamlit-launcher/loading.html` - Cold-start page
+
+104. **Module Manifest (NFO) System (2026-03-14)**
+    - Introduced flat-file UCI-style `.nfo` manifest format for Streamlit apps and MetaBlogs.
+    - NFO sections: identity, description, tags, runtime, dependencies, exposure, launcher, settings, dynamics, mesh, media.
+    - `[dynamics]` section for AI/generative content integration:
+      - `prompt_context` - Context for AI assistants
+      - `capabilities` - What the app can do
+      - `input_types` / `output_types` - Data formats
+    - NFO parser library: `/usr/share/streamlit-forge/lib/nfo-parser.sh`
+      - `nfo_parse()` - Parse NFO file
+      - `nfo_get()` - Get value by section/key
+      - `nfo_to_uci()` - Export to UCI config
+      - `nfo_to_json()` - Export as JSON
+      - `nfo_validate()` - Validate required fields
+    - `slforge nfo` commands:
+      - `init` - Generate README.nfo for existing app
+      - `info` - Show NFO summary
+      - `edit` - Edit manifest
+      - `validate` - Validate NFO file
+      - `json` - Export as JSON
+      - `install` - Install app from directory with NFO
+    - Universal installer script: `/usr/share/streamlit-forge/install.sh`
+      - Reads README.nfo, installs dependencies, configures UCI
+      - Creates catalog entry for mesh publishing
+      - Runs post-install hooks
+    - Hub generator v6 updated to read NFO metadata for category/description.
+    - MetaBlog NFO template at `/usr/share/metablogizer/nfo-template.nfo`.
+    - Full spec at `/usr/share/streamlit-forge/NFO-SPEC.md`.
+
+105. **NFO System Extension - Full Integration (2026-03-14)**
+    - Extended NFO system across all SecuBox content packages with batch generation.
+    - **Schema Validator** (`/usr/share/streamlit-forge/lib/nfo-validator.sh`):
+      - `nfo_validate_strict()` - Full validation with warnings
+      - `nfo_validate_schema()` - Type-specific validation (streamlit, metablog, docker)
+      - `nfo_get_missing_recommended()` - List recommended but missing fields
+      - `nfo_get_completeness_score()` - Calculate completeness percentage (0-100)
+    - **Batch NFO Generation**:
+      - `slforge nfo init-all` - Generate NFO for all Streamlit apps
+      - `metablogizerctl nfo init-all` - Generate NFO for all MetaBlog sites
+      - Reports created/skipped/failed counts
+    - **RPCD NFO Methods** (luci.streamlit-forge):
+      - `nfo_read <app>` - Return NFO content as JSON
+      - `nfo_write <app> <data>` - Update NFO from JSON
+      - `nfo_validate <app>` - Validate and return warnings
+    - **LuCI NFO Viewer Component** (`nfo-viewer.js`):
+      - Reusable component for Streamlit Forge, Metacatalog, Service Registry
+      - Collapsible sections (Identity, Description, Tags, Runtime, Dynamics, Mesh)
+      - Validation status indicator with completeness badge
+      - "Copy JSON" button for export
+      - `render()` - Full viewer, `renderBadge()` - Compact badge
+    - **LuCI NFO Editor Modal**:
+      - "NFO" button in app cards opens editor modal
+      - Form fields for key sections (identity, tags, runtime, dynamics)
+      - Validation warnings display
+      - Save/Cancel buttons with RPC integration
+    - **Hub Generator Enhancement**:
+      - Cards display NFO descriptions (description.short)
+      - Keywords rendered as clickable tags
+      - Capability badges from dynamics.capabilities
+    - **Metacatalog Search Enhancement**:
+      - NFO-based indexing for all entries
+      - `--category` and `--capability` filters for search
+      - Keywords, capabilities, audience in index
+    - **Files**:
+      - `/usr/share/streamlit-forge/lib/nfo-validator.sh` (new)
+      - `/www/luci-static/resources/streamlit-forge/nfo-viewer.js` (new)
+      - Updated: slforge, metablogizerctl, luci.streamlit-forge, hub-generator, metacatalogctl, overview.js
