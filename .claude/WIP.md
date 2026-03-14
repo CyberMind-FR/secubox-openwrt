@@ -10,6 +10,14 @@ _Last updated: 2026-03-14 (Module Manifest NFO)_
 
 ### 2026-03-14
 
+- **Hub Generator v7 - NFO Integration Fix (Complete)**
+  - Fixed BusyBox awk compatibility issue with bracket parsing
+  - Single-pass awk extraction for 7 NFO fields (category, desc, keywords, caps, audience, icon, version)
+  - Replaced `gsub(/[\[\]]/)` with two `sub()` calls for reliable section parsing
+  - 110 NFO entries now correctly extracted from 239 total items
+  - Capability and audience filter clouds working with actual values
+  - Dynamic preview modal with eye button for live site preview
+
 - **Module Manifest (NFO) System Extension (Complete)**
   - Flat-file UCI-style `.nfo` manifest format for Streamlit/MetaBlog apps
   - Sections: identity, description, tags, runtime, dependencies, exposure, launcher, settings, dynamics, mesh, media

@@ -5084,3 +5084,14 @@ git checkout HEAD -- index.html
       - `/usr/share/streamlit-forge/lib/nfo-validator.sh` (new)
       - `/www/luci-static/resources/streamlit-forge/nfo-viewer.js` (new)
       - Updated: slforge, metablogizerctl, luci.streamlit-forge, hub-generator, metacatalogctl, overview.js
+
+53. **Hub Generator v7 NFO Fix (2026-03-14)**
+    - Fixed BusyBox awk compatibility issue with NFO section parsing
+    - Problem: `gsub(/[\[\]]/, "")` didn't work reliably on BusyBox awk
+    - Solution: Use two `sub()` calls instead for bracket removal
+    - Single-pass awk extraction for 7 NFO fields
+    - 110 NFO entries now correctly extracted from 239 total hub items
+    - Capability and audience filter clouds display actual values
+    - HAProxy vhost scanning: 102 services discovered
+    - Dynamic preview modal with eye button for live site preview
+    - Files: `/usr/sbin/hub-generator`
