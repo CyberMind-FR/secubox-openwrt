@@ -547,7 +547,10 @@
       "Bash(then echo \"$f\")",
       "Bash(do if ! grep -q \"require secubox/kiss-theme\" \"$f\")",
       "Bash(# Test RPCD status method ssh root@192.168.255.1 \"\"ubus call luci.config-vault status\"\")",
-      "WebFetch(domain:ytdl.gk2.secubox.in)"
+      "WebFetch(domain:ytdl.gk2.secubox.in)",
+      "Bash([\"''\"'\"\"'\"''\"'\"\"'\"'']$/, \"\", val\\)\n\n            if \\(section == \"tags\" && key == \"category\"\\) category = val\n            if \\(section == \"tags\" && key == \"keywords\"\\) keywords = val\n            if \\(section == \"tags\" && key == \"audience\"\\) audience = val\n            if \\(section == \"description\" && key == \"short\"\\) desc = val\n            if \\(section == \"dynamics\" && key == \"capabilities\"\\) caps = val\n            if \\(section == \"media\" && key == \"icon\"\\) icon = val\n            if \\(section == \"identity\" && key == \"version\"\\) version = val\n        }\n        END {\n            printf \"%s)",
+      "Bash(%s)",
+      "Bash(/tmp/test_nfo.sh)"
     ]
   }
 }

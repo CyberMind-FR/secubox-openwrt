@@ -3,7 +3,9 @@
 
 . /usr/share/libubox/jshn.sh
 
+SAB_IP="192.168.255.40"
 SAB_PORT="8085"
+HYDRA_IP="192.168.255.41"
 HYDRA_PORT="5076"
 SAB_CONFIG="/srv/sabnzbd/config/sabnzbd.ini"
 
@@ -30,7 +32,7 @@ case "$1" in
                     sab_running="true"
                     local api_key=$(get_sab_api)
                     if [ -n "$api_key" ]; then
-                        local sab_data=$(curl -s "http://127.0.0.1:$SAB_PORT/api?mode=queue&output=json&apikey=$api_key" 2>/dev/null)
+                        local sab_data=$(curl -s "http://$SAB_IP:$SAB_PORT/api?mode=queue&output=json&apikey=$api_key" 2>/dev/null)
                         if [ -n "$sab_data" ]; then
                             sab_speed=$(echo "$sab_data" | jsonfilter -e '@.queue.speed' 2>/dev/null || echo "0")
                             sab_queue=$(echo "$sab_data" | jsonfilter -e '@.queue.noofslots' 2>/dev/null || echo "0")
@@ -50,12 +52,12 @@ case "$1" in
                 json_add_string "speed" "$sab_speed"
                 json_add_int "queue_size" "$sab_queue"
                 json_add_string "disk_free" "$sab_disk"
-                json_add_string "url" "http://127.0.0.1:$SAB_PORT/"
+                json_add_string "url" "http://$SAB_IP:$SAB_PORT/"
                 json_close_object
 
                 json_add_object "nzbhydra"
                 json_add_boolean "running" "$hydra_running"
-                json_add_string "url" "http://127.0.0.1:$HYDRA_PORT/"
+                json_add_string "url" "http://$HYDRA_IP:$HYDRA_PORT/"
                 json_close_object
 
                 json_dump
@@ -67,7 +69,7 @@ case "$1" in
 
                 local api_key=$(get_sab_api)
                 if [ -n "$api_key" ]; then
-                    local queue_data=$(curl -s "http://127.0.0.1:$SAB_PORT/api?mode=queue&output=json&apikey=$api_key" 2>/dev/null)
+                    local queue_data=$(curl -s "http://$SAB_IP:$SAB_PORT/api?mode=queue&output=json&apikey=$api_key" 2>/dev/null)
                     if [ -n "$queue_data" ]; then
                         echo "$queue_data" | python3 -c "
 import sys, json
@@ -116,7 +118,7 @@ except:
 
                 local api_key=$(get_sab_api)
                 if [ -n "$api_key" ]; then
-                    local hist_data=$(curl -s "http://127.0.0.1:$SAB_PORT/api?mode=history&limit=20&output=json&apikey=$api_key" 2>/dev/null)
+                    local hist_data=$(curl -s "http://$SAB_IP:$SAB_PORT/api?mode=history&limit=20&output=json&apikey=$api_key" 2>/dev/null)
                     if [ -n "$hist_data" ]; then
                         echo "$hist_data" | python3 -c "
 import sys, json
@@ -163,7 +165,7 @@ except:
                 json_add_array "results"
 
                 if [ -n "$query" ]; then
-                    local search_url="http://127.0.0.1:$HYDRA_PORT/api?t=search&q=$(echo "$query" | sed 's/ /%20/g')"
+                    local search_url="http://$HYDRA_IP:$HYDRA_PORT/api?t=search&q=$(echo "$query" | sed 's/ /%20/g')"
                     local result=$(curl -s "$search_url" 2>/dev/null)
 
                     if [ -n "$result" ]; then
@@ -212,7 +214,7 @@ except:
                     json_add_string "error" "URL required"
                 else
                     local api_key=$(get_sab_api)
-                    local add_url="http://127.0.0.1:$SAB_PORT/api?mode=addurl&name=$(echo "$url" | sed 's/&/%26/g')&apikey=$api_key"
+                    local add_url="http://$SAB_IP:$SAB_PORT/api?mode=addurl&name=$(echo "$url" | sed 's/&/%26/g')&apikey=$api_key"
                     [ -n "$category" ] && add_url="$add_url&cat=$category"
 
                     local result=$(curl -s "$add_url" 2>/dev/null)
@@ -230,7 +232,7 @@ except:
 
             pause)
                 local api_key=$(get_sab_api)
-                curl -s "http://127.0.0.1:$SAB_PORT/api?mode=pause&apikey=$api_key" >/dev/null 2>&1
+                curl -s "http://$SAB_IP:$SAB_PORT/api?mode=pause&apikey=$api_key" >/dev/null 2>&1
                 json_init
                 json_add_boolean "success" 1
                 json_dump
@@ -238,7 +240,7 @@ except:
 
             resume)
                 local api_key=$(get_sab_api)
-                curl -s "http://127.0.0.1:$SAB_PORT/api?mode=resume&apikey=$api_key" >/dev/null 2>&1
+                curl -s "http://$SAB_IP:$SAB_PORT/api?mode=resume&apikey=$api_key" >/dev/null 2>&1
                 json_init
                 json_add_boolean "success" 1
                 json_dump
@@ -250,7 +252,7 @@ except:
                 json_get_var nzo_id nzo_id
 
                 local api_key=$(get_sab_api)
-                curl -s "http://127.0.0.1:$SAB_PORT/api?mode=queue&name=delete&value=$nzo_id&apikey=$api_key" >/dev/null 2>&1
+                curl -s "http://$SAB_IP:$SAB_PORT/api?mode=queue&name=delete&value=$nzo_id&apikey=$api_key" >/dev/null 2>&1
 
                 json_init
                 json_add_boolean "success" 1
