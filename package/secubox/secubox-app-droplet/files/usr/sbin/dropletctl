@@ -124,15 +124,37 @@ cmd_publish() {
     mkdir -p "$target_dir"
     cp -r "$tmp_dir"/* "$target_dir/"
 
-    # Create vhost via haproxyctl
-    log_info "Creating vhost: $vhost"
-    if command -v haproxyctl >/dev/null 2>&1; then
-        haproxyctl vhost add "$vhost" 2>/dev/null || true
+    # Fix permissions (cgi-io uploads with 600)
+    find "$target_dir" -type f -exec chmod 644 {} \;
+    find "$target_dir" -type d -exec chmod 755 {} \;
+
+    # Generate README.nfo if not present
+    if [ ! -f "$target_dir/README.nfo" ]; then
+        log_info "Generating README.nfo..."
+        cat > "$target_dir/README.nfo" <<NFOEOF
+[identity]
+name=$name
+id=droplet-$name
+version=1.0.0
+type=$app_type
+
+[description]
+short=Droplet-published $app_type site
+long=Site published via Droplet one-drop publisher
+
+[tags]
+category=$app_type
+keywords=droplet, published
+audience=general
+
+[runtime]
+port=auto
+NFOEOF
     fi
 
     # Register with appropriate system
     if [ "$publish_method" = "streamlit" ]; then
-        # Add to streamlit config
+        # Add to streamlit config with proper naming
         local port=$(uci show streamlit 2>/dev/null | grep -oE "port='[0-9]+'" | grep -oE "[0-9]+" | sort -n | tail -1)
         port=$((${port:-8500} + 1))
 
@@ -145,14 +167,32 @@ cmd_publish() {
 
         log_info "Registered Streamlit app on port $port"
     else
-        # Add to metablogizer config
-        uci set "metablogizer.${name}=site"
-        uci set "metablogizer.${name}.name=$name"
-        uci set "metablogizer.${name}.domain=$vhost"
-        uci set "metablogizer.${name}.enabled=1"
+        # Add to metablogizer config with proper site_ prefix and port
+        local port=$(uci show metablogizer 2>/dev/null | grep -oE "port='[0-9]+'" | grep -oE "[0-9]+" | sort -n | tail -1)
+        port=$((${port:-8949} + 1))
+
+        uci set "metablogizer.site_${name}=site"
+        uci set "metablogizer.site_${name}.name=$name"
+        uci set "metablogizer.site_${name}.domain=$vhost"
+        uci set "metablogizer.site_${name}.port=$port"
+        uci set "metablogizer.site_${name}.enabled=1"
         uci commit metablogizer
 
-        log_info "Registered MetaBlog site"
+        log_info "Registered MetaBlog site on port $port"
+
+        # Use metablogizerctl to fully publish (creates uhttpd, HAProxy, mitmproxy routes)
+        if command -v metablogizerctl >/dev/null 2>&1; then
+            log_info "Running metablogizerctl publish..."
+            metablogizerctl publish "$name" 2>&1 | grep -E "^\[" || true
+        fi
+    fi
+
+    # Create vhost via haproxyctl (fallback if metablogizerctl not available)
+    if [ "$publish_method" = "streamlit" ]; then
+        log_info "Creating vhost: $vhost"
+        if command -v haproxyctl >/dev/null 2>&1; then
+            haproxyctl vhost add "$vhost" 2>/dev/null || true
+        fi
     fi
 
     # Git commit if available
@@ -183,12 +223,14 @@ cmd_publish() {
 cmd_list() {
     echo "=== Published Droplets ==="
 
-    # MetaBlog sites
-    uci show metablogizer 2>/dev/null | grep "=site$" | sed "s/metablogizer\.\(.*\)=site/\1/" | while read name; do
-        domain=$(uci -q get "metablogizer.$name.domain")
-        enabled=$(uci -q get "metablogizer.$name.enabled")
+    # MetaBlog sites (handles both site_xxx and xxx section names)
+    uci show metablogizer 2>/dev/null | grep "=site$" | sed "s/metablogizer\.\(.*\)=site/\1/" | while read section; do
+        # Extract display name (remove site_ prefix if present)
+        display_name=$(echo "$section" | sed 's/^site_//')
+        domain=$(uci -q get "metablogizer.$section.domain")
+        enabled=$(uci -q get "metablogizer.$section.enabled")
         [ "$enabled" = "1" ] && status="[ON]" || status="[OFF]"
-        printf "%-30s %s  %s\n" "$name" "$status" "https://$domain/"
+        printf "%-30s %s  %s\n" "$display_name" "$status" "https://$domain/"
     done
 
     # Streamlit apps
@@ -207,28 +249,40 @@ cmd_remove() {
     local name="$1"
     [ -z "$name" ] && { log_error "Usage: dropletctl remove <name>"; return 1; }
 
-    # Check metablogizer
-    if uci -q get "metablogizer.$name" >/dev/null 2>&1; then
-        uci delete "metablogizer.$name"
-        uci commit metablogizer
-        rm -rf "$SITES_DIR/$name"
-        log_ok "Removed MetaBlog: $name"
-    fi
+    local found=0
+
+    # Check metablogizer (try both site_xxx and xxx section names)
+    for section in "site_$name" "$name"; do
+        if uci -q get "metablogizer.$section" >/dev/null 2>&1; then
+            local domain=$(uci -q get "metablogizer.$section.domain")
+            uci delete "metablogizer.$section"
+            uci commit metablogizer
+            rm -rf "$SITES_DIR/$name"
+            # Also remove uhttpd instance
+            uci -q delete "uhttpd.metablog_$name" 2>/dev/null
+            uci commit uhttpd 2>/dev/null || true
+            log_ok "Removed MetaBlog: $name"
+            found=1
+            # Remove vhost
+            [ -n "$domain" ] && haproxyctl vhost remove "$domain" 2>/dev/null || true
+            break
+        fi
+    done
 
     # Check streamlit
     if uci -q get "streamlit.$name" >/dev/null 2>&1; then
+        local domain=$(uci -q get "streamlit.$name.domain")
         uci delete "streamlit.$name"
         uci commit streamlit
         rm -rf "$APPS_DIR/$name"
         log_ok "Removed Streamlit: $name"
+        found=1
+        [ -n "$domain" ] && haproxyctl vhost remove "$domain" 2>/dev/null || true
     fi
 
-    # Remove vhost
-    if command -v haproxyctl >/dev/null 2>&1; then
-        haproxyctl vhost remove "${name}.${DEFAULT_DOMAIN}" 2>/dev/null || true
-    fi
+    [ "$found" = "0" ] && log_error "Droplet '$name' not found"
 
-    /etc/init.d/haproxy reload 2>/dev/null || true
+    haproxyctl reload 2>/dev/null || true
 }
 
 # ─────────────────────────────────────────────────────────────────────────────────

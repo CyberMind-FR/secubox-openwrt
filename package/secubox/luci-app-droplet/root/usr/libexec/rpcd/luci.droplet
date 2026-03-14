@@ -26,12 +26,15 @@ case "$1" in
                 json_add_array "droplets"
 
                 # MetaBlog sites - use for loop to avoid subshell
-                for name in $(uci show metablogizer 2>/dev/null | grep "=site$" | sed "s/metablogizer\.\(.*\)=site/\1/"); do
-                    domain=$(uci -q get "metablogizer.$name.domain")
-                    enabled=$(uci -q get "metablogizer.$name.enabled")
+                # Handles both site_xxx and xxx section names
+                for section in $(uci show metablogizer 2>/dev/null | grep "=site$" | sed "s/metablogizer\.\(.*\)=site/\1/"); do
+                    # Extract display name (remove site_ prefix if present)
+                    display_name=$(echo "$section" | sed 's/^site_//')
+                    domain=$(uci -q get "metablogizer.$section.domain")
+                    enabled=$(uci -q get "metablogizer.$section.enabled")
                     [ -z "$enabled" ] && enabled="0"
                     json_add_object ""
-                    json_add_string "name" "$name"
+                    json_add_string "name" "$display_name"
                     json_add_string "domain" "$domain"
                     json_add_string "type" "static"
                     json_add_boolean "enabled" "$enabled"
