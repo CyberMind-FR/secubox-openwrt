@@ -104,6 +104,10 @@ get_emoji() {
         "Outils") echo "🛠️" ;;
         "Streamlit") echo "📊" ;;
         "PeerTube") echo "🎥" ;;
+        "Communication") echo "💬" ;;
+        "Social") echo "👥" ;;
+        "Security") echo "🛡️" ;;
+        "service") echo "🔌" ;;
         *) echo "📄" ;;
     esac
 }
@@ -169,6 +173,8 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .site-card.streamlit:hover{border-color:var(--accent3);box-shadow:0 10px 40px rgba(16,185,129,0.15)}
 .site-card.video{border-color:var(--accent4)}
 .site-card.video:hover{border-color:var(--accent4);box-shadow:0 10px 40px rgba(249,115,22,0.15)}
+.site-card.service{border-color:#8b5cf6}
+.site-card.service:hover{border-color:#8b5cf6;box-shadow:0 10px 40px rgba(139,92,246,0.15)}
 .view-list .site-card{flex-direction:row}
 .card-preview{width:100%;height:120px;background:var(--surface2);position:relative;overflow:hidden}
 .view-list .card-preview{width:160px;flex-shrink:0}
@@ -187,6 +193,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .card-cat.meta{background:linear-gradient(135deg,var(--accent),var(--accent2))}
 .card-cat.streamlit{background:linear-gradient(135deg,var(--accent3),#059669)}
 .card-cat.video{background:linear-gradient(135deg,var(--accent4),#ea580c)}
+.card-cat.service{background:linear-gradient(135deg,#8b5cf6,#6d28d9)}
 .card-desc{font-size:0.75rem;color:var(--muted);margin:4px 0;line-height:1.3;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .card-caps{display:flex;flex-wrap:wrap;gap:3px;margin-top:6px}
 .cap-badge{font-size:0.6rem;padding:2px 6px;background:rgba(124,58,237,0.2);color:var(--accent2);border-radius:10px;border:1px solid rgba(124,58,237,0.3)}
@@ -425,6 +432,47 @@ uci show streamlit-forge 2>/dev/null | grep "=app$" | sed "s/streamlit-forge\.\(
         "${nfo_desc:--}" "${nfo_keywords:--}" "${nfo_caps:--}" "${nfo_version:--}" "${nfo_audience:--}" >> "$SITES_FILE"
 done
 
+# HAProxy vhosts - scan ALL exposed services
+uci show haproxy 2>/dev/null | grep "=vhost$" | sed "s/haproxy\.\(.*\)=vhost/\1/" | while read vhost; do
+    domain=$(uci -q get "haproxy.$vhost.domain")
+    enabled=$(uci -q get "haproxy.$vhost.enabled")
+    [ "$enabled" = "0" ] && continue
+    [ -z "$domain" ] && continue
+
+    # Skip if already added from metablogizer/streamlit configs
+    grep -q "^$domain	" "$SITES_FILE" 2>/dev/null && continue
+
+    # Get backend to determine service type
+    backend=$(uci -q get "haproxy.$vhost.backend")
+
+    # Determine type and name from domain/backend
+    name=$(echo "$domain" | cut -d'.' -f1)
+
+    # Categorize based on backend or domain patterns
+    case "$backend" in
+        *streamlit*) type="streamlit"; cat=$(categorize_site "$name") ;;
+        *metablog*|*uhttpd*) type="meta"; cat=$(categorize_site "$name") ;;
+        *jellyfin*) type="service"; cat="Média" ;;
+        *peertube*|*tube*) type="service"; cat="Média" ;;
+        *nextcloud*|*cloud*) type="service"; cat="Cloud" ;;
+        *gitea*|*git*) type="service"; cat="Développement" ;;
+        *lyrion*|*music*) type="service"; cat="Média" ;;
+        *glances*) type="service"; cat="Administration" ;;
+        *jitsi*|*meet*) type="service"; cat="Communication" ;;
+        *photoprism*|*photo*) type="service"; cat="Cloud" ;;
+        *social*|*gotosocial*) type="service"; cat="Social" ;;
+        *admin*|*luci*) type="service"; cat="Administration" ;;
+        *) type="service"; cat=$(categorize_site "$name") ;;
+    esac
+
+    emoji=$(get_emoji "$cat")
+    echo "$cat" >> "$CAT_FILE"
+
+    # Format: domain name cat emoji type thumb protected desc keywords caps version audience
+    printf '%s\t%s\t%s\t%s\t%s\t-\t-\t-\t-\t-\t-\t-\n' \
+        "$domain" "$name" "$cat" "$emoji" "$type" >> "$SITES_FILE"
+done
+
 # PeerTube videos
 VIDEOS_JSON=$(curl -s "${PEERTUBE_API}/videos?count=50" 2>/dev/null)
 TOTAL_VIDEOS=0
@@ -485,6 +533,7 @@ TOTAL=$(wc -l < "$SITES_FILE" | tr -d ' ')
 TOTAL_META=$(grep "	meta	" "$SITES_FILE" | wc -l | tr -d ' ')
 TOTAL_STREAMLIT=$(grep "	streamlit	" "$SITES_FILE" | wc -l | tr -d ' ')
 TOTAL_VIDEOS=$(grep "	video	" "$SITES_FILE" | wc -l | tr -d ' ')
+TOTAL_SERVICES=$(grep "	service	" "$SITES_FILE" | wc -l | tr -d ' ')
 CAT_COUNTS=$(grep -v "^$" "$CAT_FILE" 2>/dev/null | sort | uniq -c | sort -rn)
 
 # Capability and audience counts
@@ -500,6 +549,7 @@ cat >> "$TEMP" << EOF
     <div class="stat"><span class="stat-value">$TOTAL</span><span class="stat-label">Total</span></div>
     <div class="stat"><span class="stat-value">$TOTAL_META</span><span class="stat-label">Sites</span></div>
     <div class="stat"><span class="stat-value">$TOTAL_STREAMLIT</span><span class="stat-label">Streamlit</span></div>
+    <div class="stat"><span class="stat-value">$TOTAL_SERVICES</span><span class="stat-label">Services</span></div>
     <div class="stat"><span class="stat-value">$TOTAL_VIDEOS</span><span class="stat-label">Vidéos</span></div>
     <div class="stat"><span class="stat-value">$TOTAL_WITH_NFO</span><span class="stat-label">NFO</span></div>
 EOF
@@ -513,6 +563,7 @@ echo '<div class="tag-cloud" id="tagCloud">' >> "$TEMP"
 echo '<span class="tag active" data-cat="all">Tous</span>' >> "$TEMP"
 echo '<span class="tag" data-cat="meta">📝 Sites</span>' >> "$TEMP"
 echo '<span class="tag" data-cat="streamlit">📊 Streamlit</span>' >> "$TEMP"
+echo '<span class="tag" data-cat="service">🔌 Services</span>' >> "$TEMP"
 echo '<span class="tag" data-cat="video">🎥 Vidéos</span>' >> "$TEMP"
 echo "$CAT_COUNTS" | while read count cat; do
     [ -n "$cat" ] && printf '<span class="tag" data-cat="%s">%s<span class="count">%s</span></span>\n' "$cat" "$cat" "$count" >> "$TEMP"
@@ -545,6 +596,7 @@ echo '<div class="category-tabs">' >> "$TEMP"
 printf '<div class="cat-tab active" data-cat="all">📁 Tous<span class="count">%s</span></div>\n' "$TOTAL" >> "$TEMP"
 printf '<div class="cat-tab" data-cat="meta">📝 Sites<span class="count">%s</span></div>\n' "$TOTAL_META" >> "$TEMP"
 printf '<div class="cat-tab" data-cat="streamlit">📊 Streamlit<span class="count">%s</span></div>\n' "$TOTAL_STREAMLIT" >> "$TEMP"
+printf '<div class="cat-tab" data-cat="service">🔌 Services<span class="count">%s</span></div>\n' "$TOTAL_SERVICES" >> "$TEMP"
 printf '<div class="cat-tab" data-cat="video">🎥 Vidéos<span class="count">%s</span></div>\n' "$TOTAL_VIDEOS" >> "$TEMP"
 echo "$CAT_COUNTS" | head -6 | while read count cat; do
     emoji=$(get_emoji "$cat")
@@ -589,6 +641,10 @@ while IFS='	' read -r url name cat emoji type thumb protected nfo_desc nfo_keywo
         card_class="site-card video"
         cat_class="card-cat video"
         preview_html="<img src=\"$thumb\" alt=\"$name\" loading=\"lazy\"><div class=\"play-icon\"></div><span class=\"duration\">$duration</span>"
+    elif [ "$type" = "service" ]; then
+        card_class="site-card service"
+        cat_class="card-cat service"
+        preview_html="<iframe src=\"https://$url/\" loading=\"lazy\" sandbox></iframe>"
     else
         card_class="site-card"
         cat_class="card-cat meta"
