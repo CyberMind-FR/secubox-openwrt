@@ -1,0 +1,138 @@
+#!/bin/sh
+# RPCD handler for Droplet Publisher
+
+. /usr/share/libubox/jshn.sh
+
+UPLOAD_DIR="/tmp/droplet-upload"
+DEFAULT_DOMAIN="gk2.secubox.in"
+
+case "$1" in
+    list)
+        echo '{"publish":{},"upload":{"file":"string","name":"string","domain":"string"},"list":{},"remove":{"name":"string"},"rename":{"old":"string","new":"string"},"status":{}}'
+        ;;
+    call)
+        case "$2" in
+            status)
+                json_init
+                json_add_string "upload_dir" "$UPLOAD_DIR"
+                json_add_string "default_domain" "$DEFAULT_DOMAIN"
+                json_add_int "sites_count" "$(uci show metablogizer 2>/dev/null | grep -c '=site$')"
+                json_add_int "apps_count" "$(uci show streamlit 2>/dev/null | grep -c '=instance$')"
+                json_dump
+                ;;
+
+            list)
+                json_init
+                json_add_array "droplets"
+
+                # MetaBlog sites - use for loop to avoid subshell
+                for name in $(uci show metablogizer 2>/dev/null | grep "=site$" | sed "s/metablogizer\.\(.*\)=site/\1/"); do
+                    domain=$(uci -q get "metablogizer.$name.domain")
+                    enabled=$(uci -q get "metablogizer.$name.enabled")
+                    [ -z "$enabled" ] && enabled="0"
+                    json_add_object ""
+                    json_add_string "name" "$name"
+                    json_add_string "domain" "$domain"
+                    json_add_string "type" "static"
+                    json_add_boolean "enabled" "$enabled"
+                    json_close_object
+                done
+
+                # Streamlit apps
+                for name in $(uci show streamlit 2>/dev/null | grep "=instance$" | sed "s/streamlit\.\(.*\)=instance/\1/"); do
+                    domain=$(uci -q get "streamlit.$name.domain")
+                    enabled=$(uci -q get "streamlit.$name.enabled")
+                    [ -z "$enabled" ] && enabled="0"
+                    json_add_object ""
+                    json_add_string "name" "$name"
+                    json_add_string "domain" "$domain"
+                    json_add_string "type" "streamlit"
+                    json_add_boolean "enabled" "$enabled"
+                    json_close_object
+                done
+
+                json_close_array
+                json_dump
+                ;;
+
+            upload)
+                # Read params
+                read -r input
+                json_load "$input"
+                json_get_var file file
+                json_get_var name name
+                json_get_var domain domain
+
+                [ -z "$name" ] && { echo '{"error":"Name required"}'; exit 0; }
+                [ -z "$file" ] && { echo '{"error":"File required"}'; exit 0; }
+                [ -z "$domain" ] && domain="$DEFAULT_DOMAIN"
+
+                # File should be in upload dir (set by cgi-io)
+                local upload_file="$UPLOAD_DIR/$file"
+                if [ ! -f "$upload_file" ]; then
+                    # Try direct path
+                    upload_file="$file"
+                fi
+
+                [ ! -f "$upload_file" ] && { echo '{"error":"File not found"}'; exit 0; }
+
+                # Publish
+                result=$(dropletctl publish "$upload_file" "$name" "$domain" 2>&1)
+                exit_code=$?
+
+                # Extract vhost from result
+                vhost=$(echo "$result" | grep -oE '[a-z0-9_-]+\.[a-z0-9.-]+' | tail -1)
+
+                json_init
+                if [ $exit_code -eq 0 ]; then
+                    json_add_boolean "success" 1
+                    json_add_string "vhost" "$vhost"
+                    json_add_string "url" "https://$vhost/"
+                    json_add_string "message" "Published successfully"
+                else
+                    json_add_boolean "success" 0
+                    json_add_string "error" "$result"
+                fi
+                json_dump
+
+                # Cleanup
+                rm -f "$upload_file"
+                ;;
+
+            remove)
+                read -r input
+                json_load "$input"
+                json_get_var name name
+
+                [ -z "$name" ] && { echo '{"error":"Name required"}'; exit 0; }
+
+                result=$(dropletctl remove "$name" 2>&1)
+
+                json_init
+                json_add_boolean "success" 1
+                json_add_string "message" "Removed: $name"
+                json_dump
+                ;;
+
+            rename)
+                read -r input
+                json_load "$input"
+                json_get_var old old
+                json_get_var new new
+
+                [ -z "$old" ] || [ -z "$new" ] && { echo '{"error":"Old and new names required"}'; exit 0; }
+
+                result=$(dropletctl rename "$old" "$new" 2>&1)
+
+                json_init
+                json_add_boolean "success" 1
+                json_add_string "message" "Renamed: $old -> $new"
+                json_dump
+                ;;
+
+            *)
+                echo '{"error":"Unknown method"}'
+                ;;
+        esac
+        ;;
+esac

@@ -1,0 +1,14 @@
+{
+    "admin/services/droplet": {
+        "title": "Droplet",
+        "order": 45,
+        "action": {
+            "type": "view",
+            "path": "droplet/overview"
+        },
+        "depends": {
+            "acl": ["luci-app-droplet"],
+            "uci": {}
+        }
+    }
+}
