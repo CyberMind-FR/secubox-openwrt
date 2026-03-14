@@ -5109,3 +5109,18 @@ git checkout HEAD -- index.html
       - `/usr/sbin/dropletctl` (new)
       - `/usr/libexec/rpcd/luci.droplet` (new)
       - `/www/luci-static/resources/view/droplet/overview.js` (new)
+
+108. **Newsbin - Usenet Search & Download (2026-03-14)**
+    - SABnzbd LXC container using Debian rootfs (no Docker/Podman)
+    - Downloads Debian LXC rootfs from images.linuxcontainers.org
+    - Installs sabnzbdplus, unrar, par2, p7zip inside container
+    - Container IP: 192.168.255.40:8085
+    - NZBHydra2 package prepared (192.168.255.41:5076)
+    - LuCI dashboard at Services > Newsbin
+    - NNTP credentials: EWEKA account configured in UCI
+    - RPCD backend with status/queue/history/search methods
+    - Fixed BusyBox sh compatibility (local vars, json_add_boolean)
+    - **Files**:
+      - `secubox-app-sabnzbd/`: Makefile, UCI config, init.d, sabnzbdctl
+      - `secubox-app-nzbhydra/`: Makefile, UCI config, init.d, nzbhydractl
+      - `luci-app-newsbin/`: overview.js, RPCD handler, ACL, menu

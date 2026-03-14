@@ -72,39 +72,48 @@ exec > /config/startup.log 2>&1
 echo "=== Starting NZBHydra2 $(date) ==="
 
 # Install NZBHydra2 if not present
-if [ ! -f "/opt/nzbhydra2/nzbhydra2" ]; then
+if [ ! -f "/opt/nzbhydra2/lib/core.jar" ] && ! ls /opt/nzbhydra2/lib/core-*-exec.jar >/dev/null 2>&1; then
     echo "Installing NZBHydra2..."
 
     apt-get update
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         openjdk-17-jre-headless \
+        python3 \
         curl \
         ca-certificates \
-        unzip
+        unzip || { echo "apt install failed"; exit 1; }
 
     # Download NZBHydra2
     mkdir -p /opt/nzbhydra2
     cd /opt/nzbhydra2
 
     echo "Downloading NZBHydra2..."
-    local latest=$(curl -sL "https://api.github.com/repos/theotherp/nzbhydra2/releases/latest" | grep -oP '"tag_name": "\K[^"]+' | head -1)
-    [ -z "$latest" ] && latest="v6.3.2"
+    latest=$(curl -sL "https://api.github.com/repos/theotherp/nzbhydra2/releases/latest" | grep -oP "\"tag_name\": \"v\K[^\"]+")
+    [ -z "$latest" ] && latest="8.5.2"
 
-    curl -L -o nzbhydra2.zip "https://github.com/theotherp/nzbhydra2/releases/download/${latest}/nzbhydra2-${latest#v}-amd64-linux.zip" || \
-    curl -L -o nzbhydra2.zip "https://github.com/theotherp/nzbhydra2/releases/download/${latest}/nzbhydra2-${latest#v}-linux.zip"
+    echo "Version: $latest"
+    curl -L -o nzbhydra2.zip "https://github.com/theotherp/nzbhydra2/releases/download/v${latest}/nzbhydra2-${latest}-generic.zip"
 
-    unzip -o nzbhydra2.zip
+    unzip -o nzbhydra2.zip || { echo "unzip failed"; exit 1; }
     rm -f nzbhydra2.zip
-    chmod +x nzbhydra2 core
+    chmod +x nzbhydra2wrapperPy3.py 2>/dev/null || true
 
     apt-get clean
     rm -rf /var/lib/apt/lists/*
+else
+    echo "NZBHydra2 already installed"
+    # Ensure python3 is installed
+    if ! command -v python3 >/dev/null 2>&1; then
+        apt-get update
+        DEBIAN_FRONTEND=noninteractive apt-get install -y python3
+        apt-get clean
+    fi
 fi
 
 echo "=== Starting NZBHydra2 server ==="
 mkdir -p /config
 cd /opt/nzbhydra2
-exec ./nzbhydra2 --datafolder /config --host 0.0.0.0 --port 5076
+exec python3 nzbhydra2wrapperPy3.py --nobrowser --datafolder /config --host 0.0.0.0 --port 5076
 STARTEOF
     chmod +x "$rootfs/start-nzbhydra.sh"
 
