@@ -8,12 +8,18 @@ SITES_ROOT="/srv/metablogizer/sites"
 NGINX_LXC="metablogizer-nginx"
 LXC_PATH="/srv/lxc"
 PORT_BASE=8900
+NFO_TEMPLATE="/usr/share/metablogizer/nfo-template.nfo"
 
 . /lib/functions.sh
+
+# Load NFO parser library if available
+NFO_PARSER="/usr/share/streamlit-forge/lib/nfo-parser.sh"
+[ -f "$NFO_PARSER" ] && . "$NFO_PARSER"
 
 log_info() { echo "[INFO] $*"; logger -t metablogizer "$*"; }
 log_warn() { echo "[WARN] $*" >&2; }
 log_error() { echo "[ERROR] $*" >&2; }
+log_ok() { echo "[OK] $*"; }
 
 uci_get() { uci -q get ${CONFIG}.$1; }
 uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
@@ -64,9 +70,19 @@ Runtime Selection:
   uhttpd  - Use uhttpd instances (lightweight)
   nginx   - Use nginx LXC container (more features)
 
+NFO Module Manifest:
+  nfo init <name>       Generate README.nfo manifest
+  nfo info <name>       Show NFO summary
+  nfo edit <name>       Edit manifest in editor
+  nfo validate <name>   Validate NFO structure
+  nfo sync <name>       Sync NFO fields from UCI config
+  nfo json <name>       Export NFO as JSON
+
 Examples:
   metablogizerctl create myblog blog.example.com
   metablogizerctl emancipate myblog   # Full exposure in one command
+  metablogizerctl nfo init myblog     # Generate NFO manifest
+  metablogizerctl nfo info myblog     # View manifest summary
 EOF
 }
 
@@ -375,6 +391,12 @@ EOF
 		cmd_gitea_push "$name"
 	fi
 
+	# Auto-generate NFO manifest if template exists
+	if [ -f "$NFO_TEMPLATE" ]; then
+		log_info "Generating NFO manifest..."
+		_nfo_init "$name" 2>/dev/null || true
+	fi
+
 	echo ""
 	echo "Next: Run 'metablogizerctl publish $name' to create HAProxy vhost"
 }
@@ -433,6 +455,17 @@ cmd_publish() {
 	local port=$(uci_get site_${name}.port)
 
 	[ -z "$domain" ] && { log_error "Site domain not configured"; return 1; }
+
+	# Validate NFO manifest if exists
+	local site_dir="$SITES_ROOT/$name"
+	local nfo_file="$site_dir/README.nfo"
+	if [ -f "$nfo_file" ]; then
+		log_info "Validating NFO manifest..."
+		if ! _nfo_validate "$name" >/dev/null 2>&1; then
+			log_warn "NFO manifest has validation errors"
+			log_warn "Fix with: metablogizerctl nfo edit $name"
+		fi
+	fi
 
 	log_info "Publishing $name to $domain"
 
@@ -1156,6 +1189,380 @@ cmd_emancipate() {
 }
 
 # ===========================================
+# NFO Module Manifest
+# ===========================================
+
+_nfo_init() {
+	local name="$1"
+	local site_dir="$SITES_ROOT/$name"
+	local nfo_file="$site_dir/README.nfo"
+
+	if [ -f "$nfo_file" ]; then
+		log_warn "NFO already exists: $nfo_file"
+		echo "Use 'metablogizerctl nfo edit $name' to modify"
+		return 1
+	fi
+
+	if [ ! -f "$NFO_TEMPLATE" ]; then
+		log_error "NFO template not found: $NFO_TEMPLATE"
+		return 1
+	fi
+
+	# Get site info from UCI
+	local section=$(get_section "$name")
+	local domain=$(uci_get ${section}.domain)
+	local short_desc="MetaBlog site: $name"
+
+	# Generate NFO from template
+	local date_now=$(date +%Y-%m-%d)
+	sed -e "s/{{APP_ID}}/$name/g" \
+	    -e "s/{{APP_NAME}}/$name/g" \
+	    -e "s/{{VERSION}}/1.0.0/g" \
+	    -e "s/{{DATE}}/$date_now/g" \
+	    -e "s/{{SHORT_DESC}}/$short_desc/g" \
+	    "$NFO_TEMPLATE" > "$nfo_file"
+
+	log_info "NFO manifest created: $nfo_file"
+	echo ""
+	echo "Edit with: metablogizerctl nfo edit $name"
+}
+
+_nfo_info() {
+	local name="$1"
+	local site_dir="$SITES_ROOT/$name"
+	local nfo_file="$site_dir/README.nfo"
+
+	if [ ! -f "$nfo_file" ]; then
+		log_error "No NFO manifest found for $name"
+		log_info "Create one with: metablogizerctl nfo init $name"
+		return 1
+	fi
+
+	# Check if nfo_parser is available
+	if ! type nfo_parse >/dev/null 2>&1; then
+		log_warn "NFO parser not available, showing raw file"
+		cat "$nfo_file"
+		return 0
+	fi
+
+	echo ""
+	echo "╔══════════════════════════════════════════════════════════════╗"
+	echo "║  NFO Manifest: $name"
+	echo "╚══════════════════════════════════════════════════════════════╝"
+	echo ""
+
+	# Parse and display key sections
+	echo "IDENTITY"
+	echo "  ID:       $(nfo_get "$nfo_file" identity id)"
+	echo "  Name:     $(nfo_get "$nfo_file" identity name)"
+	echo "  Version:  $(nfo_get "$nfo_file" identity version)"
+	echo "  Author:   $(nfo_get "$nfo_file" identity author)"
+	echo ""
+
+	echo "DESCRIPTION"
+	echo "  $(nfo_get "$nfo_file" description short)"
+	echo ""
+
+	echo "CLASSIFICATION"
+	echo "  Category: $(nfo_get "$nfo_file" tags category)"
+	echo "  Keywords: $(nfo_get "$nfo_file" tags keywords)"
+	echo "  Audience: $(nfo_get "$nfo_file" tags audience)"
+	echo ""
+
+	echo "RUNTIME"
+	echo "  Type:      $(nfo_get "$nfo_file" runtime type)"
+	echo "  Framework: $(nfo_get "$nfo_file" runtime framework)"
+	echo "  Generator: $(nfo_get "$nfo_file" runtime generator)"
+	echo ""
+
+	echo "EXPOSURE"
+	echo "  Auto-expose: $(nfo_get "$nfo_file" exposure auto_expose)"
+	echo "  SSL:         $(nfo_get "$nfo_file" exposure ssl)"
+	echo "  WAF:         $(nfo_get "$nfo_file" exposure waf_enabled)"
+	echo ""
+
+	# Show AI context if available
+	if nfo_has_ai_context "$nfo_file" 2>/dev/null; then
+		echo "DYNAMICS (AI)"
+		echo "  Capabilities: $(nfo_get "$nfo_file" dynamics capabilities)"
+		echo ""
+	fi
+
+	echo "File: $nfo_file"
+}
+
+_nfo_edit() {
+	local name="$1"
+	local site_dir="$SITES_ROOT/$name"
+	local nfo_file="$site_dir/README.nfo"
+
+	if [ ! -f "$nfo_file" ]; then
+		log_warn "No NFO manifest found, creating one first..."
+		_nfo_init "$name" || return 1
+	fi
+
+	# Create backup before editing
+	if type nfo_backup >/dev/null 2>&1; then
+		nfo_backup "$nfo_file"
+	else
+		cp "$nfo_file" "${nfo_file}.bak"
+	fi
+
+	# Use available editor
+	local editor="${EDITOR:-vi}"
+	command -v nano >/dev/null 2>&1 && editor="nano"
+	command -v vim >/dev/null 2>&1 && editor="vim"
+
+	"$editor" "$nfo_file"
+
+	# Validate after edit
+	if type nfo_validate >/dev/null 2>&1; then
+		if nfo_validate "$nfo_file"; then
+			log_info "NFO manifest is valid"
+		else
+			log_warn "NFO manifest has validation warnings"
+			echo "Restore backup with: cp ${nfo_file}.bak $nfo_file"
+		fi
+	fi
+}
+
+_nfo_validate() {
+	local name="$1"
+	local site_dir="$SITES_ROOT/$name"
+	local nfo_file="$site_dir/README.nfo"
+
+	if [ ! -f "$nfo_file" ]; then
+		log_error "No NFO manifest found for $name"
+		return 1
+	fi
+
+	echo "Validating NFO manifest: $nfo_file"
+	echo ""
+
+	local errors=0
+	local warnings=0
+
+	# Use nfo_validate if available
+	if type nfo_validate >/dev/null 2>&1; then
+		nfo_validate "$nfo_file"
+		return $?
+	fi
+
+	# Fallback: basic validation
+	# Check required sections
+	for section in identity description tags runtime; do
+		if ! grep -q "^\[$section\]" "$nfo_file"; then
+			echo "[ERROR] Missing required section: [$section]"
+			errors=$((errors + 1))
+		fi
+	done
+
+	# Check required identity fields
+	local id=$(grep "^id=" "$nfo_file" | head -1 | cut -d= -f2)
+	local nfo_name=$(grep "^name=" "$nfo_file" | head -1 | cut -d= -f2)
+	local version=$(grep "^version=" "$nfo_file" | head -1 | cut -d= -f2)
+
+	[ -z "$id" ] && { echo "[ERROR] Missing identity.id"; errors=$((errors + 1)); }
+	[ -z "$nfo_name" ] && { echo "[ERROR] Missing identity.name"; errors=$((errors + 1)); }
+	[ -z "$version" ] && { echo "[ERROR] Missing identity.version"; errors=$((errors + 1)); }
+
+	# Check recommended fields
+	local category=$(grep "^category=" "$nfo_file" | head -1 | cut -d= -f2)
+	local short=$(grep "^short=" "$nfo_file" | head -1 | cut -d= -f2)
+
+	[ -z "$category" ] && { echo "[WARN] Missing tags.category"; warnings=$((warnings + 1)); }
+	[ -z "$short" ] && { echo "[WARN] Missing description.short"; warnings=$((warnings + 1)); }
+
+	echo ""
+	if [ $errors -eq 0 ] && [ $warnings -eq 0 ]; then
+		echo "✓ NFO manifest is valid"
+		return 0
+	elif [ $errors -eq 0 ]; then
+		echo "⚠ NFO valid with $warnings warning(s)"
+		return 0
+	else
+		echo "✗ NFO invalid: $errors error(s), $warnings warning(s)"
+		return 1
+	fi
+}
+
+_nfo_sync() {
+	local name="$1"
+	local site_dir="$SITES_ROOT/$name"
+	local nfo_file="$site_dir/README.nfo"
+
+	if [ ! -f "$nfo_file" ]; then
+		log_error "No NFO manifest found for $name"
+		log_info "Create one first: metablogizerctl nfo init $name"
+		return 1
+	fi
+
+	# Check if nfo_sync_from_uci is available
+	if ! type nfo_sync_from_uci >/dev/null 2>&1; then
+		log_error "NFO parser with sync support not available"
+		return 1
+	fi
+
+	log_info "Syncing NFO from UCI config..."
+
+	# Get site UCI section
+	local section=$(get_section "$name")
+
+	# Build UCI prefix for sync
+	local uci_prefix="${CONFIG}.${section}"
+
+	# Sync using parser function
+	nfo_sync_from_uci "$nfo_file" "$uci_prefix"
+
+	log_info "NFO synced from UCI"
+	echo "View with: metablogizerctl nfo info $name"
+}
+
+_nfo_json() {
+	local name="$1"
+	local site_dir="$SITES_ROOT/$name"
+	local nfo_file="$site_dir/README.nfo"
+
+	if [ ! -f "$nfo_file" ]; then
+		log_error "No NFO manifest found for $name"
+		return 1
+	fi
+
+	# Use nfo_to_json if available
+	if type nfo_to_json >/dev/null 2>&1; then
+		nfo_to_json "$nfo_file"
+		return $?
+	fi
+
+	# Fallback: basic JSON output
+	log_warn "NFO parser not available, using basic JSON export"
+
+	local id=$(grep "^id=" "$nfo_file" | head -1 | cut -d= -f2)
+	local nfo_name=$(grep "^name=" "$nfo_file" | head -1 | cut -d= -f2)
+	local version=$(grep "^version=" "$nfo_file" | head -1 | cut -d= -f2)
+	local category=$(grep "^category=" "$nfo_file" | head -1 | cut -d= -f2)
+	local short=$(grep "^short=" "$nfo_file" | head -1 | cut -d= -f2)
+
+	cat <<EOF
+{
+  "identity": {
+    "id": "$id",
+    "name": "$nfo_name",
+    "version": "$version"
+  },
+  "tags": {
+    "category": "$category"
+  },
+  "description": {
+    "short": "$short"
+  }
+}
+EOF
+}
+
+cmd_nfo() {
+	local action="$1"
+	local name="$2"
+
+	case "$action" in
+		init)
+			[ -z "$name" ] && { log_error "Site name required"; return 1; }
+			site_exists "$name" || { log_error "Site '$name' not found"; return 1; }
+			_nfo_init "$name"
+			;;
+		init-all)
+			log_info "Generating NFO manifests for all MetaBlog sites..."
+			echo ""
+
+			# Use temp files for counters (config_foreach runs in subshell)
+			local tmp_success="/tmp/nfo_success_$$"
+			local tmp_skipped="/tmp/nfo_skipped_$$"
+			local tmp_failed="/tmp/nfo_failed_$$"
+			echo 0 > "$tmp_success"
+			echo 0 > "$tmp_skipped"
+			echo 0 > "$tmp_failed"
+
+			config_load "$CONFIG"
+
+			_generate_nfo_site() {
+				local section="$1"
+				local site_name
+				config_get site_name "$section" name
+
+				[ -z "$site_name" ] && return
+
+				local site_dir="$SITES_ROOT/$site_name"
+				[ ! -d "$site_dir" ] && {
+					log_warn "[$site_name] Site directory not found, skipping"
+					return
+				}
+
+				local nfo_file="$site_dir/README.nfo"
+				if [ -f "$nfo_file" ]; then
+					log_info "[$site_name] NFO already exists, skipping"
+					echo $(($(cat "$tmp_skipped") + 1)) > "$tmp_skipped"
+					return
+				fi
+
+				log_info "[$site_name] Generating README.nfo..."
+
+				if _nfo_init "$site_name"; then
+					log_ok "  Created: $nfo_file"
+					echo $(($(cat "$tmp_success") + 1)) > "$tmp_success"
+				else
+					log_error "  Failed to create NFO"
+					echo $(($(cat "$tmp_failed") + 1)) > "$tmp_failed"
+				fi
+			}
+
+			config_foreach _generate_nfo_site site
+
+			local success=$(cat "$tmp_success")
+			local skipped=$(cat "$tmp_skipped")
+			local failed=$(cat "$tmp_failed")
+			rm -f "$tmp_success" "$tmp_skipped" "$tmp_failed"
+
+			echo ""
+			echo "========================================"
+			echo "NFO generation complete"
+			echo "  Created: $success"
+			echo "  Skipped: $skipped (already exist)"
+			echo "  Failed:  $failed"
+			echo "========================================"
+			;;
+		info)
+			[ -z "$name" ] && { log_error "Site name required"; return 1; }
+			site_exists "$name" || { log_error "Site '$name' not found"; return 1; }
+			_nfo_info "$name"
+			;;
+		edit)
+			[ -z "$name" ] && { log_error "Site name required"; return 1; }
+			site_exists "$name" || { log_error "Site '$name' not found"; return 1; }
+			_nfo_edit "$name"
+			;;
+		validate)
+			[ -z "$name" ] && { log_error "Site name required"; return 1; }
+			site_exists "$name" || { log_error "Site '$name' not found"; return 1; }
+			_nfo_validate "$name"
+			;;
+		sync)
+			[ -z "$name" ] && { log_error "Site name required"; return 1; }
+			site_exists "$name" || { log_error "Site '$name' not found"; return 1; }
+			_nfo_sync "$name"
+			;;
+		json)
+			[ -z "$name" ] && { log_error "Site name required"; return 1; }
+			site_exists "$name" || { log_error "Site '$name' not found"; return 1; }
+			_nfo_json "$name"
+			;;
+		*)
+			echo "Usage: metablogizerctl nfo <init|init-all|info|edit|validate|sync|json> [name]"
+			return 1
+			;;
+	esac
+}
+
+# ===========================================
 # Main
 # ===========================================
 
@@ -1178,6 +1585,10 @@ case "${1:-}" in
 			init-all) shift; cmd_gitea_init_all "$@" ;;
 			*)        echo "Usage: metablogizerctl gitea {push|init-all} [name]"; exit 1 ;;
 		esac
+		;;
+	nfo)
+		shift
+		cmd_nfo "$@"
 		;;
 	help|--help|-h) usage ;;
 	*)              usage ;;

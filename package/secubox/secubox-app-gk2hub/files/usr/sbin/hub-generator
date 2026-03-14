@@ -1,11 +1,73 @@
 #!/bin/sh
-# SecuBox Hub Generator v5 - MetaBlogizer + Streamlit + PeerTube videos
+# SecuBox Hub Generator v7 - Full NFO Integration + Capability Filters
+# Enhanced with MetaBlog NFO, version display, capability filtering, audience tabs
 
 OUTPUT="/www/gk2-hub/index.html"
 TEMP="/tmp/hub_gen_$$.html"
 DATE=$(date "+%Y-%m-%d %H:%M")
 PEERTUBE_API="http://192.168.255.1:9001/api/v1"
 PEERTUBE_URL="https://tube.gk2.secubox.in"
+STREAMLIT_APPS_DIR="/srv/streamlit/apps"
+METABLOG_SITES_DIR="/srv/metablogizer/sites"
+
+# Load NFO parser if available
+NFO_PARSER="/usr/share/streamlit-forge/lib/nfo-parser.sh"
+[ -f "$NFO_PARSER" ] && . "$NFO_PARSER"
+
+# Get app info from NFO file
+# Usage: get_nfo_info <app_dir> <section> <field> <default>
+get_nfo_info() {
+    local app_dir="$1"
+    local section="$2"
+    local field="$3"
+    local default="$4"
+
+    local nfo_file="$app_dir/README.nfo"
+    [ ! -f "$nfo_file" ] && { echo "$default"; return; }
+
+    # Use nfo_get from parser if available
+    if type nfo_get >/dev/null 2>&1; then
+        local val=$(nfo_get "$nfo_file" "$section" "$field" 2>/dev/null)
+        [ -n "$val" ] && echo "$val" || echo "$default"
+        return
+    fi
+
+    # Fallback: section-aware grep parsing
+    awk -v section="$section" -v field="$field" '
+        /^\[/ { in_section = ($0 ~ "\\[" section "\\]") }
+        in_section && /^[a-zA-Z_]+=/ {
+            split($0, kv, "=")
+            gsub(/^[ \t]+|[ \t]+$/, "", kv[1])
+            if (kv[1] == field) {
+                gsub(/^[^=]+=/, "")
+                gsub(/^[ \t]+|[ \t]+$/, "")
+                print
+                exit
+            }
+        }
+    ' "$nfo_file" 2>/dev/null | head -1
+
+    # Return default if nothing found
+    [ -z "$(cat /dev/stdin)" ] && echo "$default"
+}
+
+# Get all NFO metadata for an app
+# Returns: category|description|keywords|capabilities|audience
+get_nfo_full() {
+    local app_dir="$1"
+    local nfo_file="$app_dir/README.nfo"
+
+    [ ! -f "$nfo_file" ] && return 1
+
+    local category=$(get_nfo_info "$app_dir" "tags" "category" "")
+    local desc=$(get_nfo_info "$app_dir" "description" "short" "")
+    local keywords=$(get_nfo_info "$app_dir" "tags" "keywords" "")
+    local capabilities=$(get_nfo_info "$app_dir" "dynamics" "capabilities" "")
+    local audience=$(get_nfo_info "$app_dir" "tags" "audience" "")
+    local icon=$(get_nfo_info "$app_dir" "media" "icon" "")
+
+    echo "${category}|${desc}|${keywords}|${capabilities}|${audience}|${icon}"
+}
 
 categorize_site() {
     local name=$(echo "$1" | tr '[:upper:]' '[:lower:]')
@@ -42,6 +104,10 @@ get_emoji() {
         "Outils") echo "🛠️" ;;
         "Streamlit") echo "📊" ;;
         "PeerTube") echo "🎥" ;;
+        "Communication") echo "💬" ;;
+        "Social") echo "👥" ;;
+        "Security") echo "🛡️" ;;
+        "service") echo "🔌" ;;
         *) echo "📄" ;;
     esac
 }
@@ -107,6 +173,8 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .site-card.streamlit:hover{border-color:var(--accent3);box-shadow:0 10px 40px rgba(16,185,129,0.15)}
 .site-card.video{border-color:var(--accent4)}
 .site-card.video:hover{border-color:var(--accent4);box-shadow:0 10px 40px rgba(249,115,22,0.15)}
+.site-card.service{border-color:#8b5cf6}
+.site-card.service:hover{border-color:#8b5cf6;box-shadow:0 10px 40px rgba(139,92,246,0.15)}
 .view-list .site-card{flex-direction:row}
 .card-preview{width:100%;height:120px;background:var(--surface2);position:relative;overflow:hidden}
 .view-list .card-preview{width:160px;flex-shrink:0}
@@ -125,6 +193,22 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .card-cat.meta{background:linear-gradient(135deg,var(--accent),var(--accent2))}
 .card-cat.streamlit{background:linear-gradient(135deg,var(--accent3),#059669)}
 .card-cat.video{background:linear-gradient(135deg,var(--accent4),#ea580c)}
+.card-cat.service{background:linear-gradient(135deg,#8b5cf6,#6d28d9)}
+.card-desc{font-size:0.75rem;color:var(--muted);margin:4px 0;line-height:1.3;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.card-caps{display:flex;flex-wrap:wrap;gap:3px;margin-top:6px}
+.cap-badge{font-size:0.6rem;padding:2px 6px;background:rgba(124,58,237,0.2);color:var(--accent2);border-radius:10px;border:1px solid rgba(124,58,237,0.3)}
+.card-keywords{font-size:0.65rem;color:var(--muted);margin-top:4px;font-style:italic}
+.card-header{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.card-version{font-size:0.65rem;padding:2px 6px;background:rgba(0,212,255,0.15);color:var(--accent);border-radius:4px;font-family:monospace;white-space:nowrap}
+.cap-cloud{display:flex;flex-wrap:wrap;gap:6px;padding:12px 20px;background:var(--surface);border-radius:8px;margin-bottom:12px;align-items:center}
+.cap-title,.audience-title{color:var(--muted);font-size:0.8rem;margin-right:8px}
+.cap-filter{padding:4px 10px;background:rgba(124,58,237,0.15);border:1px solid rgba(124,58,237,0.3);color:var(--accent2);border-radius:15px;font-size:0.75rem;cursor:pointer;transition:all 0.2s}
+.cap-filter:hover,.cap-filter.active{background:var(--accent2);color:#fff;border-color:var(--accent2)}
+.cap-filter .count{font-size:0.65rem;opacity:0.7;margin-left:3px}
+.audience-bar{display:flex;flex-wrap:wrap;gap:8px;padding:10px 20px;background:var(--surface);border-radius:8px;margin-bottom:12px;align-items:center}
+.audience-btn{padding:5px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:0.8rem;cursor:pointer;transition:all 0.2s}
+.audience-btn:hover,.audience-btn.active{background:var(--accent3);color:#fff;border-color:var(--accent3)}
+.audience-btn .count{font-size:0.7rem;opacity:0.7;margin-left:4px}
 .lock-badge{position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.7);padding:4px 8px;border-radius:4px;font-size:0.8rem}
 .site-card[data-protected]{display:none}
 .site-card[data-protected].unlocked{display:flex}
@@ -134,7 +218,20 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .login-banner a:hover{background:var(--accent);color:#000}
 .footer{margin-top:40px;padding:20px 0;border-top:1px solid var(--border);text-align:center;color:var(--muted);font-size:0.8rem}
 .footer a{color:var(--accent);text-decoration:none}
-@media(max-width:768px){.header{flex-direction:column;align-items:flex-start}.view-list .site-card{flex-direction:column}.view-list .card-preview{width:100%}}
+.preview-btn{position:absolute;top:8px;left:8px;width:32px;height:32px;background:rgba(0,0,0,0.8);border:1px solid var(--accent);border-radius:6px;color:var(--accent);cursor:pointer;font-size:1rem;opacity:0;transition:all 0.2s;display:flex;align-items:center;justify-content:center}
+.site-card:hover .preview-btn{opacity:1}
+.preview-btn:hover{background:var(--accent);color:#000}
+.preview-modal{position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:1000;display:none;align-items:center;justify-content:center;padding:20px}
+.preview-modal.active{display:flex}
+.preview-content{width:95%;max-width:1400px;height:90vh;background:var(--surface);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;border:1px solid var(--border)}
+.preview-close{position:absolute;top:15px;right:20px;width:36px;height:36px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);cursor:pointer;font-size:1.5rem;z-index:10}
+.preview-close:hover{background:var(--accent);color:#000;border-color:var(--accent)}
+#previewFrame{flex:1;border:none;width:100%;background:#fff}
+.preview-info{padding:12px 20px;background:var(--surface2);display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border)}
+#previewTitle{font-weight:600;font-size:1rem}
+#previewLink{color:var(--accent);text-decoration:none;padding:6px 12px;border:1px solid var(--accent);border-radius:6px;font-size:0.85rem}
+#previewLink:hover{background:var(--accent);color:#000}
+@media(max-width:768px){.header{flex-direction:column;align-items:flex-start}.view-list .site-card{flex-direction:column}.view-list .card-preview{width:100%}.preview-content{width:100%;height:100vh;border-radius:0}}
 </style>
 </head>
 <body>
@@ -174,7 +271,7 @@ VIDEOS_FILE="/tmp/hub_videos_$$.txt"
 > "$CAT_FILE"
 > "$VIDEOS_FILE"
 
-# MetaBlogizer sites
+# MetaBlogizer sites - now with full NFO support
 uci show metablogizer 2>/dev/null | grep "=site$" | sed "s/metablogizer\.\(.*\)=site/\1/" | while read site; do
     name=$(uci -q get "metablogizer.$site.name")
     domain=$(uci -q get "metablogizer.$site.domain")
@@ -182,13 +279,53 @@ uci show metablogizer 2>/dev/null | grep "=site$" | sed "s/metablogizer\.\(.*\)=
     auth_required=$(uci -q get "metablogizer.$site.auth_required")
     [ "$enabled" != "1" ] && continue
     [ -z "$domain" ] && continue
-    cat=$(categorize_site "$name")
+
+    # Get full NFO metadata for MetaBlog sites
+    site_dir="$METABLOG_SITES_DIR/$name"
+    nfo_data=$(get_nfo_full "$site_dir" 2>/dev/null)
+
+    if [ -n "$nfo_data" ]; then
+        nfo_cat=$(echo "$nfo_data" | cut -d'|' -f1)
+        nfo_desc=$(echo "$nfo_data" | cut -d'|' -f2)
+        nfo_keywords=$(echo "$nfo_data" | cut -d'|' -f3)
+        nfo_caps=$(echo "$nfo_data" | cut -d'|' -f4)
+        nfo_audience=$(echo "$nfo_data" | cut -d'|' -f5)
+        nfo_version=$(get_nfo_info "$site_dir" "identity" "version" "")
+    else
+        nfo_cat=""
+        nfo_desc=""
+        nfo_keywords=""
+        nfo_caps=""
+        nfo_audience=""
+        nfo_version=""
+    fi
+
+    # Use NFO category or fallback to name-based categorization
+    if [ -n "$nfo_cat" ]; then
+        cat="$nfo_cat"
+    else
+        cat=$(categorize_site "$name")
+    fi
     emoji=$(get_emoji "$cat")
     echo "$cat" >> "$CAT_FILE"
-    # 7th field: protected (use - placeholder for empty thumb to fix BusyBox read)
+
+    # Track audiences for filter tabs
+    [ -n "$nfo_audience" ] && echo "$nfo_audience" >> "/tmp/hub_audiences_$$.txt"
+
+    # Track capabilities for filter
+    if [ -n "$nfo_caps" ]; then
+        for cap in $(echo "$nfo_caps" | tr ',' ' '); do
+            [ -n "$cap" ] && echo "$cap" >> "/tmp/hub_caps_$$.txt"
+        done
+    fi
+
     protected="-"
     [ "$auth_required" = "1" ] && protected="protected"
-    printf '%s\t%s\t%s\t%s\tmeta\t-\t%s\n' "$domain" "$name" "$cat" "$emoji" "$protected" >> "$SITES_FILE"
+
+    # Format: domain name cat emoji type thumb protected desc keywords caps version audience
+    printf '%s\t%s\t%s\t%s\tmeta\t-\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$domain" "$name" "$cat" "$emoji" "$protected" \
+        "${nfo_desc:--}" "${nfo_keywords:--}" "${nfo_caps:--}" "${nfo_version:--}" "${nfo_audience:--}" >> "$SITES_FILE"
 done
 
 # Streamlit instances
@@ -198,10 +335,142 @@ uci show streamlit 2>/dev/null | grep "=instance$" | sed "s/streamlit\.\(.*\)=in
     enabled=$(uci -q get "streamlit.$app.enabled")
     [ "$enabled" != "1" ] && continue
     [ -z "$domain" ] && continue
-    cat=$(categorize_site "$name")
+
+    # Get full NFO metadata
+    app_dir="$STREAMLIT_APPS_DIR/$name"
+    nfo_data=$(get_nfo_full "$app_dir" 2>/dev/null)
+
+    if [ -n "$nfo_data" ]; then
+        nfo_cat=$(echo "$nfo_data" | cut -d'|' -f1)
+        nfo_desc=$(echo "$nfo_data" | cut -d'|' -f2)
+        nfo_keywords=$(echo "$nfo_data" | cut -d'|' -f3)
+        nfo_caps=$(echo "$nfo_data" | cut -d'|' -f4)
+        nfo_audience=$(echo "$nfo_data" | cut -d'|' -f5)
+        nfo_version=$(get_nfo_info "$app_dir" "identity" "version" "")
+    else
+        nfo_cat=""
+        nfo_desc=""
+        nfo_keywords=""
+        nfo_caps=""
+        nfo_audience=""
+        nfo_version=""
+    fi
+
+    if [ -n "$nfo_cat" ]; then
+        cat="$nfo_cat"
+    else
+        cat=$(categorize_site "$name")
+    fi
     emoji=$(get_emoji "$cat")
     echo "$cat" >> "$CAT_FILE"
-    printf '%s\t%s\t%s\t%s\tstreamlit\t-\t-\n' "$domain" "$name" "$cat" "$emoji" >> "$SITES_FILE"
+
+    # Track audiences for filter tabs
+    [ -n "$nfo_audience" ] && echo "$nfo_audience" >> "/tmp/hub_audiences_$$.txt"
+
+    # Track capabilities for filter
+    if [ -n "$nfo_caps" ]; then
+        for cap in $(echo "$nfo_caps" | tr ',' ' '); do
+            [ -n "$cap" ] && echo "$cap" >> "/tmp/hub_caps_$$.txt"
+        done
+    fi
+
+    # Format: domain name cat emoji type thumb protected desc keywords caps version audience
+    printf '%s\t%s\t%s\t%s\tstreamlit\t-\t-\t%s\t%s\t%s\t%s\t%s\n' \
+        "$domain" "$name" "$cat" "$emoji" \
+        "${nfo_desc:--}" "${nfo_keywords:--}" "${nfo_caps:--}" "${nfo_version:--}" "${nfo_audience:--}" >> "$SITES_FILE"
+done
+
+# Also check streamlit-forge config
+uci show streamlit-forge 2>/dev/null | grep "=app$" | sed "s/streamlit-forge\.\(.*\)=app/\1/" | while read app; do
+    name=$(uci -q get "streamlit-forge.$app.name")
+    domain=$(uci -q get "streamlit-forge.$app.domain")
+    enabled=$(uci -q get "streamlit-forge.$app.enabled")
+    [ "$enabled" != "1" ] && continue
+    [ -z "$domain" ] && continue
+
+    # Check if already added from streamlit config
+    grep -q "	$name	" "$SITES_FILE" 2>/dev/null && continue
+
+    # Get full NFO metadata
+    app_dir="$STREAMLIT_APPS_DIR/$name"
+    nfo_data=$(get_nfo_full "$app_dir" 2>/dev/null)
+
+    if [ -n "$nfo_data" ]; then
+        nfo_cat=$(echo "$nfo_data" | cut -d'|' -f1)
+        nfo_desc=$(echo "$nfo_data" | cut -d'|' -f2)
+        nfo_keywords=$(echo "$nfo_data" | cut -d'|' -f3)
+        nfo_caps=$(echo "$nfo_data" | cut -d'|' -f4)
+        nfo_audience=$(echo "$nfo_data" | cut -d'|' -f5)
+        nfo_version=$(get_nfo_info "$app_dir" "identity" "version" "")
+    else
+        nfo_cat=""
+        nfo_desc=""
+        nfo_keywords=""
+        nfo_caps=""
+        nfo_audience=""
+        nfo_version=""
+    fi
+
+    if [ -n "$nfo_cat" ]; then
+        cat="$nfo_cat"
+    else
+        cat=$(categorize_site "$name")
+    fi
+    emoji=$(get_emoji "$cat")
+    echo "$cat" >> "$CAT_FILE"
+
+    # Track audiences and capabilities
+    [ -n "$nfo_audience" ] && echo "$nfo_audience" >> "/tmp/hub_audiences_$$.txt"
+    if [ -n "$nfo_caps" ]; then
+        for cap in $(echo "$nfo_caps" | tr ',' ' '); do
+            [ -n "$cap" ] && echo "$cap" >> "/tmp/hub_caps_$$.txt"
+        done
+    fi
+
+    printf '%s\t%s\t%s\t%s\tstreamlit\t-\t-\t%s\t%s\t%s\t%s\t%s\n' \
+        "$domain" "$name" "$cat" "$emoji" \
+        "${nfo_desc:--}" "${nfo_keywords:--}" "${nfo_caps:--}" "${nfo_version:--}" "${nfo_audience:--}" >> "$SITES_FILE"
+done
+
+# HAProxy vhosts - scan ALL exposed services
+uci show haproxy 2>/dev/null | grep "=vhost$" | sed "s/haproxy\.\(.*\)=vhost/\1/" | while read vhost; do
+    domain=$(uci -q get "haproxy.$vhost.domain")
+    enabled=$(uci -q get "haproxy.$vhost.enabled")
+    [ "$enabled" = "0" ] && continue
+    [ -z "$domain" ] && continue
+
+    # Skip if already added from metablogizer/streamlit configs
+    grep -q "^$domain	" "$SITES_FILE" 2>/dev/null && continue
+
+    # Get backend to determine service type
+    backend=$(uci -q get "haproxy.$vhost.backend")
+
+    # Determine type and name from domain/backend
+    name=$(echo "$domain" | cut -d'.' -f1)
+
+    # Categorize based on backend or domain patterns
+    case "$backend" in
+        *streamlit*) type="streamlit"; cat=$(categorize_site "$name") ;;
+        *metablog*|*uhttpd*) type="meta"; cat=$(categorize_site "$name") ;;
+        *jellyfin*) type="service"; cat="Média" ;;
+        *peertube*|*tube*) type="service"; cat="Média" ;;
+        *nextcloud*|*cloud*) type="service"; cat="Cloud" ;;
+        *gitea*|*git*) type="service"; cat="Développement" ;;
+        *lyrion*|*music*) type="service"; cat="Média" ;;
+        *glances*) type="service"; cat="Administration" ;;
+        *jitsi*|*meet*) type="service"; cat="Communication" ;;
+        *photoprism*|*photo*) type="service"; cat="Cloud" ;;
+        *social*|*gotosocial*) type="service"; cat="Social" ;;
+        *admin*|*luci*) type="service"; cat="Administration" ;;
+        *) type="service"; cat=$(categorize_site "$name") ;;
+    esac
+
+    emoji=$(get_emoji "$cat")
+    echo "$cat" >> "$CAT_FILE"
+
+    # Format: domain name cat emoji type thumb protected desc keywords caps version audience
+    printf '%s\t%s\t%s\t%s\t%s\t-\t-\t-\t-\t-\t-\t-\n' \
+        "$domain" "$name" "$cat" "$emoji" "$type" >> "$SITES_FILE"
 done
 
 # PeerTube videos
@@ -264,7 +533,15 @@ TOTAL=$(wc -l < "$SITES_FILE" | tr -d ' ')
 TOTAL_META=$(grep "	meta	" "$SITES_FILE" | wc -l | tr -d ' ')
 TOTAL_STREAMLIT=$(grep "	streamlit	" "$SITES_FILE" | wc -l | tr -d ' ')
 TOTAL_VIDEOS=$(grep "	video	" "$SITES_FILE" | wc -l | tr -d ' ')
+TOTAL_SERVICES=$(grep "	service	" "$SITES_FILE" | wc -l | tr -d ' ')
 CAT_COUNTS=$(grep -v "^$" "$CAT_FILE" 2>/dev/null | sort | uniq -c | sort -rn)
+
+# Capability and audience counts
+CAPS_FILE="/tmp/hub_caps_$$.txt"
+AUDIENCES_FILE="/tmp/hub_audiences_$$.txt"
+[ -f "$CAPS_FILE" ] && CAP_COUNTS=$(sort "$CAPS_FILE" | uniq -c | sort -rn | head -10) || CAP_COUNTS=""
+[ -f "$AUDIENCES_FILE" ] && AUDIENCE_COUNTS=$(sort "$AUDIENCES_FILE" | uniq -c | sort -rn) || AUDIENCE_COUNTS=""
+TOTAL_WITH_NFO=$(grep -v "	-	-	-	-	-$" "$SITES_FILE" 2>/dev/null | wc -l | tr -d ' ')
 
 # Stats bar
 cat >> "$TEMP" << EOF
@@ -272,29 +549,54 @@ cat >> "$TEMP" << EOF
     <div class="stat"><span class="stat-value">$TOTAL</span><span class="stat-label">Total</span></div>
     <div class="stat"><span class="stat-value">$TOTAL_META</span><span class="stat-label">Sites</span></div>
     <div class="stat"><span class="stat-value">$TOTAL_STREAMLIT</span><span class="stat-label">Streamlit</span></div>
+    <div class="stat"><span class="stat-value">$TOTAL_SERVICES</span><span class="stat-label">Services</span></div>
     <div class="stat"><span class="stat-value">$TOTAL_VIDEOS</span><span class="stat-label">Vidéos</span></div>
+    <div class="stat"><span class="stat-value">$TOTAL_WITH_NFO</span><span class="stat-label">NFO</span></div>
 EOF
 echo "$CAT_COUNTS" | head -3 | while read count cat; do
     [ -n "$cat" ] && printf '    <div class="stat"><span class="stat-value">%s</span><span class="stat-label">%s</span></div>\n' "$count" "$cat" >> "$TEMP"
 done
 echo "</div>" >> "$TEMP"
 
-# Tag cloud
+# Tag cloud - categories
 echo '<div class="tag-cloud" id="tagCloud">' >> "$TEMP"
 echo '<span class="tag active" data-cat="all">Tous</span>' >> "$TEMP"
 echo '<span class="tag" data-cat="meta">📝 Sites</span>' >> "$TEMP"
 echo '<span class="tag" data-cat="streamlit">📊 Streamlit</span>' >> "$TEMP"
+echo '<span class="tag" data-cat="service">🔌 Services</span>' >> "$TEMP"
 echo '<span class="tag" data-cat="video">🎥 Vidéos</span>' >> "$TEMP"
 echo "$CAT_COUNTS" | while read count cat; do
     [ -n "$cat" ] && printf '<span class="tag" data-cat="%s">%s<span class="count">%s</span></span>\n' "$cat" "$cat" "$count" >> "$TEMP"
 done
 echo '</div>' >> "$TEMP"
 
+# Capability filter cloud
+if [ -n "$CAP_COUNTS" ]; then
+    echo '<div class="cap-cloud" id="capCloud">' >> "$TEMP"
+    echo '<span class="cap-title">🔧 Capabilities:</span>' >> "$TEMP"
+    echo "$CAP_COUNTS" | while read count cap; do
+        [ -n "$cap" ] && printf '<span class="cap-filter" data-cap="%s">%s<span class="count">%s</span></span>\n' "$cap" "$cap" "$count" >> "$TEMP"
+    done
+    echo '</div>' >> "$TEMP"
+fi
+
+# Audience filter
+if [ -n "$AUDIENCE_COUNTS" ]; then
+    echo '<div class="audience-bar" id="audienceBar">' >> "$TEMP"
+    echo '<span class="audience-title">👥 Audience:</span>' >> "$TEMP"
+    echo '<span class="audience-btn active" data-audience="all">Tous</span>' >> "$TEMP"
+    echo "$AUDIENCE_COUNTS" | while read count audience; do
+        [ -n "$audience" ] && printf '<span class="audience-btn" data-audience="%s">%s<span class="count">%s</span></span>\n' "$audience" "$audience" "$count" >> "$TEMP"
+    done
+    echo '</div>' >> "$TEMP"
+fi
+
 # Category tabs
 echo '<div class="category-tabs">' >> "$TEMP"
 printf '<div class="cat-tab active" data-cat="all">📁 Tous<span class="count">%s</span></div>\n' "$TOTAL" >> "$TEMP"
 printf '<div class="cat-tab" data-cat="meta">📝 Sites<span class="count">%s</span></div>\n' "$TOTAL_META" >> "$TEMP"
 printf '<div class="cat-tab" data-cat="streamlit">📊 Streamlit<span class="count">%s</span></div>\n' "$TOTAL_STREAMLIT" >> "$TEMP"
+printf '<div class="cat-tab" data-cat="service">🔌 Services<span class="count">%s</span></div>\n' "$TOTAL_SERVICES" >> "$TEMP"
 printf '<div class="cat-tab" data-cat="video">🎥 Vidéos<span class="count">%s</span></div>\n' "$TOTAL_VIDEOS" >> "$TEMP"
 echo "$CAT_COUNTS" | head -6 | while read count cat; do
     emoji=$(get_emoji "$cat")
@@ -305,12 +607,17 @@ echo '</div>' >> "$TEMP"
 # Sites grid
 echo '<div class="view-grid" id="viewContainer"><div class="sites-grid" id="sitesGrid">' >> "$TEMP"
 
-while IFS='	' read -r url name cat emoji type thumb protected; do
+while IFS='	' read -r url name cat emoji type thumb protected nfo_desc nfo_keywords nfo_caps nfo_version nfo_audience; do
     [ -z "$url" ] && continue
 
     # Handle placeholder values (- means empty, used for BusyBox read compatibility)
     [ "$thumb" = "-" ] && thumb=""
     [ "$protected" = "-" ] && protected=""
+    [ "$nfo_desc" = "-" ] && nfo_desc=""
+    [ "$nfo_keywords" = "-" ] && nfo_keywords=""
+    [ "$nfo_caps" = "-" ] && nfo_caps=""
+    [ "$nfo_version" = "-" ] && nfo_version=""
+    [ "$nfo_audience" = "-" ] && nfo_audience=""
 
     # For videos, 'thumb' is thumbnail URL and 'protected' is duration
     duration=""
@@ -334,6 +641,10 @@ while IFS='	' read -r url name cat emoji type thumb protected; do
         card_class="site-card video"
         cat_class="card-cat video"
         preview_html="<img src=\"$thumb\" alt=\"$name\" loading=\"lazy\"><div class=\"play-icon\"></div><span class=\"duration\">$duration</span>"
+    elif [ "$type" = "service" ]; then
+        card_class="site-card service"
+        cat_class="card-cat service"
+        preview_html="<iframe src=\"https://$url/\" loading=\"lazy\" sandbox></iframe>"
     else
         card_class="site-card"
         cat_class="card-cat meta"
@@ -349,16 +660,52 @@ while IFS='	' read -r url name cat emoji type thumb protected; do
         domain_display="$url"
     fi
 
+    # Build version badge
+    version_html=""
+    if [ -n "$nfo_version" ]; then
+        version_html="<span class=\"card-version\">v$nfo_version</span>"
+    fi
+
+    # Build description HTML
+    desc_html=""
+    if [ -n "$nfo_desc" ]; then
+        desc_html="<div class=\"card-desc\">$nfo_desc</div>"
+    fi
+
+    # Build capabilities badges HTML
+    caps_html=""
+    if [ -n "$nfo_caps" ]; then
+        caps_html="<div class=\"card-caps\">"
+        for cap in $(echo "$nfo_caps" | tr ',' ' '); do
+            [ -n "$cap" ] && caps_html="$caps_html<span class=\"cap-badge\" data-cap=\"$cap\">$cap</span>"
+        done
+        caps_html="$caps_html</div>"
+    fi
+
+    # Include all metadata in search data
+    search_data="$url $name $cat $type $nfo_keywords $nfo_caps $nfo_audience $nfo_desc"
+
+    # Data attributes for filtering
+    data_caps=""
+    [ -n "$nfo_caps" ] && data_caps="data-caps=\"$nfo_caps\""
+    data_audience=""
+    [ -n "$nfo_audience" ] && data_audience="data-audience=\"$nfo_audience\""
+
     cat >> "$TEMP" << CARD
-<a href="$link_url" class="$card_class" target="_blank" data-category="$cat" data-type="$type" data-search="$url $name $cat $type" $protected_attr>
+<a href="$link_url" class="$card_class" target="_blank" data-category="$cat" data-type="$type" data-search="$search_data" $data_caps $data_audience $protected_attr>
     <div class="card-preview">
         $preview_html
         $protected_badge
     </div>
     <div class="card-content">
-        <div class="card-title">$name</div>
+        <div class="card-header">
+            <div class="card-title">$name</div>
+            $version_html
+        </div>
         <div class="card-domain">$domain_display</div>
+        $desc_html
         <span class="$cat_class">$emoji $cat</span>
+        $caps_html
     </div>
 </a>
 CARD
@@ -383,46 +730,139 @@ document.addEventListener('DOMContentLoaded',function(){
     const isLoggedIn=sessionStorage.getItem('secubox_token')!==null;
 
     if(isLoggedIn){
-        // Unlock protected cards
         protectedCards.forEach(c=>c.classList.add('unlocked'));
         loginBanner.classList.add('hidden');
     }else if(protectedCards.length===0){
-        // No protected content, hide banner
         loginBanner.classList.add('hidden');
     }
 
+    // Current filters state
+    let currentCat='all';
+    let currentCap='';
+    let currentAudience='all';
+
+    function applyFilters(){
+        cards.forEach(c=>{
+            let show=true;
+            // Category/type filter
+            if(currentCat!=='all'){
+                show=c.dataset.category===currentCat||c.dataset.type===currentCat;
+            }
+            // Capability filter
+            if(show&&currentCap){
+                const caps=c.dataset.caps||'';
+                show=caps.toLowerCase().includes(currentCap.toLowerCase());
+            }
+            // Audience filter
+            if(show&&currentAudience!=='all'){
+                const aud=c.dataset.audience||'';
+                show=aud.toLowerCase()===currentAudience.toLowerCase();
+            }
+            // Protected filter
+            if(show&&c.dataset.protected&&!isLoggedIn)show=false;
+            c.style.display=show?'':'none';
+        });
+    }
+
+    // View toggle
     document.querySelectorAll('.view-btn[data-view]').forEach(b=>b.onclick=function(){
         document.querySelectorAll('.view-btn[data-view]').forEach(x=>x.classList.remove('active'));
         this.classList.add('active');
         container.className='view-'+this.dataset.view;
     });
 
+    // Tag cloud toggle
     document.getElementById('toggleCloud').onclick=function(){
         cloud.classList.toggle('visible');
         this.classList.toggle('active');
     };
 
-    function filter(cat){
-        cards.forEach(c=>{
-            let show = cat==='all' || c.dataset.category===cat || c.dataset.type===cat;
-            if(c.dataset.protected && !isLoggedIn) show=false;
-            c.style.display = show ? '' : 'none';
-        });
-    }
-
+    // Category tabs
     document.querySelectorAll('.cat-tab,.tag').forEach(t=>t.onclick=function(){
         document.querySelectorAll('.cat-tab,.tag').forEach(x=>x.classList.remove('active'));
         this.classList.add('active');
-        filter(this.dataset.cat);
+        currentCat=this.dataset.cat;
+        applyFilters();
     });
 
+    // Capability filter
+    document.querySelectorAll('.cap-filter').forEach(c=>c.onclick=function(){
+        document.querySelectorAll('.cap-filter').forEach(x=>x.classList.remove('active'));
+        if(currentCap===this.dataset.cap){
+            currentCap='';
+        }else{
+            this.classList.add('active');
+            currentCap=this.dataset.cap;
+        }
+        applyFilters();
+    });
+
+    // Audience filter
+    document.querySelectorAll('.audience-btn').forEach(a=>a.onclick=function(){
+        document.querySelectorAll('.audience-btn').forEach(x=>x.classList.remove('active'));
+        this.classList.add('active');
+        currentAudience=this.dataset.audience;
+        applyFilters();
+    });
+
+    // Search
     search.oninput=function(){
         const q=this.value.toLowerCase();
+        if(q===''){
+            applyFilters();
+            return;
+        }
         cards.forEach(c=>{
             let show=c.dataset.search.toLowerCase().includes(q);
-            if(c.dataset.protected && !isLoggedIn) show=false;
+            if(c.dataset.protected&&!isLoggedIn)show=false;
             c.style.display=show?'':'none';
         });
+    };
+
+    // Dynamic preview modal
+    const previewModal=document.createElement('div');
+    previewModal.id='previewModal';
+    previewModal.className='preview-modal';
+    previewModal.innerHTML='<div class="preview-content"><button class="preview-close">&times;</button><iframe id="previewFrame"></iframe><div class="preview-info"><span id="previewTitle"></span><a id="previewLink" target="_blank">Open in new tab ↗</a></div></div>';
+    document.body.appendChild(previewModal);
+
+    previewModal.querySelector('.preview-close').onclick=function(){
+        previewModal.classList.remove('active');
+        document.getElementById('previewFrame').src='about:blank';
+    };
+    previewModal.onclick=function(e){
+        if(e.target===previewModal){
+            previewModal.classList.remove('active');
+            document.getElementById('previewFrame').src='about:blank';
+        }
+    };
+
+    // Add preview button to each card
+    cards.forEach(card=>{
+        if(card.classList.contains('video'))return; // Skip videos
+        const previewBtn=document.createElement('button');
+        previewBtn.className='preview-btn';
+        previewBtn.innerHTML='👁';
+        previewBtn.title='Preview';
+        previewBtn.onclick=function(e){
+            e.preventDefault();
+            e.stopPropagation();
+            const url=card.href;
+            const name=card.querySelector('.card-title').textContent;
+            document.getElementById('previewFrame').src=url;
+            document.getElementById('previewTitle').textContent=name;
+            document.getElementById('previewLink').href=url;
+            previewModal.classList.add('active');
+        };
+        card.querySelector('.card-preview').appendChild(previewBtn);
+    });
+
+    // Keyboard shortcut
+    document.onkeydown=function(e){
+        if(e.key==='Escape'){
+            previewModal.classList.remove('active');
+            document.getElementById('previewFrame').src='about:blank';
+        }
     };
 });
 </script>
@@ -430,7 +870,7 @@ document.addEventListener('DOMContentLoaded',function(){
 </html>
 FOOTER
 
-rm -f "$SITES_FILE" "$CAT_FILE" "$VIDEOS_FILE"
+rm -f "$SITES_FILE" "$CAT_FILE" "$VIDEOS_FILE" "$CAPS_FILE" "$AUDIENCES_FILE"
 mv "$TEMP" "$OUTPUT"
 chmod 644 "$OUTPUT"
-logger -t hub-generator "Hub v5: $TOTAL items ($TOTAL_META sites + $TOTAL_STREAMLIT streamlit + $TOTAL_VIDEOS videos)"
+logger -t hub-generator "Hub v7: $TOTAL items ($TOTAL_META sites + $TOTAL_STREAMLIT streamlit + $TOTAL_VIDEOS videos, $TOTAL_WITH_NFO with NFO)"

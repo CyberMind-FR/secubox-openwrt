@@ -394,6 +394,7 @@ body.kiss-mode .cbi-section { max-width: 100% !important; width: 100% !important
 .kiss-grid-2 { grid-template-columns: repeat(2, 1fr); }
 .kiss-grid-3 { grid-template-columns: repeat(3, 1fr); }
 .kiss-grid-4 { grid-template-columns: repeat(4, 1fr); }
+.kiss-grid-5 { grid-template-columns: repeat(5, 1fr); }
 
 /* === Stats === */
 .kiss-stat {
@@ -471,7 +472,7 @@ body.kiss-mode .cbi-section { max-width: 100% !important; width: 100% !important
 	.kiss-sidebar { transform: translateX(-100%); }
 	.kiss-sidebar.open { transform: translateX(0); }
 	.kiss-main { margin-left: 0; width: 100%; }
-	.kiss-grid-3, .kiss-grid-4 { grid-template-columns: repeat(2, 1fr); }
+	.kiss-grid-3, .kiss-grid-4, .kiss-grid-5 { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 768px) {
 	.kiss-grid-2 { grid-template-columns: 1fr; }

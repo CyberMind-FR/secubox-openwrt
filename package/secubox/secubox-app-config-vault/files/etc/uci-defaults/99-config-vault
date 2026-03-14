@@ -1,0 +1,10 @@
+#!/bin/sh
+# Set default Gitea token from main gitea config
+
+GITEA_TOKEN=$(uci -q get gitea.main.api_token)
+if [ -n "$GITEA_TOKEN" ]; then
+    uci -q set config-vault.gitea.token="$GITEA_TOKEN"
+    uci commit config-vault
+fi
+
+exit 0

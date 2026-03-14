@@ -40,7 +40,15 @@ define Package/secubox-app-streamlit-forge/install
 	$(INSTALL_BIN) ./files/usr/sbin/slforge $(1)/usr/sbin/
 
 	$(INSTALL_DIR) $(1)/usr/share/streamlit-forge/templates
-	$(CP) ./files/usr/share/streamlit-forge/templates/* $(1)/usr/share/streamlit-forge/templates/
+	$(CP) ./files/usr/share/streamlit-forge/templates/* $(1)/usr/share/streamlit-forge/templates/ 2>/dev/null || true
+
+	# NFO module manifest system
+	$(INSTALL_DIR) $(1)/usr/share/streamlit-forge/lib
+	$(INSTALL_DATA) ./files/usr/share/streamlit-forge/lib/nfo-parser.sh $(1)/usr/share/streamlit-forge/lib/
+	$(INSTALL_DATA) ./files/usr/share/streamlit-forge/lib/nfo-validator.sh $(1)/usr/share/streamlit-forge/lib/
+	$(INSTALL_DATA) ./files/usr/share/streamlit-forge/nfo-template.nfo $(1)/usr/share/streamlit-forge/
+	$(INSTALL_BIN) ./files/usr/share/streamlit-forge/install.sh $(1)/usr/share/streamlit-forge/
+	$(INSTALL_DATA) ./files/usr/share/streamlit-forge/NFO-SPEC.md $(1)/usr/share/streamlit-forge/
 endef
 
 define Package/secubox-app-streamlit-forge/postinst

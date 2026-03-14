@@ -16,6 +16,9 @@ var callExpose = rpc.declare({ object: 'luci.streamlit-forge', method: 'expose',
 var callGiteaStatus = rpc.declare({ object: 'luci.streamlit-forge', method: 'gitea_status', expect: {} });
 var callEdit = rpc.declare({ object: 'luci.streamlit-forge', method: 'edit', params: ['name'], expect: {} });
 var callPull = rpc.declare({ object: 'luci.streamlit-forge', method: 'pull', params: ['name'], expect: {} });
+var callNfoRead = rpc.declare({ object: 'luci.streamlit-forge', method: 'nfo_read', params: ['name'], expect: {} });
+var callNfoWrite = rpc.declare({ object: 'luci.streamlit-forge', method: 'nfo_write', params: ['name', 'data'], expect: {} });
+var callNfoValidate = rpc.declare({ object: 'luci.streamlit-forge', method: 'nfo_validate', params: ['name'], expect: {} });
 
 return view.extend({
 	apps: [],
@@ -69,6 +72,12 @@ return view.extend({
 				'style': 'padding: 4px 10px; font-size: 11px;',
 				'click': ui.createHandlerFn(this, 'handleEdit', app.name)
 			}, 'Edit'),
+			E('button', {
+				'class': 'kiss-btn kiss-btn-purple',
+				'style': 'padding: 4px 10px; font-size: 11px;',
+				'click': ui.createHandlerFn(this, 'handleNfo', app.name),
+				'title': 'Edit NFO Manifest'
+			}, 'NFO'),
 			E('button', {
 				'class': 'kiss-btn',
 				'style': 'padding: 4px 10px; font-size: 11px;',
@@ -341,6 +350,200 @@ return view.extend({
 				ui.addNotification(null, E('p', 'Error: ' + (res.output || 'Failed to pull')));
 			}
 			return self.pollStatus();
+		});
+	},
+
+	handleNfo: function(name) {
+		var self = this;
+		ui.showModal('Loading NFO...', [E('p', { 'class': 'spinning' }, 'Loading manifest for ' + name + '...')]);
+
+		return Promise.all([
+			callNfoRead(name),
+			callNfoValidate(name)
+		]).then(function(results) {
+			var nfoData = results[0] || {};
+			var validation = results[1] || {};
+
+			ui.hideModal();
+			self.showNfoEditor(name, nfoData, validation);
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', 'Error loading NFO: ' + err.message));
+		});
+	},
+
+	showNfoEditor: function(name, nfoData, validation) {
+		var self = this;
+		var hasNfo = nfoData.exists !== false && nfoData.identity;
+
+		// Build form fields
+		var formFields = [];
+
+		// Identity section
+		formFields.push(E('div', { 'style': 'margin-bottom: 16px;' }, [
+			E('h4', { 'style': 'margin: 0 0 12px 0; color: var(--kiss-purple);' }, 'Identity'),
+			E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 12px;' }, [
+				E('div', {}, [
+					E('label', { 'style': 'font-size: 11px; color: var(--kiss-muted);' }, 'Name'),
+					E('input', {
+						'id': 'nfo-name',
+						'type': 'text',
+						'value': (nfoData.identity && nfoData.identity.name) || name,
+						'style': 'width: 100%; background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px; border-radius: 4px;'
+					})
+				]),
+				E('div', {}, [
+					E('label', { 'style': 'font-size: 11px; color: var(--kiss-muted);' }, 'Version'),
+					E('input', {
+						'id': 'nfo-version',
+						'type': 'text',
+						'value': (nfoData.identity && nfoData.identity.version) || '1.0.0',
+						'style': 'width: 100%; background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px; border-radius: 4px;'
+					})
+				])
+			])
+		]));
+
+		// Description section
+		formFields.push(E('div', { 'style': 'margin-bottom: 16px;' }, [
+			E('h4', { 'style': 'margin: 0 0 12px 0; color: var(--kiss-cyan);' }, 'Description'),
+			E('div', {}, [
+				E('label', { 'style': 'font-size: 11px; color: var(--kiss-muted);' }, 'Short Description'),
+				E('input', {
+					'id': 'nfo-short',
+					'type': 'text',
+					'value': (nfoData.description && nfoData.description.short) || '',
+					'placeholder': 'Brief description of your app',
+					'style': 'width: 100%; background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px; border-radius: 4px;'
+				})
+			])
+		]));
+
+		// Tags section
+		formFields.push(E('div', { 'style': 'margin-bottom: 16px;' }, [
+			E('h4', { 'style': 'margin: 0 0 12px 0; color: var(--kiss-green);' }, 'Classification'),
+			E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 12px;' }, [
+				E('div', {}, [
+					E('label', { 'style': 'font-size: 11px; color: var(--kiss-muted);' }, 'Category'),
+					E('select', {
+						'id': 'nfo-category',
+						'style': 'width: 100%; background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px; border-radius: 4px;'
+					}, [
+						E('option', { 'value': 'dashboard', 'selected': (nfoData.tags && nfoData.tags.category) === 'dashboard' }, 'Dashboard'),
+						E('option', { 'value': 'analytics', 'selected': (nfoData.tags && nfoData.tags.category) === 'analytics' }, 'Analytics'),
+						E('option', { 'value': 'data', 'selected': (nfoData.tags && nfoData.tags.category) === 'data' }, 'Data'),
+						E('option', { 'value': 'visualization', 'selected': (nfoData.tags && nfoData.tags.category) === 'visualization' }, 'Visualization'),
+						E('option', { 'value': 'utility', 'selected': (nfoData.tags && nfoData.tags.category) === 'utility' }, 'Utility'),
+						E('option', { 'value': 'administration', 'selected': (nfoData.tags && nfoData.tags.category) === 'administration' }, 'Administration'),
+						E('option', { 'value': 'other', 'selected': (nfoData.tags && nfoData.tags.category) === 'other' }, 'Other')
+					])
+				]),
+				E('div', {}, [
+					E('label', { 'style': 'font-size: 11px; color: var(--kiss-muted);' }, 'Keywords (comma-separated)'),
+					E('input', {
+						'id': 'nfo-keywords',
+						'type': 'text',
+						'value': (nfoData.tags && nfoData.tags.keywords) || '',
+						'placeholder': 'dashboard, monitoring, charts',
+						'style': 'width: 100%; background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px; border-radius: 4px;'
+					})
+				])
+			])
+		]));
+
+		// AI Dynamics section
+		formFields.push(E('div', { 'style': 'margin-bottom: 16px;' }, [
+			E('h4', { 'style': 'margin: 0 0 12px 0; color: var(--kiss-orange);' }, 'AI Context'),
+			E('div', { 'style': 'margin-bottom: 12px;' }, [
+				E('label', { 'style': 'font-size: 11px; color: var(--kiss-muted);' }, 'Capabilities (comma-separated)'),
+				E('input', {
+					'id': 'nfo-capabilities',
+					'type': 'text',
+					'value': (nfoData.dynamics && nfoData.dynamics.capabilities) || '',
+					'placeholder': 'data-visualization, export, real-time',
+					'style': 'width: 100%; background: var(--kiss-bg); border: 1px solid var(--kiss-line); color: var(--kiss-text); padding: 8px; border-radius: 4px;'
+				})
+			])
+		]));
+
+		// Validation status
+		var validationEl = '';
+		if (validation) {
+			var scoreColor = (validation.completeness >= 80) ? 'var(--kiss-green)' :
+			                 (validation.completeness >= 50) ? 'var(--kiss-orange)' : 'var(--kiss-red)';
+			validationEl = E('div', {
+				'style': 'background: var(--kiss-bg2); padding: 12px; border-radius: 6px; margin-bottom: 16px;'
+			}, [
+				E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+					E('span', { 'style': 'font-weight: 600;' }, 'Validation'),
+					validation.completeness !== undefined ?
+						E('span', { 'style': 'color: ' + scoreColor + '; font-weight: 600;' }, validation.completeness + '% Complete') :
+						E('span', { 'style': 'color: ' + (validation.valid ? 'var(--kiss-green)' : 'var(--kiss-red)') }, validation.valid ? 'Valid' : 'Issues Found')
+				]),
+				validation.has_ai_context !== undefined ?
+					E('div', { 'style': 'font-size: 11px; margin-top: 8px; color: var(--kiss-muted);' },
+						validation.has_ai_context ? '\u2713 Has AI context' : '\u26A0 No AI context defined'
+					) : ''
+			]);
+		}
+
+		ui.showModal('NFO Manifest - ' + name, [
+			E('div', { 'style': 'max-height: 70vh; overflow-y: auto;' }, [
+				validationEl,
+				E('div', {}, formFields)
+			]),
+			E('div', { 'style': 'display: flex; justify-content: space-between; gap: 8px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--kiss-line);' }, [
+				E('div', {}, [
+					!hasNfo ? E('span', { 'style': 'color: var(--kiss-orange); font-size: 11px;' }, 'New NFO will be created') : ''
+				]),
+				E('div', { 'style': 'display: flex; gap: 8px;' }, [
+					E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
+					E('button', {
+						'class': 'kiss-btn kiss-btn-green',
+						'click': function() {
+							self.saveNfo(name);
+						}
+					}, 'Save')
+				])
+			])
+		]);
+	},
+
+	saveNfo: function(name) {
+		var self = this;
+
+		// Collect form values
+		var nfoData = {
+			identity: {
+				id: name,
+				name: document.getElementById('nfo-name').value.trim() || name,
+				version: document.getElementById('nfo-version').value.trim() || '1.0.0'
+			},
+			description: {
+				short: document.getElementById('nfo-short').value.trim()
+			},
+			tags: {
+				category: document.getElementById('nfo-category').value,
+				keywords: document.getElementById('nfo-keywords').value.trim()
+			},
+			dynamics: {
+				capabilities: document.getElementById('nfo-capabilities').value.trim()
+			}
+		};
+
+		ui.hideModal();
+		ui.showModal('Saving NFO...', [E('p', { 'class': 'spinning' }, 'Updating manifest...')]);
+
+		callNfoWrite(name, JSON.stringify(nfoData)).then(function(res) {
+			ui.hideModal();
+			if (res.code === 0) {
+				ui.addNotification(null, E('p', 'NFO manifest saved'));
+			} else {
+				ui.addNotification(null, E('p', 'Error: ' + (res.message || 'Failed to save')));
+			}
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', 'Error: ' + err.message));
 		});
 	}
 });

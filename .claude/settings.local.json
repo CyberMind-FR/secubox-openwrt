@@ -545,7 +545,9 @@
       "Bash(do if grep -q \"require secubox/kiss-theme\" \"$f\")",
       "Bash(! grep -q \"KissTheme.wrap\" \"$f\")",
       "Bash(then echo \"$f\")",
-      "Bash(do if ! grep -q \"require secubox/kiss-theme\" \"$f\")"
+      "Bash(do if ! grep -q \"require secubox/kiss-theme\" \"$f\")",
+      "Bash(# Test RPCD status method ssh root@192.168.255.1 \"\"ubus call luci.config-vault status\"\")",
+      "WebFetch(domain:ytdl.gk2.secubox.in)"
     ]
   }
 }

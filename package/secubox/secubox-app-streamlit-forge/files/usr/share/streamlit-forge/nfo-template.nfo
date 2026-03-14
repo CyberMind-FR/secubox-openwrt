@@ -1,0 +1,167 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+#   ███████╗████████╗██████╗ ███████╗ █████╗ ███╗   ███╗██╗     ██╗████████╗
+#   ██╔════╝╚══██╔══╝██╔══██╗██╔════╝██╔══██╗████╗ ████║██║     ██║╚══██╔══╝
+#   ███████╗   ██║   ██████╔╝█████╗  ███████║██╔████╔██║██║     ██║   ██║
+#   ╚════██║   ██║   ██╔══██╗██╔══╝  ██╔══██║██║╚██╔╝██║██║     ██║   ██║
+#   ███████║   ██║   ██║  ██║███████╗██║  ██║██║ ╚═╝ ██║███████╗██║   ██║
+#   ╚══════╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝╚═╝   ╚═╝
+#   ─────────────────────────────────────────────────────────────────────────────
+#   {{APP_NAME}} v{{VERSION}}
+#   {{SHORT_DESC}}
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+#   SecuBox Module Manifest - Flat-File UCI Format
+#   Generated: {{DATE}}
+#   Type: streamlit
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  IDENTITY                                                                   │
+# └─────────────────────────────────────────────────────────────────────────────┘
+[identity]
+id={{APP_ID}}
+name={{APP_NAME}}
+version=1.0.0
+author=CyberMind
+maintainer=contact@cybermind.fr
+created={{DATE}}
+updated={{DATE}}
+license=MIT
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  DESCRIPTION                                                                │
+# └─────────────────────────────────────────────────────────────────────────────┘
+[description]
+short={{SHORT_DESC}}
+long=<<EOF
+Detailed description of the application.
+Supports multi-line content using heredoc syntax.
+Describe features, use cases, and capabilities.
+EOF
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  CLASSIFICATION                                                             │
+# └─────────────────────────────────────────────────────────────────────────────┘
+[tags]
+category=tools
+subcategory=utility
+keywords=streamlit,dashboard,visualization
+audience=developers
+maturity=stable
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  RUNTIME CONFIGURATION                                                      │
+# └─────────────────────────────────────────────────────────────────────────────┘
+[runtime]
+type=streamlit
+framework=streamlit>=1.28.0
+python=>=3.9
+entrypoint=app.py
+port=auto
+memory=512M
+cpu_limit=1.0
+timeout=300
+workers=1
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  DEPENDENCIES                                                               │
+# └─────────────────────────────────────────────────────────────────────────────┘
+[dependencies]
+python=streamlit,pandas,plotly
+system=
+opkg=
+pip_extra=
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  EXPOSURE SETTINGS                                                          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+[exposure]
+auto_expose=0
+domain_prefix={{APP_ID}}
+ssl=1
+auth_required=0
+auth_method=basic
+waf_enabled=1
+rate_limit=100/min
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  LAUNCHER SETTINGS                                                          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+[launcher]
+on_demand=1
+priority=50
+always_on=0
+idle_timeout=30
+startup_timeout=60
+health_check=/healthz
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  REFERENCES                                                                 │
+# └─────────────────────────────────────────────────────────────────────────────┘
+[references]
+homepage=
+documentation=
+source=
+issues=
+changelog=
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  CUSTOM SETTINGS                                                            │
+# └─────────────────────────────────────────────────────────────────────────────┘
+[settings]
+theme=dark
+locale=auto
+debug=0
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  GENERATIVE AI DYNAMICS                                                     │
+# └─────────────────────────────────────────────────────────────────────────────┘
+[dynamics]
+# Context for AI assistants interacting with this app
+prompt_context=<<EOF
+This application is a Streamlit-based tool.
+Describe what the app does and how AI can assist users.
+EOF
+
+# Capabilities the app provides
+capabilities=data-analysis,visualization,export
+
+# Input types the app can process
+input_types=csv,json,api,manual
+
+# Output types the app can generate
+output_types=charts,tables,reports,downloads
+
+# Integration hooks for generative content
+hooks_pre=
+hooks_post=
+hooks_transform=
+
+# Data sources the app can connect to
+data_sources=local,api,database
+
+# API endpoints exposed (for mesh integration)
+api_endpoints=
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  MESH CATALOG                                                               │
+# └─────────────────────────────────────────────────────────────────────────────┘
+[mesh]
+publish=0
+visibility=private
+share_data=0
+federation=local
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  SCREENSHOTS & MEDIA                                                        │
+# └─────────────────────────────────────────────────────────────────────────────┘
+[media]
+icon=
+thumbnail=
+screenshots=
+demo_video=
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#   END OF MANIFEST
+# ═══════════════════════════════════════════════════════════════════════════════

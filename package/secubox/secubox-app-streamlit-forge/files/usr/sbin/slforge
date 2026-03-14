@@ -25,12 +25,35 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m'
 
 log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
 log_ok() { echo -e "${GREEN}[OK]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_err() { echo -e "${RED}[ERROR]${NC} $1"; }
+
+# NFO Parser library
+NFO_PARSER="/usr/share/streamlit-forge/lib/nfo-parser.sh"
+[ -f "$NFO_PARSER" ] && . "$NFO_PARSER"
+
+# Launcher integration
+LAUNCHER_TRACKING_DIR="/tmp/streamlit-access"
+
+# Track app access (for launcher idle detection)
+track_access() {
+	local name="$1"
+	mkdir -p "$LAUNCHER_TRACKING_DIR"
+	touch "$LAUNCHER_TRACKING_DIR/$name"
+}
+
+# Check if launcher is managing this app
+is_launcher_managed() {
+	local enabled
+	config_load streamlit-launcher 2>/dev/null || return 1
+	config_get enabled global enabled '0'
+	[ "$enabled" = "1" ]
+}
 
 usage() {
 	cat <<EOF
@@ -76,6 +99,19 @@ Mesh AppStore:
   unpublish <app>           Remove from mesh catalog
   catalog                   Browse mesh catalog
   install <app@node>        Install from mesh
+
+Launcher Integration:
+  launcher status           Show launcher status
+  launcher priority <app> <n>  Set app priority (higher=keep longer)
+  launcher always-on <app>  Mark app as always-on (never auto-stop)
+
+Module Manifest (NFO):
+  nfo init <app>            Generate README.nfo for app
+  nfo info <app>            Show NFO summary
+  nfo edit <app>            Edit README.nfo
+  nfo validate <app>        Validate NFO file
+  nfo json <app>            Export NFO as JSON
+  nfo install <path>        Install app from directory with NFO
 
 Templates:
   templates                 List available templates
@@ -510,9 +546,13 @@ REQEOF
 		gitea_create_repo "$name" 2>/dev/null || log_warn "Gitea repo creation skipped"
 	fi
 
+	# Generate README.nfo manifest
+	cmd_nfo init "$name" 2>/dev/null || log_warn "NFO generation skipped"
+
 	log_ok "Created app: $name"
 	log_info "  Directory: $app_dir"
 	log_info "  Port: $port"
+	log_info "  Manifest: $app_dir/README.nfo"
 	log_info "  Start with: slforge start $name"
 }
 
@@ -576,6 +616,22 @@ cmd_info() {
 		echo "Status:     RUNNING on port $port"
 	else
 		echo "Status:     STOPPED"
+	fi
+
+	# Show NFO info if available
+	local nfo_file="$app_dir/README.nfo"
+	if [ -f "$nfo_file" ] && [ -f "$NFO_PARSER" ]; then
+		nfo_parse "$nfo_file"
+		echo ""
+		echo "Module Info (from NFO):"
+		echo "  Category:    $(nfo_get tags category)"
+		echo "  Keywords:    $(nfo_get tags keywords)"
+		echo "  Author:      $(nfo_get identity author)"
+		local prompt=$(nfo_get dynamics prompt_context | head -1)
+		[ -n "$prompt" ] && echo "  AI Context:  ${prompt:0:60}..."
+	elif [ -f "$nfo_file" ]; then
+		echo ""
+		echo "Manifest:   $nfo_file (run: slforge nfo info $name)"
 	fi
 
 	# Show files
@@ -664,6 +720,8 @@ STARTSCRIPT
 	if netstat -tln 2>/dev/null | grep -q ":$port "; then
 		[ "$quiet" = "0" ] && log_ok "Started $name"
 		[ "$quiet" = "0" ] && log_info "URL: http://192.168.255.1:$port"
+		# Track access for launcher idle detection
+		track_access "$name"
 		return 0
 	fi
 
@@ -940,6 +998,308 @@ cmd_unpublish() {
 	log_ok "Unpublished $name from mesh catalog"
 }
 
+# Launcher integration commands
+cmd_launcher() {
+	local action="$1"
+	shift
+
+	case "$action" in
+		status)
+			if command -v streamlit-launcherctl >/dev/null 2>&1; then
+				streamlit-launcherctl status
+			else
+				log_warn "Launcher not installed"
+				log_info "Install with: opkg install secubox-app-streamlit-launcher"
+			fi
+			;;
+		priority)
+			local app="$1"
+			local priority="$2"
+			[ -z "$app" ] || [ -z "$priority" ] && {
+				log_err "Usage: slforge launcher priority <app> <priority>"
+				return 1
+			}
+			if command -v streamlit-launcherctl >/dev/null 2>&1; then
+				streamlit-launcherctl priority "$app" "$priority"
+			else
+				log_err "Launcher not installed"
+				return 1
+			fi
+			;;
+		always-on)
+			local app="$1"
+			[ -z "$app" ] && {
+				log_err "Usage: slforge launcher always-on <app>"
+				return 1
+			}
+			if command -v streamlit-launcherctl >/dev/null 2>&1; then
+				streamlit-launcherctl priority "$app" 100 1
+				log_ok "App $app marked as always-on"
+			else
+				log_err "Launcher not installed"
+				return 1
+			fi
+			;;
+		*)
+			log_err "Unknown launcher action: $action"
+			echo "Usage: slforge launcher <status|priority|always-on>"
+			return 1
+			;;
+	esac
+}
+
+# NFO Module Manifest commands
+cmd_nfo() {
+	local action="$1"
+	shift
+
+	case "$action" in
+		init)
+			local name="$1"
+			[ -z "$name" ] && { log_err "App name required"; return 1; }
+			app_exists "$name" || { log_err "App not found: $name"; return 1; }
+
+			local app_dir="$APPS_DIR/$name"
+			local nfo_file="$app_dir/README.nfo"
+
+			if [ -f "$nfo_file" ]; then
+				log_warn "README.nfo already exists"
+				echo "  $nfo_file"
+				return 0
+			fi
+
+			log_info "Generating README.nfo for $name..."
+
+			# Get existing config
+			local port=$(get_app_config "$name" port)
+			local memory=$(get_app_config "$name" memory)
+			local domain=$(get_app_config "$name" domain)
+			local created=$(get_app_config "$name" created)
+
+			# Create NFO from template
+			if [ -f "$NFO_PARSER" ]; then
+				nfo_create "$nfo_file" "$name" "$name" "streamlit" "A Streamlit application"
+			else
+				# Fallback: copy template directly
+				local tpl="/usr/share/streamlit-forge/nfo-template.nfo"
+				if [ -f "$tpl" ]; then
+					sed -e "s/{{APP_ID}}/$name/g" \
+						-e "s/{{APP_NAME}}/$name/g" \
+						-e "s/{{SHORT_DESC}}/A Streamlit application/g" \
+						-e "s/{{VERSION}}/1.0.0/g" \
+						-e "s/{{DATE}}/$(date +%Y-%m-%d)/g" \
+						"$tpl" > "$nfo_file"
+				fi
+			fi
+
+			# Update with actual runtime values
+			if [ -f "$nfo_file" ]; then
+				sed -i "s/^port=.*/port=$port/" "$nfo_file"
+				sed -i "s/^memory=.*/memory=$memory/" "$nfo_file"
+				[ -n "$domain" ] && sed -i "s/^domain_prefix=.*/domain_prefix=${domain%%.*}/" "$nfo_file"
+				log_ok "Created: $nfo_file"
+			else
+				log_err "Failed to create NFO file"
+				return 1
+			fi
+			;;
+
+		info)
+			local name="$1"
+			[ -z "$name" ] && { log_err "App name required"; return 1; }
+			app_exists "$name" || { log_err "App not found: $name"; return 1; }
+
+			local nfo_file="$APPS_DIR/$name/README.nfo"
+			if [ ! -f "$nfo_file" ]; then
+				log_warn "No README.nfo found for $name"
+				log_info "Generate with: slforge nfo init $name"
+				return 1
+			fi
+
+			if [ -f "$NFO_PARSER" ]; then
+				nfo_parse "$nfo_file"
+				nfo_summary
+			else
+				# Fallback: simple display
+				echo ""
+				echo "═══════════════════════════════════════════════"
+				grep -E "^(name|version|short|category|type|port)=" "$nfo_file" | head -10
+				echo "═══════════════════════════════════════════════"
+				echo ""
+			fi
+			;;
+
+		edit)
+			local name="$1"
+			[ -z "$name" ] && { log_err "App name required"; return 1; }
+			app_exists "$name" || { log_err "App not found: $name"; return 1; }
+
+			local nfo_file="$APPS_DIR/$name/README.nfo"
+			if [ ! -f "$nfo_file" ]; then
+				log_info "Creating README.nfo first..."
+				cmd_nfo init "$name"
+			fi
+
+			# Open in editor
+			local editor="${EDITOR:-vi}"
+			$editor "$nfo_file"
+			;;
+
+		validate)
+			local name="$1"
+			[ -z "$name" ] && { log_err "App name required"; return 1; }
+			app_exists "$name" || { log_err "App not found: $name"; return 1; }
+
+			local nfo_file="$APPS_DIR/$name/README.nfo"
+			if [ ! -f "$nfo_file" ]; then
+				log_err "No README.nfo found"
+				return 1
+			fi
+
+			if [ -f "$NFO_PARSER" ]; then
+				if nfo_validate "$nfo_file"; then
+					log_ok "NFO is valid"
+				else
+					log_err "NFO validation failed"
+					return 1
+				fi
+			else
+				# Basic check
+				if grep -q "^\[identity\]" "$nfo_file" && grep -q "^id=" "$nfo_file"; then
+					log_ok "NFO appears valid (basic check)"
+				else
+					log_err "NFO missing required sections"
+					return 1
+				fi
+			fi
+			;;
+
+		json)
+			local name="$1"
+			[ -z "$name" ] && { log_err "App name required"; return 1; }
+			app_exists "$name" || { log_err "App not found: $name"; return 1; }
+
+			local nfo_file="$APPS_DIR/$name/README.nfo"
+			if [ ! -f "$nfo_file" ]; then
+				log_err "No README.nfo found"
+				return 1
+			fi
+
+			if [ -f "$NFO_PARSER" ]; then
+				nfo_parse "$nfo_file"
+				nfo_to_json
+			else
+				log_err "NFO parser not available"
+				return 1
+			fi
+			;;
+
+		install)
+			local path="$1"
+			[ -z "$path" ] && { log_err "Path required"; return 1; }
+			[ ! -d "$path" ] && { log_err "Directory not found: $path"; return 1; }
+
+			local nfo_file="$path/README.nfo"
+			if [ ! -f "$nfo_file" ]; then
+				log_err "No README.nfo found in $path"
+				return 1
+			fi
+
+			log_info "Installing module from: $path"
+
+			# Run installer if present
+			if [ -f "$path/install.sh" ]; then
+				sh "$path/install.sh"
+			elif [ -f "/usr/share/streamlit-forge/install.sh" ]; then
+				# Use system installer
+				NFO_FILE="$nfo_file" SCRIPT_DIR="$path" sh /usr/share/streamlit-forge/install.sh
+			else
+				log_err "No installer available"
+				return 1
+			fi
+			;;
+
+		init-all)
+			log_info "Generating NFO manifests for all Streamlit apps..."
+			echo ""
+
+			local success=0
+			local skipped=0
+			local failed=0
+
+			for app_dir in "$APPS_DIR"/*/; do
+				[ -d "$app_dir" ] || continue
+				local name=$(basename "$app_dir")
+
+				# Skip hidden directories
+				[ "${name#.}" != "$name" ] && continue
+
+				local nfo_file="$app_dir/README.nfo"
+				if [ -f "$nfo_file" ]; then
+					log_info "[$name] NFO already exists, skipping"
+					skipped=$((skipped + 1))
+					continue
+				fi
+
+				log_info "[$name] Generating README.nfo..."
+
+				# Get existing config
+				local port=$(get_app_config "$name" port)
+				local memory=$(get_app_config "$name" memory)
+				local domain=$(get_app_config "$name" domain)
+
+				# Create NFO from template
+				if [ -f "$NFO_PARSER" ]; then
+					. "$NFO_PARSER"
+					nfo_create "$nfo_file" "$name" "$name" "streamlit" "A Streamlit application"
+				else
+					# Fallback: copy template directly
+					local tpl="/usr/share/streamlit-forge/nfo-template.nfo"
+					if [ -f "$tpl" ]; then
+						sed -e "s/{{APP_ID}}/$name/g" \
+							-e "s/{{APP_NAME}}/$name/g" \
+							-e "s/{{SHORT_DESC}}/A Streamlit application/g" \
+							-e "s/{{VERSION}}/1.0.0/g" \
+							-e "s/{{DATE}}/$(date +%Y-%m-%d)/g" \
+							"$tpl" > "$nfo_file"
+					fi
+				fi
+
+				# Update with actual runtime values
+				if [ -f "$nfo_file" ]; then
+					[ -n "$port" ] && sed -i "s/^port=.*/port=$port/" "$nfo_file"
+					[ -n "$memory" ] && sed -i "s/^memory=.*/memory=$memory/" "$nfo_file"
+					[ -n "$domain" ] && sed -i "s/^domain_prefix=.*/domain_prefix=${domain%%.*}/" "$nfo_file"
+					log_ok "  Created: $nfo_file"
+					success=$((success + 1))
+				else
+					log_err "  Failed to create NFO"
+					failed=$((failed + 1))
+				fi
+			done
+
+			echo ""
+			echo "========================================"
+			echo "NFO generation complete"
+			echo "  Created: $success"
+			echo "  Skipped: $skipped (already exist)"
+			echo "  Failed:  $failed"
+			echo "========================================"
+			;;
+
+		*)
+			log_err "Unknown NFO action: $action"
+			echo "Usage: slforge nfo <init|init-all|info|edit|validate|json|install>"
+			return 1
+			;;
+	esac
+}
+
+# Internal: get next available port (for installer)
+_next_port() {
+	get_next_port
+}
+
 # Main command router
 case "$1" in
 	create)    shift; cmd_create "$@" ;;
@@ -961,6 +1321,9 @@ case "$1" in
 	publish)   shift; cmd_publish "$@" ;;
 	unpublish) shift; cmd_unpublish "$@" ;;
 	templates) cmd_templates ;;
+	launcher)  shift; cmd_launcher "$@" ;;
+	nfo)       shift; cmd_nfo "$@" ;;
+	_next_port) _next_port ;;
 	help|--help|-h|"")
 		usage ;;
 	*)

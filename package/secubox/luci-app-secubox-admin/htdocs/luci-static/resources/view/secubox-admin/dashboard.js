@@ -29,13 +29,13 @@ var ADMIN_NAV = [
 function renderAdminNav(activeId) {
 	return E('div', {
 		'class': 'sb-app-nav',
-		'style': 'display:flex;gap:8px;margin-bottom:20px;padding:12px 16px;background:#141419;border:1px solid rgba(255,255,255,0.08);border-radius:12px;flex-wrap:wrap;'
+		'style': 'display:flex;gap:8px;margin-bottom:20px;padding:12px 16px;background:var(--kiss-bg);border:1px solid var(--kiss-line);border-radius:12px;flex-wrap:wrap;'
 	}, ADMIN_NAV.map(function(item) {
 		var isActive = activeId === item.id;
 		return E('a', {
 			'href': L.url('admin', 'secubox', 'admin', item.id),
 			'style': 'display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:500;transition:all 0.2s;' +
-				(isActive ? 'background:linear-gradient(135deg,#667eea,#764ba2);color:white;' : 'color:#a0a0b0;background:transparent;')
+				(isActive ? 'background:var(--kiss-purple);color:white;' : 'color:var(--kiss-muted);background:transparent;')
 		}, [
 			E('span', {}, item.icon),
 			E('span', {}, _(item.label))
@@ -133,11 +133,11 @@ return view.extend({
 		var sec = overview.security || {};
 
 		return E('div', { 'class': 'system-overview card', 'style': 'margin-bottom:20px;' }, [
-			E('h3', { 'style': 'margin:0 0 16px 0;color:#0ff;' }, '📊 SYSTEM OVERVIEW'),
+			E('h3', { 'style': 'margin:0 0 16px 0;color:var(--kiss-cyan);' }, '📊 SYSTEM OVERVIEW'),
 			E('div', { 'class': 'overview-grid', 'style': 'display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;' }, [
 				// System section
-				E('div', { 'class': 'overview-section', 'style': 'background:rgba(0,255,255,0.05);padding:12px;border-radius:8px;border:1px solid rgba(0,255,255,0.2);' }, [
-					E('h4', { 'style': 'margin:0 0 8px 0;color:#0ff;font-size:12px;' }, '⚡ SYSTEM'),
+				E('div', { 'class': 'overview-section', 'style': 'background:color-mix(in srgb, var(--kiss-cyan) 5%, transparent);padding:12px;border-radius:8px;border:1px solid color-mix(in srgb, var(--kiss-cyan) 20%, transparent);' }, [
+					E('h4', { 'style': 'margin:0 0 8px 0;color:var(--kiss-cyan);font-size:12px;' }, '⚡ SYSTEM'),
 					E('div', { 'style': 'font-size:11px;line-height:1.8;' }, [
 						E('div', {}, 'Load: ' + (sys.load || 'N/A')),
 						E('div', {}, 'CPU: ' + (sys.cpu_used || 0) + '% used'),
@@ -145,8 +145,8 @@ return view.extend({
 					])
 				]),
 				// Resources section
-				E('div', { 'class': 'overview-section', 'style': 'background:rgba(0,255,255,0.05);padding:12px;border-radius:8px;border:1px solid rgba(0,255,255,0.2);' }, [
-					E('h4', { 'style': 'margin:0 0 8px 0;color:#0ff;font-size:12px;' }, '💾 RESOURCES'),
+				E('div', { 'class': 'overview-section', 'style': 'background:color-mix(in srgb, var(--kiss-cyan) 5%, transparent);padding:12px;border-radius:8px;border:1px solid color-mix(in srgb, var(--kiss-cyan) 20%, transparent);' }, [
+					E('h4', { 'style': 'margin:0 0 8px 0;color:var(--kiss-cyan);font-size:12px;' }, '💾 RESOURCES'),
 					E('div', { 'style': 'font-size:11px;line-height:1.8;' }, [
 						E('div', {}, 'Memory: ' + (sys.mem_free || 0) + 'MB free'),
 						E('div', {}, 'Disk /: ' + (sys.disk_root || 'N/A')),
@@ -154,8 +154,8 @@ return view.extend({
 					])
 				]),
 				// Services section
-				E('div', { 'class': 'overview-section', 'style': 'background:rgba(0,255,255,0.05);padding:12px;border-radius:8px;border:1px solid rgba(0,255,255,0.2);' }, [
-					E('h4', { 'style': 'margin:0 0 8px 0;color:#0ff;font-size:12px;' }, '🔧 SERVICES'),
+				E('div', { 'class': 'overview-section', 'style': 'background:color-mix(in srgb, var(--kiss-cyan) 5%, transparent);padding:12px;border-radius:8px;border:1px solid color-mix(in srgb, var(--kiss-cyan) 20%, transparent);' }, [
+					E('h4', { 'style': 'margin:0 0 8px 0;color:var(--kiss-cyan);font-size:12px;' }, '🔧 SERVICES'),
 					E('div', { 'style': 'font-size:11px;line-height:1.8;' }, [
 						E('div', {}, 'HAProxy: ' + (svc.haproxy_backends || 0) + ' backends'),
 						E('div', {}, 'VHosts: ' + (svc.haproxy_vhosts || 0)),
@@ -163,8 +163,8 @@ return view.extend({
 					])
 				]),
 				// Network section
-				E('div', { 'class': 'overview-section', 'style': 'background:rgba(0,255,255,0.05);padding:12px;border-radius:8px;border:1px solid rgba(0,255,255,0.2);' }, [
-					E('h4', { 'style': 'margin:0 0 8px 0;color:#0ff;font-size:12px;' }, '🌐 NETWORK'),
+				E('div', { 'class': 'overview-section', 'style': 'background:color-mix(in srgb, var(--kiss-cyan) 5%, transparent);padding:12px;border-radius:8px;border:1px solid color-mix(in srgb, var(--kiss-cyan) 20%, transparent);' }, [
+					E('h4', { 'style': 'margin:0 0 8px 0;color:var(--kiss-cyan);font-size:12px;' }, '🌐 NETWORK'),
 					E('div', { 'style': 'font-size:11px;line-height:1.8;' }, [
 						E('div', {}, 'Connections: ' + (net.connections || 0)),
 						E('div', {}, 'Tor: ' + (net.tor || 0)),
@@ -172,8 +172,8 @@ return view.extend({
 					])
 				]),
 				// Security section
-				E('div', { 'class': 'overview-section', 'style': 'background:rgba(255,0,100,0.1);padding:12px;border-radius:8px;border:1px solid rgba(255,0,100,0.3);' }, [
-					E('h4', { 'style': 'margin:0 0 8px 0;color:#ff0064;font-size:12px;' }, '🛡️ SECURITY'),
+				E('div', { 'class': 'overview-section', 'style': 'background:color-mix(in srgb, var(--kiss-red) 10%, transparent);padding:12px;border-radius:8px;border:1px solid color-mix(in srgb, var(--kiss-red) 30%, transparent);' }, [
+					E('h4', { 'style': 'margin:0 0 8px 0;color:var(--kiss-red);font-size:12px;' }, '🛡️ SECURITY'),
 					E('div', { 'style': 'font-size:11px;line-height:1.8;' }, [
 						E('div', {}, 'Active Bans: ' + (sec.active_bans || 0)),
 						E('div', {}, 'SSRF: ' + (sec.attacks_ssrf || 0) + ' | Bots: ' + (sec.attacks_botscan || 0)),
@@ -307,13 +307,13 @@ return view.extend({
 						'target': '_blank',
 						'class': 'service-link',
 						'style': 'display:inline-flex;align-items:center;gap:8px;padding:10px 16px;' +
-							'background:rgba(102,126,234,0.1);border:1px solid rgba(102,126,234,0.3);' +
-							'border-radius:8px;text-decoration:none;color:#e0e0e0;font-size:14px;' +
+							'background:color-mix(in srgb, var(--kiss-purple) 10%, transparent);border:1px solid color-mix(in srgb, var(--kiss-purple) 30%, transparent);' +
+							'border-radius:8px;text-decoration:none;color:var(--kiss-text);font-size:14px;' +
 							'transition:all 0.2s;margin:4px;'
 					}, [
 						E('span', { 'style': 'font-size:18px;' }, svc.icon || '⚡'),
 						E('span', {}, svc.name),
-						E('span', { 'style': 'color:#888;font-size:12px;' }, ':' + svc.port)
+						E('span', { 'style': 'color:var(--kiss-muted);font-size:12px;' }, ':' + svc.port)
 					]));
 				});
 			}

@@ -1,0 +1,16 @@
+{
+    "admin/secubox/system/config-vault": {
+        "title": "Config Vault",
+        "order": 8,
+        "action": {
+            "type": "view",
+            "path": "config-vault/overview"
+        },
+        "depends": {
+            "acl": ["luci-app-config-vault"],
+            "uci": {
+                "config-vault": true
+            }
+        }
+    }
+}

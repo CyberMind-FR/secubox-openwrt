@@ -1,0 +1,715 @@
+#!/bin/sh
+# SecuBox Configuration Vault - Versioned config backup with Gitea sync
+# Supports cloning, deployment templates, and audit trail for certifications
+
+. /lib/functions.sh
+
+VAULT_PATH=""
+GITEA_URL=""
+GITEA_REPO=""
+GITEA_BRANCH=""
+GITEA_TOKEN=""
+AUTO_COMMIT=""
+AUTO_PUSH=""
+
+# Module tracking
+MODULES=""
+
+# Load configuration
+load_config() {
+    config_load config-vault
+
+    config_get VAULT_PATH global vault_path "/srv/config-vault"
+    config_get AUTO_COMMIT global auto_commit "1"
+    config_get AUTO_PUSH global auto_push "1"
+
+    config_get GITEA_URL gitea url ""
+    config_get GITEA_REPO gitea repo ""
+    config_get GITEA_BRANCH gitea branch "main"
+
+    # Get token from gitea config (shared)
+    GITEA_TOKEN=$(uci -q get gitea.main.api_token)
+}
+
+# Initialize vault repository
+cmd_init() {
+    load_config
+
+    echo "Initializing Configuration Vault..."
+
+    # Create vault directory
+    mkdir -p "$VAULT_PATH"
+    cd "$VAULT_PATH" || exit 1
+
+    # Check if already initialized
+    if [ -d ".git" ]; then
+        echo "Vault already initialized at $VAULT_PATH"
+        return 0
+    fi
+
+    # Initialize git repo
+    git init
+    git config user.name "SecuBox Vault"
+    git config user.email "vault@secubox.local"
+
+    # Create directory structure for modules
+    config_load config-vault
+    config_foreach create_module_dir module
+
+    # Create README
+    cat > README.md << 'EOF'
+# SecuBox Configuration Vault
+
+Versioned configuration backups for SecuBox appliance.
+
+## Structure
+
+Each module has its own directory containing:
+- `uci/` - UCI configuration exports (key=value format)
+- `json/` - JSON exports for portability
+- `flat/` - Flat file backups (certificates, keys, etc.)
+
+## Modules
+
+| Module | Description |
+|--------|-------------|
+| users | User Management & SSO |
+| network | Network Configuration |
+| services | Service Exposure & Distribution |
+| security | Security & WAF |
+| system | System Settings |
+| containers | LXC Containers |
+| reporter | Report Generator |
+| dns | DNS & Domains |
+| mesh | P2P Mesh Network |
+
+## Usage
+
+```bash
+# Backup all modules
+configvaultctl backup
+
+# Backup specific module
+configvaultctl backup users
+
+# Restore from backup
+configvaultctl restore users
+
+# Clone to new device
+configvaultctl export-clone > secubox-clone.tar.gz
+
+# Push to Gitea
+configvaultctl push
+```
+
+## Certification Compliance
+
+All changes are versioned with timestamps and commit messages for audit trail.
+EOF
+
+    # Create .gitignore
+    cat > .gitignore << 'EOF'
+*.tmp
+*.log
+.DS_Store
+EOF
+
+    # Initial commit
+    git add -A
+    git commit -m "Initialize SecuBox Configuration Vault
+
+System: $(cat /etc/openwrt_release | grep DISTRIB_ID | cut -d= -f2 | tr -d "'")
+Version: $(cat /etc/openwrt_release | grep DISTRIB_RELEASE | cut -d= -f2 | tr -d "'")
+Hostname: $(uci -q get system.@system[0].hostname)
+Date: $(date -Iseconds)"
+
+    # Setup remote if configured
+    if [ -n "$GITEA_URL" ] && [ -n "$GITEA_REPO" ]; then
+        local clone_url="${GITEA_URL}/${GITEA_REPO}.git"
+        git remote add origin "$clone_url" 2>/dev/null || git remote set-url origin "$clone_url"
+        echo "Remote configured: $clone_url"
+    fi
+
+    echo "Vault initialized at $VAULT_PATH"
+}
+
+# Create module directory structure
+create_module_dir() {
+    local section="$1"
+    local enabled description
+
+    config_get enabled "$section" enabled "1"
+    [ "$enabled" = "1" ] || return
+
+    config_get description "$section" description "$section"
+
+    mkdir -p "$VAULT_PATH/$section/uci"
+    mkdir -p "$VAULT_PATH/$section/json"
+    mkdir -p "$VAULT_PATH/$section/flat"
+
+    # Create module manifest
+    cat > "$VAULT_PATH/$section/manifest.json" << EOF
+{
+    "module": "$section",
+    "description": "$description",
+    "created": "$(date -Iseconds)",
+    "configs": []
+}
+EOF
+}
+
+# Backup a single UCI config
+backup_uci_config() {
+    local config="$1"
+    local module="$2"
+    local uci_file="/etc/config/$config"
+
+    [ -f "$uci_file" ] || return 0
+
+    # UCI format backup
+    cp "$uci_file" "$VAULT_PATH/$module/uci/$config"
+
+    # JSON format backup
+    local json_out="$VAULT_PATH/$module/json/${config}.json"
+    uci export "$config" 2>/dev/null | uci_to_json > "$json_out"
+}
+
+# Convert UCI output to JSON (simplified)
+uci_to_json() {
+    awk '
+    BEGIN {
+        print "{"
+        first_section = 1
+    }
+    /^package/ {
+        gsub(/'\''/, "", $2)
+        printf "  \"package\": \"%s\",\n", $2
+        printf "  \"sections\": [\n"
+    }
+    /^config/ {
+        if (!first_section) print "    },"
+        first_section = 0
+        gsub(/'\''/, "", $2)
+        gsub(/'\''/, "", $3)
+        printf "    {\n      \"type\": \"%s\",\n      \"name\": \"%s\",\n      \"options\": {\n", $2, $3
+        first_opt = 1
+    }
+    /option|list/ {
+        if (!first_opt) print ","
+        first_opt = 0
+        gsub(/'\''/, "", $2)
+        gsub(/'\''/, "\"", $3)
+        # Handle multi-word values
+        $1 = ""; $2 = ""
+        gsub(/^ +/, "")
+        gsub(/'\''/, "")
+        printf "        \"%s\": \"%s\"", $2, $0
+    }
+    END {
+        if (!first_section) {
+            print "\n      }\n    }"
+        }
+        print "\n  ]\n}"
+    }
+    ' 2>/dev/null || echo '{"error": "parse_failed"}'
+}
+
+# Backup module
+backup_module() {
+    local module="$1"
+    local configs description
+
+    config_load config-vault
+
+    local enabled
+    config_get enabled "$module" enabled "1"
+    [ "$enabled" = "1" ] || return
+
+    config_get description "$module" description "$module"
+
+    echo "Backing up module: $module ($description)"
+
+    # Create directories
+    mkdir -p "$VAULT_PATH/$module/uci"
+    mkdir -p "$VAULT_PATH/$module/json"
+    mkdir -p "$VAULT_PATH/$module/flat"
+
+    # Get list of configs for this module
+    config_list_foreach "$module" config backup_config_item "$module"
+
+    # Update manifest
+    cat > "$VAULT_PATH/$module/manifest.json" << EOF
+{
+    "module": "$module",
+    "description": "$description",
+    "backed_up": "$(date -Iseconds)",
+    "hostname": "$(uci -q get system.@system[0].hostname)"
+}
+EOF
+}
+
+backup_config_item() {
+    local config="$1"
+    local module="$2"
+    backup_uci_config "$config" "$module"
+}
+
+# Main backup command
+cmd_backup() {
+    local target="$1"
+
+    load_config
+    cd "$VAULT_PATH" || { echo "Vault not initialized. Run: configvaultctl init"; exit 1; }
+
+    echo "Starting configuration backup..."
+    echo "Timestamp: $(date -Iseconds)"
+    echo ""
+
+    config_load config-vault
+
+    if [ -n "$target" ]; then
+        # Backup specific module
+        backup_module "$target"
+    else
+        # Backup all modules
+        config_foreach backup_module module
+    fi
+
+    # Backup additional flat files
+    backup_flat_files
+
+    # Auto-commit if enabled
+    if [ "$AUTO_COMMIT" = "1" ]; then
+        local changes=$(git status --porcelain | wc -l)
+        if [ "$changes" -gt 0 ]; then
+            git add -A
+            git commit -m "Config backup: $(date '+%Y-%m-%d %H:%M')
+
+Modules: $(ls -d */ 2>/dev/null | tr -d '/' | tr '\n' ' ')
+Changes: $changes files
+Source: $(uci -q get system.@system[0].hostname)"
+
+            echo ""
+            echo "Changes committed: $changes files"
+
+            # Auto-push if enabled
+            if [ "$AUTO_PUSH" = "1" ] && [ -n "$GITEA_URL" ]; then
+                cmd_push
+            fi
+        else
+            echo "No changes detected."
+        fi
+    fi
+}
+
+# Backup important flat files
+backup_flat_files() {
+    echo "Backing up flat files..."
+
+    # Users - export to JSON
+    if [ -x /usr/sbin/secubox-users ]; then
+        mkdir -p "$VAULT_PATH/users/flat"
+        /usr/sbin/secubox-users list --json > "$VAULT_PATH/users/flat/users.json" 2>/dev/null || true
+    fi
+
+    # SSH keys
+    mkdir -p "$VAULT_PATH/system/flat/ssh"
+    [ -f /etc/dropbear/authorized_keys ] && cp /etc/dropbear/authorized_keys "$VAULT_PATH/system/flat/ssh/" 2>/dev/null
+
+    # SSL certificates (public only)
+    mkdir -p "$VAULT_PATH/security/flat/certs"
+    for cert in /etc/ssl/certs/*.crt /etc/acme/*.cer; do
+        [ -f "$cert" ] && cp "$cert" "$VAULT_PATH/security/flat/certs/" 2>/dev/null
+    done
+
+    # HAProxy configs
+    mkdir -p "$VAULT_PATH/services/flat"
+    [ -f /etc/haproxy.cfg ] && cp /etc/haproxy.cfg "$VAULT_PATH/services/flat/" 2>/dev/null
+
+    # Container definitions
+    mkdir -p "$VAULT_PATH/containers/flat"
+    for cfg in /srv/lxc/*/config; do
+        [ -f "$cfg" ] && {
+            local name=$(dirname "$cfg" | xargs basename)
+            cp "$cfg" "$VAULT_PATH/containers/flat/${name}.config" 2>/dev/null
+        }
+    done
+}
+
+# Push to Gitea
+cmd_push() {
+    load_config
+    cd "$VAULT_PATH" || exit 1
+
+    if [ -z "$GITEA_URL" ] || [ -z "$GITEA_TOKEN" ]; then
+        echo "Error: Gitea not configured"
+        return 1
+    fi
+
+    echo "Pushing to Gitea..."
+
+    # Configure credential helper for this push
+    local auth_url=$(echo "$GITEA_URL" | sed "s|://|://oauth2:${GITEA_TOKEN}@|")
+    git remote set-url origin "${auth_url}/${GITEA_REPO}.git"
+
+    git push -u origin "$GITEA_BRANCH" 2>&1
+    local result=$?
+
+    # Reset URL without token
+    git remote set-url origin "${GITEA_URL}/${GITEA_REPO}.git"
+
+    if [ $result -eq 0 ]; then
+        echo "Successfully pushed to Gitea"
+    else
+        echo "Push failed (code: $result)"
+    fi
+
+    return $result
+}
+
+# Pull from Gitea
+cmd_pull() {
+    load_config
+    cd "$VAULT_PATH" || exit 1
+
+    echo "Pulling from Gitea..."
+
+    local auth_url=$(echo "$GITEA_URL" | sed "s|://|://oauth2:${GITEA_TOKEN}@|")
+    git remote set-url origin "${auth_url}/${GITEA_REPO}.git"
+
+    git pull origin "$GITEA_BRANCH" 2>&1
+    local result=$?
+
+    git remote set-url origin "${GITEA_URL}/${GITEA_REPO}.git"
+
+    return $result
+}
+
+# Restore module
+cmd_restore() {
+    local module="$1"
+
+    load_config
+    cd "$VAULT_PATH" || exit 1
+
+    if [ -z "$module" ]; then
+        echo "Usage: configvaultctl restore <module>"
+        echo "Available modules:"
+        ls -d */ 2>/dev/null | tr -d '/'
+        return 1
+    fi
+
+    [ -d "$module" ] || { echo "Module not found: $module"; return 1; }
+
+    echo "Restoring module: $module"
+    echo "WARNING: This will overwrite current configurations!"
+    echo ""
+
+    # Restore UCI configs
+    for uci_file in "$module/uci/"*; do
+        [ -f "$uci_file" ] || continue
+        local config=$(basename "$uci_file")
+        echo "  Restoring /etc/config/$config"
+        cp "$uci_file" "/etc/config/$config"
+    done
+
+    echo ""
+    echo "Restored. Run 'reload_config' or reboot to apply changes."
+}
+
+# Export clone package
+cmd_export_clone() {
+    local output="${1:-/tmp/secubox-clone-$(date +%Y%m%d).tar.gz}"
+
+    load_config
+
+    # First do a backup
+    cmd_backup
+
+    cd "$VAULT_PATH" || exit 1
+
+    echo "Creating clone package: $output"
+
+    # Create clone manifest
+    cat > clone-manifest.json << EOF
+{
+    "type": "secubox-clone",
+    "version": "1.0",
+    "created": "$(date -Iseconds)",
+    "source": {
+        "hostname": "$(uci -q get system.@system[0].hostname)",
+        "model": "$(cat /tmp/sysinfo/model 2>/dev/null || echo 'unknown')",
+        "version": "$(cat /etc/openwrt_release | grep DISTRIB_RELEASE | cut -d= -f2 | tr -d "'")"
+    },
+    "modules": [
+$(ls -d */ 2>/dev/null | tr -d '/' | while read m; do echo "        \"$m\","; done | sed '$ s/,$//')
+    ]
+}
+EOF
+
+    # Create tarball
+    tar -czf "$output" -C "$VAULT_PATH" .
+
+    echo "Clone package created: $output"
+    echo "Size: $(ls -lh "$output" | awk '{print $5}')"
+}
+
+# Import clone package
+cmd_import_clone() {
+    local archive="$1"
+
+    [ -f "$archive" ] || { echo "File not found: $archive"; return 1; }
+
+    load_config
+
+    echo "Importing clone package: $archive"
+
+    # Extract to vault
+    mkdir -p "$VAULT_PATH"
+    tar -xzf "$archive" -C "$VAULT_PATH"
+
+    # Show manifest
+    if [ -f "$VAULT_PATH/clone-manifest.json" ]; then
+        echo ""
+        echo "Clone source:"
+        jsonfilter -i "$VAULT_PATH/clone-manifest.json" -e '@.source.hostname' | xargs echo "  Hostname:"
+        jsonfilter -i "$VAULT_PATH/clone-manifest.json" -e '@.source.version' | xargs echo "  Version:"
+    fi
+
+    echo ""
+    echo "Import complete. Use 'configvaultctl restore <module>' to apply configs."
+}
+
+# Show status
+cmd_status() {
+    load_config
+
+    echo "SecuBox Configuration Vault"
+    echo "==========================="
+    echo ""
+    echo "Vault Path: $VAULT_PATH"
+    echo "Auto-commit: $AUTO_COMMIT"
+    echo "Auto-push: $AUTO_PUSH"
+    echo ""
+
+    if [ -d "$VAULT_PATH/.git" ]; then
+        cd "$VAULT_PATH"
+        echo "Git Status:"
+        echo "  Branch: $(git branch --show-current 2>/dev/null || echo 'unknown')"
+        echo "  Remote: $(git remote get-url origin 2>/dev/null || echo 'not configured')"
+        echo "  Last commit: $(git log -1 --format='%h %s' 2>/dev/null || echo 'none')"
+        echo "  Changes: $(git status --porcelain 2>/dev/null | wc -l) uncommitted"
+        echo ""
+
+        echo "Modules:"
+        config_load config-vault
+        config_foreach show_module_status module
+    else
+        echo "Vault not initialized. Run: configvaultctl init"
+    fi
+}
+
+show_module_status() {
+    local section="$1"
+    local enabled description
+
+    config_get enabled "$section" enabled "1"
+    config_get description "$section" description "$section"
+
+    local status="disabled"
+    [ "$enabled" = "1" ] && status="enabled"
+
+    local files=0
+    [ -d "$VAULT_PATH/$section" ] && files=$(find "$VAULT_PATH/$section" -type f | wc -l)
+
+    printf "  %-12s %-8s %3d files  %s\n" "$section" "[$status]" "$files" "$description"
+}
+
+# Show history/changelog
+cmd_history() {
+    local count="${1:-20}"
+
+    load_config
+    cd "$VAULT_PATH" || exit 1
+
+    echo "Configuration Change History"
+    echo "============================"
+    echo ""
+
+    git log --oneline -n "$count" --date=short --format="%h %ad %s"
+}
+
+# Show diff since last commit
+cmd_diff() {
+    load_config
+    cd "$VAULT_PATH" || exit 1
+
+    git diff
+}
+
+# Track a LuCI config change (called by hook)
+cmd_track() {
+    local config="$1"
+    local action="${2:-modified}"
+    local user="${3:-system}"
+
+    load_config
+
+    # Find which module this config belongs to
+    local module=""
+    config_load config-vault
+
+    find_module_for_config() {
+        local section="$1"
+        config_list_foreach "$section" config check_config_match "$config" "$section"
+    }
+
+    check_config_match() {
+        local cfg="$1"
+        local target="$2"
+        local mod="$3"
+        [ "$cfg" = "$target" ] && module="$mod"
+    }
+
+    config_foreach find_module_for_config module
+
+    [ -z "$module" ] && return 0  # Config not tracked
+
+    # Backup the changed config
+    backup_uci_config "$config" "$module"
+
+    # Commit the change
+    cd "$VAULT_PATH" || return 1
+
+    git add -A
+    git commit -m "LuCI change: $config ($action)
+
+Module: $module
+Config: $config
+Action: $action
+User: $user
+Time: $(date -Iseconds)" 2>/dev/null
+
+    # Auto-push if enabled
+    [ "$AUTO_PUSH" = "1" ] && [ -n "$GITEA_URL" ] && cmd_push >/dev/null 2>&1 &
+}
+
+# List available modules
+cmd_modules() {
+    load_config
+
+    echo "Configured Modules:"
+    echo ""
+
+    config_load config-vault
+    config_foreach list_module module
+}
+
+list_module() {
+    local section="$1"
+    local enabled description
+
+    config_get enabled "$section" enabled "1"
+    config_get description "$section" description ""
+
+    printf "%-12s " "$section"
+    [ "$enabled" = "1" ] && printf "[enabled] " || printf "[disabled]"
+    echo "$description"
+
+    # List configs
+    config_list_foreach "$section" config list_config_item
+    echo ""
+}
+
+list_config_item() {
+    local config="$1"
+    local exists=""
+    [ -f "/etc/config/$config" ] && exists="*" || exists=" "
+    echo "    $exists $config"
+}
+
+# Usage
+usage() {
+    cat << EOF
+SecuBox Configuration Vault - Versioned config management
+
+USAGE:
+    configvaultctl <command> [options]
+
+COMMANDS:
+    init                Initialize vault repository
+    backup [module]     Backup configs (all or specific module)
+    restore <module>    Restore module configs from vault
+    push                Push changes to Gitea
+    pull                Pull latest from Gitea
+    status              Show vault status
+    history [n]         Show last n config changes (default: 20)
+    diff                Show uncommitted changes
+    modules             List configured modules
+    track <config>      Track a config change (used by hooks)
+    export-clone [file] Create deployment clone package
+    import-clone <file> Import clone package
+
+EXAMPLES:
+    # Initialize and backup all
+    configvaultctl init
+    configvaultctl backup
+
+    # Backup specific module
+    configvaultctl backup users
+
+    # Create clone for new device
+    configvaultctl export-clone /tmp/secubox-v1.tar.gz
+
+    # Restore users on new device
+    configvaultctl import-clone /tmp/secubox-v1.tar.gz
+    configvaultctl restore users
+
+AUDIT TRAIL:
+    All changes are versioned with git for certification compliance.
+    View history: configvaultctl history
+EOF
+}
+
+# Main
+case "$1" in
+    init)
+        cmd_init
+        ;;
+    backup)
+        cmd_backup "$2"
+        ;;
+    restore)
+        cmd_restore "$2"
+        ;;
+    push)
+        cmd_push
+        ;;
+    pull)
+        cmd_pull
+        ;;
+    status)
+        cmd_status
+        ;;
+    history)
+        cmd_history "$2"
+        ;;
+    diff)
+        cmd_diff
+        ;;
+    modules)
+        cmd_modules
+        ;;
+    track)
+        cmd_track "$2" "$3" "$4"
+        ;;
+    export-clone|export)
+        cmd_export_clone "$2"
+        ;;
+    import-clone|import)
+        cmd_import_clone "$2"
+        ;;
+    *)
+        usage
+        ;;
+esac

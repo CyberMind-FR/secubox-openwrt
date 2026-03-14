@@ -1,0 +1,17 @@
+{
+    "luci-app-config-vault": {
+        "description": "Configuration Vault Management",
+        "read": {
+            "ubus": {
+                "luci.config-vault": ["status", "modules", "history", "diff"]
+            },
+            "uci": ["config-vault"]
+        },
+        "write": {
+            "ubus": {
+                "luci.config-vault": ["backup", "restore", "push", "pull", "init", "export_clone"]
+            },
+            "uci": ["config-vault"]
+        }
+    }
+}

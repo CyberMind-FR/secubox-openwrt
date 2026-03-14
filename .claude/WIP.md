@@ -1,12 +1,86 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-12 (SecuBox Watchdog)_
+_Last updated: 2026-03-14 (Module Manifest NFO)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
 ---
 
 ## Recently Completed
+
+### 2026-03-14
+
+- **Module Manifest (NFO) System Extension (Complete)**
+  - Flat-file UCI-style `.nfo` manifest format for Streamlit/MetaBlog apps
+  - Sections: identity, description, tags, runtime, dependencies, exposure, launcher, settings, dynamics, mesh, media
+  - `[dynamics]` section for AI/generative content integration with prompt_context, capabilities, input/output types
+  - NFO parser library: `/usr/share/streamlit-forge/lib/nfo-parser.sh`
+  - NFO validator library: `/usr/share/streamlit-forge/lib/nfo-validator.sh` (type-specific validation)
+  - `slforge nfo` commands: init, init-all, info, edit, validate, json, install
+  - `metablogizerctl nfo` commands: init, init-all, info, edit, validate, sync, json
+  - Batch NFO generation for all installed apps/sites
+  - RPCD methods: nfo_read, nfo_write, nfo_validate for LuCI integration
+  - Reusable NFO viewer component (`nfo-viewer.js`) with collapsible sections
+  - LuCI editor modal for NFO editing in Streamlit Forge
+  - Hub generator reads full NFO metadata for category/description/capabilities
+  - Metacatalog search enhanced with NFO indexing and filters
+  - Full spec at `/usr/share/streamlit-forge/NFO-SPEC.md`
+
+- **Streamlit On-Demand Launcher (Complete)**
+  - New `secubox-app-streamlit-launcher` package
+  - On-demand startup: Apps start only when first accessed (lazy loading)
+  - Idle shutdown: Stop apps after configurable timeout (default 30 min)
+  - Memory management: Force-stop low-priority apps when memory < threshold
+  - Priority system (1-100): Higher priority = keep running longer
+  - Always-on mode for critical apps that should never auto-stop
+  - CLI: `streamlit-launcherctl daemon|status|list|start|stop|priority|check|check-memory`
+  - Procd daemon with respawn for background monitoring
+  - Access tracking via touch files in `/tmp/streamlit-access/`
+  - Loading page template for cold-start user feedback
+  - Updated `slforge` with launcher integration:
+    - `slforge launcher status|priority|always-on` commands
+    - Access tracking on app start
+  - UCI config: `/etc/config/streamlit-launcher`
+  - Documentation: Full README with architecture diagram
+
+### 2026-03-13
+
+- **Configuration Vault System (Complete)**
+  - New `secubox-app-config-vault` + `luci-app-config-vault` packages
+  - Git-based config versioning with auto-commit and auto-push
+  - 9 configuration modules: users, network, services, security, system, containers, reporter, dns, mesh
+  - CLI: `configvaultctl init|backup|restore|push|pull|status|history|diff|modules|export-clone|import-clone`
+  - RPCD: status, modules, history, diff, backup, restore, push, pull, init, export_clone
+  - Gitea integration: Private repo sync (`gandalf/secubox-config-vault`)
+  - LuCI Dashboard: KISS-themed with status rings, module table, commit history, quick actions
+  - Export/import clone tarballs for device provisioning and cloning
+  - Menu: SecuBox → System → Config Vault
+
+- **System Hardware Report (Complete)**
+  - Added new report type to `secubox-app-reporter`
+  - CLI: `secubox-reportctl generate system`
+  - CPU/Memory/Disk/Temperature gauges with animated rings
+  - Environmental impact card: Power usage (W), daily kWh, CO₂ emissions
+  - CPU load histogram (24-bar visualization)
+  - Health recommendations based on system metrics
+  - Top processes table and debug log viewer
+  - Network interface stats (RX/TX per interface)
+  - BusyBox-compatible collectors using /proc filesystem
+  - KissTheme dark styling with responsive layout
+
+- **SecuBox Report Generator (Complete)**
+  - New `secubox-app-reporter` + `luci-app-reporter` packages
+  - Two report types:
+    - Development Status: health score, HISTORY.md completions, WIP items, roadmap
+    - Services Distribution: Tor services (5), DNS/SSL vhosts (243), mesh services (1)
+  - CLI: `secubox-reportctl generate|send|schedule|status|preview|list|clean`
+  - RPCD: status, list_reports, generate, send, schedule, delete_report, test_email
+  - LuCI Dashboard: KISS-themed overview, quick actions, reports list, schedule config
+  - Email delivery via msmtp/sendmail with MIME multipart HTML
+  - KissTheme dark styling with responsive layout
+  - UCI config for SMTP and cron scheduling
+  - Deployed and tested on router: `/www/reports/`
+  - Menu: SecuBox → System → Report Generator
 
 ### 2026-03-12
 
@@ -488,8 +562,8 @@ _Last updated: 2026-03-12 (SecuBox Watchdog)_
 
 ### v1.0 Release Prep
 
-1. **Session Replay** - Avatar-tap integration for session capture/replay
-2. **Remote ttyd Deployment** - Auto-install ttyd on mesh nodes
+1. **Remote ttyd Deployment** - Auto-install ttyd on mesh nodes
+2. **Device Provisioning** - Use Config Vault export-clone for SecuBox replication
 
 ### v1.1+ Extended Mesh
 

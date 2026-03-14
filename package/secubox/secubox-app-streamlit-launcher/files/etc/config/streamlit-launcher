@@ -1,0 +1,28 @@
+config global 'global'
+	option enabled '1'
+	# Idle timeout in minutes before stopping an app
+	option idle_timeout '30'
+	# Check interval in seconds
+	option check_interval '60'
+	# Minimum free memory (MB) before force-stopping low-priority apps
+	option memory_threshold '100'
+	# Enable on-demand startup (vs always-running)
+	option on_demand '1'
+	# Startup timeout in seconds (max wait for app to be ready)
+	option startup_timeout '30'
+	# Directory for access tracking files
+	option tracking_dir '/tmp/streamlit-access'
+	# Log level: debug, info, warn, error
+	option log_level 'info'
+
+# App priority (higher = keep running longer)
+# Apps not listed default to priority 50
+config priority 'default'
+	option app '*'
+	option value '50'
+
+# Example: keep control dashboard always running
+#config priority 'control'
+#	option app 'control'
+#	option value '100'
+#	option always_on '1'

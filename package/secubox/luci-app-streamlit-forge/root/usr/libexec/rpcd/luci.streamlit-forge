@@ -424,6 +424,261 @@ do_preview() {
 	json_dump
 }
 
+# ============================================
+# NFO Module Manifest Methods
+# ============================================
+
+# Load NFO parser libraries if available
+NFO_PARSER="/usr/share/streamlit-forge/lib/nfo-parser.sh"
+NFO_VALIDATOR="/usr/share/streamlit-forge/lib/nfo-validator.sh"
+[ -f "$NFO_PARSER" ] && . "$NFO_PARSER"
+[ -f "$NFO_VALIDATOR" ] && . "$NFO_VALIDATOR"
+
+# Read NFO content as JSON
+nfo_read() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	config_load streamlit-forge
+	config_get apps_dir main apps_dir '/srv/streamlit/apps'
+
+	local nfo_file="$apps_dir/$name/README.nfo"
+
+	if [ ! -f "$nfo_file" ]; then
+		json_init
+		json_add_string "error" "NFO not found"
+		json_add_boolean "exists" 0
+		json_dump
+		return
+	fi
+
+	# Use nfo_to_json if available
+	if type nfo_to_json >/dev/null 2>&1; then
+		local nfo_json=$(nfo_to_json "$nfo_file" 2>/dev/null)
+		if [ -n "$nfo_json" ]; then
+			echo "$nfo_json"
+			return
+		fi
+	fi
+
+	# Fallback: read raw content and return with basic structure
+	json_init
+	json_add_boolean "exists" 1
+	json_add_string "file" "$nfo_file"
+
+	# Extract key fields manually
+	local id=$(grep "^id=" "$nfo_file" | head -1 | cut -d= -f2)
+	local nfo_name=$(grep "^name=" "$nfo_file" | head -1 | cut -d= -f2)
+	local version=$(grep "^version=" "$nfo_file" | head -1 | cut -d= -f2)
+	local category=$(grep "^category=" "$nfo_file" | head -1 | cut -d= -f2)
+	local short=$(grep "^short=" "$nfo_file" | head -1 | cut -d= -f2)
+	local type=$(grep "^type=" "$nfo_file" | head -1 | cut -d= -f2)
+	local capabilities=$(grep "^capabilities=" "$nfo_file" | head -1 | cut -d= -f2)
+
+	json_add_object "identity"
+	json_add_string "id" "$id"
+	json_add_string "name" "$nfo_name"
+	json_add_string "version" "$version"
+	json_close_object
+
+	json_add_object "tags"
+	json_add_string "category" "$category"
+	json_close_object
+
+	json_add_object "description"
+	json_add_string "short" "$short"
+	json_close_object
+
+	json_add_object "runtime"
+	json_add_string "type" "$type"
+	json_close_object
+
+	json_add_object "dynamics"
+	json_add_string "capabilities" "$capabilities"
+	json_close_object
+
+	json_dump
+}
+
+# Write NFO content from JSON
+nfo_write() {
+	local name="$1"
+	local data="$2"
+
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+	[ -z "$data" ] && { echo '{"error":"NFO data required"}'; return; }
+
+	config_load streamlit-forge
+	config_get apps_dir main apps_dir '/srv/streamlit/apps'
+
+	local nfo_file="$apps_dir/$name/README.nfo"
+
+	if [ ! -f "$nfo_file" ]; then
+		# Initialize NFO if it doesn't exist
+		if type slforge >/dev/null 2>&1; then
+			slforge nfo init "$name" >/dev/null 2>&1
+		else
+			echo '{"error":"NFO not found and cannot be created"}'
+			return
+		fi
+	fi
+
+	# Use nfo_update_from_json if available
+	if type nfo_update_from_json >/dev/null 2>&1; then
+		if nfo_update_from_json "$nfo_file" "$data" 2>/dev/null; then
+			json_init
+			json_add_int "code" 0
+			json_add_string "message" "NFO updated"
+			json_dump
+			return
+		fi
+	fi
+
+	# Fallback: update individual fields
+	json_load "$data"
+
+	# Update identity fields
+	local id nfo_name version
+	json_select "identity" 2>/dev/null && {
+		json_get_var id id
+		json_get_var nfo_name name
+		json_get_var version version
+		json_select ..
+	}
+
+	if type nfo_update >/dev/null 2>&1; then
+		[ -n "$id" ] && nfo_update "$nfo_file" "identity" "id" "$id"
+		[ -n "$nfo_name" ] && nfo_update "$nfo_file" "identity" "name" "$nfo_name"
+		[ -n "$version" ] && nfo_update "$nfo_file" "identity" "version" "$version"
+	fi
+
+	# Update tags
+	local category keywords
+	json_select "tags" 2>/dev/null && {
+		json_get_var category category
+		json_get_var keywords keywords
+		json_select ..
+	}
+
+	if type nfo_update >/dev/null 2>&1; then
+		[ -n "$category" ] && nfo_update "$nfo_file" "tags" "category" "$category"
+		[ -n "$keywords" ] && nfo_update "$nfo_file" "tags" "keywords" "$keywords"
+	fi
+
+	# Update description
+	local short
+	json_select "description" 2>/dev/null && {
+		json_get_var short short
+		json_select ..
+	}
+
+	if type nfo_update >/dev/null 2>&1; then
+		[ -n "$short" ] && nfo_update "$nfo_file" "description" "short" "$short"
+	fi
+
+	# Update dynamics
+	local capabilities
+	json_select "dynamics" 2>/dev/null && {
+		json_get_var capabilities capabilities
+		json_select ..
+	}
+
+	if type nfo_update >/dev/null 2>&1; then
+		[ -n "$capabilities" ] && nfo_update "$nfo_file" "dynamics" "capabilities" "$capabilities"
+	fi
+
+	json_init
+	json_add_int "code" 0
+	json_add_string "message" "NFO updated"
+	json_dump
+}
+
+# Validate NFO and return warnings
+nfo_validate_rpc() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"error":"App name required"}'; return; }
+
+	config_load streamlit-forge
+	config_get apps_dir main apps_dir '/srv/streamlit/apps'
+
+	local nfo_file="$apps_dir/$name/README.nfo"
+
+	if [ ! -f "$nfo_file" ]; then
+		json_init
+		json_add_boolean "exists" 0
+		json_add_boolean "valid" 0
+		json_add_string "error" "NFO not found"
+		json_dump
+		return
+	fi
+
+	json_init
+	json_add_boolean "exists" 1
+	json_add_string "file" "$nfo_file"
+
+	# Use nfo_validate_strict if available
+	if type nfo_validate_strict >/dev/null 2>&1; then
+		local validation_output=$(nfo_validate_strict "$nfo_file" 2>&1)
+		local rc=$?
+
+		json_add_boolean "valid" $((rc == 0 ? 1 : 0))
+		json_add_string "output" "$validation_output"
+
+		# Get completeness score if available
+		if type nfo_get_completeness_score >/dev/null 2>&1; then
+			local score=$(nfo_get_completeness_score "$nfo_file")
+			json_add_int "completeness" "$score"
+		fi
+
+		# Get missing recommended fields
+		if type nfo_get_missing_recommended >/dev/null 2>&1; then
+			json_add_array "missing"
+			nfo_get_missing_recommended "$nfo_file" | while read field; do
+				[ -n "$field" ] && json_add_string "" "$field"
+			done
+			json_close_array
+		fi
+
+		# Check AI context
+		if type nfo_has_ai_context >/dev/null 2>&1; then
+			if nfo_has_ai_context "$nfo_file"; then
+				json_add_boolean "has_ai_context" 1
+			else
+				json_add_boolean "has_ai_context" 0
+			fi
+		fi
+
+		json_dump
+		return
+	fi
+
+	# Fallback: basic validation
+	local errors=0
+	local warnings=""
+
+	# Check required sections
+	for section in identity description tags runtime; do
+		if ! grep -q "^\[$section\]" "$nfo_file"; then
+			warnings="$warnings Missing section: [$section];"
+			errors=$((errors + 1))
+		fi
+	done
+
+	# Check required fields
+	local id=$(grep "^id=" "$nfo_file" | head -1 | cut -d= -f2)
+	local nfo_name=$(grep "^name=" "$nfo_file" | head -1 | cut -d= -f2)
+	local version=$(grep "^version=" "$nfo_file" | head -1 | cut -d= -f2)
+
+	[ -z "$id" ] && { warnings="$warnings Missing identity.id;"; errors=$((errors + 1)); }
+	[ -z "$nfo_name" ] && { warnings="$warnings Missing identity.name;"; errors=$((errors + 1)); }
+	[ -z "$version" ] && { warnings="$warnings Missing identity.version;"; errors=$((errors + 1)); }
+
+	json_add_boolean "valid" $((errors == 0 ? 1 : 0))
+	json_add_int "error_count" "$errors"
+	json_add_string "warnings" "$warnings"
+	json_dump
+}
+
 # Get Gitea status
 get_gitea_status() {
 	json_init
@@ -450,7 +705,7 @@ get_gitea_status() {
 
 case "$1" in
 	list)
-		echo '{"list":{},"status":{},"gitea_status":{},"info":{"name":"String"},"templates":{},"config":{"name":"String"},"create":{"name":"String","template":"String"},"delete":{"name":"String"},"start":{"name":"String"},"stop":{"name":"String"},"restart":{"name":"String"},"expose":{"name":"String","domain":"String"},"hide":{"name":"String"},"publish":{"name":"String"},"unpublish":{"name":"String"},"set_config":{"name":"String","key":"String","value":"String"},"edit":{"name":"String"},"pull":{"name":"String"},"push":{"name":"String","message":"String"},"preview":{"name":"String"}}'
+		echo '{"list":{},"status":{},"gitea_status":{},"info":{"name":"String"},"templates":{},"config":{"name":"String"},"create":{"name":"String","template":"String"},"delete":{"name":"String"},"start":{"name":"String"},"stop":{"name":"String"},"restart":{"name":"String"},"expose":{"name":"String","domain":"String"},"hide":{"name":"String"},"publish":{"name":"String"},"unpublish":{"name":"String"},"set_config":{"name":"String","key":"String","value":"String"},"edit":{"name":"String"},"pull":{"name":"String"},"push":{"name":"String","message":"String"},"preview":{"name":"String"},"nfo_read":{"name":"String"},"nfo_write":{"name":"String","data":"String"},"nfo_validate":{"name":"String"}}'
 		;;
 	call)
 		case "$2" in
@@ -474,6 +729,9 @@ case "$1" in
 			pull)         read input; json_load "$input"; json_get_var name name; do_pull "$name" ;;
 			push)         read input; json_load "$input"; json_get_var name name; json_get_var message message; do_push "$name" "$message" ;;
 			preview)      read input; json_load "$input"; json_get_var name name; do_preview "$name" ;;
+			nfo_read)     read input; json_load "$input"; json_get_var name name; nfo_read "$name" ;;
+			nfo_write)    read input; json_load "$input"; json_get_var name name; json_get_var data data; nfo_write "$name" "$data" ;;
+			nfo_validate) read input; json_load "$input"; json_get_var name name; nfo_validate_rpc "$name" ;;
 		esac
 		;;
 esac

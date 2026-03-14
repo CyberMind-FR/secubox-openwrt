@@ -28,6 +28,9 @@ define Package/secubox-app-metablogizer/install
 	$(INSTALL_BIN) ./files/usr/sbin/metablogizerctl $(1)/usr/sbin/
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/etc/config/metablogizer $(1)/etc/config/
+	# NFO module manifest template
+	$(INSTALL_DIR) $(1)/usr/share/metablogizer
+	$(INSTALL_DATA) ./files/usr/share/metablogizer/nfo-template.nfo $(1)/usr/share/metablogizer/
 endef
 
 $(eval $(call BuildPackage,secubox-app-metablogizer))

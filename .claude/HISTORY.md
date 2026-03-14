@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-03-11 (Streamlit Control Phase 3, CrowdSec bugfix)_
+_Last updated: 2026-03-14 (Streamlit Launcher)_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -4860,3 +4860,227 @@ git checkout HEAD -- index.html
       - `/etc/init.d/watchdog` - procd service
       - `/etc/cron.d/watchdog` - Cron backup
       - `/usr/libexec/rpcd/luci.watchdog` - RPCD backend
+
+100. **SecuBox Report Generator (2026-03-13)**
+    - New `secubox-app-reporter` package for automated status reporting
+    - **Two Report Types**:
+      - Development Status: health score, HISTORY.md completions, WIP items, roadmap progress
+      - Services Distribution: Tor hidden services (5), DNS/SSL vhosts (243), mesh services (1)
+    - **CLI** (`/usr/sbin/secubox-reportctl`):
+      - `generate <type>` - Generate report (dev|services|all)
+      - `send <type>` - Generate + email report
+      - `schedule <type>` - Set cron (daily|weekly|off)
+      - `status` - Show generator status
+      - `preview <type>` - Output to stdout
+      - `list` - List generated reports
+      - `clean` - Remove old reports
+    - **Email Integration**:
+      - msmtp/sendmail backend
+      - MIME multipart HTML emails
+      - UCI config for SMTP credentials
+    - **HTML Output**:
+      - KissTheme dark styling
+      - Responsive card layout
+      - Stats badges and health indicators
+    - **LuCI Dashboard** (`luci-app-reporter`):
+      - KISS-themed overview with status cards
+      - Quick action cards for dev/services/all reports
+      - Generate and Send buttons with email support
+      - Reports list with view/delete actions
+      - Schedule configuration (daily/weekly/off)
+      - Email configuration status and test button
+    - **RPCD Methods**:
+      - `status` - Generator status and report counts
+      - `list_reports` - List generated reports with metadata
+      - `generate/send` - Create reports (optionally email)
+      - `schedule` - Configure cron schedules
+      - `delete_report` - Remove report files
+      - `test_email` - Send test email
+    - **Files**:
+      - `/etc/config/secubox-reporter` - UCI configuration
+      - `/usr/sbin/secubox-reportctl` - CLI tool
+      - `/usr/share/secubox-reporter/lib/` - collectors.sh, formatters.sh, mailer.sh
+      - `/usr/share/secubox-reporter/templates/` - HTML templates
+      - `/etc/cron.d/secubox-reporter` - Scheduled reports
+      - `/usr/libexec/rpcd/luci.reporter` - RPCD backend
+
+101. **Configuration Vault System (2026-03-13)**
+    - New `secubox-app-config-vault` package for versioned configuration backup
+    - **Purpose**: Certification compliance, audit trail, cloning support for deployable SecuBox appliances
+    - **Module-Based Organization**:
+      - `users` - User Management & SSO (secubox-users, rpcd)
+      - `network` - Network Configuration (network, firewall, dhcp)
+      - `services` - Service Exposure & Distribution (secubox-exposure, haproxy, tor)
+      - `security` - Security & WAF (crowdsec, mitmproxy)
+      - `system` - System Settings (system, uhttpd)
+      - `containers` - LXC Containers (lxc, lxc-auto + flat configs)
+      - `reporter` - Report Generator (secubox-reporter)
+      - `dns` - DNS & Domains (dns-provider, dnsmasq)
+      - `mesh` - P2P Mesh Network (vortex, yggdrasil, wireguard)
+    - **Gitea Integration**:
+      - Auto-sync to private repository `gandalf/secubox-config-vault`
+      - Push on commit (auto-push enabled)
+      - Pull for recovery/restore
+    - **CLI** (`/usr/sbin/configvaultctl`):
+      - `init` - Initialize vault repository
+      - `backup [module]` - Backup configs (all or specific module)
+      - `restore <module>` - Restore module configs from vault
+      - `push` - Push changes to Gitea
+      - `pull` - Pull latest from Gitea
+      - `status` - Show vault status
+      - `history [n]` - Show last n config changes
+      - `diff` - Show uncommitted changes
+      - `modules` - List configured modules
+      - `track <config>` - Track a config change (used by hooks)
+      - `export-clone [file]` - Create deployment clone package
+      - `import-clone <file>` - Import clone package
+    - **Export/Import for Cloning**:
+      - `export-clone` creates tar.gz with all configs + manifests
+      - `import-clone` restores configs from clone package
+      - Enables producing ready-to-use SecuBox installations
+    - **LuCI Dashboard** (`luci-app-config-vault`):
+      - KISS-themed overview with status rings
+      - Quick actions: Backup All, Push/Pull to Gitea, Export Clone
+      - Modules table with per-module backup buttons
+      - Change history showing all commits
+      - Repository info (branch, remote, last commit)
+    - **RPCD Methods**:
+      - `status` - Vault status and git info
+      - `modules` - List modules with file counts
+      - `history` - Commit history
+      - `diff` - Uncommitted changes
+      - `backup/restore` - Module operations
+      - `push/pull` - Gitea sync
+      - `init` - Initialize vault
+      - `export_clone` - Create clone package
+    - **Files**:
+      - `/etc/config/config-vault` - UCI configuration
+      - `/usr/sbin/configvaultctl` - CLI tool
+      - `/usr/share/config-vault/lib/gitea.sh` - Gitea helpers
+      - `/usr/share/config-vault/hooks/uci-track` - Change tracking hook
+      - `/srv/config-vault/` - Git repository with versioned configs
+      - `/usr/libexec/rpcd/luci.config-vault` - RPCD backend
+
+102. **System Hardware Report (2026-03-13)**
+    - Extended `secubox-app-reporter` with new system hardware report type
+    - **Purpose**: Detailed system diagnostics, health monitoring, environmental impact awareness
+    - **CLI**: `secubox-reportctl generate system`
+    - **Features**:
+      - CPU/Memory/Disk/Temperature gauges with animated rings
+      - 24-bar CPU load histogram visualization
+      - Environmental impact card (power/kWh/CO₂ estimates)
+      - Health recommendations based on system metrics
+      - Top processes table with status indicators
+      - Network interface stats (RX/TX per interface)
+      - Debug log viewer with severity highlighting
+    - **Data Collectors** (`system-collector.sh`):
+      - `get_cpu_usage` - /proc/stat based CPU percentage
+      - `get_memory_info` - MemTotal/MemAvailable from /proc/meminfo
+      - `get_disk_info` - Root filesystem usage via df
+      - `get_temperature` - Thermal zone readings
+      - `get_cpu_freq/model/cores` - CPU specifications
+      - `estimate_power_watts` - ARM appliance power estimation
+      - `generate_recommendations` - Threshold-based health tips
+      - `get_debug_log` - Logread output with severity parsing
+    - **Template**: `system-status.html.tpl` with KissTheme dark styling
+    - **Files**:
+      - `/usr/share/secubox-reporter/lib/system-collector.sh` - Data collection functions
+      - `/usr/share/secubox-reporter/templates/system-status.html.tpl` - HTML template
+    - **Technical Notes**:
+      - BusyBox/ash compatible (no bash-specific syntax)
+      - Uses awk for multiline HTML substitutions (sed limitations)
+      - Temp files for dynamic content generation
+      - /proc filesystem based for OpenWrt compatibility
+
+103. **Streamlit On-Demand Launcher (2026-03-14)**
+    - New `secubox-app-streamlit-launcher` package for resource optimization
+    - **Purpose**: Reduce memory usage by starting apps only when accessed
+    - **Features**:
+      - On-demand startup (lazy loading)
+      - Idle shutdown after configurable timeout (default: 30 min)
+      - Memory pressure management (stop low-priority apps)
+      - Priority system (1-100, higher = keep longer)
+      - Always-on mode for critical apps
+    - **CLI** (`/usr/sbin/streamlit-launcherctl`):
+      - `daemon` - Background monitor process
+      - `status/list` - Show app states and idle times
+      - `start/stop` - Manual app control
+      - `priority <app> <n>` - Set priority
+      - `check/check-memory` - Manual idle/memory checks
+    - **slforge Integration**:
+      - `slforge launcher status` - Show launcher status
+      - `slforge launcher priority <app> <n>` - Set priority
+      - `slforge launcher always-on <app>` - Never auto-stop
+      - Access tracking on app start
+    - **Files**:
+      - `/etc/config/streamlit-launcher` - UCI configuration
+      - `/etc/init.d/streamlit-launcher` - Procd service
+      - `/tmp/streamlit-access/` - Access tracking files
+      - `/usr/share/streamlit-launcher/loading.html` - Cold-start page
+
+104. **Module Manifest (NFO) System (2026-03-14)**
+    - Introduced flat-file UCI-style `.nfo` manifest format for Streamlit apps and MetaBlogs.
+    - NFO sections: identity, description, tags, runtime, dependencies, exposure, launcher, settings, dynamics, mesh, media.
+    - `[dynamics]` section for AI/generative content integration:
+      - `prompt_context` - Context for AI assistants
+      - `capabilities` - What the app can do
+      - `input_types` / `output_types` - Data formats
+    - NFO parser library: `/usr/share/streamlit-forge/lib/nfo-parser.sh`
+      - `nfo_parse()` - Parse NFO file
+      - `nfo_get()` - Get value by section/key
+      - `nfo_to_uci()` - Export to UCI config
+      - `nfo_to_json()` - Export as JSON
+      - `nfo_validate()` - Validate required fields
+    - `slforge nfo` commands:
+      - `init` - Generate README.nfo for existing app
+      - `info` - Show NFO summary
+      - `edit` - Edit manifest
+      - `validate` - Validate NFO file
+      - `json` - Export as JSON
+      - `install` - Install app from directory with NFO
+    - Universal installer script: `/usr/share/streamlit-forge/install.sh`
+      - Reads README.nfo, installs dependencies, configures UCI
+      - Creates catalog entry for mesh publishing
+      - Runs post-install hooks
+    - Hub generator v6 updated to read NFO metadata for category/description.
+    - MetaBlog NFO template at `/usr/share/metablogizer/nfo-template.nfo`.
+    - Full spec at `/usr/share/streamlit-forge/NFO-SPEC.md`.
+
+105. **NFO System Extension - Full Integration (2026-03-14)**
+    - Extended NFO system across all SecuBox content packages with batch generation.
+    - **Schema Validator** (`/usr/share/streamlit-forge/lib/nfo-validator.sh`):
+      - `nfo_validate_strict()` - Full validation with warnings
+      - `nfo_validate_schema()` - Type-specific validation (streamlit, metablog, docker)
+      - `nfo_get_missing_recommended()` - List recommended but missing fields
+      - `nfo_get_completeness_score()` - Calculate completeness percentage (0-100)
+    - **Batch NFO Generation**:
+      - `slforge nfo init-all` - Generate NFO for all Streamlit apps
+      - `metablogizerctl nfo init-all` - Generate NFO for all MetaBlog sites
+      - Reports created/skipped/failed counts
+    - **RPCD NFO Methods** (luci.streamlit-forge):
+      - `nfo_read <app>` - Return NFO content as JSON
+      - `nfo_write <app> <data>` - Update NFO from JSON
+      - `nfo_validate <app>` - Validate and return warnings
+    - **LuCI NFO Viewer Component** (`nfo-viewer.js`):
+      - Reusable component for Streamlit Forge, Metacatalog, Service Registry
+      - Collapsible sections (Identity, Description, Tags, Runtime, Dynamics, Mesh)
+      - Validation status indicator with completeness badge
+      - "Copy JSON" button for export
+      - `render()` - Full viewer, `renderBadge()` - Compact badge
+    - **LuCI NFO Editor Modal**:
+      - "NFO" button in app cards opens editor modal
+      - Form fields for key sections (identity, tags, runtime, dynamics)
+      - Validation warnings display
+      - Save/Cancel buttons with RPC integration
+    - **Hub Generator Enhancement**:
+      - Cards display NFO descriptions (description.short)
+      - Keywords rendered as clickable tags
+      - Capability badges from dynamics.capabilities
+    - **Metacatalog Search Enhancement**:
+      - NFO-based indexing for all entries
+      - `--category` and `--capability` filters for search
+      - Keywords, capabilities, audience in index
+    - **Files**:
+      - `/usr/share/streamlit-forge/lib/nfo-validator.sh` (new)
+      - `/www/luci-static/resources/streamlit-forge/nfo-viewer.js` (new)
+      - Updated: slforge, metablogizerctl, luci.streamlit-forge, hub-generator, metacatalogctl, overview.js

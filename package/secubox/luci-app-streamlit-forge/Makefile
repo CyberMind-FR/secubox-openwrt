@@ -22,6 +22,10 @@ define Package/luci-app-streamlit-forge/install
 
 	$(INSTALL_DIR) $(1)/www/luci-static/resources/view/streamlit-forge
 	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/streamlit-forge/*.js $(1)/www/luci-static/resources/view/streamlit-forge/
+
+	# NFO viewer component (reusable across apps)
+	$(INSTALL_DIR) $(1)/www/luci-static/resources/streamlit-forge
+	$(INSTALL_DATA) ./htdocs/luci-static/resources/streamlit-forge/*.js $(1)/www/luci-static/resources/streamlit-forge/
 endef
 
 $(eval $(call BuildPackage,luci-app-streamlit-forge))
