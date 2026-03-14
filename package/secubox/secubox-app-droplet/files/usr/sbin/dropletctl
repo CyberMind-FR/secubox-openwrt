@@ -74,9 +74,10 @@ cmd_publish() {
 
     log_info "Publishing: $file as $vhost"
 
-    # Extract if ZIP
-    local content_type=$(file -b --mime-type "$file")
-    if echo "$content_type" | grep -q "zip"; then
+    # Detect file type by extension (file command not available on OpenWrt)
+    local file_ext=$(echo "$file" | sed 's/.*\.//' | tr '[:upper:]' '[:lower:]')
+
+    if [ "$file_ext" = "zip" ]; then
         log_info "Extracting ZIP..."
         unzip -q "$file" -d "$tmp_dir" || { log_error "Failed to extract ZIP"; rm -rf "$tmp_dir"; return 1; }
 
@@ -86,11 +87,11 @@ cmd_publish() {
             mv "$nested"/* "$tmp_dir/" 2>/dev/null
             rmdir "$nested" 2>/dev/null
         fi
-    elif echo "$content_type" | grep -qE "html|text"; then
+    elif [ "$file_ext" = "html" ] || [ "$file_ext" = "htm" ]; then
         # Single HTML file
         cp "$file" "$tmp_dir/index.html"
     else
-        log_error "Unsupported file type: $content_type"
+        log_error "Unsupported file type: .$file_ext (expected .html, .htm, or .zip)"
         rm -rf "$tmp_dir"
         return 1
     fi
