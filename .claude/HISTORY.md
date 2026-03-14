@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-03-14 (Streamlit Launcher)_
+_Last updated: 2026-03-14 (Droplet Publisher)_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -5085,7 +5085,7 @@ git checkout HEAD -- index.html
       - `/www/luci-static/resources/streamlit-forge/nfo-viewer.js` (new)
       - Updated: slforge, metablogizerctl, luci.streamlit-forge, hub-generator, metacatalogctl, overview.js
 
-53. **Hub Generator v7 NFO Fix (2026-03-14)**
+106. **Hub Generator v7 NFO Fix (2026-03-14)**
     - Fixed BusyBox awk compatibility issue with NFO section parsing
     - Problem: `gsub(/[\[\]]/, "")` didn't work reliably on BusyBox awk
     - Solution: Use two `sub()` calls instead for bracket removal
@@ -5095,3 +5095,17 @@ git checkout HEAD -- index.html
     - HAProxy vhost scanning: 102 services discovered
     - Dynamic preview modal with eye button for live site preview
     - Files: `/usr/sbin/hub-generator`
+
+107. **Droplet Publisher (2026-03-14)**
+    - One-drop content publishing: drag HTML/ZIP → instant site
+    - Auto-detects content type (static/streamlit/hexo)
+    - Creates vhosts at gk2.secubox.in by default
+    - CLI: `dropletctl publish/list/remove/rename`
+    - LuCI drag-drop interface at Services > Droplet
+    - Registers with metablogizer or streamlit accordingly
+    - Dark theme UI with gradient styling
+    - RPCD backend with cgi-io upload integration
+    - **Files**:
+      - `/usr/sbin/dropletctl` (new)
+      - `/usr/libexec/rpcd/luci.droplet` (new)
+      - `/www/luci-static/resources/view/droplet/overview.js` (new)
