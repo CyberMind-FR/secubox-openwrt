@@ -32,6 +32,24 @@ log_ok() { echo -e "${GREEN}[OK]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_err() { echo -e "${RED}[ERROR]${NC} $1"; }
 
+# Launcher integration
+LAUNCHER_TRACKING_DIR="/tmp/streamlit-access"
+
+# Track app access (for launcher idle detection)
+track_access() {
+	local name="$1"
+	mkdir -p "$LAUNCHER_TRACKING_DIR"
+	touch "$LAUNCHER_TRACKING_DIR/$name"
+}
+
+# Check if launcher is managing this app
+is_launcher_managed() {
+	local enabled
+	config_load streamlit-launcher 2>/dev/null || return 1
+	config_get enabled global enabled '0'
+	[ "$enabled" = "1" ]
+}
+
 usage() {
 	cat <<EOF
 Streamlit Forge - App Publishing Platform
@@ -76,6 +94,11 @@ Mesh AppStore:
   unpublish <app>           Remove from mesh catalog
   catalog                   Browse mesh catalog
   install <app@node>        Install from mesh
+
+Launcher Integration:
+  launcher status           Show launcher status
+  launcher priority <app> <n>  Set app priority (higher=keep longer)
+  launcher always-on <app>  Mark app as always-on (never auto-stop)
 
 Templates:
   templates                 List available templates
@@ -664,6 +687,8 @@ STARTSCRIPT
 	if netstat -tln 2>/dev/null | grep -q ":$port "; then
 		[ "$quiet" = "0" ] && log_ok "Started $name"
 		[ "$quiet" = "0" ] && log_info "URL: http://192.168.255.1:$port"
+		# Track access for launcher idle detection
+		track_access "$name"
 		return 0
 	fi
 
@@ -940,6 +965,56 @@ cmd_unpublish() {
 	log_ok "Unpublished $name from mesh catalog"
 }
 
+# Launcher integration commands
+cmd_launcher() {
+	local action="$1"
+	shift
+
+	case "$action" in
+		status)
+			if command -v streamlit-launcherctl >/dev/null 2>&1; then
+				streamlit-launcherctl status
+			else
+				log_warn "Launcher not installed"
+				log_info "Install with: opkg install secubox-app-streamlit-launcher"
+			fi
+			;;
+		priority)
+			local app="$1"
+			local priority="$2"
+			[ -z "$app" ] || [ -z "$priority" ] && {
+				log_err "Usage: slforge launcher priority <app> <priority>"
+				return 1
+			}
+			if command -v streamlit-launcherctl >/dev/null 2>&1; then
+				streamlit-launcherctl priority "$app" "$priority"
+			else
+				log_err "Launcher not installed"
+				return 1
+			fi
+			;;
+		always-on)
+			local app="$1"
+			[ -z "$app" ] && {
+				log_err "Usage: slforge launcher always-on <app>"
+				return 1
+			}
+			if command -v streamlit-launcherctl >/dev/null 2>&1; then
+				streamlit-launcherctl priority "$app" 100 1
+				log_ok "App $app marked as always-on"
+			else
+				log_err "Launcher not installed"
+				return 1
+			fi
+			;;
+		*)
+			log_err "Unknown launcher action: $action"
+			echo "Usage: slforge launcher <status|priority|always-on>"
+			return 1
+			;;
+	esac
+}
+
 # Main command router
 case "$1" in
 	create)    shift; cmd_create "$@" ;;
@@ -961,6 +1036,7 @@ case "$1" in
 	publish)   shift; cmd_publish "$@" ;;
 	unpublish) shift; cmd_unpublish "$@" ;;
 	templates) cmd_templates ;;
+	launcher)  shift; cmd_launcher "$@" ;;
 	help|--help|-h|"")
 		usage ;;
 	*)

@@ -52,6 +52,11 @@ slforge hide <app>                   # Remove public access
 slforge publish <app>                # Add to mesh catalog
 slforge unpublish <app>              # Remove from mesh
 
+# Launcher Integration (on-demand startup)
+slforge launcher status              # Show launcher status
+slforge launcher priority <app> <n>  # Set app priority (1-100)
+slforge launcher always-on <app>     # Mark as always-on
+
 # Templates
 slforge templates         # List available templates
 ```
@@ -182,3 +187,44 @@ Published apps create a manifest at `/usr/share/secubox/plugins/catalog/`:
   }
 }
 ```
+
+## On-Demand Launcher
+
+Install `secubox-app-streamlit-launcher` for resource optimization:
+
+- **Lazy Loading** - Apps start only when first accessed
+- **Idle Shutdown** - Stop apps after configurable timeout (default: 30 min)
+- **Memory Management** - Force-stop low-priority apps when memory is low
+- **Priority System** - Keep critical apps running longer
+
+### Launcher Commands
+
+```bash
+# Check launcher status
+slforge launcher status
+
+# Set app priority (higher = keep running longer, max 100)
+slforge launcher priority myapp 75
+
+# Mark app as always-on (never auto-stopped)
+slforge launcher always-on dashboard
+```
+
+### Priority Levels
+
+| Priority | Behavior |
+|----------|----------|
+| 100 + always_on | Never auto-stopped |
+| 80-99 | Stopped last during memory pressure |
+| 50 (default) | Normal priority |
+| 1-49 | Stopped first during memory pressure |
+
+### How It Works
+
+1. User accesses `https://app.example.com`
+2. If app is stopped, launcher starts it on-demand
+3. App access time is tracked
+4. After idle timeout, app is automatically stopped
+5. Memory pressure triggers low-priority app shutdown
+
+See `secubox-app-streamlit-launcher` README for full configuration.

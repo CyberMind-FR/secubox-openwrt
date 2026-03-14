@@ -1,0 +1,494 @@
+#!/bin/sh
+# Streamlit On-Demand Launcher Controller
+# Manages lazy-loading of Streamlit apps with idle shutdown
+
+. /lib/functions.sh
+
+TRACKING_DIR="/tmp/streamlit-access"
+STARTUP_DIR="/tmp/streamlit-startup"
+LOG_TAG="streamlit-launcher"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[0;33m'
+NC='\033[0m'
+
+# Load config
+load_config() {
+    config_load streamlit-launcher
+    config_get ENABLED global enabled '1'
+    config_get IDLE_TIMEOUT global idle_timeout '30'
+    config_get CHECK_INTERVAL global check_interval '60'
+    config_get MEMORY_THRESHOLD global memory_threshold '100'
+    config_get ON_DEMAND global on_demand '1'
+    config_get STARTUP_TIMEOUT global startup_timeout '30'
+    config_get TRACKING_DIR global tracking_dir '/tmp/streamlit-access'
+    config_get LOG_LEVEL global log_level 'info'
+}
+
+log() {
+    local level="$1"
+    shift
+    case "$LOG_LEVEL" in
+        debug) ;;
+        info) [ "$level" = "debug" ] && return ;;
+        warn) [ "$level" = "debug" -o "$level" = "info" ] && return ;;
+        error) [ "$level" != "error" ] && return ;;
+    esac
+    logger -t "$LOG_TAG" -p "daemon.$level" "$*"
+    [ -t 1 ] && echo "[$level] $*"
+}
+
+# Get app priority (higher = more important)
+get_priority() {
+    local app="$1"
+    local priority=50
+    local always_on=0
+
+    get_app_priority() {
+        local section="$1"
+        local cfg_app cfg_value cfg_always
+        config_get cfg_app "$section" app
+        config_get cfg_value "$section" value '50'
+        config_get cfg_always "$section" always_on '0'
+
+        if [ "$cfg_app" = "$app" ] || [ "$cfg_app" = "*" ]; then
+            priority="$cfg_value"
+            always_on="$cfg_always"
+        fi
+    }
+
+    config_foreach get_app_priority priority
+    echo "$priority $always_on"
+}
+
+# Track app access (called by mitmproxy hook or cron)
+track_access() {
+    local app="$1"
+    mkdir -p "$TRACKING_DIR"
+    touch "$TRACKING_DIR/$app"
+    log debug "Tracked access for $app"
+}
+
+# Get last access time (seconds since epoch)
+get_last_access() {
+    local app="$1"
+    local file="$TRACKING_DIR/$app"
+    if [ -f "$file" ]; then
+        stat -c %Y "$file" 2>/dev/null || echo 0
+    else
+        echo 0
+    fi
+}
+
+# Get idle time in minutes
+get_idle_minutes() {
+    local app="$1"
+    local last_access=$(get_last_access "$app")
+    local now=$(date +%s)
+    if [ "$last_access" -gt 0 ]; then
+        echo $(( (now - last_access) / 60 ))
+    else
+        echo 9999
+    fi
+}
+
+# Check if app is running
+is_running() {
+    local app="$1"
+    local port
+    port=$(uci -q get streamlit-forge."$app".port)
+    [ -z "$port" ] && return 1
+    netstat -tln 2>/dev/null | grep -q ":$port " && return 0
+    return 1
+}
+
+# Get free memory in MB
+get_free_memory() {
+    awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo
+}
+
+# Start an app (on-demand)
+start_app() {
+    local app="$1"
+    local wait="${2:-0}"
+
+    if is_running "$app"; then
+        log debug "App $app already running"
+        track_access "$app"
+        return 0
+    fi
+
+    log info "Starting app $app on-demand"
+    mkdir -p "$STARTUP_DIR"
+    touch "$STARTUP_DIR/$app.starting"
+
+    # Start via slforge
+    slforge start "$app" >/dev/null 2>&1
+    local rc=$?
+
+    if [ "$wait" = "1" ] && [ $rc -eq 0 ]; then
+        # Wait for app to be ready
+        local port=$(uci -q get streamlit-forge."$app".port)
+        local timeout="$STARTUP_TIMEOUT"
+        local elapsed=0
+
+        while [ $elapsed -lt $timeout ]; do
+            if netstat -tln 2>/dev/null | grep -q ":$port "; then
+                log info "App $app ready on port $port (${elapsed}s)"
+                rm -f "$STARTUP_DIR/$app.starting"
+                track_access "$app"
+                return 0
+            fi
+            sleep 1
+            elapsed=$((elapsed + 1))
+        done
+
+        log error "App $app failed to start within ${timeout}s"
+        rm -f "$STARTUP_DIR/$app.starting"
+        return 1
+    fi
+
+    rm -f "$STARTUP_DIR/$app.starting"
+    [ $rc -eq 0 ] && track_access "$app"
+    return $rc
+}
+
+# Stop an app
+stop_app() {
+    local app="$1"
+    local reason="${2:-idle}"
+
+    if ! is_running "$app"; then
+        log debug "App $app not running"
+        return 0
+    fi
+
+    log info "Stopping app $app (reason: $reason)"
+    slforge stop "$app" >/dev/null 2>&1
+}
+
+# Check idle apps and stop them
+check_idle() {
+    load_config
+    [ "$ENABLED" = "1" ] || return 0
+
+    local app idle priority always_on
+
+    # Get list of apps from streamlit-forge
+    for app in $(uci -q show streamlit-forge 2>/dev/null | grep '=app$' | cut -d. -f2 | cut -d= -f1); do
+        [ -z "$app" ] && continue
+
+        if ! is_running "$app"; then
+            continue
+        fi
+
+        # Get priority info
+        read priority always_on <<EOF
+$(get_priority "$app")
+EOF
+
+        # Skip always-on apps
+        if [ "$always_on" = "1" ]; then
+            log debug "App $app is always-on, skipping"
+            continue
+        fi
+
+        idle=$(get_idle_minutes "$app")
+        log debug "App $app: idle=${idle}m, timeout=${IDLE_TIMEOUT}m, priority=$priority"
+
+        if [ "$idle" -ge "$IDLE_TIMEOUT" ]; then
+            stop_app "$app" "idle ${idle}m > ${IDLE_TIMEOUT}m"
+        fi
+    done
+}
+
+# Check memory pressure and stop low-priority apps
+check_memory() {
+    load_config
+    [ "$ENABLED" = "1" ] || return 0
+
+    local free_mb=$(get_free_memory)
+    if [ "$free_mb" -ge "$MEMORY_THRESHOLD" ]; then
+        return 0
+    fi
+
+    log warn "Low memory: ${free_mb}MB < ${MEMORY_THRESHOLD}MB threshold"
+
+    # Build list of running apps with priorities
+    local apps_by_priority=""
+    local app priority always_on
+
+    for app in $(uci -q show streamlit-forge 2>/dev/null | grep '=app$' | cut -d. -f2 | cut -d= -f1); do
+        [ -z "$app" ] && continue
+        is_running "$app" || continue
+
+        read priority always_on <<EOF
+$(get_priority "$app")
+EOF
+        [ "$always_on" = "1" ] && continue
+
+        apps_by_priority="$apps_by_priority
+$priority $app"
+    done
+
+    # Sort by priority (lowest first) and stop until memory is OK
+    echo "$apps_by_priority" | sort -n | while read priority app; do
+        [ -z "$app" ] && continue
+
+        stop_app "$app" "memory_pressure"
+        sleep 2
+
+        free_mb=$(get_free_memory)
+        if [ "$free_mb" -ge "$MEMORY_THRESHOLD" ]; then
+            log info "Memory recovered: ${free_mb}MB"
+            break
+        fi
+    done
+}
+
+# Request app startup (called by external trigger)
+request_start() {
+    local app="$1"
+    load_config
+
+    if [ "$ON_DEMAND" != "1" ]; then
+        log debug "On-demand disabled, ignoring start request for $app"
+        return 1
+    fi
+
+    start_app "$app" 1
+}
+
+# Main daemon loop
+daemon() {
+    load_config
+    log info "Streamlit Launcher daemon starting (idle=${IDLE_TIMEOUT}m, interval=${CHECK_INTERVAL}s)"
+
+    mkdir -p "$TRACKING_DIR"
+
+    while true; do
+        check_idle
+        check_memory
+        sleep "$CHECK_INTERVAL"
+    done
+}
+
+# Show status
+status() {
+    load_config
+    echo "Streamlit Launcher Status"
+    echo "========================="
+    echo ""
+    printf "%-20s %s\n" "Enabled:" "$ENABLED"
+    printf "%-20s %s\n" "On-Demand:" "$ON_DEMAND"
+    printf "%-20s %sm\n" "Idle Timeout:" "$IDLE_TIMEOUT"
+    printf "%-20s %ss\n" "Check Interval:" "$CHECK_INTERVAL"
+    printf "%-20s %sMB\n" "Memory Threshold:" "$MEMORY_THRESHOLD"
+    printf "%-20s %sMB\n" "Free Memory:" "$(get_free_memory)"
+    echo ""
+
+    echo "Apps:"
+    echo "-----"
+    printf "%-20s %-10s %-10s %-10s %-8s\n" "NAME" "STATUS" "IDLE" "PRIORITY" "ALWAYS"
+
+    local app priority always_on idle_mins status_str
+
+    for app in $(uci -q show streamlit-forge 2>/dev/null | grep '=app$' | cut -d. -f2 | cut -d= -f1); do
+        [ -z "$app" ] && continue
+
+        read priority always_on <<EOF
+$(get_priority "$app")
+EOF
+
+        if is_running "$app"; then
+            status_str="${GREEN}running${NC}"
+            idle_mins="$(get_idle_minutes "$app")m"
+        else
+            status_str="${RED}stopped${NC}"
+            idle_mins="-"
+        fi
+
+        [ "$always_on" = "1" ] && always_str="yes" || always_str="no"
+
+        printf "%-20s ${status_str}%-10s %-10s %-10s %-8s\n" "$app" "" "$idle_mins" "$priority" "$always_str"
+    done
+}
+
+# List apps with detailed info
+list() {
+    load_config
+    local app port domain enabled idle_mins status_str priority always_on
+
+    printf "%-18s %-8s %-6s %-25s %-8s %-6s\n" "APP" "STATUS" "IDLE" "DOMAIN" "PRIORITY" "ALWAYS"
+    echo "--------------------------------------------------------------------------------"
+
+    for app in $(uci -q show streamlit-forge 2>/dev/null | grep '=app$' | cut -d. -f2 | cut -d= -f1); do
+        [ -z "$app" ] && continue
+
+        port=$(uci -q get streamlit-forge."$app".port)
+        domain=$(uci -q get streamlit-forge."$app".domain)
+        enabled=$(uci -q get streamlit-forge."$app".enabled)
+
+        read priority always_on <<EOF
+$(get_priority "$app")
+EOF
+
+        if is_running "$app"; then
+            status_str="running"
+            idle_mins="$(get_idle_minutes "$app")m"
+        else
+            status_str="stopped"
+            idle_mins="-"
+        fi
+
+        [ "$always_on" = "1" ] && always_str="yes" || always_str="-"
+        [ -z "$domain" ] && domain="-"
+
+        printf "%-18s %-8s %-6s %-25s %-8s %-6s\n" "$app" "$status_str" "$idle_mins" "$domain" "$priority" "$always_str"
+    done
+}
+
+# Set app priority
+set_priority() {
+    local app="$1"
+    local priority="$2"
+    local always_on="${3:-0}"
+
+    [ -z "$app" ] || [ -z "$priority" ] && {
+        echo "Usage: $0 priority <app> <priority> [always_on]"
+        return 1
+    }
+
+    # Check if app exists
+    uci -q get streamlit-forge."$app" >/dev/null || {
+        echo "Error: App '$app' not found"
+        return 1
+    }
+
+    # Find or create priority section
+    local section=""
+    find_section() {
+        local s="$1"
+        local cfg_app
+        config_get cfg_app "$s" app
+        [ "$cfg_app" = "$app" ] && section="$s"
+    }
+    config_load streamlit-launcher
+    config_foreach find_section priority
+
+    if [ -z "$section" ]; then
+        section=$(uci add streamlit-launcher priority)
+        uci set streamlit-launcher."$section".app="$app"
+    fi
+
+    uci set streamlit-launcher."$section".value="$priority"
+    uci set streamlit-launcher."$section".always_on="$always_on"
+    uci commit streamlit-launcher
+
+    echo "Set priority for $app: $priority (always_on: $always_on)"
+}
+
+# Stop all managed apps
+stop_all() {
+    log info "Stopping all managed apps"
+    for app in $(uci -q show streamlit-forge 2>/dev/null | grep '=app$' | cut -d. -f2 | cut -d= -f1); do
+        [ -z "$app" ] && continue
+        is_running "$app" && stop_app "$app" "stop_all"
+    done
+}
+
+# Start all enabled apps (for non-on-demand mode)
+start_all() {
+    log info "Starting all enabled apps"
+    for app in $(uci -q show streamlit-forge 2>/dev/null | grep '=app$' | cut -d. -f2 | cut -d= -f1); do
+        [ -z "$app" ] && continue
+        local enabled=$(uci -q get streamlit-forge."$app".enabled)
+        [ "$enabled" = "1" ] && start_app "$app" 0
+    done
+}
+
+usage() {
+    cat <<EOF
+Streamlit On-Demand Launcher
+
+Usage: $0 <command> [options]
+
+COMMANDS:
+  daemon              Run the launcher daemon (called by init.d)
+  status              Show launcher status and app states
+  list                List all apps with details
+  start <app>         Start an app on-demand
+  stop <app>          Stop an app
+  stop-all            Stop all managed apps
+  start-all           Start all enabled apps
+  track <app>         Track access for an app (resets idle timer)
+  priority <app> <n>  Set app priority (higher = keep running longer)
+                      Add '1' as third arg for always-on
+  check               Run idle check once
+  check-memory        Run memory pressure check once
+
+EXAMPLES:
+  $0 status
+  $0 start ytdownload
+  $0 priority control 100 1    # Always keep 'control' running
+  $0 priority ytdownload 30    # Lower priority, stop sooner
+
+CONFIG: /etc/config/streamlit-launcher
+EOF
+}
+
+# Main
+case "$1" in
+    daemon)
+        daemon
+        ;;
+    status)
+        status
+        ;;
+    list)
+        list
+        ;;
+    start)
+        [ -z "$2" ] && { echo "Usage: $0 start <app>"; exit 1; }
+        load_config
+        start_app "$2" 1
+        ;;
+    stop)
+        [ -z "$2" ] && { echo "Usage: $0 stop <app>"; exit 1; }
+        load_config
+        stop_app "$2" "manual"
+        ;;
+    stop-all)
+        load_config
+        stop_all
+        ;;
+    start-all)
+        load_config
+        start_all
+        ;;
+    track)
+        [ -z "$2" ] && { echo "Usage: $0 track <app>"; exit 1; }
+        load_config
+        track_access "$2"
+        ;;
+    priority)
+        set_priority "$2" "$3" "$4"
+        ;;
+    check)
+        check_idle
+        ;;
+    check-memory)
+        check_memory
+        ;;
+    request)
+        [ -z "$2" ] && { echo "Usage: $0 request <app>"; exit 1; }
+        request_start "$2"
+        ;;
+    *)
+        usage
+        exit 1
+        ;;
+esac
