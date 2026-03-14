@@ -1,12 +1,31 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-13 (Config Vault + System Hardware Report)_
+_Last updated: 2026-03-14 (Streamlit Launcher)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
 ---
 
 ## Recently Completed
+
+### 2026-03-14
+
+- **Streamlit On-Demand Launcher (Complete)**
+  - New `secubox-app-streamlit-launcher` package
+  - On-demand startup: Apps start only when first accessed (lazy loading)
+  - Idle shutdown: Stop apps after configurable timeout (default 30 min)
+  - Memory management: Force-stop low-priority apps when memory < threshold
+  - Priority system (1-100): Higher priority = keep running longer
+  - Always-on mode for critical apps that should never auto-stop
+  - CLI: `streamlit-launcherctl daemon|status|list|start|stop|priority|check|check-memory`
+  - Procd daemon with respawn for background monitoring
+  - Access tracking via touch files in `/tmp/streamlit-access/`
+  - Loading page template for cold-start user feedback
+  - Updated `slforge` with launcher integration:
+    - `slforge launcher status|priority|always-on` commands
+    - Access tracking on app start
+  - UCI config: `/etc/config/streamlit-launcher`
+  - Documentation: Full README with architecture diagram
 
 ### 2026-03-13
 

@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-03-13 (Config Vault + System Hardware Report)_
+_Last updated: 2026-03-14 (Streamlit Launcher)_
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -4991,3 +4991,29 @@ git checkout HEAD -- index.html
       - Uses awk for multiline HTML substitutions (sed limitations)
       - Temp files for dynamic content generation
       - /proc filesystem based for OpenWrt compatibility
+
+103. **Streamlit On-Demand Launcher (2026-03-14)**
+    - New `secubox-app-streamlit-launcher` package for resource optimization
+    - **Purpose**: Reduce memory usage by starting apps only when accessed
+    - **Features**:
+      - On-demand startup (lazy loading)
+      - Idle shutdown after configurable timeout (default: 30 min)
+      - Memory pressure management (stop low-priority apps)
+      - Priority system (1-100, higher = keep longer)
+      - Always-on mode for critical apps
+    - **CLI** (`/usr/sbin/streamlit-launcherctl`):
+      - `daemon` - Background monitor process
+      - `status/list` - Show app states and idle times
+      - `start/stop` - Manual app control
+      - `priority <app> <n>` - Set priority
+      - `check/check-memory` - Manual idle/memory checks
+    - **slforge Integration**:
+      - `slforge launcher status` - Show launcher status
+      - `slforge launcher priority <app> <n>` - Set priority
+      - `slforge launcher always-on <app>` - Never auto-stop
+      - Access tracking on app start
+    - **Files**:
+      - `/etc/config/streamlit-launcher` - UCI configuration
+      - `/etc/init.d/streamlit-launcher` - Procd service
+      - `/tmp/streamlit-access/` - Access tracking files
+      - `/usr/share/streamlit-launcher/loading.html` - Cold-start page
