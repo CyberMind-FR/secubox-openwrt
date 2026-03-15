@@ -439,6 +439,126 @@ method_token_rpc() {
 }
 
 #------------------------------------------------------------------------------
+# Remote Package Installation
+#------------------------------------------------------------------------------
+
+# Install package on remote node
+method_install_remote() {
+    local node_id app_id
+    read -r input
+    json_load "$input"
+    json_get_var node_id node_id
+    json_get_var app_id app_id
+
+    [ -z "$node_id" ] || [ -z "$app_id" ] && {
+        echo '{"success":false,"error":"Missing node_id or app_id"}'
+        return
+    }
+
+    # Execute via rttyctl
+    local result=$($RTTYCTL install "$node_id" "$app_id" 2>&1)
+    local rc=$?
+
+    json_init
+    if [ $rc -eq 0 ] && echo "$result" | grep -q "✓"; then
+        json_add_boolean "success" 1
+        json_add_string "message" "Package $app_id installed on $node_id"
+        json_add_string "output" "$result"
+    else
+        json_add_boolean "success" 0
+        json_add_string "error" "$result"
+    fi
+    json_dump
+}
+
+# Install package on all mesh nodes
+method_install_mesh() {
+    local app_id
+    read -r input
+    json_load "$input"
+    json_get_var app_id app_id
+
+    [ -z "$app_id" ] && {
+        echo '{"success":false,"error":"Missing app_id"}'
+        return
+    }
+
+    # Execute via rttyctl with 'all' target
+    local result=$($RTTYCTL install all "$app_id" 2>&1)
+    local rc=$?
+
+    # Parse summary line
+    local installed=$(echo "$result" | grep "Summary:" | sed 's/.*: //' | cut -d, -f1 | awk '{print $1}')
+    local skipped=$(echo "$result" | grep "Summary:" | sed 's/.*: //' | cut -d, -f2 | awk '{print $1}')
+    local failed=$(echo "$result" | grep "Summary:" | sed 's/.*: //' | cut -d, -f3 | awk '{print $1}')
+
+    json_init
+    json_add_boolean "success" 1
+    json_add_string "app_id" "$app_id"
+    json_add_int "installed" "${installed:-0}"
+    json_add_int "skipped" "${skipped:-0}"
+    json_add_int "failed" "${failed:-0}"
+    json_add_string "output" "$result"
+    json_dump
+}
+
+# Deploy ttyd to node(s) - shortcut
+method_deploy_ttyd() {
+    local target
+    read -r input
+    json_load "$input"
+    json_get_var target target
+
+    [ -z "$target" ] && {
+        echo '{"success":false,"error":"Missing target (node_id or \"all\")"}'
+        return
+    }
+
+    # Execute via rttyctl
+    local result=$($RTTYCTL deploy-ttyd "$target" 2>&1)
+    local rc=$?
+
+    json_init
+    if [ $rc -eq 0 ] && echo "$result" | grep -q "✓"; then
+        json_add_boolean "success" 1
+        json_add_string "message" "ttyd deployed to $target"
+
+        # If single node, include ttyd URL
+        if [ "$target" != "all" ]; then
+            local addr=$($RTTYCTL node "$target" 2>&1 | grep "Address:" | awk '{print $2}')
+            [ -z "$addr" ] && addr="$target"
+            json_add_string "terminal_url" "http://${addr}:7681/"
+        fi
+    else
+        json_add_boolean "success" 0
+        json_add_string "error" "$result"
+    fi
+    json_dump
+}
+
+# Check package status on remote node
+method_install_status() {
+    local node_id app_id
+    read -r input
+    json_load "$input"
+    json_get_var node_id node_id
+    json_get_var app_id app_id
+
+    [ -z "$node_id" ] && {
+        echo '{"success":false,"error":"Missing node_id"}'
+        return
+    }
+
+    local result=$($RTTYCTL install-status "$node_id" "$app_id" 2>&1)
+
+    json_init
+    json_add_boolean "success" 1
+    json_add_string "node_id" "$node_id"
+    json_add_string "output" "$result"
+    json_dump
+}
+
+#------------------------------------------------------------------------------
 # Avatar-Tap Session Integration
 #------------------------------------------------------------------------------
 
@@ -621,7 +741,11 @@ case "$1" in
     "replay_to_node": {"session_id": "integer", "target_node": "string"},
     "export_session": {"session_id": "integer"},
     "import_session": {"content": "string"},
-    "get_tap_status": {}
+    "get_tap_status": {},
+    "install_remote": {"node_id": "string", "app_id": "string"},
+    "install_mesh": {"app_id": "string"},
+    "deploy_ttyd": {"target": "string"},
+    "install_status": {"node_id": "string", "app_id": "string"}
 }
 EOF
         ;;
@@ -651,6 +775,10 @@ EOF
             export_session)    method_export_session ;;
             import_session)    method_import_session ;;
             get_tap_status)    method_get_tap_status ;;
+            install_remote)    method_install_remote ;;
+            install_mesh)      method_install_mesh ;;
+            deploy_ttyd)       method_deploy_ttyd ;;
+            install_status)    method_install_status ;;
             *)
                 echo '{"error":"Unknown method"}'
                 ;;

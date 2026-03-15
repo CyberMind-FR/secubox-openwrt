@@ -5232,3 +5232,15 @@ git checkout HEAD -- index.html
   - Fixed protocol display bug ("TCPnull" → "TCP")
   - Removed mitmproxy-out container (not needed for WAF)
   - Updated MITM detection to check mitmproxy-in specifically
+
+### 2026-03-16
+
+- **Remote ttyd Deployment for Mesh Nodes (Complete)**
+  - CLI commands: `rttyctl install <node|all> <app>`, `rttyctl install-status`, `rttyctl deploy-ttyd`
+  - Installs packages on remote mesh nodes via RPC proxy to AppStore
+  - Auto-enables and starts ttyd service after installation
+  - `rttyctl install all <app>` - batch install across all mesh nodes
+  - Node discovery from: master-link peers, WireGuard endpoints, P2P mesh
+  - 4 new RPCD methods: install_remote, install_mesh, deploy_ttyd, install_status
+  - ACL permissions updated for remote installation write actions
+  - Use case: Deploy ttyd web terminal to all SecuBox nodes for browser-based SSH

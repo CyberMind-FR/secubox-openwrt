@@ -10,6 +10,15 @@ _Last updated: 2026-03-16 (DPI LAN Passive Analysis)_
 
 ### 2026-03-16
 
+- **Remote ttyd Deployment for Mesh Nodes (Complete)**
+  - CLI commands: `rttyctl install`, `rttyctl install-status`, `rttyctl deploy-ttyd`
+  - Installs packages on remote mesh nodes via RPC proxy
+  - Auto-enables and starts ttyd service after installation
+  - `rttyctl install all <app>` - batch install across all mesh nodes
+  - Node discovery from: master-link, WireGuard peers, P2P mesh
+  - 4 new RPCD methods: install_remote, install_mesh, deploy_ttyd, install_status
+  - ACL permissions updated for remote installation actions
+
 - **Dual-Stream DPI Phase 4 - LAN Passive Flow Analysis (Complete)**
   - New `dpi-lan-collector` daemon for passive br-lan monitoring
   - Zero MITM, zero caching - pure nDPI/conntrack flow observation
@@ -626,8 +635,8 @@ _Last updated: 2026-03-16 (DPI LAN Passive Analysis)_
 
 ### v1.0 Release Prep
 
-1. **Remote ttyd Deployment** - Auto-install ttyd on mesh nodes
-2. **Device Provisioning** - Use Config Vault export-clone for SecuBox replication
+1. **Device Provisioning** - Use Config Vault export-clone for SecuBox replication
+2. **LuCI Remote Install Button** - Add "Deploy ttyd" action to Remote Control dashboard (optional)
 
 ### v1.1+ Extended Mesh
 
