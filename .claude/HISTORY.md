@@ -5244,3 +5244,12 @@ git checkout HEAD -- index.html
   - 4 new RPCD methods: install_remote, install_mesh, deploy_ttyd, install_status
   - ACL permissions updated for remote installation write actions
   - Use case: Deploy ttyd web terminal to all SecuBox nodes for browser-based SSH
+
+- **Device Provisioning System (Complete)**
+  - Auto-Restore: `import-clone <file> --apply` - auto-restores all modules after import
+  - Remote Provisioning: `provision <node|all>` - pushes clone to remote nodes via RPC
+  - First-Boot Pull: `pull-config <master>` - pulls config from master on new device
+  - HTTP Serve: `serve-clone` - generates clone at /www/config-vault/ for HTTP download
+  - CLI commands: restore-all, provision, pull-config, serve-clone
+  - 6 new RPCD methods: restore_all, import_apply, provision, pull_config, export_clone_b64, serve_clone
+  - Use case: Zero-touch provisioning of new SecuBox devices from master configuration

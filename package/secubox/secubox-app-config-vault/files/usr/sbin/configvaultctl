@@ -457,6 +457,7 @@ EOF
 # Import clone package
 cmd_import_clone() {
     local archive="$1"
+    local apply_flag="$2"
 
     [ -f "$archive" ] || { echo "File not found: $archive"; return 1; }
 
@@ -477,7 +478,321 @@ cmd_import_clone() {
     fi
 
     echo ""
-    echo "Import complete. Use 'configvaultctl restore <module>' to apply configs."
+
+    # Auto-apply if --apply flag is set
+    if [ "$apply_flag" = "--apply" ] || [ "$apply_flag" = "-a" ]; then
+        echo "Auto-applying all modules..."
+        cmd_restore_all
+        echo ""
+        echo "Import and restore complete. Reboot recommended."
+    else
+        echo "Import complete. Use 'configvaultctl restore <module>' to apply configs."
+        echo "Or use 'configvaultctl import-clone <file> --apply' to auto-restore all."
+    fi
+}
+
+# Restore all modules (for auto-apply)
+cmd_restore_all() {
+    load_config
+    cd "$VAULT_PATH" || exit 1
+
+    echo "Restoring all modules..."
+    echo ""
+
+    local restored=0
+    local failed=0
+
+    for module_dir in */; do
+        [ -d "$module_dir" ] || continue
+        local module="${module_dir%/}"
+
+        # Skip non-module directories
+        [ "$module" = ".git" ] && continue
+
+        if [ -d "$module/uci" ] && [ "$(ls -A "$module/uci" 2>/dev/null)" ]; then
+            echo "[$module]"
+            for uci_file in "$module/uci/"*; do
+                [ -f "$uci_file" ] || continue
+                local config=$(basename "$uci_file")
+                echo "  Restoring /etc/config/$config"
+                if cp "$uci_file" "/etc/config/$config" 2>/dev/null; then
+                    restored=$((restored + 1))
+                else
+                    echo "  ✗ Failed to restore $config"
+                    failed=$((failed + 1))
+                fi
+            done
+        fi
+    done
+
+    echo ""
+    echo "Restored: $restored configs, Failed: $failed"
+
+    # Reload configs
+    if [ $restored -gt 0 ]; then
+        echo ""
+        echo "Reloading configuration..."
+        /etc/init.d/network reload 2>/dev/null || true
+        /etc/init.d/system reload 2>/dev/null || true
+    fi
+}
+
+#------------------------------------------------------------------------------
+# Remote Provisioning
+#------------------------------------------------------------------------------
+
+# Provision remote node with clone
+cmd_provision() {
+    local target="$1"
+    local clone_file="$2"
+
+    [ -z "$target" ] && {
+        echo "Usage: configvaultctl provision <node> [clone-file]"
+        echo ""
+        echo "Provision a remote SecuBox node with configuration clone."
+        echo ""
+        echo "Arguments:"
+        echo "  node        Target node (IP, hostname, or 'all' for mesh)"
+        echo "  clone-file  Optional pre-existing clone (creates new if not specified)"
+        echo ""
+        echo "Examples:"
+        echo "  configvaultctl provision 192.168.255.2"
+        echo "  configvaultctl provision sb-office /tmp/secubox-clone.tar.gz"
+        echo "  configvaultctl provision all"
+        return 1
+    }
+
+    # Check rttyctl is available
+    command -v rttyctl >/dev/null || {
+        echo "Error: rttyctl not found. Install secubox-app-rtty-remote."
+        return 1
+    }
+
+    load_config
+
+    # Create clone if not provided
+    if [ -z "$clone_file" ] || [ ! -f "$clone_file" ]; then
+        clone_file="/tmp/secubox-provision-$(date +%Y%m%d%H%M).tar.gz"
+        echo "Creating configuration clone..."
+        cmd_export_clone "$clone_file"
+        echo ""
+    fi
+
+    [ -f "$clone_file" ] || { echo "Clone file not found: $clone_file"; return 1; }
+
+    local clone_size=$(ls -lh "$clone_file" | awk '{print $5}')
+    local clone_b64="/tmp/clone-b64-$$.txt"
+
+    echo "Provisioning target: $target"
+    echo "Clone package: $clone_file ($clone_size)"
+    echo ""
+
+    # Base64 encode for transfer
+    base64 -w 0 "$clone_file" > "$clone_b64"
+
+    if [ "$target" = "all" ]; then
+        provision_all_nodes "$clone_b64"
+    else
+        provision_single_node "$target" "$clone_b64"
+    fi
+
+    rm -f "$clone_b64"
+}
+
+provision_single_node() {
+    local node="$1"
+    local clone_b64="$2"
+
+    echo "Provisioning node: $node"
+
+    # Check node is reachable
+    local addr=$(rttyctl node "$node" 2>&1 | grep "Address:" | awk '{print $2}')
+    [ -z "$addr" ] && addr="$node"
+
+    if ! ping -c 1 -W 2 "$addr" >/dev/null 2>&1; then
+        echo "  ✗ Node not reachable"
+        return 1
+    fi
+
+    # Transfer clone via RPC (write to temp file on remote)
+    echo "  Transferring clone package..."
+    local remote_file="/tmp/secubox-clone-import.tar.gz"
+
+    # Use file RPC to write the clone
+    local clone_content=$(cat "$clone_b64")
+    local write_result=$(rttyctl rpc "$node" "file" "write" \
+        "{\"path\":\"$remote_file\",\"data\":\"$clone_content\",\"base64\":true}" 2>&1)
+
+    if echo "$write_result" | grep -qi "error"; then
+        # Fallback: use exec to decode and write
+        echo "  Using fallback transfer method..."
+        rttyctl rpc "$node" "file" "exec" \
+            "{\"command\":\"echo '$clone_content' | base64 -d > $remote_file\"}" 2>/dev/null
+    fi
+
+    # Trigger import with auto-apply on remote
+    echo "  Importing and applying configuration..."
+    local import_result=$(rttyctl rpc "$node" "luci.config-vault" "import_apply" \
+        "{\"archive\":\"$remote_file\"}" 2>&1)
+
+    if echo "$import_result" | grep -qi "success.*true"; then
+        echo "  ✓ Provisioning complete"
+        echo ""
+        echo "  Remote node will reboot to apply changes."
+    else
+        # Try direct command via luci.sys
+        rttyctl rpc "$node" "luci" "setInitAction" \
+            '{"name":"config-vault-apply","action":"start"}' 2>/dev/null
+
+        echo "  ✓ Clone transferred, manual apply may be required"
+    fi
+}
+
+provision_all_nodes() {
+    local clone_b64="$1"
+
+    echo "Provisioning ALL mesh nodes..."
+    echo ""
+
+    local success=0
+    local failed=0
+
+    # Get nodes from rttyctl
+    local nodes=$(rttyctl json-nodes 2>/dev/null | jsonfilter -e '@.nodes[*].address' 2>/dev/null)
+
+    for node in $nodes; do
+        [ -z "$node" ] && continue
+
+        # Skip local node
+        local local_ip=$(uci -q get network.lan.ipaddr)
+        case "$node" in
+            127.0.0.1|localhost|$local_ip)
+                echo "[$node] Skipping (local)"
+                continue
+                ;;
+        esac
+
+        echo "[$node]"
+        if provision_single_node "$node" "$clone_b64"; then
+            success=$((success + 1))
+        else
+            failed=$((failed + 1))
+        fi
+        echo ""
+    done
+
+    echo "Provisioning Summary: $success succeeded, $failed failed"
+}
+
+#------------------------------------------------------------------------------
+# First-Boot Config Pull
+#------------------------------------------------------------------------------
+
+# Pull configuration from master node on first boot
+cmd_pull_config() {
+    local master_url="$1"
+    local apply="${2:---apply}"
+
+    [ -z "$master_url" ] && {
+        echo "Usage: configvaultctl pull-config <master-url> [--apply]"
+        echo ""
+        echo "Pull configuration from master SecuBox node."
+        echo "Used for first-boot provisioning of new devices."
+        echo ""
+        echo "Arguments:"
+        echo "  master-url  URL or IP of master node (e.g., 192.168.255.1)"
+        echo "  --apply     Auto-apply after pulling (default)"
+        echo "  --no-apply  Just download, don't apply"
+        echo ""
+        echo "Examples:"
+        echo "  configvaultctl pull-config 192.168.255.1"
+        echo "  configvaultctl pull-config master.secubox.local --no-apply"
+        echo ""
+        echo "First-boot setup:"
+        echo "  Add to /etc/rc.local:"
+        echo "    [ -f /etc/secubox-provisioned ] || configvaultctl pull-config 192.168.255.1"
+        return 1
+    }
+
+    load_config
+
+    echo "Pulling configuration from master: $master_url"
+    echo ""
+
+    local clone_file="/tmp/secubox-clone-pulled.tar.gz"
+
+    # Try to fetch clone via HTTP first (master serves it)
+    local http_url="http://${master_url}/config-vault/clone.tar.gz"
+    echo "Trying HTTP: $http_url"
+
+    if curl -sf -m 30 -o "$clone_file" "$http_url" 2>/dev/null; then
+        echo "  ✓ Downloaded via HTTP"
+    else
+        # Fallback: try RPC via rttyctl
+        echo "  HTTP failed, trying RPC..."
+
+        if command -v rttyctl >/dev/null; then
+            local export_result=$(rttyctl rpc "$master_url" "luci.config-vault" "export_clone" '{}' 2>&1)
+            local clone_b64=$(echo "$export_result" | jsonfilter -e '@.data' 2>/dev/null)
+
+            if [ -n "$clone_b64" ]; then
+                echo "$clone_b64" | base64 -d > "$clone_file"
+                echo "  ✓ Downloaded via RPC"
+            else
+                echo "  ✗ Failed to fetch clone from master"
+                return 1
+            fi
+        else
+            echo "  ✗ No rttyctl available for RPC fallback"
+            return 1
+        fi
+    fi
+
+    # Verify archive
+    if ! tar -tzf "$clone_file" >/dev/null 2>&1; then
+        echo "Error: Invalid clone archive"
+        rm -f "$clone_file"
+        return 1
+    fi
+
+    # Import
+    if [ "$apply" = "--no-apply" ]; then
+        cmd_import_clone "$clone_file"
+    else
+        cmd_import_clone "$clone_file" --apply
+
+        # Mark as provisioned
+        echo "$(date -Iseconds) pulled from $master_url" > /etc/secubox-provisioned
+        echo ""
+        echo "Device marked as provisioned. Rebooting in 5 seconds..."
+        sleep 5
+        reboot
+    fi
+}
+
+# Serve clone for HTTP pull (called by uhttpd CGI or cron)
+cmd_serve_clone() {
+    local output_dir="${1:-/www/config-vault}"
+
+    load_config
+
+    mkdir -p "$output_dir"
+
+    # Create fresh clone
+    local clone_file="$output_dir/clone.tar.gz"
+    cmd_export_clone "$clone_file" >/dev/null 2>&1
+
+    # Create metadata
+    cat > "$output_dir/manifest.json" << EOF
+{
+    "hostname": "$(uci -q get system.@system[0].hostname)",
+    "updated": "$(date -Iseconds)",
+    "size": $(stat -c%s "$clone_file" 2>/dev/null || echo 0),
+    "modules": $(ls -d "$VAULT_PATH"/*/ 2>/dev/null | wc -l)
+}
+EOF
+
+    echo "Clone served at: $output_dir/clone.tar.gz"
 }
 
 # Show status
@@ -637,33 +952,42 @@ USAGE:
     configvaultctl <command> [options]
 
 COMMANDS:
-    init                Initialize vault repository
-    backup [module]     Backup configs (all or specific module)
-    restore <module>    Restore module configs from vault
-    push                Push changes to Gitea
-    pull                Pull latest from Gitea
-    status              Show vault status
-    history [n]         Show last n config changes (default: 20)
-    diff                Show uncommitted changes
-    modules             List configured modules
-    track <config>      Track a config change (used by hooks)
-    export-clone [file] Create deployment clone package
-    import-clone <file> Import clone package
+    init                   Initialize vault repository
+    backup [module]        Backup configs (all or specific module)
+    restore <module>       Restore module configs from vault
+    restore-all            Restore ALL modules from vault
+    push                   Push changes to Gitea
+    pull                   Pull latest from Gitea
+    status                 Show vault status
+    history [n]            Show last n config changes (default: 20)
+    diff                   Show uncommitted changes
+    modules                List configured modules
+    track <config>         Track a config change (used by hooks)
+    export-clone [file]    Create deployment clone package
+    import-clone <file> [--apply]  Import clone (--apply to auto-restore)
+
+DEVICE PROVISIONING:
+    provision <node> [file]    Push clone to remote node and apply
+    pull-config <master>       Pull config from master (first-boot)
+    serve-clone [dir]          Generate clone for HTTP serving
 
 EXAMPLES:
     # Initialize and backup all
     configvaultctl init
     configvaultctl backup
 
-    # Backup specific module
-    configvaultctl backup users
-
     # Create clone for new device
     configvaultctl export-clone /tmp/secubox-v1.tar.gz
 
-    # Restore users on new device
-    configvaultctl import-clone /tmp/secubox-v1.tar.gz
-    configvaultctl restore users
+    # Import and auto-apply on new device
+    configvaultctl import-clone /tmp/secubox-v1.tar.gz --apply
+
+    # Remote provisioning
+    configvaultctl provision 192.168.255.2
+    configvaultctl provision all
+
+    # First-boot pull from master
+    configvaultctl pull-config 192.168.255.1
 
 AUDIT TRAIL:
     All changes are versioned with git for certification compliance.
@@ -681,6 +1005,9 @@ case "$1" in
         ;;
     restore)
         cmd_restore "$2"
+        ;;
+    restore-all)
+        cmd_restore_all
         ;;
     push)
         cmd_push
@@ -707,7 +1034,16 @@ case "$1" in
         cmd_export_clone "$2"
         ;;
     import-clone|import)
-        cmd_import_clone "$2"
+        cmd_import_clone "$2" "$3"
+        ;;
+    provision)
+        cmd_provision "$2" "$3"
+        ;;
+    pull-config)
+        cmd_pull_config "$2" "$3"
+        ;;
+    serve-clone|serve)
+        cmd_serve_clone "$2"
         ;;
     *)
         usage

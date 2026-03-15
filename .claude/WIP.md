@@ -10,6 +10,16 @@ _Last updated: 2026-03-16 (DPI LAN Passive Analysis)_
 
 ### 2026-03-16
 
+- **Device Provisioning System (Complete)**
+  - **Auto-Restore**: `configvaultctl import-clone <file> --apply` auto-restores all modules
+  - **Remote Provisioning**: `configvaultctl provision <node|all>` pushes clone to remote nodes
+  - **First-Boot Pull**: `configvaultctl pull-config <master>` pulls config on new device boot
+  - **HTTP Serve**: `configvaultctl serve-clone` generates clone for HTTP download
+  - New CLI commands: restore-all, provision, pull-config, serve-clone
+  - 6 new RPCD methods: restore_all, import_apply, provision, pull_config, export_clone_b64, serve_clone
+  - ACL permissions updated for provisioning actions
+  - Use case: Clone master SecuBox config to new devices automatically
+
 - **Remote ttyd Deployment for Mesh Nodes (Complete)**
   - CLI commands: `rttyctl install`, `rttyctl install-status`, `rttyctl deploy-ttyd`
   - Installs packages on remote mesh nodes via RPC proxy
@@ -635,7 +645,7 @@ _Last updated: 2026-03-16 (DPI LAN Passive Analysis)_
 
 ### v1.0 Release Prep
 
-1. **Device Provisioning** - Use Config Vault export-clone for SecuBox replication
+1. **LuCI Provisioning Dashboard** - Add provisioning UI to Config Vault dashboard (optional)
 2. **LuCI Remote Install Button** - Add "Deploy ttyd" action to Remote Control dashboard (optional)
 
 ### v1.1+ Extended Mesh
