@@ -171,7 +171,7 @@ return view.extend({
 
         var protocolsList = protocolsCard.querySelector('#protocols-list');
         var protocolsData = (protocols.protocols || []).sort(function(a, b) {
-            return (b.bytes || 0) - (a.bytes || 0);
+            return (b.flows || 0) - (a.flows || 0);
         });
 
         if (protocolsData.length === 0) {
@@ -181,21 +181,14 @@ return view.extend({
         } else {
             protocolsData.forEach(function(proto) {
                 var protoName = proto.protocol || 'Unknown';
-                var appName = proto.application || '';
-                var displayName = appName && appName !== 'Unknown' ? appName : protoName;
+                var flowCount = proto.flows || 0;
 
                 protocolsList.appendChild(E('div', {
                     'style': 'background:#1a1a24;padding:0.75rem;border-radius:6px;margin-bottom:0.5rem;display:flex;justify-content:space-between;align-items:center;'
                 }, [
-                    E('div', {}, [
-                        E('span', { 'style': 'color:#fff;font-weight:500;' }, displayName),
-                        appName && appName !== protoName ? E('span', {
-                            'style': 'color:#808090;font-size:0.75rem;margin-left:0.5rem;'
-                        }, '(' + protoName + ')') : null
-                    ]),
+                    E('span', { 'style': 'color:#fff;font-weight:500;' }, protoName),
                     E('div', { 'style': 'text-align:right;' }, [
-                        E('div', { 'style': 'color:#ffa500;font-size:0.85rem;' }, formatBytes(proto.bytes || 0)),
-                        E('div', { 'style': 'color:#808090;font-size:0.7rem;' }, (proto.flows || 0) + ' flows')
+                        E('div', { 'style': 'color:#ffa500;font-size:0.85rem;' }, flowCount + ' flows')
                     ])
                 ]));
             });
