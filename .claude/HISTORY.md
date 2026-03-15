@@ -5169,3 +5169,21 @@ git checkout HEAD -- index.html
       - 3D perspective board with parallax mouse tracking
       - Pulse animations with random timing per cell
     - **Deployed**: https://wall.maegia.tv/
+
+111. **MAGIC·CHESS·360 3D Joystick & Controls (2026-03-15)**
+    - Added 2D joystick for true 3D CSS perspective transformation
+    - **3D Controls**:
+      - Joystick X-axis → `rotateY` ±45° (tilt plane left/right)
+      - Joystick Y-axis → `rotateX` ±35° (tilt plane forward/back)
+      - CSS `perspective: 1200px` on body for 3D depth
+      - Canvas `transform-style: preserve-3d` for hardware acceleration
+    - **Color Cycle Toggle**:
+      - 🎨 button toggles automatic color spectrum animation
+      - Default: OFF (fixed colors from selected colorset)
+      - When ON: colors cycle through TAO_SPECTRUM with phase animation
+    - **Additional Controls**:
+      - Depth slider: zoom multiplier 0.5x to 2x
+      - Pixel ring: click to cycle cell sizes (3-40px)
+      - ↻ Auto-rotate button: continuous rotation animation
+    - **Default Colorset**: RGB (simple red/green/blue)
+    - **Deployed**: https://wall.maegia.tv/
