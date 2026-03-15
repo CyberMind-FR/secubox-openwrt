@@ -157,6 +157,7 @@ return view.extend({
         var mitm = status.mitm_stream || {};
         var tap = status.tap_stream || {};
         var corr = status.correlation || {};
+        var lan = status.lan_passive || {};
 
         var view = E('div', { 'class': 'cbi-map', 'style': 'background:#0a0a12;min-height:100vh;' }, [
             // Header
@@ -249,7 +250,19 @@ return view.extend({
                             })
                         }, 'Correlate')
                     ])
-                ]), corr.running ? '#00d4aa' : '#808090')
+                ]), corr.running ? '#00d4aa' : '#808090'),
+
+                // LAN Passive Flow Card
+                lan.enabled ? createCard('LAN Flow Analysis', '🌐', E('div', {}, [
+                    E('div', { 'style': 'margin-bottom:0.8rem;' }, createStatusLED(lan.running)),
+                    E('div', { 'style': 'display:flex;flex-wrap:wrap;gap:8px;' }, [
+                        createMetric('Clients', lan.active_clients || 0, '#00d4aa'),
+                        createMetric('Destinations', lan.unique_destinations || 0, '#00a0ff'),
+                        createMetric('Protocols', lan.detected_protocols || 0, '#ffa500')
+                    ]),
+                    E('div', { 'style': 'margin-top:8px;color:#808090;font-size:0.8rem;' },
+                        'Interface: ' + (lan.interface || 'br-lan'))
+                ]), lan.running ? '#00d4aa' : '#808090') : E('div')
             ]),
 
             // Threats Table
