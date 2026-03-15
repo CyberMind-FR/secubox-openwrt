@@ -550,7 +550,8 @@
       "WebFetch(domain:ytdl.gk2.secubox.in)",
       "Bash([\"''\"'\"\"'\"''\"'\"\"'\"'']$/, \"\", val\\)\n\n            if \\(section == \"tags\" && key == \"category\"\\) category = val\n            if \\(section == \"tags\" && key == \"keywords\"\\) keywords = val\n            if \\(section == \"tags\" && key == \"audience\"\\) audience = val\n            if \\(section == \"description\" && key == \"short\"\\) desc = val\n            if \\(section == \"dynamics\" && key == \"capabilities\"\\) caps = val\n            if \\(section == \"media\" && key == \"icon\"\\) icon = val\n            if \\(section == \"identity\" && key == \"version\"\\) version = val\n        }\n        END {\n            printf \"%s)",
       "Bash(%s)",
-      "Bash(/tmp/test_nfo.sh)"
+      "Bash(/tmp/test_nfo.sh)",
+      "Bash(SSH_AUTH_SOCK=\"\" ssh:*)"
     ]
   }
 }

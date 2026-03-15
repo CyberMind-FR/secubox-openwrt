@@ -1,0 +1,514 @@
+#!/bin/sh
+# Maltego iTDS Controller for SecuBox
+
+. /lib/functions.sh
+config_load maltego
+
+CONTAINER="maltego"
+LXC_PATH="/srv/lxc"
+DATA_DIR="/srv/maltego"
+IMAGE_URL="https://images.linuxcontainers.org/images/debian/bookworm/arm64/default"
+
+log() {
+    logger -t maltegoctl "$1"
+    echo "[INFO] $1"
+}
+
+error() {
+    logger -t maltegoctl -p err "$1"
+    echo "[ERROR] $1" >&2
+    exit 1
+}
+
+get_config() {
+    config_get "$1" main "$2" "$3"
+}
+
+cmd_install() {
+    log "Installing Maltego iTDS container..."
+
+    # Check if container exists
+    if [ -d "${LXC_PATH}/${CONTAINER}" ]; then
+        log "Container already exists. Use 'reinstall' to recreate."
+        return 0
+    fi
+
+    # Get container IP
+    local ip
+    get_config ip ip "192.168.255.55"
+
+    # Create data directory
+    mkdir -p "${DATA_DIR}"/{config,transforms,logs}
+
+    # Download and create container
+    log "Downloading Debian Bookworm image..."
+    mkdir -p "${LXC_PATH}/${CONTAINER}"
+
+    # Download rootfs
+    local rootfs="${LXC_PATH}/${CONTAINER}/rootfs"
+    mkdir -p "$rootfs"
+
+    # Get latest image date (BusyBox compatible)
+    local image_date
+    image_date=$(wget -qO- "${IMAGE_URL}/" | grep -o '[0-9]\{8\}_[0-9]\{2\}:[0-9]\{2\}' | tail -1)
+
+    if [ -z "$image_date" ]; then
+        # Fallback: try to get from directory listing
+        image_date=$(wget -qO- "${IMAGE_URL}/" | sed -n 's/.*href="\([0-9_:]*\)\/">.*/\1/p' | tail -1)
+    fi
+
+    if [ -z "$image_date" ]; then
+        error "Could not determine latest image date"
+    fi
+
+    log "Downloading image: ${image_date}"
+    wget -q "${IMAGE_URL}/${image_date}/rootfs.tar.xz" -O /tmp/maltego-rootfs.tar.xz || \
+        error "Failed to download image"
+
+    tar -xJf /tmp/maltego-rootfs.tar.xz -C "$rootfs"
+    rm -f /tmp/maltego-rootfs.tar.xz
+
+    # Create LXC config
+    cat > "${LXC_PATH}/${CONTAINER}/config" << EOF
+lxc.uts.name = ${CONTAINER}
+lxc.rootfs.path = dir:${rootfs}
+lxc.include = /usr/share/lxc/config/common.conf
+
+# Network
+lxc.net.0.type = veth
+lxc.net.0.link = br-lan
+lxc.net.0.flags = up
+lxc.net.0.ipv4.address = ${ip}/24
+lxc.net.0.ipv4.gateway = 192.168.255.1
+
+# Mounts
+lxc.mount.entry = ${DATA_DIR}/config opt/maltego/config none bind,create=dir 0 0
+lxc.mount.entry = ${DATA_DIR}/transforms opt/maltego/transforms none bind,create=dir 0 0
+lxc.mount.entry = ${DATA_DIR}/logs opt/maltego/logs none bind,create=dir 0 0
+
+# Resources
+lxc.cgroup2.memory.max = 1073741824
+
+# Autostart
+lxc.start.auto = 1
+lxc.start.delay = 5
+EOF
+
+    # Create startup script
+    cat > "${rootfs}/opt/start-maltego.sh" << 'STARTUP'
+#!/bin/bash
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+export JAVA_HOME="/usr/lib/jvm/java-17-openjdk-arm64"
+export MALTEGO_HOME="/opt/maltego"
+
+# Set DNS
+echo "nameserver 192.168.255.1" > /etc/resolv.conf
+
+# Wait for network
+sleep 5
+
+# Install dependencies if needed
+if ! command -v java &>/dev/null; then
+    apt-get update
+    apt-get install -y openjdk-17-jre-headless python3 python3-pip wget curl unzip
+fi
+
+# Create maltego directory structure
+mkdir -p /opt/maltego/{config,transforms,logs}
+
+# If iTDS not installed, set up basic transform server
+if [ ! -f /opt/maltego/itds.jar ]; then
+    echo "iTDS not found. Setting up transform server..."
+
+    # Create simple Python transform server
+    cat > /opt/maltego/transform_server.py << 'PYEOF'
+#!/usr/bin/env python3
+"""
+Maltego Transform Server
+Lightweight TDS-compatible transform endpoint
+"""
+import http.server
+import socketserver
+import json
+import xml.etree.ElementTree as ET
+from urllib.parse import parse_qs, urlparse
+import sys
+import os
+import importlib.util
+import traceback
+
+PORT = 9001
+TRANSFORMS_DIR = "/opt/maltego/transforms"
+
+class MaltegoEntity:
+    def __init__(self, entity_type, value, weight=100):
+        self.type = entity_type
+        self.value = value
+        self.weight = weight
+        self.properties = {}
+
+    def add_property(self, name, value, display_name=None):
+        self.properties[name] = {
+            'value': value,
+            'display': display_name or name
+        }
+
+class TransformResponse:
+    def __init__(self):
+        self.entities = []
+        self.messages = []
+
+    def add_entity(self, entity):
+        self.entities.append(entity)
+
+    def add_message(self, msg, msg_type="Inform"):
+        self.messages.append({'text': msg, 'type': msg_type})
+
+    def to_xml(self):
+        root = ET.Element("MaltegoMessage")
+        resp = ET.SubElement(root, "MaltegoTransformResponseMessage")
+        entities = ET.SubElement(resp, "Entities")
+
+        for e in self.entities:
+            entity = ET.SubElement(entities, "Entity", Type=e.type)
+            value = ET.SubElement(entity, "Value")
+            value.text = e.value
+            weight = ET.SubElement(entity, "Weight")
+            weight.text = str(e.weight)
+
+            if e.properties:
+                props = ET.SubElement(entity, "AdditionalFields")
+                for name, prop in e.properties.items():
+                    field = ET.SubElement(props, "Field", Name=name, DisplayName=prop['display'])
+                    field.text = str(prop['value'])
+
+        if self.messages:
+            msgs = ET.SubElement(resp, "UIMessages")
+            for m in self.messages:
+                msg = ET.SubElement(msgs, "UIMessage", MessageType=m['type'])
+                msg.text = m['text']
+
+        return ET.tostring(root, encoding='unicode')
+
+def load_transform(name):
+    """Load a transform from the transforms directory"""
+    path = os.path.join(TRANSFORMS_DIR, f"{name}.py")
+    if not os.path.exists(path):
+        return None
+
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+class TransformHandler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        with open("/opt/maltego/logs/access.log", "a") as f:
+            f.write(f"{self.address_string()} - {format % args}\n")
+
+    def do_GET(self):
+        """Handle transform list and info"""
+        parsed = urlparse(self.path)
+
+        if parsed.path == "/" or parsed.path == "/transforms":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+
+            transforms = []
+            if os.path.exists(TRANSFORMS_DIR):
+                for f in os.listdir(TRANSFORMS_DIR):
+                    if f.endswith(".py"):
+                        transforms.append(f[:-3])
+
+            self.wfile.write(json.dumps({
+                "status": "ok",
+                "server": "SecuBox Maltego Transform Server",
+                "version": "1.0.0",
+                "transforms": transforms
+            }).encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_POST(self):
+        """Execute a transform"""
+        parsed = urlparse(self.path)
+        transform_name = parsed.path.strip("/").replace("run/", "")
+
+        content_length = int(self.headers.get('Content-Length', 0))
+        post_data = self.rfile.read(content_length).decode('utf-8')
+
+        response = TransformResponse()
+
+        try:
+            # Parse input entity from Maltego XML
+            root = ET.fromstring(post_data)
+            entity_elem = root.find(".//Entity")
+            entity_value = entity_elem.find("Value").text if entity_elem is not None else ""
+            entity_type = entity_elem.get("Type", "") if entity_elem is not None else ""
+
+            # Load and run transform
+            transform = load_transform(transform_name)
+            if transform and hasattr(transform, 'run'):
+                transform.run(entity_value, entity_type, response)
+            else:
+                response.add_message(f"Transform '{transform_name}' not found", "Error")
+
+        except Exception as e:
+            response.add_message(f"Transform error: {str(e)}", "Error")
+            traceback.print_exc()
+
+        self.send_response(200)
+        self.send_header("Content-Type", "application/xml")
+        self.end_headers()
+        self.wfile.write(response.to_xml().encode())
+
+if __name__ == "__main__":
+    os.makedirs(TRANSFORMS_DIR, exist_ok=True)
+
+    # Create example transform if none exist
+    if not os.listdir(TRANSFORMS_DIR):
+        with open(os.path.join(TRANSFORMS_DIR, "dns_lookup.py"), "w") as f:
+            f.write('''"""DNS Lookup Transform"""
+import socket
+
+def run(value, entity_type, response):
+    """Look up IP addresses for a domain"""
+    try:
+        ips = socket.gethostbyname_ex(value)[2]
+        for ip in ips:
+            entity = response.__class__.__bases__[0].__subclasses__()[0]
+            # Use parent module's MaltegoEntity
+            import sys
+            parent = sys.modules[__name__.rsplit(".", 1)[0]] if "." in __name__ else sys.modules["__main__"]
+            e = parent.MaltegoEntity("maltego.IPv4Address", ip)
+            e.add_property("domain", value, "Source Domain")
+            response.add_entity(e)
+    except Exception as ex:
+        response.add_message(f"DNS lookup failed: {ex}", "Error")
+''')
+
+    with socketserver.TCPServer(("", PORT), TransformHandler) as httpd:
+        print(f"Maltego Transform Server running on port {PORT}")
+        httpd.serve_forever()
+PYEOF
+    chmod +x /opt/maltego/transform_server.py
+fi
+
+# Start transform server
+cd /opt/maltego
+exec python3 transform_server.py >> /opt/maltego/logs/server.log 2>&1
+STARTUP
+    chmod +x "${rootfs}/opt/start-maltego.sh"
+
+    # Set init
+    rm -f "${rootfs}/sbin/init"
+    ln -sf /opt/start-maltego.sh "${rootfs}/sbin/init"
+
+    log "Maltego container installed at ${ip}"
+    log "Start with: maltegoctl start"
+}
+
+cmd_start() {
+    log "Starting Maltego container..."
+    /usr/bin/lxc-start -n "$CONTAINER" || error "Failed to start container"
+
+    # Wait for it to be ready
+    sleep 10
+
+    local ip
+    get_config ip ip "192.168.255.55"
+
+    if curl -s -o /dev/null -w "%{http_code}" "http://${ip}:9001/" | grep -q "200"; then
+        log "Maltego transform server is ready at http://${ip}:9001/"
+    else
+        log "Container started, waiting for transform server..."
+    fi
+}
+
+cmd_stop() {
+    log "Stopping Maltego container..."
+    /usr/bin/lxc-stop -n "$CONTAINER" 2>/dev/null
+    log "Container stopped"
+}
+
+cmd_restart() {
+    cmd_stop
+    sleep 2
+    cmd_start
+}
+
+cmd_status() {
+    local state
+    state=$(/usr/bin/lxc-info -n "$CONTAINER" -s 2>/dev/null | awk '{print $2}')
+
+    local ip
+    get_config ip ip "192.168.255.55"
+
+    echo "Container: $CONTAINER"
+    echo "State: ${state:-NOT_FOUND}"
+    echo "IP: $ip"
+    echo "Transform Port: 9001"
+
+    if [ "$state" = "RUNNING" ]; then
+        local status
+        status=$(curl -s "http://${ip}:9001/" 2>/dev/null | head -1)
+        if [ -n "$status" ]; then
+            echo "Server Status: Running"
+            echo "Transforms: $(curl -s "http://${ip}:9001/transforms" 2>/dev/null | grep -oP '"transforms":\s*\[\K[^\]]+' | tr ',' '\n' | wc -l)"
+        else
+            echo "Server Status: Starting..."
+        fi
+    fi
+}
+
+cmd_logs() {
+    local ip
+    get_config ip ip "192.168.255.55"
+
+    if [ -f "${DATA_DIR}/logs/server.log" ]; then
+        tail -f "${DATA_DIR}/logs/server.log"
+    else
+        /usr/bin/lxc-attach -n "$CONTAINER" -- tail -f /opt/maltego/logs/server.log
+    fi
+}
+
+cmd_shell() {
+    /usr/bin/lxc-attach -n "$CONTAINER" -- /bin/bash
+}
+
+cmd_add_transform() {
+    local name="$1"
+    local code="$2"
+
+    if [ -z "$name" ]; then
+        error "Usage: maltegoctl add-transform <name> [code_file]"
+    fi
+
+    local target="${DATA_DIR}/transforms/${name}.py"
+
+    if [ -n "$code" ] && [ -f "$code" ]; then
+        cp "$code" "$target"
+    else
+        cat > "$target" << 'TEMPLATE'
+"""
+Custom Maltego Transform
+Edit this file to implement your transform logic
+"""
+
+def run(value, entity_type, response):
+    """
+    Transform entry point
+
+    Args:
+        value: The entity value (e.g., domain name, IP address)
+        entity_type: The Maltego entity type
+        response: TransformResponse object to add results to
+
+    Example:
+        # Import parent module for MaltegoEntity
+        import sys
+        parent = sys.modules["__main__"]
+
+        # Create result entity
+        e = parent.MaltegoEntity("maltego.Phrase", f"Result for: {value}")
+        e.add_property("source", value, "Source Value")
+        response.add_entity(e)
+    """
+    import sys
+    parent = sys.modules["__main__"]
+
+    e = parent.MaltegoEntity("maltego.Phrase", f"Transform result for: {value}")
+    response.add_entity(e)
+TEMPLATE
+        log "Created transform template: ${target}"
+        log "Edit ${target} to implement your transform"
+    fi
+}
+
+cmd_list_transforms() {
+    echo "Installed transforms:"
+    if [ -d "${DATA_DIR}/transforms" ]; then
+        for f in "${DATA_DIR}/transforms"/*.py; do
+            [ -f "$f" ] && echo "  - $(basename "$f" .py)"
+        done
+    else
+        echo "  (none)"
+    fi
+}
+
+cmd_configure_haproxy() {
+    local domain
+    get_config domain exposure domain "maltego.gk2.secubox.in"
+
+    local ip
+    get_config ip ip "192.168.255.55"
+
+    log "Configuring HAProxy vhost: $domain -> $ip:9001"
+
+    # Add vhost
+    haproxyctl vhost add "$domain" 2>/dev/null || true
+
+    # Add mitmproxy route
+    local routes="/srv/mitmproxy/haproxy-routes.json"
+    if [ -f "$routes" ]; then
+        python3 -c "
+import json
+with open('$routes') as f:
+    d = json.load(f)
+d['$domain'] = ['$ip', 9001]
+with open('$routes', 'w') as f:
+    json.dump(d, f, indent=2)
+"
+        cp "$routes" /srv/mitmproxy-in/haproxy-routes.json
+        /etc/init.d/mitmproxy restart
+    fi
+
+    log "HAProxy configured: https://$domain/"
+}
+
+cmd_help() {
+    cat << 'EOF'
+Maltego iTDS Controller for SecuBox
+
+Usage: maltegoctl <command> [options]
+
+Container Commands:
+  install             Create Maltego transform server container
+  start               Start the container
+  stop                Stop the container
+  restart             Restart the container
+  status              Show container and server status
+  logs                Tail transform server logs
+  shell               Open shell in container
+
+Transform Commands:
+  add-transform <name> [file]  Create or import a transform
+  list-transforms              List installed transforms
+
+Configuration:
+  configure-haproxy   Setup HAProxy vhost for external access
+
+Examples:
+  maltegoctl install
+  maltegoctl start
+  maltegoctl add-transform shodan_lookup
+  maltegoctl list-transforms
+EOF
+}
+
+case "$1" in
+    install) cmd_install ;;
+    start) cmd_start ;;
+    stop) cmd_stop ;;
+    restart) cmd_restart ;;
+    status) cmd_status ;;
+    logs) cmd_logs ;;
+    shell) cmd_shell ;;
+    add-transform) shift; cmd_add_transform "$@" ;;
+    list-transforms) cmd_list_transforms ;;
+    configure-haproxy) cmd_configure_haproxy ;;
+    help|--help|-h) cmd_help ;;
+    *) cmd_help ;;
+esac
