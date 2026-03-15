@@ -1,12 +1,25 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-14 (Module Manifest NFO)_
+_Last updated: 2026-03-15 (Wall Colorsets)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
 ---
 
 ## Recently Completed
+
+### 2026-03-15
+
+- **MAGIC·CHESS·360 Colorset Enhancement (Complete)**
+  - Added 15 color palettes to wall.maegia.tv TAO_SPECTRUM system
+  - Colorsets: default, alchy, emojiz, punk, hollistique, tantrique, cosmique, solarix, oceanique, rainbow, fluo, phospho, vintage, tao, merkaba
+  - Each colorset changes the animated prism colors cycling through the chess pieces
+  - Minimal patch: only added colorset selector + COLORSETS object (~8KB added)
+  - Original app preserved: canvas animation, audio sync, HUD controls unchanged
+  - Colorset selector: 15 circular gradient buttons (top-left corner)
+  - Keyboard shortcuts (1-9) for first 9, click for rest
+  - LocalStorage persistence for user preference
+  - Deployed to: https://wall.maegia.tv/
 
 ### 2026-03-14
 

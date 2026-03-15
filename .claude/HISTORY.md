@@ -5144,3 +5144,28 @@ git checkout HEAD -- index.html
     - **Files**:
       - `secubox-app-qbittorrent/`: Makefile, UCI config, init.d, qbittorrentctl
       - `secubox-app-webtorrent/`: Makefile, UCI config, init.d, webtorrentctl
+
+110. **MAGIC·CHESS·360 Colorset Enhancement (2026-03-15)**
+    - Added colorset selector to wall.maegia.tv (MAGIC·CHESS·360) with 15 thematic color palettes
+    - **Colorsets Added**:
+      - `default` - Classic Gold & Cream (original)
+      - `alchy` - Alchemical Mystique (green/gold/purple, alchemical symbols)
+      - `emojiz` - Playful Rainbow (bright orange/pink, emoji icons)
+      - `punk` - Cyberpunk Neon (magenta/cyan, tech/hacker icons)
+      - `hollistique` - Earth Harmony (brown/teal, nature/yoga icons)
+      - `tantrique` - Sacred Sensual (deep red/purple, spiritual symbols)
+      - `cosmique` - Deep Space Nebula (violet/blue, planets/stars)
+      - `solarix` - Solar Flare Energy (orange/gold, sun/fire icons)
+      - `oceanique` - Deep Sea Mystery (cyan/aqua, marine life)
+    - **Features**:
+      - CSS custom properties for smooth theme transitions
+      - Colorset selector UI with 15 circular gradient buttons
+      - Keyboard shortcuts 1-9 for first 9, click for rest
+      - LocalStorage persistence for user preference
+      - Each colorset has 24 unique themed icons and labels
+    - **Technical**:
+      - Minimal patch to original (~5KB added, 190KB total)
+      - No external dependencies (self-contained CSS/JS)
+      - 3D perspective board with parallax mouse tracking
+      - Pulse animations with random timing per cell
+    - **Deployed**: https://wall.maegia.tv/
