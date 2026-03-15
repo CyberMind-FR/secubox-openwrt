@@ -1,8 +1,17 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-03-15 (v1.0.0 Beta Release)_
+_Last updated: 2026-03-16 (Quick Access QR Page)_
 
-0. **SecuBox v1.0.0 Beta Release (2026-03-15)**
+0. **SecuBox Quick Access QR Page (2026-03-16)**
+   - QR code landing page deployed at https://quick.secubox.in/
+   - 6 QR codes: VM access (192.168.1.1 & 192.168.255.1), GitHub, Release, Droplet, Streamlit Forge
+   - Default credentials section: root / c3box
+   - Dark KISS theme with JavaScript QR generation
+   - Fixed MetaBlogizer port conflict: srvi and quick-access both assigned port 9013
+   - Documented port allocation race condition issue
+   - Existing fix tools: `metablogizerctl check-ports` and `fix-ports`
+
+1. **SecuBox v1.0.0 Beta Release (2026-03-15)**
    - BETA-RELEASE.md: Complete security testing documentation
      - Attack surface overview (HAProxy, WAF, LXC, P2P layers)
      - High-value targets and secrets locations for pen testers
