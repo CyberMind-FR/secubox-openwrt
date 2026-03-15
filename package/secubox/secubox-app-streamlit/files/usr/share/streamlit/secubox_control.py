@@ -105,6 +105,16 @@ def get_data():
     d["active_bans"] = cs_detail.get("active_bans", 0)
     d["total_decisions"] = cs_detail.get("total_decisions", 0)
 
+    # DPI Dual-Stream stats
+    dpi_buffer = read_cache("/tmp/secubox/dpi-buffer.json")
+    dpi_flows = read_cache("/tmp/secubox/dpi-flows.json")
+    d["dpi_buffer_entries"] = dpi_buffer.get("entries", 0)
+    d["dpi_threats"] = dpi_buffer.get("threats_detected", 0)
+    d["dpi_blocked"] = dpi_buffer.get("blocked_count", 0)
+    d["dpi_flows"] = dpi_flows.get("flows_1min", 0)
+    d["dpi_rx"] = dpi_flows.get("rx_bytes", 0)
+    d["dpi_tx"] = dpi_flows.get("tx_bytes", 0)
+
     d["p_haproxy"] = 3 if d["haproxy"] else 10
     d["p_crowdsec"] = 3 if d["crowdsec"] and d["cs_alerts"] == 0 else 7 if d["cs_alerts"] > 0 else 10
     d["p_mitmproxy"] = 3 if d["mitmproxy"] else 6
@@ -136,7 +146,7 @@ def main():
     ''', unsafe_allow_html=True)
 
     st.markdown('<div class="section-title">SERVICES</div>', unsafe_allow_html=True)
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns(4)
 
     with c1:
         st.markdown(f'''
@@ -164,6 +174,19 @@ def main():
             <div class="metric-row">
                 <div class="metric-item"><div class="metric-value">{d['waf_threats']}</div><div class="metric-label">Threats</div></div>
                 <div class="metric-item"><div class="metric-value">{d['waf_autobans']}</div><div class="metric-label">AutoBans</div></div>
+            </div>
+        </div>
+        ''', unsafe_allow_html=True)
+
+    dpi_color = "#00d4aa" if d["dpi_buffer_entries"] > 0 else "#808090"
+    with c4:
+        st.markdown(f'''
+        <div class="status-card" style="border-left-color:{dpi_color};">
+            <div class="card-header"><span class="card-title">📡 DPI Dual</span></div>
+            <div class="metric-row">
+                <div class="metric-item"><div class="metric-value">{d['dpi_flows']}</div><div class="metric-label">Flows/min</div></div>
+                <div class="metric-item"><div class="metric-value">{d['dpi_threats']}</div><div class="metric-label">Threats</div></div>
+                <div class="metric-item"><div class="metric-value">{d['dpi_blocked']}</div><div class="metric-label">Blocked</div></div>
             </div>
         </div>
         ''', unsafe_allow_html=True)

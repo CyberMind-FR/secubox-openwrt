@@ -1,0 +1,252 @@
+#!/bin/sh
+# RPCD handler for DPI Dual-Stream dashboard
+# Part of luci-app-dpi-dual
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+STATS_DIR="/tmp/secubox"
+FLOW_DIR="/tmp/dpi-flows"
+BUFFER_FILE="$STATS_DIR/dpi-buffer.json"
+FLOWS_FILE="$STATS_DIR/dpi-flows.json"
+THREATS_FILE="$STATS_DIR/correlated-threats.json"
+ALERTS_FILE="$STATS_DIR/waf-alerts.json"
+
+read_json_file() {
+    local file="$1"
+    if [ -f "$file" ]; then
+        cat "$file"
+    else
+        echo '{}'
+    fi
+}
+
+case "$1" in
+    list)
+        cat << 'EOF'
+{
+    "status": {},
+    "get_flows": {},
+    "get_buffer": {"limit": 100},
+    "get_threats": {"limit": 50},
+    "get_correlation": {"limit": 20},
+    "get_mirror_status": {},
+    "start": {},
+    "stop": {},
+    "restart": {},
+    "replay_request": {"req_hash": "string"},
+    "correlate_ip": {"ip": "string"}
+}
+EOF
+        ;;
+
+    call)
+        case "$2" in
+            status)
+                # Get unified status of both streams
+                config_load dpi-dual
+
+                local enabled mode correlation
+                config_get enabled settings enabled "0"
+                config_get mode settings mode "dual"
+                config_get correlation settings correlation "0"
+
+                # Check processes
+                local mitm_running=0 tap_running=0 collector_running=0 correlator_running=0
+                pgrep mitmproxy >/dev/null 2>&1 && mitm_running=1
+                pgrep netifyd >/dev/null 2>&1 && tap_running=1
+                pgrep dpi-flow-collector >/dev/null 2>&1 && collector_running=1
+                pgrep dpi-correlator >/dev/null 2>&1 && correlator_running=1
+
+                # Get TAP interface status
+                local tap_if tap_up=0 tap_rx=0 tap_tx=0
+                config_get tap_if tap interface "tap0"
+                if ip link show "$tap_if" >/dev/null 2>&1; then
+                    tap_up=1
+                    tap_rx=$(cat "/sys/class/net/$tap_if/statistics/rx_bytes" 2>/dev/null || echo 0)
+                    tap_tx=$(cat "/sys/class/net/$tap_if/statistics/tx_bytes" 2>/dev/null || echo 0)
+                fi
+
+                # Get buffer stats
+                local buffer_entries=0 buffer_threats=0 buffer_blocked=0
+                if [ -f "$BUFFER_FILE" ]; then
+                    buffer_entries=$(jsonfilter -i "$BUFFER_FILE" -e '@.entries' 2>/dev/null || echo 0)
+                    buffer_threats=$(jsonfilter -i "$BUFFER_FILE" -e '@.threats_detected' 2>/dev/null || echo 0)
+                    buffer_blocked=$(jsonfilter -i "$BUFFER_FILE" -e '@.blocked_count' 2>/dev/null || echo 0)
+                fi
+
+                # Get flow stats
+                local flows_1min=0
+                if [ -f "$FLOWS_FILE" ]; then
+                    flows_1min=$(jsonfilter -i "$FLOWS_FILE" -e '@.flows_1min' 2>/dev/null || echo 0)
+                fi
+
+                # Get correlation stats
+                local correlated_threats=0
+                if [ -f "$THREATS_FILE" ]; then
+                    correlated_threats=$(wc -l < "$THREATS_FILE" 2>/dev/null || echo 0)
+                fi
+
+                cat << EOF
+{
+    "enabled": $enabled,
+    "mode": "$mode",
+    "correlation_enabled": $correlation,
+    "mitm_stream": {
+        "running": $mitm_running,
+        "buffer_entries": $buffer_entries,
+        "threats_detected": $buffer_threats,
+        "blocked_count": $buffer_blocked
+    },
+    "tap_stream": {
+        "running": $tap_running,
+        "interface": "$tap_if",
+        "interface_up": $tap_up,
+        "rx_bytes": $tap_rx,
+        "tx_bytes": $tap_tx,
+        "flows_1min": $flows_1min,
+        "collector_running": $collector_running
+    },
+    "correlation": {
+        "running": $correlator_running,
+        "threats_correlated": $correlated_threats
+    }
+}
+EOF
+                ;;
+
+            get_flows)
+                read_json_file "$FLOWS_FILE"
+                ;;
+
+            get_buffer)
+                read "$3"
+                json_load "$REPLY"
+                json_get_var limit limit 100
+
+                if [ -f "$BUFFER_FILE" ]; then
+                    cat "$BUFFER_FILE"
+                else
+                    echo '{"entries": 0, "requests": []}'
+                fi
+                ;;
+
+            get_threats)
+                read "$3"
+                json_load "$REPLY"
+                json_get_var limit limit 50
+
+                if [ -f "$ALERTS_FILE" ]; then
+                    # Return last N alerts
+                    local total
+                    total=$(jsonfilter -i "$ALERTS_FILE" -e '@[*]' 2>/dev/null | wc -l)
+
+                    cat << EOF
+{
+    "total": $total,
+    "alerts": $(tail -c 50000 "$ALERTS_FILE" 2>/dev/null || echo '[]')
+}
+EOF
+                else
+                    echo '{"total": 0, "alerts": []}'
+                fi
+                ;;
+
+            get_correlation)
+                read "$3"
+                json_load "$REPLY"
+                json_get_var limit limit 20
+
+                if [ -f "$THREATS_FILE" ]; then
+                    local total
+                    total=$(wc -l < "$THREATS_FILE" 2>/dev/null || echo 0)
+
+                    cat << EOF
+{
+    "total": $total,
+    "correlated": $(tail -"$limit" "$THREATS_FILE" 2>/dev/null | tr '\n' ',' | sed 's/,$//' | awk '{print "["$0"]"}')
+}
+EOF
+                else
+                    echo '{"total": 0, "correlated": []}'
+                fi
+                ;;
+
+            get_mirror_status)
+                /usr/lib/dpi-dual/mirror-setup.sh status 2>&1 | \
+                    awk 'BEGIN{print "{"}
+                         /TAP Interface/ {tap=1}
+                         /not found/ {up=0}
+                         /UP/ {up=1}
+                         /RX:/ {rx=$2}
+                         /TX:/ {tx=$2}
+                         /ingress/ {ing=1}
+                         END{
+                             printf "\"tap_found\": %s, \"tap_up\": %s, \"ingress_configured\": %s",
+                                    (tap?1:0), (up?1:0), (ing?1:0);
+                             print "}"
+                         }'
+                ;;
+
+            start)
+                /usr/sbin/dpi-dualctl start >/dev/null 2>&1
+                echo '{"success": true}'
+                ;;
+
+            stop)
+                /usr/sbin/dpi-dualctl stop >/dev/null 2>&1
+                echo '{"success": true}'
+                ;;
+
+            restart)
+                /usr/sbin/dpi-dualctl restart >/dev/null 2>&1
+                echo '{"success": true}'
+                ;;
+
+            replay_request)
+                read "$3"
+                json_load "$REPLY"
+                json_get_var req_hash req_hash ""
+
+                if [ -z "$req_hash" ]; then
+                    echo '{"success": false, "error": "req_hash required"}'
+                else
+                    # Add to replay queue (read by mitmproxy addon)
+                    local queue_file="/tmp/dpi-buffer/replay-queue.json"
+                    mkdir -p /tmp/dpi-buffer
+
+                    if [ ! -f "$queue_file" ]; then
+                        echo "[]" > "$queue_file"
+                    fi
+
+                    local entry="{\"req_hash\":\"$req_hash\",\"queued_at\":\"$(date -Iseconds)\",\"status\":\"pending\"}"
+
+                    # Append to queue (keep last 100)
+                    (cat "$queue_file" | jsonfilter -e '@[*]' 2>/dev/null; echo "$entry") | \
+                        tail -100 | \
+                        awk 'BEGIN{print "["} {if(NR>1)print ","; print} END{print "]"}' > "$queue_file.tmp"
+                    mv "$queue_file.tmp" "$queue_file"
+
+                    echo '{"success": true, "message": "Request queued for replay"}'
+                fi
+                ;;
+
+            correlate_ip)
+                read "$3"
+                json_load "$REPLY"
+                json_get_var ip ip ""
+
+                if [ -z "$ip" ]; then
+                    echo '{"success": false, "error": "IP required"}'
+                else
+                    /usr/sbin/dpi-correlator correlate "$ip" "manual_request" >/dev/null 2>&1
+                    echo '{"success": true, "message": "Correlation triggered for '"$ip"'"}'
+                fi
+                ;;
+
+            *)
+                echo '{"error": "Unknown method"}'
+                ;;
+        esac
+        ;;
+esac

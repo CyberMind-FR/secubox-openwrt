@@ -1,0 +1,14 @@
+{
+	"admin/secubox/dpi-dual": {
+		"title": "DPI Dual-Stream",
+		"order": 45,
+		"action": {
+			"type": "view",
+			"path": "dpi-dual/overview"
+		},
+		"depends": {
+			"acl": ["luci-app-dpi-dual"],
+			"uci": { "dpi-dual": true }
+		}
+	}
+}

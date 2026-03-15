@@ -581,35 +581,35 @@ _Last updated: 2026-03-15 (Wall Colorsets)_
 
 ### 2026-03-15
 
-- **Dual-Stream DPI Architecture (Phase 1 Complete)**
+- **Dual-Stream DPI Architecture (Phase 2 Complete)**
   - New `secubox-dpi-dual` package implementing parallel MITM + Passive TAP DPI
   - Architecture doc: `package/secubox/DUAL-STREAM-DPI.md`
-  - **TAP Stream (Passive)**:
+  - **Phase 1 - TAP Stream (Passive)**:
     - `mirror-setup.sh`: tc mirred port mirroring (ingress + egress)
-    - Creates dummy TAP interface for netifyd analysis
-    - Software and hardware TAP mode support
-  - **Flow Collector**:
-    - `dpi-flow-collector`: Aggregates netifyd flow statistics
-    - Writes stats to `/tmp/secubox/dpi-flows.json`
-    - Interface stats from /sys/class/net
-    - Configurable flow retention cleanup
-  - **Correlation Engine**:
-    - `dpi-correlator`: Matches MITM + TAP stream events
-    - Watches CrowdSec decisions and WAF alerts
-    - Enriches threats with context from both streams
-    - Output: `/tmp/secubox/correlated-threats.json`
-  - **CLI Tool**:
-    - `dpi-dualctl`: start/stop/restart/status/flows/threats/mirror
-    - Shows unified status of both streams
-  - **Procd Service**:
-    - `init.d/dpi-dual`: Manages flow-collector and correlator instances
-    - Auto-starts based on UCI mode setting (dual/mitm-only/tap-only)
-  - **MITM Double Buffer (Phase 2 prep)**:
-    - `dpi_buffer.py`: mitmproxy addon for async analysis
-    - Ring buffer with configurable size (1000 requests default)
-    - Heuristic threat scoring (path traversal, XSS, SQLi, LFI patterns)
-    - Writes threats to `/tmp/secubox/waf-alerts.json`
-  - **UCI Config**: `/etc/config/dpi-dual` with global, mitm, tap, correlation sections
+    - `dpi-flow-collector`: Aggregates netifyd stats → `/tmp/secubox/dpi-flows.json`
+    - `dpi-correlator`: Matches MITM + TAP events, CrowdSec integration
+    - `dpi-dualctl`: CLI start/stop/status/flows/threats/mirror
+    - `init.d/dpi-dual`: Procd service for flow-collector + correlator
+  - **Phase 2 - MITM Double Buffer + LuCI**:
+    - Enhanced `dpi_buffer.py` mitmproxy addon:
+      - Compiled regex patterns for 6 threat categories (path_traversal, xss, sqli, lfi, rce, ssrf)
+      - Scanner detection (sqlmap, nikto, nmap, etc.)
+      - Optional blocking mode for high-score threats
+      - Request replay queue for forensic analysis
+      - Rate limiting detection
+      - Stats: buffer entries, threat distribution, top hosts
+    - **LuCI Dashboard** (`luci-app-dpi-dual`):
+      - RPCD handler with 10 methods (status, flows, buffer, threats, correlation, start/stop/restart, replay, correlate)
+      - KISS-themed overview with stream status cards
+      - LED indicators for MITM/TAP/Correlation running state
+      - Metrics: buffer entries, threats, blocked, flows/min, RX/TX bytes
+      - Threats table with timestamp, IP, host, path, categories, score, blocked status
+      - Protocol distribution from netifyd
+      - Manual IP correlation trigger
+      - ACL permissions for read/write
+    - **Streamlit Control Panel** updated:
+      - DPI Dual card with flows/min, threats, blocked metrics
+      - Reads from dpi-buffer.json and dpi-flows.json caches
 
 ---
 

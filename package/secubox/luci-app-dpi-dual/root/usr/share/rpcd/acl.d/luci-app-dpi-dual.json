@@ -1,0 +1,30 @@
+{
+	"luci-app-dpi-dual": {
+		"description": "Grant access to DPI Dual-Stream dashboard",
+		"read": {
+			"ubus": {
+				"luci.dpi-dual": [
+					"status",
+					"get_flows",
+					"get_buffer",
+					"get_threats",
+					"get_correlation",
+					"get_mirror_status"
+				]
+			},
+			"uci": ["dpi-dual"]
+		},
+		"write": {
+			"ubus": {
+				"luci.dpi-dual": [
+					"start",
+					"stop",
+					"restart",
+					"replay_request",
+					"correlate_ip"
+				]
+			},
+			"uci": ["dpi-dual"]
+		}
+	}
+}

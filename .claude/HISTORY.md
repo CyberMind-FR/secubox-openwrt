@@ -5202,3 +5202,14 @@ git checkout HEAD -- index.html
   - UCI config: `/etc/config/dpi-dual` with dual/mitm-only/tap-only modes
   - Files: mirror-setup.sh, dpi-flow-collector, dpi-correlator, dpi-dualctl, init.d/dpi-dual, dpi_buffer.py
 
+
+- **Dual-Stream DPI Phase 2 - MITM Double Buffer + LuCI (Complete)**
+  - Enhanced mitmproxy addon `dpi_buffer.py`:
+    - Compiled regex for 6 threat categories (path_traversal, xss, sqli, lfi, rce, ssrf)
+    - Scanner detection, optional blocking, request replay queue
+  - New `luci-app-dpi-dual` package:
+    - RPCD handler with 10 methods (status, flows, buffer, threats, correlation, control)
+    - KISS dashboard with stream status cards, LED indicators, threats table
+    - Protocol distribution, manual IP correlation
+  - Streamlit control panel: Added DPI Dual card
+
