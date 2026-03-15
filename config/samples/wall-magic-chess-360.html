@@ -865,6 +865,11 @@ const off=document.createElement('canvas');
 const offCtx=off.getContext('2d');
 const cv=document.getElementById('cv');
 const ctx=cv.getContext('2d');
+
+// ── TRUE DOUBLE BUFFERING ─────────────────────────────────
+// BackBuffer: compose entire frame offscreen, then blit to visible
+const backBuffer = document.createElement('canvas');
+const bbCtx = backBuffer.getContext('2d');
 let lastT=performance.now(),rafId=null;
 
 // ── HELPERS ───────────────────────────────────────────────
@@ -1353,8 +1358,9 @@ function rafLoop(now){
   zF=Math.max(0.38,Math.min(2.6,zF));
 
   // ── DRAW ──
-  ctx.imageSmoothingEnabled=false;
-  ctx.clearRect(0,0,W,H);
+  // ── DOUBLE BUFFER: Draw to backBuffer first ──
+  bbCtx.imageSmoothingEnabled=false;
+  bbCtx.clearRect(0,0,W,H);
 
   const cx=W/2+panX+glitchX;
   const cy=H/2+panY+glitchY;
@@ -1367,10 +1373,10 @@ function rafLoop(now){
 
   if(tileTTL>0 && tileScales.length>0){
     // PER-TILE : zoom global + scale individuel par tuile
-    ctx.save();
-    ctx.translate(cx,cy);
-    ctx.scale(zF,zF);
-    ctx.translate(-cx,-cy);
+    bbCtx.save();
+    bbCtx.translate(cx,cy);
+    bbCtx.scale(zF,zF);
+    bbCtx.translate(-cx,-cy);
 
     let ti=0;
     for(let y=startY-margin;y<=H+margin*3;y+=motifPx){
@@ -1378,30 +1384,33 @@ function rafLoop(now){
         const ts=tileScales[ti%tileScales.length]??1;
         ti++;
         if(ts===1.0){
-          ctx.drawImage(off,x,y);
+          bbCtx.drawImage(off,x,y);
         } else {
           const tcx=x+motifPx/2, tcy=y+motifPx/2;
-          ctx.save();
-          ctx.translate(tcx,tcy);
-          ctx.scale(ts,ts);
-          ctx.translate(-tcx,-tcy);
-          ctx.drawImage(off,x,y);
-          ctx.restore();
+          bbCtx.save();
+          bbCtx.translate(tcx,tcy);
+          bbCtx.scale(ts,ts);
+          bbCtx.translate(-tcx,-tcy);
+          bbCtx.drawImage(off,x,y);
+          bbCtx.restore();
         }
       }
     }
-    ctx.restore();
+    bbCtx.restore();
   } else {
     // ZOOM GLOBAL UNIFORME
-    ctx.save();
-    ctx.translate(cx,cy);
-    ctx.scale(zF,zF);
-    ctx.translate(-cx,-cy);
+    bbCtx.save();
+    bbCtx.translate(cx,cy);
+    bbCtx.scale(zF,zF);
+    bbCtx.translate(-cx,-cy);
     for(let y=startY-margin;y<=H+margin*3;y+=motifPx)
       for(let x=startX-margin;x<=W+margin*3;x+=motifPx)
-        ctx.drawImage(off,x,y);
-    ctx.restore();
+        bbCtx.drawImage(off,x,y);
+    bbCtx.restore();
   }
+
+  // ── DOUBLE BUFFER: Single blit to visible canvas ──
+  ctx.drawImage(backBuffer, 0, 0);
 
   document.getElementById('bZoom').textContent=
     'Z'+zF.toFixed(2)
@@ -1493,6 +1502,9 @@ function resize(){
   const scale = 2;
   cv.width = Math.ceil(window.innerWidth * scale);
   cv.height = Math.ceil(window.innerHeight * scale);
+  // Sync backBuffer size
+  backBuffer.width = cv.width;
+  backBuffer.height = cv.height;
   // Center the oversized canvas in wrapper
   cv.style.marginLeft = -cv.width/2 + 'px';
   cv.style.marginTop = -cv.height/2 + 'px';
