@@ -5270,3 +5270,15 @@ git checkout HEAD -- index.html
   - 6 new RPCD methods: get_tuning, set_tuning, whitelist_add, whitelist_remove, whitelist_list, reset_reputation
   - UCi config updated with scoring weights, sensitivity, whitelist, decay options
   - Enables fine-tuning of auto-ban sensitivity for production traffic
+
+- **Unified SMTP Relay Configuration (2026-03-16)**
+  - New `secubox-app-smtp-relay` package: centralized SMTP config for all SecuBox apps
+  - Shared library with `send_mail()`, `send_html_mail()`, `send_text_mail()` functions
+  - CLI tool: `smtp-relayctl status|test|send|configure|admin|enable|disable`
+  - RPCD backend with 5 methods: get_status, get_config, test_email, send_email, detect_local
+  - LuCI settings page with mode selection, provider presets, connection test
+  - Three modes: external (SMTP server), local (auto-detect mailserver), direct (MTA)
+  - Provider presets: Gmail, SendGrid, Mailgun, Amazon SES, Mailjet
+  - Migrated secubox-reporter and bandwidth-manager to use shared library
+  - Backwards-compatible fallback to legacy per-app SMTP settings
+  - Eliminates duplicated SMTP configuration across SecuBox apps

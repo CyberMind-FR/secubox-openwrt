@@ -1,0 +1,350 @@
+#!/bin/sh
+# SecuBox SMTP Relay Controller
+# CLI tool for managing centralized SMTP configuration
+
+VERSION="1.0.0"
+CONFIG="smtp-relay"
+
+# Source shared library
+. /usr/lib/secubox/mail/smtp-relay.sh
+
+# Colors (disabled if not terminal)
+if [ -t 1 ]; then
+	RED='\033[0;31m'
+	GREEN='\033[0;32m'
+	YELLOW='\033[1;33m'
+	CYAN='\033[0;36m'
+	BOLD='\033[1m'
+	NC='\033[0m'
+else
+	RED='' GREEN='' YELLOW='' CYAN='' BOLD='' NC=''
+fi
+
+log() { echo -e "${GREEN}[SMTP]${NC} $1"; }
+warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
+
+# Show current status
+cmd_status() {
+	smtp_relay_load_config
+
+	echo ""
+	echo -e "${BOLD}========================================"
+	echo -e "  SecuBox SMTP Relay v$VERSION"
+	echo -e "========================================${NC}"
+	echo ""
+	echo -e "  Enabled:     $([ "$smtp_enabled" = "1" ] && echo -e "${GREEN}Yes${NC}" || echo -e "${RED}No${NC}")"
+	echo -e "  Mode:        ${CYAN}$smtp_mode${NC}"
+	echo ""
+
+	case "$smtp_mode" in
+		external)
+			echo "  Server:      ${smtp_server:-${YELLOW}not configured${NC}}"
+			echo "  Port:        ${smtp_port}"
+			echo "  TLS:         $([ "$smtp_tls" = "1" ] && echo "STARTTLS" || ([ "$smtp_ssl" = "1" ] && echo "SSL/TLS" || echo "None"))"
+			echo "  Auth:        $([ "$smtp_auth" = "1" ] && echo "Yes (user: $smtp_user)" || echo "No")"
+			echo "  From:        ${smtp_from:-auto}"
+			;;
+		local)
+			echo "  Server:      ${smtp_server} (local mailserver)"
+			echo "  Port:        ${smtp_port}"
+			;;
+		direct)
+			echo "  Mode:        Direct MTA delivery"
+			echo "  HELO:        ${smtp_helo:-auto}"
+			;;
+	esac
+
+	echo ""
+	echo -e "  Admin Email: ${smtp_admin:-${YELLOW}not set${NC}}"
+	echo ""
+
+	# Transport availability
+	echo -e "${BOLD}Transport:${NC}"
+	if command -v msmtp >/dev/null 2>&1; then
+		echo -e "  msmtp:       ${GREEN}Available${NC}"
+	else
+		echo -e "  msmtp:       ${RED}Not installed${NC}"
+	fi
+
+	if command -v sendmail >/dev/null 2>&1; then
+		echo -e "  sendmail:    ${GREEN}Available${NC}"
+	else
+		echo -e "  sendmail:    ${YELLOW}Not available${NC}"
+	fi
+
+	# Check local mailserver
+	local mailserver_ip
+	mailserver_ip=$(uci -q get mailserver.server.ip_address)
+	[ -z "$mailserver_ip" ] && mailserver_ip=$(uci -q get mailserver.main.ip_address)
+
+	if [ -n "$mailserver_ip" ]; then
+		if nc -z "$mailserver_ip" 25 2>/dev/null; then
+			echo -e "  Local Mail:  ${GREEN}Running ($mailserver_ip)${NC}"
+		else
+			echo -e "  Local Mail:  ${YELLOW}Not responding ($mailserver_ip)${NC}"
+		fi
+	else
+		echo -e "  Local Mail:  ${YELLOW}Not configured${NC}"
+	fi
+
+	echo ""
+}
+
+# Send test email
+cmd_test() {
+	local recipient="$1"
+
+	log "Testing SMTP configuration..."
+
+	if smtp_relay_test "$recipient"; then
+		log "Test email sent successfully!"
+		return 0
+	else
+		error "Failed to send test email"
+		return 1
+	fi
+}
+
+# Send email from CLI
+cmd_send() {
+	local recipient="$1"
+	local subject="$2"
+	local body="$3"
+
+	if [ -z "$recipient" ] || [ -z "$subject" ]; then
+		echo "Usage: smtp-relayctl send <recipient> <subject> [body]"
+		echo "  If body is omitted, reads from stdin"
+		return 1
+	fi
+
+	[ -z "$body" ] && body=$(cat)
+
+	if send_mail "$recipient" "$subject" "$body"; then
+		log "Email sent to $recipient"
+		return 0
+	else
+		error "Failed to send email"
+		return 1
+	fi
+}
+
+# Interactive configuration
+cmd_configure() {
+	local mode="$1"
+
+	case "$mode" in
+		external)
+			echo -e "${BOLD}Configuring External SMTP${NC}"
+			echo ""
+
+			printf "SMTP Server: "
+			read -r server
+			[ -z "$server" ] && { error "Server is required"; return 1; }
+
+			printf "Port [587]: "
+			read -r port
+			port=${port:-587}
+
+			printf "Use STARTTLS? [Y/n]: "
+			read -r tls_yn
+			tls_yn=${tls_yn:-Y}
+
+			printf "Authentication required? [Y/n]: "
+			read -r auth_yn
+			auth_yn=${auth_yn:-Y}
+
+			local user="" password=""
+			if [ "$auth_yn" != "n" ] && [ "$auth_yn" != "N" ]; then
+				printf "Username: "
+				read -r user
+
+				printf "Password: "
+				stty -echo 2>/dev/null
+				read -r password
+				stty echo 2>/dev/null
+				echo ""
+			fi
+
+			printf "From email address: "
+			read -r from_email
+
+			printf "From name [SecuBox]: "
+			read -r from_name
+			from_name=${from_name:-SecuBox}
+
+			# Save configuration
+			uci set ${CONFIG}.main.mode='external'
+			uci set ${CONFIG}.main.enabled='1'
+			uci set ${CONFIG}.external.server="$server"
+			uci set ${CONFIG}.external.port="$port"
+			uci set ${CONFIG}.external.tls=$([ "$tls_yn" = "n" ] || [ "$tls_yn" = "N" ] && echo "0" || echo "1")
+			uci set ${CONFIG}.external.auth=$([ "$auth_yn" = "n" ] || [ "$auth_yn" = "N" ] && echo "0" || echo "1")
+			uci set ${CONFIG}.external.user="$user"
+			uci set ${CONFIG}.external.password="$password"
+			uci set ${CONFIG}.external.from="$from_email"
+			uci set ${CONFIG}.external.from_name="$from_name"
+			uci commit ${CONFIG}
+
+			log "External SMTP configured successfully"
+			echo ""
+			echo "Test with: smtp-relayctl test your@email.com"
+			;;
+
+		local)
+			local mailserver_ip
+			mailserver_ip=$(uci -q get mailserver.server.ip_address)
+			[ -z "$mailserver_ip" ] && mailserver_ip=$(uci -q get mailserver.main.ip_address)
+
+			if [ -z "$mailserver_ip" ]; then
+				error "Local mailserver not configured"
+				echo "Install secubox-app-mailserver first"
+				return 1
+			fi
+
+			if ! nc -z "$mailserver_ip" 25 2>/dev/null; then
+				warn "Local mailserver not responding on $mailserver_ip:25"
+				printf "Continue anyway? [y/N]: "
+				read -r cont
+				[ "$cont" != "y" ] && [ "$cont" != "Y" ] && return 1
+			fi
+
+			uci set ${CONFIG}.main.mode='local'
+			uci set ${CONFIG}.main.enabled='1'
+			uci set ${CONFIG}.local.server="$mailserver_ip"
+			uci commit ${CONFIG}
+
+			log "Local mailserver configured ($mailserver_ip)"
+			;;
+
+		direct)
+			warn "Direct delivery requires port 25 to be open to the internet"
+			printf "HELO domain (leave empty for auto): "
+			read -r helo
+
+			uci set ${CONFIG}.main.mode='direct'
+			uci set ${CONFIG}.main.enabled='1'
+			[ -n "$helo" ] && uci set ${CONFIG}.direct.helo_domain="$helo"
+			uci commit ${CONFIG}
+
+			log "Direct delivery mode configured"
+			;;
+
+		"")
+			echo "Usage: smtp-relayctl configure <mode>"
+			echo ""
+			echo "Modes:"
+			echo "  external  - Use external SMTP server (Gmail, SendGrid, etc.)"
+			echo "  local     - Use local mailserver (secubox-app-mailserver)"
+			echo "  direct    - Direct MTA delivery (requires port 25 open)"
+			return 1
+			;;
+
+		*)
+			error "Unknown mode: $mode"
+			return 1
+			;;
+	esac
+}
+
+# Set admin email
+cmd_admin() {
+	local email="$1"
+
+	if [ -z "$email" ]; then
+		local current
+		current=$(uci -q get ${CONFIG}.recipients.admin)
+		if [ -n "$current" ]; then
+			echo "Current admin email: $current"
+		else
+			echo "No admin email configured"
+		fi
+		echo ""
+		echo "Usage: smtp-relayctl admin <email>"
+		return 0
+	fi
+
+	uci set ${CONFIG}.recipients.admin="$email"
+	uci commit ${CONFIG}
+	log "Admin email set to: $email"
+}
+
+# Enable/disable relay
+cmd_enable() {
+	uci set ${CONFIG}.main.enabled='1'
+	uci commit ${CONFIG}
+	log "SMTP relay enabled"
+}
+
+cmd_disable() {
+	uci set ${CONFIG}.main.enabled='0'
+	uci commit ${CONFIG}
+	log "SMTP relay disabled"
+}
+
+# Output JSON status
+cmd_json() {
+	smtp_relay_status
+}
+
+# Show help
+show_help() {
+	cat << EOF
+SecuBox SMTP Relay v$VERSION
+
+Centralized SMTP configuration for all SecuBox services.
+
+Usage: smtp-relayctl <command> [options]
+
+Commands:
+  status                     Show SMTP configuration status
+  test [recipient]           Send test email
+  send <to> <subject> [body] Send email (body from stdin if omitted)
+  configure <mode>           Interactive configuration
+  admin [email]              Show/set admin email address
+  enable                     Enable SMTP relay
+  disable                    Disable SMTP relay
+  json                       Output status as JSON
+
+Configuration modes:
+  external   Use external SMTP server (Gmail, SendGrid, etc.)
+  local      Use local mailserver (secubox-app-mailserver)
+  direct     Direct MTA delivery (requires port 25 open)
+
+Examples:
+  smtp-relayctl status
+  smtp-relayctl configure external
+  smtp-relayctl test admin@example.com
+  smtp-relayctl admin notifications@mydomain.com
+  echo "Hello" | smtp-relayctl send user@example.com "Test Subject"
+
+Configuration: /etc/config/smtp-relay
+
+EOF
+}
+
+# Main command dispatcher
+case "${1:-}" in
+	status)    shift; cmd_status "$@" ;;
+	test)      shift; cmd_test "$@" ;;
+	send)      shift; cmd_send "$@" ;;
+	configure) shift; cmd_configure "$@" ;;
+	admin)     shift; cmd_admin "$@" ;;
+	enable)    shift; cmd_enable "$@" ;;
+	disable)   shift; cmd_disable "$@" ;;
+	json)      shift; cmd_json "$@" ;;
+	help|--help|-h)
+		show_help
+		;;
+	'')
+		show_help
+		;;
+	*)
+		error "Unknown command: $1"
+		echo ""
+		show_help >&2
+		exit 1
+		;;
+esac
+
+exit 0

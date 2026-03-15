@@ -1,8 +1,16 @@
 #!/bin/sh
 # SecuBox Reporter - Email Integration
-# Sends reports via msmtp or sendmail
+# Uses centralized SMTP relay (secubox-app-smtp-relay) or falls back to legacy config
 
 . /lib/functions.sh
+
+# Check if centralized SMTP relay is available and enabled
+_use_smtp_relay() {
+    [ -f /usr/lib/secubox/mail/smtp-relay.sh ] || return 1
+    local enabled
+    enabled=$(uci -q get smtp-relay.main.enabled)
+    [ "$enabled" = "1" ]
+}
 
 # Send report via email
 send_report_email() {
@@ -10,6 +18,30 @@ send_report_email() {
     local html_content="$2"
     local recipient="$3"
 
+    local hostname
+    hostname=$(uci -q get system.@system[0].hostname || hostname)
+    local date_str
+    date_str=$(date '+%Y-%m-%d')
+
+    # Format report type for subject
+    local report_name="Status"
+    case "$report_type" in
+        dev) report_name="Development Status" ;;
+        services) report_name="Services Distribution" ;;
+        system) report_name="System Hardware" ;;
+        all) report_name="Full Status" ;;
+    esac
+
+    local subject="[SecuBox] $report_name Report - $hostname - $date_str"
+
+    # Use centralized SMTP relay if available
+    if _use_smtp_relay; then
+        . /usr/lib/secubox/mail/smtp-relay.sh
+        send_html_mail "$recipient" "$subject" "$html_content"
+        return $?
+    fi
+
+    # Legacy fallback: use per-app config
     local smtp_server=""
     local smtp_port=""
     local smtp_user=""
@@ -27,19 +59,6 @@ send_report_email() {
         echo "ERROR: No email recipient specified" >&2
         return 1
     }
-
-    local hostname=$(uci -q get system.@system[0].hostname || hostname)
-    local date_str=$(date '+%Y-%m-%d')
-
-    # Format report type for subject
-    local report_name="Status"
-    case "$report_type" in
-        dev) report_name="Development Status" ;;
-        services) report_name="Services Distribution" ;;
-        all) report_name="Full Status" ;;
-    esac
-
-    local subject="[SecuBox] $report_name Report - $hostname - $date_str"
 
     # Build MIME multipart email
     local boundary="SecuBox_Report_$(date +%s)_$$"
@@ -105,6 +124,15 @@ EOF
 # Test email configuration
 test_email() {
     local recipient="$1"
+
+    # Use centralized SMTP relay if available
+    if _use_smtp_relay; then
+        . /usr/lib/secubox/mail/smtp-relay.sh
+        smtp_relay_test "$recipient"
+        return $?
+    fi
+
+    # Legacy fallback
     [ -z "$recipient" ] && {
         config_load secubox-reporter
         config_get recipient email recipient ""
@@ -115,7 +143,8 @@ test_email() {
         return 1
     }
 
-    local hostname=$(uci -q get system.@system[0].hostname || hostname)
+    local hostname
+    hostname=$(uci -q get system.@system[0].hostname || hostname)
     local test_body="<html><body><h1>SecuBox Email Test</h1><p>This is a test email from <strong>$hostname</strong>.</p><p>Generated: $(date)</p></body></html>"
 
     if send_report_email "test" "$test_body" "$recipient"; then

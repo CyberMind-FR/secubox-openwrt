@@ -1,0 +1,41 @@
+# SecuBox SMTP Relay Configuration
+# Centralized outbound email settings for all SecuBox services
+
+config smtp_relay 'main'
+	option enabled '0'
+	# Mode: external (configured SMTP), local (auto-detected mailserver), direct (MTA)
+	option mode 'external'
+	# Auto-detect local mailserver (secubox-app-mailserver) if running
+	option auto_detect '1'
+
+# External SMTP provider settings
+config external 'external'
+	option server ''
+	option port '587'
+	# TLS mode: 0=none, 1=STARTTLS
+	option tls '1'
+	# SSL mode: 0=STARTTLS, 1=implicit SSL (port 465)
+	option ssl '0'
+	option auth '1'
+	option user ''
+	option password ''
+	option from ''
+	option from_name 'SecuBox'
+
+# Local mailserver settings (auto-populated from secubox-app-mailserver)
+config local 'local'
+	option server '127.0.0.1'
+	option port '25'
+	option tls '0'
+	option auth '0'
+	option from ''
+
+# Direct delivery settings (when port 25 is open)
+config direct 'direct'
+	option helo_domain ''
+
+# Default recipients for system notifications
+config recipients 'recipients'
+	option admin ''
+	# Additional notification recipients (list)
+	# list notify 'user@example.com'

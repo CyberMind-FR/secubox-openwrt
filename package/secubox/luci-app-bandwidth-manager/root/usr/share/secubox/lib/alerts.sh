@@ -27,10 +27,33 @@ get_alert_setting() {
 	echo "$value"
 }
 
+# Check if centralized SMTP relay is available and enabled
+_use_smtp_relay() {
+	[ -f /usr/lib/secubox/mail/smtp-relay.sh ] || return 1
+	local enabled
+	enabled=$(uci -q get smtp-relay.main.enabled)
+	[ "$enabled" = "1" ]
+}
+
 # Send email notification
 send_email() {
 	local subject="$1"
 	local body="$2"
+
+	# Use centralized SMTP relay if available
+	if _use_smtp_relay; then
+		. /usr/lib/secubox/mail/smtp-relay.sh
+		local recipient
+		recipient=$(uci -q get smtp-relay.recipients.admin)
+		[ -z "$recipient" ] && {
+			config_load bandwidth
+			config_get recipient email recipient ""
+		}
+		send_text_mail "$recipient" "$subject" "$body"
+		return $?
+	fi
+
+	# Legacy fallback: use per-app config
 	local recipient=""
 	local smtp_server=""
 	local smtp_port=""

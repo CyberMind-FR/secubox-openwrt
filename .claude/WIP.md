@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-16 (WAF Auto-Ban Tuning)_
+_Last updated: 2026-03-16 (Unified SMTP Relay)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -9,6 +9,17 @@ _Last updated: 2026-03-16 (WAF Auto-Ban Tuning)_
 ## Recently Completed
 
 ### 2026-03-16
+
+- **Unified SMTP Relay Configuration (Complete)**
+  - New `secubox-app-smtp-relay` package with centralized SMTP config
+  - Shared library `/usr/lib/secubox/mail/smtp-relay.sh` with `send_mail()` function
+  - CLI: `smtp-relayctl status|test|send|configure|admin|enable|disable`
+  - RPCD: get_status, get_config, test_email, send_email, detect_local
+  - LuCI settings page with mode selection, provider config, test button
+  - Modes: external (Gmail, SendGrid, etc.), local (auto-detect mailserver), direct
+  - Migrated `secubox-reporter` and `bandwidth-manager` to use shared library
+  - Backwards-compatible fallback to legacy per-app SMTP settings
+  - Eliminates duplicated SMTP configuration across SecuBox apps
 
 - **WAF Auto-Ban Tuning System (Complete)**
   - Configurable scoring weights via UCI `scoring` section
@@ -672,7 +683,7 @@ All core features complete. Optional polish tasks remain.
 
 ### Backlog
 
-- SSMTP / mail host / MX record management (v2)
+- Advanced mail features: webmail integration, DKIM signing, multiple recipients (v2)
 
 ---
 
