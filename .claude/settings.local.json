@@ -551,7 +551,13 @@
       "Bash([\"''\"'\"\"'\"''\"'\"\"'\"'']$/, \"\", val\\)\n\n            if \\(section == \"tags\" && key == \"category\"\\) category = val\n            if \\(section == \"tags\" && key == \"keywords\"\\) keywords = val\n            if \\(section == \"tags\" && key == \"audience\"\\) audience = val\n            if \\(section == \"description\" && key == \"short\"\\) desc = val\n            if \\(section == \"dynamics\" && key == \"capabilities\"\\) caps = val\n            if \\(section == \"media\" && key == \"icon\"\\) icon = val\n            if \\(section == \"identity\" && key == \"version\"\\) version = val\n        }\n        END {\n            printf \"%s)",
       "Bash(%s)",
       "Bash(/tmp/test_nfo.sh)",
-      "Bash(SSH_AUTH_SOCK=\"\" ssh:*)"
+      "Bash(SSH_AUTH_SOCK=\"\" ssh:*)",
+      "Bash(SSH_AUTH_SOCK=\"\" scp:*)",
+      "Bash(sshpass -p 'alpds_vv' ssh -o StrictHostKeyChecking=no root@192.168.255.1 'grep -r \"\"wall\"\" /srv/mitmproxy*/haproxy-routes.json /etc/config/haproxy 2>/dev/null | head -10; ls -la /srv/metablogizer/sites/ 2>/dev/null | grep -i wall')",
+      "Bash(sshpass:*)",
+      "WebFetch(domain:wall.maegia.tv)",
+      "Bash(__NEW_LINE_bef5e2b953cd4786__ git add package/secubox/secubox-dpi-dual/files/usr/sbin/dpi-lan-collector package/secubox/secubox-dpi-dual/files/usr/sbin/dpi-dualctl package/secubox/luci-app-dpi-dual/root/usr/libexec/rpcd/luci.dpi-dual)",
+      "Bash(__NEW_LINE_bef5e2b953cd4786__ git commit -m \"$\\(cat <<''EOF''\nfix\\(dpi\\): OpenWrt compatibility for LAN collector\n\n- Rewrite client/destination collection using awk instead of pipe/while\n  \\(BusyBox shell subshell limitations with variable scope\\)\n- Use conntrack for flow counting per client\n- Use pgrep -f for process detection \\(truncated process names\\)\n- Compatible with nDPId instead of netifyd\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
     ]
   }
 }

@@ -142,6 +142,20 @@ return view.extend({
 			]),
 
 			E('div', { 'class': 'cbi-section' }, [
+				E('h3', {}, _('Web Interface')),
+				E('div', { 'style': 'margin-bottom:12px' }, [
+					E('a', {
+						'href': 'http://' + window.location.hostname + ':' + (s.port || 9000),
+						'target': '_blank',
+						'class': 'cbi-button cbi-button-action',
+						'style': 'margin-right:8px'
+					}, _('Open Lyrion Web UI')),
+					E('span', { 'style': 'color:#888' },
+						'http://' + window.location.hostname + ':' + (s.port || 9000))
+				])
+			]),
+
+			E('div', { 'class': 'cbi-section' }, [
 				E('h3', {}, _('Service Info')),
 				E('table', { 'class': 'table' }, [
 					E('tr', { 'class': 'tr' }, [
@@ -162,16 +176,7 @@ return view.extend({
 							(s.songs || 0) + ' songs, ' + (s.albums || 0) + ' albums, ' + (s.artists || 0) + ' artists')
 					])
 				])
-			]),
-
-			s.running && s.web_accessible ? E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Web Interface')),
-				E('a', {
-					'href': s.web_url || ('http://192.168.255.1:' + (s.port || 9000)),
-					'target': '_blank',
-					'class': 'cbi-button cbi-button-action'
-				}, _('Open Lyrion Web UI'))
-			]) : ''
+			])
 		]);
 	},
 
