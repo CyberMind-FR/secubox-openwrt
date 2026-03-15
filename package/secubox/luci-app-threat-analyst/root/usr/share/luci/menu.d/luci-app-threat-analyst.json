@@ -1,7 +1,7 @@
 {
-	"admin/secubox/security/threat-analyst": {
+	"admin/services/threat-analyst": {
 		"title": "Threat Analyst",
-		"order": 15,
+		"order": 50,
 		"action": {
 			"type": "view",
 			"path": "threat-analyst/dashboard"
