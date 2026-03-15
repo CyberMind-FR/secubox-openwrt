@@ -581,35 +581,32 @@ _Last updated: 2026-03-15 (Wall Colorsets)_
 
 ### 2026-03-15
 
-- **Dual-Stream DPI Architecture (Phase 2 Complete)**
-  - New `secubox-dpi-dual` package implementing parallel MITM + Passive TAP DPI
+- **Dual-Stream DPI Architecture (Phase 3 Complete)**
   - Architecture doc: `package/secubox/DUAL-STREAM-DPI.md`
-  - **Phase 1 - TAP Stream (Passive)**:
-    - `mirror-setup.sh`: tc mirred port mirroring (ingress + egress)
-    - `dpi-flow-collector`: Aggregates netifyd stats → `/tmp/secubox/dpi-flows.json`
-    - `dpi-correlator`: Matches MITM + TAP events, CrowdSec integration
-    - `dpi-dualctl`: CLI start/stop/status/flows/threats/mirror
-    - `init.d/dpi-dual`: Procd service for flow-collector + correlator
-  - **Phase 2 - MITM Double Buffer + LuCI**:
-    - Enhanced `dpi_buffer.py` mitmproxy addon:
-      - Compiled regex patterns for 6 threat categories (path_traversal, xss, sqli, lfi, rce, ssrf)
-      - Scanner detection (sqlmap, nikto, nmap, etc.)
-      - Optional blocking mode for high-score threats
-      - Request replay queue for forensic analysis
-      - Rate limiting detection
-      - Stats: buffer entries, threat distribution, top hosts
-    - **LuCI Dashboard** (`luci-app-dpi-dual`):
-      - RPCD handler with 10 methods (status, flows, buffer, threats, correlation, start/stop/restart, replay, correlate)
-      - KISS-themed overview with stream status cards
-      - LED indicators for MITM/TAP/Correlation running state
-      - Metrics: buffer entries, threats, blocked, flows/min, RX/TX bytes
-      - Threats table with timestamp, IP, host, path, categories, score, blocked status
-      - Protocol distribution from netifyd
-      - Manual IP correlation trigger
-      - ACL permissions for read/write
-    - **Streamlit Control Panel** updated:
-      - DPI Dual card with flows/min, threats, blocked metrics
-      - Reads from dpi-buffer.json and dpi-flows.json caches
+  - **Phase 1 - TAP Stream**: tc mirred, flow-collector, dpi-dualctl CLI
+  - **Phase 2 - MITM Double Buffer**: Enhanced dpi_buffer.py, LuCI dashboard
+  - **Phase 3 - Correlation Engine + Integration**:
+    - **Correlation Library** (`correlation-lib.sh`):
+      - IP reputation tracking with score decay
+      - Full context gathering (MITM, DPI, WAF)
+      - CrowdSec decision checking and notification
+      - Correlation entry builder with all stream context
+    - **Enhanced Correlator** (`dpi-correlator v2`):
+      - Watches WAF alerts, CrowdSec decisions, DPI flows
+      - Auto-ban for high-reputation IPs (configurable threshold)
+      - Notification queue for high-severity threats
+      - CLI: correlate, reputation, context, search, stats
+    - **LuCI Timeline View** (`timeline.js`):
+      - Correlation timeline with event cards
+      - IP context modal (MITM requests, WAF alerts)
+      - Quick ban button with CrowdSec integration
+      - Search by IP functionality
+      - Stats: total, high-threat, banned, unique IPs
+    - **RPCD Methods** (8 new):
+      - get_correlation_stats, get_ip_context, get_ip_reputation
+      - get_timeline, search_correlations
+      - ban_ip, set_auto_ban
+    - **UCI Config**: auto_ban, auto_ban_threshold, notifications, reputation_decay
 
 ---
 

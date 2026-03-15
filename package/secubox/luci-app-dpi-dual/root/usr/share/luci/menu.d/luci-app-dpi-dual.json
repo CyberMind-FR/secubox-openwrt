@@ -3,12 +3,28 @@
 		"title": "DPI Dual-Stream",
 		"order": 45,
 		"action": {
-			"type": "view",
-			"path": "dpi-dual/overview"
+			"type": "firstchildview",
+			"recurse": true
 		},
 		"depends": {
 			"acl": ["luci-app-dpi-dual"],
 			"uci": { "dpi-dual": true }
+		}
+	},
+	"admin/secubox/dpi-dual/overview": {
+		"title": "Overview",
+		"order": 1,
+		"action": {
+			"type": "view",
+			"path": "dpi-dual/overview"
+		}
+	},
+	"admin/secubox/dpi-dual/timeline": {
+		"title": "Correlation Timeline",
+		"order": 2,
+		"action": {
+			"type": "view",
+			"path": "dpi-dual/timeline"
 		}
 	}
 }

@@ -30,12 +30,19 @@ case "$1" in
     "get_buffer": {"limit": 100},
     "get_threats": {"limit": 50},
     "get_correlation": {"limit": 20},
+    "get_correlation_stats": {},
+    "get_ip_context": {"ip": "string"},
+    "get_ip_reputation": {"ip": "string"},
+    "get_timeline": {"limit": 50},
     "get_mirror_status": {},
+    "search_correlations": {"ip": "string", "limit": 50},
     "start": {},
     "stop": {},
     "restart": {},
     "replay_request": {"req_hash": "string"},
-    "correlate_ip": {"ip": "string"}
+    "correlate_ip": {"ip": "string"},
+    "ban_ip": {"ip": "string", "duration": "string"},
+    "set_auto_ban": {"enabled": true}
 }
 EOF
         ;;
@@ -242,6 +249,113 @@ EOF
                     /usr/sbin/dpi-correlator correlate "$ip" "manual_request" >/dev/null 2>&1
                     echo '{"success": true, "message": "Correlation triggered for '"$ip"'"}'
                 fi
+                ;;
+
+            get_correlation_stats)
+                /usr/sbin/dpi-correlator stats 2>/dev/null || echo '{"total_correlations": 0}'
+                ;;
+
+            get_ip_context)
+                read "$3"
+                json_load "$REPLY"
+                json_get_var ip ip ""
+
+                if [ -z "$ip" ]; then
+                    echo '{"error": "IP required"}'
+                else
+                    /usr/sbin/dpi-correlator context "$ip" 2>/dev/null || echo '{"error": "Context not available"}'
+                fi
+                ;;
+
+            get_ip_reputation)
+                read "$3"
+                json_load "$REPLY"
+                json_get_var ip ip ""
+
+                if [ -z "$ip" ]; then
+                    echo '{"error": "IP required"}'
+                else
+                    . /usr/lib/dpi-dual/correlation-lib.sh
+                    init_reputation_db
+                    local score
+                    score=$(get_ip_reputation "$ip")
+                    echo "{\"ip\": \"$ip\", \"reputation_score\": $score}"
+                fi
+                ;;
+
+            get_timeline)
+                read "$3"
+                json_load "$REPLY"
+                json_get_var limit limit 50
+
+                local log_file="/tmp/secubox/correlated-threats.json"
+                if [ -f "$log_file" ]; then
+                    local total
+                    total=$(wc -l < "$log_file" 2>/dev/null || echo 0)
+
+                    # Get last N entries as JSON array
+                    local entries
+                    entries=$(tail -"$limit" "$log_file" 2>/dev/null | \
+                        awk 'BEGIN { printf "[" }
+                             { if (NR > 1) printf ","; print }
+                             END { printf "]" }')
+
+                    cat << EOF
+{
+    "total": $total,
+    "limit": $limit,
+    "entries": $entries
+}
+EOF
+                else
+                    echo '{"total": 0, "limit": '$limit', "entries": []}'
+                fi
+                ;;
+
+            search_correlations)
+                read "$3"
+                json_load "$REPLY"
+                json_get_var ip ip ""
+                json_get_var limit limit 50
+
+                local results
+                results=$(/usr/sbin/dpi-correlator search "$ip" "$limit" 2>/dev/null | \
+                    awk 'BEGIN { printf "[" }
+                         { if (NR > 1) printf ","; print }
+                         END { printf "]" }')
+
+                echo "{\"results\": $results}"
+                ;;
+
+            ban_ip)
+                read "$3"
+                json_load "$REPLY"
+                json_get_var ip ip ""
+                json_get_var duration duration "4h"
+
+                if [ -z "$ip" ]; then
+                    echo '{"success": false, "error": "IP required"}'
+                else
+                    if command -v cscli >/dev/null 2>&1; then
+                        cscli decisions add -i "$ip" -d "$duration" -r "dpi-dual-manual" -t ban >/dev/null 2>&1
+                        echo '{"success": true, "message": "IP '"$ip"' banned for '"$duration"'"}'
+                    else
+                        echo '{"success": false, "error": "CrowdSec not available"}'
+                    fi
+                fi
+                ;;
+
+            set_auto_ban)
+                read "$3"
+                json_load "$REPLY"
+                json_get_var enabled enabled "0"
+
+                local val="0"
+                [ "$enabled" = "true" ] && val="1"
+
+                uci set dpi-dual.correlation.auto_ban="$val"
+                uci commit dpi-dual
+                echo '{"success": true, "auto_ban": '$val'}'
                 ;;
 
             *)

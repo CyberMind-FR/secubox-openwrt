@@ -43,6 +43,7 @@ define Package/secubox-dpi-dual/install
 
 	$(INSTALL_DIR) $(1)/usr/lib/dpi-dual
 	$(INSTALL_BIN) ./files/usr/lib/dpi-dual/mirror-setup.sh $(1)/usr/lib/dpi-dual/
+	$(INSTALL_DATA) ./files/usr/lib/dpi-dual/correlation-lib.sh $(1)/usr/lib/dpi-dual/
 
 	$(INSTALL_DIR) $(1)/srv/mitmproxy/addons
 	$(INSTALL_DATA) ./files/srv/mitmproxy/addons/dpi_buffer.py $(1)/srv/mitmproxy/addons/

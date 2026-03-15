@@ -5213,3 +5213,10 @@ git checkout HEAD -- index.html
     - Protocol distribution, manual IP correlation
   - Streamlit control panel: Added DPI Dual card
 
+
+- **Dual-Stream DPI Phase 3 - Correlation Engine + Timeline (Complete)**
+  - Correlation library: IP reputation tracking, context gathering, CrowdSec integration
+  - Enhanced correlator v2: Auto-ban, notifications, CLI commands
+  - LuCI timeline view: Event cards, IP context modal, quick ban, search
+  - 8 new RPCD methods for correlation access and control
+

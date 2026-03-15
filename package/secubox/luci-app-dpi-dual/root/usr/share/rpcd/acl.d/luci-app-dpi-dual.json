@@ -9,7 +9,12 @@
 					"get_buffer",
 					"get_threats",
 					"get_correlation",
-					"get_mirror_status"
+					"get_correlation_stats",
+					"get_ip_context",
+					"get_ip_reputation",
+					"get_timeline",
+					"get_mirror_status",
+					"search_correlations"
 				]
 			},
 			"uci": ["dpi-dual"]
@@ -21,7 +26,9 @@
 					"stop",
 					"restart",
 					"replay_request",
-					"correlate_ip"
+					"correlate_ip",
+					"ban_ip",
+					"set_auto_ban"
 				]
 			},
 			"uci": ["dpi-dual"]
