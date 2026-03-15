@@ -70,7 +70,7 @@ EOF
                 collector_running=0
                 correlator_running=0
                 lan_collector_running=0
-                pgrep mitmproxy >/dev/null 2>&1 && mitm_running=1
+                pgrep -f mitmproxy-in >/dev/null 2>&1 && mitm_running=1
                 pgrep netifyd >/dev/null 2>&1 && tap_running=1
                 pgrep -f dpi-flow-collect >/dev/null 2>&1 && collector_running=1
                 pgrep -f dpi-correlator >/dev/null 2>&1 && correlator_running=1
