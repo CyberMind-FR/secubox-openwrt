@@ -51,6 +51,20 @@ var callRpcCall = rpc.declare({
     expect: {}
 });
 
+var callDeployTtyd = rpc.declare({
+    object: 'luci.rtty-remote',
+    method: 'deploy_ttyd',
+    params: ['target'],
+    expect: {}
+});
+
+var callInstallRemote = rpc.declare({
+    object: 'luci.rtty-remote',
+    method: 'install_remote',
+    params: ['node_id', 'app_id'],
+    expect: {}
+});
+
 return view.extend({
     handleSaveApply: null,
     handleSave: null,
@@ -124,7 +138,13 @@ return view.extend({
                             'class': 'kiss-btn',
                             'style': 'padding: 4px 10px; font-size: 11px;',
                             'click': function() { self.handleConnect(node); }
-                        }, 'Term')
+                        }, 'Term'),
+                        E('button', {
+                            'class': 'kiss-btn kiss-btn-green',
+                            'style': 'padding: 4px 10px; font-size: 11px;',
+                            'title': 'Deploy ttyd web terminal',
+                            'click': function() { self.handleDeployTtydToNode(node); }
+                        }, 'ttyd')
                     ]))
                 ]);
             }))
@@ -203,14 +223,18 @@ return view.extend({
         var self = this;
         var isRunning = status.running;
 
-        return E('div', { 'style': 'display: flex; gap: 12px;' }, [
+        return E('div', { 'style': 'display: flex; gap: 12px; flex-wrap: wrap;' }, [
             isRunning ? E('button', {
                 'class': 'kiss-btn kiss-btn-red',
                 'click': function() { self.handleServerStop(); }
             }, 'Stop Server') : E('button', {
                 'class': 'kiss-btn kiss-btn-green',
                 'click': function() { self.handleServerStart(); }
-            }, 'Start Server')
+            }, 'Start Server'),
+            E('button', {
+                'class': 'kiss-btn kiss-btn-blue',
+                'click': function() { self.handleDeployTtydAll(); }
+            }, '🖥️ Deploy ttyd to All')
         ]);
     },
 
@@ -282,6 +306,63 @@ return view.extend({
         }).catch(function(err) {
             resultEl.textContent = '// Error: ' + err.message;
         });
+    },
+
+    handleDeployTtyd: function(target) {
+        var self = this;
+        var targetName = target || 'all nodes';
+
+        ui.showModal('Deploying ttyd...', [
+            E('p', { 'class': 'spinning' }, 'Installing ttyd on ' + targetName + '...')
+        ]);
+
+        callDeployTtyd(target || 'all').then(function(response) {
+            ui.hideModal();
+            if (response.success) {
+                ui.showModal('ttyd Deployed', [
+                    E('div', { 'style': 'text-align: center;' }, [
+                        E('div', { 'style': 'font-size: 48px; margin-bottom: 16px;' }, '🖥️'),
+                        E('p', { 'style': 'margin-bottom: 12px;' }, 'ttyd web terminal deployed successfully!'),
+                        E('pre', {
+                            'style': 'text-align: left; background: var(--kiss-bg); padding: 12px; border-radius: 6px; font-size: 12px; max-height: 200px; overflow-y: auto; color: var(--kiss-muted);'
+                        }, response.output || 'Deployment complete')
+                    ]),
+                    E('div', { 'style': 'text-align: right; margin-top: 16px;' }, [
+                        E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Close')
+                    ])
+                ]);
+            } else {
+                ui.addNotification(null, E('p', 'Deployment failed: ' + (response.error || response.output || 'Unknown error')), 'error');
+            }
+        }).catch(function(err) {
+            ui.hideModal();
+            ui.addNotification(null, E('p', 'Deployment error: ' + err.message), 'error');
+        });
+    },
+
+    handleDeployTtydToNode: function(node) {
+        this.handleDeployTtyd(node.address || node.id);
+    },
+
+    handleDeployTtydAll: function() {
+        var self = this;
+        ui.showModal('Confirm Deploy All', [
+            E('div', { 'style': 'text-align: center;' }, [
+                E('div', { 'style': 'font-size: 48px; margin-bottom: 16px;' }, '🖥️'),
+                E('p', {}, 'Deploy ttyd web terminal to ALL mesh nodes?'),
+                E('p', { 'style': 'color: var(--kiss-muted); font-size: 12px;' }, 'This will install ttyd and start the service on each node.')
+            ]),
+            E('div', { 'style': 'display: flex; gap: 12px; justify-content: center; margin-top: 16px;' }, [
+                E('button', { 'class': 'kiss-btn', 'click': ui.hideModal }, 'Cancel'),
+                E('button', {
+                    'class': 'kiss-btn kiss-btn-green',
+                    'click': function() {
+                        ui.hideModal();
+                        self.handleDeployTtyd('all');
+                    }
+                }, 'Deploy All')
+            ])
+        ]);
     },
 
     render: function(data) {

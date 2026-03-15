@@ -5253,3 +5253,9 @@ git checkout HEAD -- index.html
   - CLI commands: restore-all, provision, pull-config, serve-clone
   - 6 new RPCD methods: restore_all, import_apply, provision, pull_config, export_clone_b64, serve_clone
   - Use case: Zero-touch provisioning of new SecuBox devices from master configuration
+
+- **LuCI Provisioning & ttyd Deployment UI (Complete)**
+  - Config Vault Dashboard: "Device Provisioning" card with Provision Remote, Serve via HTTP, Restore All buttons
+  - RTTY Remote Dashboard: "Deploy ttyd to All" button and per-node ttyd button in actions column
+  - Modal dialogs for confirmation, progress, and result display
+  - Full mesh provisioning workflow now accessible via web UI

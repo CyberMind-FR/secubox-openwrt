@@ -10,6 +10,20 @@ _Last updated: 2026-03-16 (DPI LAN Passive Analysis)_
 
 ### 2026-03-16
 
+- **LuCI Provisioning Dashboard (Complete)**
+  - Config Vault dashboard: "Device Provisioning" card with 3 action buttons
+  - "Provision Remote" - Modal dialog to push clone to remote node
+  - "Serve via HTTP" - Generate clone for HTTP download, shows URL
+  - "Restore All" - Confirmation modal to restore all modules from vault
+  - Full provisioning workflow accessible from web UI
+
+- **LuCI Deploy ttyd Button (Complete)**
+  - RTTY Remote Control dashboard: "Deploy ttyd to All" global button
+  - Per-node "ttyd" button in Connected Nodes table
+  - Confirmation modal for bulk deployment
+  - Progress spinner and result display
+  - Enables web terminal deployment to mesh nodes via UI
+
 - **Device Provisioning System (Complete)**
   - **Auto-Restore**: `configvaultctl import-clone <file> --apply` auto-restores all modules
   - **Remote Provisioning**: `configvaultctl provision <node|all>` pushes clone to remote nodes
@@ -645,8 +659,7 @@ _Last updated: 2026-03-16 (DPI LAN Passive Analysis)_
 
 ### v1.0 Release Prep
 
-1. **LuCI Provisioning Dashboard** - Add provisioning UI to Config Vault dashboard (optional)
-2. **LuCI Remote Install Button** - Add "Deploy ttyd" action to Remote Control dashboard (optional)
+All core features complete. Optional polish tasks remain.
 
 ### v1.1+ Extended Mesh
 
