@@ -1,8 +1,8 @@
 # SecuBox - Security Suite for OpenWrt
 
-**Version:** 0.18.0
-**Last Updated:** 2026-03-04
-**Status:** Production Ready
+**Version:** 1.0.0-beta
+**Last Updated:** 2026-03-15
+**Status:** Beta — Ready for Pen Testing & Bug Bounty
 **Modules:** 86 LuCI Applications
 
 [![Build OpenWrt Packages](https://github.com/CyberMind-FR/secubox-openwrt/actions/workflows/build-openwrt-packages.yml/badge.svg)](https://github.com/CyberMind-FR/secubox-openwrt/actions/workflows/build-openwrt-packages.yml)
@@ -262,9 +262,14 @@ SecuBox includes an MCP server for AI integration:
 | Version | Status | Focus |
 |---------|--------|-------|
 | **v0.17** | Released | Core Mesh, 38 modules |
-| **v0.18** | Current | P2P Hub, AI Gateway, 86 modules |
-| **v0.19** | Planned | Full P2P intelligence |
-| **v1.0** | Planned | ANSSI certification |
+| **v0.18** | Released | P2P Hub, AI Gateway, 86 modules |
+| **v0.19** | Released | Full P2P intelligence |
+| **v1.0** | **Beta** | Pen testing, bug bounty, ANSSI prep |
+| **v1.1** | Planned | ANSSI certification, GA release |
+
+### Beta Release
+
+See [BETA-RELEASE.md](BETA-RELEASE.md) for security testing guidelines and bug bounty scope.
 
 ---
 
