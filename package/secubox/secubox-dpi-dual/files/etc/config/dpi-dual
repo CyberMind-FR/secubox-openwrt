@@ -27,8 +27,36 @@ config correlation 'correlation'
 	option watch_crowdsec '1'
 	option auto_ban '0'
 	option auto_ban_threshold '80'
+	option auto_ban_duration '4h'
 	option notifications '1'
+	option notification_threshold '70'
 	option reputation_decay '5'
+	option decay_interval '3600'
+	# Sensitivity preset: low, medium, high, custom
+	option sensitivity 'medium'
+
+# Event scoring weights (used when sensitivity=custom)
+config scoring 'scoring'
+	option waf_block '25'
+	option waf_alert '15'
+	option crowdsec_ban '30'
+	option dpi_threat '20'
+	option scanner '35'
+	option brute_force '40'
+	option default '10'
+
+# Sensitivity presets
+# low: fewer false positives, only clear threats trigger ban
+# medium: balanced detection (default)
+# high: aggressive, more false positives but catches more threats
+
+# Whitelist - IPs that should never be auto-banned
+config whitelist 'whitelist'
+	list ip '127.0.0.1'
+	list ip '192.168.255.1'
+	# Add trusted IPs here:
+	# list ip '10.0.0.0/8'
+	# list ip '192.168.0.0/16'
 
 # LAN TAP - Real-time passive flow analysis
 # No MITM, no caching - just nDPI flow monitoring

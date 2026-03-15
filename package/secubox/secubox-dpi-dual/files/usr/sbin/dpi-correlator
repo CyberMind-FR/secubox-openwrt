@@ -12,14 +12,99 @@ WINDOW=""
 WATCH_CROWDSEC=""
 AUTO_BAN=""
 AUTO_BAN_THRESHOLD=""
+AUTO_BAN_DURATION=""
 NOTIFICATION_ENABLED=""
+NOTIFICATION_THRESHOLD=""
+SENSITIVITY=""
+DECAY_INTERVAL=""
+
+# Scoring weights (loaded from UCI)
+SCORE_WAF_BLOCK=""
+SCORE_WAF_ALERT=""
+SCORE_CROWDSEC_BAN=""
+SCORE_DPI_THREAT=""
+SCORE_SCANNER=""
+SCORE_BRUTE_FORCE=""
+SCORE_DEFAULT=""
+
+# Whitelist (loaded as space-separated IPs)
+WHITELIST_IPS=""
+
+# Sensitivity multipliers
+get_sensitivity_multiplier() {
+    case "$1" in
+        low)    echo "70" ;;   # 0.7x - fewer false positives
+        medium) echo "100" ;;  # 1.0x - balanced (default)
+        high)   echo "130" ;;  # 1.3x - aggressive detection
+        custom) echo "100" ;;  # 1.0x - use custom weights as-is
+        *)      echo "100" ;;
+    esac
+}
 
 load_config() {
+    # Correlation settings
     config_get WINDOW correlation window "60"
     config_get WATCH_CROWDSEC correlation watch_crowdsec "1"
     config_get AUTO_BAN correlation auto_ban "0"
     config_get AUTO_BAN_THRESHOLD correlation auto_ban_threshold "80"
+    config_get AUTO_BAN_DURATION correlation auto_ban_duration "4h"
     config_get NOTIFICATION_ENABLED correlation notifications "1"
+    config_get NOTIFICATION_THRESHOLD correlation notification_threshold "70"
+    config_get SENSITIVITY correlation sensitivity "medium"
+    config_get DECAY_INTERVAL correlation decay_interval "3600"
+
+    # Load scoring weights from UCI
+    config_get SCORE_WAF_BLOCK scoring waf_block "25"
+    config_get SCORE_WAF_ALERT scoring waf_alert "15"
+    config_get SCORE_CROWDSEC_BAN scoring crowdsec_ban "30"
+    config_get SCORE_DPI_THREAT scoring dpi_threat "20"
+    config_get SCORE_SCANNER scoring scanner "35"
+    config_get SCORE_BRUTE_FORCE scoring brute_force "40"
+    config_get SCORE_DEFAULT scoring default "10"
+
+    # Load whitelist IPs
+    WHITELIST_IPS=""
+    load_whitelist() {
+        config_get ip "$1" ip ""
+        [ -n "$ip" ] && WHITELIST_IPS="$WHITELIST_IPS $ip"
+    }
+    config_list_foreach whitelist ip append_whitelist_ip
+}
+
+# Helper to load whitelist IPs
+append_whitelist_ip() {
+    WHITELIST_IPS="$WHITELIST_IPS $1"
+}
+
+# Check if IP is in whitelist
+is_whitelisted() {
+    local check_ip="$1"
+    local wl_ip
+
+    for wl_ip in $WHITELIST_IPS; do
+        # Exact match
+        [ "$check_ip" = "$wl_ip" ] && return 0
+
+        # CIDR match (simplified - check if IP starts with network prefix)
+        case "$wl_ip" in
+            */*)
+                local network="${wl_ip%/*}"
+                case "$check_ip" in
+                    ${network%.*}.*) return 0 ;;
+                esac
+                ;;
+        esac
+    done
+
+    return 1
+}
+
+# Apply sensitivity multiplier to score
+apply_sensitivity() {
+    local base_score="$1"
+    local multiplier
+    multiplier=$(get_sensitivity_multiplier "$SENSITIVITY")
+    echo $((base_score * multiplier / 100))
 }
 
 # Process a threat event from any source
@@ -33,16 +118,22 @@ process_threat_event() {
 
     echo "[$(date '+%H:%M:%S')] Processing threat: $ip ($event_type: $reason, score: $threat_score)"
 
-    # Update IP reputation
-    local delta=10
+    # Get base delta from UCI scoring weights
+    local base_delta
     case "$event_type" in
-        waf_block) delta=25 ;;
-        waf_alert) delta=15 ;;
-        crowdsec_ban) delta=30 ;;
-        dpi_threat) delta=20 ;;
-        scanner) delta=35 ;;
-        *) delta=10 ;;
+        waf_block)    base_delta="$SCORE_WAF_BLOCK" ;;
+        waf_alert)    base_delta="$SCORE_WAF_ALERT" ;;
+        crowdsec_ban) base_delta="$SCORE_CROWDSEC_BAN" ;;
+        dpi_threat)   base_delta="$SCORE_DPI_THREAT" ;;
+        scanner)      base_delta="$SCORE_SCANNER" ;;
+        brute_force)  base_delta="$SCORE_BRUTE_FORCE" ;;
+        *)            base_delta="$SCORE_DEFAULT" ;;
     esac
+
+    # Apply sensitivity multiplier
+    local delta
+    delta=$(apply_sensitivity "$base_delta")
+
     update_ip_reputation "$ip" "$event_type" "$delta"
 
     # Build full correlation entry with context from all streams
@@ -52,19 +143,23 @@ process_threat_event() {
     # Save to correlation log
     save_correlation "$entry"
 
-    # Check for auto-ban
+    # Check for auto-ban (skip if whitelisted)
     if [ "$AUTO_BAN" = "1" ]; then
-        local reputation
-        reputation=$(get_ip_reputation "$ip")
+        if is_whitelisted "$ip"; then
+            echo "[$(date '+%H:%M:%S')] IP $ip is whitelisted, skipping auto-ban"
+        else
+            local reputation
+            reputation=$(get_ip_reputation "$ip")
 
-        if [ "$reputation" -ge "$AUTO_BAN_THRESHOLD" ]; then
-            echo "[$(date '+%H:%M:%S')] Auto-banning $ip (reputation: $reputation)"
-            notify_crowdsec "$ip" "dpi-dual-autoban" "4h"
+            if [ "$reputation" -ge "$AUTO_BAN_THRESHOLD" ]; then
+                echo "[$(date '+%H:%M:%S')] Auto-banning $ip (reputation: $reputation, duration: $AUTO_BAN_DURATION)"
+                notify_crowdsec "$ip" "dpi-dual-autoban" "$AUTO_BAN_DURATION"
+            fi
         fi
     fi
 
-    # Send notification if enabled
-    if [ "$NOTIFICATION_ENABLED" = "1" ] && [ "$threat_score" -ge 70 ]; then
+    # Send notification if enabled and score meets threshold
+    if [ "$NOTIFICATION_ENABLED" = "1" ] && [ "$threat_score" -ge "$NOTIFICATION_THRESHOLD" ]; then
         send_notification "$ip" "$event_type" "$reason" "$threat_score"
     fi
 }
@@ -223,19 +318,150 @@ run_correlator() {
     load_config
     init_reputation_db
 
+    local decay_amount
+    config_get decay_amount correlation reputation_decay "5"
+
     echo "DPI Correlator v2 started"
     echo "  Correlation window: ${WINDOW}s"
     echo "  Watch CrowdSec: $WATCH_CROWDSEC"
-    echo "  Auto-ban: $AUTO_BAN (threshold: $AUTO_BAN_THRESHOLD)"
-    echo "  Notifications: $NOTIFICATION_ENABLED"
+    echo "  Sensitivity: $SENSITIVITY"
+    echo "  Auto-ban: $AUTO_BAN (threshold: $AUTO_BAN_THRESHOLD, duration: $AUTO_BAN_DURATION)"
+    echo "  Notifications: $NOTIFICATION_ENABLED (threshold: $NOTIFICATION_THRESHOLD)"
+    echo "  Reputation decay: $decay_amount points every ${DECAY_INTERVAL}s"
+    echo "  Whitelist:$WHITELIST_IPS"
+
+    local last_decay_time=0
 
     while true; do
         watch_waf_alerts
         watch_crowdsec_decisions
         watch_dpi_flows
 
+        # Run reputation decay periodically
+        local now
+        now=$(date +%s)
+        if [ $((now - last_decay_time)) -ge "$DECAY_INTERVAL" ]; then
+            decay_all_reputations "$decay_amount"
+            last_decay_time="$now"
+        fi
+
         sleep 5
     done
+}
+
+# Show current tuning configuration
+show_tuning() {
+    load_config
+    cat << EOF
+=== DPI Correlator Tuning ===
+
+Sensitivity: $SENSITIVITY (multiplier: $(get_sensitivity_multiplier "$SENSITIVITY")%)
+
+Scoring Weights:
+  waf_block:     $SCORE_WAF_BLOCK
+  waf_alert:     $SCORE_WAF_ALERT
+  crowdsec_ban:  $SCORE_CROWDSEC_BAN
+  dpi_threat:    $SCORE_DPI_THREAT
+  scanner:       $SCORE_SCANNER
+  brute_force:   $SCORE_BRUTE_FORCE
+  default:       $SCORE_DEFAULT
+
+Auto-Ban:
+  Enabled:    $AUTO_BAN
+  Threshold:  $AUTO_BAN_THRESHOLD
+  Duration:   $AUTO_BAN_DURATION
+
+Notifications:
+  Enabled:    $NOTIFICATION_ENABLED
+  Threshold:  $NOTIFICATION_THRESHOLD
+
+Reputation Decay:
+  Amount:     $(uci -q get dpi-dual.correlation.reputation_decay || echo 5) points
+  Interval:   ${DECAY_INTERVAL}s
+
+Whitelist:$WHITELIST_IPS
+EOF
+}
+
+# Set tuning parameter
+set_tuning() {
+    local param="$1"
+    local value="$2"
+
+    case "$param" in
+        sensitivity)
+            case "$value" in
+                low|medium|high|custom)
+                    uci set dpi-dual.correlation.sensitivity="$value"
+                    uci commit dpi-dual
+                    echo "Sensitivity set to: $value"
+                    ;;
+                *)
+                    echo "Error: Invalid sensitivity. Use: low, medium, high, custom"
+                    return 1
+                    ;;
+            esac
+            ;;
+        threshold)
+            if [ "$value" -ge 0 ] && [ "$value" -le 100 ] 2>/dev/null; then
+                uci set dpi-dual.correlation.auto_ban_threshold="$value"
+                uci commit dpi-dual
+                echo "Auto-ban threshold set to: $value"
+            else
+                echo "Error: Threshold must be 0-100"
+                return 1
+            fi
+            ;;
+        duration)
+            uci set dpi-dual.correlation.auto_ban_duration="$value"
+            uci commit dpi-dual
+            echo "Auto-ban duration set to: $value"
+            ;;
+        decay)
+            if [ "$value" -ge 0 ] && [ "$value" -le 50 ] 2>/dev/null; then
+                uci set dpi-dual.correlation.reputation_decay="$value"
+                uci commit dpi-dual
+                echo "Reputation decay set to: $value points"
+            else
+                echo "Error: Decay must be 0-50"
+                return 1
+            fi
+            ;;
+        *)
+            echo "Unknown parameter: $param"
+            echo "Valid parameters: sensitivity, threshold, duration, decay"
+            return 1
+            ;;
+    esac
+}
+
+# Whitelist management
+manage_whitelist() {
+    local action="$1"
+    local ip="$2"
+
+    case "$action" in
+        add)
+            [ -z "$ip" ] && { echo "Usage: $0 whitelist add <ip>"; return 1; }
+            uci add_list dpi-dual.whitelist.ip="$ip"
+            uci commit dpi-dual
+            echo "Added $ip to whitelist"
+            ;;
+        remove)
+            [ -z "$ip" ] && { echo "Usage: $0 whitelist remove <ip>"; return 1; }
+            uci del_list dpi-dual.whitelist.ip="$ip"
+            uci commit dpi-dual
+            echo "Removed $ip from whitelist"
+            ;;
+        list)
+            load_config
+            echo "Whitelisted IPs:$WHITELIST_IPS"
+            ;;
+        *)
+            echo "Usage: $0 whitelist <add|remove|list> [ip]"
+            return 1
+            ;;
+    esac
 }
 
 # CLI interface
@@ -276,6 +502,28 @@ case "$1" in
         get_correlation_stats
         ;;
 
+    tune)
+        # Tuning commands: dpi-correlator tune [param] [value]
+        if [ -z "$2" ]; then
+            show_tuning
+        else
+            set_tuning "$2" "$3"
+        fi
+        ;;
+
+    whitelist)
+        # Whitelist management: dpi-correlator whitelist <add|remove|list> [ip]
+        manage_whitelist "$2" "$3"
+        ;;
+
+    decay)
+        # Manual decay trigger: dpi-correlator decay [amount]
+        init_reputation_db
+        local amount="${2:-5}"
+        decay_all_reputations "$amount"
+        echo "Decayed all reputations by $amount points"
+        ;;
+
     status)
         load_config
         echo "=== Correlator Status ==="
@@ -284,6 +532,9 @@ case "$1" in
         else
             echo "Status: STOPPED"
         fi
+        echo ""
+        echo "Sensitivity: $SENSITIVITY"
+        echo "Auto-ban: $AUTO_BAN (threshold: $AUTO_BAN_THRESHOLD)"
         echo ""
         get_correlation_stats
         ;;
@@ -302,8 +553,17 @@ Commands:
   search [ip] [limit]      Search correlation log
   stats                    Show correlation statistics
   status                   Show correlator status
+  tune [param] [value]     Show/set tuning parameters
+  whitelist <action> [ip]  Manage IP whitelist
+  decay [amount]           Manually trigger reputation decay
 
-Configuration: /etc/config/dpi-dual (correlation section)
+Tuning parameters:
+  sensitivity <low|medium|high|custom>
+  threshold <0-100>        Auto-ban reputation threshold
+  duration <time>          Auto-ban duration (e.g., 4h, 1d)
+  decay <0-50>             Points to decay per interval
+
+Configuration: /etc/config/dpi-dual
 EOF
         exit 1
         ;;

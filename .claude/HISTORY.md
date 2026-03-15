@@ -5259,3 +5259,14 @@ git checkout HEAD -- index.html
   - RTTY Remote Dashboard: "Deploy ttyd to All" button and per-node ttyd button in actions column
   - Modal dialogs for confirmation, progress, and result display
   - Full mesh provisioning workflow now accessible via web UI
+
+- **WAF Auto-Ban Tuning System (Complete)**
+  - Configurable scoring weights via UCI `scoring` section
+  - Sensitivity presets: low (0.7x), medium (1.0x), high (1.3x), custom
+  - Whitelist support: IPs/CIDRs that skip auto-ban (`whitelist` section)
+  - Configurable auto-ban duration and notification threshold
+  - Reputation decay: Periodic score reduction for inactive IPs
+  - CLI commands: `dpi-correlator tune`, `dpi-correlator whitelist`, `dpi-correlator decay`
+  - 6 new RPCD methods: get_tuning, set_tuning, whitelist_add, whitelist_remove, whitelist_list, reset_reputation
+  - UCi config updated with scoring weights, sensitivity, whitelist, decay options
+  - Enables fine-tuning of auto-ban sensitivity for production traffic

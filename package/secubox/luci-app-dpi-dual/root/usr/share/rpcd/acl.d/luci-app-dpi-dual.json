@@ -18,7 +18,9 @@
 					"get_lan_status",
 					"get_lan_clients",
 					"get_lan_destinations",
-					"get_lan_protocols"
+					"get_lan_protocols",
+					"get_tuning",
+					"whitelist_list"
 				]
 			},
 			"uci": ["dpi-dual"]
@@ -32,7 +34,11 @@
 					"replay_request",
 					"correlate_ip",
 					"ban_ip",
-					"set_auto_ban"
+					"set_auto_ban",
+					"set_tuning",
+					"whitelist_add",
+					"whitelist_remove",
+					"reset_reputation"
 				]
 			},
 			"uci": ["dpi-dual"]

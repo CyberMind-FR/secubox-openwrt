@@ -43,6 +43,12 @@ case "$1" in
     "correlate_ip": {"ip": "string"},
     "ban_ip": {"ip": "string", "duration": "string"},
     "set_auto_ban": {"enabled": true},
+    "get_tuning": {},
+    "set_tuning": {"param": "string", "value": "string"},
+    "whitelist_add": {"ip": "string"},
+    "whitelist_remove": {"ip": "string"},
+    "whitelist_list": {},
+    "reset_reputation": {"ip": "string"},
     "get_lan_status": {},
     "get_lan_clients": {},
     "get_lan_destinations": {"limit": 100},
@@ -386,6 +392,187 @@ EOF
                 uci set dpi-dual.correlation.auto_ban="$val"
                 uci commit dpi-dual
                 echo '{"success": true, "auto_ban": '$val'}'
+                ;;
+
+            get_tuning)
+                config_load dpi-dual
+
+                # Load correlation settings
+                sensitivity="" threshold="" duration="" notifications=""
+                notif_threshold="" decay="" decay_interval=""
+                config_get sensitivity correlation sensitivity "medium"
+                config_get threshold correlation auto_ban_threshold "80"
+                config_get duration correlation auto_ban_duration "4h"
+                config_get notifications correlation notifications "1"
+                config_get notif_threshold correlation notification_threshold "70"
+                config_get decay correlation reputation_decay "5"
+                config_get decay_interval correlation decay_interval "3600"
+
+                # Load scoring weights
+                waf_block="" waf_alert="" cs_ban="" dpi_threat="" scanner="" brute_force="" default_score=""
+                config_get waf_block scoring waf_block "25"
+                config_get waf_alert scoring waf_alert "15"
+                config_get cs_ban scoring crowdsec_ban "30"
+                config_get dpi_threat scoring dpi_threat "20"
+                config_get scanner scoring scanner "35"
+                config_get brute_force scoring brute_force "40"
+                config_get default_score scoring default "10"
+
+                # Calculate sensitivity multiplier
+                case "$sensitivity" in
+                    low)    mult=70 ;;
+                    medium) mult=100 ;;
+                    high)   mult=130 ;;
+                    *)      mult=100 ;;
+                esac
+
+                cat << EOF
+{
+    "sensitivity": "$sensitivity",
+    "sensitivity_multiplier": $mult,
+    "auto_ban_threshold": $threshold,
+    "auto_ban_duration": "$duration",
+    "notifications": $notifications,
+    "notification_threshold": $notif_threshold,
+    "reputation_decay": $decay,
+    "decay_interval": $decay_interval,
+    "scoring": {
+        "waf_block": $waf_block,
+        "waf_alert": $waf_alert,
+        "crowdsec_ban": $cs_ban,
+        "dpi_threat": $dpi_threat,
+        "scanner": $scanner,
+        "brute_force": $brute_force,
+        "default": $default_score
+    }
+}
+EOF
+                ;;
+
+            set_tuning)
+                read "$3"
+                json_load "$REPLY"
+                json_get_var param param ""
+                json_get_var value value ""
+
+                if [ -z "$param" ] || [ -z "$value" ]; then
+                    echo '{"success": false, "error": "param and value required"}'
+                else
+                    case "$param" in
+                        sensitivity)
+                            case "$value" in
+                                low|medium|high|custom)
+                                    uci set dpi-dual.correlation.sensitivity="$value"
+                                    uci commit dpi-dual
+                                    echo '{"success": true, "param": "sensitivity", "value": "'"$value"'"}'
+                                    ;;
+                                *)
+                                    echo '{"success": false, "error": "Invalid sensitivity: use low, medium, high, or custom"}'
+                                    ;;
+                            esac
+                            ;;
+                        threshold)
+                            if [ "$value" -ge 0 ] && [ "$value" -le 100 ] 2>/dev/null; then
+                                uci set dpi-dual.correlation.auto_ban_threshold="$value"
+                                uci commit dpi-dual
+                                echo '{"success": true, "param": "threshold", "value": '$value'}'
+                            else
+                                echo '{"success": false, "error": "Threshold must be 0-100"}'
+                            fi
+                            ;;
+                        duration)
+                            uci set dpi-dual.correlation.auto_ban_duration="$value"
+                            uci commit dpi-dual
+                            echo '{"success": true, "param": "duration", "value": "'"$value"'"}'
+                            ;;
+                        decay)
+                            if [ "$value" -ge 0 ] && [ "$value" -le 50 ] 2>/dev/null; then
+                                uci set dpi-dual.correlation.reputation_decay="$value"
+                                uci commit dpi-dual
+                                echo '{"success": true, "param": "decay", "value": '$value'}'
+                            else
+                                echo '{"success": false, "error": "Decay must be 0-50"}'
+                            fi
+                            ;;
+                        notification_threshold)
+                            if [ "$value" -ge 0 ] && [ "$value" -le 100 ] 2>/dev/null; then
+                                uci set dpi-dual.correlation.notification_threshold="$value"
+                                uci commit dpi-dual
+                                echo '{"success": true, "param": "notification_threshold", "value": '$value'}'
+                            else
+                                echo '{"success": false, "error": "Notification threshold must be 0-100"}'
+                            fi
+                            ;;
+                        waf_block|waf_alert|crowdsec_ban|dpi_threat|scanner|brute_force|default)
+                            if [ "$value" -ge 0 ] && [ "$value" -le 100 ] 2>/dev/null; then
+                                uci set dpi-dual.scoring."$param"="$value"
+                                uci commit dpi-dual
+                                echo '{"success": true, "param": "'"$param"'", "value": '$value'}'
+                            else
+                                echo '{"success": false, "error": "Score weight must be 0-100"}'
+                            fi
+                            ;;
+                        *)
+                            echo '{"success": false, "error": "Unknown param: '"$param"'"}'
+                            ;;
+                    esac
+                fi
+                ;;
+
+            whitelist_add)
+                read "$3"
+                json_load "$REPLY"
+                json_get_var ip ip ""
+
+                if [ -z "$ip" ]; then
+                    echo '{"success": false, "error": "IP required"}'
+                else
+                    uci add_list dpi-dual.whitelist.ip="$ip"
+                    uci commit dpi-dual
+                    echo '{"success": true, "message": "Added '"$ip"' to whitelist"}'
+                fi
+                ;;
+
+            whitelist_remove)
+                read "$3"
+                json_load "$REPLY"
+                json_get_var ip ip ""
+
+                if [ -z "$ip" ]; then
+                    echo '{"success": false, "error": "IP required"}'
+                else
+                    uci del_list dpi-dual.whitelist.ip="$ip"
+                    uci commit dpi-dual
+                    echo '{"success": true, "message": "Removed '"$ip"' from whitelist"}'
+                fi
+                ;;
+
+            whitelist_list)
+                config_load dpi-dual
+
+                # Collect whitelist IPs
+                wl_ips=""
+                append_wl_ip() {
+                    [ -n "$wl_ips" ] && wl_ips="$wl_ips,"
+                    wl_ips="$wl_ips\"$1\""
+                }
+                config_list_foreach whitelist ip append_wl_ip
+
+                echo "{\"whitelist\": [$wl_ips]}"
+                ;;
+
+            reset_reputation)
+                read "$3"
+                json_load "$REPLY"
+                json_get_var ip ip ""
+
+                if [ -z "$ip" ]; then
+                    echo '{"success": false, "error": "IP required"}'
+                else
+                    . /usr/lib/dpi-dual/correlation-lib.sh
+                    reset_ip_reputation "$ip"
+                    echo '{"success": true, "message": "Reset reputation for '"$ip"'"}'
+                fi
                 ;;
 
             get_lan_status)

@@ -65,6 +65,68 @@ update_ip_reputation() {
     mv "$tmp_file" "$REPUTATION_DB"
 }
 
+# Decay all IP reputations by a fixed amount
+# Called periodically to let old threats "heal"
+decay_all_reputations() {
+    local decay_amount="${1:-5}"
+
+    init_reputation_db
+
+    [ ! -f "$REPUTATION_DB" ] && return 0
+
+    local tmp_file="/tmp/reputation_decay_$$.json"
+    local now
+    now=$(date -Iseconds)
+
+    # Process each IP in the reputation DB
+    # Extract IPs and their scores, apply decay
+    local ip score new_score
+
+    # Read current state
+    cp "$REPUTATION_DB" "$tmp_file"
+
+    # Get all IPs from the JSON
+    local ips
+    ips=$(grep -oE '"[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"' "$REPUTATION_DB" | tr -d '"' | sort -u)
+
+    for ip in $ips; do
+        score=$(jsonfilter -i "$REPUTATION_DB" -e "@[\"$ip\"].score" 2>/dev/null || echo 0)
+        new_score=$((score - decay_amount))
+        [ "$new_score" -lt 0 ] && new_score=0
+
+        if [ "$new_score" -eq 0 ]; then
+            # Remove entries that have decayed to 0
+            sed -i "s/\"$ip\":{[^}]*},\?//" "$tmp_file"
+        else
+            # Update score
+            sed -i "s/\"$ip\":{\"score\":[0-9]*/\"$ip\":{\"score\":$new_score/" "$tmp_file"
+        fi
+    done
+
+    # Clean up JSON (remove trailing commas, empty entries)
+    sed -i 's/,\s*}/}/g; s/{\s*,/{/g; s/,,/,/g' "$tmp_file"
+
+    mv "$tmp_file" "$REPUTATION_DB"
+}
+
+# Reset reputation for a specific IP
+reset_ip_reputation() {
+    local ip="$1"
+
+    init_reputation_db
+    [ ! -f "$REPUTATION_DB" ] && return 0
+
+    local tmp_file="/tmp/reputation_reset_$$.json"
+    cp "$REPUTATION_DB" "$tmp_file"
+
+    # Remove the IP entry
+    sed -i "s/\"$ip\":{[^}]*},\?//" "$tmp_file"
+    sed -i 's/,\s*}/}/g; s/{\s*,/{/g; s/,,/,/g' "$tmp_file"
+
+    mv "$tmp_file" "$REPUTATION_DB"
+    echo "Reset reputation for $ip"
+}
+
 # Get MITM context for IP (recent requests)
 get_mitm_context() {
     local ip="$1"

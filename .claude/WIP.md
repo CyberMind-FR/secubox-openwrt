@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-16 (DPI LAN Passive Analysis)_
+_Last updated: 2026-03-16 (WAF Auto-Ban Tuning)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -9,6 +9,15 @@ _Last updated: 2026-03-16 (DPI LAN Passive Analysis)_
 ## Recently Completed
 
 ### 2026-03-16
+
+- **WAF Auto-Ban Tuning System (Complete)**
+  - Configurable scoring weights via UCI `scoring` section
+  - Sensitivity presets: low (0.7x), medium (1.0x), high (1.3x), custom
+  - Whitelist support: IPs/CIDRs that skip auto-ban
+  - Configurable auto-ban duration, notification threshold, reputation decay
+  - CLI: `dpi-correlator tune [param] [value]`, `whitelist add/remove/list`, `decay [amount]`
+  - 6 new RPCD methods for UI integration
+  - Enables fine-tuning for production traffic with fewer false positives
 
 - **LuCI Provisioning Dashboard (Complete)**
   - Config Vault dashboard: "Device Provisioning" card with 3 action buttons
@@ -660,11 +669,6 @@ _Last updated: 2026-03-16 (DPI LAN Passive Analysis)_
 ### v1.0 Release Prep
 
 All core features complete. Optional polish tasks remain.
-
-### v1.1+ Extended Mesh
-
-1. **WAF Auto-Ban Tuning** (optional, as-needed)
-   - Sensitivity threshold adjustment based on production traffic
 
 ### Backlog
 
