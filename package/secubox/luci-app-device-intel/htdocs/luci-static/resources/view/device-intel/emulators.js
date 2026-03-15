@@ -2,30 +2,109 @@
 'require view';
 'require dom';
 'require ui';
-'require device-intel/api as api';
-'require secubox/kiss-theme';
+'require rpc';
 
-/**
- * Device Intel - Emulator Modules - KISS Style
- * Copyright (C) 2025 CyberMind.fr
- */
+var callGetEmulators = rpc.declare({
+	object: 'luci.device-intel',
+	method: 'get_emulators',
+	expect: {}
+});
+
+var callGetDevices = rpc.declare({
+	object: 'luci.device-intel',
+	method: 'get_devices',
+	expect: {}
+});
+
+function createCard(title, icon, enabled, content, borderColor) {
+	return E('div', {
+		'style': 'background:#12121a;border-radius:8px;padding:16px;margin-bottom:16px;' +
+		         'border-left:4px solid ' + (borderColor || '#2a2a3a') + ';'
+	}, [
+		E('div', { 'style': 'display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;' }, [
+			E('div', { 'style': 'display:flex;align-items:center;gap:8px;' }, [
+				E('span', { 'style': 'font-size:1.2rem;' }, icon),
+				E('span', { 'style': 'font-size:1rem;font-weight:600;color:#fff;' }, title)
+			]),
+			E('span', {
+				'style': 'padding:4px 12px;border-radius:6px;font-size:11px;font-weight:600;' +
+				         (enabled ? 'background:rgba(0,212,170,0.2);color:#00d4aa;' : 'background:rgba(128,128,144,0.2);color:#808090;')
+			}, enabled ? 'Enabled' : 'Disabled')
+		]),
+		E('div', {}, content)
+	]);
+}
+
+function createMetric(label, value, color) {
+	return E('span', { 'style': 'margin-right:20px;' }, [
+		E('span', { 'style': 'color:#808090;' }, label + ': '),
+		E('strong', { 'style': 'color:' + (color || '#00d4aa') + ';' }, String(value))
+	]);
+}
+
+function statusDot(running, label) {
+	var color = running ? '#00d4aa' : '#ff4d4d';
+	return E('span', { 'style': 'display:inline-flex;align-items:center;gap:4px;' }, [
+		E('span', {
+			'style': 'width:8px;height:8px;border-radius:50%;background:' + color + ';'
+		}),
+		E('span', { 'style': 'color:' + color + ';' }, label)
+	]);
+}
+
+function deviceTable(devices, fields) {
+	if (devices.length === 0) {
+		return E('p', { 'style': 'color:#808090;font-style:italic;text-align:center;padding:16px;margin:0;' },
+			'No devices discovered from this emulator.');
+	}
+
+	var headers = {
+		'hostname': 'Name',
+		'vendor': 'Model/Vendor',
+		'device_type': 'Type',
+		'mac': 'ID',
+		'ip': 'IP'
+	};
+
+	return E('div', { 'style': 'overflow-x:auto;' }, [
+		E('table', { 'style': 'width:100%;border-collapse:collapse;font-size:0.85rem;' }, [
+			E('thead', {}, [
+				E('tr', { 'style': 'border-bottom:1px solid #2a2a3a;' },
+					fields.map(function(f) {
+						return E('th', { 'style': 'padding:8px;text-align:left;color:#808090;font-weight:600;' }, headers[f] || f);
+					})
+				)
+			]),
+			E('tbody', {},
+				devices.slice(0, 20).map(function(d) {
+					return E('tr', { 'style': 'border-bottom:1px solid #1a1a24;' },
+						fields.map(function(f) {
+							var val = d[f] || '-';
+							var style = 'padding:8px;color:#e0e0e0;';
+							if (f === 'hostname') style = 'padding:8px;color:#00a0ff;font-weight:500;';
+							if (f === 'device_type') style = 'padding:8px;color:#00d4aa;';
+							return E('td', { 'style': style }, String(val));
+						})
+					);
+				})
+			)
+		])
+	]);
+}
 
 return view.extend({
 	load: function() {
 		return Promise.all([
-			api.getEmulators(),
-			api.getDevices()
+			callGetEmulators().catch(function() { return {}; }),
+			callGetDevices().catch(function() { return { devices: [] }; })
 		]);
 	},
 
 	render: function(data) {
-		var self = this;
-		var K = KissTheme;
 		var emuResult = data[0] || {};
 		var devResult = data[1] || {};
 		var devices = devResult.devices || [];
 
-		// Filter devices by emulator source
 		var usbDevices = devices.filter(function(d) { return d.emulator_source === 'usb'; });
 		var mqttDevices = devices.filter(function(d) { return d.emulator_source === 'mqtt'; });
 		var zigbeeDevices = devices.filter(function(d) { return d.emulator_source === 'zigbee'; });
@@ -34,109 +113,57 @@ return view.extend({
 		var mqtt = emuResult.mqtt || {};
 		var zigbee = emuResult.zigbee || {};
 
-		var content = K.E('div', {}, [
-			// Page Header
-			K.E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;' }, [
-				K.E('div', {}, [
-					K.E('h2', { 'style': 'margin: 0; font-size: 24px; display: flex; align-items: center; gap: 10px;' }, [
-						K.E('span', {}, '🔌'),
-						'Emulator Modules'
-					]),
-					K.E('p', { 'style': 'margin: 4px 0 0; color: var(--kiss-muted, #94a3b8); font-size: 14px;' },
+		var view = E('div', { 'style': 'max-width:1200px;margin:0 auto;padding:20px;' }, [
+			// Header
+			E('div', { 'style': 'display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;' }, [
+				E('div', {}, [
+					E('h2', {
+						'style': 'margin:0;font-size:1.5rem;background:linear-gradient(90deg,#00d4aa,#00a0ff);' +
+						         '-webkit-background-clip:text;-webkit-text-fill-color:transparent;'
+					}, 'Emulator Modules'),
+					E('p', { 'style': 'margin:4px 0 0;color:#808090;font-size:14px;' },
 						'Pluggable device discovery modules for USB, MQTT, and Zigbee peripherals')
 				]),
-				K.E('a', {
+				E('a', {
 					'href': L.url('admin/secubox/device-intel/settings'),
-					'class': 'kiss-btn kiss-btn-blue',
-					'style': 'padding: 10px 16px; text-decoration: none;'
-				}, '⚙️ Configure')
+					'style': 'padding:8px 16px;border-radius:6px;text-decoration:none;font-size:13px;' +
+					         'background:rgba(0,160,255,0.2);color:#00a0ff;border:1px solid rgba(0,160,255,0.3);'
+				}, 'Configure')
 			]),
 
 			// USB Card
-			self.emuCard(K, '🔌 USB Peripherals', usb.enabled, [
-				K.E('div', { 'style': 'display: flex; gap: 24px; margin-bottom: 16px; flex-wrap: wrap;' }, [
-					K.E('span', {}, ['System USB devices: ', K.E('strong', {}, String(usb.device_count || 0))]),
-					K.E('span', {}, ['Discovered: ', K.E('strong', { 'style': 'color: var(--kiss-green);' }, String(usbDevices.length))])
+			createCard('USB Peripherals', '🔌', usb.enabled, [
+				E('div', { 'style': 'display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;' }, [
+					createMetric('System USB devices', usb.device_count || 0, '#00a0ff'),
+					createMetric('Discovered', usbDevices.length, '#00d4aa')
 				]),
-				self.deviceMiniTable(K, usbDevices, ['hostname', 'vendor', 'device_type'])
-			]),
+				deviceTable(usbDevices, ['hostname', 'vendor', 'device_type'])
+			], usb.enabled ? '#00d4aa' : '#808090'),
 
 			// MQTT Card
-			self.emuCard(K, '📡 MQTT Broker', mqtt.enabled, [
-				K.E('div', { 'style': 'display: flex; gap: 24px; margin-bottom: 16px; flex-wrap: wrap;' }, [
-					K.E('span', {}, 'Broker: ' + (mqtt.broker_host || '127.0.0.1') + ':' + (mqtt.broker_port || 1883)),
-					K.E('span', {}, [
-						'Status: ',
-						mqtt.broker_running
-							? K.E('span', { 'style': 'color: var(--kiss-green, #22c55e);' }, '● Running')
-							: K.E('span', { 'style': 'color: var(--kiss-red, #ef4444);' }, '● Not Found')
-					]),
-					K.E('span', {}, ['Clients discovered: ', K.E('strong', { 'style': 'color: var(--kiss-green);' }, String(mqttDevices.length))])
+			createCard('MQTT Broker', '📡', mqtt.enabled, [
+				E('div', { 'style': 'display:flex;flex-wrap:wrap;gap:16px;margin-bottom:12px;align-items:center;' }, [
+					E('span', { 'style': 'color:#e0e0e0;' },
+						'Broker: ' + (mqtt.broker_host || '127.0.0.1') + ':' + (mqtt.broker_port || 1883)),
+					statusDot(mqtt.broker_running, mqtt.broker_running ? 'Running' : 'Not Found'),
+					createMetric('Clients discovered', mqttDevices.length, '#00d4aa')
 				]),
-				self.deviceMiniTable(K, mqttDevices, ['hostname', 'vendor', 'device_type'])
-			]),
+				deviceTable(mqttDevices, ['hostname', 'vendor', 'device_type'])
+			], mqtt.enabled ? '#00a0ff' : '#808090'),
 
 			// Zigbee Card
-			self.emuCard(K, '📻 Zigbee Coordinator', zigbee.enabled, [
-				K.E('div', { 'style': 'display: flex; gap: 24px; margin-bottom: 16px; flex-wrap: wrap;' }, [
-					K.E('span', {}, 'Adapter: ' + (zigbee.adapter || 'zigbee2mqtt')),
-					K.E('span', {}, 'Dongle: ' + (zigbee.coordinator || '/dev/ttyUSB0')),
-					K.E('span', {}, [
-						'Status: ',
-						zigbee.dongle_present
-							? K.E('span', { 'style': 'color: var(--kiss-green, #22c55e);' }, '● Present')
-							: K.E('span', { 'style': 'color: var(--kiss-red, #ef4444);' }, '● Not Found')
-					]),
-					K.E('span', {}, ['Paired devices: ', K.E('strong', { 'style': 'color: var(--kiss-green);' }, String(zigbeeDevices.length))])
+			createCard('Zigbee Coordinator', '📻', zigbee.enabled, [
+				E('div', { 'style': 'display:flex;flex-wrap:wrap;gap:16px;margin-bottom:12px;align-items:center;' }, [
+					E('span', { 'style': 'color:#e0e0e0;' }, 'Adapter: ' + (zigbee.adapter || 'zigbee2mqtt')),
+					E('span', { 'style': 'color:#808090;' }, 'Dongle: ' + (zigbee.coordinator || '/dev/ttyUSB0')),
+					statusDot(zigbee.dongle_present, zigbee.dongle_present ? 'Present' : 'Not Found'),
+					createMetric('Paired devices', zigbeeDevices.length, '#00d4aa')
 				]),
-				self.deviceMiniTable(K, zigbeeDevices, ['hostname', 'vendor', 'device_type'])
-			])
+				deviceTable(zigbeeDevices, ['hostname', 'vendor', 'device_type'])
+			], zigbee.enabled ? '#ffa500' : '#808090')
 		]);
 
-		return KissTheme.wrap(content, 'admin/secubox/services/device-intel/emulators');
-	},
-
-	emuCard: function(K, title, enabled, contentItems) {
-		return K.E('div', { 'class': 'kiss-card', 'style': 'margin-bottom: 16px;' }, [
-			K.E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;' }, [
-				K.E('div', { 'class': 'kiss-card-title', 'style': 'margin: 0;' }, title),
-				enabled
-					? K.E('span', { 'style': 'background: var(--kiss-green, #22c55e); color: #000; padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: bold;' }, 'Enabled')
-					: K.E('span', { 'style': 'background: var(--kiss-muted, #64748b); color: #fff; padding: 4px 12px; border-radius: 6px; font-size: 12px;' }, 'Disabled')
-			])
-		].concat(contentItems));
-	},
-
-	deviceMiniTable: function(K, devices, fields) {
-		if (devices.length === 0) {
-			return K.E('p', { 'style': 'color: var(--kiss-muted); font-style: italic; text-align: center; padding: 20px;' },
-				'No devices discovered from this emulator.');
-		}
-
-		var headers = {
-			'hostname': 'Name',
-			'vendor': 'Model/Vendor',
-			'device_type': 'Type',
-			'mac': 'ID',
-			'ip': 'IP'
-		};
-
-		return K.E('table', { 'class': 'kiss-table' }, [
-			K.E('thead', {}, K.E('tr', {},
-				fields.map(function(f) {
-					return K.E('th', {}, headers[f] || f);
-				})
-			)),
-			K.E('tbody', {},
-				devices.slice(0, 20).map(function(d) {
-					return K.E('tr', {},
-						fields.map(function(f) {
-							return K.E('td', {}, String(d[f] || '-'));
-						})
-					);
-				})
-			)
-		]);
+		return view;
 	},
 
 	handleSaveApply: null,
