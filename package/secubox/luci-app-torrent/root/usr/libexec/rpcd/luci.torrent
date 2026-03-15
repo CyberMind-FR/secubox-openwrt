@@ -1,0 +1,248 @@
+#!/bin/sh
+# RPCD handler for Torrent dashboard (qBittorrent + WebTorrent)
+
+. /usr/share/libubox/jshn.sh
+
+QBT_IP="192.168.255.42"
+QBT_PORT="8090"
+WT_IP="192.168.255.43"
+WT_PORT="8095"
+
+list_methods() {
+    cat << 'EOFM'
+{"status":{},"qbt_list":{},"wt_list":{},"qbt_start":{},"qbt_stop":{},"wt_start":{},"wt_stop":{},"qbt_add":{"url":"str"},"wt_add":{"magnet":"str"}}
+EOFM
+}
+
+# Check if container is running
+is_running() {
+    /usr/bin/lxc-info -n "$1" 2>/dev/null | grep -q "RUNNING"
+}
+
+# Get qBittorrent status
+get_qbt_status() {
+    local running=0
+    local version=""
+    local dl_speed=0
+    local up_speed=0
+    local torrents=0
+
+    if is_running "qbittorrent"; then
+        running=1
+        version=$(/usr/bin/curl -s "http://${QBT_IP}:${QBT_PORT}/api/v2/app/version" 2>/dev/null)
+        local transfer=$(/usr/bin/curl -s "http://${QBT_IP}:${QBT_PORT}/api/v2/transfer/info" 2>/dev/null)
+        if [ -n "$transfer" ]; then
+            dl_speed=$(echo "$transfer" | jsonfilter -e '@.dl_info_speed' 2>/dev/null)
+            up_speed=$(echo "$transfer" | jsonfilter -e '@.up_info_speed' 2>/dev/null)
+        fi
+        local list=$(/usr/bin/curl -s "http://${QBT_IP}:${QBT_PORT}/api/v2/torrents/info" 2>/dev/null)
+        if [ -n "$list" ] && [ "$list" != "[]" ]; then
+            torrents=$(echo "$list" | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+        fi
+    fi
+
+    json_init
+    json_add_boolean "running" "$running"
+    json_add_string "version" "${version:-unknown}"
+    json_add_int "dl_speed" "${dl_speed:-0}"
+    json_add_int "up_speed" "${up_speed:-0}"
+    json_add_int "torrents" "${torrents:-0}"
+    json_add_string "url" "https://torrent.gk2.secubox.in/"
+    json_dump
+}
+
+# Get WebTorrent status
+get_wt_status() {
+    local running=0
+    local torrents=0
+
+    if is_running "webtorrent"; then
+        running=1
+        local list=$(/usr/bin/curl -s "http://${WT_IP}:${WT_PORT}/api/torrents" 2>/dev/null)
+        if [ -n "$list" ] && [ "$list" != "[]" ]; then
+            torrents=$(echo "$list" | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+        fi
+    fi
+
+    json_init
+    json_add_boolean "running" "$running"
+    json_add_int "torrents" "${torrents:-0}"
+    json_add_string "url" "https://stream.gk2.secubox.in/"
+    json_dump
+}
+
+# Combined status
+do_status() {
+    local qbt_running=0
+    local wt_running=0
+    local qbt_version=""
+    local qbt_dl=0
+    local qbt_up=0
+    local qbt_count=0
+    local wt_count=0
+
+    if is_running "qbittorrent"; then
+        qbt_running=1
+        qbt_version=$(/usr/bin/curl -s "http://${QBT_IP}:${QBT_PORT}/api/v2/app/version" 2>/dev/null)
+        local transfer=$(/usr/bin/curl -s "http://${QBT_IP}:${QBT_PORT}/api/v2/transfer/info" 2>/dev/null)
+        if [ -n "$transfer" ]; then
+            qbt_dl=$(echo "$transfer" | jsonfilter -e '@.dl_info_speed' 2>/dev/null)
+            qbt_up=$(echo "$transfer" | jsonfilter -e '@.up_info_speed' 2>/dev/null)
+        fi
+        local qlist=$(/usr/bin/curl -s "http://${QBT_IP}:${QBT_PORT}/api/v2/torrents/info" 2>/dev/null)
+        if [ -n "$qlist" ] && [ "$qlist" != "[]" ]; then
+            qbt_count=$(echo "$qlist" | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+        fi
+    fi
+
+    if is_running "webtorrent"; then
+        wt_running=1
+        local wtlist=$(/usr/bin/curl -s "http://${WT_IP}:${WT_PORT}/api/torrents" 2>/dev/null)
+        if [ -n "$wtlist" ] && [ "$wtlist" != "[]" ]; then
+            wt_count=$(echo "$wtlist" | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+        fi
+    fi
+
+    json_init
+    json_add_object "qbittorrent"
+    json_add_boolean "running" "$qbt_running"
+    json_add_string "version" "${qbt_version:-unknown}"
+    json_add_int "dl_speed" "${qbt_dl:-0}"
+    json_add_int "up_speed" "${qbt_up:-0}"
+    json_add_int "torrents" "${qbt_count:-0}"
+    json_add_string "url" "https://torrent.gk2.secubox.in/"
+    json_add_string "ip" "${QBT_IP}:${QBT_PORT}"
+    json_close_object
+
+    json_add_object "webtorrent"
+    json_add_boolean "running" "$wt_running"
+    json_add_int "torrents" "${wt_count:-0}"
+    json_add_string "url" "https://stream.gk2.secubox.in/"
+    json_add_string "ip" "${WT_IP}:${WT_PORT}"
+    json_close_object
+
+    json_dump
+}
+
+# List qBittorrent torrents
+do_qbt_list() {
+    local list=$(/usr/bin/curl -s "http://${QBT_IP}:${QBT_PORT}/api/v2/torrents/info" 2>/dev/null)
+    if [ -z "$list" ] || [ "$list" = "Forbidden" ]; then
+        echo '{"torrents":[]}'
+        return
+    fi
+    echo "{\"torrents\":$list}"
+}
+
+# List WebTorrent torrents
+do_wt_list() {
+    local list=$(/usr/bin/curl -s "http://${WT_IP}:${WT_PORT}/api/torrents" 2>/dev/null)
+    if [ -z "$list" ]; then
+        echo '{"torrents":[]}'
+        return
+    fi
+    echo "{\"torrents\":$list}"
+}
+
+# Start qBittorrent
+do_qbt_start() {
+    /usr/sbin/qbittorrentctl start >/dev/null 2>&1
+    json_init
+    json_add_boolean "success" 1
+    json_dump
+}
+
+# Stop qBittorrent
+do_qbt_stop() {
+    /usr/sbin/qbittorrentctl stop >/dev/null 2>&1
+    json_init
+    json_add_boolean "success" 1
+    json_dump
+}
+
+# Start WebTorrent
+do_wt_start() {
+    /usr/sbin/webtorrentctl start >/dev/null 2>&1
+    json_init
+    json_add_boolean "success" 1
+    json_dump
+}
+
+# Stop WebTorrent
+do_wt_stop() {
+    /usr/sbin/webtorrentctl stop >/dev/null 2>&1
+    json_init
+    json_add_boolean "success" 1
+    json_dump
+}
+
+# Add torrent to qBittorrent
+do_qbt_add() {
+    read -r input
+    local url=$(echo "$input" | jsonfilter -e '@.url' 2>/dev/null)
+
+    if [ -z "$url" ]; then
+        json_init
+        json_add_boolean "success" 0
+        json_add_string "error" "URL required"
+        json_dump
+        return
+    fi
+
+    local result=$(/usr/bin/curl -s -X POST "http://${QBT_IP}:${QBT_PORT}/api/v2/torrents/add" -d "urls=$url" 2>/dev/null)
+
+    json_init
+    if [ "$result" = "Ok." ]; then
+        json_add_boolean "success" 1
+    else
+        json_add_boolean "success" 0
+        json_add_string "error" "$result"
+    fi
+    json_dump
+}
+
+# Add torrent to WebTorrent
+do_wt_add() {
+    read -r input
+    local magnet=$(echo "$input" | jsonfilter -e '@.magnet' 2>/dev/null)
+
+    if [ -z "$magnet" ]; then
+        json_init
+        json_add_boolean "success" 0
+        json_add_string "error" "Magnet link required"
+        json_dump
+        return
+    fi
+
+    local result=$(/usr/bin/curl -s -X POST "http://${WT_IP}:${WT_PORT}/api/add" \
+        -H "Content-Type: application/json" \
+        -d "{\"magnet\":\"$magnet\"}" 2>/dev/null)
+
+    json_init
+    if echo "$result" | grep -q "success"; then
+        json_add_boolean "success" 1
+    else
+        json_add_boolean "success" 0
+        json_add_string "error" "Failed to add torrent"
+    fi
+    json_dump
+}
+
+case "$1" in
+    list) list_methods ;;
+    call)
+        case "$2" in
+            status) do_status ;;
+            qbt_list) do_qbt_list ;;
+            wt_list) do_wt_list ;;
+            qbt_start) do_qbt_start ;;
+            qbt_stop) do_qbt_stop ;;
+            wt_start) do_wt_start ;;
+            wt_stop) do_wt_stop ;;
+            qbt_add) do_qbt_add ;;
+            wt_add) do_wt_add ;;
+            *) echo '{"error":"Unknown method"}' ;;
+        esac
+        ;;
+    *) echo '{"error":"Unknown command"}' ;;
+esac

@@ -87,34 +87,23 @@ if ! command -v node >/dev/null 2>&1; then
     rm -rf /var/lib/apt/lists/*
 fi
 
-# Install webtorrent-hybrid and instant.io server
-if [ ! -d "/opt/webtorrent/node_modules" ]; then
-    echo "Installing WebTorrent packages..."
+# Install webtorrent packages - use EXACT version 1.9.7 (last CommonJS version)
+# v2.x is ESM-only and breaks require()
+if [ ! -d "/opt/webtorrent/node_modules/webtorrent" ]; then
+    echo "Installing WebTorrent packages (v1.9.7 for CommonJS)..."
     mkdir -p /opt/webtorrent
     cd /opt/webtorrent
 
-    # Create package.json
-    cat > package.json << 'PKGEOF'
-{
-  "name": "webtorrent-server",
-  "version": "1.0.0",
-  "dependencies": {
-    "webtorrent": "^2.0.0",
-    "express": "^4.18.0",
-    "cors": "^2.8.5"
-  }
-}
-PKGEOF
+    npm install webtorrent@1.9.7 express@4.18.0 cors@2.8.5 --save-exact --production || {
+        echo "npm install failed"; exit 1;
+    }
+fi
 
-    npm install --production || { echo "npm install failed"; exit 1; }
-
-    # Create server script
-    cat > server.js << 'SRVEOF'
+# Create/update server script
+cat > /opt/webtorrent/server.js << 'SRVEOF'
 const WebTorrent = require('webtorrent');
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
-const fs = require('fs');
 
 const app = express();
 const client = new WebTorrent();
@@ -125,114 +114,17 @@ app.use(cors());
 app.use(express.json());
 app.use('/downloads', express.static(DOWNLOAD_PATH));
 
-// Serve web UI
 app.get('/', (req, res) => {
-    res.send(`<!DOCTYPE html>
-<html>
-<head>
-    <title>WebTorrent Streaming</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: system-ui; background: #0a0a12; color: #e0e0e0; min-height: 100vh; }
-        .container { max-width: 900px; margin: 0 auto; padding: 20px; }
-        h1 { color: #00d4ff; margin-bottom: 20px; }
-        .add-form { display: flex; gap: 10px; margin-bottom: 30px; }
-        input[type="text"] { flex: 1; padding: 12px; background: #1a1a24; border: 1px solid #3a3a4e; border-radius: 8px; color: #e0e0e0; font-size: 16px; }
-        button { padding: 12px 24px; background: linear-gradient(135deg, #00d4ff, #7c3aed); border: none; border-radius: 8px; color: #fff; font-weight: 600; cursor: pointer; }
-        button:hover { opacity: 0.9; }
-        .torrent { background: #1a1a24; border: 1px solid #2a2a3e; border-radius: 12px; padding: 20px; margin-bottom: 15px; }
-        .torrent:hover { border-color: #00d4ff; }
-        .torrent-name { font-weight: 600; color: #00d4ff; margin-bottom: 10px; word-break: break-all; }
-        .torrent-info { color: #888; font-size: 14px; }
-        .progress-bar { height: 8px; background: #2a2a3e; border-radius: 4px; margin: 10px 0; overflow: hidden; }
-        .progress-fill { height: 100%; background: linear-gradient(90deg, #00d4ff, #7c3aed); transition: width 0.3s; }
-        .files { margin-top: 15px; }
-        .file { padding: 8px 12px; background: #12121a; border-radius: 6px; margin: 5px 0; display: flex; justify-content: space-between; align-items: center; }
-        .file a { color: #00d4ff; text-decoration: none; }
-        .file a:hover { text-decoration: underline; }
-        .empty { text-align: center; color: #666; padding: 60px; }
-        video { width: 100%; border-radius: 8px; margin-top: 10px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🌊 WebTorrent Streaming</h1>
-        <div class="add-form">
-            <input type="text" id="magnet" placeholder="Paste magnet link or info hash...">
-            <button onclick="addTorrent()">Add</button>
-        </div>
-        <div id="torrents"></div>
-    </div>
-    <script>
-        function formatBytes(bytes) {
-            if (bytes === 0) return '0 B';
-            const k = 1024;
-            const sizes = ['B', 'KB', 'MB', 'GB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-        }
-
-        async function addTorrent() {
-            const magnet = document.getElementById('magnet').value.trim();
-            if (!magnet) return;
-            const res = await fetch('/api/add', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ magnet })
-            });
-            document.getElementById('magnet').value = '';
-            loadTorrents();
-        }
-
-        async function loadTorrents() {
-            const res = await fetch('/api/torrents');
-            const data = await res.json();
-            const container = document.getElementById('torrents');
-            if (data.length === 0) {
-                container.innerHTML = '<div class="empty">No torrents. Add a magnet link above.</div>';
-                return;
-            }
-            container.innerHTML = data.map(t => \`
-                <div class="torrent">
-                    <div class="torrent-name">\${t.name}</div>
-                    <div class="torrent-info">
-                        \${formatBytes(t.downloaded)} / \${formatBytes(t.length)}
-                        (\${(t.progress * 100).toFixed(1)}%)
-                        ↓ \${formatBytes(t.downloadSpeed)}/s
-                        ↑ \${formatBytes(t.uploadSpeed)}/s
-                        Peers: \${t.numPeers}
-                    </div>
-                    <div class="progress-bar"><div class="progress-fill" style="width: \${t.progress * 100}%"></div></div>
-                    <div class="files">
-                        \${t.files.map(f => \`
-                            <div class="file">
-                                <span>\${f.name}</span>
-                                <a href="/stream/\${t.infoHash}/\${encodeURIComponent(f.path)}" target="_blank">Stream</a>
-                            </div>
-                        \`).join('')}
-                    </div>
-                </div>
-            \`).join('');
-        }
-
-        setInterval(loadTorrents, 2000);
-        loadTorrents();
-    </script>
-</body>
-</html>`);
+    res.send(getHTML());
 });
 
-// API: List torrents
 app.get('/api/torrents', (req, res) => {
     const torrents = client.torrents.map(t => ({
         infoHash: t.infoHash,
         name: t.name,
         length: t.length,
         downloaded: t.downloaded,
-        uploaded: t.uploaded,
         downloadSpeed: t.downloadSpeed,
-        uploadSpeed: t.uploadSpeed,
         progress: t.progress,
         numPeers: t.numPeers,
         files: t.files.map(f => ({ name: f.name, path: f.path, length: f.length }))
@@ -240,54 +132,45 @@ app.get('/api/torrents', (req, res) => {
     res.json(torrents);
 });
 
-// API: Add torrent
 app.post('/api/add', (req, res) => {
     const { magnet } = req.body;
     if (!magnet) return res.status(400).json({ error: 'Magnet required' });
-
     client.add(magnet, { path: DOWNLOAD_PATH }, torrent => {
         console.log('Added:', torrent.name);
     });
     res.json({ success: true });
 });
 
-// Stream file
 app.get('/stream/:infoHash/*', (req, res) => {
     const torrent = client.get(req.params.infoHash);
     if (!torrent) return res.status(404).send('Torrent not found');
-
     const filePath = req.params[0];
     const file = torrent.files.find(f => f.path === filePath);
     if (!file) return res.status(404).send('File not found');
-
     const range = req.headers.range;
     if (range) {
         const positions = range.replace(/bytes=/, '').split('-');
         const start = parseInt(positions[0], 10);
         const end = positions[1] ? parseInt(positions[1], 10) : file.length - 1;
-        const chunksize = (end - start) + 1;
-
         res.writeHead(206, {
-            'Content-Range': `bytes ${start}-${end}/${file.length}`,
+            'Content-Range': 'bytes ' + start + '-' + end + '/' + file.length,
             'Accept-Ranges': 'bytes',
-            'Content-Length': chunksize,
+            'Content-Length': (end - start) + 1,
             'Content-Type': 'video/mp4'
         });
         file.createReadStream({ start, end }).pipe(res);
     } else {
-        res.writeHead(200, {
-            'Content-Length': file.length,
-            'Content-Type': 'video/mp4'
-        });
+        res.writeHead(200, { 'Content-Length': file.length, 'Content-Type': 'video/mp4' });
         file.createReadStream().pipe(res);
     }
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`WebTorrent server running on http://0.0.0.0:${PORT}`);
-});
+function getHTML() {
+    return '<!DOCTYPE html><html><head><title>WebTorrent</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui;background:#0a0a12;color:#e0e0e0;min-height:100vh}.container{max-width:900px;margin:0 auto;padding:20px}h1{color:#00d4ff;margin-bottom:20px}.add-form{display:flex;gap:10px;margin-bottom:30px}input[type=text]{flex:1;padding:12px;background:#1a1a24;border:1px solid #3a3a4e;border-radius:8px;color:#e0e0e0;font-size:16px}button{padding:12px 24px;background:linear-gradient(135deg,#00d4ff,#7c3aed);border:none;border-radius:8px;color:#fff;font-weight:600;cursor:pointer}.torrent{background:#1a1a24;border:1px solid #2a2a3e;border-radius:12px;padding:20px;margin-bottom:15px}.torrent-name{font-weight:600;color:#00d4ff;margin-bottom:10px}.torrent-info{color:#888;font-size:14px}.progress-bar{height:8px;background:#2a2a3e;border-radius:4px;margin:10px 0}.progress-fill{height:100%;background:linear-gradient(90deg,#00d4ff,#7c3aed)}.files{margin-top:15px}.file{padding:8px 12px;background:#12121a;border-radius:6px;margin:5px 0;display:flex;justify-content:space-between}.file a{color:#00d4ff;text-decoration:none}.empty{text-align:center;color:#666;padding:60px}</style></head><body><div class="container"><h1>WebTorrent Streaming</h1><div class="add-form"><input type="text" id="magnet" placeholder="Paste magnet link..."><button onclick="addTorrent()">Add</button></div><div id="torrents"></div></div><script>function fmt(b){if(b===0)return"0 B";const k=1024,s=["B","KB","MB","GB"],i=Math.floor(Math.log(b)/Math.log(k));return(b/Math.pow(k,i)).toFixed(1)+" "+s[i]}async function addTorrent(){const m=document.getElementById("magnet").value.trim();if(!m)return;await fetch("/api/add",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({magnet:m})});document.getElementById("magnet").value="";load()}async function load(){const r=await fetch("/api/torrents");const d=await r.json();const c=document.getElementById("torrents");if(d.length===0){c.innerHTML="<div class=empty>No torrents</div>";return}c.innerHTML=d.map(t=>"<div class=torrent><div class=torrent-name>"+t.name+"</div><div class=torrent-info>"+fmt(t.downloaded)+"/"+fmt(t.length)+" ("+(t.progress*100).toFixed(1)+"%) "+fmt(t.downloadSpeed)+"/s Peers:"+t.numPeers+"</div><div class=progress-bar><div class=progress-fill style=width:"+(t.progress*100)+"%></div></div><div class=files>"+t.files.map(f=>"<div class=file><span>"+f.name+"</span><a href=/stream/"+t.infoHash+"/"+encodeURIComponent(f.path)+" target=_blank>Stream</a></div>").join("")+"</div></div>").join("")}setInterval(load,2000);load()</script></body></html>';
+}
+
+app.listen(PORT, '0.0.0.0', () => console.log('WebTorrent on port ' + PORT));
 SRVEOF
-fi
 
 echo "=== Starting WebTorrent server ==="
 mkdir -p /config /downloads

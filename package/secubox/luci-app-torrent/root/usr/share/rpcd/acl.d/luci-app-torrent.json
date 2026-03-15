@@ -1,0 +1,16 @@
+{
+	"luci-app-torrent": {
+		"description": "Grant access to Torrent dashboard",
+		"read": {
+			"ubus": {
+				"luci.torrent": ["status", "qbt_list", "wt_list"]
+			},
+			"uci": ["qbittorrent", "webtorrent"]
+		},
+		"write": {
+			"ubus": {
+				"luci.torrent": ["qbt_start", "qbt_stop", "qbt_add", "wt_start", "wt_stop", "wt_add"]
+			}
+		}
+	}
+}

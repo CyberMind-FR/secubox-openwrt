@@ -5124,3 +5124,23 @@ git checkout HEAD -- index.html
       - `secubox-app-sabnzbd/`: Makefile, UCI config, init.d, sabnzbdctl
       - `secubox-app-nzbhydra/`: Makefile, UCI config, init.d, nzbhydractl
       - `luci-app-newsbin/`: overview.js, RPCD handler, ACL, menu
+
+109. **qBittorrent & WebTorrent - Torrent Services (2026-03-15)**
+    - Both use Debian LXC containers (no Docker/Podman)
+    - **qBittorrent** (`secubox-app-qbittorrent`):
+      - Container IP: 192.168.255.42:8090
+      - CLI: `qbittorrentctl install|start|stop|status|add|list|shell|configure-haproxy`
+      - Default login: admin / adminadmin
+      - Installs qbittorrent-nox via apt inside container
+      - Torrent add via magnet links or URLs
+    - **WebTorrent** (`secubox-app-webtorrent`):
+      - Container IP: 192.168.255.43:8095
+      - CLI: `webtorrentctl install|start|stop|status|add|list|shell|configure-haproxy`
+      - Node.js streaming server with browser-based WebRTC support
+      - Fixed webtorrent v2.x ESM incompatibility: pinned to v1.9.7 (last CommonJS version)
+      - npm exact version install prevents semver resolution to breaking v2.x
+      - In-browser streaming via `/stream/:infoHash/:path` endpoint
+      - Dark-themed web UI with real-time torrent status
+    - **Files**:
+      - `secubox-app-qbittorrent/`: Makefile, UCI config, init.d, qbittorrentctl
+      - `secubox-app-webtorrent/`: Makefile, UCI config, init.d, webtorrentctl
