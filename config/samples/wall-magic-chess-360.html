@@ -5,8 +5,35 @@
 <title>MAGIC·CHESS·360</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-html, body { width:100%; height:100%; overflow:hidden; background:#000; cursor:none; perspective:1200px; perspective-origin:50% 50%; }
-canvas { position:fixed; top:0; left:0; image-rendering:pixelated; image-rendering:crisp-edges; filter:saturate(1.3) brightness(1.1); transform-style:preserve-3d; transform-origin:50% 50%; will-change:transform; }
+html, body { width:100%; height:100%; overflow:hidden; background:#000; cursor:none; }
+#canvas-wrapper {
+  position:fixed; top:0; left:0; width:100vw; height:100vh;
+  overflow:hidden; perspective:1200px; perspective-origin:50% 50%;
+}
+canvas {
+  position:absolute; top:50%; left:50%;
+  image-rendering:pixelated; image-rendering:crisp-edges;
+  filter:saturate(1.3) brightness(1.1);
+  transform-style:preserve-3d; transform-origin:50% 50%;
+  will-change:transform;
+}
+/* FFT HISTOGRAM - colorset mapped */
+#fft-hist {
+  position:fixed; bottom:32px; left:50%; transform:translateX(-50%);
+  width:60%; max-width:600px; height:40px;
+  display:flex; gap:2px; align-items:flex-end;
+  z-index:5; pointer-events:none;
+  opacity:0.8;
+}
+.fft-bar {
+  flex:1; min-width:4px; height:100%;
+  border-radius:2px 2px 0 0;
+  transform-origin:bottom;
+  transition:transform 0.05s ease-out;
+}
+body.ui-hidden #fft-hist { opacity:0; }
+body.ui-visible #fft-hist { opacity:0.9; }
+
 /* AUTO-HIDE UI */
 .ui-layer {
   transition: opacity 0.4s ease, transform 0.3s ease;
@@ -374,7 +401,7 @@ body.ui-visible #color-btn {
     <polygon points="9,4 9,12 16,8" fill="white"/>
   </svg>
 </a>
-<canvas id="cv"></canvas>
+<div id="canvas-wrapper"><canvas id="cv"></canvas></div>
 
 <div id="controls">
   <!-- 2D Rotation/Perspective Joystick -->
@@ -412,6 +439,7 @@ body.ui-visible #color-btn {
   </div>
 </div>
 
+<div id="fft-hist"></div>
 <div id="bar">
   <span class="bl" id="bA">—</span>
   <span class="bl" style="color:rgba(255,255,255,.1)">+</span>
@@ -511,11 +539,12 @@ let bpmPhase   = 0;     // phase courante (ms depuis dernier beat)
 let bpmLastBeat= 0;     // timestamp du dernier beat détecté
 let bpmClockT  = 0;     // temps du dernier tick horloge BPM
 
-// Seuils onset
-const ONSET_KICK_THR  = 0.08;  // seuil relatif sur la bande kick
-const ONSET_KICK_FLUX = 0.25;  // flux minimal
-const ONSET_MID_THR   = 0.06;
-const ONSET_MID_FLUX  = 0.20;
+// Seuils onset (lowered for better sensitivity)
+const ONSET_KICK_THR  = 0.03;  // seuil relatif sur la bande kick
+const ONSET_KICK_FLUX = 0.08;  // flux minimal
+const ONSET_MID_THR   = 0.03;
+const ONSET_MID_FLUX  = 0.06;
+let adaptiveKickThr = 0.03;    // adaptive threshold
 
 // ── Corrections aux constantes BREATH ─────────────────────
 // On va multiplier BA1/BA2 dynamiquement depuis l'audio
@@ -560,6 +589,67 @@ function updateFFTBars(){
   }
 }
 
+
+// ── FFT COLORSET PULSE MODULATION ─────────────────────────
+let fftColorEnergy = new Array(16).fill(0); // Energy per colorset color
+let fftHistBars = [];
+
+function buildFFTHist(){
+  const el = document.getElementById('fft-hist');
+  if(!el) return;
+  el.innerHTML = '';
+  fftHistBars = [];
+  const N = TAO_SPECTRUM.length; // Match colorset size
+  for(let i=0;i<N;i++){
+    const bar = document.createElement('div');
+    bar.className = 'fft-bar';
+    const [r,g,b] = TAO_SPECTRUM[i];
+    bar.style.background = `rgb(${r},${g},${b})`;
+    bar.style.boxShadow = `0 0 8px rgba(${r},${g},${b},0.5)`;
+    el.appendChild(bar);
+    fftHistBars.push(bar);
+  }
+}
+
+function updateFFTHist(){
+  if(!fftHistBars.length || !audioActive) return;
+  const N = fftHistBars.length;
+  const bins = AUDIO_BUF.length;
+
+  for(let i=0;i<N;i++){
+    // Map each colorset color to a frequency band
+    const t = i / N;
+    const binStart = Math.floor(Math.pow(t, 1.4) * bins * 0.7);
+    const binEnd = Math.floor(Math.pow((i+1)/N, 1.4) * bins * 0.7);
+
+    // Average energy in this band
+    let energy = 0, count = 0;
+    for(let b = binStart; b <= binEnd && b < bins; b++){
+      energy += AUDIO_BUF[b];
+      count++;
+    }
+    energy = count > 0 ? energy / count : 0;
+
+    // Smooth the energy
+    fftColorEnergy[i] = fftColorEnergy[i] * 0.7 + energy * 0.3;
+    const v = Math.min(1, fftColorEnergy[i] * 3);
+
+    // Update bar height and glow
+    const [r,g,b] = TAO_SPECTRUM[i % TAO_SPECTRUM.length];
+    const bright = Math.floor(50 + v * 50);
+    fftHistBars[i].style.transform = `scaleY(${0.1 + v * 0.9})`;
+    fftHistBars[i].style.background = `rgb(${Math.min(255,r+v*50)},${Math.min(255,g+v*50)},${Math.min(255,b+v*50)})`;
+    fftHistBars[i].style.boxShadow = `0 0 ${8+v*15}px rgba(${r},${g},${b},${0.3+v*0.5})`;
+  }
+}
+
+// Rebuild histogram when colorset changes
+const _origSetColorset = setColorset;
+setColorset = function(name) {
+  _origSetColorset(name);
+  buildFFTHist();
+};
+
 // ── Analyse audio — appelée dans rafLoop ───────────────────
 function analyseAudio(now){
   if(!audioActive || !analyser) return;
@@ -599,32 +689,40 @@ function analyseAudio(now){
   audKickPrev = kick;
   audMidPrev  = mid;
 
+  // ── Adaptive threshold (tracks average energy) ────────────
+  adaptiveKickThr = adaptiveKickThr * 0.995 + kick * 0.005;
+  const dynamicThr = Math.max(ONSET_KICK_THR, adaptiveKickThr * 1.5);
+
   // ── MAPPING 1 : KICK → PULSE brutal ──────────────────────
-  if(kick > ONSET_KICK_THR && kickFlux > ONSET_KICK_FLUX){
+  if(kick > dynamicThr && kickFlux > ONSET_KICK_FLUX){
     const amp = Math.min(0.6, kick * 2.5);
     // Dezoom brutal : signe aléatoire biaisé vers zoom
     const sign = Math.random() < 0.3 ? -1 : 1;
     pulse += sign * amp;
     pulse = Math.max(-0.45, Math.min(0.8, pulse));
 
-    // BPM: enregistrer onset
-    bpmOnsets.push(now);
-    // Purger les anciens
-    while(bpmOnsets.length > 0 && now - bpmOnsets[0] > BPM_WIN)
-      bpmOnsets.shift();
-    // Recalculer BPM si >= 4 onsets
-    if(bpmOnsets.length >= 4){
-      const intervals = [];
-      for(let i=1;i<bpmOnsets.length;i++)
-        intervals.push(bpmOnsets[i]-bpmOnsets[i-1]);
-      // Médiane
-      intervals.sort((a,b)=>a-b);
-      const med = intervals[Math.floor(intervals.length/2)];
-      const bpmRaw = 60000/med;
-      if(bpmRaw >= BPM_MIN && bpmRaw <= BPM_MAX){
-        bpmEstimate = bpmEstimate*0.7 + bpmRaw*0.3;
-        bpmInterval = 60000/bpmEstimate;
-        bpmLastBeat = now;
+    // BPM: enregistrer onset (minimum 200ms between onsets = max 300 BPM)
+    if(bpmOnsets.length === 0 || now - bpmOnsets[bpmOnsets.length-1] > 200){
+      bpmOnsets.push(now);
+      // Purger les anciens
+      while(bpmOnsets.length > 0 && now - bpmOnsets[0] > BPM_WIN)
+        bpmOnsets.shift();
+      // Recalculer BPM si >= 3 onsets (faster detection)
+      if(bpmOnsets.length >= 3){
+        const intervals = [];
+        for(let i=1;i<bpmOnsets.length;i++)
+          intervals.push(bpmOnsets[i]-bpmOnsets[i-1]);
+        // Médiane
+        intervals.sort((a,b)=>a-b);
+        const med = intervals[Math.floor(intervals.length/2)];
+        const bpmRaw = 60000/med;
+        if(bpmRaw >= BPM_MIN && bpmRaw <= BPM_MAX){
+          // More responsive smoothing
+          const alpha = bpmEstimate === 0 ? 1.0 : 0.4;
+          bpmEstimate = bpmEstimate*(1-alpha) + bpmRaw*alpha;
+          bpmInterval = 60000/bpmEstimate;
+          bpmLastBeat = now;
+        }
       }
     }
   }
@@ -666,6 +764,7 @@ function analyseAudio(now){
   }
 
   updateFFTBars();
+  updateFFTHist();
 
   // ── HUD audio ─────────────────────────────────────────────
   const bpmStr = bpmEstimate > 0 ? Math.round(bpmEstimate)+'BPM' : '—BPM';
@@ -1043,10 +1142,10 @@ function updateKnobPosition() {
   // Apply to perspective
   perspAngleX = joystickX * 0.3; // ±0.3 radians
   perspAngleY = joystickY * 0.3;
-  // Apply 3D CSS perspective transform to canvas
+  // Apply 3D CSS perspective transform to canvas (limited for 2x coverage)
   const cv = document.getElementById('cv');
-  const rotY = joystickX * 45; // ±45 degrees horizontal tilt
-  const rotX = -joystickY * 35; // ±35 degrees vertical tilt (inverted for natural feel)
+  const rotY = joystickX * 12; // ±12 degrees horizontal (safe for 2x)
+  const rotX = -joystickY * 10; // ±10 degrees vertical (safe for 2x)
   cv.style.transform = 'rotateX(' + rotX + 'deg) rotateY(' + rotY + 'deg)';
 }
 
@@ -1259,7 +1358,7 @@ function rafLoop(now){
 
   const cx=W/2+panX+glitchX;
   const cy=H/2+panY+glitchY;
-  const margin=motifPx*4; // Extended for 3D rotation coverage
+  const margin=motifPx*3; // Balanced margin for 2x canvas
 
   // Origines de tiling (espace non-transformé)
   // On commence assez à gauche/haut pour couvrir après scale
@@ -1389,7 +1488,15 @@ function applySpeed(){
   if(playing) schedule();
 }
 function cycleSize(){ cellIdx=(cellIdx+1)%CELL_SIZES.length; applySize(); renderOff(); }
-function resize(){ cv.width=window.innerWidth; cv.height=window.innerHeight; }
+function resize(){
+  // Oversize canvas 2x - balanced for performance + coverage
+  const scale = 2;
+  cv.width = Math.ceil(window.innerWidth * scale);
+  cv.height = Math.ceil(window.innerHeight * scale);
+  // Center the oversized canvas in wrapper
+  cv.style.marginLeft = -cv.width/2 + 'px';
+  cv.style.marginTop = -cv.height/2 + 'px';
+}
 
 document.addEventListener('mousemove',e=>{
   mx=e.clientX/window.innerWidth;
@@ -1414,7 +1521,7 @@ serB=pickSer(famB);
 showA=true; showB=false;
 phase='soloA'; phaseStep=0;
 
-applySize(); renderOff(); resize(); updateBar(); buildFFTBars();
+applySize(); renderOff(); resize(); updateBar(); buildFFTBars(); buildFFTHist();
 lastT=performance.now();
 rafId=requestAnimationFrame(rafLoop);
 startAnim();
