@@ -1,12 +1,24 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-15 (Wall Colorsets)_
+_Last updated: 2026-03-16 (DPI LAN Passive Analysis)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
 ---
 
 ## Recently Completed
+
+### 2026-03-16
+
+- **Dual-Stream DPI Phase 4 - LAN Passive Flow Analysis (Complete)**
+  - New `dpi-lan-collector` daemon for passive br-lan monitoring
+  - Zero MITM, zero caching - pure nDPI/conntrack flow observation
+  - Tracks: active LAN clients (ARP), external destinations (conntrack), protocols
+  - LuCI `lan-flows.js` view with real-time stats and 5s auto-refresh
+  - 4 new RPCD methods: get_lan_status, get_lan_clients, get_lan_destinations, get_lan_protocols
+  - Fixed protocol display bug ("TCPnull" → "TCP")
+  - Removed mitmproxy-out container (WAF only needs mitmproxy-in)
+  - Updated MITM detection to check mitmproxy-in specifically
 
 ### 2026-03-15
 

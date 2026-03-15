@@ -5220,3 +5220,15 @@ git checkout HEAD -- index.html
   - LuCI timeline view: Event cards, IP context modal, quick ban, search
   - 8 new RPCD methods for correlation access and control
 
+
+
+- **Dual-Stream DPI Phase 4 - LAN Passive Flow Analysis (2026-03-15/16)**
+  - New `dpi-lan-collector` daemon for passive br-lan monitoring
+  - Zero MITM, zero caching - pure nDPI/conntrack flow observation
+  - Tracks: active clients (ARP), destinations (conntrack), protocols (TCP/UDP/ICMP)
+  - LuCI `lan-flows.js` view with real-time stats and 5s auto-refresh
+  - 4 new RPCD methods: get_lan_status, get_lan_clients, get_lan_destinations, get_lan_protocols
+  - UCI config `lan` section with interface, aggregate_interval, client_retention
+  - Fixed protocol display bug ("TCPnull" → "TCP")
+  - Removed mitmproxy-out container (not needed for WAF)
+  - Updated MITM detection to check mitmproxy-in specifically
