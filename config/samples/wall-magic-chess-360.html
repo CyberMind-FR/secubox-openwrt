@@ -7,10 +7,94 @@
 * { margin:0; padding:0; box-sizing:border-box; }
 html, body { width:100%; height:100%; overflow:hidden; background:#000; cursor:none; perspective:1200px; perspective-origin:50% 50%; }
 canvas { position:fixed; top:0; left:0; image-rendering:pixelated; image-rendering:crisp-edges; filter:saturate(1.3) brightness(1.1); transform-style:preserve-3d; transform-origin:50% 50%; will-change:transform; }
+/* AUTO-HIDE UI */
+.ui-layer {
+  transition: opacity 0.4s ease, transform 0.3s ease;
+}
+body.ui-hidden .ui-layer {
+  opacity: 0 !important;
+  pointer-events: none;
+}
+body.ui-visible .ui-layer {
+  opacity: 1;
+}
+body.ui-visible #hud,
+body.ui-visible #colorsets,
+body.ui-visible #controls,
+body.ui-visible #bar {
+  opacity: 1;
+}
+body.ui-hidden #hud,
+body.ui-hidden #colorsets,
+body.ui-hidden #controls,
+body.ui-hidden #bar {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ENHANCED READABILITY */
+body.ui-visible .hb {
+  font-size: 9px;
+  color: rgba(255,255,255,.7);
+  background: rgba(0,0,0,.6);
+  border-color: rgba(255,255,255,.2);
+  padding: 5px 10px;
+  backdrop-filter: blur(4px);
+}
+body.ui-visible .bl {
+  font-size: 9px;
+  text-shadow: 0 0 8px currentColor;
+}
+body.ui-visible .cs {
+  width: 28px;
+  height: 28px;
+  opacity: 0.85;
+  box-shadow: 0 0 12px rgba(0,0,0,.5);
+}
+body.ui-visible #joystick {
+  box-shadow: inset 0 0 25px rgba(0,0,0,.6), 0 0 25px rgba(0,255,255,.25);
+}
+body.ui-visible #joystick-knob {
+  box-shadow: 0 0 15px rgba(0,255,255,.5), inset 0 0 8px rgba(0,255,255,.3);
+}
+body.ui-visible #depth-knob {
+  box-shadow: 0 0 12px rgba(255,0,255,.5);
+}
+body.ui-visible #pixel-ring {
+  box-shadow: 0 0 12px rgba(255,215,0,.4);
+}
+body.ui-visible #joystick-label,
+body.ui-visible #depth-label,
+body.ui-visible #pixel-label,
+body.ui-visible #auto-label,
+body.ui-visible #color-label {
+  font-size: 7px;
+  color: rgba(255,255,255,.5);
+}
+body.ui-visible #joystick-coords {
+  font-size: 9px;
+  color: rgba(0,255,255,.7);
+}
+body.ui-visible #depth-val {
+  font-size: 9px;
+  color: rgba(255,0,255,.7);
+}
+body.ui-visible #csLabel {
+  font-size: 8px;
+  color: rgba(255,255,255,.5);
+}
+body.ui-visible #auto-btn,
+body.ui-visible #color-btn {
+  width: 32px;
+  height: 32px;
+  font-size: 14px;
+}
+
 @keyframes taoPrism { 0%{filter:hue-rotate(0deg) saturate(1.3)} 100%{filter:hue-rotate(360deg) saturate(1.3)} }
 
 #hud {
   position:fixed; bottom:12px; right:14px;
+  transition: opacity 0.4s ease;
   display:flex; gap:5px; align-items:center; z-index:10;
 }
 .hb {
@@ -22,7 +106,8 @@ canvas { position:fixed; top:0; left:0; image-rendering:pixelated; image-renderi
 .hb:hover { color:rgba(255,255,255,.6); border-color:rgba(255,255,255,.25); }
 
 #bar {
-  position:fixed; bottom:0; left:0; right:0; height:28px;
+  position:fixed; bottom:0; left:0;
+  transition: opacity 0.4s ease; right:0; height:28px;
   display:flex; align-items:center; gap:14px; padding:0 14px;
   background:linear-gradient(transparent, rgba(0,0,0,.4));
   pointer-events:none;
@@ -39,7 +124,8 @@ canvas { position:fixed; top:0; left:0; image-rendering:pixelated; image-renderi
 
 /* COLORSET SELECTOR */
 #colorsets {
-  position:fixed; top:12px; left:14px; z-index:10;
+  position:fixed; top:12px; left:14px;
+  transition: opacity 0.4s ease; z-index:10;
   display:flex; gap:6px; align-items:center;
 }
 .cs {
@@ -69,7 +155,8 @@ canvas { position:fixed; top:0; left:0; image-rendering:pixelated; image-renderi
 
 /* 2D/3D JOYSTICK CONTROLS */
 #controls {
-  position:fixed; bottom:40px; left:14px; z-index:10;
+  position:fixed; bottom:40px; left:14px;
+  transition: opacity 0.4s ease; z-index:10;
   display:flex; gap:14px; align-items:flex-end;
 }
 
@@ -880,6 +967,34 @@ try {
 
 // Keyboard shortcuts 1-9
 
+
+
+// ══════════════════════════════════════════════════════════════
+// AUTO-HIDE UI ON MOUSE IDLE
+// ══════════════════════════════════════════════════════════════
+let uiTimeout = null;
+const UI_HIDE_DELAY = 2500; // ms before hiding UI
+
+function showUI() {
+  document.body.classList.remove('ui-hidden');
+  document.body.classList.add('ui-visible');
+  clearTimeout(uiTimeout);
+  uiTimeout = setTimeout(hideUI, UI_HIDE_DELAY);
+}
+
+function hideUI() {
+  document.body.classList.remove('ui-visible');
+  document.body.classList.add('ui-hidden');
+}
+
+// Show on any mouse movement
+document.addEventListener('mousemove', showUI);
+document.addEventListener('mousedown', showUI);
+document.addEventListener('touchstart', showUI);
+document.addEventListener('keydown', showUI);
+
+// Initialize as visible
+showUI();
 
 // ══════════════════════════════════════════════════════════════
 // 2D/3D JOYSTICK CONTROLS
