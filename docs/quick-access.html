@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecuBox Quick Access</title>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #0a0a12 0%, #1a1a2e 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            font-size: 2rem;
+            background: linear-gradient(90deg, #00d4aa, #00a0ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #808090;
+            margin-bottom: 40px;
+        }
+        .qr-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+        }
+        .qr-card {
+            background: #12121a;
+            border-radius: 12px;
+            padding: 24px;
+            text-align: center;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .qr-card h3 {
+            color: #fff;
+            margin-bottom: 8px;
+            font-size: 1.1rem;
+        }
+        .qr-card p {
+            color: #808090;
+            font-size: 0.85rem;
+            margin-bottom: 16px;
+        }
+        .qr-code {
+            background: #fff;
+            padding: 16px;
+            border-radius: 8px;
+            display: inline-block;
+            margin-bottom: 12px;
+        }
+        .qr-code canvas {
+            display: block;
+        }
+        .url {
+            font-family: monospace;
+            font-size: 0.8rem;
+            color: #00a0ff;
+            word-break: break-all;
+        }
+        .credentials {
+            background: #1a1a24;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 40px;
+            text-align: center;
+        }
+        .credentials h3 {
+            color: #ffa500;
+            margin-bottom: 12px;
+        }
+        .cred-row {
+            display: inline-block;
+            margin: 8px 16px;
+        }
+        .cred-label {
+            color: #808090;
+            font-size: 0.85rem;
+        }
+        .cred-value {
+            font-family: monospace;
+            font-size: 1.2rem;
+            color: #00d4aa;
+            font-weight: bold;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            color: #606070;
+            font-size: 0.85rem;
+        }
+        .footer a {
+            color: #00a0ff;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>SecuBox Quick Access</h1>
+        <p class="subtitle">Scan QR codes to access SecuBox interfaces</p>
+
+        <div class="qr-grid">
+            <div class="qr-card">
+                <h3>VM Appliance (Default)</h3>
+                <p>For fresh VM installations with DHCP</p>
+                <div class="qr-code" id="qr-default"></div>
+                <div class="url">https://192.168.1.1</div>
+            </div>
+
+            <div class="qr-card">
+                <h3>SecuBox Router</h3>
+                <p>Standard SecuBox network configuration</p>
+                <div class="qr-code" id="qr-secubox"></div>
+                <div class="url">https://192.168.255.1</div>
+            </div>
+
+            <div class="qr-card">
+                <h3>Documentation</h3>
+                <p>GitHub repository and guides</p>
+                <div class="qr-code" id="qr-docs"></div>
+                <div class="url">github.com/CyberMind-FR/secubox-openwrt</div>
+            </div>
+
+            <div class="qr-card">
+                <h3>Beta Release</h3>
+                <p>Download VM appliance</p>
+                <div class="qr-code" id="qr-release"></div>
+                <div class="url">v1.0.0-beta release</div>
+            </div>
+
+            <div class="qr-card">
+                <h3>Droplet Tool</h3>
+                <p>Quick HTML/ZIP publish to MetaBlog/Streamlit</p>
+                <div class="qr-code" id="qr-droplet"></div>
+                <div class="url">/admin/services/droplet</div>
+            </div>
+
+            <div class="qr-card">
+                <h3>Streamlit Forge</h3>
+                <p>Create and manage Streamlit apps</p>
+                <div class="qr-code" id="qr-streamlit"></div>
+                <div class="url">/admin/services/streamlit-forge</div>
+            </div>
+        </div>
+
+        <div class="credentials">
+            <h3>Default Credentials</h3>
+            <div class="cred-row">
+                <div class="cred-label">Username</div>
+                <div class="cred-value">root</div>
+            </div>
+            <div class="cred-row">
+                <div class="cred-label">Password</div>
+                <div class="cred-value">c3box</div>
+            </div>
+            <p style="color:#ff4d4d;margin-top:12px;font-size:0.85rem;">Change password on first login!</p>
+        </div>
+
+        <div class="footer">
+            <p>SecuBox v1.0.0-beta — <a href="https://cybermind.fr">CyberMind.fr</a></p>
+            <p style="margin-top:8px;">Ex Tenebris, Lux Securitas</p>
+        </div>
+    </div>
+
+    <script>
+        const qrOptions = {
+            width: 180,
+            height: 180,
+            colorDark: "#000000",
+            colorLight: "#ffffff",
+            correctLevel: QRCode.CorrectLevel.M
+        };
+
+        new QRCode(document.getElementById("qr-default"), {
+            text: "https://192.168.1.1/cgi-bin/luci/",
+            ...qrOptions
+        });
+
+        new QRCode(document.getElementById("qr-secubox"), {
+            text: "https://192.168.255.1/cgi-bin/luci/",
+            ...qrOptions
+        });
+
+        new QRCode(document.getElementById("qr-docs"), {
+            text: "https://github.com/CyberMind-FR/secubox-openwrt",
+            ...qrOptions
+        });
+
+        new QRCode(document.getElementById("qr-release"), {
+            text: "https://github.com/CyberMind-FR/secubox-openwrt/releases/tag/v1.0.0-beta",
+            ...qrOptions
+        });
+
+        new QRCode(document.getElementById("qr-droplet"), {
+            text: "https://192.168.255.1/cgi-bin/luci/admin/services/droplet",
+            ...qrOptions
+        });
+
+        new QRCode(document.getElementById("qr-streamlit"), {
+            text: "https://192.168.255.1/cgi-bin/luci/admin/services/streamlit-forge",
+            ...qrOptions
+        });
+    </script>
+</body>
+</html>

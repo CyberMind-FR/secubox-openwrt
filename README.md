@@ -271,6 +271,11 @@ SecuBox includes an MCP server for AI integration:
 
 See [BETA-RELEASE.md](BETA-RELEASE.md) for security testing guidelines and bug bounty scope.
 
+### Default Credentials (VM Appliance)
+
+- **Username:** root
+- **Password:** c3box (change on first login!)
+
 ---
 
 ## Links
