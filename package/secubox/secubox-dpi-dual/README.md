@@ -62,6 +62,14 @@ Dual-stream Deep Packet Inspection architecture combining active MITM inspection
 - Full context gathering (MITM requests, WAF alerts, DPI flows)
 - High-severity threat notifications
 
+### LAN Passive Flow Analysis
+- **Real-time monitoring** on br-lan interface
+- **No MITM, no caching** - pure passive nDPI analysis
+- Per-client traffic tracking (bytes, flows, protocols)
+- External destination monitoring
+- Protocol/application detection (300+ via nDPI)
+- Low resource overhead
+
 ## Installation
 
 ```bash
@@ -111,6 +119,22 @@ dpi-correlator search 192.168.1.100 50
 dpi-correlator stats
 ```
 
+### LAN Flow Commands
+
+```bash
+# Show LAN flow summary
+dpi-dualctl lan
+
+# List active LAN clients
+dpi-dualctl clients
+
+# Show external destinations accessed
+dpi-dualctl destinations
+
+# Show detected protocols
+dpi-dualctl protocols
+```
+
 ## Configuration
 
 Edit `/etc/config/dpi-dual`:
@@ -138,6 +162,17 @@ config correlation 'correlation'
     option auto_ban '0'
     option auto_ban_threshold '80'
     option notifications '1'
+
+# LAN Passive Flow Analysis (no MITM, no cache)
+config lan 'lan'
+    option enabled '1'
+    option interface 'br-lan'
+    option realtime '1'
+    option track_clients '1'
+    option track_destinations '1'
+    option track_protocols '1'
+    option aggregate_interval '5'
+    option client_retention '3600'
 ```
 
 ## LuCI Dashboard
@@ -146,6 +181,7 @@ Navigate to **SecuBox → DPI Dual-Stream**:
 
 - **Overview**: Stream status, metrics, threats table
 - **Correlation Timeline**: Event cards with IP context
+- **LAN Flows**: Real-time LAN client monitoring (clients, protocols, destinations)
 - **Settings**: Full configuration interface
 
 ## Files
@@ -155,6 +191,7 @@ Navigate to **SecuBox → DPI Dual-Stream**:
 | `/usr/sbin/dpi-dualctl` | Main CLI tool |
 | `/usr/sbin/dpi-flow-collector` | Flow aggregation service |
 | `/usr/sbin/dpi-correlator` | Correlation engine |
+| `/usr/sbin/dpi-lan-collector` | LAN passive flow collector |
 | `/usr/lib/dpi-dual/mirror-setup.sh` | tc mirred port mirroring |
 | `/usr/lib/dpi-dual/correlation-lib.sh` | Shared correlation functions |
 | `/srv/mitmproxy/addons/dpi_buffer.py` | mitmproxy double buffer addon |
@@ -171,6 +208,10 @@ Navigate to **SecuBox → DPI Dual-Stream**:
 | `/tmp/secubox/correlated-threats.json` | Correlated threat log (JSONL) |
 | `/tmp/secubox/ip-reputation.json` | IP reputation database |
 | `/tmp/secubox/notifications.json` | High-severity threat notifications |
+| `/tmp/secubox/lan-flows.json` | LAN flow summary stats |
+| `/tmp/secubox/lan-clients.json` | Active LAN clients data |
+| `/tmp/secubox/lan-destinations.json` | External destinations accessed |
+| `/tmp/secubox/lan-protocols.json` | Detected protocols/apps |
 
 ## Dependencies
 
@@ -181,12 +222,13 @@ Navigate to **SecuBox → DPI Dual-Stream**:
 
 ## Performance
 
-| Aspect | MITM Stream | TAP Stream |
-|--------|-------------|------------|
-| Latency | +5-20ms | 0ms |
-| CPU | High (SSL, WAF) | Low (nDPI) |
-| Memory | Buffer dependent | Minimal |
-| Visibility | Full content | Metadata only |
+| Aspect | MITM Stream | TAP Stream | LAN Passive |
+|--------|-------------|------------|-------------|
+| Latency | +5-20ms | 0ms | 0ms |
+| CPU | High (SSL, WAF) | Low (nDPI) | Low (nDPI) |
+| Memory | Buffer dependent | Minimal | Minimal |
+| Visibility | Full content | Metadata only | Metadata only |
+| Use Case | WAF/Threat detection | WAN analysis | LAN monitoring |
 
 ## Security Notes
 

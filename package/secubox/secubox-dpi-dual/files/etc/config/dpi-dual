@@ -29,3 +29,16 @@ config correlation 'correlation'
 	option auto_ban_threshold '80'
 	option notifications '1'
 	option reputation_decay '5'
+
+# LAN TAP - Real-time passive flow analysis
+# No MITM, no caching - just nDPI flow monitoring
+config lan 'lan'
+	option enabled '1'
+	option interface 'br-lan'
+	option realtime '1'
+	option track_clients '1'
+	option track_destinations '1'
+	option track_protocols '1'
+	option aggregate_interval '5'
+	option client_retention '3600'
+	option netifyd_instance 'lan'

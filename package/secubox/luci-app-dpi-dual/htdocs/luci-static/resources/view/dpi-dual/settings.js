@@ -43,6 +43,9 @@ return view.extend({
             var tapColor = tap.running ? '#00d4aa' : '#ff4d4d';
             var corrColor = corr.running ? '#00d4aa' : '#ff4d4d';
 
+            var lan = status.lan_passive || {};
+            var lanColor = lan.running ? '#00d4aa' : '#ff4d4d';
+
             return '<div style="display:flex;gap:2rem;flex-wrap:wrap;">' +
                 '<div><span style="color:' + mitmColor + ';font-weight:600;">●</span> MITM: ' +
                     (mitm.running ? 'Running' : 'Stopped') + '</div>' +
@@ -50,6 +53,8 @@ return view.extend({
                     (tap.running ? 'Running' : 'Stopped') + '</div>' +
                 '<div><span style="color:' + corrColor + ';font-weight:600;">●</span> Correlation: ' +
                     (corr.running ? 'Running' : 'Stopped') + '</div>' +
+                '<div><span style="color:' + lanColor + ';font-weight:600;">●</span> LAN: ' +
+                    (lan.running ? 'Running' : 'Stopped') + '</div>' +
                 '</div>';
         };
 
@@ -192,6 +197,53 @@ return view.extend({
             'File path for correlated threats log');
         o.default = '/tmp/secubox/correlated-threats.json';
         o.placeholder = '/tmp/secubox/correlated-threats.json';
+
+        // LAN Passive Analysis settings
+        s = m.section(form.NamedSection, 'lan', 'lan', 'LAN Passive Flow Analysis');
+        s.anonymous = true;
+        s.addremove = false;
+
+        o = s.option(form.Flag, 'enabled', 'Enable LAN Analysis',
+            'Real-time passive flow monitoring on LAN bridge - No MITM, no caching');
+        o.default = '1';
+
+        o = s.option(form.Value, 'interface', 'LAN Interface',
+            'Bridge interface to monitor (typically br-lan)');
+        o.default = 'br-lan';
+        o.placeholder = 'br-lan';
+
+        o = s.option(form.Flag, 'realtime', 'Real-time Mode',
+            'Process flows in real-time (vs batch)');
+        o.default = '1';
+
+        o = s.option(form.Flag, 'track_clients', 'Track Clients',
+            'Track per-client traffic statistics');
+        o.default = '1';
+
+        o = s.option(form.Flag, 'track_destinations', 'Track Destinations',
+            'Track external destinations accessed by LAN clients');
+        o.default = '1';
+
+        o = s.option(form.Flag, 'track_protocols', 'Track Protocols',
+            'Track protocol and application usage');
+        o.default = '1';
+
+        o = s.option(form.Value, 'aggregate_interval', 'Aggregate Interval (seconds)',
+            'How often to aggregate statistics');
+        o.default = '5';
+        o.datatype = 'uinteger';
+        o.placeholder = '5';
+
+        o = s.option(form.Value, 'client_retention', 'Client Retention (seconds)',
+            'How long to keep client data after last activity');
+        o.default = '3600';
+        o.datatype = 'uinteger';
+        o.placeholder = '3600';
+
+        o = s.option(form.Value, 'netifyd_instance', 'Netifyd Instance',
+            'Name of the netifyd instance for LAN monitoring');
+        o.default = 'lan';
+        o.placeholder = 'lan';
 
         return m.render();
     }

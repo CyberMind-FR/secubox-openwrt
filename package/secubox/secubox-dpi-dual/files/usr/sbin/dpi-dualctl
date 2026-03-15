@@ -43,6 +43,15 @@ cmd_start() {
             ;;
     esac
 
+    # Start LAN passive collector if enabled
+    local lan_enabled
+    config_get lan_enabled lan enabled "0"
+    if [ "$lan_enabled" = "1" ]; then
+        echo "Starting LAN passive flow collector..."
+        start-stop-daemon -S -b -x /usr/sbin/dpi-lan-collector -- start
+        echo "LAN collector started"
+    fi
+
     # Start correlator if enabled
     local correlation
     config_get correlation settings correlation "1"
@@ -63,6 +72,9 @@ cmd_stop() {
 
     # Stop flow collector
     killall dpi-flow-collector 2>/dev/null
+
+    # Stop LAN collector
+    killall dpi-lan-collector 2>/dev/null
 
     # Stop mirror
     /usr/lib/dpi-dual/mirror-setup.sh stop
@@ -129,6 +141,36 @@ cmd_status() {
     fi
     echo ""
 
+    echo "=== LAN Passive Flow Analysis ==="
+    local lan_enabled
+    config_get lan_enabled lan enabled "0"
+
+    if [ "$lan_enabled" = "1" ]; then
+        local lan_if
+        config_get lan_if lan interface "br-lan"
+        echo "Interface: $lan_if"
+
+        if pgrep dpi-lan-collector >/dev/null 2>&1; then
+            echo "Collector: RUNNING"
+        else
+            echo "Collector: STOPPED"
+        fi
+
+        local lan_file="$STATS_DIR/lan-flows.json"
+        if [ -f "$lan_file" ]; then
+            local clients dests protos
+            clients=$(jsonfilter -i "$lan_file" -e '@.active_clients' 2>/dev/null || echo 0)
+            dests=$(jsonfilter -i "$lan_file" -e '@.unique_destinations' 2>/dev/null || echo 0)
+            protos=$(jsonfilter -i "$lan_file" -e '@.detected_protocols' 2>/dev/null || echo 0)
+            echo "Active clients: $clients"
+            echo "Unique destinations: $dests"
+            echo "Detected protocols: $protos"
+        fi
+    else
+        echo "Status: DISABLED"
+    fi
+    echo ""
+
     echo "=== Correlation Engine ==="
     if pgrep dpi-correlator >/dev/null 2>&1; then
         echo "Status: RUNNING"
@@ -174,6 +216,50 @@ cmd_mirror() {
     /usr/lib/dpi-dual/mirror-setup.sh "$@"
 }
 
+cmd_clients() {
+    load_config
+    local clients_file="$STATS_DIR/lan-clients.json"
+
+    if [ -f "$clients_file" ]; then
+        cat "$clients_file"
+    else
+        echo '{"clients":[],"error":"LAN collector not running or no data"}'
+    fi
+}
+
+cmd_destinations() {
+    load_config
+    local dests_file="$STATS_DIR/lan-destinations.json"
+
+    if [ -f "$dests_file" ]; then
+        cat "$dests_file"
+    else
+        echo '{"destinations":[],"error":"LAN collector not running or no data"}'
+    fi
+}
+
+cmd_protocols() {
+    load_config
+    local protos_file="$STATS_DIR/lan-protocols.json"
+
+    if [ -f "$protos_file" ]; then
+        cat "$protos_file"
+    else
+        echo '{"protocols":[],"error":"LAN collector not running or no data"}'
+    fi
+}
+
+cmd_lan() {
+    load_config
+    local lan_file="$STATS_DIR/lan-flows.json"
+
+    if [ -f "$lan_file" ]; then
+        cat "$lan_file"
+    else
+        echo '{"error":"LAN collector not running"}'
+    fi
+}
+
 cmd_help() {
     cat << EOF
 DPI Dual-Stream Control
@@ -188,6 +274,13 @@ Commands:
   flows           Show current flow statistics (JSON)
   threats [N]     Show last N correlated threats (default: 20)
   mirror <cmd>    Control mirror setup (start|stop|status)
+
+LAN Passive Analysis:
+  lan             Show LAN flow summary (JSON)
+  clients         Show active LAN clients and their traffic (JSON)
+  destinations    Show external destinations accessed (JSON)
+  protocols       Show detected protocols/applications (JSON)
+
   help            Show this help
 
 Configuration: /etc/config/dpi-dual
@@ -196,6 +289,10 @@ Modes:
   dual      - Both MITM and TAP streams active
   mitm-only - Only MITM stream (HAProxy + mitmproxy)
   tap-only  - Only passive TAP stream (netifyd)
+
+LAN Analysis:
+  Enable 'lan' section for real-time passive flow monitoring
+  on br-lan interface (no MITM, no caching - pure nDPI).
 
 EOF
 }
@@ -224,6 +321,18 @@ case "$1" in
     mirror)
         shift
         cmd_mirror "$@"
+        ;;
+    lan)
+        cmd_lan
+        ;;
+    clients)
+        cmd_clients
+        ;;
+    destinations)
+        cmd_destinations
+        ;;
+    protocols)
+        cmd_protocols
         ;;
     help|--help|-h)
         cmd_help

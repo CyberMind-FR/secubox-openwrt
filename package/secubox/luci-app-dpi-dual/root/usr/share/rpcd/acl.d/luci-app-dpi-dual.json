@@ -14,7 +14,11 @@
 					"get_ip_reputation",
 					"get_timeline",
 					"get_mirror_status",
-					"search_correlations"
+					"search_correlations",
+					"get_lan_status",
+					"get_lan_clients",
+					"get_lan_destinations",
+					"get_lan_protocols"
 				]
 			},
 			"uci": ["dpi-dual"]

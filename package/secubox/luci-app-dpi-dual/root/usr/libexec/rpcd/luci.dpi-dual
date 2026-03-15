@@ -42,7 +42,11 @@ case "$1" in
     "replay_request": {"req_hash": "string"},
     "correlate_ip": {"ip": "string"},
     "ban_ip": {"ip": "string", "duration": "string"},
-    "set_auto_ban": {"enabled": true}
+    "set_auto_ban": {"enabled": true},
+    "get_lan_status": {},
+    "get_lan_clients": {},
+    "get_lan_destinations": {"limit": 100},
+    "get_lan_protocols": {}
 }
 EOF
         ;;
@@ -59,11 +63,12 @@ EOF
                 config_get correlation settings correlation "0"
 
                 # Check processes
-                local mitm_running=0 tap_running=0 collector_running=0 correlator_running=0
+                local mitm_running=0 tap_running=0 collector_running=0 correlator_running=0 lan_collector_running=0
                 pgrep mitmproxy >/dev/null 2>&1 && mitm_running=1
                 pgrep netifyd >/dev/null 2>&1 && tap_running=1
                 pgrep dpi-flow-collector >/dev/null 2>&1 && collector_running=1
                 pgrep dpi-correlator >/dev/null 2>&1 && correlator_running=1
+                pgrep dpi-lan-collector >/dev/null 2>&1 && lan_collector_running=1
 
                 # Get TAP interface status
                 local tap_if tap_up=0 tap_rx=0 tap_tx=0
@@ -94,6 +99,19 @@ EOF
                     correlated_threats=$(wc -l < "$THREATS_FILE" 2>/dev/null || echo 0)
                 fi
 
+                # Get LAN passive analysis stats
+                local lan_enabled lan_if
+                config_get lan_enabled lan enabled "0"
+                config_get lan_if lan interface "br-lan"
+
+                local lan_clients=0 lan_dests=0 lan_protos=0
+                local lan_file="$STATS_DIR/lan-flows.json"
+                if [ -f "$lan_file" ]; then
+                    lan_clients=$(jsonfilter -i "$lan_file" -e '@.active_clients' 2>/dev/null || echo 0)
+                    lan_dests=$(jsonfilter -i "$lan_file" -e '@.unique_destinations' 2>/dev/null || echo 0)
+                    lan_protos=$(jsonfilter -i "$lan_file" -e '@.detected_protocols' 2>/dev/null || echo 0)
+                fi
+
                 cat << EOF
 {
     "enabled": $enabled,
@@ -117,6 +135,14 @@ EOF
     "correlation": {
         "running": $correlator_running,
         "threats_correlated": $correlated_threats
+    },
+    "lan_passive": {
+        "enabled": $lan_enabled,
+        "running": $lan_collector_running,
+        "interface": "$lan_if",
+        "active_clients": $lan_clients,
+        "unique_destinations": $lan_dests,
+        "detected_protocols": $lan_protos
     }
 }
 EOF
@@ -356,6 +382,74 @@ EOF
                 uci set dpi-dual.correlation.auto_ban="$val"
                 uci commit dpi-dual
                 echo '{"success": true, "auto_ban": '$val'}'
+                ;;
+
+            get_lan_status)
+                # LAN passive flow analysis status
+                config_load dpi-dual
+
+                local lan_enabled lan_if
+                config_get lan_enabled lan enabled "0"
+                config_get lan_if lan interface "br-lan"
+
+                local collector_running=0
+                pgrep dpi-lan-collector >/dev/null 2>&1 && collector_running=1
+
+                local lan_file="$STATS_DIR/lan-flows.json"
+                local active_clients=0 unique_dests=0 detected_protos=0
+                local rx_bytes=0 tx_bytes=0
+
+                if [ -f "$lan_file" ]; then
+                    active_clients=$(jsonfilter -i "$lan_file" -e '@.active_clients' 2>/dev/null || echo 0)
+                    unique_dests=$(jsonfilter -i "$lan_file" -e '@.unique_destinations' 2>/dev/null || echo 0)
+                    detected_protos=$(jsonfilter -i "$lan_file" -e '@.detected_protocols' 2>/dev/null || echo 0)
+                    rx_bytes=$(jsonfilter -i "$lan_file" -e '@.rx_bytes' 2>/dev/null || echo 0)
+                    tx_bytes=$(jsonfilter -i "$lan_file" -e '@.tx_bytes' 2>/dev/null || echo 0)
+                fi
+
+                cat << EOF
+{
+    "enabled": $lan_enabled,
+    "interface": "$lan_if",
+    "collector_running": $collector_running,
+    "active_clients": $active_clients,
+    "unique_destinations": $unique_dests,
+    "detected_protocols": $detected_protos,
+    "rx_bytes": $rx_bytes,
+    "tx_bytes": $tx_bytes
+}
+EOF
+                ;;
+
+            get_lan_clients)
+                local clients_file="$STATS_DIR/lan-clients.json"
+                if [ -f "$clients_file" ]; then
+                    cat "$clients_file"
+                else
+                    echo '{"timestamp":"","clients":[]}'
+                fi
+                ;;
+
+            get_lan_destinations)
+                read "$3"
+                json_load "$REPLY"
+                json_get_var limit limit 100
+
+                local dests_file="$STATS_DIR/lan-destinations.json"
+                if [ -f "$dests_file" ]; then
+                    cat "$dests_file"
+                else
+                    echo '{"timestamp":"","destinations":[]}'
+                fi
+                ;;
+
+            get_lan_protocols)
+                local protos_file="$STATS_DIR/lan-protocols.json"
+                if [ -f "$protos_file" ]; then
+                    cat "$protos_file"
+                else
+                    echo '{"timestamp":"","protocols":[]}'
+                fi
                 ;;
 
             *)

@@ -40,6 +40,7 @@ define Package/secubox-dpi-dual/install
 	$(INSTALL_BIN) ./files/usr/sbin/dpi-dualctl $(1)/usr/sbin/
 	$(INSTALL_BIN) ./files/usr/sbin/dpi-flow-collector $(1)/usr/sbin/
 	$(INSTALL_BIN) ./files/usr/sbin/dpi-correlator $(1)/usr/sbin/
+	$(INSTALL_BIN) ./files/usr/sbin/dpi-lan-collector $(1)/usr/sbin/
 
 	$(INSTALL_DIR) $(1)/usr/lib/dpi-dual
 	$(INSTALL_BIN) ./files/usr/lib/dpi-dual/mirror-setup.sh $(1)/usr/lib/dpi-dual/
