@@ -3,8 +3,7 @@
 		"title": "DPI Dual-Stream",
 		"order": 45,
 		"action": {
-			"type": "firstchildview",
-			"recurse": true
+			"type": "firstchild"
 		},
 		"depends": {
 			"acl": ["luci-app-dpi-dual"],
