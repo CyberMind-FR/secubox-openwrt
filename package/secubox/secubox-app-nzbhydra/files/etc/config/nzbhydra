@@ -1,0 +1,15 @@
+config nzbhydra 'main'
+	option enabled '1'
+	option port '5076'
+	option data_dir '/srv/nzbhydra'
+	option memory '256M'
+
+config downloader 'sabnzbd'
+	option name 'SABnzbd'
+	option type 'sabnzbd'
+	option host 'http://127.0.0.1:8085'
+	option api_key ''
+
+config haproxy 'exposure'
+	option domain 'nzbhydra.gk2.secubox.in'
+	option ssl '1'

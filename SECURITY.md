@@ -15,10 +15,18 @@ This document describes the security policy for SecuBox firmware, in compliance 
 
 | Version | Support Status | End of Support |
 |---------|---------------|----------------|
-| 0.20.x  | ✅ Current    | Active development |
+| 1.0.x   | ✅ Current (Beta) | Active development |
 | 0.19.x  | ✅ LTS        | March 2027 |
 | 0.18.x  | ⚠️ Security only | September 2026 |
 | < 0.18  | ❌ EOL        | Unsupported |
+
+### v1.0.0 Beta Release
+
+The v1.0.0 Beta is now available for security testing. See [BETA-RELEASE.md](BETA-RELEASE.md) for:
+- Attack surface overview
+- High-value targets
+- Known weak points (intentional disclosure)
+- Bug bounty scope and reporting guidelines
 
 **Support policy:**
 - **Current:** All bug fixes and security patches
@@ -225,5 +233,19 @@ Notre-Dame-du-Cruet
 
 ---
 
-_Last updated: 2026-03-04_
-_Document version: 1.0_
+---
+
+## Hall of Fame
+
+Security researchers who have responsibly disclosed vulnerabilities:
+
+| Researcher | Date | Severity | Description |
+|------------|------|----------|-------------|
+| *Your name here* | — | — | — |
+
+We thank all contributors who help make SecuBox more secure.
+
+---
+
+_Last updated: 2026-03-15_
+_Document version: 1.1_

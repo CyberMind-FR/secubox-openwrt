@@ -937,6 +937,235 @@ cmd_tap_json_session() {
 }
 
 #------------------------------------------------------------------------------
+# Remote Package Installation
+#------------------------------------------------------------------------------
+
+cmd_install() {
+    local target="$1"
+    local app_id="$2"
+
+    [ -z "$target" ] || [ -z "$app_id" ] && {
+        echo "Usage: rttyctl install <node|all> <app_id>"
+        echo ""
+        echo "Install a package on remote mesh node(s)."
+        echo ""
+        echo "Examples:"
+        echo "  rttyctl install 192.168.255.2 ttyd"
+        echo "  rttyctl install sb-office ttyd"
+        echo "  rttyctl install all ttyd          # Install on ALL mesh nodes"
+        echo ""
+        echo "Common apps: ttyd, crowdsec, netifyd, haproxy"
+        exit 1
+    }
+
+    if [ "$target" = "all" ]; then
+        cmd_install_all "$app_id"
+        return $?
+    fi
+
+    local addr=$(get_node_address "$target")
+    [ -z "$addr" ] && die "Cannot resolve node address for: $target"
+
+    echo "Installing '$app_id' on $target ($addr)..."
+    echo ""
+
+    # Check if node is reachable
+    if ! ping -c 1 -W 2 "$addr" >/dev/null 2>&1; then
+        die "Node $target ($addr) is not reachable"
+    fi
+
+    # Check if already installed
+    echo "Checking if already installed..."
+    local check_result=$(cmd_rpc "$target" "luci.secubox" "check_package" "{\"package\":\"$app_id\"}" 2>/dev/null)
+    local installed=$(echo "$check_result" | jsonfilter -e '@.installed' 2>/dev/null)
+
+    if [ "$installed" = "true" ] || [ "$installed" = "1" ]; then
+        echo "Package '$app_id' is already installed on $target"
+        return 0
+    fi
+
+    # Install via remote RPC
+    echo "Installing package..."
+    local install_result=$(cmd_rpc "$target" "luci.secubox" "install_appstore_app" "{\"app_id\":\"$app_id\"}" 2>&1)
+    local rc=$?
+
+    if [ $rc -eq 0 ]; then
+        local success=$(echo "$install_result" | jsonfilter -e '@.success' 2>/dev/null)
+        if [ "$success" = "true" ] || [ "$success" = "1" ]; then
+            echo "✓ Successfully installed '$app_id' on $target"
+            log "info" "Installed $app_id on $target ($addr)"
+
+            # If ttyd, enable and start the service
+            if [ "$app_id" = "ttyd" ]; then
+                echo ""
+                echo "Enabling and starting ttyd service..."
+                cmd_rpc "$target" "luci" "setInitAction" '{"name":"ttyd","action":"enable"}' >/dev/null 2>&1
+                cmd_rpc "$target" "luci" "setInitAction" '{"name":"ttyd","action":"start"}' >/dev/null 2>&1
+                echo "✓ ttyd service enabled and started"
+                echo ""
+                echo "Web terminal available at: http://$addr:7681/"
+            fi
+        else
+            local error=$(echo "$install_result" | jsonfilter -e '@.error' 2>/dev/null)
+            echo "✗ Installation failed: ${error:-Unknown error}"
+            echo "Raw response: $install_result"
+            return 1
+        fi
+    else
+        echo "✗ RPC call failed"
+        echo "Response: $install_result"
+        return 1
+    fi
+}
+
+cmd_install_all() {
+    local app_id="$1"
+    [ -z "$app_id" ] && die "Usage: rttyctl install all <app_id>"
+
+    echo "Installing '$app_id' on ALL mesh nodes..."
+    echo "========================================="
+    echo ""
+
+    local success_count=0
+    local fail_count=0
+    local skip_count=0
+
+    # Get all nodes from various sources
+    local nodes=""
+
+    # From master-link
+    if command -v ml_peer_list >/dev/null 2>&1; then
+        local ml_nodes=$(ml_peer_list 2>/dev/null | jsonfilter -e '@.peers[*].address' 2>/dev/null)
+        nodes="$nodes $ml_nodes"
+    fi
+
+    # From WireGuard peers
+    if command -v wg >/dev/null 2>&1; then
+        local wg_nodes=$(wg show all endpoints 2>/dev/null | awk '{print $2}' | cut -d: -f1)
+        nodes="$nodes $wg_nodes"
+    fi
+
+    # From P2P mesh
+    if [ -x /usr/sbin/secubox-p2p ]; then
+        local p2p_nodes=$(/usr/sbin/secubox-p2p peers --json 2>/dev/null | jsonfilter -e '@[*].address' 2>/dev/null)
+        nodes="$nodes $p2p_nodes"
+    fi
+
+    # Deduplicate and process
+    local unique_nodes=$(echo "$nodes" | tr ' ' '\n' | sort -u | grep -v '^$')
+    local total=$(echo "$unique_nodes" | wc -l)
+
+    echo "Found $total mesh nodes"
+    echo ""
+
+    for node in $unique_nodes; do
+        [ -z "$node" ] && continue
+        echo "[$node]"
+
+        # Skip localhost
+        case "$node" in
+            127.0.0.1|localhost|$(uci -q get network.lan.ipaddr))
+                echo "  Skipping (local node)"
+                skip_count=$((skip_count + 1))
+                continue
+                ;;
+        esac
+
+        # Check reachability
+        if ! ping -c 1 -W 2 "$node" >/dev/null 2>&1; then
+            echo "  ✗ Not reachable"
+            fail_count=$((fail_count + 1))
+            continue
+        fi
+
+        # Try to install
+        local result=$(cmd_rpc "$node" "luci.secubox" "install_appstore_app" "{\"app_id\":\"$app_id\"}" 2>&1)
+        local success=$(echo "$result" | jsonfilter -e '@.success' 2>/dev/null)
+
+        if [ "$success" = "true" ] || [ "$success" = "1" ]; then
+            echo "  ✓ Installed"
+            success_count=$((success_count + 1))
+
+            # Enable ttyd if that's what we installed
+            if [ "$app_id" = "ttyd" ]; then
+                cmd_rpc "$node" "luci" "setInitAction" '{"name":"ttyd","action":"enable"}' >/dev/null 2>&1
+                cmd_rpc "$node" "luci" "setInitAction" '{"name":"ttyd","action":"start"}' >/dev/null 2>&1
+                echo "  ✓ ttyd enabled and started"
+            fi
+        else
+            local error=$(echo "$result" | jsonfilter -e '@.error' 2>/dev/null)
+            if echo "$error" | grep -qi "already installed"; then
+                echo "  ⊘ Already installed"
+                skip_count=$((skip_count + 1))
+            else
+                echo "  ✗ Failed: ${error:-Unknown error}"
+                fail_count=$((fail_count + 1))
+            fi
+        fi
+    done
+
+    echo ""
+    echo "Summary: $success_count installed, $skip_count skipped, $fail_count failed"
+
+    log "info" "Mesh install of $app_id: $success_count ok, $skip_count skip, $fail_count fail"
+}
+
+cmd_install_status() {
+    local target="$1"
+    local app_id="$2"
+
+    [ -z "$target" ] && {
+        echo "Usage: rttyctl install-status <node> [app_id]"
+        exit 1
+    }
+
+    local addr=$(get_node_address "$target")
+    [ -z "$addr" ] && die "Cannot resolve node address for: $target"
+
+    echo "Package Status on $target ($addr)"
+    echo "=================================="
+
+    if [ -n "$app_id" ]; then
+        # Check specific package
+        local result=$(cmd_rpc "$target" "luci.secubox" "check_package" "{\"package\":\"$app_id\"}" 2>/dev/null)
+        local installed=$(echo "$result" | jsonfilter -e '@.installed' 2>/dev/null)
+        local version=$(echo "$result" | jsonfilter -e '@.version' 2>/dev/null)
+
+        if [ "$installed" = "true" ] || [ "$installed" = "1" ]; then
+            echo "  $app_id: installed (v${version:-?})"
+        else
+            echo "  $app_id: not installed"
+        fi
+    else
+        # List all SecuBox packages
+        local result=$(cmd_rpc "$target" "luci.secubox" "list_installed" '{}' 2>/dev/null)
+        echo "$result" | jsonfilter -e '@.packages[*]' 2>/dev/null | while read pkg; do
+            local name=$(echo "$pkg" | jsonfilter -e '@.name')
+            local ver=$(echo "$pkg" | jsonfilter -e '@.version')
+            echo "  $name: $ver"
+        done
+    fi
+}
+
+cmd_deploy_ttyd() {
+    local target="$1"
+
+    [ -z "$target" ] && {
+        echo "Usage: rttyctl deploy-ttyd <node|all>"
+        echo ""
+        echo "Deploy ttyd web terminal to mesh node(s)."
+        echo "This is a shortcut for: rttyctl install <target> ttyd"
+        exit 1
+    }
+
+    echo "Deploying ttyd Web Terminal"
+    echo "==========================="
+    echo ""
+
+    cmd_install "$target" "ttyd"
+}
+
+#------------------------------------------------------------------------------
 # Server Management
 #------------------------------------------------------------------------------
 
@@ -1048,6 +1277,11 @@ RPCD Proxy:
   rpc-list <node>                         List available RPCD objects
   rpc-batch <node> <file.json>           Execute batch RPCD calls
 
+Remote Package Installation:
+  install <node|all> <app_id>   Install package on node(s)
+  install-status <node> [app]   Check package installation status
+  deploy-ttyd <node|all>        Deploy ttyd web terminal (shortcut)
+
 Avatar-Tap Session Replay:
   tap-sessions [domain]    List captured sessions (filter by domain)
   tap-show <id>            Show session details (headers, cookies)
@@ -1115,6 +1349,15 @@ case "$1" in
         ;;
     rpc-batch)
         cmd_rpc_batch "$2" "$3"
+        ;;
+    install)
+        cmd_install "$2" "$3"
+        ;;
+    install-status)
+        cmd_install_status "$2" "$3"
+        ;;
+    deploy-ttyd)
+        cmd_deploy_ttyd "$2"
         ;;
     sessions)
         cmd_sessions "$2"

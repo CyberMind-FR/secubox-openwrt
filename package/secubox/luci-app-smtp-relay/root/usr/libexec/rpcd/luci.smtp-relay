@@ -1,0 +1,169 @@
+#!/bin/sh
+# RPCD backend for SecuBox SMTP Relay
+
+. /usr/share/libubox/jshn.sh
+. /lib/functions.sh
+
+CONFIG="smtp-relay"
+
+# Source shared library if available
+[ -f /usr/lib/secubox/mail/smtp-relay.sh ] && . /usr/lib/secubox/mail/smtp-relay.sh
+
+case "$1" in
+	list)
+		cat << 'EOF'
+{
+	"get_status": {},
+	"get_config": {},
+	"test_email": {"recipient": "string"},
+	"send_email": {"recipient": "string", "subject": "string", "body": "string"},
+	"detect_local": {}
+}
+EOF
+		;;
+
+	call)
+		case "$2" in
+			get_status)
+				if [ -f /usr/lib/secubox/mail/smtp-relay.sh ]; then
+					smtp_relay_status
+				else
+					echo '{"error": "smtp-relay library not installed"}'
+				fi
+				;;
+
+			get_config)
+				json_init
+
+				local enabled mode auto_detect
+				enabled=$(uci -q get ${CONFIG}.main.enabled)
+				mode=$(uci -q get ${CONFIG}.main.mode)
+				auto_detect=$(uci -q get ${CONFIG}.main.auto_detect)
+
+				json_add_boolean "enabled" "${enabled:-0}"
+				json_add_string "mode" "${mode:-external}"
+				json_add_boolean "auto_detect" "${auto_detect:-1}"
+
+				# External settings
+				json_add_object "external"
+					json_add_string "server" "$(uci -q get ${CONFIG}.external.server)"
+					json_add_int "port" "$(uci -q get ${CONFIG}.external.port || echo 587)"
+					json_add_boolean "tls" "$(uci -q get ${CONFIG}.external.tls || echo 1)"
+					json_add_boolean "ssl" "$(uci -q get ${CONFIG}.external.ssl || echo 0)"
+					json_add_boolean "auth" "$(uci -q get ${CONFIG}.external.auth || echo 1)"
+					json_add_string "user" "$(uci -q get ${CONFIG}.external.user)"
+					local pwd_set=0
+					[ -n "$(uci -q get ${CONFIG}.external.password)" ] && pwd_set=1
+					json_add_boolean "password_set" "$pwd_set"
+					json_add_string "from" "$(uci -q get ${CONFIG}.external.from)"
+					json_add_string "from_name" "$(uci -q get ${CONFIG}.external.from_name)"
+				json_close_object
+
+				# Local settings
+				json_add_object "local"
+					json_add_string "server" "$(uci -q get ${CONFIG}.local.server)"
+					json_add_int "port" "$(uci -q get ${CONFIG}.local.port || echo 25)"
+				json_close_object
+
+				# Recipients
+				json_add_string "admin" "$(uci -q get ${CONFIG}.recipients.admin)"
+
+				json_dump
+				;;
+
+			test_email)
+				read -r input
+				local recipient
+				recipient=$(echo "$input" | jsonfilter -e '@.recipient' 2>/dev/null)
+
+				json_init
+
+				if [ -f /usr/lib/secubox/mail/smtp-relay.sh ]; then
+					local output
+					output=$(smtp_relay_test "$recipient" 2>&1)
+					local code=$?
+
+					if [ $code -eq 0 ]; then
+						json_add_boolean "success" 1
+						json_add_string "message" "Test email sent successfully"
+					else
+						json_add_boolean "success" 0
+						json_add_string "error" "$output"
+					fi
+				else
+					json_add_boolean "success" 0
+					json_add_string "error" "smtp-relay library not installed"
+				fi
+
+				json_dump
+				;;
+
+			send_email)
+				read -r input
+				local recipient subject body
+				recipient=$(echo "$input" | jsonfilter -e '@.recipient' 2>/dev/null)
+				subject=$(echo "$input" | jsonfilter -e '@.subject' 2>/dev/null)
+				body=$(echo "$input" | jsonfilter -e '@.body' 2>/dev/null)
+
+				json_init
+
+				if [ -z "$recipient" ] || [ -z "$subject" ]; then
+					json_add_boolean "success" 0
+					json_add_string "error" "recipient and subject are required"
+					json_dump
+					exit 0
+				fi
+
+				if [ -f /usr/lib/secubox/mail/smtp-relay.sh ]; then
+					local output
+					output=$(send_mail "$recipient" "$subject" "$body" 2>&1)
+					local code=$?
+
+					if [ $code -eq 0 ]; then
+						json_add_boolean "success" 1
+						json_add_string "message" "Email sent"
+					else
+						json_add_boolean "success" 0
+						json_add_string "error" "$output"
+					fi
+				else
+					json_add_boolean "success" 0
+					json_add_string "error" "smtp-relay library not installed"
+				fi
+
+				json_dump
+				;;
+
+			detect_local)
+				json_init
+
+				local mailserver_enabled mailserver_ip detected responding
+				mailserver_enabled=$(uci -q get mailserver.main.enabled)
+				mailserver_ip=$(uci -q get mailserver.server.ip_address)
+				[ -z "$mailserver_ip" ] && mailserver_ip=$(uci -q get mailserver.main.ip_address)
+
+				detected=0
+				responding=0
+
+				if [ "$mailserver_enabled" = "1" ] && [ -n "$mailserver_ip" ]; then
+					detected=1
+					if nc -z "$mailserver_ip" 25 2>/dev/null; then
+						responding=1
+					fi
+				fi
+
+				json_add_boolean "detected" "$detected"
+				json_add_boolean "responding" "$responding"
+				json_add_string "ip" "${mailserver_ip:-}"
+
+				json_dump
+				;;
+
+			*)
+				echo '{"error": "Unknown method"}'
+				;;
+		esac
+		;;
+esac
+
+exit 0

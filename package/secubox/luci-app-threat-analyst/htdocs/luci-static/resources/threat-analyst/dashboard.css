@@ -1,5 +1,4 @@
-/* Threat Analyst Dashboard CSS - v0.1.0 */
-/* Following CrowdSec Dashboard KISS pattern */
+/* Threat Analyst Dashboard CSS - Dark Theme */
 
 .ta-view {
 	max-width: 1400px;
@@ -14,13 +13,15 @@
 	align-items: center;
 	margin-bottom: 20px;
 	padding-bottom: 16px;
-	border-bottom: 1px solid var(--border-color-medium, #ddd);
+	border-bottom: 1px solid rgba(255,255,255,0.1);
 }
 
 .ta-title {
 	font-size: 24px;
 	font-weight: 600;
-	color: var(--text-color, #333);
+	background: linear-gradient(90deg, #00d4aa, #00a0ff);
+	-webkit-background-clip: text;
+	-webkit-text-fill-color: transparent;
 }
 
 .ta-status {
@@ -28,45 +29,18 @@
 	align-items: center;
 	gap: 8px;
 	font-size: 14px;
+	color: #a0a0b0;
 }
 
 .ta-dot {
 	width: 10px;
 	height: 10px;
 	border-radius: 50%;
-	background: #ccc;
+	background: #606070;
 }
 
-.ta-dot.online { background: #4caf50; }
-.ta-dot.offline { background: #f44336; }
-
-/* Navigation */
-.ta-nav {
-	display: flex;
-	gap: 4px;
-	margin-bottom: 20px;
-	background: var(--background-color-alt, #f5f5f5);
-	padding: 4px;
-	border-radius: 8px;
-}
-
-.ta-nav a {
-	padding: 8px 16px;
-	border-radius: 6px;
-	text-decoration: none;
-	color: var(--text-color, #333);
-	font-size: 14px;
-	transition: all 0.2s;
-}
-
-.ta-nav a:hover {
-	background: var(--background-color, #fff);
-}
-
-.ta-nav a.active {
-	background: var(--primary-color, #2196f3);
-	color: white;
-}
+.ta-dot.online { background: #00d4aa; box-shadow: 0 0 8px #00d4aa; }
+.ta-dot.offline { background: #ff4d4d; }
 
 /* Stats */
 .ta-stats {
@@ -77,8 +51,8 @@
 }
 
 .ta-stat {
-	background: var(--background-color, #fff);
-	border: 1px solid var(--border-color-low, #eee);
+	background: #12121a;
+	border: 1px solid rgba(255,255,255,0.05);
 	border-radius: 8px;
 	padding: 16px;
 	text-align: center;
@@ -87,19 +61,20 @@
 .ta-stat-value {
 	font-size: 28px;
 	font-weight: 700;
-	color: var(--primary-color, #2196f3);
+	color: #00d4aa;
+	font-family: monospace;
 }
 
 .ta-stat-label {
-	font-size: 12px;
-	color: var(--text-color-secondary, #666);
+	font-size: 11px;
+	color: #808090;
 	margin-top: 4px;
 	text-transform: uppercase;
 }
 
-.ta-stat.success .ta-stat-value { color: #4caf50; }
-.ta-stat.warning .ta-stat-value { color: #ff9800; }
-.ta-stat.danger .ta-stat-value { color: #f44336; }
+.ta-stat.success .ta-stat-value { color: #00d4aa; }
+.ta-stat.warning .ta-stat-value { color: #ffa500; }
+.ta-stat.danger .ta-stat-value { color: #ff4d4d; }
 
 /* Grid Layout */
 .ta-grid-2 {
@@ -115,18 +90,20 @@
 
 /* Cards */
 .ta-card {
-	background: var(--background-color, #fff);
-	border: 1px solid var(--border-color-low, #eee);
+	background: #12121a;
+	border: 1px solid rgba(255,255,255,0.05);
 	border-radius: 8px;
 	overflow: hidden;
+	margin-bottom: 20px;
 }
 
 .ta-card-header {
 	padding: 12px 16px;
 	font-weight: 600;
 	font-size: 14px;
-	background: var(--background-color-alt, #f9f9f9);
-	border-bottom: 1px solid var(--border-color-low, #eee);
+	background: rgba(255,255,255,0.02);
+	border-bottom: 1px solid rgba(255,255,255,0.05);
+	color: #fff;
 }
 
 .ta-card-body {
@@ -143,18 +120,18 @@
 .ta-table td {
 	padding: 10px 12px;
 	text-align: left;
-	border-bottom: 1px solid var(--border-color-low, #eee);
+	border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 
 .ta-table th {
 	font-size: 11px;
 	text-transform: uppercase;
-	color: var(--text-color-secondary, #666);
+	color: #808090;
 	font-weight: 600;
 }
 
 .ta-table tbody tr:hover {
-	background: var(--background-color-alt, #f9f9f9);
+	background: rgba(255,255,255,0.02);
 }
 
 /* Badges */
@@ -166,14 +143,14 @@
 	font-weight: 500;
 }
 
-.ta-badge.critical { background: #f44336; color: white; }
-.ta-badge.high { background: #ff9800; color: white; }
-.ta-badge.medium { background: #ffc107; color: #333; }
-.ta-badge.low { background: #4caf50; color: white; }
+.ta-badge.critical { background: rgba(255,77,77,0.2); color: #ff4d4d; }
+.ta-badge.high { background: rgba(255,152,0,0.2); color: #ffa500; }
+.ta-badge.medium { background: rgba(255,193,7,0.2); color: #ffc107; }
+.ta-badge.low { background: rgba(0,212,170,0.2); color: #00d4aa; }
 
-.ta-badge.crowdsec { background: #5c6bc0; color: white; }
-.ta-badge.mitmproxy { background: #26a69a; color: white; }
-.ta-badge.waf { background: #7e57c2; color: white; }
+.ta-badge.crowdsec { background: rgba(92,107,192,0.2); color: #8c9eff; }
+.ta-badge.mitmproxy { background: rgba(38,166,154,0.2); color: #64ffda; }
+.ta-badge.waf { background: rgba(126,87,194,0.2); color: #b388ff; }
 
 /* Buttons */
 .ta-btn {
@@ -186,15 +163,26 @@
 	font-size: 13px;
 	font-weight: 500;
 	cursor: pointer;
-	transition: opacity 0.2s;
+	transition: all 0.2s;
+	background: #1a1a24;
+	color: #a0a0b0;
+	border: 1px solid rgba(255,255,255,0.1);
 }
 
-.ta-btn:hover { opacity: 0.9; }
+.ta-btn:hover { background: #2a2a3a; color: #fff; }
 
-.ta-btn-primary { background: var(--primary-color, #2196f3); color: white; }
-.ta-btn-success { background: #4caf50; color: white; }
-.ta-btn-warning { background: #ff9800; color: white; }
-.ta-btn-danger { background: #f44336; color: white; }
+.ta-btn-primary { background: rgba(0,160,255,0.2); color: #00a0ff; border-color: rgba(0,160,255,0.3); }
+.ta-btn-primary:hover { background: rgba(0,160,255,0.3); }
+
+.ta-btn-success { background: rgba(0,212,170,0.2); color: #00d4aa; border-color: rgba(0,212,170,0.3); }
+.ta-btn-success:hover { background: rgba(0,212,170,0.3); }
+
+.ta-btn-warning { background: rgba(255,152,0,0.2); color: #ffa500; border-color: rgba(255,152,0,0.3); }
+.ta-btn-warning:hover { background: rgba(255,152,0,0.3); }
+
+.ta-btn-danger { background: rgba(255,77,77,0.2); color: #ff4d4d; border-color: rgba(255,77,77,0.3); }
+.ta-btn-danger:hover { background: rgba(255,77,77,0.3); }
+
 .ta-btn-sm { padding: 4px 10px; font-size: 12px; }
 
 /* Actions Bar */
@@ -216,7 +204,7 @@
 	justify-content: space-between;
 	align-items: center;
 	padding: 12px;
-	background: var(--background-color-alt, #f9f9f9);
+	background: #1a1a24;
 	border-radius: 6px;
 }
 
@@ -231,7 +219,7 @@
 
 .ta-pending-date {
 	font-size: 12px;
-	color: var(--text-color-secondary, #666);
+	color: #808090;
 }
 
 .ta-pending-actions {
@@ -250,7 +238,7 @@
 	flex: 1;
 	overflow-y: auto;
 	padding: 12px;
-	background: var(--background-color-alt, #f5f5f5);
+	background: #0a0a12;
 	border-radius: 6px;
 	margin-bottom: 12px;
 }
@@ -274,20 +262,21 @@
 }
 
 .ta-message.user .ta-message-bubble {
-	background: var(--primary-color, #2196f3);
+	background: linear-gradient(135deg, #00a0ff, #0080cc);
 	color: white;
 	border-bottom-right-radius: 4px;
 }
 
 .ta-message.ai .ta-message-bubble {
-	background: var(--background-color, #fff);
-	border: 1px solid var(--border-color-low, #eee);
+	background: #1a1a24;
+	border: 1px solid rgba(255,255,255,0.05);
+	color: #e0e0e0;
 	border-bottom-left-radius: 4px;
 }
 
 .ta-message-time {
 	font-size: 10px;
-	color: var(--text-color-secondary, #999);
+	color: #606070;
 	margin-top: 4px;
 }
 
@@ -299,21 +288,27 @@
 .ta-chat-input input {
 	flex: 1;
 	padding: 12px;
-	border: 1px solid var(--border-color-medium, #ddd);
+	border: 1px solid rgba(255,255,255,0.1);
 	border-radius: 6px;
 	font-size: 14px;
+	background: #1a1a24;
+	color: #fff;
 }
 
 .ta-chat-input input:focus {
 	outline: none;
-	border-color: var(--primary-color, #2196f3);
+	border-color: #00a0ff;
+}
+
+.ta-chat-input input::placeholder {
+	color: #606070;
 }
 
 /* Empty State */
 .ta-empty {
 	text-align: center;
 	padding: 24px;
-	color: var(--text-color-secondary, #666);
+	color: #808090;
 	font-style: italic;
 }
 
@@ -321,17 +316,19 @@
 .ta-ip {
 	font-family: monospace;
 	font-size: 13px;
+	color: #00a0ff;
 }
 
 /* Scenario display */
 .ta-scenario {
 	font-size: 13px;
+	color: #e0e0e0;
 }
 
 /* Time display */
 .ta-time {
 	font-size: 12px;
-	color: var(--text-color-secondary, #666);
+	color: #808090;
 }
 
 /* Health Grid */
@@ -346,7 +343,7 @@
 	align-items: center;
 	gap: 12px;
 	padding: 10px;
-	background: var(--background-color-alt, #f9f9f9);
+	background: #1a1a24;
 	border-radius: 6px;
 }
 
@@ -361,28 +358,29 @@
 }
 
 .ta-health-icon.ok {
-	background: #e8f5e9;
-	color: #4caf50;
+	background: rgba(0,212,170,0.15);
+	color: #00d4aa;
 }
 
 .ta-health-icon.error {
-	background: #ffebee;
-	color: #f44336;
+	background: rgba(255,77,77,0.15);
+	color: #ff4d4d;
 }
 
 .ta-health-icon.warning {
-	background: #fff3e0;
-	color: #ff9800;
+	background: rgba(255,152,0,0.15);
+	color: #ffa500;
 }
 
 .ta-health-label {
 	font-weight: 500;
 	font-size: 13px;
+	color: #e0e0e0;
 }
 
 .ta-health-value {
 	font-size: 12px;
-	color: var(--text-color-secondary, #666);
+	color: #808090;
 }
 
 /* Targets Grid */
@@ -395,7 +393,7 @@
 .ta-target {
 	padding: 16px;
 	text-align: center;
-	background: var(--background-color-alt, #f9f9f9);
+	background: #1a1a24;
 	border-radius: 8px;
 	cursor: pointer;
 	transition: all 0.2s;
@@ -403,7 +401,8 @@
 }
 
 .ta-target:hover {
-	border-color: var(--primary-color, #2196f3);
+	border-color: #00a0ff;
+	background: #2a2a3a;
 }
 
 .ta-target-icon {
@@ -414,11 +413,12 @@
 .ta-target-name {
 	font-weight: 600;
 	font-size: 14px;
+	color: #fff;
 }
 
 .ta-target-desc {
 	font-size: 11px;
-	color: var(--text-color-secondary, #666);
+	color: #808090;
 	margin-top: 4px;
 }
 
@@ -426,8 +426,8 @@
 .ta-cve-link {
 	display: inline-block;
 	padding: 2px 6px;
-	background: #ffebee;
-	color: #c62828;
+	background: rgba(255,77,77,0.15);
+	color: #ff6b6b;
 	border-radius: 4px;
 	font-size: 11px;
 	font-weight: 600;
@@ -437,18 +437,18 @@
 }
 
 .ta-cve-link:hover {
-	background: #ef9a9a;
+	background: rgba(255,77,77,0.3);
 	text-decoration: none;
 }
 
 .ta-no-cve {
-	color: var(--text-color-secondary, #999);
+	color: #606070;
 }
 
 .ta-cve-row {
-	background: rgba(244, 67, 54, 0.05);
+	background: rgba(255,77,77,0.05);
 }
 
 .ta-cve-row:hover {
-	background: rgba(244, 67, 54, 0.1) !important;
+	background: rgba(255,77,77,0.1) !important;
 }

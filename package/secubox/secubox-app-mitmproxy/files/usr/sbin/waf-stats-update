@@ -1,9 +1,10 @@
 #!/bin/sh
-# WAF Stats Updater - writes to /tmp/secubox/waf-stats.json
+# WAF Stats Updater - writes to /tmp/secubox/waf-stats.json and waf-bans.json
 # Run via cron every minute: * * * * * /usr/sbin/waf-stats-update
 
 CACHE_DIR="/tmp/secubox"
 CACHE_FILE="$CACHE_DIR/waf-stats.json"
+BANS_CACHE="$CACHE_DIR/waf-bans.json"
 WAF_DATA="/srv/mitmproxy-in"
 
 mkdir -p "$CACHE_DIR"
@@ -58,3 +59,13 @@ cat > "$CACHE_FILE" << EOF
   "updated": "$(date -Iseconds)"
 }
 EOF
+
+# Cache CrowdSec bans for fast dashboard loading
+if command -v cscli >/dev/null 2>&1; then
+    bans_json=$(cscli decisions list -o json --limit 20 2>/dev/null)
+    [ -z "$bans_json" ] || [ "$bans_json" = "null" ] && bans_json="[]"
+    total=$(echo "$bans_json" | grep -c '"id":' 2>/dev/null) || total=0
+    printf '{"success":true,"total":%d,"bans":%s}\n' "$total" "$bans_json" > "$BANS_CACHE"
+else
+    echo '{"success":true,"total":0,"bans":[]}' > "$BANS_CACHE"
+fi

@@ -3,271 +3,181 @@
 'require ui';
 'require rpc';
 'require poll';
-'require secubox/kiss-theme';
 
-var callStatus = rpc.declare({ object: 'luci.lyrion', method: 'status', expect: {} });
-var callLibraryStats = rpc.declare({ object: 'luci.lyrion', method: 'get_library_stats', expect: {} });
-var callInstall = rpc.declare({ object: 'luci.lyrion', method: 'install', expect: {} });
-var callStart = rpc.declare({ object: 'luci.lyrion', method: 'start', expect: {} });
-var callStop = rpc.declare({ object: 'luci.lyrion', method: 'stop', expect: {} });
-var callRestart = rpc.declare({ object: 'luci.lyrion', method: 'restart', expect: {} });
-var callRescan = rpc.declare({ object: 'luci.lyrion', method: 'rescan', expect: {} });
+var callStatus = rpc.declare({ object: 'luci.lyrion', method: 'status' });
+var callInstall = rpc.declare({ object: 'luci.lyrion', method: 'install' });
+var callStart = rpc.declare({ object: 'luci.lyrion', method: 'start' });
+var callStop = rpc.declare({ object: 'luci.lyrion', method: 'stop' });
+var callRescan = rpc.declare({ object: 'luci.lyrion', method: 'rescan' });
 
 return view.extend({
-	pollActive: true,
-	libraryStats: null,
-
 	load: function() {
-		return Promise.all([callStatus(), callLibraryStats()]);
+		return callStatus().catch(function() { return {}; });
 	},
 
 	startPolling: function() {
 		var self = this;
-		this.pollActive = true;
-		poll.add(L.bind(function() {
-			if (!this.pollActive) return Promise.resolve();
-			return Promise.all([callStatus(), callLibraryStats()]).then(L.bind(function(results) {
-				this.updateStatus(results[0]);
-				this.updateLibraryStats(results[1]);
-			}, this));
-		}, this), 3);
+		poll.add(function() {
+			return callStatus().then(function(s) {
+				self.updateUI(s);
+			});
+		}, 5);
 	},
 
-	updateStatus: function(status) {
-		var badge = document.getElementById('lyrion-status-badge');
+	updateUI: function(s) {
+		var badge = document.getElementById('status-badge');
 		if (badge) {
-			badge.innerHTML = '';
-			badge.appendChild(KissTheme.badge(status.running ? 'RUNNING' : 'STOPPED', status.running ? 'green' : 'red'));
-		}
-	},
-
-	updateLibraryStats: function(stats) {
-		if (!stats) return;
-		this.libraryStats = stats;
-
-		var statsEl = document.getElementById('lyrion-stats');
-		if (statsEl) {
-			statsEl.innerHTML = '';
-			this.renderStats(stats).forEach(function(el) { statsEl.appendChild(el); });
+			badge.className = 'cbi-value-field';
+			badge.innerHTML = s.running
+				? '<span style="color:#4caf50;font-weight:600">● Running</span>'
+				: '<span style="color:#f44336;font-weight:600">● Stopped</span>';
 		}
 
-		var scanEl = document.getElementById('lyrion-scan');
-		if (scanEl) {
-			scanEl.innerHTML = '';
-			scanEl.appendChild(this.renderScanStatus(stats));
+		var stats = document.getElementById('library-stats');
+		if (stats && s.songs !== undefined) {
+			stats.textContent = s.songs + ' songs, ' + s.albums + ' albums, ' + s.artists + ' artists';
 		}
-	},
 
-	formatNumber: function(n) {
-		if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-		if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
-		return n.toString();
-	},
-
-	renderStats: function(stats) {
-		var c = KissTheme.colors;
-		return [
-			KissTheme.stat(this.formatNumber(stats.songs || 0), 'Songs', c.purple),
-			KissTheme.stat(this.formatNumber(stats.albums || 0), 'Albums', c.blue),
-			KissTheme.stat(this.formatNumber(stats.artists || 0), 'Artists', c.green),
-			KissTheme.stat(this.formatNumber(stats.genres || 0), 'Genres', c.orange)
-		];
-	},
-
-	renderScanStatus: function(stats) {
-		if (stats.scanning) {
-			var pct = stats.scan_total > 0 ? Math.round((stats.scan_progress / stats.scan_total) * 100) : 0;
-			return E('div', { 'style': 'display: flex; flex-direction: column; gap: 8px;' }, [
-				E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
-					E('span', { 'style': 'display: flex; align-items: center; gap: 8px;' }, [
-						E('span', { 'class': 'spinning', 'style': 'font-size: 14px;' }, '⏳'),
-						E('span', { 'style': 'font-weight: 600;' }, 'Scanning...')
-					]),
-					E('span', { 'style': 'font-size: 12px; color: var(--kiss-muted);' },
-						(stats.scan_phase || 'Processing') + ' (' + stats.scan_progress + '/' + stats.scan_total + ')')
-				]),
-				E('div', { 'style': 'height: 8px; background: var(--kiss-bg); border-radius: 4px; overflow: hidden;' }, [
-					E('div', { 'style': 'height: 100%; width: ' + pct + '%; background: linear-gradient(90deg, var(--kiss-purple), var(--kiss-blue)); border-radius: 4px; transition: width 0.3s;' })
-				])
-			]);
-		} else {
-			return E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
-				E('span', { 'style': 'display: flex; align-items: center; gap: 8px; color: var(--kiss-green);' }, [
-					E('span', {}, '✓'),
-					E('span', { 'style': 'font-weight: 600;' }, 'Library Ready')
-				]),
-				E('span', { 'style': 'font-size: 12px; color: var(--kiss-muted);' }, 'DB: ' + (stats.db_size || '0'))
-			]);
-		}
-	},
-
-	renderControls: function(status) {
-		return E('div', { 'style': 'display: flex; gap: 8px; flex-wrap: wrap;' }, [
-			E('button', {
-				'class': 'kiss-btn kiss-btn-green',
-				'click': ui.createHandlerFn(this, 'handleStart'),
-				'disabled': status.running
-			}, 'Start'),
-			E('button', {
-				'class': 'kiss-btn kiss-btn-red',
-				'click': ui.createHandlerFn(this, 'handleStop'),
-				'disabled': !status.running
-			}, 'Stop'),
-			E('button', {
-				'class': 'kiss-btn',
-				'click': ui.createHandlerFn(this, 'handleRestart'),
-				'disabled': !status.running
-			}, 'Restart'),
-			E('button', {
-				'class': 'kiss-btn kiss-btn-blue',
-				'click': ui.createHandlerFn(this, 'handleRescan'),
-				'disabled': !status.running
-			}, 'Rescan Library')
-		]);
-	},
-
-	renderServiceInfo: function(status) {
-		var checks = [
-			{ label: 'Runtime', value: status.detected_runtime || 'auto' },
-			{ label: 'Port', value: status.port || '9000' },
-			{ label: 'Memory', value: status.memory_limit || '256M' },
-			{ label: 'Media Path', value: status.media_path || '/srv/media' }
-		];
-
-		return E('div', { 'style': 'display: flex; flex-direction: column; gap: 8px;' },
-			checks.map(function(c) {
-				return E('div', { 'style': 'display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--kiss-line);' }, [
-					E('span', { 'style': 'color: var(--kiss-muted);' }, c.label),
-					E('span', { 'style': 'font-family: monospace;' }, c.value)
-				]);
-			})
-		);
+		['btn-start', 'btn-rescan'].forEach(function(id) {
+			var el = document.getElementById(id);
+			if (el) el.disabled = s.running;
+		});
+		var stopBtn = document.getElementById('btn-stop');
+		if (stopBtn) stopBtn.disabled = !s.running;
 	},
 
 	handleInstall: function() {
-		var self = this;
-		ui.showModal('Installing Lyrion', [
-			E('p', { 'class': 'spinning' }, 'Installing Lyrion Music Server. This may take several minutes...')
+		ui.showModal(_('Installing'), [
+			E('p', { 'class': 'spinning' }, _('Installing Lyrion Music Server...'))
 		]);
 		callInstall().then(function(r) {
 			ui.hideModal();
 			if (r.success) {
-				ui.addNotification(null, E('p', r.message || 'Installation started'));
-				self.startPolling();
-				window.location.reload();
+				ui.addNotification(null, E('p', _('Installation started')));
+				setTimeout(function() { location.reload(); }, 3000);
 			} else {
-				ui.addNotification(null, E('p', 'Failed: ' + (r.error || 'Unknown error')), 'error');
+				ui.addNotification(null, E('p', r.error || _('Installation failed')), 'error');
 			}
 		});
 	},
 
 	handleStart: function() {
-		ui.showModal('Starting...', [E('p', { 'class': 'spinning' }, 'Starting Lyrion...')]);
-		callStart().then(function(r) {
-			ui.hideModal();
-			if (r.success) ui.addNotification(null, E('p', 'Lyrion started'));
+		callStart().then(function() {
+			ui.addNotification(null, E('p', _('Lyrion started')));
 		});
 	},
 
 	handleStop: function() {
-		ui.showModal('Stopping...', [E('p', { 'class': 'spinning' }, 'Stopping Lyrion...')]);
-		callStop().then(function(r) {
-			ui.hideModal();
-			if (r.success) ui.addNotification(null, E('p', 'Lyrion stopped'));
-		});
-	},
-
-	handleRestart: function() {
-		ui.showModal('Restarting...', [E('p', { 'class': 'spinning' }, 'Restarting Lyrion...')]);
-		callRestart().then(function(r) {
-			ui.hideModal();
-			if (r.success) ui.addNotification(null, E('p', 'Lyrion restarted'));
+		callStop().then(function() {
+			ui.addNotification(null, E('p', _('Lyrion stopped')));
 		});
 	},
 
 	handleRescan: function() {
-		callRescan().then(function(r) {
-			if (r.success) ui.addNotification(null, E('p', 'Library rescan started'));
+		callRescan().then(function() {
+			ui.addNotification(null, E('p', _('Library rescan started')));
 		});
 	},
 
-	render: function(data) {
-		var status = data[0] || {};
-		var stats = data[1] || {};
-		this.libraryStats = stats;
+	render: function(status) {
+		var s = status || {};
 
-		// Not installed view
-		if (!status.installed) {
-			var notInstalledContent = [
-				E('div', { 'style': 'margin-bottom: 24px;' }, [
-					E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
-						E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'Lyrion Music Server'),
-						KissTheme.badge('NOT INSTALLED', 'red')
-					]),
-					E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' }, 'Self-hosted music streaming with Squeezebox compatibility')
-				]),
-
-				KissTheme.card('Install', E('div', { 'style': 'text-align: center; padding: 40px;' }, [
-					E('div', { 'style': 'font-size: 4rem; margin-bottom: 16px;' }, '🎵'),
-					E('h3', { 'style': 'margin: 0 0 8px 0;' }, 'Lyrion Music Server'),
-					E('p', { 'style': 'color: var(--kiss-muted); margin: 0 0 20px 0;' }, 'Self-hosted music streaming with Squeezebox compatibility.'),
-					E('button', {
-						'class': 'kiss-btn kiss-btn-green',
-						'click': ui.createHandlerFn(this, 'handleInstall'),
-						'disabled': status.detected_runtime === 'none'
-					}, 'Install Lyrion')
-				]))
-			];
-
-			return KissTheme.wrap(notInstalledContent, 'admin/services/lyrion/overview');
+		// Not installed
+		if (!s.installed) {
+			return E('div', { 'class': 'cbi-map' }, [
+				E('h2', {}, _('Lyrion Music Server')),
+				E('div', { 'class': 'cbi-section' }, [
+					E('div', { 'style': 'text-align:center;padding:40px' }, [
+						E('p', { 'style': 'font-size:48px;margin:0' }, '🎵'),
+						E('h3', {}, _('Lyrion Music Server')),
+						E('p', {}, _('Self-hosted music streaming with Squeezebox compatibility.')),
+						E('button', {
+							'class': 'cbi-button cbi-button-positive',
+							'click': ui.createHandlerFn(this, 'handleInstall')
+						}, _('Install Lyrion'))
+					])
+				])
+			]);
 		}
 
-		// Installed view
+		// Installed
 		this.startPolling();
 
-		var content = [
-			// Header
-			E('div', { 'style': 'margin-bottom: 24px;' }, [
-				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
-					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'Lyrion Music Server'),
-					E('span', { 'id': 'lyrion-status-badge' }, [
-						KissTheme.badge(status.running ? 'RUNNING' : 'STOPPED', status.running ? 'green' : 'red')
-					])
-				]),
-				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' }, 'Self-hosted music streaming')
+		return E('div', { 'class': 'cbi-map' }, [
+			E('h2', {}, [
+				'🎵 ',
+				_('Lyrion Music Server'),
+				' ',
+				E('span', { 'id': 'status-badge', 'style': 'font-size:14px' },
+					s.running
+						? E('span', { 'style': 'color:#4caf50;font-weight:600' }, '● Running')
+						: E('span', { 'style': 'color:#f44336;font-weight:600' }, '● Stopped')
+				)
 			]),
 
-			// Stats
-			E('div', { 'class': 'kiss-grid kiss-grid-4', 'id': 'lyrion-stats', 'style': 'margin: 20px 0;' }, this.renderStats(stats)),
-
-			// Scan progress
-			KissTheme.card('Library Status', E('div', { 'id': 'lyrion-scan' }, [this.renderScanStatus(stats)])),
-
-			// Two-column layout
-			E('div', { 'class': 'kiss-grid kiss-grid-2' }, [
-				KissTheme.card('Service Info', this.renderServiceInfo(status)),
-				KissTheme.card('Controls', this.renderControls(status))
-			]),
-
-			// Web UI link
-			status.running && status.web_accessible ? KissTheme.card('Web Interface',
-				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
-					E('div', { 'style': 'font-size: 2rem;' }, '🌐'),
-					E('div', { 'style': 'flex: 1;' }, [
-						E('div', { 'style': 'font-weight: 600;' }, 'Lyrion Web Interface'),
-						E('div', { 'style': 'font-family: monospace; font-size: 12px; color: var(--kiss-purple);' }, status.web_url)
-					]),
-					E('a', {
-						'href': status.web_url,
-						'target': '_blank',
-						'class': 'kiss-btn kiss-btn-blue',
-						'style': 'text-decoration: none;'
-					}, 'Open')
+			E('div', { 'class': 'cbi-section' }, [
+				E('h3', {}, _('Controls')),
+				E('div', { 'class': 'cbi-value' }, [
+					E('button', {
+						'id': 'btn-start',
+						'class': 'cbi-button cbi-button-positive',
+						'click': ui.createHandlerFn(this, 'handleStart'),
+						'disabled': s.running,
+						'style': 'margin-right:8px'
+					}, _('Start')),
+					E('button', {
+						'id': 'btn-stop',
+						'class': 'cbi-button cbi-button-negative',
+						'click': ui.createHandlerFn(this, 'handleStop'),
+						'disabled': !s.running,
+						'style': 'margin-right:8px'
+					}, _('Stop')),
+					E('button', {
+						'id': 'btn-rescan',
+						'class': 'cbi-button',
+						'click': ui.createHandlerFn(this, 'handleRescan'),
+						'disabled': !s.running
+					}, _('Rescan Library'))
 				])
-			) : ''
-		];
+			]),
 
-		return KissTheme.wrap(content, 'admin/services/lyrion/overview');
+			E('div', { 'class': 'cbi-section' }, [
+				E('h3', {}, _('Web Interface')),
+				E('div', { 'style': 'margin-bottom:12px' }, [
+					E('a', {
+						'href': 'http://' + window.location.hostname + ':' + (s.port || 9000),
+						'target': '_blank',
+						'class': 'cbi-button cbi-button-action',
+						'style': 'margin-right:8px'
+					}, _('Open Lyrion Web UI')),
+					E('span', { 'style': 'color:#888' },
+						'http://' + window.location.hostname + ':' + (s.port || 9000))
+				])
+			]),
+
+			E('div', { 'class': 'cbi-section' }, [
+				E('h3', {}, _('Service Info')),
+				E('table', { 'class': 'table' }, [
+					E('tr', { 'class': 'tr' }, [
+						E('td', { 'class': 'td', 'style': 'width:150px' }, _('Port')),
+						E('td', { 'class': 'td' }, String(s.port || 9000))
+					]),
+					E('tr', { 'class': 'tr' }, [
+						E('td', { 'class': 'td' }, _('Runtime')),
+						E('td', { 'class': 'td' }, s.detected_runtime || 'auto')
+					]),
+					E('tr', { 'class': 'tr' }, [
+						E('td', { 'class': 'td' }, _('Media Path')),
+						E('td', { 'class': 'td' }, s.media_path || '/srv/media')
+					]),
+					E('tr', { 'class': 'tr' }, [
+						E('td', { 'class': 'td' }, _('Library')),
+						E('td', { 'class': 'td', 'id': 'library-stats' },
+							(s.songs || 0) + ' songs, ' + (s.albums || 0) + ' albums, ' + (s.artists || 0) + ' artists')
+					])
+				])
+			])
+		]);
 	},
 
 	handleSaveApply: null,

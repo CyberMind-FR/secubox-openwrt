@@ -1,0 +1,3 @@
+config droplet 'main'
+	option default_domain 'gk2.secubox.in'
+	option upload_dir '/tmp/droplet-upload'

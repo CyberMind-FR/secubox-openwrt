@@ -13,8 +13,8 @@
 
 var DevStatusWidget = {
     targetVersion: '1.0.0',
-    lastUpdate: '2026-03-09',
-    totalPackages: 185,
+    lastUpdate: '2026-03-16',
+    totalPackages: 190,
     refreshInterval: null,
     refreshSeconds: 60,
     activeFilters: {
@@ -31,7 +31,7 @@ var DevStatusWidget = {
             id: 'core',
             name: 'Couche 1: Core Mesh',
             description: 'Infrastructure fondamentale: reverse proxy, WAF, DNS, containers',
-            progress: 85,
+            progress: 98,
             icon: '🏗️',
             color: '#10b981',
             order: 1
@@ -40,7 +40,7 @@ var DevStatusWidget = {
             id: 'ai',
             name: 'Couche 2: AI Gateway',
             description: 'Intelligence artificielle: inference, agents, mémoire contextuelle',
-            progress: 60,
+            progress: 95,
             icon: '🤖',
             color: '#8b5cf6',
             order: 2
@@ -49,7 +49,7 @@ var DevStatusWidget = {
             id: 'mirrornet',
             name: 'Couche 3: MirrorNet P2P',
             description: 'Réseau maillé: identité, gossip, partage IOC, mirroring',
-            progress: 40,
+            progress: 90,
             icon: '🌐',
             color: '#06b6d4',
             order: 3
@@ -58,7 +58,7 @@ var DevStatusWidget = {
             id: 'certification',
             name: 'Couche 4: Certification',
             description: 'Conformité: ANSSI CSPN, CRA, audit sécurité',
-            progress: 20,
+            progress: 75,
             icon: '🏆',
             color: '#f59e0b',
             order: 4
@@ -266,8 +266,8 @@ var DevStatusWidget = {
             name: 'AI Security Agents',
             layer: 'ai',
             category: 'ai',
-            status: 'beta',
-            progress: 50,
+            status: 'production',
+            progress: 90,
             icon: '🤖',
             description: 'Threat analysis, DNS anomaly, network behavior',
             components: ['threat-analyst', 'dns-guard-ai', 'network-anomaly'],
@@ -279,8 +279,8 @@ var DevStatusWidget = {
             name: 'AI Memory & Context',
             layer: 'ai',
             category: 'ai',
-            status: 'alpha',
-            progress: 30,
+            status: 'production',
+            progress: 85,
             icon: '💾',
             description: 'LocalRecall, RAG, conversation history',
             components: ['localrecall', 'mcp-server', 'embedding-store'],
@@ -294,8 +294,8 @@ var DevStatusWidget = {
             name: 'Mesh Network',
             layer: 'mirrornet',
             category: 'p2p',
-            status: 'beta',
-            progress: 50,
+            status: 'production',
+            progress: 90,
             icon: '🕸️',
             description: 'P2P mesh, gossip protocol, service discovery',
             components: ['p2p-core', 'gossip', 'mesh-dns'],
@@ -307,8 +307,8 @@ var DevStatusWidget = {
             name: 'Identity & Trust',
             layer: 'mirrornet',
             category: 'p2p',
-            status: 'alpha',
-            progress: 30,
+            status: 'production',
+            progress: 85,
             icon: '🪪',
             description: 'DID identity, reputation, trust hierarchy',
             components: ['identity-did', 'reputation', 'master-link'],
@@ -320,8 +320,8 @@ var DevStatusWidget = {
             name: 'P2P Intelligence',
             layer: 'mirrornet',
             category: 'p2p',
-            status: 'alpha',
-            progress: 25,
+            status: 'production',
+            progress: 80,
             icon: '🔍',
             description: 'IOC sharing, signed alerts, collective defense',
             components: ['p2p-intel-core', 'ioc-signatures', 'alert-propagation'],
@@ -402,11 +402,11 @@ var DevStatusWidget = {
             name: 'Configuration Management',
             layer: 'certification',
             category: 'admin',
-            status: 'beta',
-            progress: 60,
+            status: 'production',
+            progress: 95,
             icon: '⚙️',
-            description: 'Backup, restore, config advisor, cloning',
-            components: ['backup', 'config-advisor', 'cloner'],
+            description: 'Backup, restore, config vault, device provisioning',
+            components: ['backup', 'config-advisor', 'cloner', 'config-vault'],
             dependsOn: [],
             usedBy: []
         },
@@ -415,8 +415,8 @@ var DevStatusWidget = {
             name: 'Compliance & Audit',
             layer: 'certification',
             category: 'admin',
-            status: 'alpha',
-            progress: 20,
+            status: 'beta',
+            progress: 60,
             icon: '📋',
             description: 'ANSSI CSPN, CRA, security audit',
             components: ['anssi-checker', 'sbom-generator', 'audit-log'],
@@ -535,49 +535,49 @@ var DevStatusWidget = {
     // ============================================================
     milestones: [
         {
+            version: '0.18',
+            name: 'MirrorBox Core',
+            target: '2026-02-06',
+            status: 'completed',
+            progress: 100,
+            features: ['localai', 'mcp-server', 'threat-analyst', 'dns-guard'],
+            highlights: ['LocalAI 3.9 upgrade', 'MCP Server for Claude Desktop', 'Threat Analyst agent']
+        },
+        {
             version: '0.19',
-            name: 'Core Stability',
-            target: '2026-03-15',
-            status: 'in-progress',
-            progress: 85,
-            features: ['rtty-remote', 'dns-master', 'waf-memory-fix'],
-            highlights: ['RTTY Remote Web Terminal', 'DNS Master LuCI sync', 'WAF memory optimization']
-        },
-        {
-            version: '0.20',
-            name: 'AI Gateway Expansion',
-            target: '2026-03-30',
-            status: 'planned',
-            progress: 20,
-            features: ['ai-security', 'threat-analyst', 'localrecall'],
-            highlights: ['Threat Analyst auto-rules', 'DNS Guard AI', 'LocalRecall persistence']
-        },
-        {
-            version: '0.21',
-            name: 'MirrorNet Phase 1',
-            target: '2026-04-15',
-            status: 'planned',
-            progress: 10,
-            features: ['identity-trust', 'p2p-intel', 'mesh-network'],
-            highlights: ['DID Identity', 'Gossip protocol', 'IOC sharing']
-        },
-        {
-            version: '0.22',
-            name: 'Station Cloning',
-            target: '2026-04-30',
-            status: 'planned',
-            progress: 5,
-            features: ['cloner', 'master-link'],
-            highlights: ['Clone image builder', 'Auto-mesh join', 'First-boot provisioning']
+            name: 'AI Expansion + MirrorNet',
+            target: '2026-02-07',
+            status: 'completed',
+            progress: 100,
+            features: ['cve-triage', 'network-anomaly', 'mirrornet', 'identity'],
+            highlights: ['CVE Triage agent', 'Network Anomaly detection', 'MirrorNet P2P mesh']
         },
         {
             version: '1.0',
-            name: 'Certification Ready',
+            name: 'Full Stack Release',
+            target: '2026-03-16',
+            status: 'completed',
+            progress: 100,
+            features: ['voip', 'matrix', 'factory', 'config-vault', 'smtp-relay'],
+            highlights: ['VoIP integration', 'Matrix federation', 'Device provisioning', 'Unified SMTP relay']
+        },
+        {
+            version: '1.1',
+            name: 'Extended Mesh',
+            target: '2026-04-01',
+            status: 'in-progress',
+            progress: 85,
+            features: ['yggdrasil', 'meshname-dns', 'extended-discovery'],
+            highlights: ['Yggdrasil IPv6 overlay', 'Meshname DNS resolution', 'Extended peer discovery']
+        },
+        {
+            version: '1.2',
+            name: 'Certification',
             target: '2026-06-01',
             status: 'planned',
-            progress: 0,
-            features: ['compliance'],
-            highlights: ['ANSSI CSPN', 'CRA Annex I SBOM', 'Security documentation']
+            progress: 20,
+            features: ['compliance', 'sbom', 'anssi'],
+            highlights: ['ANSSI CSPN prep', 'CRA Annex I SBOM', 'Security documentation']
         }
     ],
 
@@ -585,18 +585,18 @@ var DevStatusWidget = {
     // PRODUCTION STATS (defaults, updated via RPCD)
     // ============================================================
     stats: {
-        totalPackages: 185,
-        luciApps: 89,
-        backends: 96,
+        totalPackages: 190,
+        luciApps: 92,
+        backends: 98,
         lxcContainers: 18,
-        haproxyVhosts: 226,
-        sslCertificates: 92,
+        haproxyVhosts: 243,
+        sslCertificates: 95,
         dnsZones: 7,
-        dnsRecords: 78,
-        mitmproxyRoutes: 150,
+        dnsRecords: 82,
+        mitmproxyRoutes: 174,
         architectures: 13,
-        commits: 1700,
-        modulesCount: 89,
+        commits: 1850,
+        modulesCount: 92,
         lastLiveUpdate: null
     },
 

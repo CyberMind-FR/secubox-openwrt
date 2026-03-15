@@ -1,0 +1,14 @@
+{
+    "admin/services/newsbin": {
+        "title": "Newsbin",
+        "order": 50,
+        "action": {
+            "type": "view",
+            "path": "newsbin/overview"
+        },
+        "depends": {
+            "acl": ["luci-app-newsbin"],
+            "uci": {}
+        }
+    }
+}

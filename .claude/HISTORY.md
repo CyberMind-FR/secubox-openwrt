@@ -1,6 +1,24 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-03-14 (Streamlit Launcher)_
+_Last updated: 2026-03-15 (v1.0.0 Beta Release)_
+
+0. **SecuBox v1.0.0 Beta Release (2026-03-15)**
+   - BETA-RELEASE.md: Complete security testing documentation
+     - Attack surface overview (HAProxy, WAF, LXC, P2P layers)
+     - High-value targets and secrets locations for pen testers
+     - Known weak points (intentional disclosure for bug bounty)
+     - Bug bounty scope with severity guidelines
+     - Test environment setup (VirtualBox appliance, Docker)
+   - SECURITY.md: Added Hall of Fame section, beta info link
+   - README.md: Version bump to 1.0.0-beta status
+   - LuCI dark theme fixes: Threat Analyst, MAC Guardian, Device Intel
+   - Lyrion dashboard: Added Web UI URL link button
+
+1. **SecuBox v1.0.0 Release (2026-03-16)**
+   - Version bump to 1.0.0 reflecting all major milestones complete
+   - All v0.18, v0.19, v1.0, v1.1+ roadmap items done
+   - Updated version strings across: Makefile, secubox CLI, secubox-core daemon, RPCD handlers, common.sh, README.md
+   - Unified SMTP Relay configuration complete (secubox-app-smtp-relay)
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  
@@ -5084,3 +5102,201 @@ git checkout HEAD -- index.html
       - `/usr/share/streamlit-forge/lib/nfo-validator.sh` (new)
       - `/www/luci-static/resources/streamlit-forge/nfo-viewer.js` (new)
       - Updated: slforge, metablogizerctl, luci.streamlit-forge, hub-generator, metacatalogctl, overview.js
+
+106. **Hub Generator v7 NFO Fix (2026-03-14)**
+    - Fixed BusyBox awk compatibility issue with NFO section parsing
+    - Problem: `gsub(/[\[\]]/, "")` didn't work reliably on BusyBox awk
+    - Solution: Use two `sub()` calls instead for bracket removal
+    - Single-pass awk extraction for 7 NFO fields
+    - 110 NFO entries now correctly extracted from 239 total hub items
+    - Capability and audience filter clouds display actual values
+    - HAProxy vhost scanning: 102 services discovered
+    - Dynamic preview modal with eye button for live site preview
+    - Files: `/usr/sbin/hub-generator`
+
+107. **Droplet Publisher (2026-03-14)**
+    - One-drop content publishing: drag HTML/ZIP → instant site
+    - Auto-detects content type (static/streamlit/hexo)
+    - Creates vhosts at gk2.secubox.in by default
+    - CLI: `dropletctl publish/list/remove/rename`
+    - LuCI drag-drop interface at Services > Droplet
+    - Registers with metablogizer or streamlit accordingly
+    - Dark theme UI with gradient styling
+    - RPCD backend with cgi-io upload integration
+    - **Files**:
+      - `/usr/sbin/dropletctl` (new)
+      - `/usr/libexec/rpcd/luci.droplet` (new)
+      - `/www/luci-static/resources/view/droplet/overview.js` (new)
+
+108. **Newsbin - Usenet Search & Download (2026-03-14)**
+    - SABnzbd LXC container using Debian rootfs (no Docker/Podman)
+    - Downloads Debian LXC rootfs from images.linuxcontainers.org
+    - Installs sabnzbdplus, unrar, par2, p7zip inside container
+    - Container IP: 192.168.255.40:8085
+    - NZBHydra2 package prepared (192.168.255.41:5076)
+    - LuCI dashboard at Services > Newsbin
+    - NNTP credentials: EWEKA account configured in UCI
+    - RPCD backend with status/queue/history/search methods
+    - Fixed BusyBox sh compatibility (local vars, json_add_boolean)
+    - **Files**:
+      - `secubox-app-sabnzbd/`: Makefile, UCI config, init.d, sabnzbdctl
+      - `secubox-app-nzbhydra/`: Makefile, UCI config, init.d, nzbhydractl
+      - `luci-app-newsbin/`: overview.js, RPCD handler, ACL, menu
+
+109. **qBittorrent & WebTorrent - Torrent Services (2026-03-15)**
+    - Both use Debian LXC containers (no Docker/Podman)
+    - **qBittorrent** (`secubox-app-qbittorrent`):
+      - Container IP: 192.168.255.42:8090
+      - CLI: `qbittorrentctl install|start|stop|status|add|list|shell|configure-haproxy`
+      - Default login: admin / adminadmin
+      - Installs qbittorrent-nox via apt inside container
+      - Torrent add via magnet links or URLs
+    - **WebTorrent** (`secubox-app-webtorrent`):
+      - Container IP: 192.168.255.43:8095
+      - CLI: `webtorrentctl install|start|stop|status|add|list|shell|configure-haproxy`
+      - Node.js streaming server with browser-based WebRTC support
+      - Fixed webtorrent v2.x ESM incompatibility: pinned to v1.9.7 (last CommonJS version)
+      - npm exact version install prevents semver resolution to breaking v2.x
+      - In-browser streaming via `/stream/:infoHash/:path` endpoint
+      - Dark-themed web UI with real-time torrent status
+    - **Files**:
+      - `secubox-app-qbittorrent/`: Makefile, UCI config, init.d, qbittorrentctl
+      - `secubox-app-webtorrent/`: Makefile, UCI config, init.d, webtorrentctl
+
+110. **MAGIC·CHESS·360 Colorset Enhancement (2026-03-15)**
+    - Added colorset selector to wall.maegia.tv (MAGIC·CHESS·360) with 15 thematic color palettes
+    - **Colorsets Added**:
+      - `default` - Classic Gold & Cream (original)
+      - `alchy` - Alchemical Mystique (green/gold/purple, alchemical symbols)
+      - `emojiz` - Playful Rainbow (bright orange/pink, emoji icons)
+      - `punk` - Cyberpunk Neon (magenta/cyan, tech/hacker icons)
+      - `hollistique` - Earth Harmony (brown/teal, nature/yoga icons)
+      - `tantrique` - Sacred Sensual (deep red/purple, spiritual symbols)
+      - `cosmique` - Deep Space Nebula (violet/blue, planets/stars)
+      - `solarix` - Solar Flare Energy (orange/gold, sun/fire icons)
+      - `oceanique` - Deep Sea Mystery (cyan/aqua, marine life)
+    - **Features**:
+      - CSS custom properties for smooth theme transitions
+      - Colorset selector UI with 15 circular gradient buttons
+      - Keyboard shortcuts 1-9 for first 9, click for rest
+      - LocalStorage persistence for user preference
+      - Each colorset has 24 unique themed icons and labels
+    - **Technical**:
+      - Minimal patch to original (~5KB added, 190KB total)
+      - No external dependencies (self-contained CSS/JS)
+      - 3D perspective board with parallax mouse tracking
+      - Pulse animations with random timing per cell
+    - **Deployed**: https://wall.maegia.tv/
+
+111. **MAGIC·CHESS·360 3D Joystick & Controls (2026-03-15)**
+    - Added 2D joystick for true 3D CSS perspective transformation
+    - **3D Controls**:
+      - Joystick X-axis → `rotateY` ±45° (tilt plane left/right)
+      - Joystick Y-axis → `rotateX` ±35° (tilt plane forward/back)
+      - CSS `perspective: 1200px` on body for 3D depth
+      - Canvas `transform-style: preserve-3d` for hardware acceleration
+    - **Color Cycle Toggle**:
+      - 🎨 button toggles automatic color spectrum animation
+      - Default: OFF (fixed colors from selected colorset)
+      - When ON: colors cycle through TAO_SPECTRUM with phase animation
+    - **Additional Controls**:
+      - Depth slider: zoom multiplier 0.5x to 2x
+      - Pixel ring: click to cycle cell sizes (3-40px)
+      - ↻ Auto-rotate button: continuous rotation animation
+    - **Default Colorset**: RGB (simple red/green/blue)
+    - **Deployed**: https://wall.maegia.tv/
+
+### 2026-03-15
+
+- **Dual-Stream DPI Architecture (Phase 1 Complete)**
+  - New `secubox-dpi-dual` package: parallel MITM + Passive TAP deep packet inspection
+  - Architecture: DUAL-STREAM-DPI.md comprehensive spec document
+  - TAP Stream: tc mirred port mirroring → dummy interface → netifyd/nDPI analysis
+  - Flow Collector: Stats aggregation from netifyd, writes `/tmp/secubox/dpi-flows.json`
+  - Correlation Engine: Matches MITM WAF events + TAP flow data, CrowdSec integration
+  - CLI: `dpi-dualctl` start/stop/status/flows/threats/mirror
+  - Procd service: manages flow-collector + correlator instances
+  - MITM Double Buffer: `dpi_buffer.py` mitmproxy addon (Phase 2 prep)
+  - UCI config: `/etc/config/dpi-dual` with dual/mitm-only/tap-only modes
+  - Files: mirror-setup.sh, dpi-flow-collector, dpi-correlator, dpi-dualctl, init.d/dpi-dual, dpi_buffer.py
+
+
+- **Dual-Stream DPI Phase 2 - MITM Double Buffer + LuCI (Complete)**
+  - Enhanced mitmproxy addon `dpi_buffer.py`:
+    - Compiled regex for 6 threat categories (path_traversal, xss, sqli, lfi, rce, ssrf)
+    - Scanner detection, optional blocking, request replay queue
+  - New `luci-app-dpi-dual` package:
+    - RPCD handler with 10 methods (status, flows, buffer, threats, correlation, control)
+    - KISS dashboard with stream status cards, LED indicators, threats table
+    - Protocol distribution, manual IP correlation
+  - Streamlit control panel: Added DPI Dual card
+
+
+- **Dual-Stream DPI Phase 3 - Correlation Engine + Timeline (Complete)**
+  - Correlation library: IP reputation tracking, context gathering, CrowdSec integration
+  - Enhanced correlator v2: Auto-ban, notifications, CLI commands
+  - LuCI timeline view: Event cards, IP context modal, quick ban, search
+  - 8 new RPCD methods for correlation access and control
+
+
+
+- **Dual-Stream DPI Phase 4 - LAN Passive Flow Analysis (2026-03-15/16)**
+  - New `dpi-lan-collector` daemon for passive br-lan monitoring
+  - Zero MITM, zero caching - pure nDPI/conntrack flow observation
+  - Tracks: active clients (ARP), destinations (conntrack), protocols (TCP/UDP/ICMP)
+  - LuCI `lan-flows.js` view with real-time stats and 5s auto-refresh
+  - 4 new RPCD methods: get_lan_status, get_lan_clients, get_lan_destinations, get_lan_protocols
+  - UCI config `lan` section with interface, aggregate_interval, client_retention
+  - Fixed protocol display bug ("TCPnull" → "TCP")
+  - Removed mitmproxy-out container (not needed for WAF)
+  - Updated MITM detection to check mitmproxy-in specifically
+
+### 2026-03-16
+
+- **Remote ttyd Deployment for Mesh Nodes (Complete)**
+  - CLI commands: `rttyctl install <node|all> <app>`, `rttyctl install-status`, `rttyctl deploy-ttyd`
+  - Installs packages on remote mesh nodes via RPC proxy to AppStore
+  - Auto-enables and starts ttyd service after installation
+  - `rttyctl install all <app>` - batch install across all mesh nodes
+  - Node discovery from: master-link peers, WireGuard endpoints, P2P mesh
+  - 4 new RPCD methods: install_remote, install_mesh, deploy_ttyd, install_status
+  - ACL permissions updated for remote installation write actions
+  - Use case: Deploy ttyd web terminal to all SecuBox nodes for browser-based SSH
+
+- **Device Provisioning System (Complete)**
+  - Auto-Restore: `import-clone <file> --apply` - auto-restores all modules after import
+  - Remote Provisioning: `provision <node|all>` - pushes clone to remote nodes via RPC
+  - First-Boot Pull: `pull-config <master>` - pulls config from master on new device
+  - HTTP Serve: `serve-clone` - generates clone at /www/config-vault/ for HTTP download
+  - CLI commands: restore-all, provision, pull-config, serve-clone
+  - 6 new RPCD methods: restore_all, import_apply, provision, pull_config, export_clone_b64, serve_clone
+  - Use case: Zero-touch provisioning of new SecuBox devices from master configuration
+
+- **LuCI Provisioning & ttyd Deployment UI (Complete)**
+  - Config Vault Dashboard: "Device Provisioning" card with Provision Remote, Serve via HTTP, Restore All buttons
+  - RTTY Remote Dashboard: "Deploy ttyd to All" button and per-node ttyd button in actions column
+  - Modal dialogs for confirmation, progress, and result display
+  - Full mesh provisioning workflow now accessible via web UI
+
+- **WAF Auto-Ban Tuning System (Complete)**
+  - Configurable scoring weights via UCI `scoring` section
+  - Sensitivity presets: low (0.7x), medium (1.0x), high (1.3x), custom
+  - Whitelist support: IPs/CIDRs that skip auto-ban (`whitelist` section)
+  - Configurable auto-ban duration and notification threshold
+  - Reputation decay: Periodic score reduction for inactive IPs
+  - CLI commands: `dpi-correlator tune`, `dpi-correlator whitelist`, `dpi-correlator decay`
+  - 6 new RPCD methods: get_tuning, set_tuning, whitelist_add, whitelist_remove, whitelist_list, reset_reputation
+  - UCi config updated with scoring weights, sensitivity, whitelist, decay options
+  - Enables fine-tuning of auto-ban sensitivity for production traffic
+
+- **Unified SMTP Relay Configuration (2026-03-16)**
+  - New `secubox-app-smtp-relay` package: centralized SMTP config for all SecuBox apps
+  - Shared library with `send_mail()`, `send_html_mail()`, `send_text_mail()` functions
+  - CLI tool: `smtp-relayctl status|test|send|configure|admin|enable|disable`
+  - RPCD backend with 5 methods: get_status, get_config, test_email, send_email, detect_local
+  - LuCI settings page with mode selection, provider presets, connection test
+  - Three modes: external (SMTP server), local (auto-detect mailserver), direct (MTA)
+  - Provider presets: Gmail, SendGrid, Mailgun, Amazon SES, Mailjet
+  - Migrated secubox-reporter and bandwidth-manager to use shared library
+  - Backwards-compatible fallback to legacy per-app SMTP settings
+  - Eliminates duplicated SMTP configuration across SecuBox apps

@@ -5,8 +5,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-core
-PKG_VERSION:=0.10.0
-PKG_RELEASE:=17
+PKG_VERSION:=1.0.0
+PKG_RELEASE:=1
 PKG_ARCH:=all
 PKG_LICENSE:=GPL-2.0
 PKG_MAINTAINER:=SecuBox Team
@@ -186,7 +186,7 @@ EOF
 		(/usr/sbin/secubox-sync-registry sync &) >/dev/null 2>&1
 	fi
 
-	echo "SecuBox Core Framework v0.9.0 installed successfully"
+	echo "SecuBox Core Framework v1.0.0 installed successfully"
 	echo "Run 'secubox device status' to verify installation"
 	echo "New features: State management, Component registry, Admin Control Center"
 }

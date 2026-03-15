@@ -650,30 +650,13 @@ sync_routes() {
 }
 
 get_bans() {
-	# Get CrowdSec decisions as JSON - limit to avoid timeout
-	# CAPI blocklists can have thousands of entries, so we only show local decisions
-	local bans_json="[]"
-	local total=0
-	local autoban=0
-	local crowdsec_count=0
-
-	if command -v cscli >/dev/null 2>&1; then
-		# Get local decisions only (WAF auto-bans) - these are what users care about
-		# Using --limit to prevent huge output from CAPI blocklists
-		bans_json=$(cscli decisions list -o json --limit 100 2>/dev/null)
-		if [ -z "$bans_json" ] || [ "$bans_json" = "null" ]; then
-			bans_json="[]"
-		else
-			# Count using grep on the raw JSON
-			total=$(echo "$bans_json" | grep -c '"id":' 2>/dev/null) || total=0
-			autoban=$(echo "$bans_json" | grep -c '"origin":.*"cscli"' 2>/dev/null) || autoban=0
-			crowdsec_count=$(echo "$bans_json" | grep -c '"origin":.*"crowdsec"' 2>/dev/null) || crowdsec_count=0
-		fi
+	# Read cached bans (updated every minute by cron)
+	local cache_file="/tmp/secubox/waf-bans.json"
+	if [ -f "$cache_file" ]; then
+		cat "$cache_file"
+	else
+		echo '{"success":true,"total":0,"mitmproxy_autoban":0,"crowdsec":0,"bans":[]}'
 	fi
-
-	# Build response with embedded bans array
-	printf '{"success":true,"total":%d,"mitmproxy_autoban":%d,"crowdsec":%d,"bans":%s}\n' \
-		"$total" "$autoban" "$crowdsec_count" "$bans_json"
 }
 
 unban_ip() {

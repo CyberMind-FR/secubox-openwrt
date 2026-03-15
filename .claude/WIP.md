@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-14 (Module Manifest NFO)_
+_Last updated: 2026-03-16 (Unified SMTP Relay)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -8,7 +8,100 @@ _Last updated: 2026-03-14 (Module Manifest NFO)_
 
 ## Recently Completed
 
+### 2026-03-16
+
+- **SecuBox v1.0.0 Version Bump (Complete)**
+  - All major roadmap milestones achieved (v0.18, v0.19, v1.0, v1.1+)
+  - Updated version strings: Makefile (1.0.0-r1), CLI tools, RPCD handlers, documentation
+  - Files updated: secubox, secubox-core, core.sh, dashboard.sh, luci.secubox, common.sh, README.md
+
+- **Unified SMTP Relay Configuration (Complete)**
+  - New `secubox-app-smtp-relay` package with centralized SMTP config
+  - Shared library `/usr/lib/secubox/mail/smtp-relay.sh` with `send_mail()` function
+  - CLI: `smtp-relayctl status|test|send|configure|admin|enable|disable`
+  - RPCD: get_status, get_config, test_email, send_email, detect_local
+  - LuCI settings page with mode selection, provider config, test button
+  - Modes: external (Gmail, SendGrid, etc.), local (auto-detect mailserver), direct
+  - Migrated `secubox-reporter` and `bandwidth-manager` to use shared library
+  - Backwards-compatible fallback to legacy per-app SMTP settings
+  - Eliminates duplicated SMTP configuration across SecuBox apps
+
+- **WAF Auto-Ban Tuning System (Complete)**
+  - Configurable scoring weights via UCI `scoring` section
+  - Sensitivity presets: low (0.7x), medium (1.0x), high (1.3x), custom
+  - Whitelist support: IPs/CIDRs that skip auto-ban
+  - Configurable auto-ban duration, notification threshold, reputation decay
+  - CLI: `dpi-correlator tune [param] [value]`, `whitelist add/remove/list`, `decay [amount]`
+  - 6 new RPCD methods for UI integration
+  - Enables fine-tuning for production traffic with fewer false positives
+
+- **LuCI Provisioning Dashboard (Complete)**
+  - Config Vault dashboard: "Device Provisioning" card with 3 action buttons
+  - "Provision Remote" - Modal dialog to push clone to remote node
+  - "Serve via HTTP" - Generate clone for HTTP download, shows URL
+  - "Restore All" - Confirmation modal to restore all modules from vault
+  - Full provisioning workflow accessible from web UI
+
+- **LuCI Deploy ttyd Button (Complete)**
+  - RTTY Remote Control dashboard: "Deploy ttyd to All" global button
+  - Per-node "ttyd" button in Connected Nodes table
+  - Confirmation modal for bulk deployment
+  - Progress spinner and result display
+  - Enables web terminal deployment to mesh nodes via UI
+
+- **Device Provisioning System (Complete)**
+  - **Auto-Restore**: `configvaultctl import-clone <file> --apply` auto-restores all modules
+  - **Remote Provisioning**: `configvaultctl provision <node|all>` pushes clone to remote nodes
+  - **First-Boot Pull**: `configvaultctl pull-config <master>` pulls config on new device boot
+  - **HTTP Serve**: `configvaultctl serve-clone` generates clone for HTTP download
+  - New CLI commands: restore-all, provision, pull-config, serve-clone
+  - 6 new RPCD methods: restore_all, import_apply, provision, pull_config, export_clone_b64, serve_clone
+  - ACL permissions updated for provisioning actions
+  - Use case: Clone master SecuBox config to new devices automatically
+
+- **Remote ttyd Deployment for Mesh Nodes (Complete)**
+  - CLI commands: `rttyctl install`, `rttyctl install-status`, `rttyctl deploy-ttyd`
+  - Installs packages on remote mesh nodes via RPC proxy
+  - Auto-enables and starts ttyd service after installation
+  - `rttyctl install all <app>` - batch install across all mesh nodes
+  - Node discovery from: master-link, WireGuard peers, P2P mesh
+  - 4 new RPCD methods: install_remote, install_mesh, deploy_ttyd, install_status
+  - ACL permissions updated for remote installation actions
+
+- **Dual-Stream DPI Phase 4 - LAN Passive Flow Analysis (Complete)**
+  - New `dpi-lan-collector` daemon for passive br-lan monitoring
+  - Zero MITM, zero caching - pure nDPI/conntrack flow observation
+  - Tracks: active LAN clients (ARP), external destinations (conntrack), protocols
+  - LuCI `lan-flows.js` view with real-time stats and 5s auto-refresh
+  - 4 new RPCD methods: get_lan_status, get_lan_clients, get_lan_destinations, get_lan_protocols
+  - Fixed protocol display bug ("TCPnull" → "TCP")
+  - Removed mitmproxy-out container (WAF only needs mitmproxy-in)
+  - Updated MITM detection to check mitmproxy-in specifically
+
+### 2026-03-15
+
+- **MAGIC·CHESS·360 Colorset + Sliders Enhancement (Complete)**
+  - Added 15 color palettes to wall.maegia.tv TAO_SPECTRUM system
+  - Colorsets: default, alchy, emojiz, punk, hollistique, tantrique, cosmique, solarix, oceanique, rainbow, fluo, phospho, vintage, tao, merkaba
+  - Each colorset changes the animated prism colors cycling through the chess pieces
+  - Added 3 control sliders (bottom-left):
+    - Pixel: cell size zoom (3-40px)
+    - Persp: auto-rotate perspective speed
+    - Pan: mouse parallax strength (0-2x)
+  - Colorset selector: 15 circular gradient buttons (top-left corner)
+  - Keyboard shortcuts (1-9) for first 9, click for rest
+  - LocalStorage persistence for user preference
+  - Deployed to: https://wall.maegia.tv/
+
 ### 2026-03-14
+
+- **Hub Generator v7 - NFO Integration Fix (Complete)**
+  - Fixed BusyBox awk compatibility issue with bracket parsing
+  - Single-pass awk extraction for 7 NFO fields (category, desc, keywords, caps, audience, icon, version)
+  - Replaced `gsub(/[\[\]]/)` with two `sub()` calls for reliable section parsing
+  - 110 NFO entries now correctly extracted from 239 total items
+  - Capability and audience filter clouds working with actual values
+  - Dynamic preview modal with eye button for live site preview
 
 - **Module Manifest (NFO) System Extension (Complete)**
   - Flat-file UCI-style `.nfo` manifest format for Streamlit/MetaBlog apps
@@ -556,23 +649,46 @@ _Last updated: 2026-03-14 (Module Manifest NFO)_
 
 (No active tasks)
 
+### 2026-03-15
+
+- **Dual-Stream DPI Architecture (Phase 3 Complete)**
+  - Architecture doc: `package/secubox/DUAL-STREAM-DPI.md`
+  - **Phase 1 - TAP Stream**: tc mirred, flow-collector, dpi-dualctl CLI
+  - **Phase 2 - MITM Double Buffer**: Enhanced dpi_buffer.py, LuCI dashboard
+  - **Phase 3 - Correlation Engine + Integration**:
+    - **Correlation Library** (`correlation-lib.sh`):
+      - IP reputation tracking with score decay
+      - Full context gathering (MITM, DPI, WAF)
+      - CrowdSec decision checking and notification
+      - Correlation entry builder with all stream context
+    - **Enhanced Correlator** (`dpi-correlator v2`):
+      - Watches WAF alerts, CrowdSec decisions, DPI flows
+      - Auto-ban for high-reputation IPs (configurable threshold)
+      - Notification queue for high-severity threats
+      - CLI: correlate, reputation, context, search, stats
+    - **LuCI Timeline View** (`timeline.js`):
+      - Correlation timeline with event cards
+      - IP context modal (MITM requests, WAF alerts)
+      - Quick ban button with CrowdSec integration
+      - Search by IP functionality
+      - Stats: total, high-threat, banned, unique IPs
+    - **RPCD Methods** (8 new):
+      - get_correlation_stats, get_ip_context, get_ip_reputation
+      - get_timeline, search_correlations
+      - ban_ip, set_auto_ban
+    - **UCI Config**: auto_ban, auto_ban_threshold, notifications, reputation_decay
+
 ---
 
 ## Next Up
 
 ### v1.0 Release Prep
 
-1. **Remote ttyd Deployment** - Auto-install ttyd on mesh nodes
-2. **Device Provisioning** - Use Config Vault export-clone for SecuBox replication
-
-### v1.1+ Extended Mesh
-
-1. **WAF Auto-Ban Tuning** (optional, as-needed)
-   - Sensitivity threshold adjustment based on production traffic
+All core features complete. Optional polish tasks remain.
 
 ### Backlog
 
-- SSMTP / mail host / MX record management (v2)
+- Advanced mail features: webmail integration, DKIM signing, multiple recipients (v2)
 
 ---
 

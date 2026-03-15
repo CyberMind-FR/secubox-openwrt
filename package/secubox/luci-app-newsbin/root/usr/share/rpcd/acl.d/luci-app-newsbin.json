@@ -1,0 +1,15 @@
+{
+    "luci-app-newsbin": {
+        "description": "Newsbin - Usenet Search & Download",
+        "read": {
+            "ubus": {
+                "luci.newsbin": ["status", "queue", "history", "search"]
+            }
+        },
+        "write": {
+            "ubus": {
+                "luci.newsbin": ["add_nzb", "pause", "resume", "remove", "config"]
+            }
+        }
+    }
+}

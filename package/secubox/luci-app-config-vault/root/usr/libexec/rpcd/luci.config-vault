@@ -243,22 +243,181 @@ handle_export_clone() {
     json_dump
 }
 
+#------------------------------------------------------------------------------
+# Provisioning Methods
+#------------------------------------------------------------------------------
+
+# Import and auto-apply clone (for remote provisioning)
+handle_import_apply() {
+    local archive output rc
+
+    read -r input
+    json_load "$input"
+    json_get_var archive archive
+
+    json_init
+
+    if [ -z "$archive" ]; then
+        json_add_boolean success 0
+        json_add_string error "Archive path required"
+    elif [ ! -f "$archive" ]; then
+        json_add_boolean success 0
+        json_add_string error "Archive not found: $archive"
+    else
+        output=$($VAULT_CTL import-clone "$archive" --apply 2>&1)
+        rc=$?
+        [ $rc -eq 0 ] && json_add_boolean success 1 || json_add_boolean success 0
+        json_add_string output "$output"
+    fi
+
+    json_dump
+}
+
+# Provision remote node
+handle_provision() {
+    local target clone_file output rc
+
+    read -r input
+    json_load "$input"
+    json_get_var target target
+    json_get_var clone_file clone_file
+
+    json_init
+
+    if [ -z "$target" ]; then
+        json_add_boolean success 0
+        json_add_string error "Target node required"
+    else
+        output=$($VAULT_CTL provision "$target" "$clone_file" 2>&1)
+        rc=$?
+        [ $rc -eq 0 ] && json_add_boolean success 1 || json_add_boolean success 0
+        json_add_string output "$output"
+    fi
+
+    json_dump
+}
+
+# Pull config from master (first-boot)
+handle_pull_config() {
+    local master apply output rc
+
+    read -r input
+    json_load "$input"
+    json_get_var master master
+    json_get_var apply apply
+
+    json_init
+
+    if [ -z "$master" ]; then
+        json_add_boolean success 0
+        json_add_string error "Master URL required"
+    else
+        [ "$apply" = "false" ] && apply="--no-apply" || apply="--apply"
+        output=$($VAULT_CTL pull-config "$master" "$apply" 2>&1)
+        rc=$?
+        [ $rc -eq 0 ] && json_add_boolean success 1 || json_add_boolean success 0
+        json_add_string output "$output"
+    fi
+
+    json_dump
+}
+
+# Restore all modules
+handle_restore_all() {
+    local output rc
+
+    json_init
+    output=$($VAULT_CTL restore-all 2>&1)
+    rc=$?
+    [ $rc -eq 0 ] && json_add_boolean success 1 || json_add_boolean success 0
+    json_add_string output "$output"
+    json_dump
+}
+
+# Export clone as base64 (for RPC transfer)
+handle_export_clone_b64() {
+    local path
+
+    path="/tmp/secubox-clone-rpc-$$.tar.gz"
+    $VAULT_CTL export-clone "$path" >/dev/null 2>&1
+
+    json_init
+
+    if [ -f "$path" ]; then
+        json_add_boolean success 1
+        json_add_int size "$(stat -c%s "$path" 2>/dev/null || echo 0)"
+        # Stream base64 to avoid memory issues
+        local b64_data=$(base64 -w 0 "$path")
+        json_add_string data "$b64_data"
+        rm -f "$path"
+    else
+        json_add_boolean success 0
+        json_add_string error "Failed to create clone"
+    fi
+
+    json_dump
+}
+
+# Serve clone via HTTP (update /www/config-vault/)
+handle_serve_clone() {
+    local output_dir output rc
+
+    read -r input
+    json_load "$input"
+    json_get_var output_dir output_dir
+    [ -z "$output_dir" ] && output_dir="/www/config-vault"
+
+    json_init
+    output=$($VAULT_CTL serve-clone "$output_dir" 2>&1)
+    rc=$?
+    [ $rc -eq 0 ] && json_add_boolean success 1 || json_add_boolean success 0
+    json_add_string output "$output"
+    json_add_string url "/config-vault/clone.tar.gz"
+    json_dump
+}
+
 case "$1" in
     list)
-        echo '{"status":{},"modules":{},"history":{"count":"int"},"diff":{},"backup":{"module":"str"},"restore":{"module":"str"},"push":{},"pull":{},"init":{},"export_clone":{"path":"str"}}'
+        cat << 'EOF'
+{
+    "status": {},
+    "modules": {},
+    "history": {"count": 20},
+    "diff": {},
+    "backup": {"module": "str"},
+    "restore": {"module": "str"},
+    "restore_all": {},
+    "push": {},
+    "pull": {},
+    "init": {},
+    "export_clone": {"path": "str"},
+    "export_clone_b64": {},
+    "import_apply": {"archive": "str"},
+    "provision": {"target": "str", "clone_file": "str"},
+    "pull_config": {"master": "str", "apply": true},
+    "serve_clone": {"output_dir": "str"}
+}
+EOF
         ;;
     call)
         case "$2" in
-            status)       handle_status ;;
-            modules)      handle_modules ;;
-            history)      handle_history ;;
-            diff)         handle_diff ;;
-            backup)       handle_backup ;;
-            restore)      handle_restore ;;
-            push)         handle_push ;;
-            pull)         handle_pull ;;
-            init)         handle_init ;;
-            export_clone) handle_export_clone ;;
+            status)          handle_status ;;
+            modules)         handle_modules ;;
+            history)         handle_history ;;
+            diff)            handle_diff ;;
+            backup)          handle_backup ;;
+            restore)         handle_restore ;;
+            restore_all)     handle_restore_all ;;
+            push)            handle_push ;;
+            pull)            handle_pull ;;
+            init)            handle_init ;;
+            export_clone)    handle_export_clone ;;
+            export_clone_b64) handle_export_clone_b64 ;;
+            import_apply)    handle_import_apply ;;
+            provision)       handle_provision ;;
+            pull_config)     handle_pull_config ;;
+            serve_clone)     handle_serve_clone ;;
+            *)               echo '{"error":"Unknown method"}' ;;
         esac
         ;;
 esac

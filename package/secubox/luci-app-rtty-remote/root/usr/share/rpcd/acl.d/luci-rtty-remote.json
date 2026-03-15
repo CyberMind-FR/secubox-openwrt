@@ -14,7 +14,8 @@
                     "token_validate",
                     "get_tap_sessions",
                     "get_tap_session",
-                    "get_tap_status"
+                    "get_tap_status",
+                    "install_status"
                 ]
             },
             "uci": ["rtty-remote", "avatar-tap"]
@@ -34,7 +35,10 @@
                     "token_rpc",
                     "replay_to_node",
                     "export_session",
-                    "import_session"
+                    "import_session",
+                    "install_remote",
+                    "install_mesh",
+                    "deploy_ttyd"
                 ]
             },
             "uci": ["rtty-remote"]

@@ -10,11 +10,7 @@ PEERTUBE_URL="https://tube.gk2.secubox.in"
 STREAMLIT_APPS_DIR="/srv/streamlit/apps"
 METABLOG_SITES_DIR="/srv/metablogizer/sites"
 
-# Load NFO parser if available
-NFO_PARSER="/usr/share/streamlit-forge/lib/nfo-parser.sh"
-[ -f "$NFO_PARSER" ] && . "$NFO_PARSER"
-
-# Get app info from NFO file
+# Fast NFO field extraction using awk (no eval, no subshell parsing)
 # Usage: get_nfo_info <app_dir> <section> <field> <default>
 get_nfo_info() {
     local app_dir="$1"
@@ -25,48 +21,59 @@ get_nfo_info() {
     local nfo_file="$app_dir/README.nfo"
     [ ! -f "$nfo_file" ] && { echo "$default"; return; }
 
-    # Use nfo_get from parser if available
-    if type nfo_get >/dev/null 2>&1; then
-        local val=$(nfo_get "$nfo_file" "$section" "$field" 2>/dev/null)
-        [ -n "$val" ] && echo "$val" || echo "$default"
-        return
-    fi
-
-    # Fallback: section-aware grep parsing
-    awk -v section="$section" -v field="$field" '
-        /^\[/ { in_section = ($0 ~ "\\[" section "\\]") }
-        in_section && /^[a-zA-Z_]+=/ {
-            split($0, kv, "=")
-            gsub(/^[ \t]+|[ \t]+$/, "", kv[1])
-            if (kv[1] == field) {
-                gsub(/^[^=]+=/, "")
-                gsub(/^[ \t]+|[ \t]+$/, "")
-                print
+    # Direct awk extraction - fast and reliable
+    local val=$(awk -v section="$section" -v field="$field" '
+        BEGIN { in_section = 0 }
+        /^\[/ {
+            if ($0 ~ "\\[" section "\\]") { in_section = 1 }
+            else { in_section = 0 }
+        }
+        in_section && /^[a-zA-Z_-]+=/ {
+            # Extract key and value
+            key = $0
+            sub(/=.*/, "", key)
+            gsub(/^[ \t]+|[ \t]+$/, "", key)
+            gsub(/-/, "_", key)
+            if (key == field) {
+                val = $0
+                sub(/^[^=]+=[ \t]*/, "", val)
+                gsub(/^["'"'"']|["'"'"']$/, "", val)
+                print val
                 exit
             }
         }
-    ' "$nfo_file" 2>/dev/null | head -1
+    ' "$nfo_file" 2>/dev/null)
 
-    # Return default if nothing found
-    [ -z "$(cat /dev/stdin)" ] && echo "$default"
+    [ -n "$val" ] && echo "$val" || echo "$default"
 }
 
-# Get all NFO metadata for an app
-# Returns: category|description|keywords|capabilities|audience
+# Get all NFO metadata for an app in single awk pass
+# Returns: category|description|keywords|capabilities|audience|icon|version
 get_nfo_full() {
     local app_dir="$1"
     local nfo_file="$app_dir/README.nfo"
 
     [ ! -f "$nfo_file" ] && return 1
 
-    local category=$(get_nfo_info "$app_dir" "tags" "category" "")
-    local desc=$(get_nfo_info "$app_dir" "description" "short" "")
-    local keywords=$(get_nfo_info "$app_dir" "tags" "keywords" "")
-    local capabilities=$(get_nfo_info "$app_dir" "dynamics" "capabilities" "")
-    local audience=$(get_nfo_info "$app_dir" "tags" "audience" "")
-    local icon=$(get_nfo_info "$app_dir" "media" "icon" "")
-
-    echo "${category}|${desc}|${keywords}|${capabilities}|${audience}|${icon}"
+    # Single-pass extraction of all needed fields
+    awk '
+        BEGIN { section = "" }
+        /^\[/ {
+            section = $0
+            sub(/^\[/, "", section)
+            sub(/\]$/, "", section)
+        }
+        section == "tags" && /^category=/ { val=$0; sub(/^category=/, "", val); category=val }
+        section == "tags" && /^keywords=/ { val=$0; sub(/^keywords=/, "", val); keywords=val }
+        section == "tags" && /^audience=/ { val=$0; sub(/^audience=/, "", val); audience=val }
+        section == "description" && /^short=/ { val=$0; sub(/^short=/, "", val); desc=val }
+        section == "dynamics" && /^capabilities=/ { val=$0; sub(/^capabilities=/, "", val); caps=val }
+        section == "media" && /^icon=/ { val=$0; sub(/^icon=/, "", val); icon=val }
+        section == "identity" && /^version=/ { val=$0; sub(/^version=/, "", val); version=val }
+        END {
+            printf "%s|%s|%s|%s|%s|%s|%s\n", category, desc, keywords, caps, audience, icon, version
+        }
+    ' "$nfo_file" 2>/dev/null
 }
 
 categorize_site() {
@@ -290,7 +297,7 @@ uci show metablogizer 2>/dev/null | grep "=site$" | sed "s/metablogizer\.\(.*\)=
         nfo_keywords=$(echo "$nfo_data" | cut -d'|' -f3)
         nfo_caps=$(echo "$nfo_data" | cut -d'|' -f4)
         nfo_audience=$(echo "$nfo_data" | cut -d'|' -f5)
-        nfo_version=$(get_nfo_info "$site_dir" "identity" "version" "")
+        nfo_version=$(echo "$nfo_data" | cut -d'|' -f7)
     else
         nfo_cat=""
         nfo_desc=""
@@ -301,23 +308,13 @@ uci show metablogizer 2>/dev/null | grep "=site$" | sed "s/metablogizer\.\(.*\)=
     fi
 
     # Use NFO category or fallback to name-based categorization
-    if [ -n "$nfo_cat" ]; then
-        cat="$nfo_cat"
-    else
-        cat=$(categorize_site "$name")
-    fi
+    [ -n "$nfo_cat" ] && cat="$nfo_cat" || cat=$(categorize_site "$name")
     emoji=$(get_emoji "$cat")
     echo "$cat" >> "$CAT_FILE"
 
-    # Track audiences for filter tabs
+    # Track audiences and capabilities for filters
     [ -n "$nfo_audience" ] && echo "$nfo_audience" >> "/tmp/hub_audiences_$$.txt"
-
-    # Track capabilities for filter
-    if [ -n "$nfo_caps" ]; then
-        for cap in $(echo "$nfo_caps" | tr ',' ' '); do
-            [ -n "$cap" ] && echo "$cap" >> "/tmp/hub_caps_$$.txt"
-        done
-    fi
+    [ -n "$nfo_caps" ] && echo "$nfo_caps" | tr ',' '\n' >> "/tmp/hub_caps_$$.txt"
 
     protected="-"
     [ "$auth_required" = "1" ] && protected="protected"
@@ -346,7 +343,7 @@ uci show streamlit 2>/dev/null | grep "=instance$" | sed "s/streamlit\.\(.*\)=in
         nfo_keywords=$(echo "$nfo_data" | cut -d'|' -f3)
         nfo_caps=$(echo "$nfo_data" | cut -d'|' -f4)
         nfo_audience=$(echo "$nfo_data" | cut -d'|' -f5)
-        nfo_version=$(get_nfo_info "$app_dir" "identity" "version" "")
+        nfo_version=$(echo "$nfo_data" | cut -d'|' -f7)
     else
         nfo_cat=""
         nfo_desc=""
@@ -356,23 +353,13 @@ uci show streamlit 2>/dev/null | grep "=instance$" | sed "s/streamlit\.\(.*\)=in
         nfo_version=""
     fi
 
-    if [ -n "$nfo_cat" ]; then
-        cat="$nfo_cat"
-    else
-        cat=$(categorize_site "$name")
-    fi
+    [ -n "$nfo_cat" ] && cat="$nfo_cat" || cat=$(categorize_site "$name")
     emoji=$(get_emoji "$cat")
     echo "$cat" >> "$CAT_FILE"
 
-    # Track audiences for filter tabs
+    # Track audiences and capabilities for filters
     [ -n "$nfo_audience" ] && echo "$nfo_audience" >> "/tmp/hub_audiences_$$.txt"
-
-    # Track capabilities for filter
-    if [ -n "$nfo_caps" ]; then
-        for cap in $(echo "$nfo_caps" | tr ',' ' '); do
-            [ -n "$cap" ] && echo "$cap" >> "/tmp/hub_caps_$$.txt"
-        done
-    fi
+    [ -n "$nfo_caps" ] && echo "$nfo_caps" | tr ',' '\n' >> "/tmp/hub_caps_$$.txt"
 
     # Format: domain name cat emoji type thumb protected desc keywords caps version audience
     printf '%s\t%s\t%s\t%s\tstreamlit\t-\t-\t%s\t%s\t%s\t%s\t%s\n' \
@@ -401,7 +388,7 @@ uci show streamlit-forge 2>/dev/null | grep "=app$" | sed "s/streamlit-forge\.\(
         nfo_keywords=$(echo "$nfo_data" | cut -d'|' -f3)
         nfo_caps=$(echo "$nfo_data" | cut -d'|' -f4)
         nfo_audience=$(echo "$nfo_data" | cut -d'|' -f5)
-        nfo_version=$(get_nfo_info "$app_dir" "identity" "version" "")
+        nfo_version=$(echo "$nfo_data" | cut -d'|' -f7)
     else
         nfo_cat=""
         nfo_desc=""
@@ -411,21 +398,13 @@ uci show streamlit-forge 2>/dev/null | grep "=app$" | sed "s/streamlit-forge\.\(
         nfo_version=""
     fi
 
-    if [ -n "$nfo_cat" ]; then
-        cat="$nfo_cat"
-    else
-        cat=$(categorize_site "$name")
-    fi
+    [ -n "$nfo_cat" ] && cat="$nfo_cat" || cat=$(categorize_site "$name")
     emoji=$(get_emoji "$cat")
     echo "$cat" >> "$CAT_FILE"
 
     # Track audiences and capabilities
     [ -n "$nfo_audience" ] && echo "$nfo_audience" >> "/tmp/hub_audiences_$$.txt"
-    if [ -n "$nfo_caps" ]; then
-        for cap in $(echo "$nfo_caps" | tr ',' ' '); do
-            [ -n "$cap" ] && echo "$cap" >> "/tmp/hub_caps_$$.txt"
-        done
-    fi
+    [ -n "$nfo_caps" ] && echo "$nfo_caps" | tr ',' '\n' >> "/tmp/hub_caps_$$.txt"
 
     printf '%s\t%s\t%s\t%s\tstreamlit\t-\t-\t%s\t%s\t%s\t%s\t%s\n' \
         "$domain" "$name" "$cat" "$emoji" \

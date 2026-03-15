@@ -20,7 +20,7 @@ handle_core() {
 			;;
 		getVersion)
 			json_init
-			json_add_string "version" "0.8.0"
+			json_add_string "version" "1.0.0"
 			json_add_string "core" "secubox-core"
 			json_add_string "build_date" "$(date -u +%Y-%m-%d)"
 			json_dump

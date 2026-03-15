@@ -1,0 +1,14 @@
+{
+	"admin/secubox/system/smtp-relay": {
+		"title": "SMTP Relay",
+		"order": 55,
+		"action": {
+			"type": "view",
+			"path": "smtp-relay/settings"
+		},
+		"depends": {
+			"acl": ["luci-app-smtp-relay"],
+			"uci": {"smtp-relay": true}
+		}
+	}
+}

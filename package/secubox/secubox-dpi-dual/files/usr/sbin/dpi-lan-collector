@@ -1,0 +1,292 @@
+#!/bin/sh
+# DPI LAN Flow Collector - Real-time passive flow analysis
+# No MITM, no caching - pure nDPI flow monitoring on br-lan
+# Part of secubox-dpi-dual package
+
+. /lib/functions.sh
+
+config_load dpi-dual
+
+STATS_DIR=""
+LAN_IF=""
+AGGREGATE_INTERVAL=""
+CLIENT_RETENTION=""
+
+# Output files
+FLOWS_FILE=""
+CLIENTS_FILE=""
+PROTOCOLS_FILE=""
+DESTINATIONS_FILE=""
+
+# State tracking
+PREV_RX=0
+PREV_TX=0
+PREV_TIME=0
+
+load_config() {
+    config_get STATS_DIR settings stats_dir "/tmp/secubox"
+    config_get LAN_IF lan interface "br-lan"
+    config_get AGGREGATE_INTERVAL lan aggregate_interval "5"
+    config_get CLIENT_RETENTION lan client_retention "3600"
+
+    FLOWS_FILE="$STATS_DIR/lan-flows.json"
+    CLIENTS_FILE="$STATS_DIR/lan-clients.json"
+    PROTOCOLS_FILE="$STATS_DIR/lan-protocols.json"
+    DESTINATIONS_FILE="$STATS_DIR/lan-destinations.json"
+}
+
+init_dirs() {
+    mkdir -p "$STATS_DIR"
+}
+
+# Collect interface statistics
+collect_iface_stats() {
+    local rx_bytes=0 tx_bytes=0 rx_packets=0 tx_packets=0
+
+    if [ -d "/sys/class/net/$LAN_IF/statistics" ]; then
+        rx_bytes=$(cat "/sys/class/net/$LAN_IF/statistics/rx_bytes" 2>/dev/null || echo 0)
+        tx_bytes=$(cat "/sys/class/net/$LAN_IF/statistics/tx_bytes" 2>/dev/null || echo 0)
+        rx_packets=$(cat "/sys/class/net/$LAN_IF/statistics/rx_packets" 2>/dev/null || echo 0)
+        tx_packets=$(cat "/sys/class/net/$LAN_IF/statistics/tx_packets" 2>/dev/null || echo 0)
+    fi
+
+    echo "$rx_bytes $tx_bytes $rx_packets $tx_packets"
+}
+
+# Get ARP table clients on LAN
+collect_lan_clients() {
+    local timestamp=$(date -Iseconds)
+    local now=$(date +%s)
+
+    # Use awk to parse ARP table and generate JSON
+    awk -v lan_if="$LAN_IF" -v ts="$timestamp" -v now="$now" '
+    BEGIN {
+        printf "{\"timestamp\":\"%s\",\"clients\":[", ts
+        first = 1
+    }
+    NR > 1 && $6 == lan_if && $4 != "00:00:00:00:00:00" {
+        ip = $1
+        mac = $4
+        # Count flows from conntrack
+        cmd = "grep -c \"src=" ip "\" /proc/net/nf_conntrack 2>/dev/null || echo 0"
+        cmd | getline flows
+        close(cmd)
+        flows = flows + 0
+
+        if (first == 0) printf ","
+        printf "{\"ip\":\"%s\",\"mac\":\"%s\",\"flows\":%d,\"last_seen\":%d}", ip, mac, flows, now
+        first = 0
+    }
+    END {
+        printf "]}"
+    }
+    ' /proc/net/arp > "$CLIENTS_FILE.tmp"
+
+    mv "$CLIENTS_FILE.tmp" "$CLIENTS_FILE"
+}
+
+# Collect protocol statistics from conntrack
+collect_protocols() {
+    local timestamp=$(date -Iseconds)
+
+    # Count by protocol
+    local tcp_flows=0 udp_flows=0 icmp_flows=0 other_flows=0
+    local tcp_bytes=0 udp_bytes=0
+
+    if [ -f /proc/net/nf_conntrack ]; then
+        tcp_flows=$(grep -c "tcp " /proc/net/nf_conntrack 2>/dev/null || echo 0)
+        udp_flows=$(grep -c "udp " /proc/net/nf_conntrack 2>/dev/null || echo 0)
+        icmp_flows=$(grep -c "icmp " /proc/net/nf_conntrack 2>/dev/null || echo 0)
+    fi
+
+    # Check ndpid state for app detection
+    local ndpid_apps=""
+    if [ -f /tmp/ndpid-state/apps ]; then
+        ndpid_apps=$(cat /tmp/ndpid-state/apps 2>/dev/null || echo "{}")
+    fi
+
+    cat > "$PROTOCOLS_FILE" << EOF
+{
+    "timestamp": "$timestamp",
+    "protocols": [
+        {"protocol": "TCP", "flows": $tcp_flows},
+        {"protocol": "UDP", "flows": $udp_flows},
+        {"protocol": "ICMP", "flows": $icmp_flows}
+    ],
+    "ndpid_apps": $ndpid_apps
+}
+EOF
+}
+
+# Collect destination statistics from conntrack
+collect_destinations() {
+    local timestamp=$(date -Iseconds)
+
+    # Use awk to process conntrack and generate JSON
+    if [ -f /proc/net/nf_conntrack ]; then
+        awk -v ts="$timestamp" '
+        BEGIN {
+            printf "{\"timestamp\":\"%s\",\"destinations\":[", ts
+            first = 1
+        }
+        {
+            # Extract destination IP
+            for (i = 1; i <= NF; i++) {
+                if ($i ~ /^dst=/) {
+                    split($i, a, "=")
+                    ip = a[2]
+                    # Skip private IPs
+                    if (ip ~ /^192\.168\./ || ip ~ /^10\./ || ip ~ /^172\.(1[6-9]|2[0-9]|3[01])\./ || ip ~ /^127\./ || ip ~ /^0\./) {
+                        next
+                    }
+                    dests[ip]++
+                    break
+                }
+            }
+        }
+        END {
+            # Sort by count and output top 50
+            n = 0
+            for (ip in dests) {
+                counts[n] = dests[ip]
+                ips[n] = ip
+                n++
+            }
+            # Simple bubble sort (limited to 50 entries)
+            for (i = 0; i < n && i < 50; i++) {
+                for (j = i + 1; j < n; j++) {
+                    if (counts[j] > counts[i]) {
+                        tmp = counts[i]; counts[i] = counts[j]; counts[j] = tmp
+                        tmp = ips[i]; ips[i] = ips[j]; ips[j] = tmp
+                    }
+                }
+                if (first == 0) printf ","
+                printf "{\"ip\":\"%s\",\"hits\":%d}", ips[i], counts[i]
+                first = 0
+            }
+            printf "]}"
+        }
+        ' /proc/net/nf_conntrack > "$DESTINATIONS_FILE.tmp"
+    else
+        echo "{\"timestamp\":\"$timestamp\",\"destinations\":[]}" > "$DESTINATIONS_FILE.tmp"
+    fi
+
+    mv "$DESTINATIONS_FILE.tmp" "$DESTINATIONS_FILE"
+}
+
+# Write summary flows file
+write_summary() {
+    local timestamp=$(date -Iseconds)
+    local now=$(date +%s)
+
+    # Get interface stats
+    local stats
+    stats=$(collect_iface_stats)
+    local rx_bytes tx_bytes rx_packets tx_packets
+    read -r rx_bytes tx_bytes rx_packets tx_packets << EOF
+$stats
+EOF
+
+    # Calculate rates if we have previous values
+    local rx_rate=0 tx_rate=0
+    if [ "$PREV_TIME" -gt 0 ]; then
+        local elapsed=$((now - PREV_TIME))
+        if [ "$elapsed" -gt 0 ]; then
+            rx_rate=$(( (rx_bytes - PREV_RX) / elapsed ))
+            tx_rate=$(( (tx_bytes - PREV_TX) / elapsed ))
+        fi
+    fi
+    PREV_RX=$rx_bytes
+    PREV_TX=$tx_bytes
+    PREV_TIME=$now
+
+    # Count clients
+    local active_clients=0
+    if [ -f "$CLIENTS_FILE" ]; then
+        active_clients=$(jsonfilter -i "$CLIENTS_FILE" -e '@.clients[*]' 2>/dev/null | wc -l)
+    fi
+
+    # Count destinations
+    local unique_dests=0
+    if [ -f "$DESTINATIONS_FILE" ]; then
+        unique_dests=$(jsonfilter -i "$DESTINATIONS_FILE" -e '@.destinations[*]' 2>/dev/null | wc -l)
+    fi
+
+    # Get protocol count
+    local detected_protos=3  # TCP, UDP, ICMP
+
+    cat > "$FLOWS_FILE" << EOF
+{
+    "timestamp": "$timestamp",
+    "mode": "lan_passive",
+    "interface": "$LAN_IF",
+    "active_clients": $active_clients,
+    "unique_destinations": $unique_dests,
+    "detected_protocols": $detected_protos,
+    "rx_bytes": $rx_bytes,
+    "tx_bytes": $tx_bytes,
+    "rx_packets": $rx_packets,
+    "tx_packets": $tx_packets,
+    "rx_rate_bps": $rx_rate,
+    "tx_rate_bps": $tx_rate
+}
+EOF
+}
+
+# Main collection loop
+run_collector() {
+    load_config
+    init_dirs
+
+    echo "DPI LAN Flow Collector started"
+    echo "  Interface: $LAN_IF"
+    echo "  Aggregate interval: ${AGGREGATE_INTERVAL}s"
+    echo "  Stats dir: $STATS_DIR"
+
+    # Initialize files
+    echo '{"timestamp":"","clients":[]}' > "$CLIENTS_FILE"
+    echo '{"timestamp":"","destinations":[]}' > "$DESTINATIONS_FILE"
+    echo '{"timestamp":"","protocols":[]}' > "$PROTOCOLS_FILE"
+
+    while true; do
+        collect_lan_clients
+        collect_protocols
+        collect_destinations
+        write_summary
+        sleep "$AGGREGATE_INTERVAL"
+    done
+}
+
+status() {
+    load_config
+
+    echo "=== LAN Flow Collector Status ==="
+    echo "Interface: $LAN_IF"
+
+    if [ -f "$FLOWS_FILE" ]; then
+        echo ""
+        echo "Current Stats:"
+        cat "$FLOWS_FILE"
+    fi
+}
+
+case "$1" in
+    start)
+        run_collector
+        ;;
+    status)
+        status
+        ;;
+    once)
+        load_config
+        init_dirs
+        collect_lan_clients
+        collect_protocols
+        collect_destinations
+        write_summary
+        ;;
+    *)
+        echo "Usage: $0 {start|status|once}"
+        exit 1
+        ;;
+esac

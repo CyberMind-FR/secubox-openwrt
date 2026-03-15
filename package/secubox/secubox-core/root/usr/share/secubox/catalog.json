@@ -2636,6 +2636,87 @@
           }
         ]
       }
+    },
+    {
+      "id": "luci-app-dpi-dual",
+      "name": "DPI Dual-Stream",
+      "version": "1.0.0",
+      "category": "security",
+      "runtime": "native",
+      "description": "Dual-stream Deep Packet Inspection with parallel MITM active inspection and passive TAP analysis for comprehensive network security",
+      "author": "CyberMind.fr",
+      "license": "GPL-3.0",
+      "icon": "📡",
+      "featured": true,
+      "featured_priority": 4,
+      "featured_category": "security",
+      "featured_reason": "Advanced DPI with MITM double buffer and passive TAP analysis",
+      "badges": ["new", "recommended"],
+      "tags": [
+        "dpi",
+        "deep-packet-inspection",
+        "mitm",
+        "tap",
+        "security",
+        "waf",
+        "correlation",
+        "threat-detection"
+      ],
+      "packages": {
+        "required": [
+          "luci-app-dpi-dual",
+          "secubox-dpi-dual",
+          "netifyd",
+          "iproute2-tc"
+        ]
+      },
+      "capabilities": [
+        "deep-packet-inspection",
+        "threat-correlation",
+        "ip-reputation",
+        "waf-integration"
+      ],
+      "requirements": {
+        "min_ram_mb": 256,
+        "min_storage_mb": 50
+      },
+      "status": "stable",
+      "notes": "Combines active MITM inspection (HAProxy + mitmproxy) with passive TAP analysis (tc mirred + netifyd). Features IP reputation, auto-ban, CrowdSec integration.",
+      "pkg_version": "1.0.0-1",
+      "app_version": "1.0.0",
+      "changelog": {
+        "1.0.0": {
+          "date": "2026-03-15",
+          "changes": [
+            "Initial release",
+            "MITM double buffer with threat pattern detection",
+            "TAP stream with tc mirred port mirroring",
+            "Correlation engine with IP reputation",
+            "LuCI dashboard with timeline view",
+            "CrowdSec integration and auto-ban"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": true,
+        "template": "security-widget",
+        "refresh_interval": 10,
+        "metrics": [
+          {
+            "id": "threats_detected",
+            "label": "Threats Detected",
+            "type": "counter",
+            "source": "ubus",
+            "method": "luci.dpi-dual.status"
+          },
+          {
+            "id": "correlated_events",
+            "label": "Correlated Events",
+            "type": "counter",
+            "source": "ubus"
+          }
+        ]
+      }
     }
   ],
   "featured_sections": {

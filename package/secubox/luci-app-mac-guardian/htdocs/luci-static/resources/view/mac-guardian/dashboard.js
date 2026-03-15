@@ -1,389 +1,294 @@
 'use strict';
 'require view';
-'require form';
-'require uci';
+'require dom';
 'require rpc';
 'require ui';
-'require secubox/kiss-theme';
+'require uci';
 
 var callStatus = rpc.declare({
 	object: 'luci.mac-guardian',
 	method: 'status',
-	expect: { '': {} }
+	expect: {}
 });
 
 var callGetClients = rpc.declare({
 	object: 'luci.mac-guardian',
 	method: 'get_clients',
-	expect: { '': {} }
+	expect: {}
 });
 
 var callGetEvents = rpc.declare({
 	object: 'luci.mac-guardian',
 	method: 'get_events',
 	params: ['count'],
-	expect: { '': {} }
+	expect: {}
 });
 
-var callScan = rpc.declare({
-	object: 'luci.mac-guardian',
-	method: 'scan'
-});
-
-var callStart = rpc.declare({
-	object: 'luci.mac-guardian',
-	method: 'start'
-});
-
-var callStop = rpc.declare({
-	object: 'luci.mac-guardian',
-	method: 'stop'
-});
-
-var callRestart = rpc.declare({
-	object: 'luci.mac-guardian',
-	method: 'restart'
-});
-
-var callTrust = rpc.declare({
-	object: 'luci.mac-guardian',
-	method: 'trust',
-	params: ['mac']
-});
-
-var callBlock = rpc.declare({
-	object: 'luci.mac-guardian',
-	method: 'block',
-	params: ['mac']
-});
-
-var callDhcpStatus = rpc.declare({
-	object: 'luci.mac-guardian',
-	method: 'dhcp_status',
-	expect: { '': {} }
-});
-
-var callDhcpCleanup = rpc.declare({
-	object: 'luci.mac-guardian',
-	method: 'dhcp_cleanup',
-	expect: { '': {} }
-});
+var callScan = rpc.declare({ object: 'luci.mac-guardian', method: 'scan' });
+var callStart = rpc.declare({ object: 'luci.mac-guardian', method: 'start' });
+var callStop = rpc.declare({ object: 'luci.mac-guardian', method: 'stop' });
+var callTrust = rpc.declare({ object: 'luci.mac-guardian', method: 'trust', params: ['mac'] });
+var callBlock = rpc.declare({ object: 'luci.mac-guardian', method: 'block', params: ['mac'] });
+var callDhcpStatus = rpc.declare({ object: 'luci.mac-guardian', method: 'dhcp_status', expect: {} });
+var callDhcpCleanup = rpc.declare({ object: 'luci.mac-guardian', method: 'dhcp_cleanup', expect: {} });
 
 function formatDate(ts) {
 	if (!ts || ts === 0) return '-';
 	var d = new Date(ts * 1000);
-	var pad = function(n) { return n < 10 ? '0' + n : n; };
-	return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
-		' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+	return d.toLocaleString();
+}
+
+function createCard(title, icon, content, borderColor) {
+	return E('div', {
+		'style': 'background:#12121a;border-radius:8px;padding:16px;margin-bottom:16px;' +
+		         'border-left:4px solid ' + (borderColor || '#2a2a3a') + ';'
+	}, [
+		E('div', { 'style': 'display:flex;align-items:center;gap:8px;margin-bottom:12px;' }, [
+			E('span', { 'style': 'font-size:1.2rem;' }, icon),
+			E('span', { 'style': 'font-size:1rem;font-weight:600;color:#fff;' }, title)
+		]),
+		E('div', {}, content)
+	]);
+}
+
+function createMetric(label, value, color) {
+	return E('div', {
+		'style': 'background:#1a1a24;padding:10px 16px;border-radius:6px;text-align:center;min-width:70px;'
+	}, [
+		E('div', {
+			'style': 'font-size:1.4rem;font-weight:700;color:' + (color || '#00d4aa') + ';font-family:monospace;'
+		}, String(value)),
+		E('div', {
+			'style': 'font-size:0.7rem;color:#808090;text-transform:uppercase;margin-top:2px;'
+		}, label)
+	]);
+}
+
+function createBtn(text, style, onclick) {
+	var colors = {
+		primary: 'background:rgba(0,160,255,0.2);color:#00a0ff;border-color:rgba(0,160,255,0.3);',
+		success: 'background:rgba(0,212,170,0.2);color:#00d4aa;border-color:rgba(0,212,170,0.3);',
+		danger: 'background:rgba(255,77,77,0.2);color:#ff4d4d;border-color:rgba(255,77,77,0.3);',
+		warning: 'background:rgba(255,165,0,0.2);color:#ffa500;border-color:rgba(255,165,0,0.3);'
+	};
+	return E('button', {
+		'style': 'padding:6px 14px;border:1px solid;border-radius:6px;font-size:13px;cursor:pointer;' +
+		         'margin-right:8px;' + (colors[style] || colors.primary),
+		'click': onclick
+	}, text);
 }
 
 function statusBadge(status) {
 	var colors = {
-		'trusted': '#080',
-		'suspect': '#c60',
-		'blocked': '#c00',
-		'unknown': '#888'
+		'trusted': '#00d4aa',
+		'suspect': '#ffa500',
+		'blocked': '#ff4d4d',
+		'unknown': '#808090'
 	};
-	var color = colors[status] || '#888';
-	return '<span style="display:inline-block;padding:2px 8px;border-radius:3px;' +
-		'background:' + color + ';color:#fff;font-size:12px;font-weight:bold;">' +
-		status + '</span>';
+	var color = colors[status] || '#808090';
+	return E('span', {
+		'style': 'display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;' +
+		         'background:' + color + '22;color:' + color + ';'
+	}, status);
 }
 
 return view.extend({
 	load: function() {
 		return Promise.all([
-			uci.load('mac-guardian'),
-			callStatus(),
-			callGetClients(),
-			callGetEvents(10),
-			callDhcpStatus()
+			callStatus().catch(function() { return {}; }),
+			callGetClients().catch(function() { return { clients: [] }; }),
+			callGetEvents(15).catch(function() { return { events: [] }; }),
+			callDhcpStatus().catch(function() { return {}; })
 		]);
 	},
 
 	render: function(data) {
-		var status = data[1];
-		var clientData = data[2];
-		var eventData = data[3];
-		var dhcpStatus = data[4] || {};
-		var clients = (clientData && clientData.clients) ? clientData.clients : [];
-		var events = (eventData && eventData.events) ? eventData.events : [];
-		var m, s, o;
+		var status = data[0] || {};
+		var clientData = data[1] || {};
+		var eventData = data[2] || {};
+		var dhcpStatus = data[3] || {};
+		var clients = clientData.clients || [];
+		var events = eventData.events || [];
+		var cl = status.clients || {};
+		var ifaces = status.interfaces || [];
+		var running = status.service_status === 'running';
 
-		m = new form.Map('mac-guardian', _('MAC Guardian'),
-			_('WiFi MAC address security monitor. Detects randomized MACs, spoofing, and MAC floods.'));
+		var view = E('div', { 'style': 'max-width:1200px;margin:0 auto;padding:20px;' }, [
+			// Header
+			E('div', { 'style': 'display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;' }, [
+				E('h2', {
+					'style': 'margin:0;font-size:1.5rem;background:linear-gradient(90deg,#00d4aa,#00a0ff);' +
+					         '-webkit-background-clip:text;-webkit-text-fill-color:transparent;'
+				}, 'MAC Guardian'),
+				E('div', { 'style': 'display:flex;align-items:center;gap:8px;' }, [
+					E('span', {
+						'style': 'width:10px;height:10px;border-radius:50%;background:' +
+						         (running ? '#00d4aa' : '#ff4d4d') + ';box-shadow:0 0 8px ' +
+						         (running ? '#00d4aa' : '#ff4d4d') + ';'
+					}),
+					E('span', { 'style': 'color:' + (running ? '#00d4aa' : '#ff4d4d') + ';font-weight:600;' },
+						running ? 'RUNNING' : 'STOPPED')
+				])
+			]),
 
-		// ==========================================
-		// Status Section
-		// ==========================================
-		s = m.section(form.NamedSection, 'main', 'mac-guardian', _('Status'));
-		s.anonymous = true;
-
-		o = s.option(form.DummyValue, '_status');
-		o.rawhtml = true;
-		o.cfgvalue = function() {
-			var svcColor = status.service_status === 'running' ? '#080' : '#c00';
-			var svcLabel = status.service_status === 'running' ? 'Running' : 'Stopped';
-
-			var html = '<div style="display:flex;gap:25px;flex-wrap:wrap;">';
-
-			// Service card
-			html += '<div style="min-width:160px;">';
-			html += '<h4 style="margin:0 0 8px 0;border-bottom:1px solid #ddd;padding-bottom:4px;">Service</h4>';
-			html += '<p><b>Status:</b> <span style="color:' + svcColor + ';font-weight:bold;">' + svcLabel + '</span></p>';
-			html += '<p><b>Policy:</b> ' + (status.policy || 'alert') + '</p>';
-			html += '<p><b>Interval:</b> ' + (status.scan_interval || 30) + 's</p>';
-			html += '</div>';
-
-			// Clients card
-			var cl = status.clients || {};
-			html += '<div style="min-width:160px;">';
-			html += '<h4 style="margin:0 0 8px 0;border-bottom:1px solid #ddd;padding-bottom:4px;">Clients</h4>';
-			html += '<p><b>Total:</b> ' + (cl.total || 0) + '</p>';
-			html += '<p><b>Trusted:</b> <span style="color:#080;">' + (cl.trusted || 0) + '</span></p>';
-			html += '<p><b>Suspect:</b> <span style="color:#c60;">' + (cl.suspect || 0) + '</span></p>';
-			html += '<p><b>Blocked:</b> <span style="color:#c00;">' + (cl.blocked || 0) + '</span></p>';
-			html += '</div>';
-
-			// Interfaces card
-			var ifaces = status.interfaces || [];
-			html += '<div style="min-width:160px;">';
-			html += '<h4 style="margin:0 0 8px 0;border-bottom:1px solid #ddd;padding-bottom:4px;">WiFi Interfaces</h4>';
-			if (ifaces.length === 0) {
-				html += '<p style="color:#888;">None detected</p>';
-			} else {
-				for (var i = 0; i < ifaces.length; i++) {
-					html += '<p><b>' + ifaces[i].name + '</b> (' + ifaces[i].essid + ') - ' + ifaces[i].stations + ' STA</p>';
-				}
-			}
-			html += '</div>';
-
-			// DHCP Protection card
-			var dhcpColor = dhcpStatus.enabled ? '#080' : '#888';
-			var dhcpLabel = dhcpStatus.enabled ? 'Enabled' : 'Disabled';
-			html += '<div style="min-width:160px;">';
-			html += '<h4 style="margin:0 0 8px 0;border-bottom:1px solid #ddd;padding-bottom:4px;">DHCP Protection</h4>';
-			html += '<p><b>Status:</b> <span style="color:' + dhcpColor + ';font-weight:bold;">' + dhcpLabel + '</span></p>';
-			html += '<p><b>Leases:</b> ' + (dhcpStatus.leases || 0) + '</p>';
-			html += '<p><b>Conflicts:</b> <span style="color:' + ((dhcpStatus.conflicts || 0) > 0 ? '#c60' : '#080') + ';">' + (dhcpStatus.conflicts || 0) + '</span></p>';
-			html += '<p><b>Stale:</b> <span style="color:' + ((dhcpStatus.stale || 0) > 0 ? '#c60' : '#080') + ';">' + (dhcpStatus.stale || 0) + '</span></p>';
-			html += '</div>';
-
-			html += '</div>';
-			return html;
-		};
-
-		// Control buttons
-		o = s.option(form.Button, '_start', _('Start'));
-		o.inputtitle = _('Start');
-		o.inputstyle = 'apply';
-		o.onclick = function() {
-			return callStart().then(function() { window.location.reload(); });
-		};
-
-		o = s.option(form.Button, '_stop', _('Stop'));
-		o.inputtitle = _('Stop');
-		o.inputstyle = 'remove';
-		o.onclick = function() {
-			return callStop().then(function() { window.location.reload(); });
-		};
-
-		o = s.option(form.Button, '_scan', _('Scan Now'));
-		o.inputtitle = _('Scan');
-		o.inputstyle = 'reload';
-		o.onclick = function() {
-			ui.showModal(_('Scanning'), [
-				E('p', { 'class': 'spinning' }, _('Scanning WiFi interfaces...'))
-			]);
-			return callScan().then(function() {
-				ui.hideModal();
-				window.location.reload();
-			});
-		};
-
-		o = s.option(form.Button, '_dhcp_cleanup', _('DHCP Cleanup'));
-		o.inputtitle = _('Clean Up');
-		o.inputstyle = 'reload';
-		o.onclick = function() {
-			ui.showModal(_('Cleaning'), [
-				E('p', { 'class': 'spinning' }, _('Running DHCP lease maintenance...'))
-			]);
-			return callDhcpCleanup().then(function() {
-				ui.hideModal();
-				window.location.reload();
-			});
-		};
-
-		// ==========================================
-		// Clients Table
-		// ==========================================
-		s = m.section(form.NamedSection, 'main', 'mac-guardian', _('Known Clients'));
-		s.anonymous = true;
-
-		o = s.option(form.DummyValue, '_clients');
-		o.rawhtml = true;
-		o.cfgvalue = function() {
-			if (clients.length === 0) {
-				return '<p style="color:#888;">No clients detected yet. Run a scan or wait for devices to connect.</p>';
-			}
-
-			var html = '<div style="overflow-x:auto;">';
-			html += '<table class="table" style="width:100%;border-collapse:collapse;">';
-			html += '<tr class="tr table-titles">';
-			html += '<th class="th">MAC</th>';
-			html += '<th class="th">Vendor</th>';
-			html += '<th class="th">Hostname</th>';
-			html += '<th class="th">Interface</th>';
-			html += '<th class="th">First Seen</th>';
-			html += '<th class="th">Last Seen</th>';
-			html += '<th class="th">Status</th>';
-			html += '<th class="th">Actions</th>';
-			html += '</tr>';
-
-			for (var i = 0; i < clients.length; i++) {
-				var c = clients[i];
-				var macDisplay = c.mac;
-				if (c.randomized) {
-					macDisplay += ' <span title="Randomized MAC" style="color:#c60;font-weight:bold;">R</span>';
-				}
-
-				html += '<tr class="tr">';
-				html += '<td class="td" style="font-family:monospace;">' + macDisplay + '</td>';
-				html += '<td class="td">' + (c.vendor || '-') + '</td>';
-				html += '<td class="td">' + (c.hostname || '-') + '</td>';
-				html += '<td class="td">' + (c.iface || '-') + '</td>';
-				html += '<td class="td">' + formatDate(c.first_seen) + '</td>';
-				html += '<td class="td">' + formatDate(c.last_seen) + '</td>';
-				html += '<td class="td">' + statusBadge(c.status) + '</td>';
-				html += '<td class="td">';
-				if (c.status !== 'trusted') {
-					html += '<button class="kiss-btn kiss-btn-cyan" data-mac="' + c.mac + '" data-action="trust" style="margin-right:4px;">Trust</button>';
-				}
-				if (c.status !== 'blocked') {
-					html += '<button class="kiss-btn kiss-btn-red" data-mac="' + c.mac + '" data-action="block">Block</button>';
-				}
-				html += '</td>';
-				html += '</tr>';
-			}
-
-			html += '</table>';
-			html += '</div>';
-			return html;
-		};
-
-		// ==========================================
-		// Recent Alerts
-		// ==========================================
-		s = m.section(form.NamedSection, 'main', 'mac-guardian', _('Recent Alerts'));
-		s.anonymous = true;
-
-		o = s.option(form.DummyValue, '_events');
-		o.rawhtml = true;
-		o.cfgvalue = function() {
-			if (events.length === 0) {
-				return '<p style="color:#888;">No alerts recorded.</p>';
-			}
-
-			var html = '<div style="overflow-x:auto;">';
-			html += '<table class="table" style="width:100%;border-collapse:collapse;">';
-			html += '<tr class="tr table-titles">';
-			html += '<th class="th">Time</th>';
-			html += '<th class="th">Event</th>';
-			html += '<th class="th">MAC</th>';
-			html += '<th class="th">Interface</th>';
-			html += '<th class="th">Details</th>';
-			html += '</tr>';
-
-			for (var i = events.length - 1; i >= 0; i--) {
-				try {
-					var ev = JSON.parse(events[i]);
-					html += '<tr class="tr">';
-					html += '<td class="td" style="white-space:nowrap;">' + (ev.ts || '-') + '</td>';
-					html += '<td class="td"><b>' + (ev.event || '-') + '</b></td>';
-					html += '<td class="td" style="font-family:monospace;">' + (ev.mac || '-') + '</td>';
-					html += '<td class="td">' + (ev.iface || '-') + '</td>';
-					html += '<td class="td" style="font-size:12px;">' + (ev.details || '-') + '</td>';
-					html += '</tr>';
-				} catch(e) {
-					continue;
-				}
-			}
-
-			html += '</table>';
-			html += '</div>';
-			return html;
-		};
-
-		// ==========================================
-		// Configuration
-		// ==========================================
-		s = m.section(form.NamedSection, 'main', 'mac-guardian', _('Configuration'));
-		s.anonymous = true;
-
-		o = s.option(form.Flag, 'enabled', _('Enabled'),
-			_('Enable MAC Guardian service'));
-		o.rmempty = false;
-
-		o = s.option(form.Value, 'scan_interval', _('Scan Interval'),
-			_('Seconds between WiFi scans'));
-		o.datatype = 'uinteger';
-		o.default = '30';
-		o.placeholder = '30';
-
-		s = m.section(form.NamedSection, 'detection', 'detection', _('Detection'));
-		s.anonymous = true;
-
-		o = s.option(form.Flag, 'random_mac', _('Detect Randomized MACs'),
-			_('Alert on locally-administered (randomized) MAC addresses'));
-		o.default = '1';
-
-		o = s.option(form.Flag, 'spoof_detection', _('Detect Spoofing'),
-			_('Alert when a MAC address appears on a different interface'));
-		o.default = '1';
-
-		o = s.option(form.Flag, 'mac_flip', _('Detect MAC Floods'),
-			_('Alert when many new MACs appear in a short window'));
-		o.default = '1';
-
-		s = m.section(form.NamedSection, 'enforcement', 'enforcement', _('Enforcement'));
-		s.anonymous = true;
-
-		o = s.option(form.ListValue, 'policy', _('Policy'),
-			_('Action to take on detected threats'));
-		o.value('alert', _('Alert only'));
-		o.value('quarantine', _('Quarantine (drop traffic)'));
-		o.value('deny', _('Deny (drop + deauthenticate)'));
-		o.default = 'alert';
-
-		// ==========================================
-		// Bind action buttons
-		// ==========================================
-		var rendered = m.render();
-
-		return rendered.then(function(node) {
-			node.addEventListener('click', function(ev) {
-				var btn = ev.target.closest('[data-action]');
-				if (!btn) return;
-
-				var mac = btn.getAttribute('data-mac');
-				var action = btn.getAttribute('data-action');
-
-				if (action === 'trust') {
-					callTrust(mac).then(function() {
-						ui.addNotification(null, E('p', _('MAC %s trusted').format(mac)), 'success');
-						window.location.reload();
+			// Control buttons
+			E('div', { 'style': 'margin-bottom:20px;' }, [
+				createBtn('Start', 'success', function() {
+					callStart().then(function() { window.location.reload(); });
+				}),
+				createBtn('Stop', 'danger', function() {
+					callStop().then(function() { window.location.reload(); });
+				}),
+				createBtn('Scan Now', 'primary', function() {
+					ui.showModal('Scanning', [E('p', { 'class': 'spinning' }, 'Scanning WiFi interfaces...')]);
+					callScan().then(function() { ui.hideModal(); window.location.reload(); });
+				}),
+				createBtn('DHCP Cleanup', 'warning', function() {
+					callDhcpCleanup().then(function() {
+						ui.addNotification(null, E('p', 'DHCP cleanup completed'), 'info');
 					});
-				} else if (action === 'block') {
-					if (confirm(_('Block and deauthenticate %s?').format(mac))) {
-						callBlock(mac).then(function() {
-							ui.addNotification(null, E('p', _('MAC %s blocked').format(mac)), 'success');
-							window.location.reload();
-						});
-					}
-				}
-			});
+				})
+			]),
 
-			return KissTheme.wrap([node], 'admin/secubox/mac-guardian/dashboard');
-		});
-	}
+			// Stats Grid
+			E('div', {
+				'style': 'display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:20px;'
+			}, [
+				// Clients Card
+				createCard('Clients', '👥', E('div', { 'style': 'display:flex;flex-wrap:wrap;gap:10px;' }, [
+					createMetric('Total', cl.total || 0, '#00a0ff'),
+					createMetric('Trusted', cl.trusted || 0, '#00d4aa'),
+					createMetric('Suspect', cl.suspect || 0, '#ffa500'),
+					createMetric('Blocked', cl.blocked || 0, '#ff4d4d')
+				]), '#00d4aa'),
+
+				// WiFi Interfaces Card
+				createCard('WiFi Interfaces', '📡', E('div', {},
+					ifaces.length === 0 ?
+						E('p', { 'style': 'color:#808090;margin:0;' }, 'No WiFi interfaces detected') :
+						ifaces.map(function(iface) {
+							return E('div', { 'style': 'display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #2a2a3a;' }, [
+								E('span', { 'style': 'color:#fff;font-weight:500;' }, iface.name),
+								E('span', { 'style': 'color:#808090;' }, iface.essid),
+								E('span', { 'style': 'color:#00d4aa;font-family:monospace;' }, iface.stations + ' STA')
+							]);
+						})
+				), '#00a0ff'),
+
+				// DHCP Protection Card
+				createCard('DHCP Protection', '🛡️', E('div', { 'style': 'display:flex;flex-wrap:wrap;gap:10px;' }, [
+					createMetric('Status', dhcpStatus.enabled ? 'ON' : 'OFF', dhcpStatus.enabled ? '#00d4aa' : '#808090'),
+					createMetric('Leases', dhcpStatus.leases || 0, '#00a0ff'),
+					createMetric('Conflicts', dhcpStatus.conflicts || 0, (dhcpStatus.conflicts || 0) > 0 ? '#ffa500' : '#00d4aa'),
+					createMetric('Stale', dhcpStatus.stale || 0, (dhcpStatus.stale || 0) > 0 ? '#ffa500' : '#00d4aa')
+				]), dhcpStatus.enabled ? '#00d4aa' : '#808090'),
+
+				// Config Summary Card
+				createCard('Configuration', '⚙️', E('div', { 'style': 'display:flex;flex-wrap:wrap;gap:10px;' }, [
+					createMetric('Policy', status.policy || 'alert', '#00a0ff'),
+					createMetric('Interval', (status.scan_interval || 30) + 's', '#808090'),
+					createMetric('Random', status.detect_random ? 'ON' : 'OFF', status.detect_random ? '#00d4aa' : '#808090'),
+					createMetric('Spoof', status.detect_spoof ? 'ON' : 'OFF', status.detect_spoof ? '#00d4aa' : '#808090')
+				]), '#808090')
+			]),
+
+			// Known Clients Table
+			createCard('Known Clients', '💻', clients.length === 0 ?
+				E('p', { 'style': 'color:#808090;margin:0;' }, 'No clients detected yet. Run a scan or wait for devices to connect.') :
+				E('div', { 'style': 'overflow-x:auto;' }, [
+					E('table', { 'style': 'width:100%;border-collapse:collapse;font-size:0.85rem;' }, [
+						E('thead', {}, [
+							E('tr', { 'style': 'border-bottom:1px solid #2a2a3a;' }, [
+								E('th', { 'style': 'padding:8px;text-align:left;color:#808090;font-weight:600;' }, 'MAC'),
+								E('th', { 'style': 'padding:8px;text-align:left;color:#808090;font-weight:600;' }, 'Vendor'),
+								E('th', { 'style': 'padding:8px;text-align:left;color:#808090;font-weight:600;' }, 'Hostname'),
+								E('th', { 'style': 'padding:8px;text-align:left;color:#808090;font-weight:600;' }, 'Interface'),
+								E('th', { 'style': 'padding:8px;text-align:left;color:#808090;font-weight:600;' }, 'Last Seen'),
+								E('th', { 'style': 'padding:8px;text-align:left;color:#808090;font-weight:600;' }, 'Status'),
+								E('th', { 'style': 'padding:8px;text-align:center;color:#808090;font-weight:600;' }, 'Actions')
+							])
+						]),
+						E('tbody', {}, clients.map(function(c) {
+							return E('tr', { 'style': 'border-bottom:1px solid #1a1a24;' }, [
+								E('td', { 'style': 'padding:8px;font-family:monospace;color:#00a0ff;' }, [
+									c.mac,
+									c.randomized ? E('span', {
+										'style': 'margin-left:6px;color:#ffa500;font-weight:bold;',
+										'title': 'Randomized MAC'
+									}, 'R') : ''
+								]),
+								E('td', { 'style': 'padding:8px;color:#e0e0e0;' }, c.vendor || '-'),
+								E('td', { 'style': 'padding:8px;color:#e0e0e0;' }, c.hostname || '-'),
+								E('td', { 'style': 'padding:8px;color:#808090;' }, c.iface || '-'),
+								E('td', { 'style': 'padding:8px;color:#808090;font-size:0.8rem;' }, formatDate(c.last_seen)),
+								E('td', { 'style': 'padding:8px;' }, statusBadge(c.status)),
+								E('td', { 'style': 'padding:8px;text-align:center;' }, [
+									c.status !== 'trusted' ? E('button', {
+										'style': 'padding:3px 8px;border:1px solid rgba(0,212,170,0.3);border-radius:4px;' +
+										         'background:rgba(0,212,170,0.2);color:#00d4aa;font-size:11px;cursor:pointer;margin-right:4px;',
+										'click': function() {
+											callTrust(c.mac).then(function() {
+												ui.addNotification(null, E('p', 'MAC ' + c.mac + ' trusted'), 'info');
+												window.location.reload();
+											});
+										}
+									}, 'Trust') : '',
+									c.status !== 'blocked' ? E('button', {
+										'style': 'padding:3px 8px;border:1px solid rgba(255,77,77,0.3);border-radius:4px;' +
+										         'background:rgba(255,77,77,0.2);color:#ff4d4d;font-size:11px;cursor:pointer;',
+										'click': function() {
+											if (confirm('Block and deauthenticate ' + c.mac + '?')) {
+												callBlock(c.mac).then(function() {
+													ui.addNotification(null, E('p', 'MAC ' + c.mac + ' blocked'), 'info');
+													window.location.reload();
+												});
+											}
+										}
+									}, 'Block') : ''
+								])
+							]);
+						}))
+					])
+				])
+			, '#00a0ff'),
+
+			// Recent Alerts Table
+			createCard('Recent Alerts', '⚠️', events.length === 0 ?
+				E('p', { 'style': 'color:#808090;margin:0;' }, 'No alerts recorded.') :
+				E('div', { 'style': 'overflow-x:auto;' }, [
+					E('table', { 'style': 'width:100%;border-collapse:collapse;font-size:0.85rem;' }, [
+						E('thead', {}, [
+							E('tr', { 'style': 'border-bottom:1px solid #2a2a3a;' }, [
+								E('th', { 'style': 'padding:8px;text-align:left;color:#808090;font-weight:600;' }, 'Time'),
+								E('th', { 'style': 'padding:8px;text-align:left;color:#808090;font-weight:600;' }, 'Event'),
+								E('th', { 'style': 'padding:8px;text-align:left;color:#808090;font-weight:600;' }, 'MAC'),
+								E('th', { 'style': 'padding:8px;text-align:left;color:#808090;font-weight:600;' }, 'Interface'),
+								E('th', { 'style': 'padding:8px;text-align:left;color:#808090;font-weight:600;' }, 'Details')
+							])
+						]),
+						E('tbody', {}, events.slice().reverse().map(function(line) {
+							try {
+								var ev = JSON.parse(line);
+								return E('tr', { 'style': 'border-bottom:1px solid #1a1a24;' }, [
+									E('td', { 'style': 'padding:8px;color:#808090;white-space:nowrap;' }, ev.ts || '-'),
+									E('td', { 'style': 'padding:8px;color:#ffa500;font-weight:600;' }, ev.event || '-'),
+									E('td', { 'style': 'padding:8px;font-family:monospace;color:#00a0ff;' }, ev.mac || '-'),
+									E('td', { 'style': 'padding:8px;color:#808090;' }, ev.iface || '-'),
+									E('td', { 'style': 'padding:8px;color:#e0e0e0;font-size:0.8rem;' }, ev.details || '-')
+								]);
+							} catch(e) {
+								return E('tr');
+							}
+						}))
+					])
+				])
+			, '#ffa500')
+		]);
+
+		return view;
+	},
+
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null
 });

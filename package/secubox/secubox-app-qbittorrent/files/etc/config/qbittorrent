@@ -1,0 +1,10 @@
+config qbittorrent 'main'
+    option enabled '1'
+    option port '8090'
+    option data_dir '/srv/qbittorrent'
+    option download_dir '/srv/downloads/torrents'
+    option memory '536870912'
+
+config exposure 'exposure'
+    option domain 'torrent.gk2.secubox.in'
+    option ssl '1'

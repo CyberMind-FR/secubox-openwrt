@@ -1,0 +1,347 @@
+#!/bin/sh
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Droplet Publisher - One-Drop Content Publishing
+#  Drop HTML/ZIP → Get published site with vhost + Gitea versioning
+# ═══════════════════════════════════════════════════════════════════════════════
+
+DROPLET_DIR="/srv/droplet"
+SITES_DIR="/srv/metablogizer/sites"
+APPS_DIR="/srv/streamlit/apps"
+DEFAULT_DOMAIN="gk2.secubox.in"
+GITEA_REPO="gandalf/droplet-sites"
+GITEA_URL="https://git.gk2.secubox.in"
+
+# Logging
+log_info() { logger -t droplet -p user.info "$*"; echo "[INFO] $*"; }
+log_error() { logger -t droplet -p user.error "$*"; echo "[ERROR] $*" >&2; }
+log_ok() { echo "[OK] $*"; }
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Detect content type from file/directory
+# Returns: static|streamlit|hexo|unknown
+# ─────────────────────────────────────────────────────────────────────────────────
+detect_type() {
+    local path="$1"
+
+    # Check for Streamlit app
+    if [ -f "$path/app.py" ] || [ -f "$path/main.py" ]; then
+        grep -qE "import streamlit|from streamlit" "$path"/*.py 2>/dev/null && {
+            echo "streamlit"
+            return
+        }
+    fi
+
+    # Check for Hexo
+    if [ -f "$path/_config.yml" ] && [ -d "$path/source" ]; then
+        echo "hexo"
+        return
+    fi
+
+    # Check for static HTML
+    if [ -f "$path/index.html" ] || [ -f "$path/index.htm" ]; then
+        echo "static"
+        return
+    fi
+
+    # Single HTML file
+    if [ -f "$path" ] && echo "$path" | grep -qiE '\.html?$'; then
+        echo "static"
+        return
+    fi
+
+    echo "unknown"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Publish content
+# Usage: dropletctl publish <file> <name> [domain]
+# ─────────────────────────────────────────────────────────────────────────────────
+cmd_publish() {
+    local file="$1"
+    local name="$2"
+    local domain="${3:-$DEFAULT_DOMAIN}"
+
+    [ -z "$file" ] && { log_error "Usage: dropletctl publish <file> <name> [domain]"; return 1; }
+    [ -z "$name" ] && { log_error "Name required"; return 1; }
+    [ ! -f "$file" ] && { log_error "File not found: $file"; return 1; }
+
+    # Sanitize name
+    name=$(echo "$name" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]/_/g')
+    local vhost="${name}.${domain}"
+    local tmp_dir="/tmp/droplet_$$"
+
+    mkdir -p "$tmp_dir"
+
+    log_info "Publishing: $file as $vhost"
+
+    # Detect file type by extension (file command not available on OpenWrt)
+    local file_ext=$(echo "$file" | sed 's/.*\.//' | tr '[:upper:]' '[:lower:]')
+
+    if [ "$file_ext" = "zip" ]; then
+        log_info "Extracting ZIP..."
+        unzip -q "$file" -d "$tmp_dir" || { log_error "Failed to extract ZIP"; rm -rf "$tmp_dir"; return 1; }
+
+        # Handle nested directory
+        local nested=$(find "$tmp_dir" -mindepth 1 -maxdepth 1 -type d | head -1)
+        if [ -n "$nested" ] && [ $(find "$tmp_dir" -mindepth 1 -maxdepth 1 | wc -l) -eq 1 ]; then
+            mv "$nested"/* "$tmp_dir/" 2>/dev/null
+            rmdir "$nested" 2>/dev/null
+        fi
+    elif [ "$file_ext" = "html" ] || [ "$file_ext" = "htm" ]; then
+        # Single HTML file
+        cp "$file" "$tmp_dir/index.html"
+    else
+        log_error "Unsupported file type: .$file_ext (expected .html, .htm, or .zip)"
+        rm -rf "$tmp_dir"
+        return 1
+    fi
+
+    # Detect content type
+    local app_type=$(detect_type "$tmp_dir")
+    log_info "Detected type: $app_type"
+
+    local target_dir=""
+    local publish_method=""
+
+    case "$app_type" in
+        streamlit)
+            target_dir="$APPS_DIR/$name"
+            publish_method="streamlit"
+            ;;
+        static|hexo)
+            target_dir="$SITES_DIR/$name"
+            publish_method="metablog"
+            ;;
+        *)
+            # Default to static site
+            target_dir="$SITES_DIR/$name"
+            publish_method="metablog"
+            ;;
+    esac
+
+    # Deploy content
+    log_info "Deploying to $target_dir..."
+    mkdir -p "$target_dir"
+    cp -r "$tmp_dir"/* "$target_dir/"
+
+    # Fix permissions (cgi-io uploads with 600)
+    find "$target_dir" -type f -exec chmod 644 {} \;
+    find "$target_dir" -type d -exec chmod 755 {} \;
+
+    # Generate README.nfo if not present
+    if [ ! -f "$target_dir/README.nfo" ]; then
+        log_info "Generating README.nfo..."
+        cat > "$target_dir/README.nfo" <<NFOEOF
+[identity]
+name=$name
+id=droplet-$name
+version=1.0.0
+type=$app_type
+
+[description]
+short=Droplet-published $app_type site
+long=Site published via Droplet one-drop publisher
+
+[tags]
+category=$app_type
+keywords=droplet, published
+audience=general
+
+[runtime]
+port=auto
+NFOEOF
+    fi
+
+    # Register with appropriate system
+    if [ "$publish_method" = "streamlit" ]; then
+        # Add to streamlit config with proper naming
+        local port=$(uci show streamlit 2>/dev/null | grep -oE "port='[0-9]+'" | grep -oE "[0-9]+" | sort -n | tail -1)
+        port=$((${port:-8500} + 1))
+
+        uci set "streamlit.${name}=instance"
+        uci set "streamlit.${name}.name=$name"
+        uci set "streamlit.${name}.domain=$vhost"
+        uci set "streamlit.${name}.port=$port"
+        uci set "streamlit.${name}.enabled=1"
+        uci commit streamlit
+
+        log_info "Registered Streamlit app on port $port"
+    else
+        # Add to metablogizer config with proper site_ prefix and port
+        local port=$(uci show metablogizer 2>/dev/null | grep -oE "port='[0-9]+'" | grep -oE "[0-9]+" | sort -n | tail -1)
+        port=$((${port:-8949} + 1))
+
+        uci set "metablogizer.site_${name}=site"
+        uci set "metablogizer.site_${name}.name=$name"
+        uci set "metablogizer.site_${name}.domain=$vhost"
+        uci set "metablogizer.site_${name}.port=$port"
+        uci set "metablogizer.site_${name}.enabled=1"
+        uci commit metablogizer
+
+        log_info "Registered MetaBlog site on port $port"
+
+        # Use metablogizerctl to fully publish (creates uhttpd, HAProxy, mitmproxy routes)
+        if command -v metablogizerctl >/dev/null 2>&1; then
+            log_info "Running metablogizerctl publish..."
+            metablogizerctl publish "$name" 2>&1 | grep -E "^\[" || true
+        fi
+    fi
+
+    # Create vhost via haproxyctl (fallback if metablogizerctl not available)
+    if [ "$publish_method" = "streamlit" ]; then
+        log_info "Creating vhost: $vhost"
+        if command -v haproxyctl >/dev/null 2>&1; then
+            haproxyctl vhost add "$vhost" 2>/dev/null || true
+        fi
+    fi
+
+    # Git commit if available
+    if [ -d "$target_dir/.git" ] || command -v git >/dev/null 2>&1; then
+        cd "$target_dir"
+        if [ ! -d ".git" ]; then
+            git init -q
+            git remote add origin "${GITEA_URL}/${GITEA_REPO}/${name}.git" 2>/dev/null || true
+        fi
+        git add -A
+        git commit -q -m "Droplet publish: $name" 2>/dev/null || true
+        log_info "Committed to git"
+    fi
+
+    # Reload HAProxy
+    /etc/init.d/haproxy reload 2>/dev/null || true
+
+    # Cleanup
+    rm -rf "$tmp_dir"
+
+    log_ok "Published: https://$vhost/"
+    echo "$vhost"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# List published droplets
+# ─────────────────────────────────────────────────────────────────────────────────
+cmd_list() {
+    echo "=== Published Droplets ==="
+
+    # MetaBlog sites (handles both site_xxx and xxx section names)
+    uci show metablogizer 2>/dev/null | grep "=site$" | sed "s/metablogizer\.\(.*\)=site/\1/" | while read section; do
+        # Extract display name (remove site_ prefix if present)
+        display_name=$(echo "$section" | sed 's/^site_//')
+        domain=$(uci -q get "metablogizer.$section.domain")
+        enabled=$(uci -q get "metablogizer.$section.enabled")
+        [ "$enabled" = "1" ] && status="[ON]" || status="[OFF]"
+        printf "%-30s %s  %s\n" "$display_name" "$status" "https://$domain/"
+    done
+
+    # Streamlit apps
+    uci show streamlit 2>/dev/null | grep "=instance$" | sed "s/streamlit\.\(.*\)=instance/\1/" | while read name; do
+        domain=$(uci -q get "streamlit.$name.domain")
+        enabled=$(uci -q get "streamlit.$name.enabled")
+        [ "$enabled" = "1" ] && status="[ON]" || status="[OFF]"
+        printf "%-30s %s  %s (streamlit)\n" "$name" "$status" "https://$domain/"
+    done
+}
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Remove a droplet
+# ─────────────────────────────────────────────────────────────────────────────────
+cmd_remove() {
+    local name="$1"
+    [ -z "$name" ] && { log_error "Usage: dropletctl remove <name>"; return 1; }
+
+    local found=0
+
+    # Check metablogizer (try both site_xxx and xxx section names)
+    for section in "site_$name" "$name"; do
+        if uci -q get "metablogizer.$section" >/dev/null 2>&1; then
+            local domain=$(uci -q get "metablogizer.$section.domain")
+            uci delete "metablogizer.$section"
+            uci commit metablogizer
+            rm -rf "$SITES_DIR/$name"
+            # Also remove uhttpd instance
+            uci -q delete "uhttpd.metablog_$name" 2>/dev/null
+            uci commit uhttpd 2>/dev/null || true
+            log_ok "Removed MetaBlog: $name"
+            found=1
+            # Remove vhost
+            [ -n "$domain" ] && haproxyctl vhost remove "$domain" 2>/dev/null || true
+            break
+        fi
+    done
+
+    # Check streamlit
+    if uci -q get "streamlit.$name" >/dev/null 2>&1; then
+        local domain=$(uci -q get "streamlit.$name.domain")
+        uci delete "streamlit.$name"
+        uci commit streamlit
+        rm -rf "$APPS_DIR/$name"
+        log_ok "Removed Streamlit: $name"
+        found=1
+        [ -n "$domain" ] && haproxyctl vhost remove "$domain" 2>/dev/null || true
+    fi
+
+    [ "$found" = "0" ] && log_error "Droplet '$name' not found"
+
+    haproxyctl reload 2>/dev/null || true
+}
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Rename a droplet
+# ─────────────────────────────────────────────────────────────────────────────────
+cmd_rename() {
+    local old="$1"
+    local new="$2"
+    [ -z "$old" ] || [ -z "$new" ] && { log_error "Usage: dropletctl rename <old> <new>"; return 1; }
+
+    new=$(echo "$new" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]/_/g')
+
+    # Check metablogizer
+    if uci -q get "metablogizer.$old" >/dev/null 2>&1; then
+        local domain="${new}.${DEFAULT_DOMAIN}"
+        mv "$SITES_DIR/$old" "$SITES_DIR/$new" 2>/dev/null
+        uci rename "metablogizer.$old=$new"
+        uci set "metablogizer.$new.name=$new"
+        uci set "metablogizer.$new.domain=$domain"
+        uci commit metablogizer
+        log_ok "Renamed MetaBlog: $old -> $new"
+    fi
+
+    # Check streamlit
+    if uci -q get "streamlit.$old" >/dev/null 2>&1; then
+        local domain="${new}.${DEFAULT_DOMAIN}"
+        mv "$APPS_DIR/$old" "$APPS_DIR/$new" 2>/dev/null
+        uci rename "streamlit.$old=$new"
+        uci set "streamlit.$new.name=$new"
+        uci set "streamlit.$new.domain=$domain"
+        uci commit streamlit
+        log_ok "Renamed Streamlit: $old -> $new"
+    fi
+
+    /etc/init.d/haproxy reload 2>/dev/null || true
+}
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Main
+# ─────────────────────────────────────────────────────────────────────────────────
+case "$1" in
+    publish)  shift; cmd_publish "$@" ;;
+    list)     cmd_list ;;
+    remove)   shift; cmd_remove "$@" ;;
+    rename)   shift; cmd_rename "$@" ;;
+    *)
+        echo "Droplet Publisher - One-Drop Content Publishing"
+        echo ""
+        echo "Usage: dropletctl <command> [args]"
+        echo ""
+        echo "Commands:"
+        echo "  publish <file> <name> [domain]  Publish HTML/ZIP as site"
+        echo "  list                            List published droplets"
+        echo "  remove <name>                   Remove a droplet"
+        echo "  rename <old> <new>              Rename a droplet"
+        echo ""
+        echo "Examples:"
+        echo "  dropletctl publish mysite.zip mysite"
+        echo "  dropletctl publish index.html landing"
+        echo "  dropletctl rename landing homepage"
+        ;;
+esac

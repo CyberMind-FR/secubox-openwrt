@@ -1,0 +1,45 @@
+{
+	"admin/secubox/dpi-dual": {
+		"title": "DPI Dual-Stream",
+		"order": 45,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-dpi-dual"],
+			"uci": { "dpi-dual": true }
+		}
+	},
+	"admin/secubox/dpi-dual/overview": {
+		"title": "Overview",
+		"order": 1,
+		"action": {
+			"type": "view",
+			"path": "dpi-dual/overview"
+		}
+	},
+	"admin/secubox/dpi-dual/timeline": {
+		"title": "Correlation Timeline",
+		"order": 2,
+		"action": {
+			"type": "view",
+			"path": "dpi-dual/timeline"
+		}
+	},
+	"admin/secubox/dpi-dual/lan-flows": {
+		"title": "LAN Flows",
+		"order": 3,
+		"action": {
+			"type": "view",
+			"path": "dpi-dual/lan-flows"
+		}
+	},
+	"admin/secubox/dpi-dual/settings": {
+		"title": "Settings",
+		"order": 4,
+		"action": {
+			"type": "view",
+			"path": "dpi-dual/settings"
+		}
+	}
+}

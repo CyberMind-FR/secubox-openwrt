@@ -50,7 +50,7 @@ secubox_is_initialized() {
 
 # Get SecuBox version
 secubox_get_version() {
-	echo "0.8.0"
+	echo "1.0.0"
 }
 
 # Check if module is installed

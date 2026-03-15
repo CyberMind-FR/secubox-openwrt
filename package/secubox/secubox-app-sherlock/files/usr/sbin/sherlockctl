@@ -1,0 +1,415 @@
+#!/bin/sh
+# Sherlock OSINT Controller for SecuBox
+# Username hunting across social networks
+
+. /lib/functions.sh
+config_load sherlock
+
+CONTAINER="sherlock"
+LXC_PATH="/srv/lxc"
+DATA_DIR="/srv/sherlock"
+IMAGE_URL="https://images.linuxcontainers.org/images/debian/bookworm/arm64/default"
+
+log() {
+    logger -t sherlockctl "$1"
+    echo "[INFO] $1"
+}
+
+error() {
+    logger -t sherlockctl -p err "$1"
+    echo "[ERROR] $1" >&2
+    exit 1
+}
+
+get_config() {
+    config_get "$1" main "$2" "$3"
+}
+
+cmd_install() {
+    log "Installing Sherlock container..."
+
+    if [ -d "${LXC_PATH}/${CONTAINER}" ]; then
+        log "Container already exists. Use 'reinstall' to recreate."
+        return 0
+    fi
+
+    local ip
+    get_config ip ip "192.168.255.56"
+
+    mkdir -p "${DATA_DIR}"/{results,cache}
+
+    log "Downloading Debian Bookworm image..."
+    mkdir -p "${LXC_PATH}/${CONTAINER}"
+
+    local rootfs="${LXC_PATH}/${CONTAINER}/rootfs"
+    mkdir -p "$rootfs"
+
+    # Get latest image date
+    local image_date
+    image_date=$(wget -qO- "${IMAGE_URL}/" | grep -o '[0-9]\{8\}_[0-9]\{2\}:[0-9]\{2\}' | tail -1)
+
+    if [ -z "$image_date" ]; then
+        error "Could not determine latest image date"
+    fi
+
+    log "Downloading image: ${image_date}"
+    wget -q "${IMAGE_URL}/${image_date}/rootfs.tar.xz" -O /tmp/sherlock-rootfs.tar.xz || \
+        error "Failed to download image"
+
+    tar -xJf /tmp/sherlock-rootfs.tar.xz -C "$rootfs"
+    rm -f /tmp/sherlock-rootfs.tar.xz
+
+    # Create data directory in rootfs
+    mkdir -p "${rootfs}/srv/sherlock"
+
+    # Create LXC config
+    cat > "${LXC_PATH}/${CONTAINER}/config" << EOF
+lxc.uts.name = ${CONTAINER}
+lxc.rootfs.path = dir:${rootfs}
+lxc.include = /usr/share/lxc/config/common.conf
+
+# Network
+lxc.net.0.type = veth
+lxc.net.0.link = br-lan
+lxc.net.0.flags = up
+lxc.net.0.ipv4.address = ${ip}/24
+lxc.net.0.ipv4.gateway = 192.168.255.1
+
+# Data mount
+lxc.mount.entry = /srv/sherlock /srv/sherlock none bind 0 0
+
+# Autostart
+lxc.start.auto = 1
+lxc.start.delay = 5
+EOF
+
+    # Create startup script
+    cat > "${rootfs}/opt/start-sherlock.sh" << 'STARTUP'
+#!/bin/bash
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+export HOME="/root"
+
+# Set DNS
+echo "nameserver 192.168.255.1" > /etc/resolv.conf
+
+# Wait for network
+sleep 5
+
+# Install dependencies if needed
+if ! command -v sherlock &>/dev/null; then
+    apt-get update
+    apt-get install -y python3 python3-pip git curl
+
+    # Install sherlock
+    pip3 install sherlock-project --break-system-packages
+
+    # Also clone repo for data files
+    git clone https://github.com/sherlock-project/sherlock.git /opt/sherlock-git
+fi
+
+# Create web API server
+cat > /opt/sherlock_api.py << 'PYEOF'
+#!/usr/bin/env python3
+"""
+Sherlock Web API Server
+REST API for username hunting across social networks
+"""
+import http.server
+import socketserver
+import json
+import subprocess
+import os
+import threading
+import time
+from urllib.parse import parse_qs, urlparse
+import uuid
+
+PORT = 9090
+RESULTS_DIR = "/srv/sherlock/results"
+CACHE_DIR = "/srv/sherlock/cache"
+
+# Store running tasks
+tasks = {}
+
+os.makedirs(RESULTS_DIR, exist_ok=True)
+os.makedirs(CACHE_DIR, exist_ok=True)
+
+def run_sherlock(username, task_id):
+    """Run sherlock search in background"""
+    output_file = os.path.join(RESULTS_DIR, f"{task_id}.json")
+
+    try:
+        result = subprocess.run(
+            ["sherlock", username, "--output", output_file, "--json", os.path.join(RESULTS_DIR, f"{task_id}_raw.json")],
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+
+        # Parse results
+        found_accounts = []
+        raw_file = os.path.join(RESULTS_DIR, f"{task_id}_raw.json")
+        if os.path.exists(raw_file):
+            with open(raw_file) as f:
+                data = json.load(f)
+                for site, info in data.items():
+                    if info.get("status") == "Claimed":
+                        found_accounts.append({
+                            "site": site,
+                            "url": info.get("url_user", ""),
+                            "response_time": info.get("response_time_s", 0)
+                        })
+
+        tasks[task_id] = {
+            "status": "completed",
+            "username": username,
+            "found_count": len(found_accounts),
+            "accounts": found_accounts,
+            "completed_at": time.time()
+        }
+
+    except subprocess.TimeoutExpired:
+        tasks[task_id] = {"status": "timeout", "username": username}
+    except Exception as e:
+        tasks[task_id] = {"status": "error", "username": username, "error": str(e)}
+
+class SherlockHandler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        pass  # Suppress logging
+
+    def send_json(self, data, status=200):
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(json.dumps(data).encode())
+
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
+
+    def do_GET(self):
+        parsed = urlparse(self.path)
+        path = parsed.path
+
+        if path == "/" or path == "/api":
+            self.send_json({
+                "status": "ok",
+                "server": "SecuBox Sherlock OSINT Server",
+                "version": "1.0.0",
+                "endpoints": {
+                    "/api/search?username=<name>": "Start username search (returns task_id)",
+                    "/api/task/<task_id>": "Get task status/results",
+                    "/api/tasks": "List all tasks"
+                }
+            })
+
+        elif path == "/api/tasks":
+            self.send_json({"tasks": tasks})
+
+        elif path.startswith("/api/task/"):
+            task_id = path.split("/")[-1]
+            if task_id in tasks:
+                self.send_json(tasks[task_id])
+            else:
+                self.send_json({"error": "Task not found"}, 404)
+
+        elif path == "/api/search":
+            params = parse_qs(parsed.query)
+            username = params.get("username", [None])[0]
+
+            if not username:
+                self.send_json({"error": "username parameter required"}, 400)
+                return
+
+            # Check cache
+            cache_file = os.path.join(CACHE_DIR, f"{username}.json")
+            if os.path.exists(cache_file):
+                cache_age = time.time() - os.path.getmtime(cache_file)
+                if cache_age < 3600:  # 1 hour cache
+                    with open(cache_file) as f:
+                        self.send_json({"cached": True, **json.load(f)})
+                    return
+
+            # Start new search
+            task_id = str(uuid.uuid4())[:8]
+            tasks[task_id] = {"status": "running", "username": username, "started_at": time.time()}
+
+            thread = threading.Thread(target=run_sherlock, args=(username, task_id))
+            thread.daemon = True
+            thread.start()
+
+            self.send_json({"task_id": task_id, "status": "started", "username": username})
+
+        else:
+            self.send_json({"error": "Not found"}, 404)
+
+if __name__ == "__main__":
+    with socketserver.TCPServer(("", PORT), SherlockHandler) as httpd:
+        print(f"Sherlock API Server running on port {PORT}")
+        httpd.serve_forever()
+PYEOF
+chmod +x /opt/sherlock_api.py
+
+# Start API server
+cd /opt
+exec python3 sherlock_api.py
+STARTUP
+    chmod +x "${rootfs}/opt/start-sherlock.sh"
+
+    # Set init
+    rm -f "${rootfs}/sbin/init"
+    ln -sf /opt/start-sherlock.sh "${rootfs}/sbin/init"
+
+    log "Sherlock container installed at ${ip}"
+    log "Start with: sherlockctl start"
+}
+
+cmd_start() {
+    log "Starting Sherlock container..."
+    /usr/bin/lxc-start -n "$CONTAINER" || error "Failed to start container"
+
+    sleep 10
+
+    local ip
+    get_config ip ip "192.168.255.56"
+
+    if curl -s -o /dev/null -w "%{http_code}" "http://${ip}:9090/" | grep -q "200"; then
+        log "Sherlock API is ready at http://${ip}:9090/"
+    else
+        log "Container started, waiting for API server..."
+    fi
+}
+
+cmd_stop() {
+    log "Stopping Sherlock container..."
+    /usr/bin/lxc-stop -n "$CONTAINER" 2>/dev/null
+    log "Container stopped"
+}
+
+cmd_restart() {
+    cmd_stop
+    sleep 2
+    cmd_start
+}
+
+cmd_status() {
+    local state
+    state=$(/usr/bin/lxc-info -n "$CONTAINER" -s 2>/dev/null | awk '{print $2}')
+
+    local ip
+    get_config ip ip "192.168.255.56"
+
+    echo "Container: $CONTAINER"
+    echo "State: ${state:-NOT_FOUND}"
+    echo "IP: $ip"
+    echo "API Port: 9090"
+
+    if [ "$state" = "RUNNING" ]; then
+        local status
+        status=$(curl -s "http://${ip}:9090/api" 2>/dev/null)
+        if [ -n "$status" ]; then
+            echo "API Status: Running"
+        else
+            echo "API Status: Starting..."
+        fi
+    fi
+}
+
+cmd_search() {
+    local username="$1"
+    if [ -z "$username" ]; then
+        error "Usage: sherlockctl search <username>"
+    fi
+
+    local ip
+    get_config ip ip "192.168.255.56"
+
+    local result
+    result=$(curl -s "http://${ip}:9090/api/search?username=${username}")
+    echo "$result"
+}
+
+cmd_logs() {
+    /usr/bin/lxc-attach -n "$CONTAINER" -- tail -f /var/log/sherlock.log 2>/dev/null || \
+        /usr/bin/lxc-attach -n "$CONTAINER" -- cat /proc/1/fd/1
+}
+
+cmd_shell() {
+    /usr/bin/lxc-attach -n "$CONTAINER" -- /bin/bash
+}
+
+cmd_configure_haproxy() {
+    local domain
+    get_config domain exposure domain "sherlock.gk2.secubox.in"
+
+    local ip
+    get_config ip ip "192.168.255.56"
+
+    log "Configuring HAProxy vhost: $domain -> $ip:9090"
+
+    haproxyctl vhost add "$domain" 2>/dev/null || true
+
+    local routes="/srv/mitmproxy/haproxy-routes.json"
+    if [ -f "$routes" ]; then
+        python3 -c "
+import json
+with open('$routes') as f:
+    d = json.load(f)
+d['$domain'] = ['$ip', 9090]
+with open('$routes', 'w') as f:
+    json.dump(d, f, indent=2)
+"
+        cp "$routes" /srv/mitmproxy-in/haproxy-routes.json
+        /etc/init.d/mitmproxy restart
+    fi
+
+    log "HAProxy configured: https://$domain/"
+}
+
+cmd_help() {
+    cat << 'EOF'
+Sherlock OSINT Controller for SecuBox
+Username hunting across social networks
+
+Usage: sherlockctl <command> [options]
+
+Container Commands:
+  install             Create Sherlock container
+  start               Start the container
+  stop                Stop the container
+  restart             Restart the container
+  status              Show container status
+  logs                View logs
+  shell               Open shell in container
+
+OSINT Commands:
+  search <username>   Search for username across platforms
+
+Configuration:
+  configure-haproxy   Setup HAProxy vhost for external access
+
+Examples:
+  sherlockctl install
+  sherlockctl start
+  sherlockctl search johndoe
+  curl "http://192.168.255.56:9090/api/search?username=johndoe"
+EOF
+}
+
+case "$1" in
+    install) cmd_install ;;
+    start) cmd_start ;;
+    stop) cmd_stop ;;
+    restart) cmd_restart ;;
+    status) cmd_status ;;
+    logs) cmd_logs ;;
+    shell) cmd_shell ;;
+    search) shift; cmd_search "$@" ;;
+    configure-haproxy) cmd_configure_haproxy ;;
+    help|--help|-h) cmd_help ;;
+    *) cmd_help ;;
+esac

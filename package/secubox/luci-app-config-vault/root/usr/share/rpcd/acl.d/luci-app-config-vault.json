@@ -3,13 +3,31 @@
         "description": "Configuration Vault Management",
         "read": {
             "ubus": {
-                "luci.config-vault": ["status", "modules", "history", "diff"]
+                "luci.config-vault": [
+                    "status",
+                    "modules",
+                    "history",
+                    "diff",
+                    "export_clone_b64"
+                ]
             },
             "uci": ["config-vault"]
         },
         "write": {
             "ubus": {
-                "luci.config-vault": ["backup", "restore", "push", "pull", "init", "export_clone"]
+                "luci.config-vault": [
+                    "backup",
+                    "restore",
+                    "restore_all",
+                    "push",
+                    "pull",
+                    "init",
+                    "export_clone",
+                    "import_apply",
+                    "provision",
+                    "pull_config",
+                    "serve_clone"
+                ]
             },
             "uci": ["config-vault"]
         }

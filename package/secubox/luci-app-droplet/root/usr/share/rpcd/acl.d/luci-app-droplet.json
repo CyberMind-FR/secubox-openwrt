@@ -1,0 +1,16 @@
+{
+    "luci-app-droplet": {
+        "description": "Droplet Publisher",
+        "read": {
+            "ubus": {
+                "luci.droplet": ["status", "list"]
+            }
+        },
+        "write": {
+            "ubus": {
+                "luci.droplet": ["upload", "remove", "rename"]
+            },
+            "cgi-io": ["upload"]
+        }
+    }
+}

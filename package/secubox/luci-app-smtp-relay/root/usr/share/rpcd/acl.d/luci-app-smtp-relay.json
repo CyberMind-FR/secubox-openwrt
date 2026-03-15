@@ -1,0 +1,24 @@
+{
+	"luci-app-smtp-relay": {
+		"description": "Grant access to SMTP Relay configuration",
+		"read": {
+			"ubus": {
+				"luci.smtp-relay": [
+					"get_status",
+					"get_config",
+					"detect_local"
+				]
+			},
+			"uci": ["smtp-relay"]
+		},
+		"write": {
+			"ubus": {
+				"luci.smtp-relay": [
+					"test_email",
+					"send_email"
+				]
+			},
+			"uci": ["smtp-relay"]
+		}
+	}
+}
