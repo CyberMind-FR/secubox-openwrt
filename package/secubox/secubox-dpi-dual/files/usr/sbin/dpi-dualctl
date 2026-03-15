@@ -1,0 +1,235 @@
+#!/bin/sh
+# DPI Dual Control - CLI for dual-stream DPI management
+# Part of secubox-dpi-dual package
+
+. /lib/functions.sh
+
+config_load dpi-dual
+
+STATS_DIR=""
+FLOW_DIR=""
+
+load_config() {
+    config_get STATS_DIR settings stats_dir "/tmp/secubox"
+    config_get FLOW_DIR settings flow_dir "/tmp/dpi-flows"
+}
+
+cmd_start() {
+    echo "Starting DPI Dual-Stream..."
+
+    # Check mode
+    local mode
+    config_get mode settings mode "dual"
+
+    case "$mode" in
+        dual|tap-only)
+            echo "Starting TAP stream..."
+            /usr/lib/dpi-dual/mirror-setup.sh start
+
+            # Restart netifyd to pick up TAP interface
+            if /etc/init.d/netifyd enabled 2>/dev/null; then
+                /etc/init.d/netifyd restart
+            fi
+
+            # Start flow collector
+            start-stop-daemon -S -b -x /usr/sbin/dpi-flow-collector -- start
+            echo "TAP stream started"
+            ;;
+    esac
+
+    case "$mode" in
+        dual|mitm-only)
+            echo "MITM stream managed by mitmproxy service"
+            ;;
+    esac
+
+    # Start correlator if enabled
+    local correlation
+    config_get correlation settings correlation "1"
+    if [ "$correlation" = "1" ]; then
+        echo "Starting correlator..."
+        start-stop-daemon -S -b -x /usr/sbin/dpi-correlator -- start
+        echo "Correlator started"
+    fi
+
+    echo "DPI Dual-Stream started (mode: $mode)"
+}
+
+cmd_stop() {
+    echo "Stopping DPI Dual-Stream..."
+
+    # Stop correlator
+    killall dpi-correlator 2>/dev/null
+
+    # Stop flow collector
+    killall dpi-flow-collector 2>/dev/null
+
+    # Stop mirror
+    /usr/lib/dpi-dual/mirror-setup.sh stop
+
+    echo "DPI Dual-Stream stopped"
+}
+
+cmd_status() {
+    load_config
+
+    local mode
+    config_get mode settings mode "dual"
+
+    echo "=== DPI Dual-Stream Status ==="
+    echo "Mode: $mode"
+    echo ""
+
+    echo "=== MITM Stream ==="
+    if pgrep mitmproxy >/dev/null 2>&1; then
+        echo "Status: RUNNING"
+        pgrep -a mitmproxy | head -1
+    else
+        echo "Status: STOPPED"
+    fi
+
+    local buffer_file="$STATS_DIR/dpi-buffer.json"
+    if [ -f "$buffer_file" ]; then
+        local entries
+        entries=$(jsonfilter -i "$buffer_file" -e '@.entries' 2>/dev/null || echo 0)
+        echo "Buffer entries: $entries"
+    else
+        echo "Buffer: not available"
+    fi
+    echo ""
+
+    echo "=== TAP Stream ==="
+    local tap_if
+    config_get tap_if tap interface "tap0"
+
+    if ip link show "$tap_if" >/dev/null 2>&1; then
+        echo "TAP Interface: $tap_if (UP)"
+        ip -s link show "$tap_if" 2>/dev/null | grep -E "RX:|TX:" | head -2
+    else
+        echo "TAP Interface: $tap_if (DOWN)"
+    fi
+
+    if pgrep netifyd >/dev/null 2>&1; then
+        echo "netifyd: RUNNING"
+    else
+        echo "netifyd: STOPPED"
+    fi
+
+    if pgrep dpi-flow-collector >/dev/null 2>&1; then
+        echo "Flow Collector: RUNNING"
+    else
+        echo "Flow Collector: STOPPED"
+    fi
+
+    local flows_file="$STATS_DIR/dpi-flows.json"
+    if [ -f "$flows_file" ]; then
+        local flows_1min
+        flows_1min=$(jsonfilter -i "$flows_file" -e '@.flows_1min' 2>/dev/null || echo 0)
+        echo "Flows (1min): $flows_1min"
+    fi
+    echo ""
+
+    echo "=== Correlation Engine ==="
+    if pgrep dpi-correlator >/dev/null 2>&1; then
+        echo "Status: RUNNING"
+    else
+        echo "Status: STOPPED"
+    fi
+
+    local corr_file
+    config_get corr_file correlation output "/tmp/secubox/correlated-threats.json"
+    if [ -f "$corr_file" ]; then
+        local threats
+        threats=$(wc -l < "$corr_file" 2>/dev/null || echo 0)
+        echo "Threats correlated: $threats"
+    else
+        echo "Threats correlated: 0"
+    fi
+}
+
+cmd_flows() {
+    load_config
+    local flows_file="$STATS_DIR/dpi-flows.json"
+
+    if [ -f "$flows_file" ]; then
+        cat "$flows_file"
+    else
+        echo '{"error":"No flow data available"}'
+    fi
+}
+
+cmd_threats() {
+    local count="${1:-20}"
+    local corr_file
+    config_get corr_file correlation output "/tmp/secubox/correlated-threats.json"
+
+    if [ -f "$corr_file" ]; then
+        tail -"$count" "$corr_file"
+    else
+        echo '[]'
+    fi
+}
+
+cmd_mirror() {
+    /usr/lib/dpi-dual/mirror-setup.sh "$@"
+}
+
+cmd_help() {
+    cat << EOF
+DPI Dual-Stream Control
+
+Usage: $0 <command> [args]
+
+Commands:
+  start           Start all DPI streams (according to mode)
+  stop            Stop all DPI streams
+  restart         Restart all DPI streams
+  status          Show status of all streams
+  flows           Show current flow statistics (JSON)
+  threats [N]     Show last N correlated threats (default: 20)
+  mirror <cmd>    Control mirror setup (start|stop|status)
+  help            Show this help
+
+Configuration: /etc/config/dpi-dual
+
+Modes:
+  dual      - Both MITM and TAP streams active
+  mitm-only - Only MITM stream (HAProxy + mitmproxy)
+  tap-only  - Only passive TAP stream (netifyd)
+
+EOF
+}
+
+case "$1" in
+    start)
+        cmd_start
+        ;;
+    stop)
+        cmd_stop
+        ;;
+    restart)
+        cmd_stop
+        sleep 1
+        cmd_start
+        ;;
+    status)
+        cmd_status
+        ;;
+    flows)
+        cmd_flows
+        ;;
+    threats)
+        cmd_threats "$2"
+        ;;
+    mirror)
+        shift
+        cmd_mirror "$@"
+        ;;
+    help|--help|-h)
+        cmd_help
+        ;;
+    *)
+        cmd_help
+        exit 1
+        ;;
+esac

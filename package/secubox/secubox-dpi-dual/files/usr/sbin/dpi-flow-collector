@@ -1,0 +1,111 @@
+#!/bin/sh
+# DPI Flow Collector - Aggregates netifyd flow statistics
+# Part of secubox-dpi-dual package
+
+. /lib/functions.sh
+
+config_load dpi-dual
+
+FLOW_DIR=""
+STATS_DIR=""
+RETENTION=""
+
+load_config() {
+    config_get FLOW_DIR settings flow_dir "/tmp/dpi-flows"
+    config_get STATS_DIR settings stats_dir "/tmp/secubox"
+    config_get RETENTION tap flow_retention "300"
+}
+
+init_dirs() {
+    mkdir -p "$FLOW_DIR"
+    mkdir -p "$STATS_DIR"
+}
+
+collect_flows() {
+    local stats_file="$STATS_DIR/dpi-flows.json"
+    local netifyd_socket="/var/run/netifyd/netifyd.sock"
+
+    # Count recent flow files
+    local total_flows=0
+    if [ -d "$FLOW_DIR" ]; then
+        total_flows=$(find "$FLOW_DIR" -name "*.json" -mmin -1 2>/dev/null | wc -l)
+    fi
+
+    # Get protocol distribution from netifyd status
+    local protocols="{}"
+    if [ -S "$netifyd_socket" ]; then
+        # Try to get stats from netifyd socket
+        local proto_data
+        proto_data=$(echo '{"type":"get_stats"}' | nc -U "$netifyd_socket" 2>/dev/null | head -1)
+        if [ -n "$proto_data" ]; then
+            protocols=$(echo "$proto_data" | jsonfilter -e '@.protocols' 2>/dev/null || echo '{}')
+        fi
+    fi
+
+    # Get interface stats from /proc
+    local tap_if
+    config_get tap_if tap interface "tap0"
+
+    local rx_bytes=0 tx_bytes=0 rx_packets=0 tx_packets=0
+    if [ -d "/sys/class/net/$tap_if/statistics" ]; then
+        rx_bytes=$(cat "/sys/class/net/$tap_if/statistics/rx_bytes" 2>/dev/null || echo 0)
+        tx_bytes=$(cat "/sys/class/net/$tap_if/statistics/tx_bytes" 2>/dev/null || echo 0)
+        rx_packets=$(cat "/sys/class/net/$tap_if/statistics/rx_packets" 2>/dev/null || echo 0)
+        tx_packets=$(cat "/sys/class/net/$tap_if/statistics/tx_packets" 2>/dev/null || echo 0)
+    fi
+
+    # Write stats JSON
+    cat > "$stats_file" << EOF
+{
+    "timestamp": "$(date -Iseconds)",
+    "flows_1min": $total_flows,
+    "tap_interface": "$tap_if",
+    "rx_bytes": $rx_bytes,
+    "tx_bytes": $tx_bytes,
+    "rx_packets": $rx_packets,
+    "tx_packets": $tx_packets,
+    "protocols": $protocols,
+    "mode": "passive_tap"
+}
+EOF
+}
+
+cleanup_old_flows() {
+    # Remove flow files older than retention period
+    local retention_min=$((RETENTION / 60))
+    [ "$retention_min" -lt 1 ] && retention_min=1
+
+    find "$FLOW_DIR" -name "*.json" -mmin +"$retention_min" -delete 2>/dev/null
+}
+
+run_collector() {
+    load_config
+    init_dirs
+
+    echo "DPI Flow Collector started"
+    echo "  Flow dir: $FLOW_DIR"
+    echo "  Stats dir: $STATS_DIR"
+    echo "  Retention: ${RETENTION}s"
+
+    while true; do
+        collect_flows
+        cleanup_old_flows
+        sleep 10
+    done
+}
+
+case "$1" in
+    start)
+        run_collector
+        ;;
+    once)
+        load_config
+        init_dirs
+        collect_flows
+        cleanup_old_flows
+        ;;
+    *)
+        echo "Usage: $0 {start|once}"
+        exit 1
+        ;;
+esac

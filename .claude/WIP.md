@@ -579,6 +579,38 @@ _Last updated: 2026-03-15 (Wall Colorsets)_
 
 (No active tasks)
 
+### 2026-03-15
+
+- **Dual-Stream DPI Architecture (Phase 1 Complete)**
+  - New `secubox-dpi-dual` package implementing parallel MITM + Passive TAP DPI
+  - Architecture doc: `package/secubox/DUAL-STREAM-DPI.md`
+  - **TAP Stream (Passive)**:
+    - `mirror-setup.sh`: tc mirred port mirroring (ingress + egress)
+    - Creates dummy TAP interface for netifyd analysis
+    - Software and hardware TAP mode support
+  - **Flow Collector**:
+    - `dpi-flow-collector`: Aggregates netifyd flow statistics
+    - Writes stats to `/tmp/secubox/dpi-flows.json`
+    - Interface stats from /sys/class/net
+    - Configurable flow retention cleanup
+  - **Correlation Engine**:
+    - `dpi-correlator`: Matches MITM + TAP stream events
+    - Watches CrowdSec decisions and WAF alerts
+    - Enriches threats with context from both streams
+    - Output: `/tmp/secubox/correlated-threats.json`
+  - **CLI Tool**:
+    - `dpi-dualctl`: start/stop/restart/status/flows/threats/mirror
+    - Shows unified status of both streams
+  - **Procd Service**:
+    - `init.d/dpi-dual`: Manages flow-collector and correlator instances
+    - Auto-starts based on UCI mode setting (dual/mitm-only/tap-only)
+  - **MITM Double Buffer (Phase 2 prep)**:
+    - `dpi_buffer.py`: mitmproxy addon for async analysis
+    - Ring buffer with configurable size (1000 requests default)
+    - Heuristic threat scoring (path traversal, XSS, SQLi, LFI patterns)
+    - Writes threats to `/tmp/secubox/waf-alerts.json`
+  - **UCI Config**: `/etc/config/dpi-dual` with global, mitm, tap, correlation sections
+
 ---
 
 ## Next Up

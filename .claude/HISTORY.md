@@ -5187,3 +5187,18 @@ git checkout HEAD -- index.html
       - ↻ Auto-rotate button: continuous rotation animation
     - **Default Colorset**: RGB (simple red/green/blue)
     - **Deployed**: https://wall.maegia.tv/
+
+### 2026-03-15
+
+- **Dual-Stream DPI Architecture (Phase 1 Complete)**
+  - New `secubox-dpi-dual` package: parallel MITM + Passive TAP deep packet inspection
+  - Architecture: DUAL-STREAM-DPI.md comprehensive spec document
+  - TAP Stream: tc mirred port mirroring → dummy interface → netifyd/nDPI analysis
+  - Flow Collector: Stats aggregation from netifyd, writes `/tmp/secubox/dpi-flows.json`
+  - Correlation Engine: Matches MITM WAF events + TAP flow data, CrowdSec integration
+  - CLI: `dpi-dualctl` start/stop/status/flows/threats/mirror
+  - Procd service: manages flow-collector + correlator instances
+  - MITM Double Buffer: `dpi_buffer.py` mitmproxy addon (Phase 2 prep)
+  - UCI config: `/etc/config/dpi-dual` with dual/mitm-only/tap-only modes
+  - Files: mirror-setup.sh, dpi-flow-collector, dpi-correlator, dpi-dualctl, init.d/dpi-dual, dpi_buffer.py
+

@@ -1,0 +1,184 @@
+#!/bin/sh
+# DPI Correlator - Matches events from MITM and TAP streams
+# Part of secubox-dpi-dual package
+
+. /lib/functions.sh
+
+config_load dpi-dual
+
+MITM_LOG=""
+DPI_FLOWS=""
+CORRELATED=""
+WINDOW=""
+WATCH_CROWDSEC=""
+
+load_config() {
+    config_get MITM_LOG mitm log_file "/var/log/mitmproxy/access.log"
+    config_get DPI_FLOWS settings flow_dir "/tmp/dpi-flows"
+    config_get CORRELATED correlation output "/tmp/secubox/correlated-threats.json"
+    config_get WINDOW correlation window "60"
+    config_get WATCH_CROWDSEC correlation watch_crowdsec "1"
+}
+
+init_files() {
+    local corr_dir
+    corr_dir=$(dirname "$CORRELATED")
+    mkdir -p "$corr_dir"
+    [ ! -f "$CORRELATED" ] && echo "[]" > "$CORRELATED"
+}
+
+# Get recent MITM requests from an IP
+get_mitm_context() {
+    local ip="$1"
+    local count="${2:-10}"
+
+    if [ -f "$MITM_LOG" ]; then
+        grep "$ip" "$MITM_LOG" 2>/dev/null | tail -"$count" | \
+            awk -F'\t' '{printf "{\"ts\":\"%s\",\"method\":\"%s\",\"host\":\"%s\",\"path\":\"%s\"},", $1, $2, $3, $4}' | \
+            sed 's/,$//'
+    fi
+}
+
+# Get DPI flow info for an IP
+get_dpi_context() {
+    local ip="$1"
+
+    if [ -d "$DPI_FLOWS" ]; then
+        find "$DPI_FLOWS" -name "*.json" -exec grep -l "$ip" {} \; 2>/dev/null | \
+            head -5 | xargs cat 2>/dev/null | \
+            jsonfilter -e '@' 2>/dev/null | \
+            tr '\n' ',' | sed 's/,$//'
+    fi
+}
+
+# Correlate a threat event
+correlate_threat() {
+    local ip="$1"
+    local timestamp="$2"
+    local reason="${3:-unknown}"
+
+    local mitm_ctx dpi_ctx
+    mitm_ctx=$(get_mitm_context "$ip")
+    dpi_ctx=$(get_dpi_context "$ip")
+
+    # Build correlation entry
+    local entry
+    entry=$(cat << EOF
+{
+    "ip": "$ip",
+    "timestamp": "$timestamp",
+    "reason": "$reason",
+    "mitm_context": [$mitm_ctx],
+    "dpi_context": [$dpi_ctx],
+    "correlated_at": "$(date -Iseconds)"
+}
+EOF
+)
+
+    # Append to correlated file (keep last 1000 entries)
+    local tmp_file="/tmp/correlated_$$.json"
+    if [ -f "$CORRELATED" ]; then
+        # Read existing, add new, keep last 1000
+        (cat "$CORRELATED" 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null; echo "$entry") | \
+            tail -1000 | \
+            awk 'BEGIN{print "["} {if(NR>1)print ","; print} END{print "]"}' > "$tmp_file"
+        mv "$tmp_file" "$CORRELATED"
+    else
+        echo "[$entry]" > "$CORRELATED"
+    fi
+
+    echo "Correlated threat: $ip ($reason)"
+}
+
+# Watch CrowdSec for new decisions
+watch_crowdsec_decisions() {
+    local cs_db="/var/lib/crowdsec/data/crowdsec.db"
+    local last_check="/tmp/dpi-correlator-lastcheck"
+
+    [ ! -f "$cs_db" ] && return
+
+    # Get timestamp of last check
+    local last_ts=0
+    [ -f "$last_check" ] && last_ts=$(cat "$last_check")
+
+    # Query new decisions (simplified - just check recent bans)
+    if command -v cscli >/dev/null 2>&1; then
+        cscli decisions list -o json 2>/dev/null | \
+            jsonfilter -e '@[*].value' 2>/dev/null | \
+            while read -r ip; do
+                [ -n "$ip" ] && correlate_threat "$ip" "$(date -Iseconds)" "crowdsec_ban"
+            done
+    fi
+
+    # Update last check timestamp
+    date +%s > "$last_check"
+}
+
+# Watch for WAF alerts from mitmproxy
+watch_waf_alerts() {
+    local waf_alerts="/tmp/secubox/waf-alerts.json"
+    local last_alert="/tmp/dpi-correlator-lastalert"
+
+    [ ! -f "$waf_alerts" ] && return
+
+    local last_id=0
+    [ -f "$last_alert" ] && last_id=$(cat "$last_alert")
+
+    # Process new alerts
+    local current_id
+    current_id=$(jsonfilter -i "$waf_alerts" -e '@[-1].id' 2>/dev/null || echo 0)
+
+    if [ "$current_id" -gt "$last_id" ]; then
+        # Get new alerts
+        jsonfilter -i "$waf_alerts" -e '@[*]' 2>/dev/null | while read -r alert; do
+            local alert_id ip reason
+            alert_id=$(echo "$alert" | jsonfilter -e '@.id' 2>/dev/null)
+            [ "$alert_id" -le "$last_id" ] && continue
+
+            ip=$(echo "$alert" | jsonfilter -e '@.client_ip' 2>/dev/null)
+            reason=$(echo "$alert" | jsonfilter -e '@.rule' 2>/dev/null || echo "waf_alert")
+
+            [ -n "$ip" ] && correlate_threat "$ip" "$(date -Iseconds)" "$reason"
+        done
+
+        echo "$current_id" > "$last_alert"
+    fi
+}
+
+run_correlator() {
+    load_config
+    init_files
+
+    echo "DPI Correlator started"
+    echo "  Window: ${WINDOW}s"
+    echo "  Output: $CORRELATED"
+    echo "  Watch CrowdSec: $WATCH_CROWDSEC"
+
+    while true; do
+        [ "$WATCH_CROWDSEC" = "1" ] && watch_crowdsec_decisions
+        watch_waf_alerts
+        sleep 5
+    done
+}
+
+case "$1" in
+    start)
+        run_correlator
+        ;;
+    correlate)
+        # Manual correlation: dpi-correlator correlate <ip> [reason]
+        load_config
+        init_files
+        [ -n "$2" ] && correlate_threat "$2" "$(date -Iseconds)" "${3:-manual}"
+        ;;
+    status)
+        load_config
+        echo "Correlated threats: $(wc -l < "$CORRELATED" 2>/dev/null || echo 0)"
+        echo "Last 5 correlations:"
+        tail -5 "$CORRELATED" 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null || echo "  (none)"
+        ;;
+    *)
+        echo "Usage: $0 {start|correlate <ip> [reason]|status}"
+        exit 1
+        ;;
+esac
