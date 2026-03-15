@@ -127,7 +127,7 @@ cmd_status() {
         echo "netifyd: STOPPED"
     fi
 
-    if pgrep dpi-flow-collector >/dev/null 2>&1; then
+    if pgrep -f dpi-flow-collect >/dev/null 2>&1; then
         echo "Flow Collector: RUNNING"
     else
         echo "Flow Collector: STOPPED"
@@ -150,7 +150,7 @@ cmd_status() {
         config_get lan_if lan interface "br-lan"
         echo "Interface: $lan_if"
 
-        if pgrep dpi-lan-collector >/dev/null 2>&1; then
+        if pgrep -f dpi-lan-collect >/dev/null 2>&1; then
             echo "Collector: RUNNING"
         else
             echo "Collector: STOPPED"
@@ -172,7 +172,7 @@ cmd_status() {
     echo ""
 
     echo "=== Correlation Engine ==="
-    if pgrep dpi-correlator >/dev/null 2>&1; then
+    if pgrep -f dpi-correlator >/dev/null 2>&1; then
         echo "Status: RUNNING"
     else
         echo "Status: STOPPED"

@@ -62,13 +62,13 @@ EOF
                 config_get mode settings mode "dual"
                 config_get correlation settings correlation "0"
 
-                # Check processes
+                # Check processes (use partial match for truncated process names)
                 local mitm_running=0 tap_running=0 collector_running=0 correlator_running=0 lan_collector_running=0
                 pgrep mitmproxy >/dev/null 2>&1 && mitm_running=1
                 pgrep netifyd >/dev/null 2>&1 && tap_running=1
-                pgrep dpi-flow-collector >/dev/null 2>&1 && collector_running=1
-                pgrep dpi-correlator >/dev/null 2>&1 && correlator_running=1
-                pgrep dpi-lan-collector >/dev/null 2>&1 && lan_collector_running=1
+                pgrep -f dpi-flow-collect >/dev/null 2>&1 && collector_running=1
+                pgrep -f dpi-correlator >/dev/null 2>&1 && correlator_running=1
+                pgrep -f dpi-lan-collect >/dev/null 2>&1 && lan_collector_running=1
 
                 # Get TAP interface status
                 local tap_if tap_up=0 tap_rx=0 tap_tx=0

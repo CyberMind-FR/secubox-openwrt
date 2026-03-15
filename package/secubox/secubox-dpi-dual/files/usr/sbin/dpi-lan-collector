@@ -11,23 +11,26 @@ STATS_DIR=""
 LAN_IF=""
 AGGREGATE_INTERVAL=""
 CLIENT_RETENTION=""
-NETIFYD_INSTANCE=""
 
-# Real-time data files
-CLIENTS_FILE=""
+# Output files
 FLOWS_FILE=""
+CLIENTS_FILE=""
 PROTOCOLS_FILE=""
 DESTINATIONS_FILE=""
+
+# State tracking
+PREV_RX=0
+PREV_TX=0
+PREV_TIME=0
 
 load_config() {
     config_get STATS_DIR settings stats_dir "/tmp/secubox"
     config_get LAN_IF lan interface "br-lan"
     config_get AGGREGATE_INTERVAL lan aggregate_interval "5"
     config_get CLIENT_RETENTION lan client_retention "3600"
-    config_get NETIFYD_INSTANCE lan netifyd_instance "lan"
 
-    CLIENTS_FILE="$STATS_DIR/lan-clients.json"
     FLOWS_FILE="$STATS_DIR/lan-flows.json"
+    CLIENTS_FILE="$STATS_DIR/lan-clients.json"
     PROTOCOLS_FILE="$STATS_DIR/lan-protocols.json"
     DESTINATIONS_FILE="$STATS_DIR/lan-destinations.json"
 }
@@ -36,208 +39,10 @@ init_dirs() {
     mkdir -p "$STATS_DIR"
 }
 
-# Parse netifyd JSON flow events in real-time
-parse_flow_event() {
-    local line="$1"
-
-    # Extract flow data using jsonfilter
-    local flow_type=$(echo "$line" | jsonfilter -e '@.type' 2>/dev/null)
-    [ "$flow_type" != "flow" ] && return
-
-    local local_ip=$(echo "$line" | jsonfilter -e '@.flow.local_ip' 2>/dev/null)
-    local other_ip=$(echo "$line" | jsonfilter -e '@.flow.other_ip' 2>/dev/null)
-    local proto=$(echo "$line" | jsonfilter -e '@.flow.detected_protocol_name' 2>/dev/null)
-    local app=$(echo "$line" | jsonfilter -e '@.flow.detected_application_name' 2>/dev/null)
-    local bytes_in=$(echo "$line" | jsonfilter -e '@.flow.local_bytes' 2>/dev/null || echo 0)
-    local bytes_out=$(echo "$line" | jsonfilter -e '@.flow.other_bytes' 2>/dev/null || echo 0)
-    local local_port=$(echo "$line" | jsonfilter -e '@.flow.local_port' 2>/dev/null || echo 0)
-    local other_port=$(echo "$line" | jsonfilter -e '@.flow.other_port' 2>/dev/null || echo 0)
-
-    [ -z "$local_ip" ] && return
-
-    # Determine direction (LAN client -> external)
-    local client_ip=""
-    local dest_ip=""
-    local dest_port=""
-
-    # Check if local_ip is in LAN range (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
-    case "$local_ip" in
-        192.168.*|10.*|172.1[6-9].*|172.2[0-9].*|172.3[0-1].*)
-            client_ip="$local_ip"
-            dest_ip="$other_ip"
-            dest_port="$other_port"
-            ;;
-        *)
-            # other_ip is the LAN client
-            client_ip="$other_ip"
-            dest_ip="$local_ip"
-            dest_port="$local_port"
-            ;;
-    esac
-
-    [ -z "$client_ip" ] && return
-
-    # Update real-time tracking files
-    update_client_stats "$client_ip" "$bytes_in" "$bytes_out" "$proto" "$app"
-    update_destination_stats "$dest_ip" "$dest_port" "$proto" "$bytes_in" "$bytes_out"
-    update_protocol_stats "$proto" "$app" "$bytes_in" "$bytes_out"
-}
-
-# Update client statistics
-update_client_stats() {
-    local client_ip="$1"
-    local bytes_in="$2"
-    local bytes_out="$3"
-    local proto="$4"
-    local app="$5"
-
-    local timestamp=$(date +%s)
-    local client_file="$STATS_DIR/client_${client_ip}.tmp"
-
-    # Read existing stats
-    local existing_bytes_in=0
-    local existing_bytes_out=0
-    local existing_flows=0
-    local first_seen=$timestamp
-
-    if [ -f "$client_file" ]; then
-        existing_bytes_in=$(jsonfilter -i "$client_file" -e '@.bytes_in' 2>/dev/null || echo 0)
-        existing_bytes_out=$(jsonfilter -i "$client_file" -e '@.bytes_out' 2>/dev/null || echo 0)
-        existing_flows=$(jsonfilter -i "$client_file" -e '@.flows' 2>/dev/null || echo 0)
-        first_seen=$(jsonfilter -i "$client_file" -e '@.first_seen' 2>/dev/null || echo $timestamp)
-    fi
-
-    # Accumulate
-    bytes_in=$((existing_bytes_in + bytes_in))
-    bytes_out=$((existing_bytes_out + bytes_out))
-    existing_flows=$((existing_flows + 1))
-
-    # Write updated stats
-    cat > "$client_file" << EOF
-{"ip":"$client_ip","bytes_in":$bytes_in,"bytes_out":$bytes_out,"flows":$existing_flows,"last_proto":"$proto","last_app":"$app","first_seen":$first_seen,"last_seen":$timestamp}
-EOF
-}
-
-# Update destination statistics
-update_destination_stats() {
-    local dest_ip="$1"
-    local dest_port="$2"
-    local proto="$3"
-    local bytes_in="$4"
-    local bytes_out="$5"
-
-    # Skip internal destinations
-    case "$dest_ip" in
-        192.168.*|10.*|172.1[6-9].*|172.2[0-9].*|172.3[0-1].*|127.*)
-            return
-            ;;
-    esac
-
-    local timestamp=$(date +%s)
-    local dest_key=$(echo "${dest_ip}_${dest_port}" | tr '.:' '__')
-    local dest_file="$STATS_DIR/dest_${dest_key}.tmp"
-
-    local existing_bytes=0
-    local existing_hits=0
-
-    if [ -f "$dest_file" ]; then
-        existing_bytes=$(jsonfilter -i "$dest_file" -e '@.bytes' 2>/dev/null || echo 0)
-        existing_hits=$(jsonfilter -i "$dest_file" -e '@.hits' 2>/dev/null || echo 0)
-    fi
-
-    bytes_total=$((bytes_in + bytes_out + existing_bytes))
-    existing_hits=$((existing_hits + 1))
-
-    cat > "$dest_file" << EOF
-{"ip":"$dest_ip","port":$dest_port,"proto":"$proto","bytes":$bytes_total,"hits":$existing_hits,"last_seen":$timestamp}
-EOF
-}
-
-# Update protocol statistics
-update_protocol_stats() {
-    local proto="$1"
-    local app="$2"
-    local bytes_in="$3"
-    local bytes_out="$4"
-
-    [ -z "$proto" ] && proto="Unknown"
-    [ -z "$app" ] && app="Unknown"
-
-    local proto_key=$(echo "${proto}_${app}" | tr ' /:' '___')
-    local proto_file="$STATS_DIR/proto_${proto_key}.tmp"
-
-    local existing_bytes=0
-    local existing_flows=0
-
-    if [ -f "$proto_file" ]; then
-        existing_bytes=$(jsonfilter -i "$proto_file" -e '@.bytes' 2>/dev/null || echo 0)
-        existing_flows=$(jsonfilter -i "$proto_file" -e '@.flows' 2>/dev/null || echo 0)
-    fi
-
-    bytes_total=$((bytes_in + bytes_out + existing_bytes))
-    existing_flows=$((existing_flows + 1))
-
-    cat > "$proto_file" << EOF
-{"protocol":"$proto","application":"$app","bytes":$bytes_total,"flows":$existing_flows}
-EOF
-}
-
-# Aggregate stats into summary JSON files
-aggregate_stats() {
-    local timestamp=$(date -Iseconds)
-    local cutoff=$(($(date +%s) - CLIENT_RETENTION))
-
-    # Aggregate clients
-    {
-        printf '{"timestamp":"%s","clients":[' "$timestamp"
-        local first=1
-        for f in "$STATS_DIR"/client_*.tmp 2>/dev/null; do
-            [ -f "$f" ] || continue
-            local last_seen=$(jsonfilter -i "$f" -e '@.last_seen' 2>/dev/null || echo 0)
-            # Skip expired entries
-            [ "$last_seen" -lt "$cutoff" ] && { rm -f "$f"; continue; }
-            [ $first -eq 0 ] && printf ','
-            cat "$f"
-            first=0
-        done
-        printf ']}'
-    } > "$CLIENTS_FILE"
-
-    # Aggregate destinations (top 100)
-    {
-        printf '{"timestamp":"%s","destinations":[' "$timestamp"
-        local first=1
-        for f in "$STATS_DIR"/dest_*.tmp 2>/dev/null; do
-            [ -f "$f" ] || continue
-            local last_seen=$(jsonfilter -i "$f" -e '@.last_seen' 2>/dev/null || echo 0)
-            [ "$last_seen" -lt "$cutoff" ] && { rm -f "$f"; continue; }
-            [ $first -eq 0 ] && printf ','
-            cat "$f"
-            first=0
-        done
-        printf ']}'
-    } > "$DESTINATIONS_FILE"
-
-    # Aggregate protocols
-    {
-        printf '{"timestamp":"%s","protocols":[' "$timestamp"
-        local first=1
-        for f in "$STATS_DIR"/proto_*.tmp 2>/dev/null; do
-            [ -f "$f" ] || continue
-            [ $first -eq 0 ] && printf ','
-            cat "$f"
-            first=0
-        done
-        printf ']}'
-    } > "$PROTOCOLS_FILE"
-
-    # Write summary flows file
-    local total_clients=$(ls -1 "$STATS_DIR"/client_*.tmp 2>/dev/null | wc -l)
-    local total_dests=$(ls -1 "$STATS_DIR"/dest_*.tmp 2>/dev/null | wc -l)
-    local total_protos=$(ls -1 "$STATS_DIR"/proto_*.tmp 2>/dev/null | wc -l)
-
-    # Get interface stats
+# Collect interface statistics
+collect_iface_stats() {
     local rx_bytes=0 tx_bytes=0 rx_packets=0 tx_packets=0
+
     if [ -d "/sys/class/net/$LAN_IF/statistics" ]; then
         rx_bytes=$(cat "/sys/class/net/$LAN_IF/statistics/rx_bytes" 2>/dev/null || echo 0)
         tx_bytes=$(cat "/sys/class/net/$LAN_IF/statistics/tx_bytes" 2>/dev/null || echo 0)
@@ -245,59 +50,190 @@ aggregate_stats() {
         tx_packets=$(cat "/sys/class/net/$LAN_IF/statistics/tx_packets" 2>/dev/null || echo 0)
     fi
 
+    echo "$rx_bytes $tx_bytes $rx_packets $tx_packets"
+}
+
+# Get ARP table clients on LAN
+collect_lan_clients() {
+    local timestamp=$(date -Iseconds)
+    local now=$(date +%s)
+
+    # Use awk to parse ARP table and generate JSON
+    awk -v lan_if="$LAN_IF" -v ts="$timestamp" -v now="$now" '
+    BEGIN {
+        printf "{\"timestamp\":\"%s\",\"clients\":[", ts
+        first = 1
+    }
+    NR > 1 && $6 == lan_if && $4 != "00:00:00:00:00:00" {
+        ip = $1
+        mac = $4
+        # Count flows from conntrack
+        cmd = "grep -c \"src=" ip "\" /proc/net/nf_conntrack 2>/dev/null || echo 0"
+        cmd | getline flows
+        close(cmd)
+        flows = flows + 0
+
+        if (first == 0) printf ","
+        printf "{\"ip\":\"%s\",\"mac\":\"%s\",\"flows\":%d,\"last_seen\":%d}", ip, mac, flows, now
+        first = 0
+    }
+    END {
+        printf "]}"
+    }
+    ' /proc/net/arp > "$CLIENTS_FILE.tmp"
+
+    mv "$CLIENTS_FILE.tmp" "$CLIENTS_FILE"
+}
+
+# Collect protocol statistics from conntrack
+collect_protocols() {
+    local timestamp=$(date -Iseconds)
+
+    # Count by protocol
+    local tcp_flows=0 udp_flows=0 icmp_flows=0 other_flows=0
+    local tcp_bytes=0 udp_bytes=0
+
+    if [ -f /proc/net/nf_conntrack ]; then
+        tcp_flows=$(grep -c "tcp " /proc/net/nf_conntrack 2>/dev/null || echo 0)
+        udp_flows=$(grep -c "udp " /proc/net/nf_conntrack 2>/dev/null || echo 0)
+        icmp_flows=$(grep -c "icmp " /proc/net/nf_conntrack 2>/dev/null || echo 0)
+    fi
+
+    # Check ndpid state for app detection
+    local ndpid_apps=""
+    if [ -f /tmp/ndpid-state/apps ]; then
+        ndpid_apps=$(cat /tmp/ndpid-state/apps 2>/dev/null || echo "{}")
+    fi
+
+    cat > "$PROTOCOLS_FILE" << EOF
+{
+    "timestamp": "$timestamp",
+    "protocols": [
+        {"protocol": "TCP", "flows": $tcp_flows},
+        {"protocol": "UDP", "flows": $udp_flows},
+        {"protocol": "ICMP", "flows": $icmp_flows}
+    ],
+    "ndpid_apps": $ndpid_apps
+}
+EOF
+}
+
+# Collect destination statistics from conntrack
+collect_destinations() {
+    local timestamp=$(date -Iseconds)
+
+    # Use awk to process conntrack and generate JSON
+    if [ -f /proc/net/nf_conntrack ]; then
+        awk -v ts="$timestamp" '
+        BEGIN {
+            printf "{\"timestamp\":\"%s\",\"destinations\":[", ts
+            first = 1
+        }
+        {
+            # Extract destination IP
+            for (i = 1; i <= NF; i++) {
+                if ($i ~ /^dst=/) {
+                    split($i, a, "=")
+                    ip = a[2]
+                    # Skip private IPs
+                    if (ip ~ /^192\.168\./ || ip ~ /^10\./ || ip ~ /^172\.(1[6-9]|2[0-9]|3[01])\./ || ip ~ /^127\./ || ip ~ /^0\./) {
+                        next
+                    }
+                    dests[ip]++
+                    break
+                }
+            }
+        }
+        END {
+            # Sort by count and output top 50
+            n = 0
+            for (ip in dests) {
+                counts[n] = dests[ip]
+                ips[n] = ip
+                n++
+            }
+            # Simple bubble sort (limited to 50 entries)
+            for (i = 0; i < n && i < 50; i++) {
+                for (j = i + 1; j < n; j++) {
+                    if (counts[j] > counts[i]) {
+                        tmp = counts[i]; counts[i] = counts[j]; counts[j] = tmp
+                        tmp = ips[i]; ips[i] = ips[j]; ips[j] = tmp
+                    }
+                }
+                if (first == 0) printf ","
+                printf "{\"ip\":\"%s\",\"hits\":%d}", ips[i], counts[i]
+                first = 0
+            }
+            printf "]}"
+        }
+        ' /proc/net/nf_conntrack > "$DESTINATIONS_FILE.tmp"
+    else
+        echo "{\"timestamp\":\"$timestamp\",\"destinations\":[]}" > "$DESTINATIONS_FILE.tmp"
+    fi
+
+    mv "$DESTINATIONS_FILE.tmp" "$DESTINATIONS_FILE"
+}
+
+# Write summary flows file
+write_summary() {
+    local timestamp=$(date -Iseconds)
+    local now=$(date +%s)
+
+    # Get interface stats
+    local stats
+    stats=$(collect_iface_stats)
+    local rx_bytes tx_bytes rx_packets tx_packets
+    read -r rx_bytes tx_bytes rx_packets tx_packets << EOF
+$stats
+EOF
+
+    # Calculate rates if we have previous values
+    local rx_rate=0 tx_rate=0
+    if [ "$PREV_TIME" -gt 0 ]; then
+        local elapsed=$((now - PREV_TIME))
+        if [ "$elapsed" -gt 0 ]; then
+            rx_rate=$(( (rx_bytes - PREV_RX) / elapsed ))
+            tx_rate=$(( (tx_bytes - PREV_TX) / elapsed ))
+        fi
+    fi
+    PREV_RX=$rx_bytes
+    PREV_TX=$tx_bytes
+    PREV_TIME=$now
+
+    # Count clients
+    local active_clients=0
+    if [ -f "$CLIENTS_FILE" ]; then
+        active_clients=$(jsonfilter -i "$CLIENTS_FILE" -e '@.clients[*]' 2>/dev/null | wc -l)
+    fi
+
+    # Count destinations
+    local unique_dests=0
+    if [ -f "$DESTINATIONS_FILE" ]; then
+        unique_dests=$(jsonfilter -i "$DESTINATIONS_FILE" -e '@.destinations[*]' 2>/dev/null | wc -l)
+    fi
+
+    # Get protocol count
+    local detected_protos=3  # TCP, UDP, ICMP
+
     cat > "$FLOWS_FILE" << EOF
 {
     "timestamp": "$timestamp",
     "mode": "lan_passive",
     "interface": "$LAN_IF",
-    "active_clients": $total_clients,
-    "unique_destinations": $total_dests,
-    "detected_protocols": $total_protos,
+    "active_clients": $active_clients,
+    "unique_destinations": $unique_dests,
+    "detected_protocols": $detected_protos,
     "rx_bytes": $rx_bytes,
     "tx_bytes": $tx_bytes,
     "rx_packets": $rx_packets,
-    "tx_packets": $tx_packets
+    "tx_packets": $tx_packets,
+    "rx_rate_bps": $rx_rate,
+    "tx_rate_bps": $tx_rate
 }
 EOF
 }
 
-# Watch netifyd JSON output in real-time
-watch_netifyd() {
-    local netifyd_socket="/var/run/netifyd/netifyd-${NETIFYD_INSTANCE}.sock"
-
-    # Fall back to default socket if instance-specific doesn't exist
-    [ ! -S "$netifyd_socket" ] && netifyd_socket="/var/run/netifyd/netifyd.sock"
-
-    if [ -S "$netifyd_socket" ]; then
-        echo "Connecting to netifyd socket: $netifyd_socket"
-        # Subscribe to flow events
-        echo '{"type":"subscribe","channel":"flow_update"}' | nc -U "$netifyd_socket" 2>/dev/null | while read -r line; do
-            parse_flow_event "$line"
-        done
-    else
-        echo "Netifyd socket not found, using /var/log/netifyd.log"
-        # Fallback: tail the netifyd log
-        tail -F /var/log/netifyd.log 2>/dev/null | while read -r line; do
-            # Extract JSON from log lines
-            case "$line" in
-                *'{"type":"flow'*)
-                    json_part="${line#*\{}"
-                    json_part="{$json_part"
-                    parse_flow_event "$json_part"
-                    ;;
-            esac
-        done
-    fi
-}
-
-# Background aggregation loop
-run_aggregator() {
-    while true; do
-        aggregate_stats
-        sleep "$AGGREGATE_INTERVAL"
-    done
-}
-
+# Main collection loop
 run_collector() {
     load_config
     init_dirs
@@ -305,22 +241,20 @@ run_collector() {
     echo "DPI LAN Flow Collector started"
     echo "  Interface: $LAN_IF"
     echo "  Aggregate interval: ${AGGREGATE_INTERVAL}s"
-    echo "  Client retention: ${CLIENT_RETENTION}s"
     echo "  Stats dir: $STATS_DIR"
 
-    # Initialize empty files
+    # Initialize files
     echo '{"timestamp":"","clients":[]}' > "$CLIENTS_FILE"
     echo '{"timestamp":"","destinations":[]}' > "$DESTINATIONS_FILE"
     echo '{"timestamp":"","protocols":[]}' > "$PROTOCOLS_FILE"
 
-    # Start background aggregator
-    run_aggregator &
-    AGGREGATOR_PID=$!
-
-    trap "kill $AGGREGATOR_PID 2>/dev/null; exit 0" INT TERM
-
-    # Watch netifyd in foreground
-    watch_netifyd
+    while true; do
+        collect_lan_clients
+        collect_protocols
+        collect_destinations
+        write_summary
+        sleep "$AGGREGATE_INTERVAL"
+    done
 }
 
 status() {
@@ -332,18 +266,7 @@ status() {
     if [ -f "$FLOWS_FILE" ]; then
         echo ""
         echo "Current Stats:"
-        local active=$(jsonfilter -i "$FLOWS_FILE" -e '@.active_clients' 2>/dev/null || echo 0)
-        local dests=$(jsonfilter -i "$FLOWS_FILE" -e '@.unique_destinations' 2>/dev/null || echo 0)
-        local protos=$(jsonfilter -i "$FLOWS_FILE" -e '@.detected_protocols' 2>/dev/null || echo 0)
-        echo "  Active clients: $active"
-        echo "  Unique destinations: $dests"
-        echo "  Detected protocols: $protos"
-    fi
-
-    if [ -f "$CLIENTS_FILE" ]; then
-        echo ""
-        echo "Top Clients (by flows):"
-        jsonfilter -i "$CLIENTS_FILE" -e '@.clients[*]' 2>/dev/null | head -5
+        cat "$FLOWS_FILE"
     fi
 }
 
@@ -354,13 +277,16 @@ case "$1" in
     status)
         status
         ;;
-    aggregate)
+    once)
         load_config
         init_dirs
-        aggregate_stats
+        collect_lan_clients
+        collect_protocols
+        collect_destinations
+        write_summary
         ;;
     *)
-        echo "Usage: $0 {start|status|aggregate}"
+        echo "Usage: $0 {start|status|once}"
         exit 1
         ;;
 esac
