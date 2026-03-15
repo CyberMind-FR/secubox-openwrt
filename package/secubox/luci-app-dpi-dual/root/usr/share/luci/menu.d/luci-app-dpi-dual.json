@@ -26,5 +26,13 @@
 			"type": "view",
 			"path": "dpi-dual/timeline"
 		}
+	},
+	"admin/secubox/dpi-dual/settings": {
+		"title": "Settings",
+		"order": 3,
+		"action": {
+			"type": "view",
+			"path": "dpi-dual/settings"
+		}
 	}
 }
