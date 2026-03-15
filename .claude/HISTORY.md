@@ -1,8 +1,20 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-03-16 (Version 1.0.0 Release)_
+_Last updated: 2026-03-15 (v1.0.0 Beta Release)_
 
-0. **SecuBox v1.0.0 Release (2026-03-16)**
+0. **SecuBox v1.0.0 Beta Release (2026-03-15)**
+   - BETA-RELEASE.md: Complete security testing documentation
+     - Attack surface overview (HAProxy, WAF, LXC, P2P layers)
+     - High-value targets and secrets locations for pen testers
+     - Known weak points (intentional disclosure for bug bounty)
+     - Bug bounty scope with severity guidelines
+     - Test environment setup (VirtualBox appliance, Docker)
+   - SECURITY.md: Added Hall of Fame section, beta info link
+   - README.md: Version bump to 1.0.0-beta status
+   - LuCI dark theme fixes: Threat Analyst, MAC Guardian, Device Intel
+   - Lyrion dashboard: Added Web UI URL link button
+
+1. **SecuBox v1.0.0 Release (2026-03-16)**
    - Version bump to 1.0.0 reflecting all major milestones complete
    - All v0.18, v0.19, v1.0, v1.1+ roadmap items done
    - Updated version strings across: Makefile, secubox CLI, secubox-core daemon, RPCD handlers, common.sh, README.md
