@@ -13,7 +13,7 @@ THREATS_FILE="$STATS_DIR/correlated-threats.json"
 ALERTS_FILE="$STATS_DIR/waf-alerts.json"
 
 read_json_file() {
-    local file="$1"
+    file="$1"
     if [ -f "$file" ]; then
         cat "$file"
     else
@@ -57,13 +57,19 @@ EOF
                 # Get unified status of both streams
                 config_load dpi-dual
 
-                local enabled mode correlation
+                enabled=""
+                mode=""
+                correlation=""
                 config_get enabled settings enabled "0"
                 config_get mode settings mode "dual"
                 config_get correlation settings correlation "0"
 
                 # Check processes (use partial match for truncated process names)
-                local mitm_running=0 tap_running=0 collector_running=0 correlator_running=0 lan_collector_running=0
+                mitm_running=0
+                tap_running=0
+                collector_running=0
+                correlator_running=0
+                lan_collector_running=0
                 pgrep mitmproxy >/dev/null 2>&1 && mitm_running=1
                 pgrep netifyd >/dev/null 2>&1 && tap_running=1
                 pgrep -f dpi-flow-collect >/dev/null 2>&1 && collector_running=1
@@ -71,7 +77,10 @@ EOF
                 pgrep -f dpi-lan-collect >/dev/null 2>&1 && lan_collector_running=1
 
                 # Get TAP interface status
-                local tap_if tap_up=0 tap_rx=0 tap_tx=0
+                tap_if=""
+                tap_up=0
+                tap_rx=0
+                tap_tx=0
                 config_get tap_if tap interface "tap0"
                 if ip link show "$tap_if" >/dev/null 2>&1; then
                     tap_up=1
@@ -80,7 +89,7 @@ EOF
                 fi
 
                 # Get buffer stats
-                local buffer_entries=0 buffer_threats=0 buffer_blocked=0
+                buffer_entries=0 buffer_threats=0 buffer_blocked=0
                 if [ -f "$BUFFER_FILE" ]; then
                     buffer_entries=$(jsonfilter -i "$BUFFER_FILE" -e '@.entries' 2>/dev/null || echo 0)
                     buffer_threats=$(jsonfilter -i "$BUFFER_FILE" -e '@.threats_detected' 2>/dev/null || echo 0)
@@ -88,24 +97,25 @@ EOF
                 fi
 
                 # Get flow stats
-                local flows_1min=0
+                flows_1min=0
                 if [ -f "$FLOWS_FILE" ]; then
                     flows_1min=$(jsonfilter -i "$FLOWS_FILE" -e '@.flows_1min' 2>/dev/null || echo 0)
                 fi
 
                 # Get correlation stats
-                local correlated_threats=0
+                correlated_threats=0
                 if [ -f "$THREATS_FILE" ]; then
                     correlated_threats=$(wc -l < "$THREATS_FILE" 2>/dev/null || echo 0)
                 fi
 
                 # Get LAN passive analysis stats
-                local lan_enabled lan_if
+                lan_enabled=""
+                lan_if=""
                 config_get lan_enabled lan enabled "0"
                 config_get lan_if lan interface "br-lan"
 
-                local lan_clients=0 lan_dests=0 lan_protos=0
-                local lan_file="$STATS_DIR/lan-flows.json"
+                lan_clients=0 lan_dests=0 lan_protos=0
+                lan_file="$STATS_DIR/lan-flows.json"
                 if [ -f "$lan_file" ]; then
                     lan_clients=$(jsonfilter -i "$lan_file" -e '@.active_clients' 2>/dev/null || echo 0)
                     lan_dests=$(jsonfilter -i "$lan_file" -e '@.unique_destinations' 2>/dev/null || echo 0)
@@ -171,7 +181,6 @@ EOF
 
                 if [ -f "$ALERTS_FILE" ]; then
                     # Return last N alerts
-                    local total
                     total=$(jsonfilter -i "$ALERTS_FILE" -e '@[*]' 2>/dev/null | wc -l)
 
                     cat << EOF
@@ -191,7 +200,6 @@ EOF
                 json_get_var limit limit 20
 
                 if [ -f "$THREATS_FILE" ]; then
-                    local total
                     total=$(wc -l < "$THREATS_FILE" 2>/dev/null || echo 0)
 
                     cat << EOF
@@ -245,14 +253,14 @@ EOF
                     echo '{"success": false, "error": "req_hash required"}'
                 else
                     # Add to replay queue (read by mitmproxy addon)
-                    local queue_file="/tmp/dpi-buffer/replay-queue.json"
+                    queue_file="/tmp/dpi-buffer/replay-queue.json"
                     mkdir -p /tmp/dpi-buffer
 
                     if [ ! -f "$queue_file" ]; then
                         echo "[]" > "$queue_file"
                     fi
 
-                    local entry="{\"req_hash\":\"$req_hash\",\"queued_at\":\"$(date -Iseconds)\",\"status\":\"pending\"}"
+                    entry="{\"req_hash\":\"$req_hash\",\"queued_at\":\"$(date -Iseconds)\",\"status\":\"pending\"}"
 
                     # Append to queue (keep last 100)
                     (cat "$queue_file" | jsonfilter -e '@[*]' 2>/dev/null; echo "$entry") | \
@@ -303,7 +311,6 @@ EOF
                 else
                     . /usr/lib/dpi-dual/correlation-lib.sh
                     init_reputation_db
-                    local score
                     score=$(get_ip_reputation "$ip")
                     echo "{\"ip\": \"$ip\", \"reputation_score\": $score}"
                 fi
@@ -314,13 +321,11 @@ EOF
                 json_load "$REPLY"
                 json_get_var limit limit 50
 
-                local log_file="/tmp/secubox/correlated-threats.json"
+                log_file="/tmp/secubox/correlated-threats.json"
                 if [ -f "$log_file" ]; then
-                    local total
                     total=$(wc -l < "$log_file" 2>/dev/null || echo 0)
 
                     # Get last N entries as JSON array
-                    local entries
                     entries=$(tail -"$limit" "$log_file" 2>/dev/null | \
                         awk 'BEGIN { printf "[" }
                              { if (NR > 1) printf ","; print }
@@ -344,7 +349,6 @@ EOF
                 json_get_var ip ip ""
                 json_get_var limit limit 50
 
-                local results
                 results=$(/usr/sbin/dpi-correlator search "$ip" "$limit" 2>/dev/null | \
                     awk 'BEGIN { printf "[" }
                          { if (NR > 1) printf ","; print }
@@ -376,7 +380,7 @@ EOF
                 json_load "$REPLY"
                 json_get_var enabled enabled "0"
 
-                local val="0"
+                val="0"
                 [ "$enabled" = "true" ] && val="1"
 
                 uci set dpi-dual.correlation.auto_ban="$val"
@@ -388,16 +392,17 @@ EOF
                 # LAN passive flow analysis status
                 config_load dpi-dual
 
-                local lan_enabled lan_if
+                lan_enabled=""
+                lan_if=""
                 config_get lan_enabled lan enabled "0"
                 config_get lan_if lan interface "br-lan"
 
-                local collector_running=0
-                pgrep dpi-lan-collector >/dev/null 2>&1 && collector_running=1
+                collector_running=0
+                pgrep -f dpi-lan-collect >/dev/null 2>&1 && collector_running=1
 
-                local lan_file="$STATS_DIR/lan-flows.json"
-                local active_clients=0 unique_dests=0 detected_protos=0
-                local rx_bytes=0 tx_bytes=0
+                lan_file="$STATS_DIR/lan-flows.json"
+                active_clients=0 unique_dests=0 detected_protos=0
+                rx_bytes=0 tx_bytes=0
 
                 if [ -f "$lan_file" ]; then
                     active_clients=$(jsonfilter -i "$lan_file" -e '@.active_clients' 2>/dev/null || echo 0)
@@ -422,7 +427,7 @@ EOF
                 ;;
 
             get_lan_clients)
-                local clients_file="$STATS_DIR/lan-clients.json"
+                clients_file="$STATS_DIR/lan-clients.json"
                 if [ -f "$clients_file" ]; then
                     cat "$clients_file"
                 else
@@ -435,7 +440,7 @@ EOF
                 json_load "$REPLY"
                 json_get_var limit limit 100
 
-                local dests_file="$STATS_DIR/lan-destinations.json"
+                dests_file="$STATS_DIR/lan-destinations.json"
                 if [ -f "$dests_file" ]; then
                     cat "$dests_file"
                 else
@@ -444,7 +449,7 @@ EOF
                 ;;
 
             get_lan_protocols)
-                local protos_file="$STATS_DIR/lan-protocols.json"
+                protos_file="$STATS_DIR/lan-protocols.json"
                 if [ -f "$protos_file" ]; then
                     cat "$protos_file"
                 else
