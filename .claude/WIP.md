@@ -10,6 +10,11 @@ _Last updated: 2026-03-16 (Unified SMTP Relay)_
 
 ### 2026-03-16
 
+- **SecuBox v1.0.0 Version Bump (Complete)**
+  - All major roadmap milestones achieved (v0.18, v0.19, v1.0, v1.1+)
+  - Updated version strings: Makefile (1.0.0-r1), CLI tools, RPCD handlers, documentation
+  - Files updated: secubox, secubox-core, core.sh, dashboard.sh, luci.secubox, common.sh, README.md
+
 - **Unified SMTP Relay Configuration (Complete)**
   - New `secubox-app-smtp-relay` package with centralized SMTP config
   - Shared library `/usr/lib/secubox/mail/smtp-relay.sh` with `send_mail()` function

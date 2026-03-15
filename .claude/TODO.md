@@ -1,6 +1,6 @@
 # SecuBox TODOs (Claude Edition)
 
-_Last updated: 2026-03-03_
+_Last updated: 2026-03-16 (v1.0.0)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 

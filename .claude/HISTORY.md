@@ -1,6 +1,12 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-03-14 (Droplet Publisher)_
+_Last updated: 2026-03-16 (Version 1.0.0 Release)_
+
+0. **SecuBox v1.0.0 Release (2026-03-16)**
+   - Version bump to 1.0.0 reflecting all major milestones complete
+   - All v0.18, v0.19, v1.0, v1.1+ roadmap items done
+   - Updated version strings across: Makefile, secubox CLI, secubox-core daemon, RPCD handlers, common.sh, README.md
+   - Unified SMTP Relay configuration complete (secubox-app-smtp-relay)
 
 1. **Unified Dashboard Refresh (2025-12-20)**  
    - Dashboard received the "sh-page-header" layout, hero stats, and SecuNav top tabs.  

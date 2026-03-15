@@ -379,7 +379,7 @@ case "$1" in
 
 			getVersion)
 				json_init
-				json_add_string "version" "0.8.0"
+				json_add_string "version" "1.0.0"
 				json_add_string "core" "secubox-core"
 				json_add_string "build_date" "$(date -u +%Y-%m-%d)"
 				json_dump
@@ -855,7 +855,7 @@ case "$1" in
 
 				# Build response
 				json_add_object "status"
-					json_add_string "version" "0.8.0"
+					json_add_string "version" "1.0.0"
 					json_add_int "uptime" "$uptime_seconds"
 					json_add_string "load" "$load_avg"
 				json_close_object

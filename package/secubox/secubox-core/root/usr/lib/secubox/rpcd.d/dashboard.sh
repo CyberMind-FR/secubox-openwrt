@@ -167,7 +167,7 @@ _do_dashboard_data() {
 	local load_avg=$(get_load_avg)
 
 	json_add_object "status"
-	json_add_string "version" "0.8.0"
+	json_add_string "version" "1.0.0"
 	json_add_int "uptime" "$uptime_seconds"
 	json_add_string "load" "$load_avg"
 	json_close_object
