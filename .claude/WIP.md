@@ -10,12 +10,14 @@ _Last updated: 2026-03-15 (Wall Colorsets)_
 
 ### 2026-03-15
 
-- **MAGIC·CHESS·360 Colorset Enhancement (Complete)**
+- **MAGIC·CHESS·360 Colorset + Sliders Enhancement (Complete)**
   - Added 15 color palettes to wall.maegia.tv TAO_SPECTRUM system
   - Colorsets: default, alchy, emojiz, punk, hollistique, tantrique, cosmique, solarix, oceanique, rainbow, fluo, phospho, vintage, tao, merkaba
   - Each colorset changes the animated prism colors cycling through the chess pieces
-  - Minimal patch: only added colorset selector + COLORSETS object (~8KB added)
-  - Original app preserved: canvas animation, audio sync, HUD controls unchanged
+  - Added 3 control sliders (bottom-left):
+    - Pixel: cell size zoom (3-40px)
+    - Persp: auto-rotate perspective speed
+    - Pan: mouse parallax strength (0-2x)
   - Colorset selector: 15 circular gradient buttons (top-left corner)
   - Keyboard shortcuts (1-9) for first 9, click for rest
   - LocalStorage persistence for user preference
