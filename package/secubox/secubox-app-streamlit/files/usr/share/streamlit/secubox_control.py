@@ -75,6 +75,8 @@ def get_data():
     cs = read_cache("/tmp/secubox/crowdsec.json")
     mitm = read_cache("/tmp/secubox/mitmproxy.json")
     netif = read_cache("/tmp/secubox/netifyd.json")
+    waf = read_cache("/tmp/secubox/waf-stats.json")
+    cs_detail = read_cache("/tmp/secubox/crowdsec-overview.json")
 
     modules = status.get("modules", {})
     resources = status.get("resources", {})
@@ -96,6 +98,13 @@ def get_data():
     d["mitm_threats"] = mitm.get("threats_today", 0)
     d["netifyd"] = netif.get("running", 0) == 1
 
+    # Enhanced WAF/threat stats
+    d["waf_threats"] = waf.get("threats_today", 0)
+    d["waf_autobans"] = waf.get("autobans_total", 0)
+    d["waf_pending"] = waf.get("autobans_pending", 0)
+    d["active_bans"] = cs_detail.get("active_bans", 0)
+    d["total_decisions"] = cs_detail.get("total_decisions", 0)
+
     d["p_haproxy"] = 3 if d["haproxy"] else 10
     d["p_crowdsec"] = 3 if d["crowdsec"] and d["cs_alerts"] == 0 else 7 if d["cs_alerts"] > 0 else 10
     d["p_mitmproxy"] = 3 if d["mitmproxy"] else 6
@@ -103,6 +112,8 @@ def get_data():
     d["led1"] = rgb_hex(0, 255 if d["score"] > 50 else 0, 0) if d["score"] > 80 else rgb_hex(255, 165, 0) if d["score"] > 50 else rgb_hex(255, 0, 0)
     d["led2"] = rgb_hex(0, 255, 0) if d["threat"] < 10 else rgb_hex(255, 165, 0) if d["threat"] < 50 else rgb_hex(255, 0, 0)
     d["led3"] = rgb_hex(0, 255, 0) if d["cpu"] < 60 else rgb_hex(255, 165, 0) if d["cpu"] < 85 else rgb_hex(255, 0, 0)
+    # LED4: Bans indicator
+    d["led4"] = rgb_hex(255, 0, 0) if d["active_bans"] > 5 else rgb_hex(255, 165, 0) if d["active_bans"] > 0 else rgb_hex(0, 255, 0)
 
     return d
 
@@ -119,6 +130,7 @@ def main():
             <div style="text-align:center"><div class="led-indicator" style="background:{d['led1']};color:#000;">Health</div><div style="font-size:0.7rem;color:#808090;">Score: {d['score']}</div></div>
             <div style="text-align:center"><div class="led-indicator" style="background:{d['led2']};color:#000;">Threat</div><div style="font-size:0.7rem;color:#808090;">Level: {d['threat']}</div></div>
             <div style="text-align:center"><div class="led-indicator" style="background:{d['led3']};color:#000;">{d['cpu']}%</div><div style="font-size:0.7rem;color:#808090;">CPU</div></div>
+            <div style="text-align:center"><div class="led-indicator" style="background:{d['led4']};color:#000;">🚫</div><div style="font-size:0.7rem;color:#808090;">Bans: {d['active_bans']}</div></div>
         </div>
     </div>
     ''', unsafe_allow_html=True)
@@ -148,8 +160,11 @@ def main():
     with c3:
         st.markdown(f'''
         <div class="status-card" style="border-left-color:{PRIORITY_LEVELS[d['p_mitmproxy']][1]};">
-            <div class="card-header"><span class="card-title">🔍 MITM</span>{badge(d['p_mitmproxy'])}</div>
-            <div class="metric-row"><div class="metric-item"><div class="metric-value">{d['mitm_threats']}</div><div class="metric-label">Threats</div></div></div>
+            <div class="card-header"><span class="card-title">🔍 WAF/MITM</span>{badge(d['p_mitmproxy'])}</div>
+            <div class="metric-row">
+                <div class="metric-item"><div class="metric-value">{d['waf_threats']}</div><div class="metric-label">Threats</div></div>
+                <div class="metric-item"><div class="metric-value">{d['waf_autobans']}</div><div class="metric-label">AutoBans</div></div>
+            </div>
         </div>
         ''', unsafe_allow_html=True)
 
