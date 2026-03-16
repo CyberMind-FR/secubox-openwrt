@@ -54,25 +54,25 @@ return view.extend({
 		});
 
 		var content = [
-			// Header
-			E('div', { 'style': 'margin-bottom: 24px;' }, [
-				E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0 0 8px 0;' }, '🛡️ WAF Filters'),
-				E('p', { 'style': 'color: var(--kiss-muted); margin: 0;' }, 'Web Application Firewall detection rules')
-			]),
-
-			// Summary Stats
-			E('div', { 'class': 'kiss-grid kiss-grid-auto', 'style': 'margin-bottom: 24px;' }, [
-				E('div', { 'class': 'kiss-stat' }, [
-					E('div', { 'class': 'kiss-stat-value', 'style': 'color: #3498db;' }, String(categories.length)),
-					E('div', { 'class': 'kiss-stat-label' }, 'Categories')
+			// Header with inline stats
+			E('div', { 'style': 'display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 24px;' }, [
+				E('div', {}, [
+					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, '🛡️ WAF Filters'),
+					E('p', { 'style': 'color: var(--kiss-muted); margin: 4px 0 0 0; font-size: 13px;' }, 'Web Application Firewall detection rules')
 				]),
-				E('div', { 'class': 'kiss-stat' }, [
-					E('div', { 'class': 'kiss-stat-value', 'style': 'color: #27ae60;' }, String(enabledCategories)),
-					E('div', { 'class': 'kiss-stat-label' }, 'Active')
-				]),
-				E('div', { 'class': 'kiss-stat' }, [
-					E('div', { 'class': 'kiss-stat-value', 'style': 'color: #e67e22;' }, String(totalRules)),
-					E('div', { 'class': 'kiss-stat-label' }, 'Rules')
+				E('div', { 'style': 'display: flex; gap: 24px;' }, [
+					E('div', { 'style': 'text-align: center;' }, [
+						E('div', { 'style': 'font-size: 28px; font-weight: 700; color: #3498db;' }, String(categories.length)),
+						E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted); text-transform: uppercase;' }, 'Categories')
+					]),
+					E('div', { 'style': 'text-align: center;' }, [
+						E('div', { 'style': 'font-size: 28px; font-weight: 700; color: #27ae60;' }, String(enabledCategories)),
+						E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted); text-transform: uppercase;' }, 'Active')
+					]),
+					E('div', { 'style': 'text-align: center;' }, [
+						E('div', { 'style': 'font-size: 28px; font-weight: 700; color: #e67e22;' }, String(totalRules)),
+						E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted); text-transform: uppercase;' }, 'Rules')
+					])
 				])
 			]),
 

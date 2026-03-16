@@ -147,7 +147,7 @@
       "patterns": [
         {"id": "xmpp-001", "pattern": "<message.*<script", "desc": "XSS in XMPP message"},
         {"id": "xmpp-002", "pattern": "<iq.*type=[\"']set[\"'].*<query.*xmlns=[\"']jabber:iq:register", "desc": "Open registration abuse"},
-        {"id": "xmpp-003", "pattern": "/http-bind.*<body.*sid=[\"'].*[<>'\"\\x00]", "desc": "BOSH session hijack"},
+        {"id": "xmpp-003", "pattern": "/http-bind.*<body.*sid=[\"'].*[<>'\"]", "desc": "BOSH session hijack"},
         {"id": "xmpp-004", "pattern": "xmlns:xi=[\"']http://www.w3.org/2001/XInclude", "desc": "XXE via XInclude"},
         {"id": "xmpp-005", "pattern": "<!ENTITY.*SYSTEM.*file://", "desc": "XXE in XMPP stream"},
         {"id": "xmpp-006", "pattern": "/xmpp-websocket.*<stream:stream.*xmlns:.*=.*javascript:", "desc": "WebSocket XSS"},
@@ -165,13 +165,13 @@
       "patterns": [
         {"id": "cve-ast-2021-26906", "pattern": "/asterisk.*res_pjsip.*malformed.*sdp", "desc": "Asterisk PJSIP crash", "cve": "CVE-2021-26906"},
         {"id": "cve-ast-2022-42705", "pattern": "Content-Length:\\s*-", "desc": "Asterisk negative CL DoS", "cve": "CVE-2022-42705"},
-        {"id": "cve-ast-2022-42706", "pattern": "Via:.*branch=z9hG4bK.*\\x00", "desc": "Asterisk Via header overflow", "cve": "CVE-2022-42706"},
-        {"id": "cve-ast-2023-37457", "pattern": "Route:.*<sip:.*;lr>\\s*,\\s*<sip:.*;lr>.*\\x00", "desc": "Asterisk Route header crash", "cve": "CVE-2023-37457"},
+        {"id": "cve-ast-2022-42706", "pattern": "Via:.*branch=z9hG4bK.*\\u0000", "desc": "Asterisk Via header overflow", "cve": "CVE-2022-42706"},
+        {"id": "cve-ast-2023-37457", "pattern": "Route:.*<sip:.*;lr>\\s*,\\s*<sip:.*;lr>.*\\u0000", "desc": "Asterisk Route header crash", "cve": "CVE-2023-37457"},
         {"id": "cve-ast-2023-49294", "pattern": "INVITE.*m=audio.*a=rtpmap:\\d+.*\\s{1000,}", "desc": "Asterisk SDP buffer overflow", "cve": "CVE-2023-49294"},
         {"id": "cve-ast-2024-35190", "pattern": "CSeq:.*[A-Z]{50,}", "desc": "Asterisk CSeq method overflow", "cve": "CVE-2024-35190"},
         {"id": "cve-fpbx-2023-26566", "pattern": "/admin/ajax\\.php.*command=.*`", "desc": "FreePBX command injection", "cve": "CVE-2023-26566"},
         {"id": "cve-kamailio-2020-27507", "pattern": "Via:.*received=.*\\[\\d{1000,}", "desc": "Kamailio overflow", "cve": "CVE-2020-27507"},
-        {"id": "cve-opensips-2023-49323", "pattern": "Contact:.*<sip:.*>;\\+sip\\.instance=.*\\x00", "desc": "OpenSIPS crash", "cve": "CVE-2023-49323"}
+        {"id": "cve-opensips-2023-49323", "pattern": "Contact:.*<sip:.*>;\\+sip\\.instance=.*\\u0000", "desc": "OpenSIPS crash", "cve": "CVE-2023-49323"}
       ]
     },
 
@@ -181,11 +181,11 @@
       "enabled": true,
       "patterns": [
         {"id": "cve-prosody-2021-37601", "pattern": "xmlns=[\"'].*[\"']\\s*xmlns=[\"']", "desc": "Prosody namespace confusion", "cve": "CVE-2021-37601"},
-        {"id": "cve-prosody-2022-0217", "pattern": "<stream:stream.*version=[\"'].*\\x00", "desc": "Prosody stream DoS", "cve": "CVE-2022-0217"},
+        {"id": "cve-prosody-2022-0217", "pattern": "<stream:stream.*version=[\"'].*\\u0000", "desc": "Prosody stream DoS", "cve": "CVE-2022-0217"},
         {"id": "cve-prosody-2024-25274", "pattern": "/http-upload.*Content-Length:\\s*\\d{10,}", "desc": "Prosody upload DoS", "cve": "CVE-2024-25274"},
         {"id": "cve-ejabberd-2023-29529", "pattern": "<iq.*type=[\"']get[\"'].*<query.*xmlns=[\"']http://jabber.org/protocol/disco", "desc": "ejabberd disco info leak", "cve": "CVE-2023-29529"},
         {"id": "cve-conversejs-2020-25017", "pattern": "converse\\.js.*message.*<img.*onerror", "desc": "Converse.js XSS", "cve": "CVE-2020-25017"},
-        {"id": "cve-strophe-2022-29168", "pattern": "Strophe\\.js.*<body.*xmlns=.*\\x00", "desc": "Strophe.js parsing crash", "cve": "CVE-2022-29168"},
+        {"id": "cve-strophe-2022-29168", "pattern": "Strophe\\.js.*<body.*xmlns=.*\\u0000", "desc": "Strophe.js parsing crash", "cve": "CVE-2022-29168"},
         {"id": "cve-xmpp-2021-21351", "pattern": "XMPPframework.*<iq.*<enable.*xmlns=[\"'].*push", "desc": "XMPP push auth bypass"},
         {"id": "cve-tigase-2023-39350", "pattern": "/rest/adhoc/.*sess-man.*user-add", "desc": "Tigase unauth user creation", "cve": "CVE-2023-39350"}
       ]
@@ -215,6 +215,84 @@
         {"id": "router-telnet-enable", "pattern": "/(syscmd|system_cmd).*telnetd", "desc": "Router telnet enable attempt"},
         {"id": "router-wget-inject", "pattern": "/(setup|apply|cmd).*wget.*\\|", "desc": "Router wget payload injection"},
         {"id": "zyxel-zhttpd", "pattern": "/cgi-bin/zhttpd/.*shell", "desc": "Zyxel zhttpd shell injection"}
+      ]
+    },
+
+    "waf_fingerprint": {
+      "name": "WAF Fingerprinting",
+      "severity": "medium",
+      "enabled": true,
+      "patterns": [
+        {"id": "waf-fp-001", "pattern": "<%25", "desc": "ASP tag bypass attempt"},
+        {"id": "waf-fp-002", "pattern": "%00.*\\.php", "desc": "Null byte file extension bypass"},
+        {"id": "waf-fp-003", "pattern": "\\x00|%00|\\\\x00", "desc": "Null byte injection probe"},
+        {"id": "waf-fp-004", "pattern": "(s|S)(e|E)(l|L)(e|E)(c|C)(t|T)", "desc": "Case alternation bypass"},
+        {"id": "waf-fp-005", "pattern": "/\\*.*\\*/", "desc": "SQL comment bypass probe"},
+        {"id": "waf-fp-006", "pattern": "uni%6fn|%73elect|%27%6fr", "desc": "URL encoding bypass"},
+        {"id": "waf-fp-007", "pattern": "u\\+006e\\+0069\\+006f\\+006e", "desc": "Unicode encoding bypass"},
+        {"id": "waf-fp-008", "pattern": "sELeCt|UniOn|ScRiPt", "desc": "Mixed case WAF bypass"},
+        {"id": "waf-fp-009", "pattern": "concat_ws|char\\(|conv\\(", "desc": "SQL function obfuscation"},
+        {"id": "waf-fp-010", "pattern": "\\|\\|\\s*'", "desc": "Oracle concatenation bypass"},
+        {"id": "waf-fp-011", "pattern": "%bf%27|%ef%bb%bf", "desc": "UTF-8 BOM/overlong bypass"},
+        {"id": "waf-fp-012", "pattern": "wafw00f|whatwaf|waffit|wafdetect", "desc": "WAF detection tool user-agent", "check": "user-agent"}
+      ]
+    },
+
+    "honeypot": {
+      "name": "Honeypot Traps",
+      "severity": "high",
+      "enabled": true,
+      "patterns": [
+        {"id": "honey-001", "pattern": "/admin\\.bak", "desc": "Fake admin backup probe"},
+        {"id": "honey-002", "pattern": "/backup\\.sql", "desc": "Fake SQL backup probe"},
+        {"id": "honey-003", "pattern": "/wp-config\\.bak", "desc": "Fake WP config backup"},
+        {"id": "honey-004", "pattern": "/\\.secret", "desc": "Hidden secret file probe"},
+        {"id": "honey-005", "pattern": "/passwords?\\.txt", "desc": "Password file probe"},
+        {"id": "honey-006", "pattern": "/debug\\.log", "desc": "Debug log file probe"},
+        {"id": "honey-007", "pattern": "/phpinfo\\.php", "desc": "PHP info probe"},
+        {"id": "honey-008", "pattern": "/adminer\\.php", "desc": "Adminer DB probe"},
+        {"id": "honey-009", "pattern": "/phpmyadmin/setup\\.php", "desc": "phpMyAdmin setup probe"},
+        {"id": "honey-010", "pattern": "/wp-admin/install\\.php", "desc": "WordPress installer probe"},
+        {"id": "honey-011", "pattern": "/\\.aws/credentials", "desc": "AWS credentials probe"},
+        {"id": "honey-012", "pattern": "/config\\.php\\.bak", "desc": "Config backup probe"},
+        {"id": "honey-013", "pattern": "/server-status", "desc": "Apache status probe"},
+        {"id": "honey-014", "pattern": "/elmah\\.axd", "desc": ".NET error handler probe"},
+        {"id": "honey-015", "pattern": "/jmx-console", "desc": "JBoss JMX console probe"},
+        {"id": "honey-016", "pattern": "/manager/html", "desc": "Tomcat manager probe"}
+      ]
+    },
+
+    "recon_crawler": {
+      "name": "Reconnaissance Crawlers",
+      "severity": "low",
+      "enabled": true,
+      "patterns": [
+        {"id": "recon-001", "pattern": "/robots\\.txt", "desc": "Robots.txt enumeration"},
+        {"id": "recon-002", "pattern": "/sitemap\\.xml", "desc": "Sitemap enumeration"},
+        {"id": "recon-003", "pattern": "/crossdomain\\.xml", "desc": "Flash crossdomain probe"},
+        {"id": "recon-004", "pattern": "/security\\.txt", "desc": "Security.txt enumeration"},
+        {"id": "recon-005", "pattern": "/\\.well-known/", "desc": "Well-known directory scan"},
+        {"id": "recon-006", "pattern": "/favicon\\.ico", "desc": "Favicon fingerprint", "check": "hash"},
+        {"id": "recon-007", "pattern": "/(readme|changelog|license)\\.(txt|md|html)", "desc": "Version disclosure files"},
+        {"id": "recon-008", "pattern": "/humans\\.txt", "desc": "Humans.txt enumeration"},
+        {"id": "recon-009", "pattern": "/\\.svn/entries", "desc": "SVN metadata probe"},
+        {"id": "recon-010", "pattern": "/\\.hg/", "desc": "Mercurial metadata probe"}
+      ]
+    },
+
+    "credential_harvest": {
+      "name": "Credential Harvesting",
+      "severity": "critical",
+      "enabled": true,
+      "patterns": [
+        {"id": "cred-001", "pattern": "/api/(login|auth).*password=", "desc": "Password in URL"},
+        {"id": "cred-002", "pattern": "Authorization:\\s*Basic\\s+[A-Za-z0-9+/=]{10,}", "desc": "Basic auth interception"},
+        {"id": "cred-003", "pattern": "(api_?key|apikey|access_?token)=[A-Za-z0-9]{16,}", "desc": "API key in URL"},
+        {"id": "cred-004", "pattern": "\\?.*token=[A-Za-z0-9._-]{20,}", "desc": "JWT/token in URL"},
+        {"id": "cred-005", "pattern": "/oauth/.*client_secret=", "desc": "OAuth secret in URL"},
+        {"id": "cred-006", "pattern": "X-API-Key:\\s*[A-Za-z0-9]{20,}", "desc": "API key header"},
+        {"id": "cred-007", "pattern": "/(config|settings).*password", "desc": "Config password probe"},
+        {"id": "cred-008", "pattern": "/export.*(user|account|customer)", "desc": "User data export attempt"}
       ]
     }
   }
