@@ -2457,6 +2457,19 @@ refresh_overview_cache() {
 			awk '{print "{\"country\":\"" $2 "\",\"count\":" $1 "}"}' | \
 			tr '\n' ',' | sed 's/,$//')
 
+		# Parse CAPI geo from decisions with origin=CAPI
+		# We fetch decisions again with higher limit for CAPI geo
+		local capi_geo=""
+		local capi_decisions_full
+		capi_decisions_full=$("$CSCLI" decisions list -o json 2>/dev/null || echo "[]")
+		capi_geo=$(echo "$capi_decisions_full" | \
+			grep -A20 '"origin":"CAPI"' | \
+			grep -A1 '"key": "IsoCode"' | grep '"value":' | \
+			sed 's/.*"value"[[:space:]]*:[[:space:]]*"//;s/".*$//' | \
+			grep -v '^$' | sort | uniq -c | sort -rn | head -20 | \
+			awk '{print "{\"country\":\"" $2 "\",\"count\":" $1 "}"}' | \
+			tr '\n' ',' | sed 's/,$//')
+
 		# Scenario count from files
 		local sc1=$(ls -1 /etc/crowdsec/scenarios/*.yaml 2>/dev/null | wc -l)
 		local sc2=$(ls -1 /srv/crowdsec/hub/scenarios/*/*.yaml 2>/dev/null | wc -l)
@@ -2557,6 +2570,8 @@ refresh_overview_cache() {
 "scenario_count":$scenario_count,
 "top_scenarios_raw":[$scenarios],
 "top_countries_raw":[$countries],
+"geo_local_raw":[$countries],
+"geo_capi_raw":[$capi_geo],
 "decisions_raw":$(cat "$decisions_file"),
 "alerts_raw":$(cat "$alerts_file"),
 "logs":$logs_json,

@@ -3,6 +3,7 @@
 'require dom';
 'require poll';
 'require crowdsec-dashboard.api as api';
+'require crowdsec-dashboard.heatmap as heatmap';
 'require secubox/kiss-theme';
 
 return view.extend({
@@ -81,12 +82,26 @@ return view.extend({
 		return Array.isArray(alerts) ? alerts : [];
 	},
 
+	parseGeoData: function(raw) {
+		if (!raw) return [];
+		if (typeof raw === 'string') {
+			try { raw = JSON.parse(raw); } catch(e) { return []; }
+		}
+		if (!Array.isArray(raw)) return [];
+		return raw.filter(function(item) {
+			return item && item.country && typeof item.count === 'number';
+		});
+	},
+
 	render: function(data) {
 		var self = this;
 		// Ensure s is always an object (data could be error code like 5)
 		var s = (data && typeof data === 'object' && !Array.isArray(data)) ? data : {};
 		s.countries = this.parseCountries(s);
 		s.alerts = this.parseAlerts(s);
+		// Parse geo data for heatmap
+		s.geoLocal = this.parseGeoData(s.geo_local_raw || s.top_countries_raw);
+		s.geoCapi = this.parseGeoData(s.geo_capi_raw);
 
 		var content = [
 			// Header
@@ -113,8 +128,8 @@ return view.extend({
 				KissTheme.card('System Health', this.renderHealth(s))
 			]),
 
-			// Geo card
-			KissTheme.card('Threat Origins', E('div', { 'id': 'cs-geo' }, this.renderGeo(s.countries)))
+			// Geo card - heatmap + legend
+			KissTheme.card('Threat Origins', E('div', { 'id': 'cs-geo' }, this.renderGeo(s)))
 		];
 
 		poll.add(L.bind(this.pollData, this), 30);
@@ -203,19 +218,33 @@ return view.extend({
 		}));
 	},
 
-	renderGeo: function(countries) {
-		var entries = Object.entries(countries || {});
-		if (!entries.length) {
+	renderGeo: function(s) {
+		var countries = s.countries || {};
+		var entries = Object.entries(countries);
+		var hasData = entries.length > 0 || (s.geoLocal && s.geoLocal.length > 0) || (s.geoCapi && s.geoCapi.length > 0);
+
+		if (!hasData) {
 			return E('div', { 'style': 'text-align: center; padding: 24px; color: var(--kiss-muted);' }, 'No geographic data');
 		}
+
+		// Render heatmap
+		var heatmapEl = heatmap.render({
+			local: s.geoLocal || [],
+			capi: s.geoCapi || [],
+			waf: [] // WAF geo data could be added later
+		}, { width: 600, height: 300 });
+
+		// Flag legend below heatmap
 		entries.sort(function(a, b) { return b[1] - a[1]; });
-		return E('div', { 'style': 'display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 12px;' }, entries.slice(0, 12).map(function(e) {
+		var flagLegend = E('div', { 'style': 'display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 12px; margin-top: 16px;' }, entries.slice(0, 12).map(function(e) {
 			return E('div', { 'style': 'display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(255,255,255,0.02); border-radius: 6px;' }, [
 				E('span', { 'style': 'font-size: 18px;' }, api.getCountryFlag(e[0])),
 				E('span', { 'style': 'font-family: monospace; font-weight: 600; color: var(--kiss-orange);' }, String(e[1])),
 				E('span', { 'style': 'font-size: 11px; color: var(--kiss-muted);' }, e[0])
 			]);
 		}));
+
+		return E('div', {}, [heatmapEl, flagLegend]);
 	},
 
 	fmt: function(n) {
@@ -231,12 +260,14 @@ return view.extend({
 			var s = (data && typeof data === 'object' && !Array.isArray(data)) ? data : {};
 			s.countries = self.parseCountries(s);
 			s.alerts = self.parseAlerts(s);
+			s.geoLocal = self.parseGeoData(s.geo_local_raw || s.top_countries_raw);
+			s.geoCapi = self.parseGeoData(s.geo_capi_raw);
 			var el = document.getElementById('cs-stats');
 			if (el) dom.content(el, self.renderStats(s));
 			el = document.getElementById('cs-alerts');
 			if (el) dom.content(el, self.renderAlerts(s.alerts));
 			el = document.getElementById('cs-geo');
-			if (el) dom.content(el, self.renderGeo(s.countries));
+			if (el) dom.content(el, self.renderGeo(s));
 		});
 	},
 

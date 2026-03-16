@@ -1,6 +1,25 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-03-16 (Quick Access QR Page)_
+_Last updated: 2026-03-16 (CrowdSec Heatmap)_
+
+0. **CrowdSec Dashboard Geo Heatmap (2026-03-16)**
+   - NEW: Geo heatmap visualization showing threat origins on world map
+     - SVG-based world map with continent outlines
+     - Colored dots at country centroids (orange=local bans, cyan=CAPI, red=WAF)
+     - Dot size scales logarithmically with threat count
+     - Hover tooltips show country + count
+     - Legend showing all three data sources
+   - Files: `heatmap.js` (new), `overview.js`, `dashboard.css`, `luci.crowdsec-dashboard`
+   - Backend: Added `geo_local_raw` and `geo_capi_raw` fields to overview cache
+   - CAPI geo extraction from decisions with GeoIP metadata
+
+0. **CrowdSec Dashboard Fixes (2026-03-16)**
+   - Fixed alerts/scenarios/countries stats showing 0 despite active bans
+   - Fixed RPCD blocking causing LuCI crashes (async refresh_cache via background subshell)
+   - Fixed firewall bouncer HTTP 404 (wrong API URL in UCI config: 8090 → 8190)
+   - Fixed WAF bans showing 0 (grep for `mitmproxy-` prefix not specific scenario)
+   - Fixed JSON parsing errors (removed string wrapper from array fields)
+   - Added cron job for background cache refresh (every minute)
 
 0. **SecuBox Quick Access QR Page (2026-03-16)**
    - QR code landing page deployed at https://quick.secubox.in/
