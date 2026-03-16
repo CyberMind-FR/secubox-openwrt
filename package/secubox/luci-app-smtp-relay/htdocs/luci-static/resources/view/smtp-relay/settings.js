@@ -1,19 +1,14 @@
 'use strict';
 'require view';
-'require form';
-'require ui';
-'require uci';
 'require rpc';
+'require ui';
+'require poll';
+'require uci';
+'require secubox/kiss-theme';
 
 var callGetStatus = rpc.declare({
 	object: 'luci.smtp-relay',
 	method: 'get_status',
-	expect: {}
-});
-
-var callGetConfig = rpc.declare({
-	object: 'luci.smtp-relay',
-	method: 'get_config',
 	expect: {}
 });
 
@@ -34,248 +29,319 @@ return view.extend({
 	load: function() {
 		return Promise.all([
 			callGetStatus().catch(function() { return {}; }),
-			callGetConfig().catch(function() { return {}; }),
-			callDetectLocal().catch(function() { return {}; }),
 			uci.load('smtp-relay')
 		]);
 	},
 
-	handleTestEmail: function(ev) {
-		var recipient = document.getElementById('test_recipient').value;
-		var btn = ev.target;
-		var resultDiv = document.getElementById('test_result');
+	render: function(data) {
+		var self = this;
+		var status = data[0] || {};
 
-		if (!recipient) {
-			recipient = uci.get('smtp-relay', 'recipients', 'admin') || '';
+		// Start polling
+		poll.add(function() {
+			return callGetStatus().then(function(s) {
+				self.updateStats(s);
+			});
+		}, 15);
+
+		var modeLabels = {
+			'external': 'External',
+			'local': 'Local',
+			'direct': 'Direct'
+		};
+
+		var content = [
+			// Header
+			E('div', { 'style': 'margin-bottom: 24px;' }, [
+				E('h2', { 'style': 'margin: 0 0 8px 0; display: flex; align-items: center; gap: 12px;' }, [
+					E('span', {}, '\u2709'),
+					'SMTP Relay'
+				]),
+				E('p', { 'style': 'color: var(--kiss-muted); margin: 0;' },
+					'Centralized outbound email for all SecuBox services')
+			]),
+
+			// Stats Grid
+			E('div', { 'class': 'kiss-grid kiss-grid-4', 'style': 'margin-bottom: 20px;' }, [
+				this.statCard('Status', status.enabled ? 'Active' : 'Disabled',
+					status.enabled ? 'var(--kiss-green)' : 'var(--kiss-red)', 'status'),
+				this.statCard('Mode', modeLabels[status.mode] || 'N/A',
+					status.mode === 'local' ? 'var(--kiss-green)' : 'var(--kiss-cyan)', 'mode'),
+				this.statCard('Server', status.server || 'None', 'var(--kiss-purple)', 'server'),
+				this.statCard('TLS', status.tls ? 'Enabled' : 'Off',
+					status.tls ? 'var(--kiss-green)' : 'var(--kiss-yellow)', 'tls')
+			]),
+
+			// Quick Test Card
+			E('div', { 'class': 'kiss-card' }, [
+				E('div', { 'class': 'kiss-card-title' }, ['\u26a1 Quick Actions']),
+				E('div', { 'style': 'display: flex; gap: 12px; flex-wrap: wrap; align-items: center;' }, [
+					E('button', {
+						'class': 'kiss-btn kiss-btn-blue',
+						'click': ui.createHandlerFn(this, this.doDetectLocal)
+					}, '\ud83d\udd0d Detect Local'),
+					E('input', {
+						'type': 'email',
+						'id': 'test_recipient',
+						'placeholder': 'test@example.com',
+						'value': status.admin_recipient || '',
+						'style': 'flex: 1; min-width: 200px; padding: 8px 12px; border: 1px solid var(--kiss-border); border-radius: 6px; background: var(--kiss-bg2); color: var(--kiss-text);'
+					}),
+					E('button', {
+						'id': 'btn-test',
+						'class': 'kiss-btn kiss-btn-green',
+						'click': ui.createHandlerFn(this, this.doTestEmail)
+					}, '\u2709 Send Test'),
+					E('span', { 'id': 'test_result' }, '')
+				])
+			]),
+
+			// Configuration Card
+			E('div', { 'class': 'kiss-card' }, [
+				E('div', { 'class': 'kiss-card-title' }, ['\u2699 Configuration']),
+				E('div', { 'style': 'display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;' }, [
+					// Mode
+					E('div', {}, [
+						E('div', { 'style': 'color: var(--kiss-muted); font-size: 11px; text-transform: uppercase; margin-bottom: 6px;' }, 'Relay Mode'),
+						E('select', {
+							'id': 'cfg_mode',
+							'style': 'width: 100%; padding: 8px 12px; border: 1px solid var(--kiss-border); border-radius: 6px; background: var(--kiss-bg2); color: var(--kiss-text);'
+						}, [
+							E('option', { 'value': 'external', 'selected': status.mode === 'external' }, 'External SMTP'),
+							E('option', { 'value': 'local', 'selected': status.mode === 'local' }, 'Local Mailserver'),
+							E('option', { 'value': 'direct', 'selected': status.mode === 'direct' }, 'Direct Delivery')
+						])
+					]),
+					// Server
+					E('div', {}, [
+						E('div', { 'style': 'color: var(--kiss-muted); font-size: 11px; text-transform: uppercase; margin-bottom: 6px;' }, 'SMTP Server'),
+						E('input', {
+							'type': 'text',
+							'id': 'cfg_server',
+							'placeholder': 'smtp.gmail.com',
+							'value': status.server || '',
+							'style': 'width: 100%; padding: 8px 12px; border: 1px solid var(--kiss-border); border-radius: 6px; background: var(--kiss-bg2); color: var(--kiss-text);'
+						})
+					]),
+					// Port
+					E('div', {}, [
+						E('div', { 'style': 'color: var(--kiss-muted); font-size: 11px; text-transform: uppercase; margin-bottom: 6px;' }, 'Port'),
+						E('input', {
+							'type': 'number',
+							'id': 'cfg_port',
+							'placeholder': '587',
+							'value': status.port || 587,
+							'style': 'width: 100%; padding: 8px 12px; border: 1px solid var(--kiss-border); border-radius: 6px; background: var(--kiss-bg2); color: var(--kiss-text);'
+						})
+					]),
+					// TLS
+					E('div', {}, [
+						E('div', { 'style': 'color: var(--kiss-muted); font-size: 11px; text-transform: uppercase; margin-bottom: 6px;' }, 'Use TLS'),
+						E('div', { 'style': 'display: flex; align-items: center; gap: 8px;' }, [
+							E('input', {
+								'type': 'checkbox',
+								'id': 'cfg_tls',
+								'checked': status.tls,
+								'style': 'width: 18px; height: 18px;'
+							}),
+							E('span', { 'style': 'color: var(--kiss-muted);' }, 'Enable STARTTLS')
+						])
+					]),
+					// Username
+					E('div', {}, [
+						E('div', { 'style': 'color: var(--kiss-muted); font-size: 11px; text-transform: uppercase; margin-bottom: 6px;' }, 'Username'),
+						E('input', {
+							'type': 'text',
+							'id': 'cfg_user',
+							'placeholder': 'user@gmail.com',
+							'value': uci.get('smtp-relay', 'main', 'username') || '',
+							'style': 'width: 100%; padding: 8px 12px; border: 1px solid var(--kiss-border); border-radius: 6px; background: var(--kiss-bg2); color: var(--kiss-text);'
+						})
+					]),
+					// Password
+					E('div', {}, [
+						E('div', { 'style': 'color: var(--kiss-muted); font-size: 11px; text-transform: uppercase; margin-bottom: 6px;' }, 'Password'),
+						E('input', {
+							'type': 'password',
+							'id': 'cfg_pass',
+							'placeholder': '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022',
+							'value': '',
+							'style': 'width: 100%; padding: 8px 12px; border: 1px solid var(--kiss-border); border-radius: 6px; background: var(--kiss-bg2); color: var(--kiss-text);'
+						})
+					]),
+					// From Address
+					E('div', {}, [
+						E('div', { 'style': 'color: var(--kiss-muted); font-size: 11px; text-transform: uppercase; margin-bottom: 6px;' }, 'From Address'),
+						E('input', {
+							'type': 'email',
+							'id': 'cfg_from',
+							'placeholder': 'noreply@secubox.in',
+							'value': status.from || '',
+							'style': 'width: 100%; padding: 8px 12px; border: 1px solid var(--kiss-border); border-radius: 6px; background: var(--kiss-bg2); color: var(--kiss-text);'
+						})
+					]),
+					// Admin Recipient
+					E('div', {}, [
+						E('div', { 'style': 'color: var(--kiss-muted); font-size: 11px; text-transform: uppercase; margin-bottom: 6px;' }, 'Admin Email'),
+						E('input', {
+							'type': 'email',
+							'id': 'cfg_admin',
+							'placeholder': 'admin@example.com',
+							'value': status.admin_recipient || '',
+							'style': 'width: 100%; padding: 8px 12px; border: 1px solid var(--kiss-border); border-radius: 6px; background: var(--kiss-bg2); color: var(--kiss-text);'
+						})
+					])
+				]),
+				E('div', { 'style': 'margin-top: 20px;' }, [
+					E('button', {
+						'class': 'kiss-btn kiss-btn-green',
+						'click': ui.createHandlerFn(this, this.doSaveConfig)
+					}, '\u2714 Save Configuration')
+				])
+			]),
+
+			// Quick Presets Card
+			E('div', { 'class': 'kiss-card kiss-panel-blue' }, [
+				E('div', { 'class': 'kiss-card-title' }, ['\ud83d\udce7 Provider Presets']),
+				E('div', { 'style': 'display: flex; gap: 12px; flex-wrap: wrap;' }, [
+					this.presetButton('Gmail', 'smtp.gmail.com', 587, true),
+					this.presetButton('SendGrid', 'smtp.sendgrid.net', 587, true),
+					this.presetButton('Mailgun', 'smtp.mailgun.org', 587, true),
+					this.presetButton('AWS SES', 'email-smtp.us-east-1.amazonaws.com', 587, true),
+					this.presetButton('Local', '192.168.255.30', 25, false)
+				]),
+				E('p', { 'style': 'margin-top: 12px; color: var(--kiss-muted); font-size: 12px;' },
+					'Click a preset to auto-fill server settings.')
+			])
+		];
+
+		return KissTheme.wrap(content, 'admin/secubox/system/smtp-relay');
+	},
+
+	statCard: function(label, value, color, dataAttr) {
+		return E('div', { 'class': 'kiss-stat' }, [
+			E('div', {
+				'class': 'kiss-stat-value',
+				'style': 'color: ' + color,
+				'data-stat': dataAttr
+			}, String(value)),
+			E('div', { 'class': 'kiss-stat-label' }, label)
+		]);
+	},
+
+	updateStats: function(status) {
+		var statusEl = document.querySelector('[data-stat="status"]');
+		var modeEl = document.querySelector('[data-stat="mode"]');
+		var serverEl = document.querySelector('[data-stat="server"]');
+		var tlsEl = document.querySelector('[data-stat="tls"]');
+
+		if (statusEl) {
+			statusEl.textContent = status.enabled ? 'Active' : 'Disabled';
+			statusEl.style.color = status.enabled ? 'var(--kiss-green)' : 'var(--kiss-red)';
 		}
+		if (modeEl) {
+			var labels = { 'external': 'External', 'local': 'Local', 'direct': 'Direct' };
+			modeEl.textContent = labels[status.mode] || 'N/A';
+		}
+		if (serverEl) {
+			serverEl.textContent = status.server || 'None';
+		}
+		if (tlsEl) {
+			tlsEl.textContent = status.tls ? 'Enabled' : 'Off';
+			tlsEl.style.color = status.tls ? 'var(--kiss-green)' : 'var(--kiss-yellow)';
+		}
+	},
+
+	presetButton: function(name, server, port, tls) {
+		return E('button', {
+			'class': 'kiss-btn',
+			'click': function() {
+				document.getElementById('cfg_server').value = server;
+				document.getElementById('cfg_port').value = port;
+				document.getElementById('cfg_tls').checked = tls;
+				document.getElementById('cfg_mode').value = name === 'Local' ? 'local' : 'external';
+			}
+		}, name);
+	},
+
+	doDetectLocal: function() {
+		ui.showModal(_('Detecting Local Mailserver'), [
+			E('p', { 'class': 'spinning' }, _('Scanning...'))
+		]);
+
+		callDetectLocal().then(function(res) {
+			ui.hideModal();
+			if (res.detected) {
+				document.getElementById('cfg_server').value = res.server || '192.168.255.30';
+				document.getElementById('cfg_port').value = res.port || 25;
+				document.getElementById('cfg_mode').value = 'local';
+				ui.addNotification(null, E('p', _('Local mailserver detected')), 'info');
+			} else {
+				ui.addNotification(null, E('p', _('No local mailserver found')), 'warning');
+			}
+		});
+	},
+
+	doTestEmail: function() {
+		var recipient = document.getElementById('test_recipient').value;
+		var btn = document.getElementById('btn-test');
+		var result = document.getElementById('test_result');
 
 		if (!recipient) {
-			ui.addNotification(null, E('p', _('Please enter a recipient email address')), 'warning');
+			ui.addNotification(null, E('p', _('Enter a recipient email')), 'warning');
 			return;
 		}
 
 		btn.disabled = true;
-		btn.textContent = _('Sending...');
-		resultDiv.innerHTML = '';
+		btn.textContent = 'Sending...';
+		result.innerHTML = '';
 
 		callTestEmail(recipient).then(function(res) {
 			btn.disabled = false;
-			btn.textContent = _('Send Test Email');
+			btn.textContent = '\u2709 Send Test';
 
 			if (res.success) {
-				resultDiv.innerHTML = '<span style="color: #4caf50;">✓ ' + _('Test email sent successfully!') + '</span>';
-				ui.addNotification(null, E('p', _('Test email sent to %s').format(recipient)), 'info');
+				result.innerHTML = '<span class="kiss-badge kiss-badge-green">Sent</span>';
 			} else {
-				resultDiv.innerHTML = '<span style="color: #f44336;">✗ ' + (res.error || _('Failed to send')) + '</span>';
-				ui.addNotification(null, E('p', res.error || _('Failed to send test email')), 'error');
+				result.innerHTML = '<span class="kiss-badge kiss-badge-red">Failed</span>';
+				ui.addNotification(null, E('p', res.error || 'Send failed'), 'error');
 			}
 		}).catch(function(err) {
 			btn.disabled = false;
-			btn.textContent = _('Send Test Email');
-			resultDiv.innerHTML = '<span style="color: #f44336;">✗ ' + err.message + '</span>';
+			btn.textContent = '\u2709 Send Test';
+			result.innerHTML = '<span class="kiss-badge kiss-badge-red">Error</span>';
 		});
 	},
 
-	render: function(data) {
-		var status = data[0] || {};
-		var config = data[1] || {};
-		var localDetect = data[2] || {};
-		var m, s, o;
+	doSaveConfig: function() {
+		var mode = document.getElementById('cfg_mode').value;
+		var server = document.getElementById('cfg_server').value;
+		var port = document.getElementById('cfg_port').value;
+		var user = document.getElementById('cfg_user').value;
+		var pass = document.getElementById('cfg_pass').value;
+		var tls = document.getElementById('cfg_tls').checked;
+		var from = document.getElementById('cfg_from').value;
+		var admin = document.getElementById('cfg_admin').value;
 
-		m = new form.Map('smtp-relay', _('SMTP Relay'),
-			_('Centralized outbound email configuration for all SecuBox services. Configure once, use everywhere.'));
+		uci.set('smtp-relay', 'main', 'mode', mode);
+		uci.set('smtp-relay', 'main', 'server', server);
+		uci.set('smtp-relay', 'main', 'port', port);
+		if (user) uci.set('smtp-relay', 'main', 'username', user);
+		if (pass) uci.set('smtp-relay', 'main', 'password', pass);
+		uci.set('smtp-relay', 'main', 'tls', tls ? '1' : '0');
+		if (from) uci.set('smtp-relay', 'main', 'from', from);
+		uci.set('smtp-relay', 'recipients', 'admin', admin);
 
-		// Status section
-		s = m.section(form.NamedSection, 'main', 'smtp_relay', _('Status'));
-		s.anonymous = true;
-
-		o = s.option(form.DummyValue, '_status', _('Current Status'));
-		o.rawhtml = true;
-		o.cfgvalue = function() {
-			var modeText = {
-				'external': _('External SMTP Server'),
-				'local': _('Local Mailserver'),
-				'direct': _('Direct Delivery')
-			};
-			var statusHtml = '<div style="display: flex; gap: 20px; flex-wrap: wrap;">';
-
-			// Enabled status
-			statusHtml += '<div><strong>' + _('Relay:') + '</strong> ';
-			if (status.enabled) {
-				statusHtml += '<span style="color: #4caf50;">●</span> ' + _('Enabled');
-			} else {
-				statusHtml += '<span style="color: #f44336;">●</span> ' + _('Disabled');
-			}
-			statusHtml += '</div>';
-
-			// Mode
-			statusHtml += '<div><strong>' + _('Mode:') + '</strong> ' + (modeText[status.mode] || status.mode || '-') + '</div>';
-
-			// Server
-			if (status.server) {
-				statusHtml += '<div><strong>' + _('Server:') + '</strong> ' + status.server + ':' + status.port + '</div>';
-			}
-
-			// Transport
-			statusHtml += '<div><strong>' + _('Transport:') + '</strong> ';
-			if (status.msmtp_available) {
-				statusHtml += '<span style="color: #4caf50;">msmtp</span>';
-			} else if (status.sendmail_available) {
-				statusHtml += '<span style="color: #ff9800;">sendmail</span>';
-			} else {
-				statusHtml += '<span style="color: #f44336;">' + _('None') + '</span>';
-			}
-			statusHtml += '</div>';
-
-			// Local mailserver
-			if (localDetect.detected) {
-				statusHtml += '<div><strong>' + _('Local Mail:') + '</strong> ';
-				if (localDetect.responding) {
-					statusHtml += '<span style="color: #4caf50;">● ' + _('Available') + '</span>';
-				} else {
-					statusHtml += '<span style="color: #ff9800;">● ' + _('Not responding') + '</span>';
-				}
-				statusHtml += '</div>';
-			}
-
-			statusHtml += '</div>';
-			return statusHtml;
-		};
-
-		// Main settings
-		s = m.section(form.NamedSection, 'main', 'smtp_relay', _('General Settings'));
-		s.anonymous = true;
-
-		o = s.option(form.Flag, 'enabled', _('Enable SMTP Relay'));
-		o.default = '0';
-		o.rmempty = false;
-
-		o = s.option(form.ListValue, 'mode', _('Relay Mode'));
-		o.value('external', _('External SMTP Server'));
-		o.value('local', _('Local Mailserver'));
-		o.value('direct', _('Direct Delivery (MTA)'));
-		o.default = 'external';
-		o.description = _('External: Use Gmail, SendGrid, etc. Local: Use secubox-app-mailserver. Direct: Send directly (requires port 25).');
-
-		o = s.option(form.Flag, 'auto_detect', _('Auto-detect Local Mailserver'));
-		o.description = _('Automatically use local mailserver if available and responding');
-		o.default = '1';
-		o.depends('mode', 'external');
-
-		// External SMTP section
-		s = m.section(form.NamedSection, 'external', 'external', _('External SMTP Settings'));
-		s.anonymous = true;
-
-		o = s.option(form.ListValue, '_preset', _('Provider Preset'));
-		o.value('', _('-- Custom --'));
-		o.value('gmail', 'Gmail / Google Workspace');
-		o.value('sendgrid', 'SendGrid');
-		o.value('mailgun', 'Mailgun');
-		o.value('ses', 'Amazon SES (us-east-1)');
-		o.value('mailjet', 'Mailjet');
-		o.rmempty = true;
-		o.write = function() {}; // Don't save, just triggers onchange
-
-		o = s.option(form.Value, 'server', _('SMTP Server'));
-		o.placeholder = 'smtp.example.com';
-		o.rmempty = true;
-
-		o = s.option(form.Value, 'port', _('Port'));
-		o.datatype = 'port';
-		o.default = '587';
-		o.placeholder = '587';
-
-		o = s.option(form.Flag, 'tls', _('Use STARTTLS'));
-		o.default = '1';
-		o.description = _('Use STARTTLS encryption (recommended for port 587)');
-
-		o = s.option(form.Flag, 'ssl', _('Use SSL/TLS'));
-		o.default = '0';
-		o.description = _('Use implicit SSL/TLS (for port 465)');
-
-		o = s.option(form.Flag, 'auth', _('Authentication Required'));
-		o.default = '1';
-
-		o = s.option(form.Value, 'user', _('Username'));
-		o.depends('auth', '1');
-		o.rmempty = true;
-
-		o = s.option(form.Value, 'password', _('Password'));
-		o.password = true;
-		o.depends('auth', '1');
-		o.rmempty = true;
-
-		o = s.option(form.Value, 'from', _('From Address'));
-		o.placeholder = 'secubox@example.com';
-		o.datatype = 'email';
-		o.rmempty = true;
-
-		o = s.option(form.Value, 'from_name', _('From Name'));
-		o.placeholder = 'SecuBox';
-		o.default = 'SecuBox';
-		o.rmempty = true;
-
-		// Recipients section
-		s = m.section(form.NamedSection, 'recipients', 'recipients', _('Default Recipients'));
-		s.anonymous = true;
-
-		o = s.option(form.Value, 'admin', _('Admin Email'));
-		o.datatype = 'email';
-		o.description = _('Default recipient for system notifications and test emails');
-
-		// Test section
-		s = m.section(form.NamedSection, 'main', 'smtp_relay', _('Connection Test'));
-		s.anonymous = true;
-
-		o = s.option(form.DummyValue, '_test', ' ');
-		o.rawhtml = true;
-		o.cfgvalue = function() {
-			var adminEmail = uci.get('smtp-relay', 'recipients', 'admin') || '';
-			return E('div', { 'style': 'display: flex; gap: 10px; align-items: center; flex-wrap: wrap;' }, [
-				E('input', {
-					'type': 'email',
-					'id': 'test_recipient',
-					'placeholder': adminEmail || _('recipient@example.com'),
-					'value': adminEmail,
-					'style': 'flex: 1; min-width: 200px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;'
-				}),
-				E('button', {
-					'class': 'cbi-button cbi-button-action',
-					'click': ui.createHandlerFn(this, function(ev) {
-						var view = document.querySelector('[data-page="smtp-relay/settings"]');
-						if (view && view.handleTestEmail) {
-							view.handleTestEmail(ev);
-						} else {
-							// Fallback
-							var recipient = document.getElementById('test_recipient').value;
-							var btn = ev.target;
-							btn.disabled = true;
-							btn.textContent = _('Sending...');
-
-							callTestEmail(recipient).then(function(res) {
-								btn.disabled = false;
-								btn.textContent = _('Send Test Email');
-								var resultDiv = document.getElementById('test_result');
-								if (res.success) {
-									resultDiv.innerHTML = '<span style="color: #4caf50;">✓ ' + _('Test email sent!') + '</span>';
-								} else {
-									resultDiv.innerHTML = '<span style="color: #f44336;">✗ ' + (res.error || _('Failed')) + '</span>';
-								}
-							}).catch(function(err) {
-								btn.disabled = false;
-								btn.textContent = _('Send Test Email');
-							});
-						}
-					})
-				}, _('Send Test Email')),
-				E('div', { 'id': 'test_result', 'style': 'margin-left: 10px;' })
-			]);
-		};
-
-		return m.render();
+		uci.save().then(function() {
+			return uci.apply();
+		}).then(function() {
+			ui.addNotification(null, E('p', _('Configuration saved')), 'info');
+		}).catch(function(err) {
+			ui.addNotification(null, E('p', err.message), 'error');
+		});
 	},
 
-	handleSave: null,
 	handleSaveApply: null,
+	handleSave: null,
 	handleReset: null
 });

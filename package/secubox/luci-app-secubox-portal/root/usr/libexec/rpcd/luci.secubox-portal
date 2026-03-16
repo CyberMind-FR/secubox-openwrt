@@ -237,7 +237,7 @@ build_tree() {
 	json_add_array "items"
 	for app in $apps; do
 		case "$app" in
-			luci-app-torrent*|luci-app-droplet*|luci-app-aria*|luci-app-transmission*|luci-app-nzb*|luci-app-sabnzbd*)
+			luci-app-torrent*|luci-app-droplet*|luci-app-webtorrent*|luci-app-aria*|luci-app-transmission*|luci-app-nzb*|luci-app-sabnzbd*)
 				local name=$(echo "$app" | sed 's/luci-app-//' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++)$i=toupper(substr($i,1,1))tolower(substr($i,2))}1')
 				json_add_object ""
 				json_add_string "name" "$name"

@@ -203,7 +203,9 @@ var KissThemeClass = baseclass.extend({
 		{ cat: 'Downloads', icon: '📥', collapsed: true, items: [
 			{ icon: '🧲', name: 'Torrent', path: 'admin/services/torrent' },
 			{ icon: '💧', name: 'Droplet', path: 'admin/services/droplet' },
-			{ icon: '🌊', name: 'WebTorrent', path: 'admin/services/webtorrent' }
+			{ icon: '🌊', name: 'WebTorrent', path: 'admin/services/webtorrent' },
+			{ icon: '📰', name: 'SABnzbd', url: 'https://sabnzbd.gk2.secubox.in/' },
+			{ icon: '🔍', name: 'NZBHydra', url: 'https://nzbhydra.gk2.secubox.in/' }
 		]},
 
 		// ═══════════════════════════════════════════════════════════════
