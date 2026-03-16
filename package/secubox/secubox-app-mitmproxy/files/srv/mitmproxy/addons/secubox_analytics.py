@@ -21,6 +21,25 @@ from pathlib import Path
 # Bot whitelist for legitimate crawlers
 WHITELISTED_BOTS = ["googlebot", "bingbot", "yandexbot", "facebookexternalhit", "meta-externalagent", "twitterbot", "linkedinbot", "slackbot", "applebot"]
 
+# Legitimate browser signatures - NEVER flag these as bots
+# These patterns indicate real browsers, not scanners/bots
+LEGITIMATE_BROWSERS = [
+    'chrome/', 'crios/', 'firefox/', 'fxios/',  # Chrome/Firefox desktop & iOS
+    'safari/', 'mobile safari', 'edg/', 'edgios/', 'edge/',  # Safari/Edge
+    'opr/', 'opera/', 'vivaldi/', 'brave/',  # Other browsers
+    'samsungbrowser/', 'ucbrowser/', 'qqbrowser/',  # Mobile browsers
+    'webkit/', 'gecko/', 'trident/',  # Engine identifiers with real browsers
+]
+
+def is_legitimate_browser(ua):
+    """Check if UA belongs to a legitimate browser (not a bot)"""
+    ua_lower = (ua or "").lower()
+    # Must have Mozilla prefix (standard for all browsers)
+    if not ua_lower.startswith('mozilla/'):
+        return False
+    # Check for legitimate browser identifiers
+    return any(browser in ua_lower for browser in LEGITIMATE_BROWSERS)
+
 def is_whitelisted_bot(ua):
     ua_lower = (ua or "").lower()
     return any(bot in ua_lower for bot in WHITELISTED_BOTS)
@@ -216,11 +235,13 @@ BOT_SIGNATURES = [
     'bytespider', 'petalbot', 'dataforseo', 'serpstatbot',
 
     # ==== IOT BOTNET SCANNERS (Mirai variants) ====
-    'mirai', 'hajime', 'mozi', 'botenago', 'gafgyt', 'bashlite',
+    # Note: 'mozi' removed - conflicts with 'CriOS' (Chrome iOS) which contains 'mozi'
+    # Use 'mozi/' or 'mozi ' for more specific matching
+    'mirai', 'hajime', 'mozi/', 'mozi ', 'botenago', 'gafgyt', 'bashlite',
     'tsunami', 'xorddos', 'dofloo', 'enemybot', 'fodcha',
-    'zerobot', 'rondodox', 'satori', 'okiru', 'omni', 'owari',
+    'zerobot', 'rondodox', 'satori', 'okiru', 'omni/', 'owari',
     'hello, world',  # common Mirai scanner probe
-    'iot_reaper', 'iot-reaper', 'reaper',
+    'iot_reaper', 'iot-reaper', 'reaper/',
 
     # ==== EMPTY/SUSPICIOUS USER AGENTS ====
     # Note: Do NOT include 'mozilla/5.0' here - it's the standard prefix for ALL modern browsers!
@@ -968,7 +989,13 @@ class SecuBoxAnalytics:
 
         # Detect bot from user agent
         ua_lower = ua.lower()
-        is_bot = any(sig in ua_lower for sig in BOT_SIGNATURES)
+
+        # First check: if it's a legitimate browser, NEVER flag as bot
+        # This prevents false positives on Chrome iOS (CriOS contains 'mozi'), etc.
+        if is_legitimate_browser(ua):
+            is_bot = False
+        else:
+            is_bot = any(sig in ua_lower for sig in BOT_SIGNATURES)
 
         # Additional bot detection heuristics
         bot_type = None
