@@ -145,13 +145,13 @@ return view.extend({
 				E('h3', {}, _('Web Interface')),
 				E('div', { 'style': 'margin-bottom:12px' }, [
 					E('a', {
-						'href': 'http://' + window.location.hostname + ':' + (s.port || 9000),
+						'href': 'https://lyrion.gk2.secubox.in/',
 						'target': '_blank',
 						'class': 'cbi-button cbi-button-action',
 						'style': 'margin-right:8px'
 					}, _('Open Lyrion Web UI')),
 					E('span', { 'style': 'color:#888' },
-						'http://' + window.location.hostname + ':' + (s.port || 9000))
+						'https://lyrion.gk2.secubox.in/')
 				])
 			]),
 
