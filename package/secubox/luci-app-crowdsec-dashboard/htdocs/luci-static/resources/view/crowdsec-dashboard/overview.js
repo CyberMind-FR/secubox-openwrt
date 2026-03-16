@@ -58,6 +58,26 @@ return view.extend({
 		if (Array.isArray(data.alerts) && data.alerts.length > 0) {
 			alerts = data.alerts;
 		}
+		// Fallback to decisions_raw if no alerts (decisions = active bans from alerts)
+		if ((!alerts || alerts.length === 0) && data.decisions_raw) {
+			try {
+				var decisions = typeof data.decisions_raw === 'string'
+					? JSON.parse(data.decisions_raw)
+					: data.decisions_raw;
+				if (Array.isArray(decisions)) {
+					// Convert decisions to alert-like format
+					alerts = decisions.map(function(d) {
+						return {
+							source_ip: d.value,
+							scenario: d.scenario,
+							created_at: new Date().toISOString(), // No timestamp in decision, use now
+							type: d.type,
+							duration: d.duration
+						};
+					});
+				}
+			} catch (e) {}
+		}
 		return Array.isArray(alerts) ? alerts : [];
 	},
 
@@ -87,8 +107,8 @@ return view.extend({
 
 			// Two column layout
 			E('div', { 'class': 'kiss-grid kiss-grid-2' }, [
-				// Alerts card
-				KissTheme.card('Recent Alerts', E('div', { 'id': 'cs-alerts' }, this.renderAlerts(s.alerts))),
+				// Active bans card
+				KissTheme.card('Active Bans', E('div', { 'id': 'cs-alerts' }, this.renderAlerts(s.alerts))),
 				// Health card
 				KissTheme.card('System Health', this.renderHealth(s))
 			]),
@@ -136,19 +156,24 @@ return view.extend({
 	renderAlerts: function(alerts) {
 		alerts = Array.isArray(alerts) ? alerts : [];
 		if (!alerts.length) {
-			return E('div', { 'style': 'text-align: center; padding: 24px; color: var(--kiss-muted);' }, 'No recent alerts');
+			return E('div', { 'style': 'text-align: center; padding: 24px; color: var(--kiss-muted);' }, 'No active bans');
 		}
+		// Check if we have duration (from decisions) or created_at (from alerts)
+		var hasDuration = alerts[0] && alerts[0].duration;
 		return E('table', { 'class': 'kiss-table' }, [
 			E('thead', {}, E('tr', {}, [
-				E('th', {}, 'Time'),
+				E('th', {}, hasDuration ? 'Expires' : 'Time'),
 				E('th', {}, 'Source'),
 				E('th', {}, 'Scenario')
 			])),
 			E('tbody', {}, alerts.slice(0, 8).map(function(a) {
 				var src = a.source || {};
+				var timeCol = a.duration
+					? a.duration.replace(/([0-9]+)h([0-9]+)m.*/, '$1h $2m')
+					: api.formatRelativeTime(a.created_at);
 				return E('tr', {}, [
-					E('td', { 'style': 'font-family: monospace; font-size: 12px; color: var(--kiss-muted);' }, api.formatRelativeTime(a.created_at)),
-					E('td', {}, E('span', { 'style': 'font-family: monospace; color: var(--kiss-cyan);' }, src.ip || a.source_ip || '-')),
+					E('td', { 'style': 'font-family: monospace; font-size: 12px; color: var(--kiss-muted);' }, timeCol),
+					E('td', {}, E('span', { 'style': 'font-family: monospace; color: var(--kiss-cyan);' }, src.ip || a.source_ip || a.value || '-')),
 					E('td', {}, E('span', { 'style': 'font-size: 12px;' }, api.parseScenario(a.scenario)))
 				]);
 			}))

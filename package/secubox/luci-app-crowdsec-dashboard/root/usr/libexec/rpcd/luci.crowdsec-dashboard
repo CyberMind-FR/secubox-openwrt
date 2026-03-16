@@ -2612,8 +2612,9 @@ case "$1" in
 				get_cached_status
 				;;
 			refresh_cache)
-				refresh_overview_cache
-				echo '{"success": true}'
+				# Run in background to avoid blocking rpcd
+				( refresh_overview_cache ) >/dev/null 2>&1 &
+				echo '{"success": true, "async": true}'
 				;;
 			ban)
 				read -r input
