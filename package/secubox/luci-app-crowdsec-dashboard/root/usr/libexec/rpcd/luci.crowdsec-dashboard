@@ -2464,8 +2464,8 @@ refresh_overview_cache() {
 		[ -z "$sc2" ] && sc2=0
 		scenario_count=$((sc1 + sc2))
 
-		# WAF bans count from decisions file
-		waf_bans_today=$(grep -c "mitmproxy-waf" "$decisions_file" 2>/dev/null)
+		# WAF bans count from decisions (mitmproxy-scanner, mitmproxy-botscan, etc.)
+		waf_bans_today=$(grep -c "mitmproxy-" "$decisions_file" 2>/dev/null)
 		[ -z "$waf_bans_today" ] && waf_bans_today=0
 	fi
 
