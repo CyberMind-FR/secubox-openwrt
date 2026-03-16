@@ -10,6 +10,33 @@ _Last updated: 2026-03-16 (Unified SMTP Relay)_
 
 ### 2026-03-16
 
+- **SecuBox v1.0.0-beta Quick Access Page (Complete)**
+  - QR code landing page at https://quick.secubox.in/
+  - QR codes for: VM Appliance (192.168.1.1), SecuBox Router (192.168.255.1), Documentation, Beta Release, Droplet Tool, Streamlit Forge
+  - Default credentials displayed: root / c3box
+  - Dark KISS theme matching SecuBox design
+  - JavaScript QR generation using qrcode.js library
+  - Deployed via MetaBlogizer on port 9013
+
+- **MetaBlogizer Port Conflict Analysis & Fix (Complete)**
+  - **Root Cause**: `port_in_use()` function checks UCI config only, not running uhttpd processes
+  - **Symptom**: Two sites (srvi, quick-access) assigned same port 9013 in UCI config
+  - **Immediate Fix**:
+    - Killed wrong uhttpd process, started correct one for quick-access
+    - Reassigned srvi from port 9013 → 9014 in UCI config
+    - Updated mitmproxy routes with correct IP (192.168.255.1, not 127.0.0.1)
+  - **Existing Tools**: `metablogizerctl check-ports` and `fix-ports` commands
+  - **Architectural Issues Identified**:
+    1. Port allocation race condition between UCI commit and uhttpd reload
+    2. No check for running processes, only UCI config
+    3. mitmproxy routes using 127.0.0.1 fail (LXC can't reach host localhost)
+  - **Recommended Improvements** (backlog):
+    1. Add `/proc/net/tcp` check in `port_in_use()` for running processes
+    2. Add port lockfile mechanism for atomic allocation
+    3. Always use 192.168.255.1 for mitmproxy routes (never 127.0.0.1)
+    4. Run `check-ports` in post-create hook automatically
+  - Also fixed gateaucc duplicate (port 8991 → 9000)
+
 - **SecuBox v1.0.0 Version Bump (Complete)**
   - All major roadmap milestones achieved (v0.18, v0.19, v1.0, v1.1+)
   - Updated version strings: Makefile (1.0.0-r1), CLI tools, RPCD handlers, documentation
