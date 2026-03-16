@@ -38,10 +38,10 @@ return view.extend({
 			stats.textContent = s.songs + ' songs, ' + s.albums + ' albums, ' + s.artists + ' artists';
 		}
 
-		['btn-start', 'btn-rescan'].forEach(function(id) {
-			var el = document.getElementById(id);
-			if (el) el.disabled = s.running;
-		});
+		var startBtn = document.getElementById('btn-start');
+		if (startBtn) startBtn.disabled = s.running;
+		var rescanBtn = document.getElementById('btn-rescan');
+		if (rescanBtn) rescanBtn.disabled = !s.running;
 		var stopBtn = document.getElementById('btn-stop');
 		if (stopBtn) stopBtn.disabled = !s.running;
 	},
