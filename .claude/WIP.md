@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-17 (Metrics Dashboard KISS UI + double-buffer caching)_
+_Last updated: 2026-03-17 (VM Firmware Build + CI Fixes)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -9,6 +9,22 @@ _Last updated: 2026-03-17 (Metrics Dashboard KISS UI + double-buffer caching)_
 ## Recently Completed
 
 ### 2026-03-17
+
+- **SecuBox VM Firmware Build Workflow (Complete)**
+  - NEW: `.github/workflows/build-secubox-vm.yml` for x86_64 VM images
+  - Uses OpenWrt 24.10.5 as default (latest stable release)
+  - Builds VMDK, VDI, QCOW2 formats for VMware/VirtualBox/QEMU/Proxmox
+  - Includes all SecuBox LuCI packages pre-installed
+  - Docker support enabled (dockerd, docker-compose, luci-app-dockerman)
+  - Virtio drivers for KVM/QEMU performance
+  - VM guest tools (qemu-ga) for integration
+  - Configurable root filesystem size (512MB-4GB)
+  - Manual trigger + automatic on version tags
+
+- **CI/CD Test & Validate Workflow Fixes (Complete)**
+  - Fixed PKG_NAME validation: luci.mk auto-generates from directory name
+  - Made PKG_LICENSE warning instead of error (many packages missing it)
+  - Lint & Validate now passing, Test Build completing
 
 - **LuCI Metrics Dashboard v2 (Complete)**
   - New `luci-app-metrics-dashboard` package with real-time system metrics

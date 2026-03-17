@@ -1,6 +1,23 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-03-17 (Metrics Dashboard KISS UI + double-buffer caching)_
+_Last updated: 2026-03-17 (VM Firmware Build + CI Fixes)_
+
+0. **SecuBox VM Firmware Build Workflow (2026-03-17)**
+   - NEW: `.github/workflows/build-secubox-vm.yml` for x86_64 VM appliance images
+   - Uses OpenWrt 24.10.5 as base (latest stable from firmware-selector.openwrt.org)
+   - VM image formats: VMDK (VMware), VDI (VirtualBox), QCOW2 (QEMU/KVM/Proxmox)
+   - All SecuBox LuCI packages pre-installed and configured
+   - Docker support: dockerd, docker-compose, luci-app-dockerman
+   - VM guest tools: qemu-ga for QEMU guest agent integration
+   - Virtio drivers for optimal KVM/QEMU performance (virtio-net, virtio-blk)
+   - Configurable rootfs size: 512MB, 1GB, 2GB, 4GB options
+   - Triggers: Manual dispatch or automatic on version tags (v*.*.*)
+   - MANIFEST.md with quick-start guides for all VM platforms
+
+0. **CI/CD Test & Validate Workflow Fixes (2026-03-17)**
+   - Fixed PKG_NAME validation: luci.mk auto-generates PKG_NAME from directory
+   - Changed PKG_LICENSE from required to recommended (warning only)
+   - Lint & Validate job now passing, Test Build completing ~80 packages
 
 0. **LuCI Metrics Dashboard v2 (2026-03-17)**
    - NEW: `luci-app-metrics-dashboard` package - Real-time system metrics
