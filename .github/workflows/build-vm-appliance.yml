@@ -1,6 +1,6 @@
-name: Build SecuBox VM Appliance
+name: Build C3Box VM Appliance
 
-# Builds ready-to-use VM images (VMDK, VDI, QCOW2) for VMware, VirtualBox, Proxmox
+# Builds ready-to-use C3Box VM images (VMDK, VDI, QCOW2) for VMware, VirtualBox, Proxmox
 
 on:
   workflow_dispatch:
@@ -104,15 +104,15 @@ jobs:
       - name: Create preseed configuration
         run: |
           mkdir -p imagebuilder/files/etc/uci-defaults
-          mkdir -p imagebuilder/files/etc/secubox
+          mkdir -p imagebuilder/files/etc/c3box
 
           # Preseed script for first boot
-          cat > imagebuilder/files/etc/uci-defaults/99-secubox-vm << 'PRESEED_EOF'
+          cat > imagebuilder/files/etc/uci-defaults/99-c3box-vm << 'PRESEED_EOF'
           #!/bin/sh
-          # SecuBox VM Appliance Preseed
+          # C3Box VM Appliance Preseed
 
           # Set hostname
-          uci set system.@system[0].hostname='secubox-vm'
+          uci set system.@system[0].hostname='c3box'
           uci set system.@system[0].timezone='UTC'
           uci set system.@system[0].zonename='UTC'
 
@@ -166,23 +166,23 @@ jobs:
                 resize2fs "$ROOT_DEV" 2>/dev/null || true
               fi
 
-              mkdir -p /etc/secubox
-              touch /etc/secubox/resized
+              mkdir -p /etc/c3box
+              touch /etc/c3box/resized
             fi
           fi
 
           # Mark as configured
-          touch /etc/secubox/configured
+          touch /etc/c3box/configured
 
           exit 0
           PRESEED_EOF
 
-          chmod 755 imagebuilder/files/etc/uci-defaults/99-secubox-vm
+          chmod 755 imagebuilder/files/etc/uci-defaults/99-c3box-vm
 
-          # SecuBox release info
-          cat > imagebuilder/files/etc/secubox/release << EOF
-          SECUBOX_VERSION="${{ github.ref_name || 'dev' }}"
-          SECUBOX_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          # C3Box release info
+          cat > imagebuilder/files/etc/c3box/release << EOF
+          C3BOX_VERSION="${{ github.ref_name || 'dev' }}"
+          C3BOX_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           OPENWRT_VERSION="${{ env.OPENWRT_VERSION }}"
           VM_TYPE="${{ matrix.boot }}"
           DISK_SIZE="${{ env.DISK_SIZE }}GB"
@@ -191,17 +191,18 @@ jobs:
           # MOTD banner
           cat > imagebuilder/files/etc/banner << 'BANNER_EOF'
 
-            ____                  ____
-           / ___|  ___  ___ _   _| __ )  _____  __
-           \___ \ / _ \/ __| | | |  _ \ / _ \ \/ /
-            ___) |  __/ (__| |_| | |_) | (_) >  <
-           |____/ \___|\___|\__,_|____/ \___/_/\_\
+             ██████╗██████╗ ██████╗  ██████╗ ██╗  ██╗
+            ██╔════╝╚════██╗██╔══██╗██╔═══██╗╚██╗██╔╝
+            ██║      █████╔╝██████╔╝██║   ██║ ╚███╔╝
+            ██║      ╚═══██╗██╔══██╗██║   ██║ ██╔██╗
+            ╚██████╗██████╔╝██████╔╝╚██████╔╝██╔╝ ██╗
+             ╚═════╝╚═════╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝
 
-           SecuBox OpenWrt Security Appliance
-           https://github.com/gkerma/secubox-openwrt
+            C3Box - CyberMind Security Appliance
+            https://github.com/gkerma/secubox-openwrt
 
-           Access LuCI: https://192.168.1.1
-           Documentation: https://github.com/gkerma/secubox-openwrt/wiki
+            Access LuCI: https://192.168.1.1
+            Documentation: https://github.com/gkerma/secubox-openwrt/wiki
 
           BANNER_EOF
 
@@ -212,7 +213,7 @@ jobs:
           cd imagebuilder
 
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "🔨 Building SecuBox VM Image (${{ matrix.boot }})"
+          echo "🔨 Building C3Box VM Image (${{ matrix.boot }})"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
           # Base packages
@@ -312,7 +313,7 @@ jobs:
           # Base filename
           VERSION="${{ env.OPENWRT_VERSION }}"
           TAG="${{ github.ref_name }}"
-          BASENAME="secubox-vm-${TAG:-dev}-${{ matrix.name }}"
+          BASENAME="c3box-vm-${TAG:-dev}-${{ matrix.name }}"
 
           # Convert to VMDK (VMware)
           echo "🔄 Creating VMDK (VMware)..."
@@ -344,12 +345,12 @@ jobs:
       - name: Create documentation
         run: |
           TAG="${{ github.ref_name }}"
-          BASENAME="secubox-vm-${TAG:-dev}-${{ matrix.name }}"
+          BASENAME="c3box-vm-${TAG:-dev}-${{ matrix.name }}"
 
           cat > artifacts/README.md << EOF
-          # SecuBox VM Appliance - ${{ matrix.description }}
+          # C3Box VM Appliance - ${{ matrix.description }}
 
-          Pre-configured OpenWrt ${{ env.OPENWRT_VERSION }} virtual machine with SecuBox modules.
+          Pre-configured OpenWrt ${{ env.OPENWRT_VERSION }} virtual machine - CyberMind Security Appliance.
 
           ## VM Images
 
@@ -377,7 +378,7 @@ jobs:
           ### Proxmox
           \`\`\`bash
           # Upload QCOW2 to Proxmox
-          qm create 100 --name secubox --memory 1024 --net0 virtio,bridge=vmbr0
+          qm create 100 --name c3box --memory 1024 --net0 virtio,bridge=vmbr0
           qm importdisk 100 ${BASENAME}.qcow2 local-lvm
           qm set 100 --scsi0 local-lvm:vm-100-disk-0
           qm set 100 --boot order=scsi0
@@ -426,7 +427,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: secubox-vm-${{ matrix.name }}-${{ env.OPENWRT_VERSION }}
+          name: c3box-vm-${{ matrix.name }}-${{ env.OPENWRT_VERSION }}
           path: artifacts/
           retention-days: 30
 
@@ -458,13 +459,13 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: vms
-          pattern: secubox-vm-*
+          pattern: c3box-vm-*
 
       - name: Organize release
         run: |
           mkdir -p release
 
-          for dir in vms/secubox-vm-*/; do
+          for dir in vms/c3box-vm-*/; do
             cp "$dir"/*.vmdk "$dir"/*.vdi "$dir"/*.qcow2 "$dir"/*.img.gz release/ 2>/dev/null || true
             cp "$dir"/README.md release/VM-README.md 2>/dev/null || true
           done
@@ -473,9 +474,9 @@ jobs:
           sha256sum *.vmdk *.vdi *.qcow2 *.img.gz > SHA256SUMS 2>/dev/null || true
 
           cat > RELEASE_NOTES.md << 'EOF'
-          # SecuBox VM Appliance
+          # C3Box VM Appliance
 
-          Ready-to-use virtual machine images with SecuBox security modules pre-installed.
+          Ready-to-use virtual machine images - CyberMind Security Appliance.
 
           ## Downloads
 
@@ -503,7 +504,7 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          name: "SecuBox VM Appliance ${{ github.ref_name }}"
+          name: "C3Box VM Appliance ${{ github.ref_name }}"
           tag_name: ${{ github.ref_name }}
           body_path: release/RELEASE_NOTES.md
           files: |
