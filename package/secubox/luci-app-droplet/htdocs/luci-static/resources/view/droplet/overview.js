@@ -30,6 +30,13 @@ var callDropletRemove = rpc.declare({
     expect: {}
 });
 
+var callDropletJobStatus = rpc.declare({
+    object: 'luci.droplet',
+    method: 'job_status',
+    params: ['job_id'],
+    expect: {}
+});
+
 return view.extend({
     load: function() {
         return Promise.all([
@@ -302,7 +309,11 @@ return view.extend({
                 }
             })
             .then(function(result) {
-                if (result.success) {
+                // Handle async job response
+                if (result.status === 'started' && result.job_id) {
+                    showResult('success', '⏳ Publishing ' + result.name + '...');
+                    return pollJobStatus(result.job_id);
+                } else if (result.success) {
                     showResult('success', '✅ Published! <a href="' + result.url + '" target="_blank">' + result.url + '</a>');
                     setTimeout(function() { location.reload(); }, 2000);
                 } else {
@@ -321,6 +332,47 @@ return view.extend({
         function showResult(type, msg) {
             resultMsg.className = 'result-message ' + type;
             resultMsg.innerHTML = msg;
+        }
+
+        function pollJobStatus(jobId) {
+            return new Promise(function(resolve, reject) {
+                var attempts = 0;
+                var maxAttempts = 60; // 60 * 2s = 2 minutes max
+
+                function check() {
+                    callDropletJobStatus(jobId).then(function(status) {
+                        if (status.status === 'complete') {
+                            if (status.success) {
+                                showResult('success', '✅ Published! <a href="' + status.url + '" target="_blank">' + status.url + '</a>');
+                                setTimeout(function() { location.reload(); }, 2000);
+                            } else {
+                                showResult('error', '❌ ' + (status.error || 'Failed to publish'));
+                            }
+                            resolve(status);
+                        } else if (status.status === 'running') {
+                            attempts++;
+                            if (attempts < maxAttempts) {
+                                setTimeout(check, 2000);
+                            } else {
+                                showResult('error', '❌ Publish timed out');
+                                reject(new Error('Timeout'));
+                            }
+                        } else {
+                            showResult('error', '❌ Job not found');
+                            reject(new Error('Job not found'));
+                        }
+                    }).catch(function(err) {
+                        attempts++;
+                        if (attempts < maxAttempts) {
+                            setTimeout(check, 2000);
+                        } else {
+                            reject(err);
+                        }
+                    });
+                }
+
+                check();
+            });
         }
 
         // Delete buttons

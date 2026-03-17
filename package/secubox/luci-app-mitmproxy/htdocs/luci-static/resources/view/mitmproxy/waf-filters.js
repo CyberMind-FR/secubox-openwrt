@@ -60,19 +60,15 @@ return view.extend({
 					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, '🛡️ WAF Filters'),
 					E('p', { 'style': 'color: var(--kiss-muted); margin: 4px 0 0 0; font-size: 13px;' }, 'Web Application Firewall detection rules')
 				]),
-				E('div', { 'style': 'display: flex; gap: 24px;' }, [
-					E('div', { 'style': 'text-align: center;' }, [
-						E('div', { 'style': 'font-size: 28px; font-weight: 700; color: #3498db;' }, String(categories.length)),
-						E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted); text-transform: uppercase;' }, 'Categories')
-					]),
-					E('div', { 'style': 'text-align: center;' }, [
-						E('div', { 'style': 'font-size: 28px; font-weight: 700; color: #27ae60;' }, String(enabledCategories)),
-						E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted); text-transform: uppercase;' }, 'Active')
-					]),
-					E('div', { 'style': 'text-align: center;' }, [
-						E('div', { 'style': 'font-size: 28px; font-weight: 700; color: #e67e22;' }, String(totalRules)),
-						E('div', { 'style': 'font-size: 11px; color: var(--kiss-muted); text-transform: uppercase;' }, 'Rules')
-					])
+				E('div', { 'style': 'display: flex; align-items: center; gap: 8px; font-size: 14px; background: var(--kiss-bg2, #1a1a2e); padding: 8px 16px; border-radius: 6px; border: 1px solid var(--kiss-border, #333);' }, [
+					E('span', { 'style': 'font-weight: 700; color: #3498db;' }, String(categories.length)),
+					E('span', { 'style': 'color: var(--kiss-muted);' }, 'Categories'),
+					E('span', { 'style': 'color: var(--kiss-muted); margin: 0 4px;' }, '·'),
+					E('span', { 'style': 'font-weight: 700; color: #27ae60;' }, String(enabledCategories)),
+					E('span', { 'style': 'color: var(--kiss-muted);' }, 'Active'),
+					E('span', { 'style': 'color: var(--kiss-muted); margin: 0 4px;' }, '·'),
+					E('span', { 'style': 'font-weight: 700; color: #e67e22;' }, String(totalRules)),
+					E('span', { 'style': 'color: var(--kiss-muted);' }, 'Rules')
 				])
 			]),
 

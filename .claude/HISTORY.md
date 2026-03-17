@@ -1,6 +1,31 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-03-16 (CrowdSec Heatmap)_
+_Last updated: 2026-03-17 (LuCI Metrics Dashboard + WAF hot-reload)_
+
+0. **LuCI Metrics Dashboard + WAF Hot-Reload (2026-03-17)**
+   - NEW: `luci-app-metrics-dashboard` package - Real-time system metrics dashboard
+     - RPCD backend: `luci.metrics` with 9 methods (overview, certs, vhosts, metablogs, streamlits, waf_stats, connections, firewall_stats, all)
+     - Shows: uptime, memory, load, vHosts, certificates, MetaBlogs, Streamlits, LXC containers
+     - WAF stats: active bans, alerts today, threats detected, blocked requests
+     - Connections: HTTP, HTTPS, SSH, total TCP (live counts)
+     - Service status: HAProxy, mitmproxy, CrowdSec running indicators
+     - Auto-refresh every 5 seconds via poll.add()
+     - Menu: Status → Metrics Dashboard
+   - WAF Filters page: Stats layout changed from 3 boxes to single compact line
+   - Discovered mitmproxy haproxy_router.py already has hot-reload (checks file mtime every request)
+   - Updated metablogizerctl to use hot-reload instead of restart for faster publishing
+   - Fixed HAProxy 503 errors: Disabled health check on mitmproxy backend (mitmproxy returns 404 without valid Host)
+   - Cleaned up test sites (testsite, lblstest)
+
+0. **HAProxy/mitmproxy WAF Routing Fix (2026-03-17)**
+   - Fixed published sites returning 503 errors due to misconfigured WAF routing
+   - Root cause 1: mitmproxy UCI config missing `haproxy_router_enabled='1'` - HAProxy router addon wasn't loading
+   - Root cause 2: mitmproxy routes file not reloaded after adding new domains
+   - Root cause 3: HAProxy config needed reload after UCI changes
+   - Fix: Added `haproxy_router_enabled` to mitmproxy.in UCI instance
+   - Fix: Restart mitmproxy to load routes, reload HAProxy for config sync
+   - Fixed metablogizerctl to set correct mitmproxy routing for new sites (previous session)
+   - Sites verified working: testsite, santefr, srvi, filetest, sweedtest, litest, lblstest, tdahbdss
 
 0. **CrowdSec Dashboard Geo Heatmap (2026-03-16)**
    - NEW: Geo heatmap visualization showing threat origins on world map

@@ -3,7 +3,7 @@
         "description": "Droplet Publisher",
         "read": {
             "ubus": {
-                "luci.droplet": ["status", "list"]
+                "luci.droplet": ["status", "list", "job_status"]
             }
         },
         "write": {

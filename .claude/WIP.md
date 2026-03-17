@@ -1,12 +1,54 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-16 (Unified SMTP Relay)_
+_Last updated: 2026-03-17 (LuCI Metrics Dashboard + WAF hot-reload)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
 ---
 
 ## Recently Completed
+
+### 2026-03-17
+
+- **LuCI Metrics Dashboard (Complete)**
+  - New `luci-app-metrics-dashboard` package with real-time system metrics
+  - RPCD backend: `luci.metrics` with 9 methods (overview, certs, vhosts, metablogs, streamlits, waf_stats, connections, firewall_stats, all)
+  - Dashboard shows: uptime, memory, load, vHosts, certificates, MetaBlogs, Streamlits, LXC containers
+  - WAF stats: active bans, alerts today, threats detected, blocked requests
+  - Connections: HTTP, HTTPS, SSH, total TCP (live counts)
+  - Service status: HAProxy, mitmproxy, CrowdSec running indicators
+  - Auto-refresh every 5 seconds via poll.add()
+  - Menu: Status → Metrics Dashboard
+
+- **WAF Filters Stats Layout Fix (Complete)**
+  - Changed stats from 3 separate boxes to single compact line
+  - Shows: "X Categories · Y Active · Z Rules" inline
+  - Cleaner header with KISS theme styling
+
+- **Mitmproxy Hot-Reload Discovery (Complete)**
+  - Discovered haproxy_router.py already supports hot-reload (`_check_interval = 1`)
+  - Routes file is checked every request; no restart needed for new routes
+  - Updated metablogizerctl `_add_mitmproxy_route()` to skip mitmproxy restart
+  - Significantly faster site publishing workflow
+
+- **HAProxy Health Check Fix (Complete)**
+  - Root cause of 503 errors: HAProxy health check failing because mitmproxy returns 404 for requests without valid Host header
+  - Fix: Disabled health check on mitmproxy_inspector backend (`check="0"`)
+  - HAProxy container required full restart (reload not sufficient for backend server changes)
+
+- **Test Sites Cleanup (Complete)**
+  - Removed testsite and lblstest (test sites no longer needed)
+  - Cleaned up UCI config, mitmproxy routes, HAProxy backends
+
+- **HAProxy/mitmproxy WAF Routing Fix (Complete)**
+  - Fixed published sites returning 503 errors
+  - **Root causes identified and fixed**:
+    1. mitmproxy UCI missing `haproxy_router_enabled='1'` - addon not loading
+    2. mitmproxy routes file loaded at startup, not reloaded dynamically
+    3. HAProxy needed reload to sync config changes
+  - Fixed metablogizerctl to route new sites through mitmproxy (previous session)
+  - All test sites verified working: testsite, santefr, srvi, filetest, sweedtest, litest, lblstest, tdahbdss
+  - Note: `wall.gk2.secubox.in` doesn't exist - only `wall.maegia.tv`
 
 ### 2026-03-16
 

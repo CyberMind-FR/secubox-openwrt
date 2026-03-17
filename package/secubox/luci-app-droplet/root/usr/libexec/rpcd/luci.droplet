@@ -5,10 +5,14 @@
 
 UPLOAD_DIR="/tmp/droplet-upload"
 DEFAULT_DOMAIN="gk2.secubox.in"
+JOB_DIR="/tmp/droplet-jobs"
+
+# Ensure job dir exists
+mkdir -p "$JOB_DIR"
 
 case "$1" in
     list)
-        echo '{"publish":{},"upload":{"file":"string","name":"string","domain":"string"},"list":{},"remove":{"name":"string"},"rename":{"old":"string","new":"string"},"status":{}}'
+        echo '{"publish":{},"upload":{"file":"string","name":"string","domain":"string"},"list":{},"remove":{"name":"string"},"rename":{"old":"string","new":"string"},"status":{},"job_status":{"job_id":"string"}}'
         ;;
     call)
         case "$2" in
@@ -19,6 +23,25 @@ case "$1" in
                 json_add_int "sites_count" "$(uci show metablogizer 2>/dev/null | grep -c '=site$')"
                 json_add_int "apps_count" "$(uci show streamlit 2>/dev/null | grep -c '=instance$')"
                 json_dump
+                ;;
+
+            job_status)
+                # Check status of an async publish job
+                read -r input
+                job_id=$(echo "$input" | jsonfilter -e '@.job_id' 2>/dev/null)
+
+                if [ -z "$job_id" ]; then
+                    echo '{"error":"Job ID required"}'
+                    exit 0
+                fi
+
+                job_file="$JOB_DIR/$job_id"
+                if [ ! -f "$job_file" ]; then
+                    echo '{"status":"not_found"}'
+                    exit 0
+                fi
+
+                cat "$job_file"
                 ;;
 
             list)
@@ -59,53 +82,57 @@ case "$1" in
                 ;;
 
             upload)
-                # Read params
+                # Read params using jsonfilter for reliability
                 read -r input
-                json_load "$input"
-                json_get_var file file
-                json_get_var name name
-                json_get_var domain domain
+                file=$(echo "$input" | jsonfilter -e '@.file' 2>/dev/null)
+                name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+                domain=$(echo "$input" | jsonfilter -e '@.domain' 2>/dev/null)
 
                 [ -z "$name" ] && { echo '{"error":"Name required"}'; exit 0; }
                 [ -z "$file" ] && { echo '{"error":"File required"}'; exit 0; }
                 [ -z "$domain" ] && domain="$DEFAULT_DOMAIN"
 
                 # File should be in upload dir (set by cgi-io)
-                local upload_file="$UPLOAD_DIR/$file"
+                upload_file="$UPLOAD_DIR/$file"
                 if [ ! -f "$upload_file" ]; then
                     # Try direct path
                     upload_file="$file"
                 fi
 
-                [ ! -f "$upload_file" ] && { echo '{"error":"File not found"}'; exit 0; }
+                [ ! -f "$upload_file" ] && { echo '{"error":"File not found: '"$file"'"}'; exit 0; }
 
-                # Publish
-                result=$(dropletctl publish "$upload_file" "$name" "$domain" 2>&1)
-                exit_code=$?
+                # Generate job ID and run publish async
+                job_id="$(date +%s)_$$"
+                job_file="$JOB_DIR/$job_id"
 
-                # Extract vhost from result
-                vhost=$(echo "$result" | grep -oE '[a-z0-9_-]+\.[a-z0-9.-]+' | tail -1)
+                # Initialize job status
+                echo '{"status":"running","name":"'"$name"'","domain":"'"$domain"'"}' > "$job_file"
 
-                json_init
-                if [ $exit_code -eq 0 ]; then
-                    json_add_boolean "success" 1
-                    json_add_string "vhost" "$vhost"
-                    json_add_string "url" "https://$vhost/"
-                    json_add_string "message" "Published successfully"
-                else
-                    json_add_boolean "success" 0
-                    json_add_string "error" "$result"
-                fi
-                json_dump
+                # Write background script - use file output to avoid pipe inheritance issues
+                bg_script="/tmp/droplet-bg-$job_id.sh"
+                result_file="/tmp/droplet-result-$job_id.txt"
+                printf '#!/bin/sh\nupload_file="$1"\nname="$2"\ndomain="$3"\njob_file="$4"\nresult_file="$5"\n' > "$bg_script"
+                # Write output to file instead of capturing in variable (avoids pipe inheritance)
+                printf 'dropletctl publish "$upload_file" "$name" "$domain" > "$result_file" 2>&1\nexit_code=$?\n' >> "$bg_script"
+                # Check for success marker and extract vhost
+                printf 'if grep -q "\\[OK\\] Published:" "$result_file"; then\n' >> "$bg_script"
+                printf '  vhost=$(tail -1 "$result_file")\n' >> "$bg_script"
+                printf '  printf '\''{"status":"complete","success":true,"vhost":"%%s","url":"https://%%s/","message":"Published successfully"}'\'' "$vhost" "$vhost" > "$job_file"\n' >> "$bg_script"
+                printf 'else\n  error_msg=$(tail -10 "$result_file" | tr '\''\\n'\'' '\'' '\'' | sed '\''s/"/\\\\"/g'\'')\n' >> "$bg_script"
+                printf '  printf '\''{"status":"complete","success":false,"error":"%%s"}'\'' "$error_msg" > "$job_file"\nfi\n' >> "$bg_script"
+                printf 'rm -f "$upload_file" "$result_file" "$0"\nsleep 300\nrm -f "$job_file"\n' >> "$bg_script"
+                chmod +x "$bg_script"
 
-                # Cleanup
-                rm -f "$upload_file"
+                # Run background script detached
+                setsid "$bg_script" "$upload_file" "$name" "$domain" "$job_file" "$result_file" </dev/null >/dev/null 2>&1 &
+
+                # Return immediately with job ID
+                echo '{"status":"started","job_id":"'"$job_id"'","name":"'"$name"'","domain":"'"$domain"'"}'
                 ;;
 
             remove)
                 read -r input
-                json_load "$input"
-                json_get_var name name
+                name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
 
                 [ -z "$name" ] && { echo '{"error":"Name required"}'; exit 0; }
 
@@ -119,9 +146,8 @@ case "$1" in
 
             rename)
                 read -r input
-                json_load "$input"
-                json_get_var old old
-                json_get_var new new
+                old=$(echo "$input" | jsonfilter -e '@.old' 2>/dev/null)
+                new=$(echo "$input" | jsonfilter -e '@.new' 2>/dev/null)
 
                 [ -z "$old" ] || [ -z "$new" ] && { echo '{"error":"Old and new names required"}'; exit 0; }
 
