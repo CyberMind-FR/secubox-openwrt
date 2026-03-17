@@ -482,10 +482,10 @@ except Exception as e:
 " 2>/dev/null
 	fi
 
-	# Trigger mitmproxy reload to pick up new route
-	# mitmproxy loads routes at startup, so we need to restart it
-	# Run in background to avoid blocking publish
-	( sleep 1 && /etc/init.d/mitmproxy restart ) >/dev/null 2>&1 &
+	# mitmproxy hot-reloads routes automatically on file change (checks every request)
+	# No restart needed - just ensure file permissions are correct
+	chmod 644 "$routes_file" 2>/dev/null
+	chmod 644 "$main_routes" 2>/dev/null
 }
 
 cmd_publish() {
