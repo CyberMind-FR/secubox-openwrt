@@ -1,9 +1,8 @@
 'use strict';
 'require view';
-'require dom';
 'require poll';
 'require rpc';
-'require ui';
+'require secubox/kiss-theme';
 
 var callOverview = rpc.declare({
     object: 'luci.metrics',
@@ -23,304 +22,366 @@ var callConnections = rpc.declare({
     expect: {}
 });
 
-var callFirewallStats = rpc.declare({
-    object: 'luci.metrics',
-    method: 'firewall_stats',
-    expect: {}
-});
-
-var callCerts = rpc.declare({
-    object: 'luci.metrics',
-    method: 'certs',
-    expect: {}
-});
-
-var callVhosts = rpc.declare({
-    object: 'luci.metrics',
-    method: 'vhosts',
-    expect: {}
-});
-
-var callMetablogs = rpc.declare({
-    object: 'luci.metrics',
-    method: 'metablogs',
-    expect: {}
-});
-
-var callStreamlits = rpc.declare({
-    object: 'luci.metrics',
-    method: 'streamlits',
-    expect: {}
-});
-
 function formatUptime(seconds) {
-    var days = Math.floor(seconds / 86400);
-    var hours = Math.floor((seconds % 86400) / 3600);
-    var mins = Math.floor((seconds % 3600) / 60);
-    if (days > 0) return days + 'd ' + hours + 'h ' + mins + 'm';
-    if (hours > 0) return hours + 'h ' + mins + 'm';
-    return mins + 'm';
+    var d = Math.floor(seconds / 86400);
+    var h = Math.floor((seconds % 86400) / 3600);
+    var m = Math.floor((seconds % 3600) / 60);
+    if (d > 0) return d + 'd ' + h + 'h';
+    if (h > 0) return h + 'h ' + m + 'm';
+    return m + 'm';
 }
 
-function formatMemory(kb) {
-    if (kb > 1048576) return (kb / 1048576).toFixed(1) + ' GB';
-    if (kb > 1024) return (kb / 1024).toFixed(0) + ' MB';
-    return kb + ' KB';
-}
-
-function createStatusBadge(active, label) {
-    var cls = active ? 'badge-success' : 'badge-danger';
-    var icon = active ? '●' : '○';
-    return E('span', { 'class': 'metrics-badge ' + cls }, icon + ' ' + label);
-}
-
-function createMetricCard(title, value, subtitle, icon, color) {
-    return E('div', { 'class': 'metrics-card metrics-card-' + (color || 'default') }, [
-        E('div', { 'class': 'metrics-card-icon' }, icon || '📊'),
-        E('div', { 'class': 'metrics-card-content' }, [
-            E('div', { 'class': 'metrics-card-value' }, String(value)),
-            E('div', { 'class': 'metrics-card-title' }, title),
-            subtitle ? E('div', { 'class': 'metrics-card-subtitle' }, subtitle) : null
-        ])
-    ]);
-}
-
-function createServiceRow(name, domain, running, enabled) {
-    var statusCls = running ? 'status-running' : (enabled ? 'status-stopped' : 'status-disabled');
-    var statusText = running ? 'Running' : (enabled ? 'Stopped' : 'Disabled');
-    return E('tr', {}, [
-        E('td', {}, name),
-        E('td', {}, domain ? E('a', { href: 'https://' + domain, target: '_blank' }, domain) : '-'),
-        E('td', { 'class': statusCls }, statusText)
-    ]);
-}
-
-function createCertRow(cert) {
-    var statusCls = 'cert-' + cert.status;
-    return E('tr', { 'class': statusCls }, [
-        E('td', {}, cert.name),
-        E('td', {}, cert.expiry || 'Unknown'),
-        E('td', {}, cert.days_left + ' days'),
-        E('td', { 'class': 'cert-status-' + cert.status }, cert.status.toUpperCase())
-    ]);
+function formatMem(kb) {
+    return (kb / 1048576).toFixed(1) + ' GB';
 }
 
 return view.extend({
-    css: `
-        .metrics-dashboard { padding: 10px; }
-        .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
-        .metrics-card { background: var(--card-bg, #1a1a2e); border-radius: 8px; padding: 15px; display: flex; align-items: center; gap: 15px; border: 1px solid var(--border-color, #333); }
-        .metrics-card-icon { font-size: 2em; }
-        .metrics-card-value { font-size: 1.8em; font-weight: bold; color: var(--primary-color, #00ffb2); }
-        .metrics-card-title { font-size: 0.9em; color: var(--text-muted, #888); }
-        .metrics-card-subtitle { font-size: 0.75em; color: var(--text-dim, #666); }
-        .metrics-card-success .metrics-card-value { color: #39ff14; }
-        .metrics-card-warning .metrics-card-value { color: #ffb300; }
-        .metrics-card-danger .metrics-card-value { color: #ff3535; }
-        .metrics-card-info .metrics-card-value { color: #00c3ff; }
-
-        .metrics-section { background: var(--card-bg, #1a1a2e); border-radius: 8px; padding: 15px; margin-bottom: 15px; border: 1px solid var(--border-color, #333); }
-        .metrics-section h3 { margin: 0 0 15px 0; padding-bottom: 10px; border-bottom: 1px solid var(--border-color, #333); color: var(--heading-color, #fff); display: flex; align-items: center; gap: 10px; }
-        .metrics-section h3 .icon { font-size: 1.2em; }
-
-        .metrics-badge { padding: 3px 8px; border-radius: 4px; font-size: 0.85em; margin-right: 8px; }
-        .badge-success { background: rgba(57, 255, 20, 0.2); color: #39ff14; }
-        .badge-danger { background: rgba(255, 53, 53, 0.2); color: #ff3535; }
-        .badge-warning { background: rgba(255, 179, 0, 0.2); color: #ffb300; }
-        .badge-info { background: rgba(0, 195, 255, 0.2); color: #00c3ff; }
-
-        .metrics-table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
-        .metrics-table th, .metrics-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border-color, #333); }
-        .metrics-table th { color: var(--text-muted, #888); font-weight: normal; }
-        .metrics-table tr:hover { background: rgba(255,255,255,0.03); }
-
-        .status-running { color: #39ff14; }
-        .status-stopped { color: #ffb300; }
-        .status-disabled { color: #666; }
-
-        .cert-valid { }
-        .cert-expiring { background: rgba(255, 179, 0, 0.1); }
-        .cert-critical { background: rgba(255, 53, 53, 0.15); }
-        .cert-expired { background: rgba(255, 53, 53, 0.25); }
-        .cert-status-valid { color: #39ff14; }
-        .cert-status-expiring { color: #ffb300; }
-        .cert-status-critical { color: #ff6b35; }
-        .cert-status-expired { color: #ff3535; }
-
-        .services-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 15px; }
-
-        .refresh-info { text-align: right; color: var(--text-dim, #666); font-size: 0.8em; margin-bottom: 10px; }
-
-        .progress-bar { height: 8px; background: var(--border-color, #333); border-radius: 4px; overflow: hidden; margin-top: 5px; }
-        .progress-fill { height: 100%; transition: width 0.3s; }
-        .progress-success { background: linear-gradient(90deg, #39ff14, #00ffb2); }
-        .progress-warning { background: linear-gradient(90deg, #ffb300, #ff6b35); }
-        .progress-danger { background: linear-gradient(90deg, #ff6b35, #ff3535); }
-
-        .live-indicator { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #39ff14; margin-right: 5px; animation: pulse 2s infinite; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-    `,
-
     load: function() {
+        // Inject custom CSS
+        var style = document.createElement('style');
+        style.textContent = `
+            .mx-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 20px;
+                padding-bottom: 16px;
+                border-bottom: 1px solid var(--kiss-border, #2a2a40);
+            }
+            .mx-title {
+                font-size: 22px;
+                font-weight: 600;
+                color: #fff;
+            }
+            .mx-live {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-size: 12px;
+                color: var(--kiss-muted, #888);
+            }
+            .mx-dot {
+                width: 8px;
+                height: 8px;
+                background: #00c853;
+                border-radius: 50%;
+                animation: blink 1.5s infinite;
+            }
+            @keyframes blink {
+                50% { opacity: 0.4; }
+            }
+
+            /* Stats Grid */
+            .mx-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+                gap: 12px;
+                margin-bottom: 20px;
+            }
+            .mx-card {
+                background: var(--kiss-bg2, #1a1a2e);
+                border: 1px solid var(--kiss-border, #2a2a40);
+                border-radius: 8px;
+                padding: 16px;
+                text-align: center;
+            }
+            .mx-card:hover {
+                border-color: var(--kiss-green, #00c853);
+            }
+            .mx-icon {
+                font-size: 24px;
+                margin-bottom: 8px;
+            }
+            .mx-val {
+                font-size: 28px;
+                font-weight: 700;
+                color: #fff;
+                line-height: 1;
+            }
+            .mx-val.green { color: #00c853; }
+            .mx-val.cyan { color: #00bcd4; }
+            .mx-val.orange { color: #ff9800; }
+            .mx-val.red { color: #f44336; }
+            .mx-val.purple { color: #ab47bc; }
+            .mx-lbl {
+                font-size: 11px;
+                color: var(--kiss-muted, #888);
+                text-transform: uppercase;
+                margin-top: 4px;
+            }
+            .mx-sub {
+                font-size: 10px;
+                color: #555;
+                margin-top: 4px;
+            }
+
+            /* Services bar */
+            .mx-svc {
+                display: flex;
+                gap: 20px;
+                align-items: center;
+                padding: 12px 16px;
+                background: var(--kiss-bg2, #1a1a2e);
+                border: 1px solid var(--kiss-border, #2a2a40);
+                border-radius: 8px;
+                margin-bottom: 20px;
+            }
+            .mx-svc-title {
+                font-size: 11px;
+                color: var(--kiss-muted, #888);
+                text-transform: uppercase;
+            }
+            .mx-svc-item {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                font-size: 13px;
+                color: #ccc;
+            }
+            .mx-svc-dot {
+                width: 10px;
+                height: 10px;
+                border-radius: 50%;
+            }
+            .mx-svc-dot.on {
+                background: #00c853;
+                box-shadow: 0 0 6px #00c853;
+            }
+            .mx-svc-dot.off {
+                background: #f44336;
+            }
+
+            /* Panels */
+            .mx-panels {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 16px;
+            }
+            @media (max-width: 768px) {
+                .mx-panels { grid-template-columns: 1fr; }
+            }
+            .mx-panel {
+                background: var(--kiss-bg2, #1a1a2e);
+                border: 1px solid var(--kiss-border, #2a2a40);
+                border-radius: 8px;
+                padding: 16px;
+            }
+            .mx-panel-title {
+                font-size: 13px;
+                font-weight: 600;
+                color: #fff;
+                margin-bottom: 12px;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .mx-row {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 8px 0;
+                border-bottom: 1px solid var(--kiss-border, #2a2a40);
+            }
+            .mx-row:last-child { border-bottom: none; }
+            .mx-row-label {
+                font-size: 12px;
+                color: var(--kiss-muted, #888);
+            }
+            .mx-row-val {
+                font-size: 16px;
+                font-weight: 600;
+                color: #00bcd4;
+            }
+        `;
+        document.head.appendChild(style);
+
         return Promise.all([
             callOverview().catch(function() { return {}; }),
             callWafStats().catch(function() { return {}; }),
-            callConnections().catch(function() { return {}; }),
-            callFirewallStats().catch(function() { return {}; }),
-            callCerts().catch(function() { return { certs: [] }; }),
-            callVhosts().catch(function() { return { vhosts: [] }; }),
-            callMetablogs().catch(function() { return { sites: [] }; }),
-            callStreamlits().catch(function() { return { apps: [] }; })
+            callConnections().catch(function() { return {}; })
         ]);
     },
 
     render: function(data) {
-        var overview = data[0] || {};
-        var waf = data[1] || {};
-        var conns = data[2] || {};
-        var fw = data[3] || {};
-        var certs = (data[4] || {}).certs || [];
-        var vhosts = (data[5] || {}).vhosts || [];
-        var metablogs = (data[6] || {}).sites || [];
-        var streamlits = (data[7] || {}).apps || [];
+        var o = data[0] || {};
+        var w = data[1] || {};
+        var c = data[2] || {};
 
-        var memPct = overview.mem_pct || 0;
-        var memClass = memPct > 90 ? 'danger' : (memPct > 70 ? 'warning' : 'success');
+        var memPct = o.mem_pct || 0;
+        var memCls = memPct > 85 ? 'red' : (memPct > 70 ? 'orange' : 'green');
 
-        var view = E('div', { 'class': 'metrics-dashboard' }, [
-            E('div', { 'class': 'refresh-info' }, [
-                E('span', { 'class': 'live-indicator' }),
-                'Live refresh: 5s | Last: ',
-                E('span', { 'id': 'last-refresh' }, new Date().toLocaleTimeString())
-            ]),
-
-            // Overview Cards
-            E('div', { 'class': 'metrics-grid', 'id': 'overview-grid' }, [
-                createMetricCard('Uptime', formatUptime(overview.uptime || 0), 'Load: ' + (overview.load || '0.00'), '⏱️'),
-                createMetricCard('Memory', memPct + '%', formatMemory(overview.mem_used_kb || 0) + ' / ' + formatMemory(overview.mem_total_kb || 0), '🧠', memClass),
-                createMetricCard('vHosts', overview.vhosts || 0, 'Active virtual hosts', '🌐', 'info'),
-                createMetricCard('Certificates', overview.certificates || 0, 'SSL/TLS certificates', '🔒', 'success'),
-                createMetricCard('MetaBlogs', overview.metablogs || 0, 'Static sites', '📄'),
-                createMetricCard('Streamlits', overview.streamlits || 0, 'Python apps', '🐍'),
-                createMetricCard('LXC Containers', overview.lxc_containers || 0, 'Running containers', '📦', 'info')
-            ]),
-
-            // Services Status
-            E('div', { 'class': 'metrics-section', 'id': 'services-section' }, [
-                E('h3', {}, [E('span', { 'class': 'icon' }, '🔧'), 'Core Services']),
-                E('div', { 'style': 'display: flex; gap: 15px; flex-wrap: wrap;' }, [
-                    createStatusBadge(overview.haproxy, 'HAProxy'),
-                    createStatusBadge(overview.mitmproxy, 'mitmproxy WAF'),
-                    createStatusBadge(overview.crowdsec, 'CrowdSec')
+        var content = [
+            // Header
+            E('div', { 'class': 'mx-header' }, [
+                E('div', { 'class': 'mx-title' }, 'Metrics Dashboard'),
+                E('div', { 'class': 'mx-live' }, [
+                    E('span', { 'class': 'mx-dot' }),
+                    'LIVE',
+                    E('span', { 'id': 'mx-time' }, new Date().toLocaleTimeString())
                 ])
             ]),
 
-            // WAF & Security
-            E('div', { 'class': 'metrics-section', 'id': 'waf-section' }, [
-                E('h3', {}, [E('span', { 'class': 'icon' }, '🛡️'), 'WAF & Security']),
-                E('div', { 'class': 'metrics-grid' }, [
-                    createMetricCard('Active Bans', waf.active_bans || 0, 'CrowdSec decisions', '🚫', (waf.active_bans || 0) > 0 ? 'warning' : 'success'),
-                    createMetricCard('Alerts (24h)', waf.alerts_today || 0, 'Security alerts', '⚠️', (waf.alerts_today || 0) > 10 ? 'danger' : 'info'),
-                    createMetricCard('WAF Threats', waf.waf_threats || 0, 'Detected today', '🎯', (waf.waf_threats || 0) > 0 ? 'warning' : 'success'),
-                    createMetricCard('WAF Blocked', waf.waf_blocked || 0, 'Blocked requests', '✋', 'danger')
+            // Main stats grid
+            E('div', { 'class': 'mx-grid' }, [
+                E('div', { 'class': 'mx-card' }, [
+                    E('div', { 'class': 'mx-icon' }, '⏱'),
+                    E('div', { 'class': 'mx-val green', 'id': 's-up' }, formatUptime(o.uptime || 0)),
+                    E('div', { 'class': 'mx-lbl' }, 'Uptime'),
+                    E('div', { 'class': 'mx-sub', 'id': 's-load' }, 'Load: ' + (o.load || '0'))
+                ]),
+                E('div', { 'class': 'mx-card' }, [
+                    E('div', { 'class': 'mx-icon' }, '🧠'),
+                    E('div', { 'class': 'mx-val ' + memCls, 'id': 's-mem' }, memPct + '%'),
+                    E('div', { 'class': 'mx-lbl' }, 'Memory'),
+                    E('div', { 'class': 'mx-sub' }, formatMem(o.mem_used_kb || 0) + ' / ' + formatMem(o.mem_total_kb || 0))
+                ]),
+                E('div', { 'class': 'mx-card' }, [
+                    E('div', { 'class': 'mx-icon' }, '🌐'),
+                    E('div', { 'class': 'mx-val cyan', 'id': 's-vh' }, String(o.vhosts || 0)),
+                    E('div', { 'class': 'mx-lbl' }, 'vHosts')
+                ]),
+                E('div', { 'class': 'mx-card' }, [
+                    E('div', { 'class': 'mx-icon' }, '🔒'),
+                    E('div', { 'class': 'mx-val purple', 'id': 's-cert' }, String(o.certificates || 0)),
+                    E('div', { 'class': 'mx-lbl' }, 'SSL Certs')
+                ]),
+                E('div', { 'class': 'mx-card' }, [
+                    E('div', { 'class': 'mx-icon' }, '📄'),
+                    E('div', { 'class': 'mx-val cyan' }, String(o.metablogs || 0)),
+                    E('div', { 'class': 'mx-lbl' }, 'MetaBlogs')
+                ]),
+                E('div', { 'class': 'mx-card' }, [
+                    E('div', { 'class': 'mx-icon' }, '🐍'),
+                    E('div', { 'class': 'mx-val green' }, String(o.streamlits || 0)),
+                    E('div', { 'class': 'mx-lbl' }, 'Streamlits')
+                ]),
+                E('div', { 'class': 'mx-card' }, [
+                    E('div', { 'class': 'mx-icon' }, '📦'),
+                    E('div', { 'class': 'mx-val purple' }, String(o.lxc_containers || 0)),
+                    E('div', { 'class': 'mx-lbl' }, 'LXC')
+                ]),
+                E('div', { 'class': 'mx-card' }, [
+                    E('div', { 'class': 'mx-icon' }, '🔗'),
+                    E('div', { 'class': 'mx-val cyan', 'id': 's-tcp' }, String(c.total_tcp || 0)),
+                    E('div', { 'class': 'mx-lbl' }, 'TCP Conns')
                 ])
             ]),
 
-            // Connections
-            E('div', { 'class': 'metrics-section', 'id': 'connections-section' }, [
-                E('h3', {}, [E('span', { 'class': 'icon' }, '🔗'), 'Active Connections']),
-                E('div', { 'class': 'metrics-grid' }, [
-                    createMetricCard('HTTPS', conns.https || 0, 'Port 443', '🔐', 'success'),
-                    createMetricCard('HTTP', conns.http || 0, 'Port 80', '🌍'),
-                    createMetricCard('SSH', conns.ssh || 0, 'Port 22', '💻', 'info'),
-                    createMetricCard('Total TCP', conns.total_tcp || 0, 'All connections', '📡')
+            // Services bar
+            E('div', { 'class': 'mx-svc' }, [
+                E('span', { 'class': 'mx-svc-title' }, 'Services'),
+                E('div', { 'class': 'mx-svc-item' }, [
+                    E('span', { 'class': 'mx-svc-dot ' + (o.haproxy ? 'on' : 'off'), 'id': 'sv-ha' }),
+                    'HAProxy'
+                ]),
+                E('div', { 'class': 'mx-svc-item' }, [
+                    E('span', { 'class': 'mx-svc-dot ' + (o.mitmproxy ? 'on' : 'off'), 'id': 'sv-waf' }),
+                    'WAF'
+                ]),
+                E('div', { 'class': 'mx-svc-item' }, [
+                    E('span', { 'class': 'mx-svc-dot ' + (o.crowdsec ? 'on' : 'off'), 'id': 'sv-cs' }),
+                    'CrowdSec'
                 ])
             ]),
 
-            // Firewall
-            E('div', { 'class': 'metrics-section', 'id': 'firewall-section' }, [
-                E('h3', {}, [E('span', { 'class': 'icon' }, '🔥'), 'Firewall Stats']),
-                E('div', { 'class': 'metrics-grid' }, [
-                    createMetricCard('Bouncer Blocks', fw.bouncer_blocks || 0, 'CrowdSec bouncer', '🛑', (fw.bouncer_blocks || 0) > 0 ? 'danger' : 'success')
-                ])
-            ]),
-
-            // Services Grid
-            E('div', { 'class': 'services-grid' }, [
-                // Certificates
-                E('div', { 'class': 'metrics-section', 'id': 'certs-section' }, [
-                    E('h3', {}, [E('span', { 'class': 'icon' }, '🔒'), 'SSL Certificates']),
-                    certs.length > 0 ?
-                        E('table', { 'class': 'metrics-table' }, [
-                            E('thead', {}, E('tr', {}, [
-                                E('th', {}, 'Domain'),
-                                E('th', {}, 'Expiry'),
-                                E('th', {}, 'Days Left'),
-                                E('th', {}, 'Status')
-                            ])),
-                            E('tbody', {}, certs.slice(0, 10).map(createCertRow))
-                        ]) :
-                        E('p', { 'class': 'text-muted' }, 'No certificates found')
+            // Panels
+            E('div', { 'class': 'mx-panels' }, [
+                // WAF Panel
+                E('div', { 'class': 'mx-panel' }, [
+                    E('div', { 'class': 'mx-panel-title' }, [
+                        E('span', {}, '🛡'),
+                        'WAF & Security'
+                    ]),
+                    E('div', { 'class': 'mx-row' }, [
+                        E('span', { 'class': 'mx-row-label' }, 'Active Bans'),
+                        E('span', { 'class': 'mx-row-val', 'id': 'w-bans', 'style': (w.active_bans || 0) > 0 ? 'color:#ff9800' : '' }, String(w.active_bans || 0))
+                    ]),
+                    E('div', { 'class': 'mx-row' }, [
+                        E('span', { 'class': 'mx-row-label' }, 'Alerts (24h)'),
+                        E('span', { 'class': 'mx-row-val', 'id': 'w-alerts' }, String(w.alerts_today || 0))
+                    ]),
+                    E('div', { 'class': 'mx-row' }, [
+                        E('span', { 'class': 'mx-row-label' }, 'WAF Blocked'),
+                        E('span', { 'class': 'mx-row-val', 'id': 'w-blocked', 'style': (w.waf_blocked || 0) > 0 ? 'color:#ff9800' : '' }, String(w.waf_blocked || 0))
+                    ])
                 ]),
 
-                // MetaBlog Sites
-                E('div', { 'class': 'metrics-section', 'id': 'metablogs-section' }, [
-                    E('h3', {}, [E('span', { 'class': 'icon' }, '📄'), 'MetaBlog Sites']),
-                    metablogs.length > 0 ?
-                        E('table', { 'class': 'metrics-table' }, [
-                            E('thead', {}, E('tr', {}, [
-                                E('th', {}, 'Name'),
-                                E('th', {}, 'Domain'),
-                                E('th', {}, 'Status')
-                            ])),
-                            E('tbody', {}, metablogs.slice(0, 10).map(function(s) {
-                                return createServiceRow(s.name, s.domain, s.running, s.enabled);
-                            }))
-                        ]) :
-                        E('p', { 'class': 'text-muted' }, 'No MetaBlog sites')
-                ])
-            ]),
-
-            // Streamlit Apps
-            streamlits.length > 0 ?
-                E('div', { 'class': 'metrics-section', 'id': 'streamlits-section' }, [
-                    E('h3', {}, [E('span', { 'class': 'icon' }, '🐍'), 'Streamlit Apps']),
-                    E('table', { 'class': 'metrics-table' }, [
-                        E('thead', {}, E('tr', {}, [
-                            E('th', {}, 'Name'),
-                            E('th', {}, 'Domain'),
-                            E('th', {}, 'Status')
-                        ])),
-                        E('tbody', {}, streamlits.map(function(s) {
-                            return createServiceRow(s.name, s.domain, s.running, s.enabled);
-                        }))
+                // Connections Panel
+                E('div', { 'class': 'mx-panel' }, [
+                    E('div', { 'class': 'mx-panel-title' }, [
+                        E('span', {}, '🔗'),
+                        'Connections'
+                    ]),
+                    E('div', { 'class': 'mx-row' }, [
+                        E('span', { 'class': 'mx-row-label' }, 'HTTPS (443)'),
+                        E('span', { 'class': 'mx-row-val', 'id': 'c-https' }, String(c.https || 0))
+                    ]),
+                    E('div', { 'class': 'mx-row' }, [
+                        E('span', { 'class': 'mx-row-label' }, 'HTTP (80)'),
+                        E('span', { 'class': 'mx-row-val', 'id': 'c-http' }, String(c.http || 0))
+                    ]),
+                    E('div', { 'class': 'mx-row' }, [
+                        E('span', { 'class': 'mx-row-label' }, 'SSH (22)'),
+                        E('span', { 'class': 'mx-row-val', 'id': 'c-ssh' }, String(c.ssh || 0))
+                    ]),
+                    E('div', { 'class': 'mx-row' }, [
+                        E('span', { 'class': 'mx-row-label' }, 'Total TCP'),
+                        E('span', { 'class': 'mx-row-val', 'id': 'c-total', 'style': 'color:#ab47bc' }, String(c.total_tcp || 0))
                     ])
-                ]) : null
-        ]);
+                ])
+            ])
+        ];
 
-        // Setup polling for real-time updates
+        // Setup polling
         poll.add(L.bind(this.pollMetrics, this), 5);
 
-        return view;
+        // Clock
+        setInterval(function() {
+            var el = document.getElementById('mx-time');
+            if (el) el.textContent = new Date().toLocaleTimeString();
+        }, 1000);
+
+        return KissTheme.wrap(content, 'admin/status/metrics');
     },
 
     pollMetrics: function() {
-        var self = this;
         return Promise.all([
             callOverview(),
             callWafStats(),
             callConnections()
         ]).then(function(data) {
-            var overview = data[0] || {};
-            var waf = data[1] || {};
-            var conns = data[2] || {};
+            var o = data[0] || {};
+            var w = data[1] || {};
+            var c = data[2] || {};
 
-            // Update last refresh time
-            var refreshEl = document.getElementById('last-refresh');
-            if (refreshEl) refreshEl.textContent = new Date().toLocaleTimeString();
+            var upd = {
+                's-up': formatUptime(o.uptime || 0),
+                's-load': 'Load: ' + (o.load || '0'),
+                's-mem': (o.mem_pct || 0) + '%',
+                's-vh': String(o.vhosts || 0),
+                's-cert': String(o.certificates || 0),
+                's-tcp': String(c.total_tcp || 0),
+                'w-bans': String(w.active_bans || 0),
+                'w-alerts': String(w.alerts_today || 0),
+                'w-blocked': String(w.waf_blocked || 0),
+                'c-https': String(c.https || 0),
+                'c-http': String(c.http || 0),
+                'c-ssh': String(c.ssh || 0),
+                'c-total': String(c.total_tcp || 0)
+            };
 
-            // Update could be more granular, but for now just log
-            // Full DOM update would require more complex diffing
+            for (var id in upd) {
+                var el = document.getElementById(id);
+                if (el) el.textContent = upd[id];
+            }
+
+            // Service dots
+            var ha = document.getElementById('sv-ha');
+            var waf = document.getElementById('sv-waf');
+            var cs = document.getElementById('sv-cs');
+            if (ha) ha.className = 'mx-svc-dot ' + (o.haproxy ? 'on' : 'off');
+            if (waf) waf.className = 'mx-svc-dot ' + (o.mitmproxy ? 'on' : 'off');
+            if (cs) cs.className = 'mx-svc-dot ' + (o.crowdsec ? 'on' : 'off');
         });
     }
 });

@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-17 (LuCI Metrics Dashboard + WAF hot-reload)_
+_Last updated: 2026-03-17 (VM Firmware Build + CI Fixes)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -10,13 +10,31 @@ _Last updated: 2026-03-17 (LuCI Metrics Dashboard + WAF hot-reload)_
 
 ### 2026-03-17
 
-- **LuCI Metrics Dashboard (Complete)**
+- **SecuBox VM Firmware Build Workflow (Complete)**
+  - NEW: `.github/workflows/build-secubox-vm.yml` for x86_64 VM images
+  - Uses OpenWrt 24.10.5 as default (latest stable release)
+  - Builds VMDK, VDI, QCOW2 formats for VMware/VirtualBox/QEMU/Proxmox
+  - Includes all SecuBox LuCI packages pre-installed
+  - Docker support enabled (dockerd, docker-compose, luci-app-dockerman)
+  - Virtio drivers for KVM/QEMU performance
+  - VM guest tools (qemu-ga) for integration
+  - Configurable root filesystem size (512MB-4GB)
+  - Manual trigger + automatic on version tags
+
+- **CI/CD Test & Validate Workflow Fixes (Complete)**
+  - Fixed PKG_NAME validation: luci.mk auto-generates from directory name
+  - Made PKG_LICENSE warning instead of error (many packages missing it)
+  - Lint & Validate now passing, Test Build completing
+
+- **LuCI Metrics Dashboard v2 (Complete)**
   - New `luci-app-metrics-dashboard` package with real-time system metrics
-  - RPCD backend: `luci.metrics` with 9 methods (overview, certs, vhosts, metablogs, streamlits, waf_stats, connections, firewall_stats, all)
-  - Dashboard shows: uptime, memory, load, vHosts, certificates, MetaBlogs, Streamlits, LXC containers
-  - WAF stats: active bans, alerts today, threats detected, blocked requests
-  - Connections: HTTP, HTTPS, SSH, total TCP (live counts)
-  - Service status: HAProxy, mitmproxy, CrowdSec running indicators
+  - **KISS-styled UI**: Card grid, colored stat values, services status bar with glowing dots
+  - **Double-buffer caching**: Cache at `/tmp/secubox/metrics-cache.json` with 30s TTL
+  - Cron job refreshes cache every 30 seconds (no computation on request)
+  - Stats: Uptime, Memory%, vHosts (274), SSL Certs (92), MetaBlogs (127), Streamlits (27), LXC (21), TCP Conns
+  - WAF panel: Active Bans (43), Alerts 24h (44), WAF Blocked (1031 from CrowdSec mitmproxy decisions)
+  - Connections panel: HTTPS, HTTP, SSH, Total TCP
+  - Service status: HAProxy, mitmproxy WAF, CrowdSec with live indicators
   - Auto-refresh every 5 seconds via poll.add()
   - Menu: Status → Metrics Dashboard
 

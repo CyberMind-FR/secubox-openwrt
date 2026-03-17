@@ -1,20 +1,40 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-03-17 (LuCI Metrics Dashboard + WAF hot-reload)_
+_Last updated: 2026-03-17 (VM Firmware Build + CI Fixes)_
 
-0. **LuCI Metrics Dashboard + WAF Hot-Reload (2026-03-17)**
-   - NEW: `luci-app-metrics-dashboard` package - Real-time system metrics dashboard
-     - RPCD backend: `luci.metrics` with 9 methods (overview, certs, vhosts, metablogs, streamlits, waf_stats, connections, firewall_stats, all)
-     - Shows: uptime, memory, load, vHosts, certificates, MetaBlogs, Streamlits, LXC containers
-     - WAF stats: active bans, alerts today, threats detected, blocked requests
-     - Connections: HTTP, HTTPS, SSH, total TCP (live counts)
-     - Service status: HAProxy, mitmproxy, CrowdSec running indicators
-     - Auto-refresh every 5 seconds via poll.add()
-     - Menu: Status → Metrics Dashboard
-   - WAF Filters page: Stats layout changed from 3 boxes to single compact line
-   - Discovered mitmproxy haproxy_router.py already has hot-reload (checks file mtime every request)
-   - Updated metablogizerctl to use hot-reload instead of restart for faster publishing
-   - Fixed HAProxy 503 errors: Disabled health check on mitmproxy backend (mitmproxy returns 404 without valid Host)
+0. **SecuBox VM Firmware Build Workflow (2026-03-17)**
+   - NEW: `.github/workflows/build-secubox-vm.yml` for x86_64 VM appliance images
+   - Uses OpenWrt 24.10.5 as base (latest stable from firmware-selector.openwrt.org)
+   - VM image formats: VMDK (VMware), VDI (VirtualBox), QCOW2 (QEMU/KVM/Proxmox)
+   - All SecuBox LuCI packages pre-installed and configured
+   - Docker support: dockerd, docker-compose, luci-app-dockerman
+   - VM guest tools: qemu-ga for QEMU guest agent integration
+   - Virtio drivers for optimal KVM/QEMU performance (virtio-net, virtio-blk)
+   - Configurable rootfs size: 512MB, 1GB, 2GB, 4GB options
+   - Triggers: Manual dispatch or automatic on version tags (v*.*.*)
+   - MANIFEST.md with quick-start guides for all VM platforms
+
+0. **CI/CD Test & Validate Workflow Fixes (2026-03-17)**
+   - Fixed PKG_NAME validation: luci.mk auto-generates PKG_NAME from directory
+   - Changed PKG_LICENSE from required to recommended (warning only)
+   - Lint & Validate job now passing, Test Build completing ~80 packages
+
+0. **LuCI Metrics Dashboard v2 (2026-03-17)**
+   - NEW: `luci-app-metrics-dashboard` package - Real-time system metrics
+   - **KISS-styled UI**:
+     - Card grid with colored stat values (green, cyan, purple, orange)
+     - Services status bar with glowing dots (HAProxy, WAF, CrowdSec)
+     - Two-panel layout for WAF/Security and Connections
+     - Live clock with pulsing indicator, auto-refresh every 5s
+   - **Double-buffer caching** (per CLAUDE.md pattern):
+     - Cache: `/tmp/secubox/metrics-cache.json` with 30s TTL
+     - Cron job refreshes every 30 seconds
+     - RPCD reads from cache instantly (eliminates XHR timeouts)
+   - Stats: Uptime, Memory%, vHosts (274), Certs (92), MetaBlogs (127), Streamlits (27), LXC (21)
+   - WAF Blocked: Counts CrowdSec mitmproxy decisions (1031 blocks)
+   - WAF Filters page: Stats layout changed to single compact line
+   - Discovered mitmproxy hot-reload (checks routes file every request)
+   - Fixed HAProxy 503: Disabled health check on mitmproxy backend
    - Cleaned up test sites (testsite, lblstest)
 
 0. **HAProxy/mitmproxy WAF Routing Fix (2026-03-17)**
