@@ -4,6 +4,20 @@
 
 . /usr/share/libubox/jshn.sh
 
+# Get actual menu path for a luci-app package
+get_menu_path() {
+    local pkg="$1"
+    local menu_file="/usr/share/luci/menu.d/${pkg}.json"
+    if [ -f "$menu_file" ]; then
+        local path=$(grep -o '"admin/[^"]*"' "$menu_file" | head -1 | tr -d '"')
+        if [ -n "$path" ]; then
+            echo "$path"
+            return
+        fi
+    fi
+    echo "admin/services/$(echo "$pkg" | sed 's/luci-app-//')"
+}
+
 # Discover LuCI menu entries from menu.d JSON files
 discover_luci_menus() {
 	local menus=""
@@ -90,11 +104,11 @@ build_tree() {
 	json_add_array "items"
 	for app in $apps; do
 		case "$app" in
-			luci-app-crowdsec*|luci-app-mitmproxy*|luci-app-guardian*|luci-app-dnsguard*|luci-app-threat*|luci-app-wazuh*|luci-app-vortex*)
+			luci-app-crowdsec*|luci-app-mitmproxy*|luci-app-guardian*|luci-app-dnsguard*|luci-app-threat*|luci-app-wazuh*|luci-app-vortex*|luci-app-firewall*|luci-app-device-intel*|luci-app-security*)
 				local name=$(echo "$app" | sed 's/luci-app-//' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++)$i=toupper(substr($i,1,1))tolower(substr($i,2))}1')
 				json_add_object ""
 				json_add_string "name" "$name"
-				json_add_string "path" "admin/services/$(echo "$app" | sed 's/luci-app-//')"
+				json_add_string "path" "$(get_menu_path "$app")"
 				json_add_string "package" "$app"
 				json_close_object
 				;;
@@ -109,11 +123,11 @@ build_tree() {
 	json_add_array "items"
 	for app in $apps; do
 		case "$app" in
-			luci-app-jellyfin*|luci-app-lyrion*|luci-app-streamlit*|luci-app-peertube*|luci-app-magicmirror*)
+			luci-app-jellyfin*|luci-app-lyrion*|luci-app-streamlit*|luci-app-peertube*|luci-app-magicmirror*|luci-app-media-flow*|luci-app-icecast*|luci-app-webradio*|luci-app-mmpm*)
 				local name=$(echo "$app" | sed 's/luci-app-//' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++)$i=toupper(substr($i,1,1))tolower(substr($i,2))}1')
 				json_add_object ""
 				json_add_string "name" "$name"
-				json_add_string "path" "admin/services/$(echo "$app" | sed 's/luci-app-//')"
+				json_add_string "path" "$(get_menu_path "$app")"
 				json_add_string "package" "$app"
 				json_close_object
 				;;
@@ -128,11 +142,11 @@ build_tree() {
 	json_add_array "items"
 	for app in $apps; do
 		case "$app" in
-			luci-app-haproxy*|luci-app-wireguard*|luci-app-tor*|luci-app-cdn*|luci-app-exposure*|luci-app-dns-provider*)
+			luci-app-haproxy*|luci-app-wireguard*|luci-app-tor*|luci-app-cdn*|luci-app-exposure*|luci-app-dns-provider*|luci-app-vhost*|luci-app-bandwidth*|luci-app-traffic*|luci-app-network-modes*|luci-app-ksmbd*)
 				local name=$(echo "$app" | sed 's/luci-app-//' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++)$i=toupper(substr($i,1,1))tolower(substr($i,2))}1')
 				json_add_object ""
 				json_add_string "name" "$name"
-				json_add_string "path" "admin/services/$(echo "$app" | sed 's/luci-app-//')"
+				json_add_string "path" "$(get_menu_path "$app")"
 				json_add_string "package" "$app"
 				json_close_object
 				;;
@@ -151,7 +165,7 @@ build_tree() {
 				local name=$(echo "$app" | sed 's/luci-app-//' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++)$i=toupper(substr($i,1,1))tolower(substr($i,2))}1')
 				json_add_object ""
 				json_add_string "name" "$name"
-				json_add_string "path" "admin/services/$(echo "$app" | sed 's/luci-app-//')"
+				json_add_string "path" "$(get_menu_path "$app")"
 				json_add_string "package" "$app"
 				json_close_object
 				;;
@@ -166,11 +180,11 @@ build_tree() {
 	json_add_array "items"
 	for app in $apps; do
 		case "$app" in
-			luci-app-domoticz*|luci-app-zigbee*|luci-app-iot*|luci-app-mqtt*)
+			luci-app-domoticz*|luci-app-zigbee*|luci-app-iot*|luci-app-mqtt*|luci-app-picobrew*)
 				local name=$(echo "$app" | sed 's/luci-app-//' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++)$i=toupper(substr($i,1,1))tolower(substr($i,2))}1')
 				json_add_object ""
 				json_add_string "name" "$name"
-				json_add_string "path" "admin/services/$(echo "$app" | sed 's/luci-app-//')"
+				json_add_string "path" "$(get_menu_path "$app")"
 				json_add_string "package" "$app"
 				json_close_object
 				;;
@@ -185,11 +199,11 @@ build_tree() {
 	json_add_array "items"
 	for app in $apps; do
 		case "$app" in
-			luci-app-localai*|luci-app-ollama*|luci-app-simplex*|luci-app-gotosocial*|luci-app-ai-*|luci-app-voip*|luci-app-jabber*|luci-app-jitsi*|luci-app-mail*|luci-app-nextcloud*|luci-app-webradio*)
+			luci-app-localai*|luci-app-ollama*|luci-app-simplex*|luci-app-gotosocial*|luci-app-ai-*|luci-app-voip*|luci-app-jabber*|luci-app-jitsi*|luci-app-mailserver*|luci-app-nextcloud*|luci-app-matrix*|luci-app-cyberfeed*)
 				local name=$(echo "$app" | sed 's/luci-app-//' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++)$i=toupper(substr($i,1,1))tolower(substr($i,2))}1')
 				json_add_object ""
 				json_add_string "name" "$name"
-				json_add_string "path" "admin/services/$(echo "$app" | sed 's/luci-app-//')"
+				json_add_string "path" "$(get_menu_path "$app")"
 				json_add_string "package" "$app"
 				json_close_object
 				;;
@@ -204,11 +218,11 @@ build_tree() {
 	json_add_array "items"
 	for app in $apps; do
 		case "$app" in
-			luci-app-cloner*|luci-app-backup*|luci-app-system*|luci-app-config-advisor*|luci-app-service-registry*)
+			luci-app-cloner*|luci-app-backup*|luci-app-system*|luci-app-config-advisor*|luci-app-service-registry*|luci-app-watchdog*|luci-app-glances*|luci-app-netdata*|luci-app-package-manager*|luci-app-master-link*|luci-app-uhttpd*|luci-app-config-vault*|luci-app-reporter*|luci-app-smtp-relay*|luci-app-rtty*|luci-app-dpi-dual*|luci-app-metacatalog*)
 				local name=$(echo "$app" | sed 's/luci-app-//' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++)$i=toupper(substr($i,1,1))tolower(substr($i,2))}1')
 				json_add_object ""
 				json_add_string "name" "$name"
-				json_add_string "path" "admin/services/$(echo "$app" | sed 's/luci-app-//')"
+				json_add_string "path" "$(get_menu_path "$app")"
 				json_add_string "package" "$app"
 				json_close_object
 				;;
@@ -217,24 +231,36 @@ build_tree() {
 	json_close_array
 	json_close_object
 
-	# Other SecuBox Apps (catch-all)
+	# Downloads Apps
 	json_add_object ""
-	json_add_string "cat" "Other SecuBox Apps"
+	json_add_string "cat" "Downloads"
 	json_add_array "items"
 	for app in $apps; do
 		case "$app" in
-			luci-app-crowdsec*|luci-app-mitmproxy*|luci-app-guardian*|luci-app-dnsguard*|luci-app-threat*|luci-app-wazuh*|luci-app-vortex*) continue ;;
-			luci-app-jellyfin*|luci-app-lyrion*|luci-app-streamlit*|luci-app-peertube*|luci-app-magicmirror*) continue ;;
-			luci-app-haproxy*|luci-app-wireguard*|luci-app-tor*|luci-app-cdn*|luci-app-exposure*|luci-app-dns-provider*) continue ;;
-			luci-app-gitea*|luci-app-hexo*|luci-app-metablog*|luci-app-metabol*) continue ;;
-			luci-app-domoticz*|luci-app-zigbee*|luci-app-iot*|luci-app-mqtt*) continue ;;
-			luci-app-localai*|luci-app-ollama*|luci-app-simplex*|luci-app-gotosocial*|luci-app-ai-*|luci-app-voip*|luci-app-jabber*|luci-app-jitsi*|luci-app-mail*|luci-app-nextcloud*|luci-app-webradio*) continue ;;
-			luci-app-cloner*|luci-app-backup*|luci-app-system*|luci-app-config-advisor*|luci-app-service-registry*) continue ;;
+			luci-app-torrent*|luci-app-droplet*|luci-app-webtorrent*|luci-app-aria*|luci-app-transmission*|luci-app-nzb*|luci-app-sabnzbd*)
+				local name=$(echo "$app" | sed 's/luci-app-//' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++)$i=toupper(substr($i,1,1))tolower(substr($i,2))}1')
+				json_add_object ""
+				json_add_string "name" "$name"
+				json_add_string "path" "$(get_menu_path "$app")"
+				json_add_string "package" "$app"
+				json_close_object
+				;;
+		esac
+	done
+	json_close_array
+	json_close_object
+
+	# SecuBox Core Apps
+	json_add_object ""
+	json_add_string "cat" "SecuBox Core"
+	json_add_array "items"
+	for app in $apps; do
+		case "$app" in
 			luci-app-secubox*|luci-app-*secubox*)
 				local name=$(echo "$app" | sed 's/luci-app-//' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++)$i=toupper(substr($i,1,1))tolower(substr($i,2))}1')
 				json_add_object ""
 				json_add_string "name" "$name"
-				json_add_string "path" "admin/secubox/$(echo "$app" | sed 's/luci-app-secubox-//' | sed 's/luci-app-//')"
+				json_add_string "path" "$(get_menu_path "$app")"
 				json_add_string "package" "$app"
 				json_close_object
 				;;

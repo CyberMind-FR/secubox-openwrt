@@ -96,7 +96,7 @@ var KissThemeClass = baseclass.extend({
 			]},
 			{ icon: '📶', name: 'Traffic Shaper', path: 'admin/secubox/network/traffic-shaper' },
 			{ icon: '📡', name: 'Bandwidth', path: 'admin/secubox/network/bandwidth-manager' },
-			{ icon: '🌐', name: 'Network Modes', path: 'admin/secubox/network/network-modes' },
+			{ icon: '🌐', name: 'Network Modes', path: 'admin/secubox/network/modes' },
 			{ icon: '🔌', name: 'Interfaces', path: 'admin/network/network' },
 			{ icon: '🔧', name: 'Net Diagnostics', path: 'admin/services/network-diagnostics' }
 		]},
@@ -119,6 +119,7 @@ var KissThemeClass = baseclass.extend({
 		// ═══════════════════════════════════════════════════════════════
 		{ cat: 'Communication', icon: '💬', collapsed: true, items: [
 			{ icon: '✉️', name: 'Mail Server', path: 'admin/services/mailserver' },
+			{ icon: '📧', name: 'SMTP Relay', path: 'admin/secubox/system/smtp-relay' },
 			{ icon: '💬', name: 'Jabber/XMPP', path: 'admin/services/jabber' },
 			{ icon: '🔐', name: 'Matrix', path: 'admin/services/matrix' },
 			{ icon: '🔒', name: 'SimpleX', path: 'admin/services/simplex' },
@@ -145,7 +146,10 @@ var KissThemeClass = baseclass.extend({
 				{ name: 'Settings', path: 'admin/services/metablogizer/settings' }
 			]},
 			{ icon: '🎯', name: 'Streamlit', path: 'admin/services/streamlit' },
+			{ icon: '🔧', name: 'Streamlit Forge', path: 'admin/services/streamlit-forge' },
 			{ icon: '📰', name: 'CyberFeed', path: 'admin/services/cyberfeed' },
+			{ icon: '📚', name: 'Meta Catalog', path: 'admin/secubox/metacatalog' },
+			{ icon: '🎭', name: 'Avatar Tap', path: 'admin/services/avatar-tap' },
 			{ icon: '🏠', name: 'Domoticz', path: 'admin/services/domoticz' },
 			{ icon: '🍺', name: 'PicoBrew', path: 'admin/services/picobrew' }
 		]},
@@ -168,13 +172,12 @@ var KissThemeClass = baseclass.extend({
 		// P2P & MESH - Distributed networking
 		// ═══════════════════════════════════════════════════════════════
 		{ cat: 'P2P & Mesh', icon: '🔗', collapsed: true, items: [
-			{ icon: '🔗', name: 'Master Link', path: 'admin/secubox/master-link' },
+			{ icon: '🔗', name: 'Master Link', path: 'admin/services/secubox-mesh' },
 			{ icon: '🌐', name: 'P2P Network', path: 'admin/services/secubox-p2p' },
-			{ icon: '🔗', name: 'Mesh Network', path: 'admin/services/secubox-mesh' },
-			{ icon: '📡', name: 'Exposure', path: 'admin/services/exposure' },
+			{ icon: '📡', name: 'Exposure', path: 'admin/secubox/network/exposure' },
 			{ icon: '📋', name: 'Service Registry', path: 'admin/services/service-registry' },
 			{ icon: '☁️', name: 'SaaS Relay', path: 'admin/services/saas-relay' },
-			{ icon: '🌳', name: 'Netifyd', path: 'admin/services/secubox-netifyd' }
+			{ icon: '🌳', name: 'Netifyd', path: 'admin/secubox/netifyd' }
 		]},
 
 		// ═══════════════════════════════════════════════════════════════
@@ -187,7 +190,33 @@ var KissThemeClass = baseclass.extend({
 			{ icon: '📁', name: 'File Sharing', path: 'admin/services/ksmbd' },
 			{ icon: '🌳', name: 'LuCI Menu', path: 'admin/secubox/luci-tree' },
 			{ icon: '🔧', name: 'Software', path: 'admin/system/opkg' },
-			{ icon: '🖥️', name: 'uhttpd', path: 'admin/services/uhttpd' }
+			{ icon: '🖥️', name: 'uhttpd', path: 'admin/services/uhttpd' },
+			{ icon: '🔐', name: 'Config Vault', path: 'admin/secubox/system/config-vault' },
+			{ icon: '📋', name: 'Reporter', path: 'admin/secubox/system/reporter' },
+			{ icon: '🐕', name: 'Watchdog', path: 'admin/secubox/system/watchdog' },
+			{ icon: '🖥️', name: 'Remote RTTY', path: 'admin/secubox/system/system-hub/rtty-remote' }
+		]},
+
+		// ═══════════════════════════════════════════════════════════════
+		// DOWNLOADS - Torrent and Usenet clients
+		// ═══════════════════════════════════════════════════════════════
+		{ cat: 'Downloads', icon: '📥', collapsed: true, items: [
+			{ icon: '🧲', name: 'Torrent', path: 'admin/services/torrent' },
+			{ icon: '💧', name: 'Droplet', path: 'admin/services/droplet' },
+			{ icon: '🌊', name: 'WebTorrent', path: 'admin/services/webtorrent' },
+			{ icon: '📰', name: 'SABnzbd', url: 'https://sabnzbd.gk2.secubox.in/' },
+			{ icon: '🔍', name: 'NZBHydra', url: 'https://nzbhydra.gk2.secubox.in/' }
+		]},
+
+		// ═══════════════════════════════════════════════════════════════
+		// MONITORING - System and network monitoring
+		// ═══════════════════════════════════════════════════════════════
+		{ cat: 'Monitoring', icon: '📈', collapsed: true, items: [
+			{ icon: '👁️', name: 'Glances', path: 'admin/secubox/monitoring/glances' },
+			{ icon: '📊', name: 'Netdata', path: 'admin/secubox/monitoring/netdata' },
+			{ icon: '🔍', name: 'Device Intel', path: 'admin/secubox/device-intel' },
+			{ icon: '📡', name: 'Threat Analyst', path: 'admin/services/threat-analyst' },
+			{ icon: '🔬', name: 'DPI Dual', path: 'admin/secubox/dpi-dual' }
 		]}
 	],
 

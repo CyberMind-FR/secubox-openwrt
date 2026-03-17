@@ -2417,9 +2417,8 @@ refresh_overview_cache() {
 		[ -z "$capi_decisions" ] && capi_decisions=0
 		decisions_count=$((local_decisions + capi_decisions))
 
-		# Parse alerts count
-		alerts_count=$(grep -c '"id":' "$alerts_file" 2>/dev/null)
-		[ -z "$alerts_count" ] && alerts_count=0
+		# Alerts count = decisions count (each decision comes from an alert)
+		alerts_count=$local_decisions
 
 		# Parse bouncers count
 		if [ -n "$bouncers_json" ] && [ "$bouncers_json" != "[]" ]; then
@@ -2439,20 +2438,35 @@ refresh_overview_cache() {
 			fi
 		fi
 
-		# Parse scenarios from metrics
-		if [ -n "$metrics_output" ]; then
-			scenarios=$(echo "$metrics_output" | \
-				grep -E '^\| [a-z].*\| CAPI' | \
-				sed 's/|//g;s/^[ ]*//;s/[ ]*$//' | \
-				awk '{print $4, $1}' | sort -rn | head -5 | \
-				awk '{print "{\"scenario\":\"" $2 "\",\"count\":" $1 "}"}' | \
-				tr '\n' ',' | sed 's/,$//')
-		fi
+		# Parse top scenarios from decisions file (count by scenario name)
+		scenarios=$(cat "$decisions_file" | \
+			grep -oE '"scenario"[[:space:]]*:[[:space:]]*"[^"]*"' | \
+			sed 's/"scenario"[[:space:]]*:[[:space:]]*"//;s/"$//' | \
+			sort | uniq -c | sort -rn | head -5 | \
+			awk '{print "{\"scenario\":\"" $2 "\",\"count\":" $1 "}"}' | \
+			tr '\n' ',' | sed 's/,$//')
 
-		# Parse countries from alerts file
-		countries=$(cat "$alerts_file" | \
-			jsonfilter -e '@[*].source.cn' 2>/dev/null | \
+		# Parse top countries from full alerts (with GeoIP metadata)
+		# Format is "key": "IsoCode",\n"value": "US" on separate lines
+		local alerts_full
+		alerts_full=$("$CSCLI" alerts list -o json --limit 50 2>/dev/null || echo "[]")
+		countries=$(echo "$alerts_full" | \
+			grep -A1 '"key": "IsoCode"' | grep '"value":' | \
+			sed 's/.*"value"[[:space:]]*:[[:space:]]*"//;s/".*$//' | \
 			grep -v '^$' | sort | uniq -c | sort -rn | head -10 | \
+			awk '{print "{\"country\":\"" $2 "\",\"count\":" $1 "}"}' | \
+			tr '\n' ',' | sed 's/,$//')
+
+		# Parse CAPI geo from decisions with origin=CAPI
+		# We fetch decisions again with higher limit for CAPI geo
+		local capi_geo=""
+		local capi_decisions_full
+		capi_decisions_full=$("$CSCLI" decisions list -o json 2>/dev/null || echo "[]")
+		capi_geo=$(echo "$capi_decisions_full" | \
+			grep -A20 '"origin":"CAPI"' | \
+			grep -A1 '"key": "IsoCode"' | grep '"value":' | \
+			sed 's/.*"value"[[:space:]]*:[[:space:]]*"//;s/".*$//' | \
+			grep -v '^$' | sort | uniq -c | sort -rn | head -20 | \
 			awk '{print "{\"country\":\"" $2 "\",\"count\":" $1 "}"}' | \
 			tr '\n' ',' | sed 's/,$//')
 
@@ -2463,8 +2477,8 @@ refresh_overview_cache() {
 		[ -z "$sc2" ] && sc2=0
 		scenario_count=$((sc1 + sc2))
 
-		# WAF bans count from decisions file
-		waf_bans_today=$(grep -c "mitmproxy-waf" "$decisions_file" 2>/dev/null)
+		# WAF bans count from decisions (mitmproxy-scanner, mitmproxy-botscan, etc.)
+		waf_bans_today=$(grep -c "mitmproxy-" "$decisions_file" 2>/dev/null)
 		[ -z "$waf_bans_today" ] && waf_bans_today=0
 	fi
 
@@ -2554,8 +2568,10 @@ refresh_overview_cache() {
 "geoip_enabled":$([ "$geoip_enabled" = "1" ] && echo true || echo false),
 "acquisition_count":$acquisition_count,
 "scenario_count":$scenario_count,
-"top_scenarios_raw":"[$scenarios]",
-"top_countries_raw":"[$countries]",
+"top_scenarios_raw":[$scenarios],
+"top_countries_raw":[$countries],
+"geo_local_raw":[$countries],
+"geo_capi_raw":[$capi_geo],
 "decisions_raw":$(cat "$decisions_file"),
 "alerts_raw":$(cat "$alerts_file"),
 "logs":$logs_json,
@@ -2611,8 +2627,9 @@ case "$1" in
 				get_cached_status
 				;;
 			refresh_cache)
-				refresh_overview_cache
-				echo '{"success": true}'
+				# Run in background to avoid blocking rpcd
+				( refresh_overview_cache ) >/dev/null 2>&1 &
+				echo '{"success": true, "async": true}'
 				;;
 			ban)
 				read -r input

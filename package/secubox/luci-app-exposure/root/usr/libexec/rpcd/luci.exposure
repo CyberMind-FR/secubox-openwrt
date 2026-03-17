@@ -270,44 +270,52 @@ case "$1" in
                 ;;
 
             ssl_list)
-                TMP_SSLLIST="/tmp/exposure_ssllist_$$"
-                > "$TMP_SSLLIST"
-
-                # Read from HAProxy UCI config (vhosts with their backends)
-                for vhost in $(uci show haproxy 2>/dev/null | grep "=vhost$" | cut -d'.' -f2 | cut -d'=' -f1); do
-                    domain=$(uci -q get "haproxy.${vhost}.domain")
-                    backend=$(uci -q get "haproxy.${vhost}.backend")
-                    enabled=$(uci -q get "haproxy.${vhost}.enabled")
-
-                    [ "$enabled" != "1" ] && continue
-                    [ -z "$domain" ] && continue
-
-                    # Get server address from backend config
-                    server=""
-                    if [ -n "$backend" ]; then
-                        server=$(uci -q get "haproxy.${backend}.server" 2>/dev/null | head -1 | awk '{print $2}')
-                    fi
-
-                    echo "${backend:-$vhost}|${domain}|${server:-N/A}" >> "$TMP_SSLLIST"
-                done
-
-                json_init
-                json_add_array "backends"
-
-                if [ -s "$TMP_SSLLIST" ]; then
-                    while IFS='|' read service domain server; do
-                        [ -z "$service" ] && continue
-                        json_add_object ""
-                            json_add_string "service" "$service"
-                            json_add_string "domain" "$domain"
-                            json_add_string "backend" "$server"
-                        json_close_object
-                    done < "$TMP_SSLLIST"
-                fi
-                rm -f "$TMP_SSLLIST"
-
-                json_close_array
-                json_dump
+                # OPTIMIZED: Single-pass awk parsing
+                uci show haproxy 2>/dev/null | awk '
+                BEGIN {
+                    printf "{\"backends\":["
+                    first = 1
+                }
+                /=vhost$/ {
+                    if (vh_domain != "" && vh_enabled == "1") {
+                        if (first == 0) printf ","
+                        first = 0
+                        printf "{\"service\":\"%s\",\"domain\":\"%s\",\"backend\":\"%s\"}",
+                            (vh_backend != "" ? vh_backend : vh_id), vh_domain, "N/A"
+                    }
+                    gsub(/^haproxy\./, "", $0)
+                    gsub(/=vhost$/, "", $0)
+                    vh_id = $0
+                    vh_domain = ""
+                    vh_backend = ""
+                    vh_enabled = "0"
+                    in_vhost = 1
+                }
+                /=backend$/ || /=server$/ { in_vhost = 0 }
+                /\.domain=/ && in_vhost {
+                    gsub(/.*\.domain=/, "", $0)
+                    gsub(/'\''/, "", $0)
+                    vh_domain = $0
+                }
+                /\.backend=/ && in_vhost {
+                    gsub(/.*\.backend=/, "", $0)
+                    gsub(/'\''/, "", $0)
+                    vh_backend = $0
+                }
+                /\.enabled=/ && in_vhost {
+                    gsub(/.*\.enabled=/, "", $0)
+                    gsub(/'\''/, "", $0)
+                    vh_enabled = $0
+                }
+                END {
+                    if (vh_domain != "" && vh_enabled == "1") {
+                        if (first == 0) printf ","
+                        printf "{\"service\":\"%s\",\"domain\":\"%s\",\"backend\":\"%s\"}",
+                            (vh_backend != "" ? vh_backend : vh_id), vh_domain, "N/A"
+                    }
+                    printf "]}"
+                }
+                '
                 ;;
 
             get_config)
@@ -479,80 +487,171 @@ case "$1" in
                 ;;
 
             vhost_list)
-                json_init
+                # OPTIMIZED: Single-pass awk parsing instead of O(n²) uci calls
+                uci show haproxy 2>/dev/null | awk '
+                BEGIN {
+                    printf "{\"haproxy\":["
+                    first_vh = 1
+                }
 
-                # HAProxy vhosts (domain -> backend with resolved port)
-                json_add_array "haproxy"
-                for vhost in $(uci show haproxy 2>/dev/null | grep "=vhost$" | cut -d'.' -f2 | cut -d'=' -f1); do
-                    domain=$(uci -q get "haproxy.${vhost}.domain")
-                    backend=$(uci -q get "haproxy.${vhost}.backend")
-                    enabled=$(uci -q get "haproxy.${vhost}.enabled")
-                    ssl=$(uci -q get "haproxy.${vhost}.ssl")
-                    acme=$(uci -q get "haproxy.${vhost}.acme")
+                # Collect server backend->port mappings
+                /\.backend=/ && /=server$/ == 0 {
+                    # This is a vhost or backend .backend= line, skip for server collection
+                }
+                /=server$/ {
+                    gsub(/^haproxy\./, "", $0)
+                    gsub(/=server$/, "", $0)
+                    current_srv = $0
+                }
+                /^haproxy\.[^.]+\.backend=/ && prev_type == "server" {
+                    gsub(/^haproxy\.[^.]+\.backend=/, "", $0)
+                    gsub(/'\''/, "", $0)
+                    srv_backends[current_srv] = $0
+                }
+                /^haproxy\.[^.]+\.port=/ && prev_type == "server" {
+                    gsub(/^haproxy\.[^.]+\.port=/, "", $0)
+                    gsub(/'\''/, "", $0)
+                    srv_ports[current_srv] = $0
+                }
 
-                    [ -z "$domain" ] && continue
+                # Track section type
+                /=vhost$/ { prev_type = "vhost" }
+                /=server$/ { prev_type = "server" }
+                /=backend$/ { prev_type = "backend" }
 
-                    # Check for original_backend (when mitmproxy is intercepting)
-                    original_backend=$(uci -q get "haproxy.${vhost}.original_backend")
-                    resolve_backend="${original_backend:-$backend}"
+                # Process vhosts
+                /=vhost$/ {
+                    # Output previous vhost
+                    if (vh_id != "" && vh_domain != "") {
+                        if (first_vh == 0) printf ","
+                        first_vh = 0
+                        # Resolve backend port
+                        resolve_be = (vh_orig_be != "") ? vh_orig_be : vh_backend
+                        port = 0
+                        for (s in srv_backends) {
+                            if (srv_backends[s] == resolve_be && srv_ports[s] != "") {
+                                port = srv_ports[s]
+                                break
+                            }
+                        }
+                        printf "{\"id\":\"%s\",\"domain\":\"%s\",\"backend\":\"%s\",\"backend_port\":%d,\"ssl\":%s,\"acme\":%s,\"enabled\":%s}",
+                            vh_id, vh_domain, resolve_be, port,
+                            (vh_ssl == "1" ? "true" : "false"),
+                            (vh_acme == "1" ? "true" : "false"),
+                            (vh_enabled == "1" ? "true" : "false")
+                    }
+                    # Start new vhost
+                    gsub(/^haproxy\./, "", $0)
+                    gsub(/=vhost$/, "", $0)
+                    vh_id = $0
+                    vh_domain = ""
+                    vh_backend = ""
+                    vh_orig_be = ""
+                    vh_ssl = "0"
+                    vh_acme = "0"
+                    vh_enabled = "0"
+                }
+                /\.domain=/ && prev_type == "vhost" {
+                    gsub(/.*\.domain=/, "", $0)
+                    gsub(/'\''/, "", $0)
+                    vh_domain = $0
+                }
+                /\.backend=/ && prev_type == "vhost" {
+                    gsub(/.*\.backend=/, "", $0)
+                    gsub(/'\''/, "", $0)
+                    vh_backend = $0
+                }
+                /\.original_backend=/ && prev_type == "vhost" {
+                    gsub(/.*\.original_backend=/, "", $0)
+                    gsub(/'\''/, "", $0)
+                    vh_orig_be = $0
+                }
+                /\.ssl=/ && prev_type == "vhost" {
+                    gsub(/.*\.ssl=/, "", $0)
+                    gsub(/'\''/, "", $0)
+                    vh_ssl = $0
+                }
+                /\.acme=/ && prev_type == "vhost" {
+                    gsub(/.*\.acme=/, "", $0)
+                    gsub(/'\''/, "", $0)
+                    vh_acme = $0
+                }
+                /\.enabled=/ && prev_type == "vhost" {
+                    gsub(/.*\.enabled=/, "", $0)
+                    gsub(/'\''/, "", $0)
+                    vh_enabled = $0
+                }
 
-                    # Resolve backend port from the target backend
-                    backend_port=""
-                    if [ -n "$resolve_backend" ]; then
-                        # Try inline server option: 'name IP:PORT check'
-                        server_line=$(uci -q get "haproxy.${resolve_backend}.server" 2>/dev/null)
-                        if [ -n "$server_line" ]; then
-                            backend_port=$(echo "$server_line" | awk '{print $2}' | grep -o ':[0-9]*' | tr -d ':')
-                        fi
-                        # Try server sections referencing this backend
-                        if [ -z "$backend_port" ]; then
-                            for srv in $(uci show haproxy 2>/dev/null | grep "=server$" | cut -d'.' -f2 | cut -d'=' -f1); do
-                                srv_backend=$(uci -q get "haproxy.${srv}.backend")
-                                if [ "$srv_backend" = "$resolve_backend" ]; then
-                                    backend_port=$(uci -q get "haproxy.${srv}.port")
-                                    break
-                                fi
-                            done
-                        fi
-                    fi
+                END {
+                    # Output last vhost
+                    if (vh_id != "" && vh_domain != "") {
+                        if (first_vh == 0) printf ","
+                        resolve_be = (vh_orig_be != "") ? vh_orig_be : vh_backend
+                        port = 0
+                        for (s in srv_backends) {
+                            if (srv_backends[s] == resolve_be && srv_ports[s] != "") {
+                                port = srv_ports[s]
+                                break
+                            }
+                        }
+                        printf "{\"id\":\"%s\",\"domain\":\"%s\",\"backend\":\"%s\",\"backend_port\":%d,\"ssl\":%s,\"acme\":%s,\"enabled\":%s}",
+                            vh_id, vh_domain, resolve_be, port,
+                            (vh_ssl == "1" ? "true" : "false"),
+                            (vh_acme == "1" ? "true" : "false"),
+                            (vh_enabled == "1" ? "true" : "false")
+                    }
+                    printf "],"
+                }
+                '
 
-                    json_add_object ""
-                        json_add_string "id" "$vhost"
-                        json_add_string "domain" "$domain"
-                        json_add_string "backend" "${resolve_backend:-${backend:-}}"
-                        json_add_int "backend_port" "${backend_port:-0}"
-                        json_add_boolean "ssl" "${ssl:-0}"
-                        json_add_boolean "acme" "${acme:-0}"
-                        json_add_boolean "enabled" "${enabled:-0}"
-                    json_close_object
-                done
-                json_close_array
-
-                # uhttpd vhosts (non-main instances)
-                json_add_array "uhttpd"
-                for section in $(uci show uhttpd 2>/dev/null | grep "=uhttpd$" | cut -d'.' -f2 | cut -d'=' -f1); do
-                    [ "$section" = "main" ] && continue
-                    [ "$section" = "acme" ] && continue
-
-                    listen=$(uci -q get "uhttpd.${section}.listen_http")
-                    home=$(uci -q get "uhttpd.${section}.home")
-                    [ -z "$listen" ] && continue
-
-                    port=$(echo "$listen" | grep -o '[0-9]*$')
-
-                    # Derive friendly name from section id
-                    fname=$(echo "$section" | sed 's/^metablog_site_//' | sed 's/_/ /g')
-
-                    json_add_object ""
-                        json_add_string "id" "$section"
-                        json_add_int "port" "${port:-0}"
-                        json_add_string "name" "$fname"
-                        json_add_string "home" "${home:-}"
-                    json_close_object
-                done
-                json_close_array
-
-                json_dump
+                # uhttpd vhosts - also optimized with awk
+                uci show uhttpd 2>/dev/null | awk '
+                BEGIN {
+                    printf "\"uhttpd\":["
+                    first = 1
+                }
+                /=uhttpd$/ {
+                    if (section != "" && section != "main" && section != "acme" && listen != "") {
+                        if (first == 0) printf ","
+                        first = 0
+                        # Extract port from listen
+                        match(listen, /[0-9]+$/)
+                        port = substr(listen, RSTART, RLENGTH)
+                        gsub(/^metablog_site_/, "", section)
+                        gsub(/_/, " ", section)
+                        printf "{\"id\":\"%s\",\"port\":%s,\"name\":\"%s\",\"home\":\"%s\"}",
+                            orig_section, (port != "" ? port : "0"), section, home
+                    }
+                    gsub(/^uhttpd\./, "", $0)
+                    gsub(/=uhttpd$/, "", $0)
+                    orig_section = $0
+                    section = $0
+                    listen = ""
+                    home = ""
+                }
+                /\.listen_http=/ {
+                    gsub(/.*\.listen_http=/, "", $0)
+                    gsub(/'\''/, "", $0)
+                    listen = $0
+                }
+                /\.home=/ {
+                    gsub(/.*\.home=/, "", $0)
+                    gsub(/'\''/, "", $0)
+                    home = $0
+                }
+                END {
+                    if (section != "" && section != "main" && section != "acme" && listen != "") {
+                        if (first == 0) printf ","
+                        match(listen, /[0-9]+$/)
+                        port = substr(listen, RSTART, RLENGTH)
+                        gsub(/^metablog_site_/, "", section)
+                        gsub(/_/, " ", section)
+                        printf "{\"id\":\"%s\",\"port\":%s,\"name\":\"%s\",\"home\":\"%s\"}",
+                            orig_section, (port != "" ? port : "0"), section, home
+                    }
+                    printf "]}"
+                }
+                '
                 ;;
 
             emancipate)
