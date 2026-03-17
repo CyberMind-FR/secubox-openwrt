@@ -293,8 +293,8 @@ jobs:
           echo "📦 Copying SecuBox packages..."
           PKG_COUNT=0
 
-          # Copy luci-app-* packages
-          for pkg in ../luci-app-*/; do
+          # Copy luci-app-* packages from package/secubox/ (main location)
+          for pkg in ../package/secubox/luci-app-*/; do
             if [[ -d "$pkg" ]]; then
               PKG_NAME=$(basename "$pkg")
               cp -r "$pkg" package/secubox/
@@ -309,9 +309,30 @@ jobs:
             fi
           done
 
+          # Also copy luci-app-* from root (for backward compatibility)
+          for pkg in ../luci-app-*/; do
+            if [[ -d "$pkg" ]]; then
+              PKG_NAME=$(basename "$pkg")
+              # Skip if already copied
+              if [[ ! -d "package/secubox/$PKG_NAME" ]]; then
+                cp -r "$pkg" package/secubox/
+                if [[ -f "package/secubox/$PKG_NAME/Makefile" ]]; then
+                  sed -i 's|include.*luci\.mk|include $(TOPDIR)/feeds/luci/luci.mk|' "package/secubox/$PKG_NAME/Makefile"
+                fi
+                PKG_COUNT=$((PKG_COUNT + 1))
+                echo "  ✅ $PKG_NAME (root)"
+              fi
+            fi
+          done
+
           # Copy luci-theme-secubox
           if [[ -d "../luci-theme-secubox" ]]; then
             cp -r ../luci-theme-secubox package/secubox/
+            sed -i 's|include.*luci\.mk|include $(TOPDIR)/feeds/luci/luci.mk|' "package/secubox/luci-theme-secubox/Makefile" 2>/dev/null || true
+            PKG_COUNT=$((PKG_COUNT + 1))
+            echo "  ✅ luci-theme-secubox"
+          elif [[ -d "../package/secubox/luci-theme-secubox" ]]; then
+            cp -r ../package/secubox/luci-theme-secubox package/secubox/
             sed -i 's|include.*luci\.mk|include $(TOPDIR)/feeds/luci/luci.mk|' "package/secubox/luci-theme-secubox/Makefile" 2>/dev/null || true
             PKG_COUNT=$((PKG_COUNT + 1))
             echo "  ✅ luci-theme-secubox"
