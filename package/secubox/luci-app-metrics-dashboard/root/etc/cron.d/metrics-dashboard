@@ -1,0 +1,3 @@
+# SecuBox Metrics Dashboard - Cache refresh every 30 seconds
+* * * * * root /usr/libexec/rpcd/luci.metrics call refresh >/dev/null 2>&1
+* * * * * root sleep 30 && /usr/libexec/rpcd/luci.metrics call refresh >/dev/null 2>&1

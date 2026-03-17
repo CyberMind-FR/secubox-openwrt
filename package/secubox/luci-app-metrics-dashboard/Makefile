@@ -25,6 +25,9 @@ define Package/$(PKG_NAME)/install
 
 	$(INSTALL_DIR) $(1)/www/luci-static/resources/view/metrics
 	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/metrics/dashboard.js $(1)/www/luci-static/resources/view/metrics/
+
+	$(INSTALL_DIR) $(1)/etc/cron.d
+	$(INSTALL_DATA) ./root/etc/cron.d/metrics-dashboard $(1)/etc/cron.d/
 endef
 
 define Package/$(PKG_NAME)/postinst

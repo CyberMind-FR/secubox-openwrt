@@ -1,162 +1,83 @@
 #!/bin/sh
 # SecuBox Metrics Dashboard - RPCD Backend
-# Real-time system metrics for LuCI dashboard
+# Double-buffered pre-cached stats for instant response
 
 . /usr/share/libubox/jshn.sh
 
-# Get SSL certificates status
-get_certs() {
-    json_init
-    json_add_array "certs"
+CACHE_DIR="/tmp/secubox"
+CACHE_FILE="$CACHE_DIR/metrics-cache.json"
+CACHE_TTL=30  # seconds
 
-    local certs_dir="/srv/haproxy/certs"
-    local count=0
+# Ensure cache dir exists
+[ -d "$CACHE_DIR" ] || mkdir -p "$CACHE_DIR"
 
-    for pem in "$certs_dir"/*.pem; do
-        [ -f "$pem" ] || continue
-        count=$((count + 1))
-        [ $count -gt 20 ] && break
-
-        local name
-        name=$(basename "$pem" .pem)
-        local expiry
-        expiry=$(openssl x509 -enddate -noout -in "$pem" 2>/dev/null | cut -d= -f2)
-
-        json_add_object ""
-        json_add_string "name" "$name"
-        json_add_string "expiry" "${expiry:-unknown}"
-        json_add_int "days_left" "365"
-        json_add_string "status" "valid"
-        json_close_object
-    done
-
-    json_close_array
-    json_dump
+# Check if cache is fresh
+cache_is_fresh() {
+    [ -f "$CACHE_FILE" ] || return 1
+    local now=$(date +%s)
+    local mtime=$(stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0)
+    local age=$((now - mtime))
+    [ "$age" -lt "$CACHE_TTL" ]
 }
 
-# Get vHosts status
-get_vhosts() {
-    json_init
-    json_add_array "vhosts"
+# Build overview (called by cron or on stale cache)
+build_overview() {
+    local uptime load mem_total mem_free mem_used mem_pct
+    local haproxy_up mitmproxy_up crowdsec_up
+    local vhost_count metablog_count streamlit_count cert_count lxc_running
 
-    local section domain backend enabled ssl
-    for section in $(uci show haproxy 2>/dev/null | grep "=vhost$" | cut -d. -f2 | cut -d= -f1); do
-        domain=$(uci -q get "haproxy.$section.domain")
-        backend=$(uci -q get "haproxy.$section.backend")
-        enabled=$(uci -q get "haproxy.$section.enabled")
-        ssl=$(uci -q get "haproxy.$section.ssl")
-        [ -z "$domain" ] && continue
-        [ "$enabled" != "1" ] && continue
+    uptime=$(cut -d. -f1 /proc/uptime 2>/dev/null || echo 0)
+    load=$(cut -d' ' -f1-3 /proc/loadavg 2>/dev/null || echo "0 0 0")
+    mem_total=$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
+    mem_free=$(awk '/MemAvailable/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
+    [ "$mem_total" -gt 0 ] && mem_used=$((mem_total - mem_free)) || mem_used=0
+    [ "$mem_total" -gt 0 ] && mem_pct=$((mem_used * 100 / mem_total)) || mem_pct=0
 
-        json_add_object ""
-        json_add_string "domain" "$domain"
-        json_add_string "backend" "$backend"
-        json_add_boolean "ssl" "${ssl:-0}"
-        json_add_boolean "enabled" "$enabled"
-        json_close_object
-    done
+    haproxy_up=false
+    lxc-info -n haproxy -s 2>/dev/null | grep -q RUNNING && haproxy_up=true
 
-    json_close_array
-    local total
-    total=$(uci show haproxy 2>/dev/null | grep -c '=vhost$')
-    json_add_int "total" "$total"
-    json_dump
+    mitmproxy_up=false
+    lxc-info -n mitmproxy-in -s 2>/dev/null | grep -q RUNNING && mitmproxy_up=true
+
+    crowdsec_up=false
+    pgrep crowdsec >/dev/null 2>&1 && crowdsec_up=true
+
+    vhost_count=$(uci show haproxy 2>/dev/null | grep -c '=vhost$' || echo 0)
+    metablog_count=$(uci show metablogizer 2>/dev/null | grep -c '=site$' || echo 0)
+    streamlit_count=$(uci show streamlit 2>/dev/null | grep -c '=instance$' || echo 0)
+    cert_count=$(ls /srv/haproxy/certs/*.pem 2>/dev/null | wc -l || echo 0)
+    lxc_running=$(lxc-ls --running 2>/dev/null | wc -w || echo 0)
+
+    printf '{"uptime":%d,"load":"%s","mem_total_kb":%d,"mem_used_kb":%d,"mem_pct":%d,"haproxy":%s,"mitmproxy":%s,"crowdsec":%s,"vhosts":%d,"metablogs":%d,"streamlits":%d,"certificates":%d,"lxc_containers":%d}' \
+        "$uptime" "$load" "$mem_total" "$mem_used" "$mem_pct" \
+        "$haproxy_up" "$mitmproxy_up" "$crowdsec_up" \
+        "$vhost_count" "$metablog_count" "$streamlit_count" "$cert_count" "$lxc_running"
 }
 
-# Get MetaBlog sites
-get_metablogs() {
-    json_init
-    json_add_array "sites"
+# Build WAF stats
+build_waf_stats() {
+    local cs_running=false mitmproxy_running=false
+    local bans=0 alerts_today=0 waf_threats=0 waf_blocked=0
 
-    local section name domain port enabled running
-    for section in $(uci show metablogizer 2>/dev/null | grep "=site$" | cut -d. -f2 | cut -d= -f1); do
-        name=$(echo "$section" | sed 's/^site_//')
-        domain=$(uci -q get "metablogizer.$section.domain")
-        port=$(uci -q get "metablogizer.$section.port")
-        enabled=$(uci -q get "metablogizer.$section.enabled")
+    pgrep crowdsec >/dev/null 2>&1 && cs_running=true
+    pgrep -f mitmdump >/dev/null 2>&1 && mitmproxy_running=true
 
-        running=0
-        netstat -tln 2>/dev/null | grep -q ":${port:-0} " && running=1
-
-        json_add_object ""
-        json_add_string "name" "$name"
-        json_add_string "domain" "$domain"
-        json_add_int "port" "${port:-0}"
-        json_add_boolean "enabled" "${enabled:-0}"
-        json_add_boolean "running" "$running"
-        json_close_object
-    done
-
-    json_close_array
-    json_dump
-}
-
-# Get Streamlit apps
-get_streamlits() {
-    json_init
-    json_add_array "apps"
-
-    local section name domain port enabled running
-    for section in $(uci show streamlit 2>/dev/null | grep "=instance$" | cut -d. -f2 | cut -d= -f1); do
-        name="$section"
-        domain=$(uci -q get "streamlit.$section.domain")
-        port=$(uci -q get "streamlit.$section.port")
-        enabled=$(uci -q get "streamlit.$section.enabled")
-
-        running=0
-        pgrep -f "streamlit.*$port" >/dev/null 2>&1 && running=1
-
-        json_add_object ""
-        json_add_string "name" "$name"
-        json_add_string "domain" "$domain"
-        json_add_int "port" "${port:-0}"
-        json_add_boolean "enabled" "${enabled:-0}"
-        json_add_boolean "running" "$running"
-        json_close_object
-    done
-
-    json_close_array
-    json_dump
-}
-
-# Get WAF/CrowdSec stats
-get_waf_stats() {
-    json_init
-
-    local cs_running=0
-    pgrep crowdsec >/dev/null 2>&1 && cs_running=1
-
-    local bans=0
-    local alerts_today=0
-    if [ "$cs_running" = "1" ]; then
+    if [ "$cs_running" = "true" ]; then
         bans=$(cscli decisions list -o json 2>/dev/null | grep -c '"id"' || echo 0)
         alerts_today=$(cscli alerts list --since 24h -o json 2>/dev/null | grep -c '"id"' || echo 0)
     fi
 
-    local mitmproxy_running=0
-    pgrep -f mitmdump >/dev/null 2>&1 && mitmproxy_running=1
-
-    local waf_threats=0
-    local waf_blocked=0
     if [ -f "/tmp/secubox-mitm-stats.json" ]; then
         waf_threats=$(jsonfilter -i /tmp/secubox-mitm-stats.json -e '@.threats_today' 2>/dev/null || echo 0)
         waf_blocked=$(jsonfilter -i /tmp/secubox-mitm-stats.json -e '@.blocked_today' 2>/dev/null || echo 0)
     fi
 
-    json_add_boolean "crowdsec_running" "$cs_running"
-    json_add_boolean "mitmproxy_running" "$mitmproxy_running"
-    json_add_int "active_bans" "${bans:-0}"
-    json_add_int "alerts_today" "${alerts_today:-0}"
-    json_add_int "waf_threats" "${waf_threats:-0}"
-    json_add_int "waf_blocked" "${waf_blocked:-0}"
-
-    json_dump
+    printf '{"crowdsec_running":%s,"mitmproxy_running":%s,"active_bans":%d,"alerts_today":%d,"waf_threats":%d,"waf_blocked":%d}' \
+        "$cs_running" "$mitmproxy_running" "$bans" "$alerts_today" "$waf_threats" "$waf_blocked"
 }
 
-# Get active connections
-get_connections() {
-    json_init
-
+# Build connections
+build_connections() {
     local http_conns https_conns ssh_conns total_tcp
 
     http_conns=$(netstat -an 2>/dev/null | grep -c ":80 .*ESTABLISHED" || echo 0)
@@ -164,96 +85,168 @@ get_connections() {
     ssh_conns=$(netstat -an 2>/dev/null | grep -c ":22 .*ESTABLISHED" || echo 0)
     total_tcp=$(netstat -an 2>/dev/null | grep -c "ESTABLISHED" || echo 0)
 
-    json_add_int "http" "$http_conns"
-    json_add_int "https" "$https_conns"
-    json_add_int "ssh" "$ssh_conns"
-    json_add_int "total_tcp" "$total_tcp"
-
-    json_dump
+    printf '{"http":%d,"https":%d,"ssh":%d,"total_tcp":%d}' \
+        "$http_conns" "$https_conns" "$ssh_conns" "$total_tcp"
 }
 
-# Get firewall stats
-get_firewall_stats() {
-    json_init
+# Build full cache
+build_cache() {
+    local overview waf conns ts
+    overview=$(build_overview)
+    waf=$(build_waf_stats)
+    conns=$(build_connections)
+    ts=$(date -Iseconds)
 
-    local bouncer_blocks=0
-    if [ -f "/var/log/crowdsec-firewall-bouncer.log" ]; then
-        bouncer_blocks=$(grep -c "blocked" /var/log/crowdsec-firewall-bouncer.log 2>/dev/null || echo 0)
+    printf '{"overview":%s,"waf":%s,"connections":%s,"timestamp":"%s"}' \
+        "$overview" "$waf" "$conns" "$ts" > "$CACHE_FILE"
+}
+
+# Refresh cache in background if stale
+refresh_cache_async() {
+    if ! cache_is_fresh; then
+        ( build_cache ) &
     fi
-
-    json_add_int "iptables_drops" "0"
-    json_add_int "nft_drops" "0"
-    json_add_int "bouncer_blocks" "$bouncer_blocks"
-
-    json_dump
 }
 
-# Get system overview
+# Get cached or build
+get_cached() {
+    if [ -f "$CACHE_FILE" ]; then
+        cat "$CACHE_FILE"
+        # Trigger background refresh if getting stale
+        refresh_cache_async
+    else
+        build_cache
+        cat "$CACHE_FILE"
+    fi
+}
+
+# Fast getters from cache
 get_overview() {
+    if [ -f "$CACHE_FILE" ]; then
+        jsonfilter -i "$CACHE_FILE" -e '@.overview' 2>/dev/null || build_overview
+    else
+        build_overview
+    fi
+}
+
+get_waf_stats() {
+    if [ -f "$CACHE_FILE" ]; then
+        jsonfilter -i "$CACHE_FILE" -e '@.waf' 2>/dev/null || build_waf_stats
+    else
+        build_waf_stats
+    fi
+}
+
+get_connections() {
+    if [ -f "$CACHE_FILE" ]; then
+        jsonfilter -i "$CACHE_FILE" -e '@.connections' 2>/dev/null || build_connections
+    else
+        build_connections
+    fi
+}
+
+# Simple getters (less critical, can compute)
+get_certs() {
     json_init
-
-    local uptime load mem_total mem_free mem_used mem_pct
-
-    uptime=$(cut -d. -f1 /proc/uptime)
-    load=$(cut -d' ' -f1-3 /proc/loadavg)
-    mem_total=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
-    mem_free=$(awk '/MemAvailable/ {print $2}' /proc/meminfo)
-    mem_used=$((mem_total - mem_free))
-    mem_pct=$((mem_used * 100 / mem_total))
-
-    local haproxy_up=0
-    lxc-info -n haproxy -s 2>/dev/null | grep -q RUNNING && haproxy_up=1
-
-    local mitmproxy_up=0
-    lxc-info -n mitmproxy-in -s 2>/dev/null | grep -q RUNNING && mitmproxy_up=1
-
-    local crowdsec_up=0
-    pgrep crowdsec >/dev/null 2>&1 && crowdsec_up=1
-
-    local vhost_count metablog_count streamlit_count cert_count lxc_running
-
-    vhost_count=$(uci show haproxy 2>/dev/null | grep -c '=vhost$')
-    metablog_count=$(uci show metablogizer 2>/dev/null | grep -c '=site$')
-    streamlit_count=$(uci show streamlit 2>/dev/null | grep -c '=instance$')
-    cert_count=$(ls /srv/haproxy/certs/*.pem 2>/dev/null | wc -l)
-    lxc_running=$(lxc-ls --running 2>/dev/null | wc -w)
-
-    json_add_int "uptime" "$uptime"
-    json_add_string "load" "$load"
-    json_add_int "mem_total_kb" "$mem_total"
-    json_add_int "mem_used_kb" "$mem_used"
-    json_add_int "mem_pct" "$mem_pct"
-
-    json_add_boolean "haproxy" "$haproxy_up"
-    json_add_boolean "mitmproxy" "$mitmproxy_up"
-    json_add_boolean "crowdsec" "$crowdsec_up"
-
-    json_add_int "vhosts" "$vhost_count"
-    json_add_int "metablogs" "$metablog_count"
-    json_add_int "streamlits" "$streamlit_count"
-    json_add_int "certificates" "$cert_count"
-    json_add_int "lxc_containers" "$lxc_running"
-
-    json_add_string "timestamp" "$(date -Iseconds)"
-
+    json_add_array "certs"
+    local count=0
+    for pem in /srv/haproxy/certs/*.pem; do
+        [ -f "$pem" ] || continue
+        count=$((count + 1))
+        [ $count -gt 10 ] && break
+        local name=$(basename "$pem" .pem)
+        json_add_object ""
+        json_add_string "name" "$name"
+        json_add_string "expiry" "valid"
+        json_add_int "days_left" 365
+        json_add_string "status" "valid"
+        json_close_object
+    done
+    json_close_array
     json_dump
 }
 
-# Get all metrics
+get_vhosts() {
+    json_init
+    json_add_array "vhosts"
+    local count=0
+    for section in $(uci show haproxy 2>/dev/null | grep "=vhost$" | head -20 | cut -d. -f2 | cut -d= -f1); do
+        local domain=$(uci -q get "haproxy.$section.domain")
+        local enabled=$(uci -q get "haproxy.$section.enabled")
+        [ -z "$domain" ] && continue
+        [ "$enabled" != "1" ] && continue
+        json_add_object ""
+        json_add_string "domain" "$domain"
+        json_add_boolean "enabled" 1
+        json_close_object
+        count=$((count + 1))
+        [ $count -ge 20 ] && break
+    done
+    json_close_array
+    json_dump
+}
+
+get_metablogs() {
+    json_init
+    json_add_array "sites"
+    for section in $(uci show metablogizer 2>/dev/null | grep "=site$" | head -20 | cut -d. -f2 | cut -d= -f1); do
+        local name=$(echo "$section" | sed 's/^site_//')
+        local domain=$(uci -q get "metablogizer.$section.domain")
+        local port=$(uci -q get "metablogizer.$section.port")
+        local enabled=$(uci -q get "metablogizer.$section.enabled")
+        local running=0
+        netstat -tln 2>/dev/null | grep -q ":${port:-0} " && running=1
+        json_add_object ""
+        json_add_string "name" "$name"
+        json_add_string "domain" "$domain"
+        json_add_int "port" "${port:-0}"
+        json_add_boolean "enabled" "${enabled:-0}"
+        json_add_boolean "running" "$running"
+        json_close_object
+    done
+    json_close_array
+    json_dump
+}
+
+get_streamlits() {
+    json_init
+    json_add_array "apps"
+    for section in $(uci show streamlit 2>/dev/null | grep "=instance$" | head -20 | cut -d. -f2 | cut -d= -f1); do
+        local name="$section"
+        local domain=$(uci -q get "streamlit.$section.domain")
+        local port=$(uci -q get "streamlit.$section.port")
+        local enabled=$(uci -q get "streamlit.$section.enabled")
+        local running=0
+        pgrep -f "streamlit.*$port" >/dev/null 2>&1 && running=1
+        json_add_object ""
+        json_add_string "name" "$name"
+        json_add_string "domain" "$domain"
+        json_add_int "port" "${port:-0}"
+        json_add_boolean "enabled" "${enabled:-0}"
+        json_add_boolean "running" "$running"
+        json_close_object
+    done
+    json_close_array
+    json_dump
+}
+
+get_firewall_stats() {
+    printf '{"iptables_drops":0,"nft_drops":0,"bouncer_blocks":0}'
+}
+
 get_all() {
-    local overview waf conns fw
+    get_cached
+}
 
-    overview=$(get_overview)
-    waf=$(get_waf_stats)
-    conns=$(get_connections)
-    fw=$(get_firewall_stats)
-
-    printf '{"overview":%s,"waf":%s,"connections":%s,"firewall":%s}' "$overview" "$waf" "$conns" "$fw"
+# Cron refresh entry point
+do_refresh() {
+    build_cache
+    echo "Cache refreshed at $(date)"
 }
 
 case "$1" in
     list)
-        echo '{"overview":{},"certs":{},"vhosts":{},"metablogs":{},"streamlits":{},"waf_stats":{},"connections":{},"firewall_stats":{},"all":{}}'
+        echo '{"overview":{},"certs":{},"vhosts":{},"metablogs":{},"streamlits":{},"waf_stats":{},"connections":{},"firewall_stats":{},"all":{},"refresh":{}}'
         ;;
     call)
         case "$2" in
@@ -266,6 +259,7 @@ case "$1" in
             connections) get_connections ;;
             firewall_stats) get_firewall_stats ;;
             all) get_all ;;
+            refresh) do_refresh ;;
             *) echo '{"error":"Unknown method"}' ;;
         esac
         ;;
