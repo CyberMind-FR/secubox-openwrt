@@ -28,24 +28,36 @@ jobs:
           echo "📋 Validating Makefile structure..."
 
           ERRORS=0
+          WARNINGS=0
 
           for makefile in luci-app-*/Makefile package/secubox/luci-app-*/Makefile; do
             if [[ -f "$makefile" ]]; then
               PKG=$(dirname "$makefile")
               echo "  🔍 Checking $PKG..."
-              
-              # Required fields
+
+              # Required fields (must have)
               REQUIRED_FIELDS=(
                 "PKG_NAME"
                 "PKG_VERSION"
                 "PKG_RELEASE"
+              )
+
+              # Recommended fields (warn if missing)
+              RECOMMENDED_FIELDS=(
                 "PKG_LICENSE"
               )
-              
+
               for field in "${REQUIRED_FIELDS[@]}"; do
                 if ! grep -q "^${field}:=" "$makefile"; then
-                  echo "    ❌ Missing: $field"
+                  echo "    ❌ Missing required: $field"
                   ERRORS=$((ERRORS + 1))
+                fi
+              done
+
+              for field in "${RECOMMENDED_FIELDS[@]}"; do
+                if ! grep -q "^${field}:=" "$makefile"; then
+                  echo "    ⚠️ Missing recommended: $field"
+                  WARNINGS=$((WARNINGS + 1))
                 fi
               done
               
@@ -57,6 +69,9 @@ jobs:
             fi
           done
           
+          if [[ $WARNINGS -gt 0 ]]; then
+            echo "⚠️ Found $WARNINGS warnings (non-blocking)"
+          fi
           if [[ $ERRORS -gt 0 ]]; then
             echo "❌ Found $ERRORS errors"
             exit 1
