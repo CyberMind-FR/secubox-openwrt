@@ -289,8 +289,16 @@ jobs:
 
           echo "📦 Source image: $IMG_FILE"
 
-          # Extract
-          gunzip -c "$IMG_FILE" > /tmp/openwrt.img
+          # Extract (ignore "trailing garbage" warning - normal for firmware images)
+          # gunzip returns exit code 2 for warnings, which we can safely ignore
+          gunzip -c "$IMG_FILE" > /tmp/openwrt.img 2>/dev/null || {
+            # Check if extraction actually produced output
+            if [[ ! -s /tmp/openwrt.img ]]; then
+              echo "❌ Failed to extract image"
+              exit 1
+            fi
+            echo "   (gunzip warning ignored - normal for firmware images)"
+          }
           IMG_SIZE=$(stat -c%s /tmp/openwrt.img)
           echo "   Size: $(numfmt --to=iec $IMG_SIZE)"
 
