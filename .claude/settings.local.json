@@ -575,7 +575,12 @@
       "Bash(sudo -S rm:*)",
       "Bash(sudo -S chmod:*)",
       "Bash(do curl -sk -o /dev/null -w \"%{http_code} \" https://quick.secubox.in/)",
-      "Bash(# Check if the dashboard page loads curl -sk --max-time 10 \"\"https://192.168.255.1/cgi-bin/luci/admin/status/metrics\"\")"
+      "Bash(# Check if the dashboard page loads curl -sk --max-time 10 \"\"https://192.168.255.1/cgi-bin/luci/admin/status/metrics\"\")",
+      "Bash(gh api:*)",
+      "Bash(gh workflow run:*)",
+      "Bash(git show:*)",
+      "Bash(jq -r '.[] | \"\" \"\" + .workflowName + \"\": \"\" + .conclusion + \"\" \\(ID: \"\" + \\(.databaseId | tostring\\) + \"\"\\)\"\"' echo \"\" echo \"=== VM Appliance Artifacts ===\" gh api repos/gkerma/secubox-openwrt/actions/runs/23205786221/artifacts --jq '.artifacts[] | \"\" \"\" + .name + \"\" \\(\"\" + \\(\\(.size_in_bytes / 1048576\\) | floor | tostring\\) + \"\" MB\\)\"\"' echo \"\" echo \"=== Package Build Artifacts ===\" gh api repos/gkerma/secubox-openwrt/actions/runs/23206423503/artifacts --jq '.artifacts[] | \"\" \"\" + .name + \"\" \\(\"\" + \\(\\(.size_in_bytes / 1048576\\) | floor | tostring\\) + \"\" MB\\)\"\"')",
+      "Bash(__NEW_LINE_0593582cd60ca850__ echo \"\")"
     ]
   }
 }

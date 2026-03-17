@@ -60,12 +60,33 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # x86-64 targets
           - name: x86-64-efi
+            target: x86/64
             boot: efi
+            pkg_arch: x86-64
             description: "x86/64 EFI (Modern UEFI systems)"
           - name: x86-64-bios
+            target: x86/64
             boot: bios
+            pkg_arch: x86-64
             description: "x86/64 BIOS (Legacy systems)"
+          # ARM64 targets
+          - name: aarch64-generic
+            target: armsr/armv8
+            boot: efi
+            pkg_arch: aarch64-generic
+            description: "ARM64 Generic (QEMU/Proxmox ARM)"
+          - name: rpi4
+            target: bcm27xx/bcm2711
+            boot: native
+            pkg_arch: aarch64-cortex-a72
+            description: "Raspberry Pi 4/400/CM4"
+          - name: rockchip-armv8
+            target: rockchip/armv8
+            boot: native
+            pkg_arch: rockchip-armv8
+            description: "Rockchip ARM64 (NanoPi R4S/R5S/R6S)"
 
     name: VM ${{ matrix.description }}
 
@@ -89,12 +110,17 @@ jobs:
       - name: Download Image Builder
         run: |
           VERSION="${{ env.OPENWRT_VERSION }}"
+          TARGET="${{ matrix.target }}"
+          TARGET_SAFE=$(echo "$TARGET" | tr '/' '-')
 
-          IB_URL="https://downloads.openwrt.org/releases/${VERSION}/targets/x86/64/openwrt-imagebuilder-${VERSION}-x86-64.Linux-x86_64.tar.zst"
+          IB_URL="https://downloads.openwrt.org/releases/${VERSION}/targets/${TARGET}/openwrt-imagebuilder-${VERSION}-${TARGET_SAFE}.Linux-x86_64.tar.zst"
 
-          echo "📥 Downloading Image Builder..."
+          echo "📥 Downloading Image Builder for $TARGET..."
+          echo "   URL: $IB_URL"
+
           wget -q "$IB_URL" -O imagebuilder.tar.zst 2>/dev/null || {
             IB_URL="${IB_URL%.zst}.xz"
+            echo "   Trying .xz: $IB_URL"
             wget -q "$IB_URL" -O imagebuilder.tar.xz
             tar -xf imagebuilder.tar.xz
             mv openwrt-imagebuilder-* imagebuilder
@@ -105,17 +131,18 @@ jobs:
             mv openwrt-imagebuilder-* imagebuilder
           fi
 
-          echo "✅ Image Builder ready"
+          echo "✅ Image Builder ready for ${{ matrix.name }}"
 
       - name: Download prebuilt SecuBox packages
         run: |
-          echo "📥 Downloading prebuilt SecuBox packages..."
+          echo "📥 Downloading prebuilt SecuBox packages for ${{ matrix.pkg_arch }}..."
 
-          # Download x86-64 packages from release
+          # Download architecture-specific packages from release
           C3BOX_VER="${{ env.C3BOX_VERSION }}"
+          PKG_ARCH="${{ matrix.pkg_arch }}"
 
           # Try downloading from release artifacts
-          PKG_URL="https://github.com/gkerma/secubox-openwrt/releases/download/${C3BOX_VER}/secubox-${C3BOX_VER#v}-x86-64.tar.gz"
+          PKG_URL="https://github.com/gkerma/secubox-openwrt/releases/download/${C3BOX_VER}/secubox-${C3BOX_VER#v}-${PKG_ARCH}.tar.gz"
 
           mkdir -p imagebuilder/packages/secubox
 
@@ -578,7 +605,6 @@ jobs:
           PACKAGES="$PACKAGES openssh-sftp-server"
           PACKAGES="$PACKAGES block-mount kmod-fs-ext4 kmod-fs-vfat kmod-fs-btrfs"
           PACKAGES="$PACKAGES parted e2fsprogs resize2fs"
-          PACKAGES="$PACKAGES qemu-ga"  # QEMU guest agent for Proxmox
           PACKAGES="$PACKAGES git rsync screen tmux bash jq"
           PACKAGES="$PACKAGES docker dockerd containerd"
           PACKAGES="$PACKAGES wireguard-tools kmod-wireguard luci-proto-wireguard"
@@ -590,10 +616,27 @@ jobs:
           PACKAGES="$PACKAGES haproxy bind-server bind-tools"
           PACKAGES="$PACKAGES kmod-nf-conntrack kmod-nf-nat kmod-ipt-nat"
 
-          # EFI-specific packages
-          if [[ "${{ matrix.boot }}" == "efi" ]]; then
-            PACKAGES="$PACKAGES grub2-efi"
-          fi
+          # Architecture-specific packages
+          case "${{ matrix.target }}" in
+            x86/64)
+              if [[ "${{ matrix.boot }}" == "efi" ]]; then
+                PACKAGES="$PACKAGES grub2-efi"
+              fi
+              PACKAGES="$PACKAGES qemu-ga"  # QEMU guest agent for Proxmox
+              ;;
+            armsr/armv8)
+              # ARM64 generic - virtio support for QEMU/Proxmox
+              PACKAGES="$PACKAGES kmod-virtio-net kmod-virtio-blk"
+              ;;
+            bcm27xx/bcm2711)
+              # Raspberry Pi 4 specific
+              PACKAGES="$PACKAGES kmod-usb-net-asix-ax88179 kmod-usb-net-rtl8152"
+              ;;
+            rockchip/armv8)
+              # Rockchip ARM64
+              PACKAGES="$PACKAGES kmod-usb-net-rtl8152"
+              ;;
+          esac
 
           # SecuBox packages from prebuilt artifacts (if available)
           IPK_COUNT=$(find packages/secubox -name "*.ipk" 2>/dev/null | wc -l)
@@ -648,8 +691,27 @@ jobs:
           echo "💾 Root partition: ${ROOT_SIZE}MB"
           echo ""
 
-          # Build with combined-efi or ext4-combined based on boot type
-          PROFILE="generic"
+          # Select profile based on target
+          case "${{ matrix.target }}" in
+            x86/64)
+              PROFILE="generic"
+              ;;
+            armsr/armv8)
+              PROFILE="generic"
+              ;;
+            bcm27xx/bcm2711)
+              PROFILE="rpi-4"
+              ;;
+            rockchip/armv8)
+              # List available profiles and pick first one
+              PROFILE=$(make info 2>/dev/null | grep -oP 'Default profile:\s+\K\S+' || echo "nanopi-r4s")
+              ;;
+            *)
+              PROFILE="generic"
+              ;;
+          esac
+
+          echo "🎯 Profile: $PROFILE"
 
           make image \
             PROFILE="$PROFILE" \
@@ -666,30 +728,44 @@ jobs:
         run: |
           mkdir -p artifacts
 
-          TARGET_DIR="imagebuilder/bin/targets/x86/64"
+          TARGET="${{ matrix.target }}"
+          TARGET_DIR="imagebuilder/bin/targets/${TARGET}"
 
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "🔄 Converting to VM formats"
+          echo "🔄 Converting to VM formats (${{ matrix.name }})"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-          # Find the correct image based on boot type
-          if [[ "${{ matrix.boot }}" == "efi" ]]; then
-            IMG_PATTERN="*-combined-efi.img.gz"
-          else
-            IMG_PATTERN="*-combined-ext4.img.gz"
-          fi
+          # Find the correct image based on boot type and architecture
+          case "${{ matrix.boot }}" in
+            efi)
+              IMG_PATTERN="*-combined-efi.img.gz"
+              ;;
+            bios)
+              IMG_PATTERN="*-combined-ext4.img.gz"
+              ;;
+            native)
+              # ARM boards use different image formats
+              IMG_PATTERN="*-ext4-factory.img.gz"
+              ;;
+          esac
 
           # Find and extract the image
           IMG_FILE=$(find "$TARGET_DIR" -name "$IMG_PATTERN" 2>/dev/null | head -1)
 
           if [[ -z "$IMG_FILE" ]]; then
-            # Fallback to any combined image
+            # Fallback patterns for different architectures
             IMG_FILE=$(find "$TARGET_DIR" -name "*combined*.img.gz" 2>/dev/null | head -1)
           fi
 
           if [[ -z "$IMG_FILE" ]]; then
+            # Try ext4-sysupgrade for ARM
+            IMG_FILE=$(find "$TARGET_DIR" -name "*-ext4-sysupgrade.img.gz" -o -name "*-squashfs-sysupgrade.img.gz" 2>/dev/null | head -1)
+          fi
+
+          if [[ -z "$IMG_FILE" ]]; then
             echo "❌ No firmware image found!"
-            ls -la "$TARGET_DIR/"
+            echo "Available files in $TARGET_DIR:"
+            ls -la "$TARGET_DIR/" 2>/dev/null || find imagebuilder/bin -type f -name "*.img*"
             exit 1
           fi
 
