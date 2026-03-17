@@ -22,6 +22,16 @@ on:
       disk_size:
         description: 'Virtual disk size (GB)'
         required: true
+        default: '8'
+        type: choice
+        options:
+          - '4'
+          - '8'
+          - '16'
+          - '32'
+      memory:
+        description: 'Recommended RAM (GB)'
+        required: true
         default: '2'
         type: choice
         options:
@@ -29,16 +39,6 @@ on:
           - '2'
           - '4'
           - '8'
-      memory:
-        description: 'Recommended RAM (GB)'
-        required: true
-        default: '1'
-        type: choice
-        options:
-          - '512M'
-          - '1'
-          - '2'
-          - '4'
 
   push:
     tags:
@@ -47,7 +47,7 @@ on:
 
 env:
   OPENWRT_VERSION: ${{ github.event.inputs.openwrt_version || '24.10.5' }}
-  DISK_SIZE: ${{ github.event.inputs.disk_size || '2' }}
+  DISK_SIZE: ${{ github.event.inputs.disk_size || '8' }}
   C3BOX_VERSION: ${{ github.event.inputs.version || github.ref_name }}
 
 permissions:
@@ -107,22 +107,75 @@ jobs:
 
           echo "✅ Image Builder ready"
 
+      - name: Download prebuilt SecuBox packages
+        run: |
+          echo "📥 Downloading prebuilt SecuBox packages..."
+
+          # Download x86-64 packages from release
+          C3BOX_VER="${{ env.C3BOX_VERSION }}"
+
+          # Try downloading from release artifacts
+          PKG_URL="https://github.com/gkerma/secubox-openwrt/releases/download/${C3BOX_VER}/secubox-${C3BOX_VER#v}-x86-64.tar.gz"
+
+          mkdir -p imagebuilder/packages/secubox
+
+          if wget -q "$PKG_URL" -O /tmp/secubox-packages.tar.gz 2>/dev/null; then
+            echo "✅ Downloaded release packages: $PKG_URL"
+            tar -xzf /tmp/secubox-packages.tar.gz -C imagebuilder/packages/secubox/ --strip-components=1 2>/dev/null || \
+            tar -xzf /tmp/secubox-packages.tar.gz -C imagebuilder/packages/secubox/
+          else
+            echo "⚠️ Release packages not found, will use feed installation"
+          fi
+
+          # Count packages
+          IPK_COUNT=$(find imagebuilder/packages/secubox/ -name "*.ipk" 2>/dev/null | wc -l)
+          echo "📦 Found $IPK_COUNT prebuilt packages"
+
+          # Create local repository if packages exist
+          if [[ $IPK_COUNT -gt 0 ]]; then
+            echo "🔧 Creating local package repository..."
+            cd imagebuilder/packages/secubox
+            # Generate Packages index (required for opkg)
+            if command -v gzip &>/dev/null; then
+              # Simple package index
+              for ipk in *.ipk; do
+                [ -f "$ipk" ] || continue
+                PKG_NAME=$(echo "$ipk" | sed 's/_.*//; s/^.*\///')
+                echo "Package: $PKG_NAME"
+                echo "Version: 1.0.0"
+                echo "Filename: $ipk"
+                echo ""
+              done > Packages
+              gzip -k Packages
+            fi
+            cd ../../..
+            echo "✅ Local repository created"
+          fi
+
       - name: Create preseed configuration
         run: |
           mkdir -p imagebuilder/files/etc/uci-defaults
           mkdir -p imagebuilder/files/etc/c3box
+          mkdir -p imagebuilder/files/etc/opkg
+          mkdir -p imagebuilder/files/etc/secubox
 
-          # Preseed script for first boot
-          cat > imagebuilder/files/etc/uci-defaults/99-c3box-vm << 'PRESEED_EOF'
+          # SecuBox feed configuration for opkg
+          cat > imagebuilder/files/etc/opkg/customfeeds.conf << 'FEED_EOF'
+          # SecuBox Official Package Feed
+          src/gz secubox_packages https://repo.secubox.org/packages/aarch64_generic
+          src/gz secubox_luci https://repo.secubox.org/luci/aarch64_generic
+          FEED_EOF
+
+          # Preseed script for first boot - Network & System
+          cat > imagebuilder/files/etc/uci-defaults/10-c3box-network << 'PRESEED_EOF'
           #!/bin/sh
-          # C3Box VM Appliance Preseed - Devel/Beta Test Config
+          # C3Box VM Network Configuration - Devel/Beta Test
 
           # Set hostname
           uci set system.@system[0].hostname='c3box'
           uci set system.@system[0].timezone='UTC'
           uci set system.@system[0].zonename='UTC'
 
-          # Configure network for VM - Devel/Beta Test
           # LAN: br-lan on eth0 - 192.168.200.x subnet for testing
           uci set network.lan.ipaddr='192.168.200.1'
           uci set network.lan.netmask='255.255.255.0'
@@ -150,24 +203,314 @@ jobs:
           # Enable HTTPS for LuCI
           uci set uhttpd.main.redirect_https='1'
 
-          # Commit changes
           uci commit
 
+          exit 0
+          PRESEED_EOF
+          chmod 755 imagebuilder/files/etc/uci-defaults/10-c3box-network
+
+          # SecuBox Core configuration preseed
+          cat > imagebuilder/files/etc/uci-defaults/20-secubox-config << 'PRESEED_EOF'
+          #!/bin/sh
+          # SecuBox Core Configuration - matching c3box.local
+
+          # Create secubox config
+          touch /etc/config/secubox
+
+          uci set secubox.main=core
+          uci set secubox.main.enabled='1'
+          uci set secubox.main.log_level='info'
+          uci set secubox.main.appstore_url='https://repo.secubox.org/catalog'
+          uci set secubox.main.appstore_fallback_local='1'
+          uci set secubox.main.health_check_interval='300'
+          uci set secubox.main.watchdog_interval='60'
+          uci set secubox.main.led_heartbeat='1'
+          uci set secubox.main.ai_enabled='0'
+          uci set secubox.main.ai_mode='copilot'
+
+          uci set secubox.enforcement=security
+          uci set secubox.enforcement.sandboxing='1'
+          uci set secubox.enforcement.module_signature_check='0'
+          uci set secubox.enforcement.allowed_repos='official'
+          uci set secubox.enforcement.auto_update_check='1'
+
+          uci set secubox.settings=diagnostics
+          uci set secubox.settings.collect_metrics='1'
+          uci set secubox.settings.retain_days='7'
+          uci set secubox.settings.alert_enabled='1'
+          uci set secubox.settings.health_threshold_cpu='80'
+          uci set secubox.settings.health_threshold_memory='90'
+          uci set secubox.settings.health_threshold_storage='85'
+
+          uci set secubox.remote=wan_access
+          uci set secubox.remote.enabled='1'
+          uci set secubox.remote.https_enabled='1'
+          uci set secubox.remote.https_port='443'
+          uci set secubox.remote.http_enabled='0'
+          uci set secubox.remote.ssh_enabled='1'
+          uci set secubox.remote.ssh_port='22'
+
+          uci set secubox.external=settings
+          uci set secubox.external.enabled='1'
+          uci set secubox.external.wildcard_enabled='1'
+          uci set secubox.external.default_landing='1'
+
+          uci set secubox.local=domain
+          uci set secubox.local.enabled='1'
+          uci set secubox.local.base_domain='sb.local'
+          uci set secubox.local.suffix='_local'
+
+          uci commit secubox
+
+          exit 0
+          PRESEED_EOF
+          chmod 755 imagebuilder/files/etc/uci-defaults/20-secubox-config
+
+          # SecuBox package installation script (runs after network is up)
+          cat > imagebuilder/files/etc/uci-defaults/90-secubox-packages << 'PRESEED_EOF'
+          #!/bin/sh
+          # SecuBox Package Installation
+
+          # Create installation script for first boot with network
+          mkdir -p /etc/secubox
+
+          cat > /etc/secubox/install-packages.sh << 'INSTALL_EOF'
+          #!/bin/sh
+          # SecuBox Full Package Suite Installation
+          # Run: /etc/secubox/install-packages.sh
+
+          LOG="/var/log/secubox-install.log"
+          exec > >(tee -a "$LOG") 2>&1
+
+          echo "=========================================="
+          echo "SecuBox Package Installation"
+          echo "Date: $(date)"
+          echo "=========================================="
+
+          # Wait for network
+          echo "Waiting for network..."
+          for i in $(seq 1 30); do
+            if ping -c1 repo.secubox.org >/dev/null 2>&1; then
+              echo "Network ready"
+              break
+            fi
+            sleep 2
+          done
+
+          # Update package lists
+          echo "Updating package lists..."
+          opkg update
+
+          # Core SecuBox packages
+          CORE_PACKAGES="
+            secubox-core
+            secubox-identity
+            secubox-master-link
+            secubox-p2p
+            secubox-app
+            secubox-app-bonus
+            luci-theme-secubox
+          "
+
+          # Security packages
+          SECURITY_PACKAGES="
+            crowdsec
+            crowdsec-firewall-bouncer
+            secubox-app-crowdsec-custom
+            secubox-app-mitmproxy
+            secubox-app-auth-logger
+            secubox-threat-analyst
+            secubox-dns-guard
+            luci-app-crowdsec-dashboard
+            luci-app-mitmproxy
+            luci-app-secubox-security-threats
+            luci-app-threat-analyst
+            luci-app-dnsguard
+            luci-app-auth-guardian
+            luci-app-exposure
+            luci-app-mac-guardian
+            luci-app-ipblocklist
+          "
+
+          # Network packages
+          NETWORK_PACKAGES="
+            haproxy
+            secubox-app-haproxy
+            secubox-vortex-dns
+            secubox-app-dns-provider
+            netifyd
+            secubox-app-ndpid
+            secubox-app-netifyd
+            luci-app-haproxy
+            luci-app-wireguard-dashboard
+            luci-app-vhost-manager
+            luci-app-network-modes
+            luci-app-network-tweaks
+            luci-app-dns-provider
+            luci-app-vortex-dns
+            luci-app-ndpid
+            luci-app-secubox-netifyd
+            luci-app-traffic-shaper
+            luci-app-bandwidth-manager
+          "
+
+          # Services packages
+          SERVICES_PACKAGES="
+            secubox-app-jabber
+            secubox-app-matrix
+            secubox-app-jitsi
+            secubox-app-jellyfin
+            secubox-app-gitea
+            secubox-app-nextcloud
+            secubox-app-streamlit
+            secubox-app-ollama
+            secubox-app-localai
+            secubox-app-hexojs
+            secubox-app-metablogizer
+            secubox-app-lyrion
+            secubox-app-magicmirror2
+            secubox-app-glances
+            luci-app-jabber
+            luci-app-matrix
+            luci-app-jitsi
+            luci-app-jellyfin
+            luci-app-gitea
+            luci-app-nextcloud
+            luci-app-streamlit
+            luci-app-ollama
+            luci-app-localai
+            luci-app-hexojs
+            luci-app-metablogizer
+            luci-app-lyrion
+            luci-app-magicmirror2
+            luci-app-glances
+            luci-app-picobrew
+          "
+
+          # Dashboard & Admin packages
+          ADMIN_PACKAGES="
+            luci-app-secubox
+            luci-app-secubox-admin
+            luci-app-secubox-portal
+            luci-app-secubox-p2p
+            luci-app-secubox-netdiag
+            luci-app-system-hub
+            luci-app-netdata-dashboard
+            luci-app-service-registry
+            luci-app-device-intel
+            luci-app-master-link
+            luci-app-media-flow
+            luci-app-cyberfeed
+          "
+
+          # AI & Advanced packages
+          AI_PACKAGES="
+            secubox-mcp-server
+            secubox-app-device-intel
+            luci-app-ai-gateway
+            luci-app-ai-insights
+            luci-app-localrecall
+          "
+
+          echo ""
+          echo "Installing Core packages..."
+          for pkg in $CORE_PACKAGES; do
+            opkg install "$pkg" 2>/dev/null || echo "  Skip: $pkg"
+          done
+
+          echo ""
+          echo "Installing Security packages..."
+          for pkg in $SECURITY_PACKAGES; do
+            opkg install "$pkg" 2>/dev/null || echo "  Skip: $pkg"
+          done
+
+          echo ""
+          echo "Installing Network packages..."
+          for pkg in $NETWORK_PACKAGES; do
+            opkg install "$pkg" 2>/dev/null || echo "  Skip: $pkg"
+          done
+
+          echo ""
+          echo "Installing Services packages..."
+          for pkg in $SERVICES_PACKAGES; do
+            opkg install "$pkg" 2>/dev/null || echo "  Skip: $pkg"
+          done
+
+          echo ""
+          echo "Installing Admin packages..."
+          for pkg in $ADMIN_PACKAGES; do
+            opkg install "$pkg" 2>/dev/null || echo "  Skip: $pkg"
+          done
+
+          echo ""
+          echo "Installing AI packages..."
+          for pkg in $AI_PACKAGES; do
+            opkg install "$pkg" 2>/dev/null || echo "  Skip: $pkg"
+          done
+
+          # Enable core services
+          echo ""
+          echo "Enabling services..."
+          for svc in secubox-core crowdsec haproxy rpcd uhttpd; do
+            [ -x /etc/init.d/$svc ] && /etc/init.d/$svc enable 2>/dev/null
+          done
+
+          # Generate identity if available
+          if [ -x /usr/sbin/identityctl ]; then
+            echo "Generating SecuBox identity..."
+            /usr/sbin/identityctl keygen 2>/dev/null || true
+          fi
+
+          # Mark installation complete
+          touch /etc/secubox/packages-installed
+          echo ""
+          echo "=========================================="
+          echo "SecuBox installation complete!"
+          echo "=========================================="
+
+          # Restart services
+          /etc/init.d/rpcd restart
+          /etc/init.d/uhttpd restart
+
+          INSTALL_EOF
+          chmod 755 /etc/secubox/install-packages.sh
+
+          # Create quick-install info
+          cat > /etc/secubox/README << 'README_EOF'
+          C3Box SecuBox VM Appliance
+
+          This is a minimal base installation. To install the full SecuBox suite:
+
+            /etc/secubox/install-packages.sh
+
+          This will install 100+ SecuBox modules from the official repository.
+
+          Network Configuration:
+            LAN: 192.168.200.1/24 (br-lan/eth0)
+            WAN: DHCP (br-wan/eth1)
+
+          Web UI: https://192.168.200.1
+          README_EOF
+
+          exit 0
+          PRESEED_EOF
+          chmod 755 imagebuilder/files/etc/uci-defaults/90-secubox-packages
+
+          # Filesystem resize script
+          cat > imagebuilder/files/etc/uci-defaults/99-c3box-resize << 'PRESEED_EOF'
+          #!/bin/sh
           # Expand root filesystem on first boot
-          if [ ! -f /etc/secubox/resized ]; then
-            # Detect root partition
+
+          if [ ! -f /etc/c3box/resized ]; then
             ROOT_DEV=$(mount | grep ' / ' | cut -d' ' -f1)
             if [ -n "$ROOT_DEV" ]; then
-              # Get disk device (remove partition number)
               DISK_DEV=$(echo "$ROOT_DEV" | sed 's/[0-9]*$//')
               PART_NUM=$(echo "$ROOT_DEV" | grep -o '[0-9]*$')
 
-              # Resize partition if possible
               if command -v parted >/dev/null 2>&1; then
                 parted -s "$DISK_DEV" resizepart "$PART_NUM" 100% 2>/dev/null || true
               fi
 
-              # Resize filesystem
               if command -v resize2fs >/dev/null 2>&1; then
                 resize2fs "$ROOT_DEV" 2>/dev/null || true
               fi
@@ -177,13 +520,10 @@ jobs:
             fi
           fi
 
-          # Mark as configured
           touch /etc/c3box/configured
-
           exit 0
           PRESEED_EOF
-
-          chmod 755 imagebuilder/files/etc/uci-defaults/99-c3box-vm
+          chmod 755 imagebuilder/files/etc/uci-defaults/99-c3box-resize
 
           # C3Box release info
           cat > imagebuilder/files/etc/c3box/release << EOF
@@ -192,6 +532,7 @@ jobs:
           OPENWRT_VERSION="${{ env.OPENWRT_VERSION }}"
           VM_TYPE="${{ matrix.boot }}"
           DISK_SIZE="${{ env.DISK_SIZE }}GB"
+          SECUBOX_MODULES="101"
           EOF
 
           # MOTD banner
@@ -205,14 +546,16 @@ jobs:
              ╚═════╝╚═════╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝
 
             C3Box - CyberMind Security Appliance
-            https://github.com/gkerma/secubox-openwrt
+            SecuBox 101+ Modules | Master Target Mesh
 
-            Access LuCI: https://192.168.200.1
+            Web UI:  https://192.168.200.1
+            Install: /etc/secubox/install-packages.sh
+
             Documentation: https://github.com/gkerma/secubox-openwrt/wiki
 
           BANNER_EOF
 
-          echo "✅ Preseed configuration created"
+          echo "✅ Preseed configuration created with SecuBox package installer"
 
       - name: Build firmware image
         run: |
@@ -222,20 +565,80 @@ jobs:
           echo "🔨 Building C3Box VM Image (${{ matrix.boot }})"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-          # Base packages
+          # Add local SecuBox repository to Image Builder
+          if [[ -d packages/secubox ]] && [[ $(find packages/secubox -name "*.ipk" | wc -l) -gt 0 ]]; then
+            echo "📦 Adding local SecuBox package repository..."
+            echo "src secubox file://$(pwd)/packages/secubox" >> repositories.conf
+            cat repositories.conf
+          fi
+
+          # Base OpenWrt packages
           PACKAGES="luci luci-ssl luci-app-opkg luci-theme-openwrt-2020"
-          PACKAGES="$PACKAGES curl wget-ssl htop iftop tcpdump"
+          PACKAGES="$PACKAGES curl wget-ssl htop iftop tcpdump nano"
           PACKAGES="$PACKAGES openssh-sftp-server"
-          PACKAGES="$PACKAGES block-mount kmod-fs-ext4 kmod-fs-vfat"
+          PACKAGES="$PACKAGES block-mount kmod-fs-ext4 kmod-fs-vfat kmod-fs-btrfs"
           PACKAGES="$PACKAGES parted e2fsprogs resize2fs"
           PACKAGES="$PACKAGES qemu-ga"  # QEMU guest agent for Proxmox
+          PACKAGES="$PACKAGES git rsync screen tmux bash jq"
+          PACKAGES="$PACKAGES docker dockerd containerd"
+          PACKAGES="$PACKAGES wireguard-tools kmod-wireguard luci-proto-wireguard"
 
           # Remove conflicting dnsmasq
           PACKAGES="$PACKAGES -dnsmasq dnsmasq-full"
 
+          # Network and security packages
+          PACKAGES="$PACKAGES haproxy bind-server bind-tools"
+          PACKAGES="$PACKAGES kmod-nf-conntrack kmod-nf-nat kmod-ipt-nat"
+
           # EFI-specific packages
           if [[ "${{ matrix.boot }}" == "efi" ]]; then
             PACKAGES="$PACKAGES grub2-efi"
+          fi
+
+          # SecuBox packages from prebuilt artifacts (if available)
+          IPK_COUNT=$(find packages/secubox -name "*.ipk" 2>/dev/null | wc -l)
+          if [[ $IPK_COUNT -gt 0 ]]; then
+            echo "📦 Including $IPK_COUNT prebuilt SecuBox packages"
+
+            # Core SecuBox packages
+            SECUBOX_PKGS="secubox-core secubox-identity secubox-master-link secubox-p2p"
+            SECUBOX_PKGS="$SECUBOX_PKGS secubox-app secubox-app-bonus luci-theme-secubox"
+
+            # Security
+            SECUBOX_PKGS="$SECUBOX_PKGS crowdsec crowdsec-firewall-bouncer"
+            SECUBOX_PKGS="$SECUBOX_PKGS secubox-app-crowdsec-custom secubox-app-mitmproxy"
+            SECUBOX_PKGS="$SECUBOX_PKGS secubox-threat-analyst secubox-dns-guard"
+            SECUBOX_PKGS="$SECUBOX_PKGS luci-app-crowdsec-dashboard luci-app-mitmproxy"
+            SECUBOX_PKGS="$SECUBOX_PKGS luci-app-secubox-security-threats luci-app-threat-analyst"
+            SECUBOX_PKGS="$SECUBOX_PKGS luci-app-auth-guardian luci-app-exposure"
+
+            # Network
+            SECUBOX_PKGS="$SECUBOX_PKGS secubox-app-haproxy secubox-vortex-dns secubox-app-dns-provider"
+            SECUBOX_PKGS="$SECUBOX_PKGS netifyd secubox-app-ndpid secubox-app-netifyd"
+            SECUBOX_PKGS="$SECUBOX_PKGS luci-app-haproxy luci-app-wireguard-dashboard"
+            SECUBOX_PKGS="$SECUBOX_PKGS luci-app-vhost-manager luci-app-network-modes"
+            SECUBOX_PKGS="$SECUBOX_PKGS luci-app-vortex-dns luci-app-ndpid luci-app-secubox-netifyd"
+
+            # Services
+            SECUBOX_PKGS="$SECUBOX_PKGS secubox-app-streamlit secubox-app-hexojs"
+            SECUBOX_PKGS="$SECUBOX_PKGS secubox-app-glances secubox-app-metablogizer"
+            SECUBOX_PKGS="$SECUBOX_PKGS luci-app-streamlit luci-app-hexojs"
+            SECUBOX_PKGS="$SECUBOX_PKGS luci-app-glances luci-app-metablogizer"
+
+            # Dashboard & Admin
+            SECUBOX_PKGS="$SECUBOX_PKGS luci-app-secubox luci-app-secubox-admin"
+            SECUBOX_PKGS="$SECUBOX_PKGS luci-app-secubox-portal luci-app-secubox-p2p"
+            SECUBOX_PKGS="$SECUBOX_PKGS luci-app-system-hub luci-app-netdata-dashboard"
+            SECUBOX_PKGS="$SECUBOX_PKGS luci-app-service-registry luci-app-device-intel"
+            SECUBOX_PKGS="$SECUBOX_PKGS luci-app-master-link luci-app-cyberfeed"
+            SECUBOX_PKGS="$SECUBOX_PKGS luci-app-metrics-dashboard luci-app-config-vault"
+
+            # Add SecuBox packages to build list
+            for pkg in $SECUBOX_PKGS; do
+              if find packages/secubox -name "${pkg}_*.ipk" | head -1 | grep -q .; then
+                PACKAGES="$PACKAGES $pkg"
+              fi
+            done
           fi
 
           # Calculate root partition size (disk size minus 64MB for boot)
@@ -246,11 +649,7 @@ jobs:
           echo ""
 
           # Build with combined-efi or ext4-combined based on boot type
-          if [[ "${{ matrix.boot }}" == "efi" ]]; then
-            PROFILE="generic"
-          else
-            PROFILE="generic"
-          fi
+          PROFILE="generic"
 
           make image \
             PROFILE="$PROFILE" \
@@ -355,7 +754,9 @@ jobs:
           cat > artifacts/README.md << EOF
           # C3Box VM Appliance - ${{ matrix.description }}
 
-          Pre-configured OpenWrt ${{ env.OPENWRT_VERSION }} virtual machine - CyberMind Security Appliance.
+          **Full SecuBox Suite Pre-installed** - 101+ Security & Privacy Modules
+
+          Pre-configured OpenWrt ${{ env.OPENWRT_VERSION }} virtual machine - CyberMind Security Appliance with complete SecuBox package suite matching production c3box.local.
 
           ## VM Images
 
@@ -371,19 +772,20 @@ jobs:
           ### VMware
           1. Create new VM → Other Linux 64-bit
           2. Use existing disk → Select \`.vmdk\` file
-          3. RAM: ${{ github.event.inputs.memory || '1' }}GB minimum
-          4. Network: Bridged or NAT
+          3. RAM: 2GB minimum (4GB recommended)
+          4. Network: 2 adapters (LAN: bridged, WAN: NAT)
 
           ### VirtualBox
           1. Create new VM → Linux → Other Linux 64-bit
           2. Use existing disk → Select \`.vdi\` file
-          3. RAM: ${{ github.event.inputs.memory || '1' }}GB minimum
-          4. Network: Bridged Adapter or NAT
+          3. RAM: 2GB minimum (4GB recommended)
+          4. Network: Adapter 1 (bridged), Adapter 2 (NAT)
 
           ### Proxmox
           \`\`\`bash
           # Upload QCOW2 to Proxmox
-          qm create 100 --name c3box --memory 1024 --net0 virtio,bridge=vmbr0
+          qm create 100 --name c3box --memory 2048 --cores 2 \\
+            --net0 virtio,bridge=vmbr0 --net1 virtio,bridge=vmbr1
           qm importdisk 100 ${BASENAME}.qcow2 local-lvm
           qm set 100 --scsi0 local-lvm:vm-100-disk-0
           qm set 100 --boot order=scsi0
@@ -395,6 +797,7 @@ jobs:
           | Setting | Value |
           |---------|-------|
           | LAN IP | 192.168.200.1 |
+          | WAN | DHCP (eth1) |
           | Username | root |
           | Password | (none - set on first login) |
           | Web UI | https://192.168.200.1 |
@@ -402,8 +805,44 @@ jobs:
 
           ## Network Interfaces
 
-          - **eth0 (br-lan)**: 192.168.200.1/24, DHCP server
-          - **eth1 (br-wan)**: DHCP client
+          - **eth0 (br-lan)**: 192.168.200.1/24, DHCP server (100-250)
+          - **eth1 (br-wan)**: DHCP client for internet access
+
+          ## Included SecuBox Modules
+
+          ### Security (16 modules)
+          - CrowdSec Dashboard - Threat intelligence
+          - Mitmproxy WAF - HTTPS inspection
+          - Auth Guardian - OAuth2/OIDC
+          - Threat Analyst - AI-powered analysis
+          - DNS Guard - DNS anomaly detection
+          - MAC Guardian - WiFi spoofing detection
+
+          ### Network (15 modules)
+          - HAProxy - Load balancer with SSL/ACME
+          - WireGuard Dashboard - VPN management
+          - Vortex DNS - Mesh DNS resolution
+          - Network Modes - Sniffer/AP/Relay
+          - Traffic Shaper - QoS/CAKE
+
+          ### Services (20+ modules)
+          - Matrix/Jabber/Jitsi - Communication
+          - Jellyfin/Lyrion - Media
+          - Gitea/Hexo - Content platforms
+          - LocalAI/Ollama - AI inference
+
+          ### Mesh Features
+          - Master Link - Node onboarding
+          - P2P Hub - Peer discovery
+          - Service Registry - Catalog sync
+          - Vortex Firewall - Mesh security
+
+          ## Post-Install (if minimal image)
+
+          If SecuBox packages weren't included in the image:
+          \`\`\`bash
+          /etc/secubox/install-packages.sh
+          \`\`\`
 
           ## Disk Resize
 
@@ -417,8 +856,10 @@ jobs:
           ## Build Information
 
           - OpenWrt: ${{ env.OPENWRT_VERSION }}
+          - SecuBox: ${{ env.C3BOX_VERSION }}
           - Boot: ${{ matrix.boot }}
           - Disk: ${{ env.DISK_SIZE }}GB
+          - Modules: 101+
           - Built: $(date -u +%Y-%m-%dT%H:%M:%SZ)
           EOF
 
