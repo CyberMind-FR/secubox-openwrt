@@ -181,9 +181,10 @@ NFOEOF
         log_info "Registered MetaBlog site on port $port"
 
         # Use metablogizerctl to fully publish (creates uhttpd, HAProxy, mitmproxy routes)
+        # Note: HAProxy config regeneration runs in background (~90s), publish returns immediately
         if command -v metablogizerctl >/dev/null 2>&1; then
             log_info "Running metablogizerctl publish..."
-            metablogizerctl publish "$name" 2>&1 | grep -E "^\[" || true
+            metablogizerctl publish "$name" 2>&1
         fi
     fi
 

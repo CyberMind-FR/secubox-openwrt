@@ -57,21 +57,39 @@ collect_iface_stats() {
 collect_lan_clients() {
     local timestamp=$(date -Iseconds)
     local now=$(date +%s)
+    local flow_counts_file="/tmp/dpi_flow_counts_$$"
 
-    # Use awk to parse ARP table and generate JSON
-    awk -v lan_if="$LAN_IF" -v ts="$timestamp" -v now="$now" '
+    # Pre-compute flow counts per source IP in a single pass (avoids broken pipes from spawning grep per client)
+    awk '{
+        for (i = 1; i <= NF; i++) {
+            if ($i ~ /^src=/) {
+                split($i, a, "=")
+                ips[a[2]]++
+                break
+            }
+        }
+    }
+    END {
+        for (ip in ips) print ip, ips[ip]
+    }' /proc/net/nf_conntrack 2>/dev/null > "$flow_counts_file"
+
+    # Parse ARP table and look up pre-computed flow counts
+    awk -v lan_if="$LAN_IF" -v ts="$timestamp" -v now="$now" -v counts_file="$flow_counts_file" '
     BEGIN {
+        # Load flow counts into associative array
+        while ((getline line < counts_file) > 0) {
+            split(line, parts)
+            flow_counts[parts[1]] = parts[2]
+        }
+        close(counts_file)
+
         printf "{\"timestamp\":\"%s\",\"clients\":[", ts
         first = 1
     }
     NR > 1 && $6 == lan_if && $4 != "00:00:00:00:00:00" {
         ip = $1
         mac = $4
-        # Count flows from conntrack
-        cmd = "grep -c \"src=" ip "\" /proc/net/nf_conntrack 2>/dev/null || echo 0"
-        cmd | getline flows
-        close(cmd)
-        flows = flows + 0
+        flows = (ip in flow_counts) ? flow_counts[ip] : 0
 
         if (first == 0) printf ","
         printf "{\"ip\":\"%s\",\"mac\":\"%s\",\"flows\":%d,\"last_seen\":%d}", ip, mac, flows, now
@@ -82,6 +100,7 @@ collect_lan_clients() {
     }
     ' /proc/net/arp > "$CLIENTS_FILE.tmp"
 
+    rm -f "$flow_counts_file"
     mv "$CLIENTS_FILE.tmp" "$CLIENTS_FILE"
 }
 

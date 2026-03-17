@@ -507,11 +507,14 @@ cmd_publish() {
 
 	uci commit haproxy
 
-	# Regenerate HAProxy config and reload container
-	/usr/sbin/haproxyctl generate 2>/dev/null
-	/usr/sbin/haproxyctl reload 2>/dev/null
+	# Regenerate HAProxy config and reload container (in background - takes ~90s with many vhosts)
+	(
+		/usr/sbin/haproxyctl generate >/dev/null 2>&1
+		/usr/sbin/haproxyctl reload >/dev/null 2>&1
+	) &
 
 	log_info "Site published!"
+	log_info "HAProxy config regenerating in background..."
 	echo ""
 	echo "URL: https://$domain"
 	echo ""
@@ -555,8 +558,9 @@ cmd_delete() {
 		uci delete haproxy.metablog_${name} 2>/dev/null
 		uci delete haproxy.metablog_${name}_srv 2>/dev/null
 		uci commit haproxy
-		/usr/sbin/haproxyctl generate 2>/dev/null
-		/etc/init.d/haproxy reload 2>/dev/null
+		# Background HAProxy regeneration (takes ~90s with many vhosts)
+		(/usr/sbin/haproxyctl generate >/dev/null 2>&1 && /etc/init.d/haproxy reload >/dev/null 2>&1) &
+		log_info "HAProxy config regenerating in background..."
 	fi
 
 	# Remove site config
@@ -994,9 +998,9 @@ _emancipate_haproxy() {
 
 	uci commit haproxy
 
-	# Generate HAProxy config
+	# Generate HAProxy config (in background - takes ~90s with many vhosts)
 	if command -v haproxyctl >/dev/null 2>&1; then
-		haproxyctl generate 2>/dev/null
+		haproxyctl generate >/dev/null 2>&1 &
 	fi
 }
 
