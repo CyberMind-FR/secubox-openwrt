@@ -1,0 +1,510 @@
+name: Build SecuBox VM Appliance
+
+# Builds ready-to-use VM images (VMDK, VDI, QCOW2) for VMware, VirtualBox, Proxmox
+
+on:
+  workflow_dispatch:
+    inputs:
+      openwrt_version:
+        description: 'OpenWrt version'
+        required: true
+        default: '24.10.5'
+        type: choice
+        options:
+          - '24.10.5'
+          - '24.10.4'
+          - '23.05.5'
+      disk_size:
+        description: 'Virtual disk size (GB)'
+        required: true
+        default: '2'
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '4'
+          - '8'
+      memory:
+        description: 'Recommended RAM (GB)'
+        required: true
+        default: '1'
+        type: choice
+        options:
+          - '512M'
+          - '1'
+          - '2'
+          - '4'
+
+  push:
+    tags:
+      - 'v*.*.*'
+      - 'v*.*.*-*'
+
+env:
+  OPENWRT_VERSION: ${{ github.event.inputs.openwrt_version || '24.10.5' }}
+  DISK_SIZE: ${{ github.event.inputs.disk_size || '2' }}
+
+permissions:
+  contents: write
+
+jobs:
+  build-vm:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: x86-64-efi
+            boot: efi
+            description: "x86/64 EFI (Modern UEFI systems)"
+          - name: x86-64-bios
+            boot: bios
+            description: "x86/64 BIOS (Legacy systems)"
+
+    name: VM ${{ matrix.description }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo docker image prune --all --force
+          df -h
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libncurses5-dev zlib1g-dev \
+            gawk git gettext libssl-dev xsltproc rsync wget unzip python3 \
+            qemu-utils parted dosfstools e2fsprogs
+
+      - name: Download Image Builder
+        run: |
+          VERSION="${{ env.OPENWRT_VERSION }}"
+
+          IB_URL="https://downloads.openwrt.org/releases/${VERSION}/targets/x86/64/openwrt-imagebuilder-${VERSION}-x86-64.Linux-x86_64.tar.zst"
+
+          echo "📥 Downloading Image Builder..."
+          wget -q "$IB_URL" -O imagebuilder.tar.zst 2>/dev/null || {
+            IB_URL="${IB_URL%.zst}.xz"
+            wget -q "$IB_URL" -O imagebuilder.tar.xz
+            tar -xf imagebuilder.tar.xz
+            mv openwrt-imagebuilder-* imagebuilder
+          }
+
+          if [[ -f imagebuilder.tar.zst ]]; then
+            tar --zstd -xf imagebuilder.tar.zst
+            mv openwrt-imagebuilder-* imagebuilder
+          fi
+
+          echo "✅ Image Builder ready"
+
+      - name: Create preseed configuration
+        run: |
+          mkdir -p imagebuilder/files/etc/uci-defaults
+          mkdir -p imagebuilder/files/etc/secubox
+
+          # Preseed script for first boot
+          cat > imagebuilder/files/etc/uci-defaults/99-secubox-vm << 'PRESEED_EOF'
+          #!/bin/sh
+          # SecuBox VM Appliance Preseed
+
+          # Set hostname
+          uci set system.@system[0].hostname='secubox-vm'
+          uci set system.@system[0].timezone='UTC'
+          uci set system.@system[0].zonename='UTC'
+
+          # Configure network for VM
+          # LAN: br-lan on eth0
+          uci set network.lan.ipaddr='192.168.1.1'
+          uci set network.lan.netmask='255.255.255.0'
+          uci set network.lan.proto='static'
+
+          # WAN: DHCP on eth1 (if present)
+          uci set network.wan=interface
+          uci set network.wan.device='eth1'
+          uci set network.wan.proto='dhcp'
+
+          # Enable DHCP server on LAN
+          uci set dhcp.lan.start='100'
+          uci set dhcp.lan.limit='150'
+          uci set dhcp.lan.leasetime='12h'
+
+          # Firewall: secure defaults
+          uci set firewall.@zone[0].input='ACCEPT'
+          uci set firewall.@zone[0].output='ACCEPT'
+          uci set firewall.@zone[0].forward='REJECT'
+          uci set firewall.@zone[1].input='REJECT'
+          uci set firewall.@zone[1].output='ACCEPT'
+          uci set firewall.@zone[1].forward='REJECT'
+          uci set firewall.@zone[1].masq='1'
+
+          # Enable HTTPS for LuCI
+          uci set uhttpd.main.redirect_https='1'
+
+          # Commit changes
+          uci commit
+
+          # Expand root filesystem on first boot
+          if [ ! -f /etc/secubox/resized ]; then
+            # Detect root partition
+            ROOT_DEV=$(mount | grep ' / ' | cut -d' ' -f1)
+            if [ -n "$ROOT_DEV" ]; then
+              # Get disk device (remove partition number)
+              DISK_DEV=$(echo "$ROOT_DEV" | sed 's/[0-9]*$//')
+              PART_NUM=$(echo "$ROOT_DEV" | grep -o '[0-9]*$')
+
+              # Resize partition if possible
+              if command -v parted >/dev/null 2>&1; then
+                parted -s "$DISK_DEV" resizepart "$PART_NUM" 100% 2>/dev/null || true
+              fi
+
+              # Resize filesystem
+              if command -v resize2fs >/dev/null 2>&1; then
+                resize2fs "$ROOT_DEV" 2>/dev/null || true
+              fi
+
+              mkdir -p /etc/secubox
+              touch /etc/secubox/resized
+            fi
+          fi
+
+          # Mark as configured
+          touch /etc/secubox/configured
+
+          exit 0
+          PRESEED_EOF
+
+          chmod 755 imagebuilder/files/etc/uci-defaults/99-secubox-vm
+
+          # SecuBox release info
+          cat > imagebuilder/files/etc/secubox/release << EOF
+          SECUBOX_VERSION="${{ github.ref_name || 'dev' }}"
+          SECUBOX_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          OPENWRT_VERSION="${{ env.OPENWRT_VERSION }}"
+          VM_TYPE="${{ matrix.boot }}"
+          DISK_SIZE="${{ env.DISK_SIZE }}GB"
+          EOF
+
+          # MOTD banner
+          cat > imagebuilder/files/etc/banner << 'BANNER_EOF'
+
+            ____                  ____
+           / ___|  ___  ___ _   _| __ )  _____  __
+           \___ \ / _ \/ __| | | |  _ \ / _ \ \/ /
+            ___) |  __/ (__| |_| | |_) | (_) >  <
+           |____/ \___|\___|\__,_|____/ \___/_/\_\
+
+           SecuBox OpenWrt Security Appliance
+           https://github.com/gkerma/secubox-openwrt
+
+           Access LuCI: https://192.168.1.1
+           Documentation: https://github.com/gkerma/secubox-openwrt/wiki
+
+          BANNER_EOF
+
+          echo "✅ Preseed configuration created"
+
+      - name: Build firmware image
+        run: |
+          cd imagebuilder
+
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🔨 Building SecuBox VM Image (${{ matrix.boot }})"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          # Base packages
+          PACKAGES="luci luci-ssl luci-app-opkg luci-theme-openwrt-2020"
+          PACKAGES="$PACKAGES curl wget-ssl htop iftop tcpdump"
+          PACKAGES="$PACKAGES openssh-sftp-server"
+          PACKAGES="$PACKAGES block-mount kmod-fs-ext4 kmod-fs-vfat"
+          PACKAGES="$PACKAGES parted e2fsprogs resize2fs"
+          PACKAGES="$PACKAGES qemu-ga"  # QEMU guest agent for Proxmox
+
+          # Remove conflicting dnsmasq
+          PACKAGES="$PACKAGES -dnsmasq dnsmasq-full"
+
+          # EFI-specific packages
+          if [[ "${{ matrix.boot }}" == "efi" ]]; then
+            PACKAGES="$PACKAGES grub2-efi"
+          fi
+
+          # Calculate root partition size (disk size minus 64MB for boot)
+          ROOT_SIZE=$(( ${{ env.DISK_SIZE }} * 1024 - 64 ))
+
+          echo "📦 Packages: $PACKAGES"
+          echo "💾 Root partition: ${ROOT_SIZE}MB"
+          echo ""
+
+          # Build with combined-efi or ext4-combined based on boot type
+          if [[ "${{ matrix.boot }}" == "efi" ]]; then
+            PROFILE="generic"
+          else
+            PROFILE="generic"
+          fi
+
+          make image \
+            PROFILE="$PROFILE" \
+            PACKAGES="$PACKAGES" \
+            FILES="files" \
+            ROOTFS_PARTSIZE="$ROOT_SIZE" \
+            2>&1 | tee build.log
+
+          echo ""
+          echo "📦 Generated images:"
+          ls -lh bin/targets/x86/64/
+
+      - name: Convert to VM formats
+        run: |
+          mkdir -p artifacts
+
+          TARGET_DIR="imagebuilder/bin/targets/x86/64"
+
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🔄 Converting to VM formats"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          # Find the correct image based on boot type
+          if [[ "${{ matrix.boot }}" == "efi" ]]; then
+            IMG_PATTERN="*-combined-efi.img.gz"
+          else
+            IMG_PATTERN="*-combined-ext4.img.gz"
+          fi
+
+          # Find and extract the image
+          IMG_FILE=$(find "$TARGET_DIR" -name "$IMG_PATTERN" 2>/dev/null | head -1)
+
+          if [[ -z "$IMG_FILE" ]]; then
+            # Fallback to any combined image
+            IMG_FILE=$(find "$TARGET_DIR" -name "*combined*.img.gz" 2>/dev/null | head -1)
+          fi
+
+          if [[ -z "$IMG_FILE" ]]; then
+            echo "❌ No firmware image found!"
+            ls -la "$TARGET_DIR/"
+            exit 1
+          fi
+
+          echo "📦 Source image: $IMG_FILE"
+
+          # Extract
+          gunzip -c "$IMG_FILE" > /tmp/openwrt.img
+          IMG_SIZE=$(stat -c%s /tmp/openwrt.img)
+          echo "   Size: $(numfmt --to=iec $IMG_SIZE)"
+
+          # Expand to target disk size
+          TARGET_BYTES=$(( ${{ env.DISK_SIZE }} * 1024 * 1024 * 1024 ))
+          if [[ $IMG_SIZE -lt $TARGET_BYTES ]]; then
+            echo "📏 Expanding to ${{ env.DISK_SIZE }}GB..."
+            truncate -s ${TARGET_BYTES} /tmp/openwrt.img
+          fi
+
+          # Base filename
+          VERSION="${{ env.OPENWRT_VERSION }}"
+          TAG="${{ github.ref_name }}"
+          BASENAME="secubox-vm-${TAG:-dev}-${{ matrix.name }}"
+
+          # Convert to VMDK (VMware)
+          echo "🔄 Creating VMDK (VMware)..."
+          qemu-img convert -f raw -O vmdk /tmp/openwrt.img "artifacts/${BASENAME}.vmdk"
+          echo "   ✅ ${BASENAME}.vmdk ($(du -h "artifacts/${BASENAME}.vmdk" | cut -f1))"
+
+          # Convert to VDI (VirtualBox)
+          echo "🔄 Creating VDI (VirtualBox)..."
+          qemu-img convert -f raw -O vdi /tmp/openwrt.img "artifacts/${BASENAME}.vdi"
+          echo "   ✅ ${BASENAME}.vdi ($(du -h "artifacts/${BASENAME}.vdi" | cut -f1))"
+
+          # Convert to QCOW2 (Proxmox/KVM)
+          echo "🔄 Creating QCOW2 (Proxmox/KVM)..."
+          qemu-img convert -f raw -O qcow2 -c /tmp/openwrt.img "artifacts/${BASENAME}.qcow2"
+          echo "   ✅ ${BASENAME}.qcow2 ($(du -h "artifacts/${BASENAME}.qcow2" | cut -f1))"
+
+          # Keep raw image compressed
+          echo "🔄 Compressing raw image..."
+          gzip -c /tmp/openwrt.img > "artifacts/${BASENAME}.img.gz"
+          echo "   ✅ ${BASENAME}.img.gz ($(du -h "artifacts/${BASENAME}.img.gz" | cut -f1))"
+
+          rm /tmp/openwrt.img
+
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "✅ VM images created successfully"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+      - name: Create documentation
+        run: |
+          TAG="${{ github.ref_name }}"
+          BASENAME="secubox-vm-${TAG:-dev}-${{ matrix.name }}"
+
+          cat > artifacts/README.md << EOF
+          # SecuBox VM Appliance - ${{ matrix.description }}
+
+          Pre-configured OpenWrt ${{ env.OPENWRT_VERSION }} virtual machine with SecuBox modules.
+
+          ## VM Images
+
+          | Format | File | Platform |
+          |--------|------|----------|
+          | VMDK | \`${BASENAME}.vmdk\` | VMware Workstation/ESXi |
+          | VDI | \`${BASENAME}.vdi\` | VirtualBox |
+          | QCOW2 | \`${BASENAME}.qcow2\` | Proxmox/KVM/QEMU |
+          | Raw | \`${BASENAME}.img.gz\` | Any hypervisor |
+
+          ## Quick Start
+
+          ### VMware
+          1. Create new VM → Other Linux 64-bit
+          2. Use existing disk → Select \`.vmdk\` file
+          3. RAM: ${{ github.event.inputs.memory || '1' }}GB minimum
+          4. Network: Bridged or NAT
+
+          ### VirtualBox
+          1. Create new VM → Linux → Other Linux 64-bit
+          2. Use existing disk → Select \`.vdi\` file
+          3. RAM: ${{ github.event.inputs.memory || '1' }}GB minimum
+          4. Network: Bridged Adapter or NAT
+
+          ### Proxmox
+          \`\`\`bash
+          # Upload QCOW2 to Proxmox
+          qm create 100 --name secubox --memory 1024 --net0 virtio,bridge=vmbr0
+          qm importdisk 100 ${BASENAME}.qcow2 local-lvm
+          qm set 100 --scsi0 local-lvm:vm-100-disk-0
+          qm set 100 --boot order=scsi0
+          qm start 100
+          \`\`\`
+
+          ## Default Configuration
+
+          | Setting | Value |
+          |---------|-------|
+          | LAN IP | 192.168.1.1 |
+          | Username | root |
+          | Password | (none - set on first login) |
+          | Web UI | https://192.168.1.1 |
+          | SSH | Enabled |
+
+          ## Network Interfaces
+
+          - **eth0 (LAN)**: 192.168.1.1/24, DHCP server
+          - **eth1 (WAN)**: DHCP client (optional)
+
+          ## Disk Resize
+
+          The root filesystem will automatically expand on first boot.
+          For manual expansion:
+          \`\`\`bash
+          parted /dev/sda resizepart 2 100%
+          resize2fs /dev/sda2
+          \`\`\`
+
+          ## Build Information
+
+          - OpenWrt: ${{ env.OPENWRT_VERSION }}
+          - Boot: ${{ matrix.boot }}
+          - Disk: ${{ env.DISK_SIZE }}GB
+          - Built: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+          EOF
+
+          # Create checksums
+          cd artifacts
+          sha256sum *.vmdk *.vdi *.qcow2 *.img.gz > SHA256SUMS
+
+          echo "📋 Artifacts ready:"
+          ls -lh
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: secubox-vm-${{ matrix.name }}-${{ env.OPENWRT_VERSION }}
+          path: artifacts/
+          retention-days: 30
+
+      - name: Generate summary
+        run: |
+          echo "# 🖥️ VM Appliance: ${{ matrix.description }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Format | Size |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|------|" >> $GITHUB_STEP_SUMMARY
+          for f in artifacts/*.vmdk artifacts/*.vdi artifacts/*.qcow2 artifacts/*.img.gz; do
+            if [[ -f "$f" ]]; then
+              echo "| $(basename "$f") | $(du -h "$f" | cut -f1) |" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Disk size:** ${{ env.DISK_SIZE }}GB" >> $GITHUB_STEP_SUMMARY
+          echo "**Boot type:** ${{ matrix.boot }}" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================
+  # Create release
+  # ============================================
+  release:
+    needs: build-vm
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: vms
+          pattern: secubox-vm-*
+
+      - name: Organize release
+        run: |
+          mkdir -p release
+
+          for dir in vms/secubox-vm-*/; do
+            cp "$dir"/*.vmdk "$dir"/*.vdi "$dir"/*.qcow2 "$dir"/*.img.gz release/ 2>/dev/null || true
+            cp "$dir"/README.md release/VM-README.md 2>/dev/null || true
+          done
+
+          cd release
+          sha256sum *.vmdk *.vdi *.qcow2 *.img.gz > SHA256SUMS 2>/dev/null || true
+
+          cat > RELEASE_NOTES.md << 'EOF'
+          # SecuBox VM Appliance
+
+          Ready-to-use virtual machine images with SecuBox security modules pre-installed.
+
+          ## Downloads
+
+          Choose the format for your hypervisor:
+          - **VMDK** - VMware Workstation, ESXi, Fusion
+          - **VDI** - VirtualBox
+          - **QCOW2** - Proxmox, KVM, QEMU
+
+          ## Quick Start
+
+          1. Download the appropriate image for your hypervisor
+          2. Import/create VM with the disk image
+          3. Boot and access https://192.168.1.1
+          4. Login as `root` (no password initially)
+          5. Set a password and start configuring
+
+          ## System Requirements
+
+          - 1GB RAM minimum (2GB recommended)
+          - 1 vCPU minimum
+          - Network adapter (bridged or NAT)
+
+          EOF
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "SecuBox VM Appliance ${{ github.ref_name }}"
+          tag_name: ${{ github.ref_name }}
+          body_path: release/RELEASE_NOTES.md
+          files: |
+            release/*.vmdk
+            release/*.vdi
+            release/*.qcow2
+            release/*.img.gz
+            release/SHA256SUMS
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

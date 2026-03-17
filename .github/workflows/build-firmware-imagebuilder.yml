@@ -1,0 +1,817 @@
+name: Build SecuBox Firmware (Image Builder)
+
+# Fast multi-platform firmware builds using OpenWrt Image Builder
+# Produces ready-to-flash images with SecuBox packages pre-installed
+
+on:
+  workflow_dispatch:
+    inputs:
+      openwrt_version:
+        description: 'OpenWrt version'
+        required: true
+        default: '24.10.5'
+        type: choice
+        options:
+          - '24.10.5'
+          - '24.10.4'
+          - '23.05.5'
+          - 'SNAPSHOT'
+      platform:
+        description: 'Target platform(s)'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - x86-64
+          - raspberry-pi
+          - globalscale
+          - nanopi
+          - friendlyarm
+          - gl-inet
+          - linksys
+          - netgear
+          - ubiquiti
+      root_size:
+        description: 'Root filesystem size (MB)'
+        required: true
+        default: '512'
+        type: choice
+        options:
+          - '256'
+          - '512'
+          - '1024'
+          - '2048'
+
+  push:
+    tags:
+      - 'v*.*.*'
+      - 'v*.*.*-*'
+
+env:
+  OPENWRT_VERSION: ${{ github.event.inputs.openwrt_version || '24.10.5' }}
+  ROOT_SIZE: ${{ github.event.inputs.root_size || '512' }}
+
+permissions:
+  contents: write
+
+jobs:
+  # ============================================
+  # Generate build matrix
+  # ============================================
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Set build matrix
+        id: set-matrix
+        run: |
+          PLATFORM="${{ github.event.inputs.platform || 'all' }}"
+
+          # Define all supported devices
+          cat > /tmp/devices.json << 'DEVICES_EOF'
+          [
+            {
+              "name": "x86-64-generic",
+              "target": "x86",
+              "subtarget": "64",
+              "profile": "generic",
+              "platform": "x86-64",
+              "description": "x86/64 Generic (VM, PC)",
+              "extra_packages": "qemu-ga"
+            },
+            {
+              "name": "x86-64-efi",
+              "target": "x86",
+              "subtarget": "64",
+              "profile": "generic",
+              "platform": "x86-64",
+              "description": "x86/64 EFI Boot",
+              "extra_packages": "grub2-efi"
+            },
+            {
+              "name": "rpi-4",
+              "target": "bcm27xx",
+              "subtarget": "bcm2711",
+              "profile": "rpi-4",
+              "platform": "raspberry-pi",
+              "description": "Raspberry Pi 4B",
+              "extra_packages": ""
+            },
+            {
+              "name": "rpi-3",
+              "target": "bcm27xx",
+              "subtarget": "bcm2710",
+              "profile": "rpi-3",
+              "platform": "raspberry-pi",
+              "description": "Raspberry Pi 3B/3B+",
+              "extra_packages": ""
+            },
+            {
+              "name": "rpi-5",
+              "target": "bcm27xx",
+              "subtarget": "bcm2712",
+              "profile": "rpi-5",
+              "platform": "raspberry-pi",
+              "description": "Raspberry Pi 5",
+              "extra_packages": ""
+            },
+            {
+              "name": "nanopi-r4s",
+              "target": "rockchip",
+              "subtarget": "armv8",
+              "profile": "friendlyarm_nanopi-r4s",
+              "platform": "nanopi",
+              "description": "NanoPi R4S (4GB)",
+              "extra_packages": ""
+            },
+            {
+              "name": "nanopi-r5s",
+              "target": "rockchip",
+              "subtarget": "armv8",
+              "profile": "friendlyarm_nanopi-r5s",
+              "platform": "nanopi",
+              "description": "NanoPi R5S",
+              "extra_packages": ""
+            },
+            {
+              "name": "nanopi-r6s",
+              "target": "rockchip",
+              "subtarget": "armv8",
+              "profile": "friendlyarm_nanopi-r6s",
+              "platform": "nanopi",
+              "description": "NanoPi R6S",
+              "extra_packages": ""
+            },
+            {
+              "name": "friendlyarm-nanopi-neo3",
+              "target": "rockchip",
+              "subtarget": "armv8",
+              "profile": "friendlyarm_nanopi-neo3",
+              "platform": "friendlyarm",
+              "description": "FriendlyARM NanoPi NEO3",
+              "extra_packages": ""
+            },
+            {
+              "name": "gl-mt6000",
+              "target": "mediatek",
+              "subtarget": "filogic",
+              "profile": "glinet_gl-mt6000",
+              "platform": "gl-inet",
+              "description": "GL.iNet MT6000 (Flint 2)",
+              "extra_packages": ""
+            },
+            {
+              "name": "gl-mt3000",
+              "target": "mediatek",
+              "subtarget": "filogic",
+              "profile": "glinet_gl-mt3000",
+              "platform": "gl-inet",
+              "description": "GL.iNet MT3000 (Beryl AX)",
+              "extra_packages": ""
+            },
+            {
+              "name": "linksys-e8450",
+              "target": "mediatek",
+              "subtarget": "mt7622",
+              "profile": "linksys_e8450-ubi",
+              "platform": "linksys",
+              "description": "Linksys E8450 (UBI)",
+              "extra_packages": ""
+            },
+            {
+              "name": "netgear-wax206",
+              "target": "mediatek",
+              "subtarget": "mt7622",
+              "profile": "netgear_wax206",
+              "platform": "netgear",
+              "description": "NETGEAR WAX206",
+              "extra_packages": ""
+            },
+            {
+              "name": "ubiquiti-unifi-6-lr",
+              "target": "mediatek",
+              "subtarget": "mt7622",
+              "profile": "ubnt_unifi-6-lr-v1",
+              "platform": "ubiquiti",
+              "description": "Ubiquiti UniFi 6 LR",
+              "extra_packages": ""
+            },
+            {
+              "name": "espressobin-v7",
+              "target": "mvebu",
+              "subtarget": "cortexa53",
+              "profile": "globalscale_espressobin",
+              "platform": "globalscale",
+              "description": "ESPRESSObin V7",
+              "extra_packages": ""
+            },
+            {
+              "name": "mochabin",
+              "target": "mvebu",
+              "subtarget": "cortexa72",
+              "profile": "globalscale_mochabin",
+              "platform": "globalscale",
+              "description": "MOCHAbin (Quad A72, 10G)",
+              "extra_packages": "kmod-sfp kmod-phy-marvell-10g"
+            }
+          ]
+          DEVICES_EOF
+
+          # Filter by platform
+          if [[ "$PLATFORM" == "all" ]]; then
+            MATRIX=$(jq -c '{"include": .}' /tmp/devices.json)
+          else
+            MATRIX=$(jq -c --arg plat "$PLATFORM" '{"include": [.[] | select(.platform == $plat)]}' /tmp/devices.json)
+          fi
+
+          echo "matrix<<EOF" >> $GITHUB_OUTPUT
+          echo "$MATRIX" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          echo "📋 Build matrix:"
+          echo "$MATRIX" | jq '.'
+
+  # ============================================
+  # Build SecuBox packages first (once)
+  # ============================================
+  build-packages:
+    runs-on: ubuntu-latest
+    outputs:
+      packages_url: ${{ steps.upload.outputs.artifact-url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libncurses5-dev zlib1g-dev \
+            gawk git gettext libssl-dev xsltproc rsync wget unzip python3
+
+      - name: Download OpenWrt SDK
+        run: |
+          VERSION="${{ env.OPENWRT_VERSION }}"
+
+          if [[ "$VERSION" == "SNAPSHOT" ]]; then
+            SDK_URL="https://downloads.openwrt.org/snapshots/targets/x86/64/openwrt-sdk-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
+          else
+            SDK_URL="https://downloads.openwrt.org/releases/${VERSION}/targets/x86/64/openwrt-sdk-${VERSION}-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
+          fi
+
+          echo "📥 Downloading SDK from: $SDK_URL"
+          wget -q "$SDK_URL" -O sdk.tar.zst || {
+            # Fallback to tar.xz if zst not available
+            SDK_URL="${SDK_URL%.zst}.xz"
+            echo "📥 Trying fallback: $SDK_URL"
+            wget -q "$SDK_URL" -O sdk.tar.xz
+            tar -xf sdk.tar.xz
+            mv openwrt-sdk-* sdk
+          }
+
+          if [[ -f sdk.tar.zst ]]; then
+            tar --zstd -xf sdk.tar.zst
+            mv openwrt-sdk-* sdk
+          fi
+
+      - name: Setup SDK feeds
+        run: |
+          cd sdk
+
+          # Update feeds
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+          # Create SecuBox package directory
+          mkdir -p package/secubox
+
+      - name: Copy SecuBox packages
+        run: |
+          cd sdk
+
+          echo "📦 Copying SecuBox packages..."
+          PKG_COUNT=0
+
+          # Copy luci-app-* packages
+          for pkg in ../luci-app-*/; do
+            if [[ -d "$pkg" ]]; then
+              PKG_NAME=$(basename "$pkg")
+              cp -r "$pkg" package/secubox/
+
+              # Fix Makefile include path
+              if [[ -f "package/secubox/$PKG_NAME/Makefile" ]]; then
+                sed -i 's|include.*luci\.mk|include $(TOPDIR)/feeds/luci/luci.mk|' "package/secubox/$PKG_NAME/Makefile"
+              fi
+
+              PKG_COUNT=$((PKG_COUNT + 1))
+              echo "  ✅ $PKG_NAME"
+            fi
+          done
+
+          # Copy luci-theme-secubox
+          if [[ -d "../luci-theme-secubox" ]]; then
+            cp -r ../luci-theme-secubox package/secubox/
+            sed -i 's|include.*luci\.mk|include $(TOPDIR)/feeds/luci/luci.mk|' "package/secubox/luci-theme-secubox/Makefile" 2>/dev/null || true
+            PKG_COUNT=$((PKG_COUNT + 1))
+            echo "  ✅ luci-theme-secubox"
+          fi
+
+          echo ""
+          echo "📊 Total: $PKG_COUNT packages"
+
+      - name: Build packages
+        run: |
+          cd sdk
+
+          # Configure for package building
+          make defconfig
+
+          # Build SecuBox packages
+          echo "🔨 Building SecuBox packages..."
+          for pkg in package/secubox/luci-app-*/; do
+            PKG_NAME=$(basename "$pkg")
+            echo "  Building $PKG_NAME..."
+            make package/$PKG_NAME/compile V=s -j$(nproc) 2>&1 | tail -5 || echo "  ⚠️ Build warning for $PKG_NAME"
+          done
+
+          # Build theme
+          if [[ -d "package/secubox/luci-theme-secubox" ]]; then
+            make package/luci-theme-secubox/compile V=s -j$(nproc) 2>&1 | tail -5 || true
+          fi
+
+      - name: Collect packages
+        run: |
+          mkdir -p packages
+
+          echo "📦 Collecting built packages..."
+          find sdk/bin/packages -name "luci-*.ipk" -exec cp {} packages/ \;
+          find sdk/bin/packages -name "secubox-*.ipk" -exec cp {} packages/ \; 2>/dev/null || true
+
+          echo ""
+          echo "📋 Built packages:"
+          ls -la packages/
+
+          # Create package index
+          cd packages
+          echo "# SecuBox Packages for OpenWrt ${{ env.OPENWRT_VERSION }}" > README.md
+          echo "" >> README.md
+          echo "Built: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> README.md
+          echo "" >> README.md
+          echo "## Packages" >> README.md
+          for ipk in *.ipk; do
+            echo "- $ipk" >> README.md
+          done
+
+      - name: Upload packages artifact
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: secubox-packages-${{ env.OPENWRT_VERSION }}
+          path: packages/
+          retention-days: 30
+
+  # ============================================
+  # Build firmware images using Image Builder
+  # ============================================
+  build-firmware:
+    needs: [setup, build-packages]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
+
+    name: ${{ matrix.description }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libncurses5-dev zlib1g-dev \
+            gawk git gettext libssl-dev xsltproc rsync wget unzip python3 \
+            qemu-utils
+
+      - name: Download Image Builder
+        run: |
+          VERSION="${{ env.OPENWRT_VERSION }}"
+          TARGET="${{ matrix.target }}"
+          SUBTARGET="${{ matrix.subtarget }}"
+
+          if [[ "$VERSION" == "SNAPSHOT" ]]; then
+            IB_URL="https://downloads.openwrt.org/snapshots/targets/${TARGET}/${SUBTARGET}/openwrt-imagebuilder-${TARGET}-${SUBTARGET}.Linux-x86_64.tar.zst"
+          else
+            IB_URL="https://downloads.openwrt.org/releases/${VERSION}/targets/${TARGET}/${SUBTARGET}/openwrt-imagebuilder-${VERSION}-${TARGET}-${SUBTARGET}.Linux-x86_64.tar.zst"
+          fi
+
+          echo "📥 Downloading Image Builder..."
+          echo "   URL: $IB_URL"
+
+          wget -q "$IB_URL" -O imagebuilder.tar.zst 2>/dev/null || {
+            # Try tar.xz fallback
+            IB_URL="${IB_URL%.zst}.xz"
+            echo "📥 Trying .tar.xz fallback..."
+            wget -q "$IB_URL" -O imagebuilder.tar.xz
+            tar -xf imagebuilder.tar.xz
+            mv openwrt-imagebuilder-* imagebuilder
+          }
+
+          if [[ -f imagebuilder.tar.zst ]]; then
+            tar --zstd -xf imagebuilder.tar.zst
+            mv openwrt-imagebuilder-* imagebuilder
+          fi
+
+          echo "✅ Image Builder ready"
+          ls -la imagebuilder/
+
+      - name: Download SecuBox packages
+        uses: actions/download-artifact@v4
+        with:
+          name: secubox-packages-${{ env.OPENWRT_VERSION }}
+          path: secubox-packages
+
+      - name: Install SecuBox packages to Image Builder
+        run: |
+          echo "📦 Installing SecuBox packages to Image Builder..."
+
+          # Copy packages to Image Builder's packages directory
+          mkdir -p imagebuilder/packages/secubox
+          cp secubox-packages/*.ipk imagebuilder/packages/secubox/ 2>/dev/null || true
+
+          # Add to repositories.conf
+          echo "src secubox file:packages/secubox" >> imagebuilder/repositories.conf
+
+          echo "✅ Packages installed"
+          ls -la imagebuilder/packages/secubox/
+
+      - name: Create preseed configuration
+        run: |
+          mkdir -p imagebuilder/files/etc/uci-defaults
+
+          # Create SecuBox preseed script
+          cat > imagebuilder/files/etc/uci-defaults/99-secubox-preseed << 'PRESEED_EOF'
+          #!/bin/sh
+          # SecuBox Preseed Configuration
+          # Applied on first boot
+
+          # Set hostname
+          uci set system.@system[0].hostname='secubox'
+          uci set system.@system[0].timezone='UTC'
+
+          # Configure LAN
+          uci set network.lan.ipaddr='192.168.1.1'
+          uci set network.lan.netmask='255.255.255.0'
+
+          # Enable DHCP on LAN
+          uci set dhcp.lan.start='100'
+          uci set dhcp.lan.limit='150'
+          uci set dhcp.lan.leasetime='12h'
+
+          # Basic firewall
+          uci set firewall.@zone[1].input='REJECT'
+          uci set firewall.@zone[1].forward='REJECT'
+
+          # Enable HTTPS redirect for LuCI
+          uci set uhttpd.main.redirect_https='1'
+
+          # Commit all changes
+          uci commit
+
+          # Enable and start services
+          /etc/init.d/uhttpd restart 2>/dev/null || true
+
+          # Mark as configured
+          touch /etc/secubox-configured
+
+          exit 0
+          PRESEED_EOF
+
+          chmod 755 imagebuilder/files/etc/uci-defaults/99-secubox-preseed
+
+          # Create SecuBox version file
+          mkdir -p imagebuilder/files/etc
+          cat > imagebuilder/files/etc/secubox-release << EOF
+          SECUBOX_VERSION="${{ github.ref_name || 'dev' }}"
+          SECUBOX_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          OPENWRT_VERSION="${{ env.OPENWRT_VERSION }}"
+          DEVICE="${{ matrix.name }}"
+          EOF
+
+          echo "✅ Preseed configuration created"
+
+      - name: Build firmware image
+        run: |
+          cd imagebuilder
+
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🔨 Building SecuBox Firmware"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "Device: ${{ matrix.description }}"
+          echo "Profile: ${{ matrix.profile }}"
+          echo "Target: ${{ matrix.target }}/${{ matrix.subtarget }}"
+          echo ""
+
+          # Define base packages
+          BASE_PACKAGES="luci luci-ssl luci-app-opkg"
+          BASE_PACKAGES="$BASE_PACKAGES luci-theme-openwrt-2020"
+          BASE_PACKAGES="$BASE_PACKAGES curl wget-ssl htop iftop tcpdump"
+          BASE_PACKAGES="$BASE_PACKAGES openssh-sftp-server"
+          BASE_PACKAGES="$BASE_PACKAGES block-mount kmod-fs-ext4 kmod-fs-vfat"
+          BASE_PACKAGES="$BASE_PACKAGES kmod-usb-storage"
+
+          # SecuBox packages (from local repo)
+          SECUBOX_PACKAGES=""
+          for ipk in packages/secubox/*.ipk; do
+            if [[ -f "$ipk" ]]; then
+              # Extract package name from filename
+              PKG_NAME=$(basename "$ipk" | sed 's/_.*\.ipk$//')
+              SECUBOX_PACKAGES="$SECUBOX_PACKAGES $PKG_NAME"
+            fi
+          done
+
+          # Device-specific extra packages
+          EXTRA_PACKAGES="${{ matrix.extra_packages }}"
+
+          # Remove conflicting packages
+          REMOVE_PACKAGES="-dnsmasq"  # Use dnsmasq-full instead
+
+          # All packages combined
+          ALL_PACKAGES="$BASE_PACKAGES $SECUBOX_PACKAGES $EXTRA_PACKAGES $REMOVE_PACKAGES dnsmasq-full"
+
+          echo "📦 Packages to install:"
+          echo "$ALL_PACKAGES" | tr ' ' '\n' | grep -v '^$' | sort | head -30
+          echo ""
+
+          # Build the image
+          make image \
+            PROFILE="${{ matrix.profile }}" \
+            PACKAGES="$ALL_PACKAGES" \
+            FILES="files" \
+            ROOTFS_PARTSIZE="${{ env.ROOT_SIZE }}" \
+            2>&1 | tee build.log
+
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📦 Generated Images"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          ls -lh bin/targets/${{ matrix.target }}/${{ matrix.subtarget }}/ 2>/dev/null || echo "No images found"
+
+      - name: Prepare artifacts
+        id: prepare
+        run: |
+          mkdir -p artifacts
+
+          TARGET_DIR="imagebuilder/bin/targets/${{ matrix.target }}/${{ matrix.subtarget }}"
+
+          if [[ -d "$TARGET_DIR" ]]; then
+            # Copy all firmware images
+            IMG_COUNT=0
+            for file in "$TARGET_DIR"/*; do
+              if [[ -f "$file" ]]; then
+                case "$(basename "$file")" in
+                  *.ipk|*.manifest|sha256sums|*.buildinfo|packages)
+                    continue
+                    ;;
+                  *)
+                    cp "$file" artifacts/
+                    echo "✅ $(basename "$file")"
+                    IMG_COUNT=$((IMG_COUNT + 1))
+                    ;;
+                esac
+              fi
+            done
+
+            echo "img_count=$IMG_COUNT" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️ No target directory found"
+            echo "img_count=0" >> $GITHUB_OUTPUT
+          fi
+
+          # Create build info
+          cat > artifacts/BUILD_INFO.txt << EOF
+          SecuBox Firmware Image
+          ======================
+          Device: ${{ matrix.description }}
+          Profile: ${{ matrix.profile }}
+          Target: ${{ matrix.target }}/${{ matrix.subtarget }}
+          OpenWrt: ${{ env.OPENWRT_VERSION }}
+          Root Size: ${{ env.ROOT_SIZE }}MB
+          Built: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+          Commit: ${{ github.sha }}
+          EOF
+
+          if [[ -n "${{ github.ref_name }}" ]]; then
+            echo "Version: ${{ github.ref_name }}" >> artifacts/BUILD_INFO.txt
+          fi
+
+          # Generate checksums
+          cd artifacts
+          sha256sum *.* > SHA256SUMS 2>/dev/null || true
+
+          echo ""
+          echo "📁 Artifacts:"
+          ls -lh
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: secubox-firmware-${{ matrix.name }}-${{ env.OPENWRT_VERSION }}
+          path: artifacts/
+          retention-days: 30
+
+      - name: Generate summary
+        run: |
+          echo "# 🎯 Build Complete: ${{ matrix.description }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Device | ${{ matrix.description }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Profile | \`${{ matrix.profile }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Target | ${{ matrix.target }}/${{ matrix.subtarget }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| OpenWrt | ${{ env.OPENWRT_VERSION }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Root Size | ${{ env.ROOT_SIZE }}MB |" >> $GITHUB_STEP_SUMMARY
+          echo "| Images | ${{ steps.prepare.outputs.img_count }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "## 📦 Firmware Files" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          ls -lh artifacts/*.{img.gz,bin,img} 2>/dev/null | awk '{print $9, $5}' | sed 's|artifacts/||' || echo "No images"
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  # ============================================
+  # Create release with all firmware
+  # ============================================
+  release:
+    needs: [setup, build-packages, build-firmware]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-firmware
+          pattern: secubox-firmware-*
+
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          name: secubox-packages-${{ env.OPENWRT_VERSION }}
+          path: packages
+
+      - name: Organize release
+        run: |
+          mkdir -p release/firmware release/packages
+
+          # Copy all firmware
+          for dir in all-firmware/secubox-firmware-*/; do
+            if [[ -d "$dir" ]]; then
+              DEVICE=$(basename "$dir" | sed 's/secubox-firmware-//' | sed "s/-${{ env.OPENWRT_VERSION }}//")
+
+              # Create device directory
+              mkdir -p "release/firmware/$DEVICE"
+              cp "$dir"/* "release/firmware/$DEVICE/" 2>/dev/null || true
+
+              echo "✅ $DEVICE"
+            fi
+          done
+
+          # Copy packages
+          cp packages/*.ipk release/packages/ 2>/dev/null || true
+
+          # Create checksums
+          cd release
+          find . -type f \( -name "*.img.gz" -o -name "*.bin" -o -name "*.ipk" \) -exec sha256sum {} \; > SHA256SUMS
+
+          # Create release notes
+          cat > RELEASE_NOTES.md << 'EOF'
+          # SecuBox Firmware ${{ github.ref_name }}
+
+          Pre-built OpenWrt firmware images with SecuBox security modules pre-installed.
+
+          ## Supported Devices
+
+          ### x86/64 (VM, PC)
+          - Generic x86/64 (BIOS/EFI)
+          - Suitable for VMware, VirtualBox, Proxmox, bare metal
+
+          ### Raspberry Pi
+          - Raspberry Pi 3B/3B+
+          - Raspberry Pi 4B
+          - Raspberry Pi 5
+
+          ### NanoPi / FriendlyARM
+          - NanoPi R4S (4GB)
+          - NanoPi R5S
+          - NanoPi R6S
+          - NanoPi NEO3
+
+          ### GL.iNet
+          - GL-MT6000 (Flint 2)
+          - GL-MT3000 (Beryl AX)
+
+          ### Enterprise
+          - Linksys E8450
+          - NETGEAR WAX206
+          - Ubiquiti UniFi 6 LR
+
+          ### GlobalScale
+          - ESPRESSObin V7
+          - MOCHAbin
+
+          ## Pre-installed SecuBox Modules
+
+          - CrowdSec Dashboard - Threat intelligence
+          - Metrics Dashboard - Real-time system metrics
+          - WireGuard Dashboard - VPN management
+          - Network Modes - Sniffer/AP/Router modes
+          - Client Guardian - NAC & captive portal
+          - Bandwidth Manager - QoS & quotas
+          - And more...
+
+          ## Quick Start
+
+          1. Download firmware for your device
+          2. Flash using standard OpenWrt methods
+          3. Access LuCI at http://192.168.1.1
+          4. Navigate to Services → SecuBox
+
+          ## Default Configuration
+
+          - IP: 192.168.1.1
+          - User: root
+          - Password: (none - set on first login)
+          - HTTPS redirect enabled
+
+          EOF
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "SecuBox Firmware ${{ github.ref_name }}"
+          tag_name: ${{ github.ref_name }}
+          body_path: release/RELEASE_NOTES.md
+          files: |
+            release/firmware/**/*
+            release/packages/*.ipk
+            release/SHA256SUMS
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ============================================
+  # Final summary
+  # ============================================
+  summary:
+    needs: [setup, build-packages, build-firmware]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts
+          pattern: secubox-*
+        continue-on-error: true
+
+      - name: Generate summary
+        run: |
+          echo "# 🏗️ SecuBox Firmware Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "## Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| OpenWrt | ${{ env.OPENWRT_VERSION }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Root Size | ${{ env.ROOT_SIZE }}MB |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build Method | Image Builder (fast) |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "## Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ -d all-artifacts ]]; then
+            echo "| Device | Firmware | Status |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|----------|--------|" >> $GITHUB_STEP_SUMMARY
+
+            for dir in all-artifacts/secubox-firmware-*/; do
+              if [[ -d "$dir" ]]; then
+                DEVICE=$(basename "$dir" | sed 's/secubox-firmware-//' | sed "s/-${{ env.OPENWRT_VERSION }}//")
+                IMG_COUNT=$(find "$dir" -maxdepth 1 -type f \( -name "*.img.gz" -o -name "*.bin" \) 2>/dev/null | wc -l)
+
+                if [[ $IMG_COUNT -gt 0 ]]; then
+                  echo "| $DEVICE | $IMG_COUNT images | ✅ |" >> $GITHUB_STEP_SUMMARY
+                else
+                  echo "| $DEVICE | 0 images | ❌ |" >> $GITHUB_STEP_SUMMARY
+                fi
+              fi
+            done
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📥 Download artifacts from the Summary page below." >> $GITHUB_STEP_SUMMARY
