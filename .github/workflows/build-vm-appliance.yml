@@ -5,6 +5,11 @@ name: Build C3Box VM Appliance
 on:
   workflow_dispatch:
     inputs:
+      version:
+        description: 'Version tag (e.g. v1.0.0-beta)'
+        required: true
+        default: 'v1.0.0-beta'
+        type: string
       openwrt_version:
         description: 'OpenWrt version'
         required: true
@@ -43,6 +48,7 @@ on:
 env:
   OPENWRT_VERSION: ${{ github.event.inputs.openwrt_version || '24.10.5' }}
   DISK_SIZE: ${{ github.event.inputs.disk_size || '2' }}
+  C3BOX_VERSION: ${{ github.event.inputs.version || github.ref_name }}
 
 permissions:
   contents: write
@@ -181,7 +187,7 @@ jobs:
 
           # C3Box release info
           cat > imagebuilder/files/etc/c3box/release << EOF
-          C3BOX_VERSION="${{ github.ref_name || 'dev' }}"
+          C3BOX_VERSION="${{ env.C3BOX_VERSION }}"
           C3BOX_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           OPENWRT_VERSION="${{ env.OPENWRT_VERSION }}"
           VM_TYPE="${{ matrix.boot }}"
@@ -310,10 +316,9 @@ jobs:
             truncate -s ${TARGET_BYTES} /tmp/openwrt.img
           fi
 
-          # Base filename
-          VERSION="${{ env.OPENWRT_VERSION }}"
-          TAG="${{ github.ref_name }}"
-          BASENAME="c3box-vm-${TAG:-dev}-${{ matrix.name }}"
+          # Base filename - use version input or tag name
+          VERSION="${{ env.C3BOX_VERSION }}"
+          BASENAME="c3box-vm-${VERSION}-${{ matrix.name }}"
 
           # Convert to VMDK (VMware)
           echo "🔄 Creating VMDK (VMware)..."
@@ -344,8 +349,8 @@ jobs:
 
       - name: Create documentation
         run: |
-          TAG="${{ github.ref_name }}"
-          BASENAME="c3box-vm-${TAG:-dev}-${{ matrix.name }}"
+          VERSION="${{ env.C3BOX_VERSION }}"
+          BASENAME="c3box-vm-${VERSION}-${{ matrix.name }}"
 
           cat > artifacts/README.md << EOF
           # C3Box VM Appliance - ${{ matrix.description }}
@@ -427,7 +432,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: c3box-vm-${{ matrix.name }}-${{ env.OPENWRT_VERSION }}
+          name: c3box-vm-${{ env.C3BOX_VERSION }}-${{ matrix.name }}
           path: artifacts/
           retention-days: 30
 
