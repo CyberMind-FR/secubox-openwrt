@@ -1,0 +1,14 @@
+{
+    "admin/status/metrics": {
+        "title": "Metrics Dashboard",
+        "order": 5,
+        "action": {
+            "type": "view",
+            "path": "metrics/dashboard"
+        },
+        "depends": {
+            "acl": ["luci-app-metrics-dashboard"],
+            "uci": {}
+        }
+    }
+}

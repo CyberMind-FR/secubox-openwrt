@@ -1,0 +1,10 @@
+{
+    "luci-app-metrics-dashboard": {
+        "description": "SecuBox Metrics Dashboard",
+        "read": {
+            "ubus": {
+                "luci.metrics": ["overview", "certs", "vhosts", "metablogs", "streamlits", "waf_stats", "connections", "firewall_stats", "all"]
+            }
+        }
+    }
+}
