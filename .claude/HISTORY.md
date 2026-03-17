@@ -1,6 +1,16 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-03-16 (CrowdSec Heatmap)_
+_Last updated: 2026-03-17 (HAProxy/mitmproxy WAF routing fix)_
+
+0. **HAProxy/mitmproxy WAF Routing Fix (2026-03-17)**
+   - Fixed published sites returning 503 errors due to misconfigured WAF routing
+   - Root cause 1: mitmproxy UCI config missing `haproxy_router_enabled='1'` - HAProxy router addon wasn't loading
+   - Root cause 2: mitmproxy routes file not reloaded after adding new domains
+   - Root cause 3: HAProxy config needed reload after UCI changes
+   - Fix: Added `haproxy_router_enabled` to mitmproxy.in UCI instance
+   - Fix: Restart mitmproxy to load routes, reload HAProxy for config sync
+   - Fixed metablogizerctl to set correct mitmproxy routing for new sites (previous session)
+   - Sites verified working: testsite, santefr, srvi, filetest, sweedtest, litest, lblstest, tdahbdss
 
 0. **CrowdSec Dashboard Geo Heatmap (2026-03-16)**
    - NEW: Geo heatmap visualization showing threat origins on world map

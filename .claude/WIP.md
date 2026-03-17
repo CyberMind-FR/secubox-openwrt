@@ -1,12 +1,24 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-16 (Unified SMTP Relay)_
+_Last updated: 2026-03-17 (HAProxy/mitmproxy WAF routing fix)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
 ---
 
 ## Recently Completed
+
+### 2026-03-17
+
+- **HAProxy/mitmproxy WAF Routing Fix (Complete)**
+  - Fixed published sites returning 503 errors
+  - **Root causes identified and fixed**:
+    1. mitmproxy UCI missing `haproxy_router_enabled='1'` - addon not loading
+    2. mitmproxy routes file loaded at startup, not reloaded dynamically
+    3. HAProxy needed reload to sync config changes
+  - Fixed metablogizerctl to route new sites through mitmproxy (previous session)
+  - All test sites verified working: testsite, santefr, srvi, filetest, sweedtest, litest, lblstest, tdahbdss
+  - Note: `wall.gk2.secubox.in` doesn't exist - only `wall.maegia.tv`
 
 ### 2026-03-16
 
