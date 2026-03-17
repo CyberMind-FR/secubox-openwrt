@@ -170,6 +170,7 @@ load_instance_config() {
 		anticomp="$(uci_get ${inst}.anticomp || echo 0)"
 		flow_detail="$(uci_get ${inst}.flow_detail || echo 1)"
 		haproxy_backend="$(uci_get ${inst}.haproxy_backend || echo 0)"
+		headless="$(uci_get ${inst}.headless || echo 0)"
 	else
 		# Legacy single-instance mode
 		INSTANCE=""
@@ -178,7 +179,7 @@ load_instance_config() {
 		web_port="$(uci_get main.web_port || echo 8081)"
 		web_host="$(uci_get main.web_host || echo 0.0.0.0)"
 		data_path="$(uci_get main.data_path || echo /srv/mitmproxy)"
-		memory_limit="$(uci_get main.memory_limit || echo 256M)"
+		memory_limit="$(uci_get main.memory_limit || echo 2G)"
 		mode="$(uci_get main.mode || echo regular)"
 		upstream_proxy="$(uci_get main.upstream_proxy || echo '')"
 		reverse_target="$(uci_get main.reverse_target || echo '')"
@@ -187,6 +188,7 @@ load_instance_config() {
 		anticomp="$(uci_get main.anticomp || echo 0)"
 		flow_detail="$(uci_get main.flow_detail || echo 1)"
 		haproxy_backend="0"
+		headless="$(uci_get main.headless || echo 0)"
 	fi
 
 	# Set derived paths
@@ -555,7 +557,7 @@ lxc_check_prereqs() {
 lxc_create_rootfs() {
 	load_config
 
-	if [ -d "$LXC_ROOTFS" ] && [ -x "$LXC_ROOTFS/usr/bin/mitmproxy" ]; then
+	if [ -d "$LXC_ROOTFS" ] && [ -x "$LXC_ROOTFS/usr/local/bin/mitmproxy" ]; then
 		log_info "LXC rootfs already exists with mitmproxy"
 		return 0
 	fi
@@ -672,6 +674,9 @@ HAPROXY_ROUTER_ENABLED="${MITMPROXY_HAPROXY_ROUTER_ENABLED:-0}"
 HAPROXY_LISTEN_PORT="${MITMPROXY_HAPROXY_LISTEN_PORT:-8890}"
 HAPROXY_ROUTES_FILE="${MITMPROXY_HAPROXY_ROUTES_FILE:-/data/haproxy-routes.json}"
 
+# Headless mode (use mitmproxy instead of mitmweb to save ~3GB RAM)
+HEADLESS="${MITMPROXY_HEADLESS:-0}"
+
 # Build args
 ARGS="--listen-host 0.0.0.0 --listen-port $PROXY_PORT --set confdir=/data"
 ARGS="$ARGS --web-host $WEB_HOST --web-port $WEB_PORT --no-web-open-browser"
@@ -705,44 +710,60 @@ if [ "$FILTERING_ENABLED" = "1" ] && [ -n "$ADDON_SCRIPT" ] && [ -f "$ADDON_SCRI
     echo "Loading addon: $ADDON_SCRIPT"
 fi
 
-rm -f /data/.mitmproxy_token /tmp/mitmweb.log
+rm -f /data/.mitmproxy_token /tmp/mitmweb.log /tmp/mitmproxy.log
 
-echo "Starting mitmweb..."
-echo "Command: mitmweb $ARGS"
+# Choose between headless mitmproxy and mitmweb
+if [ "$HEADLESS" = "1" ]; then
+    echo "Starting mitmproxy (headless mode - no web UI, ~3GB RAM saved)..."
+    echo "Command: mitmdump $ARGS"
 
-# Start mitmweb in background, output to log file
-/usr/local/bin/mitmweb $ARGS 2>&1 | tee /tmp/mitmweb.log &
-MITMWEB_PID=$!
+    # mitmdump is the headless CLI version
+    /usr/local/bin/mitmdump $ARGS 2>&1 | tee /tmp/mitmproxy.log &
+    MITMPROXY_PID=$!
 
-# Wait for token to appear in log (with timeout)
-echo "Waiting for authentication token..."
-ATTEMPTS=0
-MAX_ATTEMPTS=30
-while [ $ATTEMPTS -lt $MAX_ATTEMPTS ]; do
-    sleep 1
-    ATTEMPTS=$((ATTEMPTS + 1))
+    echo "mitmproxy running in headless mode (PID: $MITMPROXY_PID)"
+    echo "No web UI available - use /tmp/mitmproxy.log for logs"
 
-    if [ -f /tmp/mitmweb.log ]; then
-        # Extract token from log - mitmweb outputs: "Web server listening at http://x.x.x.x:8081/?token=XXXXX"
-        # Token can be alphanumeric, not just hex
-        TOKEN=$(grep -o 'token=[a-zA-Z0-9_-]*' /tmp/mitmweb.log 2>/dev/null | head -1 | cut -d= -f2)
-        if [ -n "$TOKEN" ]; then
-            echo "$TOKEN" > /data/.mitmproxy_token
-            chmod 644 /data/.mitmproxy_token
-            echo "Token captured: $(echo "$TOKEN" | cut -c1-8)..."
-            echo "Web UI: http://$WEB_HOST:$WEB_PORT/?token=$TOKEN"
-            break
+    # Wait for process to keep container running
+    wait $MITMPROXY_PID
+else
+    echo "Starting mitmweb (web UI mode)..."
+    echo "Command: mitmweb $ARGS"
+
+    # Start mitmweb in background, output to log file
+    /usr/local/bin/mitmweb $ARGS 2>&1 | tee /tmp/mitmweb.log &
+    MITMWEB_PID=$!
+
+    # Wait for token to appear in log (with timeout)
+    echo "Waiting for authentication token..."
+    ATTEMPTS=0
+    MAX_ATTEMPTS=30
+    while [ $ATTEMPTS -lt $MAX_ATTEMPTS ]; do
+        sleep 1
+        ATTEMPTS=$((ATTEMPTS + 1))
+
+        if [ -f /tmp/mitmweb.log ]; then
+            # Extract token from log - mitmweb outputs: "Web server listening at http://x.x.x.x:8081/?token=XXXXX"
+            # Token can be alphanumeric, not just hex
+            TOKEN=$(grep -o 'token=[a-zA-Z0-9_-]*' /tmp/mitmweb.log 2>/dev/null | head -1 | cut -d= -f2)
+            if [ -n "$TOKEN" ]; then
+                echo "$TOKEN" > /data/.mitmproxy_token
+                chmod 644 /data/.mitmproxy_token
+                echo "Token captured: $(echo "$TOKEN" | cut -c1-8)..."
+                echo "Web UI: http://$WEB_HOST:$WEB_PORT/?token=$TOKEN"
+                break
+            fi
         fi
+    done
+
+    if [ ! -f /data/.mitmproxy_token ]; then
+        echo "Warning: Could not capture authentication token after ${MAX_ATTEMPTS}s"
+        echo "Check /tmp/mitmweb.log for details"
     fi
-done
 
-if [ ! -f /data/.mitmproxy_token ]; then
-    echo "Warning: Could not capture authentication token after ${MAX_ATTEMPTS}s"
-    echo "Check /tmp/mitmweb.log for details"
+    # Wait for mitmweb process to keep container running
+    wait $MITMWEB_PID
 fi
-
-# Wait for mitmweb process to keep container running
-wait $MITMWEB_PID
 START
 	chmod +x "$rootfs/opt/start-mitmproxy.sh"
 
@@ -954,6 +975,9 @@ lxc.environment = MITMPROXY_HAPROXY_ROUTER_ENABLED=$haproxy_router_enabled
 lxc.environment = MITMPROXY_HAPROXY_LISTEN_PORT=$haproxy_listen_port
 lxc.environment = MITMPROXY_HAPROXY_ROUTES_FILE=/data/haproxy-routes.json
 
+# Headless mode (use mitmproxy instead of mitmweb to save ~3GB RAM)
+lxc.environment = MITMPROXY_HEADLESS=$headless
+
 # Capabilities - drop dangerous ones (sys_admin needed for some ops)
 lxc.cap.drop = sys_module mac_admin mac_override sys_time
 
@@ -984,12 +1008,13 @@ lxc_run() {
 	load_config
 	lxc_stop
 
-	if [ ! -f "$LXC_CONFIG" ]; then
-		log_error "LXC not configured. Run 'mitmproxyctl install' first."
+	# Check rootfs exists (mitmproxy is at /usr/local/bin in the container)
+	if [ ! -d "$LXC_ROOTFS" ] || [ ! -x "$LXC_ROOTFS/usr/local/bin/mitmproxy" ]; then
+		log_error "LXC rootfs not installed. Run 'mitmproxyctl install' first."
 		return 1
 	fi
 
-	# Regenerate config to pick up any UCI changes
+	# Create/regenerate config (always do this to pick up any UCI changes)
 	lxc_create_config
 
 	# Ensure mount points exist
