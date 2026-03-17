@@ -599,26 +599,29 @@ jobs:
             cat repositories.conf
           fi
 
-          # Base OpenWrt packages
+          # Base OpenWrt packages (common to all architectures)
           PACKAGES="luci luci-ssl luci-app-opkg luci-theme-openwrt-2020"
           PACKAGES="$PACKAGES curl wget-ssl htop iftop tcpdump nano"
           PACKAGES="$PACKAGES openssh-sftp-server"
-          PACKAGES="$PACKAGES block-mount kmod-fs-ext4 kmod-fs-vfat kmod-fs-btrfs"
-          PACKAGES="$PACKAGES parted e2fsprogs resize2fs"
+          PACKAGES="$PACKAGES block-mount kmod-fs-ext4 kmod-fs-vfat"
           PACKAGES="$PACKAGES git rsync screen tmux bash jq"
-          PACKAGES="$PACKAGES docker dockerd containerd"
           PACKAGES="$PACKAGES wireguard-tools kmod-wireguard luci-proto-wireguard"
 
           # Remove conflicting dnsmasq
           PACKAGES="$PACKAGES -dnsmasq dnsmasq-full"
 
-          # Network and security packages
-          PACKAGES="$PACKAGES haproxy bind-server bind-tools"
-          PACKAGES="$PACKAGES kmod-nf-conntrack kmod-nf-nat kmod-ipt-nat"
+          # Network packages (available on all platforms)
+          PACKAGES="$PACKAGES haproxy"
 
           # Architecture-specific packages
           case "${{ matrix.target }}" in
             x86/64)
+              # x86-64 has the most packages available
+              PACKAGES="$PACKAGES parted e2fsprogs resize2fs"
+              PACKAGES="$PACKAGES kmod-fs-btrfs"
+              PACKAGES="$PACKAGES docker dockerd containerd"
+              PACKAGES="$PACKAGES bind-server bind-tools"
+              PACKAGES="$PACKAGES kmod-nf-conntrack kmod-nf-nat kmod-ipt-nat"
               if [[ "${{ matrix.boot }}" == "efi" ]]; then
                 PACKAGES="$PACKAGES grub2-efi"
               fi
@@ -627,14 +630,17 @@ jobs:
             armsr/armv8)
               # ARM64 generic - virtio support for QEMU/Proxmox
               PACKAGES="$PACKAGES kmod-virtio-net kmod-virtio-blk"
+              PACKAGES="$PACKAGES parted e2fsprogs"
               ;;
             bcm27xx/bcm2711)
               # Raspberry Pi 4 specific
               PACKAGES="$PACKAGES kmod-usb-net-asix-ax88179 kmod-usb-net-rtl8152"
+              PACKAGES="$PACKAGES parted e2fsprogs"
               ;;
             rockchip/armv8)
               # Rockchip ARM64
               PACKAGES="$PACKAGES kmod-usb-net-rtl8152"
+              PACKAGES="$PACKAGES parted e2fsprogs"
               ;;
           esac
 
@@ -703,8 +709,8 @@ jobs:
               PROFILE="rpi-4"
               ;;
             rockchip/armv8)
-              # List available profiles and pick first one
-              PROFILE=$(make info 2>/dev/null | grep -oP 'Default profile:\s+\K\S+' || echo "nanopi-r4s")
+              # NanoPi R4S as default for rockchip
+              PROFILE="friendlyarm_nanopi-r4s"
               ;;
             *)
               PROFILE="generic"

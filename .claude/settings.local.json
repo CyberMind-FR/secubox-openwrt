@@ -580,7 +580,9 @@
       "Bash(gh workflow run:*)",
       "Bash(git show:*)",
       "Bash(jq -r '.[] | \"\" \"\" + .workflowName + \"\": \"\" + .conclusion + \"\" \\(ID: \"\" + \\(.databaseId | tostring\\) + \"\"\\)\"\"' echo \"\" echo \"=== VM Appliance Artifacts ===\" gh api repos/gkerma/secubox-openwrt/actions/runs/23205786221/artifacts --jq '.artifacts[] | \"\" \"\" + .name + \"\" \\(\"\" + \\(\\(.size_in_bytes / 1048576\\) | floor | tostring\\) + \"\" MB\\)\"\"' echo \"\" echo \"=== Package Build Artifacts ===\" gh api repos/gkerma/secubox-openwrt/actions/runs/23206423503/artifacts --jq '.artifacts[] | \"\" \"\" + .name + \"\" \\(\"\" + \\(\\(.size_in_bytes / 1048576\\) | floor | tostring\\) + \"\" MB\\)\"\"')",
-      "Bash(__NEW_LINE_0593582cd60ca850__ echo \"\")"
+      "Bash(__NEW_LINE_0593582cd60ca850__ echo \"\")",
+      "Bash(./secubox-tools/c3box-vm-full-build.sh:*)",
+      "Bash(DISK_SIZE=2 OUTPUT_DIR=/home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/c3box-vm/output ./secubox-tools/c3box-vm-full-build.sh:*)"
     ]
   }
 }
