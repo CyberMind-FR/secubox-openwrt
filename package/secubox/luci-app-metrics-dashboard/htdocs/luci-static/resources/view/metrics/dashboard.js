@@ -301,12 +301,8 @@ return view.extend({
                         E('span', { 'class': 'mx-row-val', 'id': 'w-alerts' }, String(w.alerts_today || 0))
                     ]),
                     E('div', { 'class': 'mx-row' }, [
-                        E('span', { 'class': 'mx-row-label' }, 'WAF Threats'),
-                        E('span', { 'class': 'mx-row-val', 'id': 'w-threats' }, String(w.waf_threats || 0))
-                    ]),
-                    E('div', { 'class': 'mx-row' }, [
-                        E('span', { 'class': 'mx-row-label' }, 'Blocked'),
-                        E('span', { 'class': 'mx-row-val', 'id': 'w-blocked', 'style': 'color:#f44336' }, String(w.waf_blocked || 0))
+                        E('span', { 'class': 'mx-row-label' }, 'WAF Blocked'),
+                        E('span', { 'class': 'mx-row-val', 'id': 'w-blocked', 'style': (w.waf_blocked || 0) > 0 ? 'color:#ff9800' : '' }, String(w.waf_blocked || 0))
                     ])
                 ]),
 
@@ -367,7 +363,6 @@ return view.extend({
                 's-tcp': String(c.total_tcp || 0),
                 'w-bans': String(w.active_bans || 0),
                 'w-alerts': String(w.alerts_today || 0),
-                'w-threats': String(w.waf_threats || 0),
                 'w-blocked': String(w.waf_blocked || 0),
                 'c-https': String(c.https || 0),
                 'c-http': String(c.http || 0),

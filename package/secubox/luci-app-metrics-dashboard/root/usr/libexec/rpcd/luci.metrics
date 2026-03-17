@@ -57,7 +57,7 @@ build_overview() {
 # Build WAF stats
 build_waf_stats() {
     local cs_running=false mitmproxy_running=false
-    local bans=0 alerts_today=0 waf_threats=0 waf_blocked=0
+    local bans=0 alerts_today=0 waf_blocked=0
 
     pgrep crowdsec >/dev/null 2>&1 && cs_running=true
     pgrep -f mitmdump >/dev/null 2>&1 && mitmproxy_running=true
@@ -65,15 +65,12 @@ build_waf_stats() {
     if [ "$cs_running" = "true" ]; then
         bans=$(cscli decisions list -o json 2>/dev/null | grep -c '"id"' || echo 0)
         alerts_today=$(cscli alerts list --since 24h -o json 2>/dev/null | grep -c '"id"' || echo 0)
+        # WAF blocks = mitmproxy scenario decisions
+        waf_blocked=$(cscli decisions list -o json 2>/dev/null | grep -c 'mitmproxy' || echo 0)
     fi
 
-    if [ -f "/tmp/secubox-mitm-stats.json" ]; then
-        waf_threats=$(jsonfilter -i /tmp/secubox-mitm-stats.json -e '@.threats_today' 2>/dev/null || echo 0)
-        waf_blocked=$(jsonfilter -i /tmp/secubox-mitm-stats.json -e '@.blocked_today' 2>/dev/null || echo 0)
-    fi
-
-    printf '{"crowdsec_running":%s,"mitmproxy_running":%s,"active_bans":%d,"alerts_today":%d,"waf_threats":%d,"waf_blocked":%d}' \
-        "$cs_running" "$mitmproxy_running" "$bans" "$alerts_today" "$waf_threats" "$waf_blocked"
+    printf '{"crowdsec_running":%s,"mitmproxy_running":%s,"active_bans":%d,"alerts_today":%d,"waf_blocked":%d}' \
+        "$cs_running" "$mitmproxy_running" "$bans" "$alerts_today" "$waf_blocked"
 }
 
 # Build connections
