@@ -109,20 +109,20 @@ jobs:
           # Preseed script for first boot
           cat > imagebuilder/files/etc/uci-defaults/99-c3box-vm << 'PRESEED_EOF'
           #!/bin/sh
-          # C3Box VM Appliance Preseed
+          # C3Box VM Appliance Preseed - Devel/Beta Test Config
 
           # Set hostname
           uci set system.@system[0].hostname='c3box'
           uci set system.@system[0].timezone='UTC'
           uci set system.@system[0].zonename='UTC'
 
-          # Configure network for VM
-          # LAN: br-lan on eth0
-          uci set network.lan.ipaddr='192.168.1.1'
+          # Configure network for VM - Devel/Beta Test
+          # LAN: br-lan on eth0 - 192.168.200.x subnet for testing
+          uci set network.lan.ipaddr='192.168.200.1'
           uci set network.lan.netmask='255.255.255.0'
           uci set network.lan.proto='static'
 
-          # WAN: DHCP on eth1 (if present)
+          # WAN: br-wan DHCP on eth1
           uci set network.wan=interface
           uci set network.wan.device='eth1'
           uci set network.wan.proto='dhcp'
@@ -201,7 +201,7 @@ jobs:
             C3Box - CyberMind Security Appliance
             https://github.com/gkerma/secubox-openwrt
 
-            Access LuCI: https://192.168.1.1
+            Access LuCI: https://192.168.200.1
             Documentation: https://github.com/gkerma/secubox-openwrt/wiki
 
           BANNER_EOF
@@ -389,16 +389,16 @@ jobs:
 
           | Setting | Value |
           |---------|-------|
-          | LAN IP | 192.168.1.1 |
+          | LAN IP | 192.168.200.1 |
           | Username | root |
           | Password | (none - set on first login) |
-          | Web UI | https://192.168.1.1 |
+          | Web UI | https://192.168.200.1 |
           | SSH | Enabled |
 
           ## Network Interfaces
 
-          - **eth0 (LAN)**: 192.168.1.1/24, DHCP server
-          - **eth1 (WAN)**: DHCP client (optional)
+          - **eth0 (br-lan)**: 192.168.200.1/24, DHCP server
+          - **eth1 (br-wan)**: DHCP client
 
           ## Disk Resize
 
@@ -489,7 +489,7 @@ jobs:
 
           1. Download the appropriate image for your hypervisor
           2. Import/create VM with the disk image
-          3. Boot and access https://192.168.1.1
+          3. Boot and access https://192.168.200.1
           4. Login as `root` (no password initially)
           5. Set a password and start configuring
 
