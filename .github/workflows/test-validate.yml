@@ -35,31 +35,38 @@ jobs:
               PKG=$(dirname "$makefile")
               echo "  🔍 Checking $PKG..."
 
-              # Required fields (must have)
-              REQUIRED_FIELDS=(
-                "PKG_NAME"
-                "PKG_VERSION"
-                "PKG_RELEASE"
-              )
+              # Check if using luci.mk (auto-sets PKG_NAME from directory)
+              USES_LUCI_MK=false
+              if grep -q "include.*luci.mk" "$makefile"; then
+                USES_LUCI_MK=true
+              fi
 
-              # Recommended fields (warn if missing)
-              RECOMMENDED_FIELDS=(
-                "PKG_LICENSE"
-              )
-
-              for field in "${REQUIRED_FIELDS[@]}"; do
-                if ! grep -q "^${field}:=" "$makefile"; then
-                  echo "    ❌ Missing required: $field"
+              # Required fields for non-luci.mk packages
+              if [[ "$USES_LUCI_MK" == "false" ]]; then
+                if ! grep -q "^PKG_NAME:=" "$makefile"; then
+                  echo "    ❌ Missing required: PKG_NAME"
                   ERRORS=$((ERRORS + 1))
                 fi
-              done
+              fi
 
-              for field in "${RECOMMENDED_FIELDS[@]}"; do
+              # PKG_VERSION and PKG_RELEASE are recommended for luci.mk
+              for field in PKG_VERSION PKG_RELEASE; do
                 if ! grep -q "^${field}:=" "$makefile"; then
-                  echo "    ⚠️ Missing recommended: $field"
-                  WARNINGS=$((WARNINGS + 1))
+                  if [[ "$USES_LUCI_MK" == "true" ]]; then
+                    echo "    ⚠️ Missing recommended: $field"
+                    WARNINGS=$((WARNINGS + 1))
+                  else
+                    echo "    ❌ Missing required: $field"
+                    ERRORS=$((ERRORS + 1))
+                  fi
                 fi
               done
+
+              # PKG_LICENSE is always recommended
+              if ! grep -q "^PKG_LICENSE:=" "$makefile"; then
+                echo "    ⚠️ Missing recommended: PKG_LICENSE"
+                WARNINGS=$((WARNINGS + 1))
+              fi
               
               # Check for include statements
               if ! grep -q "include.*luci.mk\|include.*package.mk" "$makefile"; then
