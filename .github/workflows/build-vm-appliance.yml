@@ -728,7 +728,7 @@ jobs:
 
           echo ""
           echo "📦 Generated images:"
-          ls -lh bin/targets/x86/64/
+          ls -lh bin/targets/${{ matrix.target }}/ || ls -lh bin/targets/
 
       - name: Convert to VM formats
         run: |
