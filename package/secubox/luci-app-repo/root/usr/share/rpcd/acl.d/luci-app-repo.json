@@ -1,0 +1,17 @@
+{
+  "luci-app-repo": {
+    "description": "SecuBox Package Repository Dashboard",
+    "read": {
+      "ubus": {
+        "luci.repo": ["status", "config", "packages", "logs"]
+      },
+      "uci": ["repo"]
+    },
+    "write": {
+      "ubus": {
+        "luci.repo": ["sync"]
+      },
+      "uci": ["repo"]
+    }
+  }
+}

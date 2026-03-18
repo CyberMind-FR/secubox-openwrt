@@ -1,0 +1,14 @@
+{
+  "admin/services/repo": {
+    "title": "Package Repository",
+    "order": 85,
+    "action": {
+      "type": "view",
+      "path": "repo/dashboard"
+    },
+    "depends": {
+      "acl": ["luci-app-repo"],
+      "uci": {"repo": true}
+    }
+  }
+}

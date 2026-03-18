@@ -1,0 +1,8 @@
+config repo 'main'
+	option enabled '1'
+	option version 'v1.0.0-beta'
+	option github_repo 'gkerma/secubox-openwrt'
+	option port '8888'
+	option auto_sync '1'
+	option sync_interval '6'
+	option last_sync ''

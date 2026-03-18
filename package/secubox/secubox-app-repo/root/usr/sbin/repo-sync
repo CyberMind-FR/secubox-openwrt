@@ -1,0 +1,131 @@
+#!/bin/sh
+# SecuBox Package Repository Sync Script
+# Syncs packages from GitHub releases to local repo
+
+. /lib/functions.sh
+
+REPO_DIR="/srv/repo.secubox.in"
+CONFIG_FILE="/etc/config/repo"
+LOG_FILE="/var/log/repo-sync.log"
+
+log() {
+    local msg="[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+    echo "$msg"
+    echo "$msg" >> "$LOG_FILE"
+}
+
+# Load config
+config_load repo
+config_get GITHUB_REPO main github_repo "gkerma/secubox-openwrt"
+config_get VERSION main version "v1.0.0-beta"
+config_get ENABLED main enabled "1"
+
+[ "$ENABLED" = "1" ] || { log "Repo sync disabled"; exit 0; }
+
+VERSION_NUM="${VERSION#v}"
+TMP_DIR="/tmp/repo-sync-$$"
+
+log "Starting sync from $GITHUB_REPO $VERSION"
+
+mkdir -p "$TMP_DIR"
+mkdir -p "$REPO_DIR/packages" "$REPO_DIR/luci" "$REPO_DIR/catalog"
+cd "$TMP_DIR"
+
+# Architecture mappings: github-arch:opkg-arch
+ARCHS="x86-64:x86_64 aarch64-generic:aarch64_generic aarch64-cortex-a72:aarch64_cortex-a72 rockchip-armv8:aarch64_generic mips-24kc:mips_24kc mipsel-24kc:mipsel_24kc"
+
+for arch_map in $ARCHS; do
+    ARCH="${arch_map%%:*}"
+    OPKG_ARCH="${arch_map##*:}"
+    TARBALL="secubox-${VERSION_NUM}-${ARCH}.tar.gz"
+    URL="https://github.com/${GITHUB_REPO}/releases/download/${VERSION}/${TARBALL}"
+
+    log "Downloading $TARBALL..."
+    if wget -q -O "$TARBALL" "$URL" 2>/dev/null; then
+        mkdir -p "$REPO_DIR/packages/$OPKG_ARCH"
+        mkdir -p "$REPO_DIR/luci/$OPKG_ARCH"
+
+        # Extract
+        mkdir -p "extract-$ARCH"
+        tar -xzf "$TARBALL" -C "extract-$ARCH" 2>/dev/null
+
+        # Sort packages
+        find "extract-$ARCH" -name '*.ipk' | while read pkg; do
+            PKG_NAME="$(basename "$pkg")"
+            if echo "$PKG_NAME" | grep -q '^luci-'; then
+                cp "$pkg" "$REPO_DIR/luci/$OPKG_ARCH/"
+            else
+                cp "$pkg" "$REPO_DIR/packages/$OPKG_ARCH/"
+            fi
+        done
+
+        log "  Extracted to $OPKG_ARCH"
+    else
+        log "  Skipping $ARCH (not found)"
+    fi
+done
+
+# Generate Packages index
+log "Generating opkg indexes..."
+for basedir in "$REPO_DIR/packages" "$REPO_DIR/luci"; do
+    for dir in "$basedir"/*; do
+        [ -d "$dir" ] || continue
+        cd "$dir"
+
+        rm -f Packages Packages.gz
+
+        for ipk in *.ipk 2>/dev/null; do
+            [ -f "$ipk" ] || continue
+            SIZE=$(stat -c%s "$ipk" 2>/dev/null || ls -l "$ipk" | awk '{print $5}')
+            MD5=$(md5sum "$ipk" | cut -d' ' -f1)
+            PKG=$(echo "$ipk" | sed 's/_.*//g')
+
+            echo "Package: $PKG"
+            echo "Version: 0.0.0-r1"
+            echo "Architecture: all"
+            echo "Filename: $ipk"
+            echo "Size: $SIZE"
+            echo "MD5Sum: $MD5"
+            echo ""
+        done > Packages
+
+        gzip -9c Packages > Packages.gz
+        log "  $(basename "$dir"): $(grep -c '^Package:' Packages 2>/dev/null || echo 0) packages"
+    done
+done
+
+# Create index.html
+cat > "$REPO_DIR/index.html" << 'HTML'
+<!DOCTYPE html>
+<html><head><title>SecuBox Package Repository</title>
+<style>
+body { font-family: sans-serif; max-width: 800px; margin: 2em auto; padding: 0 1em; }
+code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; }
+pre { background: #f0f0f0; padding: 1em; overflow-x: auto; }
+</style>
+</head>
+<body>
+<h1>SecuBox Package Repository</h1>
+<p>Add to <code>/etc/opkg/customfeeds.conf</code>:</p>
+<pre>src/gz secubox_packages https://repo.secubox.in/packages/{ARCH}
+src/gz secubox_luci https://repo.secubox.in/luci/{ARCH}</pre>
+<h2>Architectures</h2>
+<ul>
+<li><a href="luci/x86_64/">x86_64</a> - x86-64 VMs</li>
+<li><a href="luci/aarch64_cortex-a72/">aarch64_cortex-a72</a> - Raspberry Pi 4</li>
+<li><a href="luci/aarch64_generic/">aarch64_generic</a> - NanoPi R4S/R5S</li>
+<li><a href="luci/mips_24kc/">mips_24kc</a> - Atheros/QCA</li>
+<li><a href="luci/mipsel_24kc/">mipsel_24kc</a> - MT7621</li>
+</ul>
+</body></html>
+HTML
+
+# Cleanup
+cd /
+rm -rf "$TMP_DIR"
+
+# Update last sync time
+uci set repo.main.last_sync="$(date -Iseconds)"
+uci commit repo
+
+log "Sync complete"
