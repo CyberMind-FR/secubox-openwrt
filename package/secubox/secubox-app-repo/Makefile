@@ -50,9 +50,33 @@ endef
 define Package/secubox-app-repo/postinst
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] || {
+	# Create repo directory
+	mkdir -p /srv/repo.secubox.in/luci /srv/repo.secubox.in/packages
+
+	# Get device architecture
+	ARCH=$$(opkg print-architecture | grep -v 'all' | tail -1 | awk '{print $$2}')
+
+	# Configure opkg custom feed
+	cat > /etc/opkg/customfeeds.conf << FEEDS
+# SecuBox Package Repository (local)
+src secubox_luci http://192.168.255.1:8888/luci/$${ARCH}
+src secubox_packages http://192.168.255.1:8888/packages/$${ARCH}
+FEEDS
+
+	# Start services
 	/etc/init.d/repo-server enable
 	/etc/init.d/repo-server start
 	/etc/init.d/rpcd restart
+}
+exit 0
+endef
+
+define Package/secubox-app-repo/prerm
+#!/bin/sh
+[ -n "$${IPKG_INSTROOT}" ] || {
+	/etc/init.d/repo-server stop
+	/etc/init.d/repo-server disable
+	rm -f /etc/opkg/customfeeds.conf
 }
 exit 0
 endef
