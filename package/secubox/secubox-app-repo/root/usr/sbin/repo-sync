@@ -74,20 +74,23 @@ for basedir in "$REPO_DIR/packages" "$REPO_DIR/luci"; do
 
         rm -f Packages Packages.gz
 
-        for ipk in *.ipk; do
-            [ -f "$ipk" ] || continue
-            SIZE=$(stat -c%s "$ipk" 2>/dev/null || ls -l "$ipk" | awk '{print $5}')
-            MD5=$(md5sum "$ipk" | cut -d' ' -f1)
-            PKG=$(echo "$ipk" | sed 's/_.*//g')
+        # Generate Packages index (use subshell for BusyBox compatibility)
+        (
+            for ipk in *.ipk; do
+                [ -f "$ipk" ] || continue
+                SIZE=$(stat -c%s "$ipk" 2>/dev/null || ls -l "$ipk" | awk '{print $5}')
+                MD5=$(md5sum "$ipk" | cut -d' ' -f1)
+                PKG=$(echo "$ipk" | sed 's/_.*//g')
 
-            echo "Package: $PKG"
-            echo "Version: 0.0.0-r1"
-            echo "Architecture: all"
-            echo "Filename: $ipk"
-            echo "Size: $SIZE"
-            echo "MD5Sum: $MD5"
-            echo ""
-        done > Packages
+                echo "Package: $PKG"
+                echo "Version: 0.0.0-r1"
+                echo "Architecture: all"
+                echo "Filename: $ipk"
+                echo "Size: $SIZE"
+                echo "MD5Sum: $MD5"
+                echo ""
+            done
+        ) > Packages
 
         gzip -9c Packages > Packages.gz
 
