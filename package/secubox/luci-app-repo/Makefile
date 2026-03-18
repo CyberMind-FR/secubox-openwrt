@@ -7,10 +7,24 @@ PKG_RELEASE:=1
 PKG_MAINTAINER:=SecuBox Team
 PKG_LICENSE:=Apache-2.0
 
-LUCI_TITLE:=LuCI Package Repository Dashboard
-LUCI_DEPENDS:=+secubox-app-repo
-
 include $(INCLUDE_DIR)/package.mk
+
+define Package/luci-app-repo
+  SECTION:=luci
+  CATEGORY:=LuCI
+  SUBMENU:=3. Applications
+  TITLE:=LuCI Package Repository Dashboard
+  DEPENDS:=+secubox-app-repo
+  PKGARCH:=all
+endef
+
+define Package/luci-app-repo/description
+  LuCI dashboard for managing SecuBox local package repository.
+  Provides UI for syncing packages from GitHub releases.
+endef
+
+define Build/Compile
+endef
 
 define Package/luci-app-repo/install
 	$(INSTALL_DIR) $(1)/www/luci-static/resources/view/repo
