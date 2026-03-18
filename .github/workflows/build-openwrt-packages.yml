@@ -9,45 +9,6 @@ on:
     branches: [main, master]
   workflow_dispatch:
     inputs:
-      package_name:
-        description: 'Package to build (leave empty for all packages)'
-        required: false
-        type: choice
-        options:
-          - ''
-          - 'luci-app-secubox'
-          - 'luci-app-secubox-admin'
-          - 'luci-app-secubox-bonus'
-          - 'luci-app-crowdsec-dashboard'
-          - 'luci-app-netdata-dashboard'
-          - 'luci-app-netifyd-dashboard'
-          - 'luci-app-traffic-shaper'
-          - 'luci-app-wireguard-dashboard'
-          - 'luci-app-network-modes'
-          - 'luci-app-network-tweaks'
-          - 'luci-app-client-guardian'
-          - 'luci-app-system-hub'
-          - 'luci-app-ksm-manager'
-          - 'luci-app-bandwidth-manager'
-          - 'luci-app-auth-guardian'
-          - 'luci-app-media-flow'
-          - 'luci-app-vhost-manager'
-          - 'luci-app-cdn-cache'
-          - 'luci-app-magicmirror'
-          - 'luci-app-mqtt-bridge'
-          - 'luci-app-zigbee2mqtt'
-          - 'secubox-app'
-          - 'secubox-core'
-          - 'secubox-app-adguardhome'
-          - 'secubox-app-crowdsec'
-          - 'secubox-app-domoticz'
-          - 'secubox-app-lyrion'
-          - 'secubox-app-magicmirror'
-          - 'secubox-app-mailinabox'
-          - 'secubox-app-nextcloud'
-          - 'secubox-app-nodogsplash'
-          - 'secubox-app-zigbee2mqtt'
-          - 'luci-theme-secubox'
       openwrt_version:
         description: 'OpenWrt version'
         required: true
@@ -55,14 +16,16 @@ on:
         type: choice
         options:
           - '24.10.5'
-          - '25.12.0-rc1'
           - '23.05.5'
-          - '23.05.4'
-          - 'SNAPSHOT'
+      build_toolchain_packages:
+        description: 'Build toolchain packages (Go/C++)'
+        required: false
+        default: true
+        type: boolean
       architectures:
         description: 'Architectures (comma-separated or "all")'
         required: false
-        default: 'arch_all'
+        default: 'all'
 
 env:
   OPENWRT_VERSION: ${{ github.event.inputs.openwrt_version || '24.10.5' }}
@@ -72,14 +35,17 @@ permissions:
 
 jobs:
   # ============================================
-  # Setup and determine build matrix
+  # Setup - determine version and build matrix
+  # Mirrors: local-build.sh setup logic
   # ============================================
   setup:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
       version: ${{ steps.version.outputs.version }}
-    
+      sdk_packages: ${{ steps.packages.outputs.sdk_packages }}
+      toolchain_packages: ${{ steps.packages.outputs.toolchain_packages }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -97,16 +63,69 @@ jobs:
           echo "version=${VERSION#v}" >> $GITHUB_OUTPUT
           echo "📦 Package version: ${VERSION#v}"
 
-          PACKAGE_NAME="${{ github.event.inputs.package_name }}"
-          if [[ -n "$PACKAGE_NAME" ]]; then
-            echo "🎯 Building single package: $PACKAGE_NAME"
-          else
-            echo "📦 Building all packages"
-          fi
+      - name: Categorize packages (mirrors local-build.sh OPENWRT_ONLY_PACKAGES)
+        id: packages
+        run: |
+          # Toolchain-only packages (from local-build.sh OPENWRT_ONLY_PACKAGES)
+          # These compile native code and need full OpenWrt buildroot
+          TOOLCHAIN_ONLY=(
+            # C/C++ native binaries
+            "secubox-app-netifyd"
+            "secubox-app-ndpid"
+            "secubox-app-nodogsplash"
+            # Go binaries
+            "secubox-app-crowdsec"
+            "secubox-app-cs-firewall-bouncer"
+            # Python/special packages
+            "secubox-app-mitmproxy"
+            "secubox-app-metablogizer"
+            "secubox-app-tor"
+          )
 
-      - name: Set build matrix
+          SDK_PACKAGES=""
+          TOOLCHAIN_PACKAGES=""
+
+          # Find all secubox packages
+          for pkg_dir in package/secubox/*/; do
+            [ -f "${pkg_dir}Makefile" ] || continue
+            PKG_NAME=$(basename "$pkg_dir")
+
+            # Check if it's in toolchain-only list
+            IS_TOOLCHAIN=false
+            for tc_pkg in "${TOOLCHAIN_ONLY[@]}"; do
+              if [[ "$PKG_NAME" == "$tc_pkg" ]]; then
+                IS_TOOLCHAIN=true
+                break
+              fi
+            done
+
+            if $IS_TOOLCHAIN; then
+              TOOLCHAIN_PACKAGES="${TOOLCHAIN_PACKAGES}${PKG_NAME},"
+            else
+              SDK_PACKAGES="${SDK_PACKAGES}${PKG_NAME},"
+            fi
+          done
+
+          # Root level luci-app-* (all SDK buildable)
+          for pkg_dir in luci-app-*/; do
+            [ -f "${pkg_dir}Makefile" ] || continue
+            PKG_NAME=$(basename "$pkg_dir")
+            SDK_PACKAGES="${SDK_PACKAGES}${PKG_NAME},"
+          done
+
+          # luci-theme-secubox
+          [ -d "luci-theme-secubox" ] && SDK_PACKAGES="${SDK_PACKAGES}luci-theme-secubox,"
+
+          echo "sdk_packages=${SDK_PACKAGES%,}" >> $GITHUB_OUTPUT
+          echo "toolchain_packages=${TOOLCHAIN_PACKAGES%,}" >> $GITHUB_OUTPUT
+
+          echo "📦 SDK packages (PKGARCH:=all): ${SDK_PACKAGES%,}"
+          echo "🔧 Toolchain packages (native binaries): ${TOOLCHAIN_PACKAGES%,}"
+
+      - name: Set build matrix (mirrors local-build.sh set_architecture)
         id: set-matrix
         run: |
+          # Architecture mapping from local-build.sh
           cat > /tmp/matrix.json << 'EOF'
           {
             "include": [
@@ -114,95 +133,297 @@ jobs:
                 "target": "x86-64",
                 "arch": "x86_64",
                 "sdk_path": "x86/64",
+                "toolchain_target": "x86",
+                "toolchain_subtarget": "64",
                 "description": "x86 64-bit (PC, VM)"
-              },
-              {
-                "target": "aarch64-cortex-a53",
-                "arch": "aarch64_cortex-a53",
-                "sdk_path": "mvebu/cortexa53",
-                "description": "ARM Cortex-A53 (ESPRESSObin)"
               },
               {
                 "target": "aarch64-cortex-a72",
                 "arch": "aarch64_cortex-a72",
                 "sdk_path": "mvebu/cortexa72",
-                "description": "ARM Cortex-A72 (MOCHAbin)"
+                "toolchain_target": "mvebu",
+                "toolchain_subtarget": "cortexa72",
+                "description": "ARM Cortex-A72 (MOCHAbin, RPi4)"
+              },
+              {
+                "target": "aarch64-cortex-a53",
+                "arch": "aarch64_cortex-a53",
+                "sdk_path": "mvebu/cortexa53",
+                "toolchain_target": "mvebu",
+                "toolchain_subtarget": "cortexa53",
+                "description": "ARM Cortex-A53 (ESPRESSObin)"
               },
               {
                 "target": "aarch64-generic",
                 "arch": "aarch64_generic",
                 "sdk_path": "armsr/armv8",
+                "toolchain_target": "armsr",
+                "toolchain_subtarget": "armv8",
                 "description": "ARM 64-bit generic"
-              },
-              {
-                "target": "mips-24kc",
-                "arch": "mips_24kc",
-                "sdk_path": "ath79/generic",
-                "description": "MIPS 24Kc (TP-Link)"
-              },
-              {
-                "target": "mipsel-24kc",
-                "arch": "mipsel_24kc",
-                "sdk_path": "ramips/mt7621",
-                "description": "MIPS LE (Xiaomi, GL.iNet)"
-              },
-              {
-                "target": "mediatek-filogic",
-                "arch": "aarch64_cortex-a53",
-                "sdk_path": "mediatek/filogic",
-                "description": "MediaTek Filogic"
               },
               {
                 "target": "rockchip-armv8",
                 "arch": "aarch64_generic",
                 "sdk_path": "rockchip/armv8",
-                "description": "Rockchip (NanoPi R4S)"
+                "toolchain_target": "rockchip",
+                "toolchain_subtarget": "armv8",
+                "description": "Rockchip (NanoPi R4S/R5S)"
               },
               {
-                "target": "bcm27xx-bcm2711",
-                "arch": "aarch64_cortex-a72",
-                "sdk_path": "bcm27xx/bcm2711",
-                "description": "Raspberry Pi 4"
+                "target": "mips-24kc",
+                "arch": "mips_24kc",
+                "sdk_path": "ath79/generic",
+                "toolchain_target": "ath79",
+                "toolchain_subtarget": "generic",
+                "description": "MIPS 24Kc (Atheros/QCA)"
+              },
+              {
+                "target": "mipsel-24kc",
+                "arch": "mipsel_24kc",
+                "sdk_path": "ramips/mt7621",
+                "toolchain_target": "ramips",
+                "toolchain_subtarget": "mt7621",
+                "description": "MIPS LE (MT7621)"
               }
             ]
           }
           EOF
-          
+
+          # Filter by input architectures if specified
           INPUT_ARCHS="${{ github.event.inputs.architectures }}"
-          if [[ -z "$INPUT_ARCHS" || "$INPUT_ARCHS" == "all" || "$INPUT_ARCHS" == "arch_all" ]]; then
+          if [[ -z "$INPUT_ARCHS" || "$INPUT_ARCHS" == "all" ]]; then
             MATRIX=$(cat /tmp/matrix.json)
           else
             MATRIX=$(jq -c --arg archs "$INPUT_ARCHS" '
               .include |= map(select(.target as $t | $archs | split(",") | map(gsub("^\\s+|\\s+$";"")) | any(. == $t)))
             ' /tmp/matrix.json)
           fi
-          
-          echo "matrix<<EOF" >> $GITHUB_OUTPUT
-          echo "$MATRIX" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-          
+
+          echo "matrix=$(echo "$MATRIX" | jq -c)" >> $GITHUB_OUTPUT
           echo "📋 Build matrix:"
           echo "$MATRIX" | jq '.'
 
   # ============================================
-  # Build packages
+  # Build SDK packages (LuCI apps, shell scripts)
+  # Mirrors: local-build.sh SDK build path
   # ============================================
-  build:
+  build-sdk:
     needs: setup
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
-    
-    name: Build ${{ matrix.target }}
-    
+
+    name: SDK ${{ matrix.target }}
+
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
 
       - name: Free disk space
         run: |
-          echo "🧹 Cleaning up disk space..."
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang flex bison g++ gawk \
+            gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
+            python3-setuptools rsync unzip zlib1g-dev file wget curl jq
+
+      - name: Cache OpenWrt SDK
+        uses: actions/cache@v4
+        id: cache-sdk
+        with:
+          path: sdk
+          key: openwrt-sdk-${{ env.OPENWRT_VERSION }}-${{ matrix.target }}-v6
+
+      - name: Download OpenWrt SDK
+        if: steps.cache-sdk.outputs.cache-hit != 'true'
+        run: |
+          BASE_URL="https://downloads.openwrt.org/releases/${{ env.OPENWRT_VERSION }}/targets/${{ matrix.sdk_path }}"
+
+          for attempt in 1 2 3; do
+            SDK_FILE=$(curl -sL "$BASE_URL/" | grep -oP 'openwrt-sdk[^"<>]+\.tar\.(xz|zst)' | head -1) && break
+            sleep 10
+          done
+
+          [ -z "$SDK_FILE" ] && { echo "❌ Could not find SDK"; exit 1; }
+
+          echo "📥 Downloading: $SDK_FILE"
+          wget -q "${BASE_URL}/${SDK_FILE}" -O /tmp/sdk.tar.xz
+          mkdir -p sdk
+          tar -xf /tmp/sdk.tar.xz -C sdk --strip-components=1
+          rm -f /tmp/sdk.tar.xz
+
+      - name: Setup SDK feeds (mirrors local-build.sh)
+        run: |
+          cd sdk
+
+          # Remove unwanted feeds (from local-build.sh)
+          sed -i '/telephony/d; /routing/d' feeds.conf.default 2>/dev/null || true
+
+          # Determine branch based on OpenWrt version
+          VERSION="${{ env.OPENWRT_VERSION }}"
+          if [[ "$VERSION" =~ ^24\. ]]; then
+            BRANCH="openwrt-24.10"
+          elif [[ "$VERSION" =~ ^23\. ]]; then
+            BRANCH="openwrt-23.05"
+          else
+            BRANCH="master"
+          fi
+
+          echo "📌 Using branch: $BRANCH for OpenWrt $VERSION"
+
+          cat > feeds.conf << EOF
+          src-git packages https://github.com/openwrt/packages.git;$BRANCH
+          src-git luci https://github.com/openwrt/luci.git;$BRANCH
+          src-link secubox ${{ github.workspace }}/secubox-tools/local-feed
+          EOF
+
+          # Update feeds with retry
+          for feed in packages luci; do
+            for attempt in 1 2 3; do
+              ./scripts/feeds update $feed && break
+              sleep $((10 * attempt))
+            done
+          done
+
+          ./scripts/feeds install -a
+          make defconfig
+
+      - name: Copy packages to SDK
+        run: |
+          VERSION="${{ needs.setup.outputs.version }}"
+
+          # Sync to local-feed first (mirrors local-build.sh)
+          mkdir -p secubox-tools/local-feed
+
+          for pkg in package/secubox/*/; do
+            [ -f "${pkg}Makefile" ] || continue
+            PKG_NAME=$(basename "$pkg")
+            cp -r "$pkg" "secubox-tools/local-feed/"
+
+            # Update version in copied package
+            sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$VERSION/" "secubox-tools/local-feed/${PKG_NAME}/Makefile" 2>/dev/null || true
+            sed -i "s/PKG_RELEASE:=.*/PKG_RELEASE:=1/" "secubox-tools/local-feed/${PKG_NAME}/Makefile" 2>/dev/null || true
+          done
+
+          # Copy root level luci-app-*
+          for pkg in luci-app-*/; do
+            [ -f "${pkg}Makefile" ] || continue
+            cp -r "$pkg" "secubox-tools/local-feed/"
+          done
+
+          # Copy theme
+          [ -d "luci-theme-secubox" ] && cp -r "luci-theme-secubox" "secubox-tools/local-feed/"
+
+          # Update secubox feed
+          cd sdk
+          ./scripts/feeds update secubox
+          ./scripts/feeds install -a -p secubox
+
+      - name: Build SDK packages
+        run: |
+          cd sdk
+
+          SDK_PACKAGES="${{ needs.setup.outputs.sdk_packages }}"
+          echo "📦 Building SDK packages: $SDK_PACKAGES"
+
+          # Enable packages
+          for pkg in ${SDK_PACKAGES//,/ }; do
+            echo "CONFIG_PACKAGE_${pkg}=m" >> .config
+
+            # Remove LUCI_DEPENDS for SDK build (runtime only)
+            PKG_DIR=$(find package -name "$pkg" -type d | head -1)
+            [ -n "$PKG_DIR" ] && sed -i 's/^LUCI_DEPENDS:=/#&/' "$PKG_DIR/Makefile" 2>/dev/null || true
+          done
+
+          make defconfig
+
+          # Build each package
+          BUILT=0
+          FAILED=0
+          BUILT_LIST=""
+          FAILED_LIST=""
+
+          for pkg in ${SDK_PACKAGES//,/ }; do
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "📦 Building: $pkg"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+            if timeout 300 make package/$pkg/compile V=s -j$(nproc) 2>&1 | tail -30; then
+              PKG_FILE=$(find bin -name "${pkg}*.ipk" 2>/dev/null | head -1)
+              if [ -n "$PKG_FILE" ]; then
+                echo "✅ Built: $pkg → $PKG_FILE"
+                BUILT=$((BUILT + 1))
+                BUILT_LIST="${BUILT_LIST}${pkg},"
+              else
+                echo "⚠️ No .ipk generated for $pkg"
+                FAILED=$((FAILED + 1))
+                FAILED_LIST="${FAILED_LIST}${pkg},"
+              fi
+            else
+              echo "❌ Build failed: $pkg"
+              FAILED=$((FAILED + 1))
+              FAILED_LIST="${FAILED_LIST}${pkg},"
+            fi
+          done
+
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📊 SDK Build Summary for ${{ matrix.target }}"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "✅ Built: $BUILT packages"
+          echo "❌ Failed: $FAILED packages"
+          [ -n "$BUILT_LIST" ] && echo "Built: ${BUILT_LIST%,}"
+          [ -n "$FAILED_LIST" ] && echo "Failed: ${FAILED_LIST%,}"
+
+      - name: Collect SDK artifacts
+        id: collect
+        run: |
+          mkdir -p artifacts/${{ matrix.target }}
+          find sdk/bin -name "*.ipk" -exec cp {} artifacts/${{ matrix.target }}/ \; 2>/dev/null || true
+
+          PKG_COUNT=$(find artifacts/${{ matrix.target }} -name "*.ipk" 2>/dev/null | wc -l)
+          echo "pkg_count=$PKG_COUNT" >> $GITHUB_OUTPUT
+
+          echo "📦 SDK packages for ${{ matrix.target }}: $PKG_COUNT"
+          ls -la artifacts/${{ matrix.target }}/ 2>/dev/null || echo "None"
+
+          # Create checksums
+          [ "$PKG_COUNT" -gt 0 ] && (cd artifacts/${{ matrix.target }} && sha256sum *.ipk > SHA256SUMS)
+
+      - name: Upload SDK artifacts
+        uses: actions/upload-artifact@v4
+        if: steps.collect.outputs.pkg_count > 0
+        with:
+          name: sdk-packages-${{ matrix.target }}
+          path: artifacts/${{ matrix.target }}/
+          retention-days: 30
+
+  # ============================================
+  # Build Toolchain packages (Go, C/C++)
+  # Mirrors: local-build.sh OpenWrt buildroot path
+  # ============================================
+  build-toolchain:
+    needs: setup
+    if: github.event.inputs.build_toolchain_packages != 'false' && needs.setup.outputs.toolchain_packages != ''
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
+
+    name: Toolchain ${{ matrix.target }}
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           sudo docker image prune --all --force
           df -h
@@ -210,633 +431,175 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            build-essential clang flex bison g++ gawk \
-            gcc-multilib g++-multilib gettext git libncurses5-dev \
-            libssl-dev python3-setuptools python3-dev rsync \
-            swig unzip zlib1g-dev file wget curl jq ninja-build
+          sudo apt-get install -y build-essential clang flex bison g++ gawk \
+            gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
+            python3-setuptools python3-dev rsync swig unzip zlib1g-dev file wget
 
-      - name: Cache OpenWrt SDK
+      - name: Cache OpenWrt Toolchain
         uses: actions/cache@v4
-        id: cache-sdk
+        id: cache-toolchain
         with:
-          path: sdk
-          key: openwrt-sdk-${{ env.OPENWRT_VERSION }}-${{ matrix.target }}-v4
+          path: openwrt
+          key: openwrt-toolchain-${{ env.OPENWRT_VERSION }}-${{ matrix.target }}-v4
 
-      - name: Download OpenWrt SDK
-        if: steps.cache-sdk.outputs.cache-hit != 'true'
+      - name: Clone OpenWrt
+        if: steps.cache-toolchain.outputs.cache-hit != 'true'
         run: |
-          echo "📥 Downloading SDK for ${{ matrix.description }}..."
-          
-          BASE_URL="https://downloads.openwrt.org/releases/${{ env.OPENWRT_VERSION }}/targets/${{ matrix.sdk_path }}"
-          
-          # Find SDK filename with retry
-          for attempt in 1 2 3; do
-            echo "Attempt $attempt: Fetching SDK list..."
-            SDK_FILE=$(curl -sL --retry 3 --retry-delay 5 "$BASE_URL/" | grep -oP 'openwrt-sdk[^"<>]+\.tar\.(xz|zst)' | head -1) && break
-            sleep 10
-          done
-          
-          if [[ -z "$SDK_FILE" ]]; then
-            echo "❌ Could not find SDK"
-            exit 1
-          fi
-          
-          echo "📥 Downloading: $SDK_FILE"
-          
-          # Download with retry
-          for attempt in 1 2 3; do
-            echo "Download attempt $attempt..."
-            wget -q --retry-connrefused --waitretry=5 --timeout=60 \
-              "${BASE_URL}/${SDK_FILE}" -O /tmp/sdk.tar.xz && break
-            sleep 15
-          done
-          
-          # Extract
-          mkdir -p sdk
-          tar -xf /tmp/sdk.tar.xz -C sdk --strip-components=1
-          rm -f /tmp/sdk.tar.xz
-          
-          echo "✅ SDK extracted"
-
-      - name: Setup SDK feeds (GitHub mirrors)
-        run: |
-          cd sdk
-
-          echo "📝 Configuring feeds with GitHub mirrors..."
-
-          # FIRST: Remove unwanted feeds from feeds.conf.default to prevent indexing errors
-          if [[ -f "feeds.conf.default" ]]; then
-            sed -i '/telephony/d' feeds.conf.default
-            sed -i '/routing/d' feeds.conf.default
-            echo "✅ Removed telephony and routing from feeds.conf.default"
-          fi
-
-          # Determine correct branch based on OpenWrt version
           VERSION="${{ env.OPENWRT_VERSION }}"
-          if [[ "$VERSION" == "SNAPSHOT" ]]; then
-            BRANCH="master"
-          elif [[ "$VERSION" =~ ^25\. ]]; then
-            BRANCH="openwrt-25.12"
-          elif [[ "$VERSION" =~ ^24\. ]]; then
+          if [[ "$VERSION" =~ ^24\. ]]; then
             BRANCH="openwrt-24.10"
           elif [[ "$VERSION" =~ ^23\. ]]; then
             BRANCH="openwrt-23.05"
           else
-            BRANCH="openwrt-23.05"  # fallback
+            BRANCH="master"
           fi
 
-          echo "📌 Using branch: $BRANCH for OpenWrt $VERSION"
+          git clone --depth 1 -b "$BRANCH" https://github.com/openwrt/openwrt.git
 
-          # Use GitHub mirrors - only essential feeds for SDK
-          cat > feeds.conf << FEEDS
-          src-git packages https://github.com/openwrt/packages.git;$BRANCH
-          src-git luci https://github.com/openwrt/luci.git;$BRANCH
-          FEEDS
+      - name: Setup OpenWrt feeds
+        run: |
+          cd openwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
 
-          echo "📋 feeds.conf:"
-          cat feeds.conf
-          echo ""
+      - name: Configure and build toolchain
+        if: steps.cache-toolchain.outputs.cache-hit != 'true'
+        run: |
+          cd openwrt
 
-          # Update feeds individually with error handling
-          echo "🔄 Updating feeds..."
-
-          FEEDS_OK=0
-          REQUIRED_FEEDS=2
-
-          for feed in packages luci; do
-            echo ""
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo "Updating feed: $feed"
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
-            FEED_SUCCESS=0
-            for attempt in 1 2 3; do
-              echo "Attempt $attempt of 3..."
-              if ./scripts/feeds update $feed 2>&1 | tee feed-update-${feed}.log; then
-                if [[ -d "feeds/$feed" ]]; then
-                  echo "  ✅ $feed updated successfully"
-                  FEEDS_OK=$((FEEDS_OK + 1))
-                  FEED_SUCCESS=1
-                  break
-                else
-                  echo "  ⚠️ Feed directory not created, retrying..."
-                fi
-              else
-                echo "  ⚠️ Update command failed, retrying..."
-              fi
-              sleep $((10 * attempt))
-            done
-
-            if [[ $FEED_SUCCESS -eq 0 ]]; then
-              echo "  ❌ Failed to update $feed after 3 attempts"
-              echo "Last attempt log:"
-              tail -20 feed-update-${feed}.log 2>/dev/null || echo "No log available"
-            fi
-          done
-
-          echo ""
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "📊 Feeds Status: $FEEDS_OK/$REQUIRED_FEEDS updated"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
-          # Verify feeds exist before continuing
-          if [[ $FEEDS_OK -lt $REQUIRED_FEEDS ]]; then
-            echo ""
-            echo "❌ ERROR: Not all required feeds were updated successfully"
-            echo "SDK feeds directory contents:"
-            ls -la feeds/ || echo "feeds directory doesn't exist"
-            exit 1
-          fi
-
-          # Install feeds
-          echo ""
-          echo "📦 Installing feeds..."
-          if ! ./scripts/feeds install -a 2>&1 | tee feed-install.log; then
-            echo "⚠️ Feed installation had errors, checking if critical..."
-            # Continue anyway as some warnings are normal
-          fi
-
-          # Verify critical directories exist
-          echo ""
-          echo "🔍 Verifying feed installation..."
-          for feed in packages luci; do
-            if [[ -d "feeds/$feed" ]]; then
-              FEED_SIZE=$(du -sh "feeds/$feed" 2>/dev/null | cut -f1)
-              echo "  ✅ feeds/$feed exists ($FEED_SIZE)"
-            else
-              echo "  ❌ feeds/$feed is missing!"
-              exit 1
-            fi
-          done
-          
-          # Verify luci.mk exists
-          if [[ -f "feeds/luci/luci.mk" ]]; then
-            echo "✅ luci.mk found"
-          else
-            echo "⚠️ Creating fallback luci.mk..."
-            mkdir -p feeds/luci
-            cat > feeds/luci/luci.mk << 'LUCI_MK'
-          # Minimal LuCI build system fallback
-          LUCI_PKGARCH:=all
-          
-          define Package/Default
-            SECTION:=luci
-            CATEGORY:=LuCI
-            SUBMENU:=3. Applications
-            PKGARCH:=all
-          endef
-          LUCI_MK
-          fi
-          
-          # Final cleanup of unwanted feeds (if somehow they still got created)
-          rm -f feeds/telephony.index feeds/routing.index 2>/dev/null || true
-          rm -rf feeds/telephony feeds/routing 2>/dev/null || true
+          # Set target configuration
+          cat > .config << EOF
+          CONFIG_TARGET_${{ matrix.toolchain_target }}=y
+          CONFIG_TARGET_${{ matrix.toolchain_target }}_${{ matrix.toolchain_subtarget }}=y
+          CONFIG_PACKAGE_golang=y
+          CONFIG_PACKAGE_golang-src=y
+          EOF
 
           make defconfig
-          echo "✅ SDK configured"
+          echo "⚙️ Building toolchain for ${{ matrix.target }}..."
+          make toolchain/install -j$(nproc) V=s || make toolchain/install -j1 V=s
 
-      - name: Copy packages to SDK
+      - name: Copy toolchain packages
         run: |
           VERSION="${{ needs.setup.outputs.version }}"
-          PACKAGE_NAME="${{ github.event.inputs.package_name }}"
+          TOOLCHAIN_PACKAGES="${{ needs.setup.outputs.toolchain_packages }}"
 
-          copy_package() {
-            local src="$1"
-            local base dest
-            base=$(basename "$src")
+          mkdir -p openwrt/package/secubox
 
-            if [[ "$src" == package/secubox/* ]]; then
-              dest="sdk/package/secubox/$base"
-              mkdir -p "$(dirname "$dest")"
-            else
-              dest="sdk/package/$base"
+          for pkg in ${TOOLCHAIN_PACKAGES//,/ }; do
+            if [ -d "package/secubox/$pkg" ]; then
+              cp -r "package/secubox/$pkg" "openwrt/package/secubox/"
+              sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$VERSION/" "openwrt/package/secubox/${pkg}/Makefile" 2>/dev/null || true
+              sed -i "s/PKG_RELEASE:=.*/PKG_RELEASE:=1/" "openwrt/package/secubox/${pkg}/Makefile" 2>/dev/null || true
             fi
+          done
 
-            echo "  📁 $base (from $src)"
-            rm -rf "$dest"
-            cp -r "$src" "$dest"
-
-            if grep -q 'PKG_VERSION:=' "$dest/Makefile"; then
-              sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$VERSION/" "$dest/Makefile"
-            fi
-            if grep -q 'PKG_RELEASE:=' "$dest/Makefile"; then
-              sed -i "s/PKG_RELEASE:=.*/PKG_RELEASE:=1/" "$dest/Makefile"
-            fi
-            if grep -q 'luci\.mk' "$dest/Makefile"; then
-              sed -i 's|include.*luci\.mk|include $(TOPDIR)/feeds/luci/luci.mk|' "$dest/Makefile"
-              echo "    ✓ Fixed Makefile include path"
-            fi
-          }
-
-          find_package_dir() {
-            local name="$1"
-            if [[ -d "$name" && -f "$name/Makefile" ]]; then
-              echo "$name"
-            elif [[ -d "package/secubox/$name" && -f "package/secubox/$name/Makefile" ]]; then
-              echo "package/secubox/$name"
-            else
-              echo ""
-            fi
-          }
-
-          if [[ -n "$PACKAGE_NAME" ]]; then
-            echo "📦 Copying single package: $PACKAGE_NAME (version: $VERSION)..."
-
-            PKG_DIR=$(find_package_dir "$PACKAGE_NAME")
-            if [[ -z "$PKG_DIR" ]]; then
-              echo "❌ Package $PACKAGE_NAME not found or missing Makefile"
-              exit 1
-            fi
-
-            copy_package "$PKG_DIR"
-          else
-            echo "📦 Copying all packages (version: $VERSION)..."
-
-            for pkg in luci-app-*/; do
-              if [[ -d "$pkg" && -f "${pkg}Makefile" ]]; then
-                copy_package "$pkg"
-              fi
-            done
-
-            for pkg in package/secubox/*/; do
-              if [[ -d "$pkg" && -f "${pkg}/Makefile" ]]; then
-                copy_package "$pkg"
-              fi
-            done
-
-            if [[ -d "luci-theme-secubox" && -f "luci-theme-secubox/Makefile" ]]; then
-              copy_package "luci-theme-secubox"
-            fi
-          fi
-
-          echo ""
-          echo "📋 Packages in SDK:"
-          ls -d sdk/package/luci-app-*/ sdk/package/secubox/*/ sdk/package/luci-theme-secubox/ 2>/dev/null || echo "None"
-
-      - name: Download pre-built LuCI dependencies
+      - name: Build toolchain packages
         run: |
-          cd sdk
+          cd openwrt
 
-          echo "📥 Downloading pre-built LuCI dependencies from OpenWrt repository..."
-          echo "This avoids compiling lucihttp and cgi-io which fail in SDK environment"
-          echo ""
+          TOOLCHAIN_PACKAGES="${{ needs.setup.outputs.toolchain_packages }}"
+          echo "🔧 Building toolchain packages: $TOOLCHAIN_PACKAGES"
 
-          # OpenWrt package repository base URL
-          VERSION="${{ env.OPENWRT_VERSION }}"
-          ARCH="${{ matrix.arch }}"
-
-          # Detect package format based on OpenWrt version
-          if [[ "$VERSION" =~ ^25\. ]] || [[ "$VERSION" == "SNAPSHOT" ]]; then
-            PKG_EXT="apk"
-          else
-            PKG_EXT="ipk"
-          fi
-
-          # Skip for RC versions as repos may not be stable
-          if [[ "$VERSION" =~ -rc ]]; then
-            echo "⚠️ Skipping dependency download for RC version"
-            echo "Note: Our SecuBox packages are PKGARCH:=all (scripts only)"
-            echo "They will be built regardless of dependency availability"
-            exit 0
-          fi
-
-          REPO_BASE="https://downloads.openwrt.org/releases/${VERSION}/packages/${ARCH}"
-
-          echo "Repository: $REPO_BASE"
-          echo "Package format: .${PKG_EXT}"
-          echo ""
-
-          # Download problematic dependencies as binaries
-          mkdir -p dl/luci-deps
-          cd dl/luci-deps
-
-          echo "Downloading LuCI core packages..."
-          # Try to download package index (format depends on version)
-          if [[ "$PKG_EXT" == "apk" ]]; then
-            curl -sL "${REPO_BASE}/luci/APKINDEX.tar.gz" > apkindex_luci.tar.gz || true
-            curl -sL "${REPO_BASE}/packages/APKINDEX.tar.gz" > apkindex_base.tar.gz || true
-          else
-            curl -sL "${REPO_BASE}/luci/Packages" > packages_luci.txt || true
-            curl -sL "${REPO_BASE}/packages/Packages" > packages_base.txt || true
-          fi
-
-          # Download critical LuCI dependencies that fail to compile in SDK
-          echo "Downloading lucihttp and related packages..."
-          DEPS=("lucihttp" "cgi-io" "lua")
-
-          for dep in "${DEPS[@]}"; do
-            if [[ "$PKG_EXT" == "apk" ]]; then
-              # For APK, try to extract package names from index
-              echo "Looking for $dep packages..."
-              curl -sL "${REPO_BASE}/luci/${dep}*.${PKG_EXT}" -o "${dep}.${PKG_EXT}" 2>/dev/null || true
-              curl -sL "${REPO_BASE}/packages/${dep}*.${PKG_EXT}" -o "${dep}.${PKG_EXT}" 2>/dev/null || true
-            else
-              # For IPK, download from packages feed
-              curl -sL "${REPO_BASE}/luci/${dep}_*.${PKG_EXT}" -o "${dep}.${PKG_EXT}" 2>/dev/null || true
-              curl -sL "${REPO_BASE}/packages/${dep}*.${PKG_EXT}" -o "${dep}.${PKG_EXT}" 2>/dev/null || true
-            fi
+          for pkg in ${TOOLCHAIN_PACKAGES//,/ }; do
+            echo "CONFIG_PACKAGE_${pkg}=m" >> .config
           done
-
-          # Install downloaded packages into SDK
-          for pkg in *.${PKG_EXT}; do
-            if [[ -f "$pkg" && -s "$pkg" ]]; then
-              echo "  ✓ Downloaded: $pkg"
-              # Copy to SDK packages directory for installation
-              cp "$pkg" ../../packages/ 2>/dev/null || true
-            fi
-          done
-
-          cd ../..
-
-          echo ""
-          echo "✅ Dependency download completed"
-          echo "Note: Our SecuBox packages are PKGARCH:=all (scripts only)"
-          echo "They will be built regardless of dependency availability"
-
-      - name: Patch packages to remove dependencies for SDK build
-        run: |
-          cd sdk
-
-          echo "🔧 Patching package Makefiles to remove runtime dependencies..."
-          echo "   (Dependencies will be installed separately on target device)"
-
-          # Remove LUCI_DEPENDS from all luci-app packages
-          # Our packages are PKGARCH:=all (scripts) - dependencies are runtime-only
-          for makefile in package/luci-app-*/Makefile; do
-            if [[ -f "$makefile" ]]; then
-              PKG=$(basename $(dirname "$makefile"))
-              echo "  📝 $PKG"
-
-              # Comment out LUCI_DEPENDS line
-              sed -i 's/^LUCI_DEPENDS:=/#&  # Removed for SDK build - runtime only/' "$makefile"
-            fi
-          done
-
-          echo "✅ Packages patched for SDK build"
-
-      - name: Configure packages
-        run: |
-          cd sdk
-
-          echo "⚙️ Enabling packages..."
-
-          for pkg in package/luci-app-*/; do
-            if [[ -d "$pkg" ]]; then
-              PKG_NAME=$(basename "$pkg")
-              echo "CONFIG_PACKAGE_${PKG_NAME}=m" >> .config
-              echo "  ✅ $PKG_NAME"
-            fi
-          done
-
-          # Enable secubox-app if present
-          if [[ -d "package/secubox/secubox-app" ]]; then
-            echo "CONFIG_PACKAGE_secubox-app=m" >> .config
-            echo "  ✅ secubox-app"
-          fi
-
-          # Enable luci-theme-secubox if present
-          if [[ -d "package/luci-theme-secubox" ]]; then
-            echo "CONFIG_PACKAGE_luci-theme-secubox=m" >> .config
-            echo "  ✅ luci-theme-secubox"
-          fi
-
-          # Enable download of pre-built packages for dependencies
-          echo "CONFIG_DEVEL=y" >> .config
-          echo "CONFIG_AUTOREBUILD=y" >> .config
-          echo "CONFIG_AUTOREMOVE=y" >> .config
-          echo "CONFIG_BUILDBOT=y" >> .config
-
-          # Disable problematic packages that fail to compile in SDK
-          # Our SecuBox packages are PKGARCH:=all (scripts) so they don't need these
-          # Use OpenWrt standard format for disabling packages
-          echo "# CONFIG_PACKAGE_lucihttp is not set" >> .config
-          echo "# CONFIG_PACKAGE_cgi-io is not set" >> .config
-
-          # Enable use of pre-built packages from feeds
-          echo "CONFIG_FEED_packages=y" >> .config
-          echo "CONFIG_FEED_luci=y" >> .config
-
-          # Allow missing dependencies (our packages are standalone scripts)
-          echo "CONFIG_BROKEN=y" >> .config
 
           make defconfig
-
-      - name: Build packages
-        run: |
-          cd sdk
-
-          # Detect package format based on OpenWrt version
-          VERSION="${{ env.OPENWRT_VERSION }}"
-          if [[ "$VERSION" =~ ^25\. ]] || [[ "$VERSION" == "SNAPSHOT" ]]; then
-            PKG_EXT="apk"
-            echo "📦 Building for OpenWrt $VERSION (apk format)"
-          else
-            PKG_EXT="ipk"
-            echo "📦 Building for OpenWrt $VERSION (ipk format)"
-          fi
-
-          # Export for later steps
-          echo "PKG_EXT=$PKG_EXT" >> $GITHUB_ENV
-
-          echo ""
-          echo "🔨 Building SecuBox packages..."
-          echo ""
 
           BUILT=0
           FAILED=0
-          BUILT_LIST=""
-          FAILED_LIST=""
 
-          for pkg in package/luci-app-*/; do
-            [[ -d "$pkg" ]] || continue
-
-            PKG_NAME=$(basename "$pkg")
-
+          for pkg in ${TOOLCHAIN_PACKAGES//,/ }; do
+            echo ""
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo "📦 Building: $PKG_NAME"
+            echo "🔧 Building: $pkg"
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-            # Show package contents for debugging
-            echo "📁 Package contents:"
-            ls -la "$pkg"
-
-            # Verify Makefile syntax
-            if ! grep -q "BuildPackage" "${pkg}Makefile"; then
-              echo "⚠️ WARNING: Makefile missing BuildPackage call"
-            fi
-
-            # Build with timeout (10 minutes per package)
-            BUILD_LOG="/tmp/build-${PKG_NAME}.log"
-
-            # Our packages are PKGARCH:=all (pure scripts), no compilation needed
-            # Dependencies removed from Makefile - they're runtime-only (prebuilt on target)
-            if timeout 600 make package/${PKG_NAME}/compile V=s -j1 > "$BUILD_LOG" 2>&1; then
-              # Build succeeded, check if package was created (.apk or .ipk)
-              PKG_FILE=$(find bin -name "${PKG_NAME}*.${PKG_EXT}" 2>/dev/null | head -1)
-
-              if [[ -n "$PKG_FILE" ]]; then
-                echo "✅ Built: $PKG_NAME"
-                echo "   → $PKG_FILE"
+            if timeout 1800 make package/$pkg/compile V=s -j$(nproc) 2>&1 | tail -50; then
+              PKG_FILE=$(find bin -name "${pkg}*.ipk" 2>/dev/null | head -1)
+              if [ -n "$PKG_FILE" ]; then
+                echo "✅ Built: $pkg → $PKG_FILE"
                 BUILT=$((BUILT + 1))
-                BUILT_LIST="${BUILT_LIST}${PKG_NAME},"
               else
-                echo "⚠️ No .${PKG_EXT} generated for $PKG_NAME"
-                echo "📋 Last 50 lines of build log:"
-                tail -50 "$BUILD_LOG"
+                echo "⚠️ No .ipk generated for $pkg"
                 FAILED=$((FAILED + 1))
-                FAILED_LIST="${FAILED_LIST}${PKG_NAME},"
               fi
             else
-              echo "❌ Build failed: $PKG_NAME"
-              echo "📋 Last 100 lines of build log:"
-              tail -100 "$BUILD_LOG"
+              echo "❌ Build failed: $pkg"
               FAILED=$((FAILED + 1))
-              FAILED_LIST="${FAILED_LIST}${PKG_NAME},"
             fi
-
-            echo ""
           done
 
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "📊 Build Summary"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "✅ Built: $BUILT packages (.${PKG_EXT})"
-          echo "❌ Failed: $FAILED packages"
           echo ""
-          echo "Built: $BUILT_LIST"
-          if [[ -n "$FAILED_LIST" ]]; then
-            echo "Failed: $FAILED_LIST"
-          fi
+          echo "📊 Toolchain Build Summary: $BUILT built, $FAILED failed"
 
-      - name: Collect artifacts
+      - name: Collect toolchain artifacts
         id: collect
         run: |
-          echo "📦 Collecting artifacts..."
-
-          PKG_EXT="${{ env.PKG_EXT }}"
-          echo "📦 Package format: .${PKG_EXT}"
-
           mkdir -p artifacts/${{ matrix.target }}
+          find openwrt/bin -name "*.ipk" -exec cp {} artifacts/${{ matrix.target }}/ \; 2>/dev/null || true
 
-          # Find and copy package files (.apk or .ipk)
-          find sdk/bin -name "luci-app-*.${PKG_EXT}" -exec cp {} artifacts/${{ matrix.target }}/ \; 2>/dev/null || true
-
-          # Also collect any SecuBox related packages
-          find sdk/bin -name "*secubox*.${PKG_EXT}" -exec cp {} artifacts/${{ matrix.target }}/ \; 2>/dev/null || true
-          find sdk/bin -name "secubox-app*.${PKG_EXT}" -exec cp {} artifacts/${{ matrix.target }}/ \; 2>/dev/null || true
-          find sdk/bin -name "luci-theme-secubox*.${PKG_EXT}" -exec cp {} artifacts/${{ matrix.target }}/ \; 2>/dev/null || true
-
-          # Count packages
-          PKG_COUNT=$(find artifacts/${{ matrix.target }} -name "*.${PKG_EXT}" 2>/dev/null | wc -l)
+          PKG_COUNT=$(find artifacts/${{ matrix.target }} -name "*.ipk" 2>/dev/null | wc -l)
           echo "pkg_count=$PKG_COUNT" >> $GITHUB_OUTPUT
-          echo "pkg_ext=$PKG_EXT" >> $GITHUB_OUTPUT
 
-          echo ""
-          echo "📋 Built packages for ${{ matrix.target }}:"
-          ls -la artifacts/${{ matrix.target }}/ 2>/dev/null || echo "No packages"
+          echo "🔧 Toolchain packages for ${{ matrix.target }}: $PKG_COUNT"
+          ls -la artifacts/${{ matrix.target }}/ 2>/dev/null || echo "None"
 
-          # Create checksums
-          if [[ $PKG_COUNT -gt 0 ]]; then
-            cd artifacts/${{ matrix.target }}
-            sha256sum *.${PKG_EXT} > SHA256SUMS
-          fi
-
-          echo ""
-          echo "📦 Total: $PKG_COUNT packages (.${PKG_EXT})"
-
-      - name: Upload artifacts
+      - name: Upload toolchain artifacts
         uses: actions/upload-artifact@v4
         if: steps.collect.outputs.pkg_count > 0
         with:
-          name: packages-${{ matrix.target }}
+          name: toolchain-packages-${{ matrix.target }}
           path: artifacts/${{ matrix.target }}/
           retention-days: 30
 
-      - name: Build Summary
-        run: |
-          PKG_COUNT="${{ steps.collect.outputs.pkg_count }}"
-          PKG_EXT="${{ steps.collect.outputs.pkg_ext }}"
-
-          echo "## 📦 Build Results: ${{ matrix.target }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Target | ${{ matrix.description }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Architecture | ${{ matrix.arch }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| SDK Path | ${{ matrix.sdk_path }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| OpenWrt Version | ${{ env.OPENWRT_VERSION }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Package Format | .$PKG_EXT |" >> $GITHUB_STEP_SUMMARY
-          echo "| Packages Built | $PKG_COUNT |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          if [[ "$PKG_COUNT" -gt 0 ]]; then
-            echo "### Built Packages" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            ls artifacts/${{ matrix.target }}/*.$PKG_EXT 2>/dev/null | xargs -I{} basename {} | sort >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          fi
-
   # ============================================
-  # Publish combined artifacts (always)
+  # Combine and publish artifacts
   # ============================================
-  publish-artifacts:
-    needs: [setup, build]
+  publish:
+    needs: [setup, build-sdk, build-toolchain]
+    if: always() && (needs.build-sdk.result == 'success' || needs.build-toolchain.result == 'success')
     runs-on: ubuntu-latest
-    if: always() && needs.build.result == 'success'
-    
+
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: packages
-          pattern: packages-*
+          pattern: '*-packages-*'
 
-      - name: Create combined archives
+      - name: Combine packages per architecture
         run: |
           VERSION="${{ needs.setup.outputs.version }}"
-          PACKAGE_NAME="${{ github.event.inputs.package_name }}"
-          OPENWRT_VERSION="${{ env.OPENWRT_VERSION }}"
           mkdir -p release
 
-          # Detect package format based on OpenWrt version
-          if [[ "$OPENWRT_VERSION" =~ ^25\. ]] || [[ "$OPENWRT_VERSION" == "SNAPSHOT" ]]; then
-            PKG_EXT="apk"
-          else
-            PKG_EXT="ipk"
-          fi
+          # Combine SDK and toolchain packages per architecture
+          for dir in packages/*/; do
+            [ -d "$dir" ] || continue
 
-          echo "📦 Package format: .$PKG_EXT"
-
-          # Determine prefix for archives
-          if [[ -n "$PACKAGE_NAME" ]]; then
-            PREFIX="${PACKAGE_NAME}"
-            echo "📁 Creating archives for single package: $PACKAGE_NAME..."
-          else
-            PREFIX="secubox"
-            echo "📁 Creating combined archives..."
-          fi
-
-          # Per-architecture archives
-          for dir in packages/packages-*/; do
-            [[ -d "$dir" ]] || continue
-
-            ARCH=$(basename "$dir" | sed 's/packages-//')
-            echo "📦 $ARCH"
-
-            # Copy package files (.apk or .ipk) to release
+            # Extract architecture from directory name
+            ARCH=$(basename "$dir" | sed 's/.*-packages-//')
             mkdir -p "release/${ARCH}"
-            cp "$dir"/*.$PKG_EXT "release/${ARCH}/" 2>/dev/null || true
 
-            # Create archive
-            if ls "release/${ARCH}"/*.$PKG_EXT >/dev/null 2>&1; then
-              tar -czf "release/${PREFIX}-${VERSION}-${ARCH}.tar.gz" -C "release/${ARCH}" .
+            # Copy all .ipk files
+            find "$dir" -name "*.ipk" -exec cp {} "release/${ARCH}/" \; 2>/dev/null || true
+          done
+
+          # Create per-architecture tarballs
+          for arch_dir in release/*/; do
+            [ -d "$arch_dir" ] || continue
+            ARCH=$(basename "$arch_dir")
+            PKG_COUNT=$(find "$arch_dir" -name "*.ipk" | wc -l)
+
+            if [ "$PKG_COUNT" -gt 0 ]; then
+              tar -czf "release/secubox-${VERSION}-${ARCH}.tar.gz" -C "release/${ARCH}" .
+              echo "📦 $ARCH: $PKG_COUNT packages"
             fi
           done
 
           # Create all-in-one archive
-          tar -czf "release/${PREFIX}-${VERSION}-all-architectures.tar.gz" -C packages .
+          tar -czf "release/secubox-${VERSION}-all-architectures.tar.gz" -C release .
 
           # Checksums
           cd release
@@ -845,14 +608,6 @@ jobs:
           echo ""
           echo "📋 Release contents:"
           ls -la
-
-          echo ""
-          echo "📊 Package count per architecture:"
-          for dir in */; do
-            [[ -d "$dir" ]] || continue
-            COUNT=$(ls "$dir"/*.$PKG_EXT 2>/dev/null | wc -l)
-            echo "  ${dir%/}: $COUNT packages"
-          done
 
       - name: Upload combined release
         uses: actions/upload-artifact@v4
@@ -863,166 +618,126 @@ jobs:
             release/SHA256SUMS
           retention-days: 90
 
-      - name: Upload individual package files
-        uses: actions/upload-artifact@v4
-        with:
-          name: secubox-all-packages-${{ needs.setup.outputs.version }}
-          path: |
-            release/*/*.ipk
-            release/*/*.apk
-          retention-days: 90
-
   # ============================================
-  # Create GitHub Release (on tags or manual)
+  # Create GitHub Release (on tags)
   # ============================================
   release:
-    needs: [setup, build, publish-artifacts]
+    needs: [setup, publish]
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-    
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
 
+    steps:
       - name: Download release artifact
         uses: actions/download-artifact@v4
         with:
           name: secubox-release-${{ needs.setup.outputs.version }}
           path: release
 
-      - name: Download all package files
-        uses: actions/download-artifact@v4
-        with:
-          name: secubox-all-packages-${{ needs.setup.outputs.version }}
-          path: package-files
-        continue-on-error: true
-
-      - name: List packages
-        id: list-packages
-        run: |
-          echo "📦 Packages in release:"
-          find . \( -name "*.ipk" -o -name "*.apk" \) -exec basename {} \; | sort -u
-
-          # Count unique packages
-          PKG_LIST=$(find . \( -name "*.ipk" -o -name "*.apk" \) -exec basename {} \; | sort -u | sed 's/_[0-9].*//g' | sed 's/-[0-9].*//g' | sort -u | tr '\n' ', ' | sed 's/,$//')
-          echo "packages=$PKG_LIST" >> $GITHUB_OUTPUT
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: ${{ github.event.inputs.package_name && format('{0} {1}', github.event.inputs.package_name, needs.setup.outputs.version) || format('SecuBox {0}', needs.setup.outputs.version) }}
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', needs.setup.outputs.version) }}
+          name: SecuBox v${{ needs.setup.outputs.version }}
           body: |
-            ## 📦 ${{ github.event.inputs.package_name && format('{0} Package', github.event.inputs.package_name) || 'SecuBox Packages' }} v${{ needs.setup.outputs.version }}
+            ## 📦 SecuBox Packages v${{ needs.setup.outputs.version }}
 
-            Pre-built OpenWrt package${{ github.event.inputs.package_name && '' || 's' }} for OpenWrt ${{ env.OPENWRT_VERSION }}.
+            Pre-built OpenWrt packages for OpenWrt ${{ env.OPENWRT_VERSION }}.
 
-            ${{ github.event.inputs.package_name && format('🎯 **Single package build**: {0}', github.event.inputs.package_name) || '' }}
-
-            ### ✅ Built Packages
-
-            ${{ steps.list-packages.outputs.packages }}
-            
             ### 📥 Installation
 
-            **For OpenWrt 25.12+ (.apk format):**
-            ```bash
-            # Upload .apk files to router
-            apk update
-            apk add /tmp/luci-app-*.apk
-
-            # Restart services
-            /etc/init.d/rpcd restart
-            ```
-
-            **For OpenWrt 24.10 and earlier (.ipk format):**
             ```bash
             # Upload .ipk files to router
             opkg update
-            opkg install /tmp/luci-app-*.ipk
-
-            # Restart services
+            opkg install /tmp/*.ipk
             /etc/init.d/rpcd restart
             ```
-            
+
             ### 🏗️ Supported Architectures
-            
-            - `x86-64` - PC, VMs, Proxmox
-            - `aarch64-cortex-a72` - MOCHAbin, RPi4
-            - `aarch64-cortex-a53` - ESPRESSObin
-            - `aarch64-generic` - Generic ARM64
-            - `mips-24kc` - TP-Link, ath79
-            - `mipsel-24kc` - Xiaomi, GL.iNet
-            - `mediatek-filogic` - MT7981/MT7986
-            
-            ### 🔗 Links
-            
-            - [SecuBox Website](https://secubox.cybermood.eu)
-            - [CyberMind.fr](https://cybermind.fr)
+
+            | Target | Description |
+            |--------|-------------|
+            | `x86-64` | PC, VMs, Proxmox |
+            | `aarch64-cortex-a72` | MOCHAbin, Raspberry Pi 4 |
+            | `aarch64-cortex-a53` | ESPRESSObin |
+            | `aarch64-generic` | NanoPi R4S/R5S, Generic ARM64 |
+            | `rockchip-armv8` | NanoPi R4S/R5S (Rockchip) |
+            | `mips-24kc` | TP-Link, Atheros/QCA |
+            | `mipsel-24kc` | Xiaomi, GL.iNet, MT7621 |
+
+            ### 📦 Package Types
+
+            - **SDK packages**: LuCI apps, shell scripts (PKGARCH:=all)
+            - **Toolchain packages**: Go binaries (crowdsec), C++ binaries (netifyd)
+
           files: |
             release/*.tar.gz
             release/SHA256SUMS
           draft: false
-          prerelease: ${{ github.event_name == 'workflow_dispatch' }}
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ============================================
-  # Final Summary
+  # Summary
   # ============================================
   summary:
-    needs: [setup, build]
-    runs-on: ubuntu-latest
+    needs: [setup, build-sdk, build-toolchain, publish]
     if: always()
-    
+    runs-on: ubuntu-latest
+
     steps:
-      - name: Download artifacts
+      - name: Download artifacts for summary
         uses: actions/download-artifact@v4
         with:
           path: packages
-          pattern: packages-*
+          pattern: '*-packages-*'
         continue-on-error: true
 
       - name: Generate summary
         run: |
-          PACKAGE_NAME="${{ github.event.inputs.package_name }}"
-
           echo "# 📊 SecuBox Build Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| Version | ${{ needs.setup.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
           echo "| OpenWrt | ${{ env.OPENWRT_VERSION }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Triggered by | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
-
-          if [[ -n "$PACKAGE_NAME" ]]; then
-            echo "| Package | 🎯 $PACKAGE_NAME (single package build) |" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "| Package | 📦 All packages |" >> $GITHUB_STEP_SUMMARY
-          fi
-
           echo "" >> $GITHUB_STEP_SUMMARY
-          
+
+          echo "## Package Categories" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**SDK Packages** (PKGARCH:=all):" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "${{ needs.setup.outputs.sdk_packages }}" | tr ',' '\n' >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Toolchain Packages** (native binaries):" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "${{ needs.setup.outputs.toolchain_packages }}" | tr ',' '\n' >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
           echo "## Build Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Architecture | Status | Packages |" >> $GITHUB_STEP_SUMMARY
-          echo "|--------------|--------|----------|" >> $GITHUB_STEP_SUMMARY
-          
-          TOTAL=0
-          
-          for dir in packages/packages-*/; do
-            if [[ -d "$dir" ]]; then
-              ARCH=$(basename "$dir" | sed 's/packages-//')
-              COUNT=$(find "$dir" \( -name "*.ipk" -o -name "*.apk" \) 2>/dev/null | wc -l)
-              TOTAL=$((TOTAL + COUNT))
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| SDK Build | ${{ needs.build-sdk.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Toolchain Build | ${{ needs.build-toolchain.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Publish | ${{ needs.publish.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
 
-              if [[ $COUNT -gt 0 ]]; then
-                echo "| $ARCH | ✅ Success | $COUNT |" >> $GITHUB_STEP_SUMMARY
-              else
-                echo "| $ARCH | ⚠️ Empty | 0 |" >> $GITHUB_STEP_SUMMARY
-              fi
+          echo "## Packages per Architecture" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Architecture | SDK | Toolchain | Total |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------------|-----|-----------|-------|" >> $GITHUB_STEP_SUMMARY
+
+          for dir in packages/*/; do
+            [ -d "$dir" ] || continue
+            ARCH=$(basename "$dir" | sed 's/.*-packages-//')
+            TYPE=$(basename "$dir" | sed 's/-packages-.*//')
+            COUNT=$(find "$dir" -name "*.ipk" 2>/dev/null | wc -l)
+
+            if [[ "$TYPE" == "sdk" ]]; then
+              echo "| $ARCH | $COUNT | - | $COUNT |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| $ARCH | - | $COUNT | $COUNT |" >> $GITHUB_STEP_SUMMARY
             fi
           done
-          
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Total packages built: $TOTAL**" >> $GITHUB_STEP_SUMMARY
