@@ -72,11 +72,12 @@ jobs:
             pkg_arch: x86-64
             description: "x86/64 BIOS (Legacy systems)"
           # ARM64 targets
-          - name: aarch64-generic
-            target: armsr/armv8
-            boot: efi
-            pkg_arch: aarch64-generic
-            description: "ARM64 Generic (QEMU/Proxmox ARM)"
+          # Note: aarch64-generic (armsr/armv8) disabled - package repo issues
+          # - name: aarch64-generic
+          #   target: armsr/armv8
+          #   boot: efi
+          #   pkg_arch: aarch64-generic
+          #   description: "ARM64 Generic (QEMU/Proxmox ARM)"
           - name: rpi4
             target: bcm27xx/bcm2711
             boot: native
