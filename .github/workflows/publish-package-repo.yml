@@ -1,0 +1,358 @@
+name: Publish Package Repository
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.0-beta)'
+        required: true
+        default: 'v1.0.0-beta'
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build-repo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Set version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            VERSION="${{ github.event.release.tag_name }}"
+          else
+            VERSION="${{ inputs.version }}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          # Strip 'v' prefix for package naming
+          VERSION_NUM="${VERSION#v}"
+          echo "version_num=$VERSION_NUM" >> $GITHUB_OUTPUT
+
+      - name: Download package tarballs from release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p downloads
+          cd downloads
+
+          VERSION="${{ steps.version.outputs.version }}"
+          VERSION_NUM="${{ steps.version.outputs.version_num }}"
+
+          echo "Downloading packages from release $VERSION..."
+
+          # Architecture-specific packages
+          ARCHITECTURES=(
+            "x86-64:x86_64"
+            "aarch64-generic:aarch64_generic"
+            "aarch64-cortex-a72:aarch64_cortex-a72"
+            "aarch64-cortex-a53:aarch64_cortex-a53"
+            "rockchip-armv8:aarch64_generic"
+            "bcm27xx-bcm2711:aarch64_cortex-a72"
+            "mediatek-filogic:aarch64_cortex-a53"
+            "mips-24kc:mips_24kc"
+            "mipsel-24kc:mipsel_24kc"
+          )
+
+          for arch_map in "${ARCHITECTURES[@]}"; do
+            ARCH="${arch_map%%:*}"
+            OPKG_ARCH="${arch_map##*:}"
+            TARBALL="secubox-${VERSION_NUM}-${ARCH}.tar.gz"
+
+            echo "Downloading $TARBALL for opkg arch $OPKG_ARCH..."
+            gh release download "$VERSION" -p "$TARBALL" || echo "Skipping $TARBALL (not found)"
+          done
+
+          # All-architectures package (LuCI apps, configs)
+          gh release download "$VERSION" -p "secubox-${VERSION_NUM}-all-architectures.tar.gz" || true
+
+          ls -lh
+
+      - name: Create repository structure
+        run: |
+          mkdir -p repo/packages
+          mkdir -p repo/luci
+          mkdir -p repo/catalog
+
+          VERSION_NUM="${{ steps.version.outputs.version_num }}"
+
+          # Architecture mappings
+          declare -A ARCH_MAP=(
+            ["x86-64"]="x86_64"
+            ["aarch64-generic"]="aarch64_generic"
+            ["aarch64-cortex-a72"]="aarch64_cortex-a72"
+            ["aarch64-cortex-a53"]="aarch64_cortex-a53"
+            ["rockchip-armv8"]="aarch64_generic"
+            ["bcm27xx-bcm2711"]="aarch64_cortex-a72"
+            ["mediatek-filogic"]="aarch64_cortex-a53"
+            ["mips-24kc"]="mips_24kc"
+            ["mipsel-24kc"]="mipsel_24kc"
+          )
+
+          # Extract and organize packages
+          for ARCH in "${!ARCH_MAP[@]}"; do
+            OPKG_ARCH="${ARCH_MAP[$ARCH]}"
+            TARBALL="downloads/secubox-${VERSION_NUM}-${ARCH}.tar.gz"
+
+            if [ -f "$TARBALL" ]; then
+              echo "Processing $TARBALL -> $OPKG_ARCH"
+
+              # Create arch directories
+              mkdir -p "repo/packages/${OPKG_ARCH}"
+              mkdir -p "repo/luci/${OPKG_ARCH}"
+
+              # Extract to temp
+              TMPDIR=$(mktemp -d)
+              tar -xzf "$TARBALL" -C "$TMPDIR"
+
+              # Move LuCI packages to luci/ and others to packages/
+              find "$TMPDIR" -name '*.ipk' | while read pkg; do
+                PKG_NAME=$(basename "$pkg")
+                if [[ "$PKG_NAME" == luci-* ]]; then
+                  cp "$pkg" "repo/luci/${OPKG_ARCH}/"
+                else
+                  cp "$pkg" "repo/packages/${OPKG_ARCH}/"
+                fi
+              done
+
+              rm -rf "$TMPDIR"
+            fi
+          done
+
+          # Handle all-architectures tarball (architecture-independent packages)
+          ALL_TARBALL="downloads/secubox-${VERSION_NUM}-all-architectures.tar.gz"
+          if [ -f "$ALL_TARBALL" ]; then
+            echo "Processing all-architectures packages..."
+            TMPDIR=$(mktemp -d)
+            tar -xzf "$ALL_TARBALL" -C "$TMPDIR"
+
+            # Copy all-arch packages to each architecture directory
+            for OPKG_ARCH in "x86_64" "aarch64_generic" "aarch64_cortex-a72" "aarch64_cortex-a53" "mips_24kc" "mipsel_24kc"; do
+              if [ -d "repo/packages/${OPKG_ARCH}" ]; then
+                find "$TMPDIR" -name '*.ipk' | while read pkg; do
+                  PKG_NAME=$(basename "$pkg")
+                  # Skip if architecture-specific version exists
+                  if [ ! -f "repo/packages/${OPKG_ARCH}/${PKG_NAME}" ] && \
+                     [ ! -f "repo/luci/${OPKG_ARCH}/${PKG_NAME}" ]; then
+                    if [[ "$PKG_NAME" == luci-* ]]; then
+                      cp "$pkg" "repo/luci/${OPKG_ARCH}/" 2>/dev/null || true
+                    else
+                      cp "$pkg" "repo/packages/${OPKG_ARCH}/" 2>/dev/null || true
+                    fi
+                  fi
+                done
+              fi
+            done
+            rm -rf "$TMPDIR"
+          fi
+
+          echo "Repository structure:"
+          find repo -type d
+          echo ""
+          echo "Package counts:"
+          for dir in repo/packages/* repo/luci/*; do
+            if [ -d "$dir" ]; then
+              count=$(find "$dir" -name '*.ipk' 2>/dev/null | wc -l)
+              echo "  $dir: $count packages"
+            fi
+          done
+
+      - name: Generate opkg Packages index
+        run: |
+          # Install uscan/dpkg-scanpackages alternative for IPK
+          # We'll use a simple shell script to generate Packages index
+
+          generate_packages_index() {
+            DIR="$1"
+            cd "$DIR"
+
+            echo "Generating Packages index for $DIR"
+
+            # Clear existing
+            rm -f Packages Packages.gz Packages.sig
+
+            for ipk in *.ipk; do
+              [ -f "$ipk" ] || continue
+
+              # Extract control file
+              TMPDIR=$(mktemp -d)
+              ar x "$ipk" --output="$TMPDIR" 2>/dev/null || {
+                # Try tar for newer ipk format
+                tar -xf "$ipk" -C "$TMPDIR" 2>/dev/null || continue
+              }
+
+              # Find control.tar.gz or control.tar.zst
+              CONTROL_TAR=""
+              for ctrl in "$TMPDIR"/control.tar.gz "$TMPDIR"/control.tar.zst "$TMPDIR"/control.tar; do
+                [ -f "$ctrl" ] && CONTROL_TAR="$ctrl" && break
+              done
+
+              if [ -n "$CONTROL_TAR" ]; then
+                # Extract control file
+                case "$CONTROL_TAR" in
+                  *.gz) tar -xzf "$CONTROL_TAR" -C "$TMPDIR" 2>/dev/null ;;
+                  *.zst) zstd -d "$CONTROL_TAR" -c | tar -x -C "$TMPDIR" 2>/dev/null ;;
+                  *) tar -xf "$CONTROL_TAR" -C "$TMPDIR" 2>/dev/null ;;
+                esac
+
+                if [ -f "$TMPDIR/control" ]; then
+                  # Output control fields
+                  cat "$TMPDIR/control"
+
+                  # Add filename and size
+                  SIZE=$(stat -c%s "$ipk" 2>/dev/null || stat -f%z "$ipk" 2>/dev/null)
+                  MD5=$(md5sum "$ipk" | cut -d' ' -f1)
+                  SHA256=$(sha256sum "$ipk" | cut -d' ' -f1)
+
+                  echo "Filename: $ipk"
+                  echo "Size: $SIZE"
+                  echo "MD5Sum: $MD5"
+                  echo "SHA256sum: $SHA256"
+                  echo ""
+                fi
+              fi
+
+              rm -rf "$TMPDIR"
+            done > Packages
+
+            # Compress
+            gzip -9c Packages > Packages.gz
+
+            echo "  Created: Packages ($(wc -l < Packages) lines)"
+
+            cd - > /dev/null
+          }
+
+          # Generate index for each directory
+          for dir in repo/packages/* repo/luci/*; do
+            if [ -d "$dir" ] && [ -n "$(ls -A "$dir"/*.ipk 2>/dev/null)" ]; then
+              generate_packages_index "$dir"
+            fi
+          done
+
+      - name: Create catalog index
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Create catalog.json with available packages
+          cat > repo/catalog/index.json << 'CATALOG_EOF'
+          {
+            "version": "$VERSION",
+            "updated": "$(date -Iseconds)",
+            "architectures": [
+              "x86_64",
+              "aarch64_generic",
+              "aarch64_cortex-a72",
+              "aarch64_cortex-a53",
+              "mips_24kc",
+              "mipsel_24kc"
+            ],
+            "feeds": {
+              "packages": "https://repo.secubox.in/packages/{arch}",
+              "luci": "https://repo.secubox.in/luci/{arch}"
+            }
+          }
+          CATALOG_EOF
+
+          # Replace variables
+          sed -i "s/\$VERSION/$VERSION/g" repo/catalog/index.json
+          sed -i "s|\$(date -Iseconds)|$(date -Iseconds)|g" repo/catalog/index.json
+
+      - name: Create index page
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          cat > repo/index.html << 'HTML_EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>SecuBox Package Repository</title>
+            <meta charset="utf-8">
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 2rem; }
+              h1 { color: #2d3748; }
+              code { background: #edf2f7; padding: 0.2rem 0.4rem; border-radius: 4px; }
+              pre { background: #2d3748; color: #e2e8f0; padding: 1rem; border-radius: 8px; overflow-x: auto; }
+              .arch { margin: 1rem 0; padding: 1rem; background: #f7fafc; border-radius: 8px; }
+              a { color: #3182ce; }
+            </style>
+          </head>
+          <body>
+            <h1>SecuBox Package Repository</h1>
+            <p>Official OpenWrt package repository for SecuBox security appliance.</p>
+
+            <h2>Quick Setup</h2>
+            <p>Add to <code>/etc/opkg/customfeeds.conf</code>:</p>
+            <pre>src/gz secubox_packages https://repo.secubox.in/packages/{YOUR_ARCH}
+          src/gz secubox_luci https://repo.secubox.in/luci/{YOUR_ARCH}</pre>
+
+            <h2>Available Architectures</h2>
+            <div class="arch">
+              <strong>x86_64</strong> - x86-64 VMs, Intel/AMD PCs
+              <br><a href="packages/x86_64/">packages/</a> | <a href="luci/x86_64/">luci/</a>
+            </div>
+            <div class="arch">
+              <strong>aarch64_cortex-a72</strong> - Raspberry Pi 4, CM4
+              <br><a href="packages/aarch64_cortex-a72/">packages/</a> | <a href="luci/aarch64_cortex-a72/">luci/</a>
+            </div>
+            <div class="arch">
+              <strong>aarch64_generic</strong> - NanoPi R4S/R5S, ROCKPro64, generic ARM64
+              <br><a href="packages/aarch64_generic/">packages/</a> | <a href="luci/aarch64_generic/">luci/</a>
+            </div>
+            <div class="arch">
+              <strong>aarch64_cortex-a53</strong> - MediaTek Filogic, budget ARM64
+              <br><a href="packages/aarch64_cortex-a53/">packages/</a> | <a href="luci/aarch64_cortex-a53/">luci/</a>
+            </div>
+            <div class="arch">
+              <strong>mips_24kc</strong> - Atheros/QCA routers (big endian)
+              <br><a href="packages/mips_24kc/">packages/</a> | <a href="luci/mips_24kc/">luci/</a>
+            </div>
+            <div class="arch">
+              <strong>mipsel_24kc</strong> - MediaTek MT7621 routers
+              <br><a href="packages/mipsel_24kc/">packages/</a> | <a href="luci/mipsel_24kc/">luci/</a>
+            </div>
+
+            <h2>API</h2>
+            <p><a href="catalog/index.json">catalog/index.json</a> - Repository metadata</p>
+
+            <footer style="margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #e2e8f0; color: #718096;">
+              <p>Version: VERSION_PLACEHOLDER | <a href="https://github.com/gkerma/secubox-openwrt">GitHub</a></p>
+            </footer>
+          </body>
+          </html>
+          HTML_EOF
+
+          sed -i "s/VERSION_PLACEHOLDER/$VERSION/g" repo/index.html
+
+      - name: Create CNAME for custom domain
+        run: |
+          echo "repo.secubox.in" > repo/CNAME
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./repo
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build-repo
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

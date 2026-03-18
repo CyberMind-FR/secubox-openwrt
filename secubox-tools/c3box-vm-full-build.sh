@@ -181,11 +181,18 @@ mkdir -p imagebuilder/files/etc/c3box
 mkdir -p imagebuilder/files/etc/opkg
 mkdir -p imagebuilder/files/etc/secubox
 
-# SecuBox feed configuration
-cat > imagebuilder/files/etc/opkg/customfeeds.conf << 'EOF'
+# SecuBox feed configuration - architecture-aware
+case "$ARCH" in
+  x86-64) OPKG_ARCH="x86_64" ;;
+  rpi4) OPKG_ARCH="aarch64_cortex-a72" ;;
+  rockchip-armv8) OPKG_ARCH="aarch64_generic" ;;
+  *) OPKG_ARCH="aarch64_generic" ;;
+esac
+
+cat > imagebuilder/files/etc/opkg/customfeeds.conf << EOF
 # SecuBox Official Package Feed
-src/gz secubox_packages https://repo.secubox.org/packages/aarch64_generic
-src/gz secubox_luci https://repo.secubox.org/luci/aarch64_generic
+src/gz secubox_packages https://repo.secubox.in/packages/${OPKG_ARCH}
+src/gz secubox_luci https://repo.secubox.in/luci/${OPKG_ARCH}
 EOF
 
 # Network preseed
@@ -234,7 +241,7 @@ touch /etc/config/secubox
 uci set secubox.main=core
 uci set secubox.main.enabled='1'
 uci set secubox.main.log_level='info'
-uci set secubox.main.appstore_url='https://repo.secubox.org/catalog'
+uci set secubox.main.appstore_url='https://repo.secubox.in/catalog'
 uci set secubox.main.appstore_fallback_local='1'
 uci set secubox.main.health_check_interval='300'
 uci set secubox.main.watchdog_interval='60'
