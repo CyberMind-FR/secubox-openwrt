@@ -15,3 +15,5 @@ LUCI_PKGARCH:=all
 PKG_FILE_MODES:=/usr/libexec/rpcd/luci.interceptor:root:root:755
 
 include $(TOPDIR)/feeds/luci/luci.mk
+
+$(eval $(call BuildPackage,luci-app-interceptor))

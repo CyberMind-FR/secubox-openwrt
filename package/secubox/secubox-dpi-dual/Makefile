@@ -29,6 +29,9 @@ define Package/secubox-dpi-dual/conffiles
 /etc/config/dpi-dual
 endef
 
+define Build/Compile
+endef
+
 define Package/secubox-dpi-dual/install
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/etc/config/dpi-dual $(1)/etc/config/

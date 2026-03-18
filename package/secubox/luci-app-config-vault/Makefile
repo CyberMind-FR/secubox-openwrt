@@ -20,6 +20,9 @@ define Package/luci-app-config-vault
   PKGARCH:=all
 endef
 
+define Build/Compile
+endef
+
 define Package/luci-app-config-vault/install
 	$(INSTALL_DIR) $(1)/usr/libexec/rpcd
 	$(INSTALL_BIN) ./root/usr/libexec/rpcd/luci.config-vault $(1)/usr/libexec/rpcd/

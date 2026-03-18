@@ -24,6 +24,9 @@ define Package/secubox-app-config-vault/description
   Provides audit trail for certification compliance.
 endef
 
+define Build/Compile
+endef
+
 define Package/secubox-app-config-vault/install
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/etc/config/config-vault $(1)/etc/config/

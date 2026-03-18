@@ -19,6 +19,9 @@ define Package/secubox-core-users/description
   Synchronizes users across Nextcloud, PeerTube, Matrix, Jabber, and Email.
 endef
 
+define Build/Compile
+endef
+
 define Package/secubox-core-users/install
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/etc/config/secubox-users $(1)/etc/config/secubox-users

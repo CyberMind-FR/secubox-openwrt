@@ -20,6 +20,9 @@ define Package/secubox-avatar-tap/description
   Designed to work with Nitrokey/GPG for secure session management.
 endef
 
+define Build/Compile
+endef
+
 define Package/secubox-avatar-tap/install
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/etc/config/avatar-tap $(1)/etc/config/avatar-tap

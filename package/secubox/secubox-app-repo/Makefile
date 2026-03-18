@@ -55,9 +55,9 @@ define Package/secubox-app-repo/postinst
 
 	# Configure opkg custom feed
 	cat > /etc/opkg/customfeeds.conf << FEEDS
-# SecuBox Package Repository (local)
-src secubox_luci http://192.168.255.1:8888/luci/$${ARCH}
-src secubox_packages http://192.168.255.1:8888/packages/$${ARCH}
+# SecuBox Package Repository
+src/gz secubox_luci https://repo.secubox.in/luci/$${ARCH}
+src/gz secubox_packages https://repo.secubox.in/packages/$${ARCH}
 FEEDS
 
 	# Start services

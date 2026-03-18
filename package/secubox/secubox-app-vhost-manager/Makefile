@@ -27,6 +27,9 @@ define Package/secubox-app-vhost-manager/conffiles
 /etc/config/vhosts
 endef
 
+define Build/Compile
+endef
+
 define Package/secubox-app-vhost-manager/install
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/etc/config/vhosts $(1)/etc/config/vhosts

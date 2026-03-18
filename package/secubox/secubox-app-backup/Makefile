@@ -27,6 +27,9 @@ define Package/secubox-app-backup/conffiles
 /etc/config/backup
 endef
 
+define Build/Compile
+endef
+
 define Package/secubox-app-backup/install
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/etc/config/backup $(1)/etc/config/backup
