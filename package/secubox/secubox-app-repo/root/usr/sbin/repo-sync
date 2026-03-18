@@ -74,7 +74,7 @@ for basedir in "$REPO_DIR/packages" "$REPO_DIR/luci"; do
 
         rm -f Packages Packages.gz
 
-        for ipk in *.ipk 2>/dev/null; do
+        for ipk in *.ipk; do
             [ -f "$ipk" ] || continue
             SIZE=$(stat -c%s "$ipk" 2>/dev/null || ls -l "$ipk" | awk '{print $5}')
             MD5=$(md5sum "$ipk" | cut -d' ' -f1)
