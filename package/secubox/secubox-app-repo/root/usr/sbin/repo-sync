@@ -90,9 +90,32 @@ for basedir in "$REPO_DIR/packages" "$REPO_DIR/luci"; do
         done > Packages
 
         gzip -9c Packages > Packages.gz
+
+        # Sign the Packages file if signing key exists
+        if [ -f /etc/opkg/keys/secubox.sec ]; then
+            usign -S -m Packages -s /etc/opkg/keys/secubox.sec 2>/dev/null
+        fi
+
         log "  $(basename "$dir"): $(grep -c '^Package:' Packages 2>/dev/null || echo 0) packages"
     done
 done
+
+# Generate signing keys if not present and sign all packages
+if [ ! -f /etc/opkg/keys/secubox.sec ]; then
+    log "Generating signing keys..."
+    mkdir -p /etc/opkg/keys
+    usign -G -s /etc/opkg/keys/secubox.sec -p /etc/opkg/keys/secubox.pub -c "SecuBox Local Repository"
+    FINGERPRINT=$(usign -F -p /etc/opkg/keys/secubox.pub)
+    cp /etc/opkg/keys/secubox.pub "/etc/opkg/keys/$FINGERPRINT"
+    log "  Key fingerprint: $FINGERPRINT"
+
+    # Sign all Packages files
+    for basedir in "$REPO_DIR/packages" "$REPO_DIR/luci"; do
+        for dir in "$basedir"/*; do
+            [ -d "$dir" ] && [ -f "$dir/Packages" ] && usign -S -m "$dir/Packages" -s /etc/opkg/keys/secubox.sec 2>/dev/null
+        done
+    done
+fi
 
 # Create index.html
 cat > "$REPO_DIR/index.html" << 'HTML'
