@@ -75,7 +75,8 @@ cmd_publish() {
     log_info "Publishing: $file as $vhost"
 
     # Detect file type by extension (file command not available on OpenWrt)
-    local file_ext=$(echo "$file" | sed 's/.*\.//' | tr '[:upper:]' '[:lower:]')
+    # Strip any CR/LF that may come from Windows uploads or JSON parsing
+    local file_ext=$(echo "$file" | sed 's/.*\.//' | tr '[:upper:]' '[:lower:]' | tr -d '\r\n')
 
     if [ "$file_ext" = "zip" ]; then
         log_info "Extracting ZIP..."
