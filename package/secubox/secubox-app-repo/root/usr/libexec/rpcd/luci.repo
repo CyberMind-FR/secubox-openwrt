@@ -1,0 +1,185 @@
+#!/bin/sh
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+REPO_DIR="/srv/repo.secubox.in"
+LOG_FILE="/var/log/repo-sync.log"
+
+case "$1" in
+    list)
+        echo '{"status":{},"config":{},"packages":{"arch":"string"},"sync":{"version":"string"},"refresh":{},"logs":{"lines":"number"}}'
+        ;;
+    call)
+        case "$2" in
+            status)
+                json_init
+
+                # Load config
+                config_load repo
+                config_get enabled main enabled "1"
+                config_get version main version "unknown"
+                config_get github_repo main github_repo ""
+                config_get port main port "8888"
+                config_get last_sync main last_sync ""
+                config_get auto_sync main auto_sync "0"
+                config_get sync_interval main sync_interval "6"
+
+                json_add_boolean "enabled" "$enabled"
+                json_add_string "version" "$version"
+                json_add_string "github_repo" "$github_repo"
+                json_add_int "port" "$port"
+                json_add_string "last_sync" "$last_sync"
+                json_add_boolean "auto_sync" "$auto_sync"
+                json_add_int "sync_interval" "$sync_interval"
+
+                # Server status
+                if netstat -tln 2>/dev/null | grep -q ":$port "; then
+                    json_add_boolean "running" 1
+                else
+                    json_add_boolean "running" 0
+                fi
+
+                # Package counts by architecture
+                json_add_object "architectures"
+                for dir in "$REPO_DIR/luci"/*; do
+                    [ -d "$dir" ] || continue
+                    arch=$(basename "$dir")
+                    count=$(ls "$dir"/*.ipk 2>/dev/null | wc -l)
+                    json_add_int "$arch" "$count"
+                done
+                json_close_object
+
+                json_dump
+                ;;
+
+            config)
+                json_init
+                config_load repo
+
+                config_get enabled main enabled "1"
+                config_get version main version ""
+                config_get github_repo main github_repo ""
+                config_get port main port "8888"
+                config_get auto_sync main auto_sync "0"
+                config_get sync_interval main sync_interval "6"
+
+                json_add_boolean "enabled" "$enabled"
+                json_add_string "version" "$version"
+                json_add_string "github_repo" "$github_repo"
+                json_add_int "port" "$port"
+                json_add_boolean "auto_sync" "$auto_sync"
+                json_add_int "sync_interval" "$sync_interval"
+
+                json_dump
+                ;;
+
+            packages)
+                read -r input
+                json_load "$input"
+                json_get_var arch arch "x86_64"
+
+                json_init
+                json_add_string "arch" "$arch"
+                json_add_array "packages"
+
+                dir="$REPO_DIR/luci/$arch"
+                if [ -d "$dir" ]; then
+                    for ipk in "$dir"/*.ipk; do
+                        [ -f "$ipk" ] || continue
+                        name=$(basename "$ipk")
+                        size=$(stat -c%s "$ipk" 2>/dev/null || echo 0)
+                        json_add_object ""
+                        json_add_string "name" "$name"
+                        json_add_int "size" "$size"
+                        json_close_object
+                    done
+                fi
+
+                json_close_array
+                json_dump
+                ;;
+
+            sync)
+                read -r input
+                json_load "$input"
+                json_get_var version version ""
+
+                if [ -n "$version" ]; then
+                    uci set repo.main.version="$version"
+                    uci commit repo
+                fi
+
+                # Run sync in background
+                /usr/sbin/repo-sync &
+
+                json_init
+                json_add_boolean "started" 1
+                json_add_string "message" "Sync started in background"
+                json_dump
+                ;;
+
+            refresh)
+                # Regenerate Packages indexes from existing ipk files
+                # Used after rsync/scp deployment from workstation
+                json_init
+
+                for basedir in "$REPO_DIR/packages" "$REPO_DIR/luci"; do
+                    for dir in "$basedir"/*; do
+                        [ -d "$dir" ] || continue
+
+                        cd "$dir" || continue
+                        rm -f Packages Packages.gz
+
+                        # Generate Packages index
+                        (
+                            for ipk in *.ipk; do
+                                [ -f "$ipk" ] || continue
+                                SIZE=$(stat -c%s "$ipk" 2>/dev/null || ls -l "$ipk" | awk '{print $5}')
+                                MD5=$(md5sum "$ipk" | cut -d' ' -f1)
+                                PKG=$(echo "$ipk" | sed 's/_.*//g')
+                                VERSION=$(echo "$ipk" | sed 's/^[^_]*_//; s/_[^_]*$//')
+                                ARCH=$(echo "$ipk" | sed 's/.*_//; s/\.ipk$//')
+
+                                echo "Package: $PKG"
+                                echo "Version: $VERSION"
+                                echo "Architecture: $ARCH"
+                                echo "Filename: $ipk"
+                                echo "Size: $SIZE"
+                                echo "MD5Sum: $MD5"
+                                echo ""
+                            done
+                        ) > Packages
+
+                        gzip -9c Packages > Packages.gz
+
+                        # Sign if key exists
+                        [ -f /etc/opkg/keys/secubox.sec ] && usign -S -m Packages -s /etc/opkg/keys/secubox.sec 2>/dev/null
+                    done
+                done
+
+                # Update last sync time
+                uci set repo.main.last_sync="$(date -Iseconds)"
+                uci commit repo
+
+                json_add_boolean "success" 1
+                json_add_string "message" "Package indexes regenerated"
+                json_dump
+                ;;
+
+            logs)
+                read -r input
+                json_load "$input"
+                json_get_var lines lines 50
+
+                json_init
+                if [ -f "$LOG_FILE" ]; then
+                    json_add_string "logs" "$(tail -n "$lines" "$LOG_FILE" | sed 's/"/\\"/g' | tr '\n' '|')"
+                else
+                    json_add_string "logs" ""
+                fi
+                json_dump
+                ;;
+        esac
+        ;;
+esac

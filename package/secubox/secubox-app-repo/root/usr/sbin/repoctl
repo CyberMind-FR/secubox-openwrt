@@ -1,0 +1,156 @@
+#!/bin/sh
+# SecuBox Package Repository Control Tool
+
+. /lib/functions.sh
+
+REPO_DIR="/srv/repo.secubox.in"
+CONFIG="repo"
+
+usage() {
+    cat << EOF
+Usage: repoctl <command> [options]
+
+Commands:
+  status          Show repository status
+  sync [version]  Sync packages from GitHub release
+  start           Start repository server
+  stop            Stop repository server
+  restart         Restart repository server
+  list [arch]     List packages for architecture
+  config          Show current configuration
+  set <key> <val> Set configuration value
+
+Configuration keys:
+  enabled         Enable/disable repo (0/1)
+  version         Release version to sync (e.g., v1.0.0-beta)
+  github_repo     GitHub repository (e.g., gkerma/secubox-openwrt)
+  port            Server port (default: 8888)
+  auto_sync       Enable auto-sync cron (0/1)
+  sync_interval   Sync interval in hours (default: 6)
+
+Examples:
+  repoctl status
+  repoctl sync v1.0.0-beta
+  repoctl list x86_64
+  repoctl set version v1.0.1
+EOF
+    exit 1
+}
+
+cmd_status() {
+    config_load "$CONFIG"
+    config_get enabled main enabled "1"
+    config_get version main version "unknown"
+    config_get github_repo main github_repo "gkerma/secubox-openwrt"
+    config_get port main port "8888"
+    config_get last_sync main last_sync "never"
+    config_get auto_sync main auto_sync "0"
+
+    echo "SecuBox Package Repository Status"
+    echo "=================================="
+    echo "Enabled:      $enabled"
+    echo "Version:      $version"
+    echo "GitHub Repo:  $github_repo"
+    echo "Server Port:  $port"
+    echo "Last Sync:    $last_sync"
+    echo "Auto Sync:    $auto_sync"
+    echo ""
+
+    # Check server status
+    if netstat -tln 2>/dev/null | grep -q ":$port "; then
+        echo "Server:       RUNNING (port $port)"
+    else
+        echo "Server:       STOPPED"
+    fi
+
+    # Package counts
+    echo ""
+    echo "Packages:"
+    for dir in "$REPO_DIR/luci"/*; do
+        [ -d "$dir" ] || continue
+        arch=$(basename "$dir")
+        count=$(ls "$dir"/*.ipk 2>/dev/null | wc -l)
+        echo "  $arch: $count packages"
+    done
+}
+
+cmd_sync() {
+    local version="${1:-}"
+    if [ -n "$version" ]; then
+        uci set "$CONFIG.main.version=$version"
+        uci commit "$CONFIG"
+    fi
+    /usr/sbin/repo-sync
+}
+
+cmd_start() {
+    /etc/init.d/repo-server start
+    echo "Repository server started"
+}
+
+cmd_stop() {
+    /etc/init.d/repo-server stop
+    echo "Repository server stopped"
+}
+
+cmd_restart() {
+    /etc/init.d/repo-server restart
+    echo "Repository server restarted"
+}
+
+cmd_list() {
+    local arch="${1:-x86_64}"
+    local dir="$REPO_DIR/luci/$arch"
+
+    if [ ! -d "$dir" ]; then
+        echo "Architecture '$arch' not found"
+        echo "Available: $(ls "$REPO_DIR/luci" 2>/dev/null | tr '\n' ' ')"
+        exit 1
+    fi
+
+    echo "Packages for $arch:"
+    ls "$dir"/*.ipk 2>/dev/null | while read pkg; do
+        basename "$pkg"
+    done
+}
+
+cmd_config() {
+    uci show "$CONFIG"
+}
+
+cmd_set() {
+    local key="$1"
+    local value="$2"
+
+    [ -z "$key" ] || [ -z "$value" ] && usage
+
+    uci set "$CONFIG.main.$key=$value"
+    uci commit "$CONFIG"
+    echo "Set $key = $value"
+
+    # Handle auto_sync changes
+    if [ "$key" = "auto_sync" ]; then
+        if [ "$value" = "1" ]; then
+            config_get interval main sync_interval "6"
+            echo "0 */$interval * * * /usr/sbin/repo-sync >/dev/null 2>&1" > /etc/cron.d/repo-sync
+            echo "Enabled auto-sync every $interval hours"
+        else
+            rm -f /etc/cron.d/repo-sync
+            echo "Disabled auto-sync"
+        fi
+        /etc/init.d/cron restart 2>/dev/null
+    fi
+}
+
+# Main
+case "$1" in
+    status)  cmd_status ;;
+    sync)    cmd_sync "$2" ;;
+    start)   cmd_start ;;
+    stop)    cmd_stop ;;
+    restart) cmd_restart ;;
+    list)    cmd_list "$2" ;;
+    config)  cmd_config ;;
+    set)     cmd_set "$2" "$3" ;;
+    *)       usage ;;
+esac

@@ -29,6 +29,9 @@ define Package/secubox-app-ksmbd/conffiles
 /etc/config/secubox-ksmbd
 endef
 
+define Build/Compile
+endef
+
 define Package/secubox-app-ksmbd/install
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/etc/config/secubox-ksmbd $(1)/etc/config/secubox-ksmbd

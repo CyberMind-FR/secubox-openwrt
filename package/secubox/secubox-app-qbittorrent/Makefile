@@ -19,6 +19,9 @@ define Package/secubox-app-qbittorrent/description
   Features web UI, RSS, search plugins, and API.
 endef
 
+define Build/Compile
+endef
+
 define Package/secubox-app-qbittorrent/install
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/etc/config/qbittorrent $(1)/etc/config/

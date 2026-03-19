@@ -22,6 +22,9 @@ define Package/secubox-app-gotosocial/description
   Provides a self-hosted Fediverse instance with LuCI management.
 endef
 
+define Build/Compile
+endef
+
 define Package/secubox-app-gotosocial/install
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/etc/config/gotosocial $(1)/etc/config/gotosocial

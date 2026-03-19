@@ -19,6 +19,9 @@ define Package/secubox-app-webtorrent/description
   Stream torrents directly in the browser via WebRTC.
 endef
 
+define Build/Compile
+endef
+
 define Package/secubox-app-webtorrent/install
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/etc/config/webtorrent $(1)/etc/config/

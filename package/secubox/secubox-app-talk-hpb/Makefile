@@ -24,6 +24,9 @@ define Package/secubox-app-talk-hpb/description
   Runs as Docker container with automatic configuration.
 endef
 
+define Build/Compile
+endef
+
 define Package/secubox-app-talk-hpb/install
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/etc/config/talk-hpb $(1)/etc/config/talk-hpb

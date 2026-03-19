@@ -28,6 +28,9 @@ define Package/secubox-app-ipblocklist/conffiles
 /etc/ipblocklist/whitelist.txt
 endef
 
+define Build/Compile
+endef
+
 define Package/secubox-app-ipblocklist/install
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/etc/config/ipblocklist $(1)/etc/config/ipblocklist
