@@ -33,6 +33,12 @@ var callLogs = rpc.declare({
     expect: {}
 });
 
+var callRefresh = rpc.declare({
+    object: 'luci.repo',
+    method: 'refresh',
+    expect: {}
+});
+
 return view.extend({
     load: function() {
         return Promise.all([
@@ -139,7 +145,38 @@ return view.extend({
                     ])
                 ]);
             }
-        }, _('Sync Packages'));
+        }, _('Sync from GitHub'));
+
+        var refreshBtn = E('button', {
+            'class': 'cbi-button cbi-button-action',
+            'click': function() {
+                ui.showModal(_('Refresh Indexes'), [
+                    E('p', {}, _('Regenerate package indexes from files in /srv/repo.secubox.in/? Use this after uploading packages via rsync or SCP.')),
+                    E('div', { 'class': 'right' }, [
+                        E('button', {
+                            'class': 'cbi-button',
+                            'click': ui.hideModal
+                        }, _('Cancel')),
+                        ' ',
+                        E('button', {
+                            'class': 'cbi-button cbi-button-positive',
+                            'click': function() {
+                                ui.hideModal();
+                                ui.showModal(_('Refreshing...'), [
+                                    E('p', { 'class': 'spinning' }, _('Regenerating package indexes...'))
+                                ]);
+                                callRefresh().then(function() {
+                                    setTimeout(function() {
+                                        ui.hideModal();
+                                        window.location.reload();
+                                    }, 1000);
+                                });
+                            }
+                        }, _('Refresh'))
+                    ])
+                ]);
+            }
+        }, _('Refresh Indexes'));
 
         var logsBtn = E('button', {
             'class': 'cbi-button',
@@ -162,8 +199,10 @@ return view.extend({
         return E('div', { 'class': 'cbi-section' }, [
             E('h3', {}, _('Actions')),
             E('div', { 'class': 'cbi-value' }, [
-                syncBtn, ' ', logsBtn
-            ])
+                syncBtn, ' ', refreshBtn, ' ', logsBtn
+            ]),
+            E('p', { 'style': 'color:#666;font-size:12px;margin-top:8px;' },
+                _('Use "Sync from GitHub" to download releases, or upload packages via rsync/SCP and click "Refresh Indexes".'))
         ]);
     },
 
@@ -174,12 +213,25 @@ return view.extend({
             E('h3', {}, _('Usage')),
             E('p', {}, _('Add to /etc/opkg/customfeeds.conf:')),
             E('pre', { 'style': 'background:#f5f5f5;padding:10px;border-radius:4px;' }, [
-                '# Local repository\n',
-                'src/gz secubox_luci http://127.0.0.1:' + port + '/luci/{ARCH}\n\n',
-                '# Or via HTTPS (external)\n',
-                'src/gz secubox_luci https://repo.secubox.in/luci/{ARCH}'
+                '# Local repository (served from this device)\n',
+                'src/gz secubox_luci http://127.0.0.1:' + port + '/luci/{ARCH}\n',
+                'src/gz secubox_packages http://127.0.0.1:' + port + '/packages/{ARCH}\n\n',
+                '# Or via HTTPS (public URL)\n',
+                'src/gz secubox_luci https://repo.secubox.in/luci/{ARCH}\n',
+                'src/gz secubox_packages https://repo.secubox.in/packages/{ARCH}'
             ].join('')),
-            E('p', {}, _('Replace {ARCH} with your architecture: x86_64, aarch64_cortex-a72, aarch64_generic, etc.'))
+            E('p', {}, _('Replace {ARCH} with your architecture: x86_64, aarch64_cortex-a72, aarch64_generic, etc.')),
+
+            E('h4', { 'style': 'margin-top:16px;' }, _('Deployment from Workstation')),
+            E('p', {}, _('Upload packages from your development machine:')),
+            E('pre', { 'style': 'background:#f5f5f5;padding:10px;border-radius:4px;font-size:12px;' }, [
+                '# Stage and deploy packages\n',
+                './secubox-tools/repo-deploy.sh stage\n',
+                './secubox-tools/repo-deploy.sh deploy root@' + window.location.hostname + '\n\n',
+                '# Or sync manually with rsync\n',
+                'rsync -avz /tmp/secubox-repo-staging/ root@' + window.location.hostname + ':/srv/repo.secubox.in/'
+            ].join('')),
+            E('p', {}, _('After uploading, click "Refresh Indexes" to regenerate the package lists.'))
         ]);
     },
 

@@ -9,7 +9,7 @@
     },
     "write": {
       "ubus": {
-        "luci.repo": ["sync"]
+        "luci.repo": ["sync", "refresh"]
       },
       "uci": ["repo"]
     }
