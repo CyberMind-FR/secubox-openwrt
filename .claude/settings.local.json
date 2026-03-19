@@ -594,7 +594,9 @@
       "Bash(./secubox-tools/repo-deploy.sh:*)",
       "Bash(./secubox-tools/quick-deploy.sh:*)",
       "Bash(while read f)",
-      "Bash(do basename \"$f\")"
+      "Bash(do basename \"$f\")",
+      "Bash(git rebase:*)",
+      "Bash(GIT_EDITOR=true git rebase:*)"
     ]
   }
 }

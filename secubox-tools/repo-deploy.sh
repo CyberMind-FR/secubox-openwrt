@@ -427,6 +427,15 @@ cmd_deploy() {
         rm -f "$archive"
     fi
 
+    # Sign packages on router (regenerates indexes with signatures)
+    log "Signing packages on router..."
+    if remote_exec "/usr/libexec/rpcd/luci.repo call refresh" >/dev/null 2>&1; then
+        log "Package indexes signed successfully"
+    else
+        log "Warning: Could not sign packages. Run manually:"
+        log "  /usr/libexec/rpcd/luci.repo call refresh"
+    fi
+
     log ""
     log "Deployment complete to $REPO_HOST:$REPO_PATH"
     log "Repository URL: https://repo.secubox.in/"

@@ -53,11 +53,12 @@ define Package/secubox-app-repo/postinst
 	# Get device architecture
 	ARCH=$$(opkg print-architecture | grep -v 'all' | tail -1 | awk '{print $$2}')
 
-	# Configure opkg custom feed
+	# Configure opkg custom feed (use localhost since this device serves packages)
 	cat > /etc/opkg/customfeeds.conf << FEEDS
-# SecuBox Package Repository
-src/gz secubox_luci https://repo.secubox.in/luci/$${ARCH}
-src/gz secubox_packages https://repo.secubox.in/packages/$${ARCH}
+# SecuBox Package Repository (served locally)
+src/gz secubox_luci http://127.0.0.1:8888/luci/$${ARCH}
+src/gz secubox_packages http://127.0.0.1:8888/packages/$${ARCH}
+# Other devices use: https://repo.secubox.in/luci/$${ARCH}
 FEEDS
 
 	# Start services
