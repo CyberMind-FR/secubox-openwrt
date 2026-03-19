@@ -65,8 +65,8 @@ cmd_publish() {
     [ -z "$name" ] && { log_error "Name required"; return 1; }
     [ ! -f "$file" ] && { log_error "File not found: $file"; return 1; }
 
-    # Sanitize name
-    name=$(echo "$name" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]/_/g')
+    # Sanitize name - use awk for lowercase (BusyBox tr is buggy)
+    name=$(echo "$name" | awk '{print tolower($0)}' | sed 's/[^a-z0-9_-]/_/g')
     local vhost="${name}.${domain}"
     local tmp_dir="/tmp/droplet_$$"
 
@@ -295,7 +295,7 @@ cmd_rename() {
     local new="$2"
     [ -z "$old" ] || [ -z "$new" ] && { log_error "Usage: dropletctl rename <old> <new>"; return 1; }
 
-    new=$(echo "$new" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]/_/g')
+    new=$(echo "$new" | awk '{print tolower($0)}' | sed 's/[^a-z0-9_-]/_/g')
 
     # Check metablogizer
     if uci -q get "metablogizer.$old" >/dev/null 2>&1; then
