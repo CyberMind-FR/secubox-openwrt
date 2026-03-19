@@ -598,8 +598,8 @@ jobs:
             fi
           done
 
-          # Create all-in-one archive
-          tar -czf "release/secubox-${VERSION}-all-architectures.tar.gz" -C release .
+          # Create all-in-one archive (ignore "file changed" warning)
+          tar -czf "release/secubox-${VERSION}-all-architectures.tar.gz" -C release . || true
 
           # Checksums
           cd release
