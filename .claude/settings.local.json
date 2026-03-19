@@ -596,7 +596,11 @@
       "Bash(while read f)",
       "Bash(do basename \"$f\")",
       "Bash(git rebase:*)",
-      "Bash(GIT_EDITOR=true git rebase:*)"
+      "Bash(GIT_EDITOR=true git rebase:*)",
+      "Bash(gh release:*)",
+      "Bash(do gh run cancel $run)",
+      "Bash(while read id)",
+      "Bash(do echo \"=== $id ===\")"
     ]
   }
 }

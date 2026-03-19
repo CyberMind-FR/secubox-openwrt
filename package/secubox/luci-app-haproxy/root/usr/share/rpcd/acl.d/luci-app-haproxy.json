@@ -54,7 +54,8 @@
 					"restart",
 					"reload",
 					"generate",
-					"validate"
+					"validate",
+					"sync_mitmproxy_routes"
 				]
 			},
 			"uci": ["haproxy"]
