@@ -272,6 +272,11 @@ install_pkg() {
     # Retry up to 3 times (GitHub Pages CDN can be flaky)
     local retry=0
     while [ $retry -lt 3 ]; do
+        # Wait for opkg lock to be released
+        while [ -f /var/lock/opkg.lock ]; do
+            sleep 1
+        done
+
         if opkg install "$pkg" 2>&1; then
             log_ok "$pkg installed successfully"
             return 0
@@ -280,7 +285,7 @@ install_pkg() {
         retry=$((retry + 1))
         if [ $retry -lt 3 ]; then
             log_warn "$pkg download failed, retry $retry/3..."
-            sleep 2
+            sleep 3
         fi
     done
 
