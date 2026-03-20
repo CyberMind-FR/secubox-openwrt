@@ -2541,13 +2541,15 @@ refresh_overview_cache() {
 	if [ -f "$threats_log" ]; then
 		local today
 		today=$(date -u +%Y-%m-%d)
-		waf_threats_today=$(grep -c "\"timestamp\": \"$today" "$threats_log" 2>/dev/null || echo 0)
+		waf_threats_today=$(grep -c "\"timestamp\": \"$today" "$threats_log" 2>/dev/null || :)
+		: "${waf_threats_today:=0}"
 	fi
 
 	local autoban_processed=0
 	local autoban_log="/srv/mitmproxy-in/autoban-processed.log"
 	if [ -f "$autoban_log" ]; then
-		autoban_processed=$(wc -l < "$autoban_log" 2>/dev/null || echo 0)
+		autoban_processed=$(wc -l < "$autoban_log" 2>/dev/null || :)
+		: "${autoban_processed:=0}"
 	fi
 
 	local cache_timestamp
