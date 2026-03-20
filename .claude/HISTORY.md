@@ -1,6 +1,6 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-03-20 (Seed Script + Package Repo)_
+_Last updated: 2026-03-20 (Metrics Freshness OpenWrt Fix)_
 
 0. **Progressive Freshness Indicators (2026-03-20)**
    - Added visible "Updated Xs ago" timestamps to Metrics and CrowdSec dashboards
@@ -18,6 +18,10 @@ _Last updated: 2026-03-20 (Seed Script + Package Repo)_
    - **Shared utilities** in `kiss-theme.js`:
      - `formatAge()`, `getFreshnessClass()`, `getFreshnessColor()`
      - `freshnessIndicator()`, `updateFreshness()` for reuse
+   - **OpenWrt compatibility fix (434e501d)**:
+     - Use `date -r` instead of `stat -c %Y` (stat not available in BusyBox)
+     - Fix `grep -c || echo 0` double-output causing "invalid number" errors
+     - Proper numeric defaults using `: "${var:=0}"` pattern
 
 0. **SecuBox Seed Script & Package Repository (2026-03-20)**
    - NEW: `scripts/secubox-seed.sh` - Bootstrap script for fresh OpenWrt
