@@ -109,9 +109,10 @@ define Package/secubox-core/install
 	$(INSTALL_DATA) ./root/etc/cron.d/secubox-integrity $(1)/etc/cron.d/
 	$(INSTALL_DATA) ./root/etc/cron.d/secubox-stats-persist $(1)/etc/cron.d/
 
-	# TFTP Mesh library
+	# Core libraries (TFTP mesh, P2P mesh)
 	$(INSTALL_DIR) $(1)/usr/lib/secubox
 	$(INSTALL_DATA) ./root/usr/lib/secubox/tftp-mesh.sh $(1)/usr/lib/secubox/
+	$(INSTALL_DATA) ./root/usr/lib/secubox/p2p-mesh.sh $(1)/usr/lib/secubox/
 
 	# RPCD method modules
 	$(INSTALL_DIR) $(1)/usr/lib/secubox/rpcd.d

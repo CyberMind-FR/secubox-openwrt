@@ -327,10 +327,15 @@ jobs:
           CONFIG_PACKAGE_openssh-sftp-server=y
 
           # ============================================
-          # SecuBox Core Packages
+          # SecuBox Core Packages (REQUIRED)
           # ============================================
+          CONFIG_PACKAGE_secubox-core=y
           CONFIG_PACKAGE_secubox-app=y
+          CONFIG_PACKAGE_secubox-p2p=y
+          CONFIG_PACKAGE_secubox-master-link=y
+          CONFIG_PACKAGE_secubox-identity=y
           CONFIG_PACKAGE_luci-app-secubox=y
+          CONFIG_PACKAGE_luci-theme-secubox=y
           CONFIG_PACKAGE_luci-app-system-hub=y
           CONFIG_PACKAGE_luci-app-metrics-dashboard=y
 
