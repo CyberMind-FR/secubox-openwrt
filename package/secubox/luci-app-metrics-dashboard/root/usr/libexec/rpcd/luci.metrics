@@ -20,6 +20,14 @@ cache_is_fresh() {
     [ "$age" -lt "$CACHE_TTL" ]
 }
 
+# Get cache age in seconds
+get_cache_age() {
+    [ -f "$CACHE_FILE" ] || echo 999
+    local now=$(date +%s)
+    local mtime=$(stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0)
+    echo $((now - mtime))
+}
+
 # Build overview (called by cron or on stale cache)
 build_overview() {
     local uptime load mem_total mem_free mem_used mem_pct
@@ -88,14 +96,15 @@ build_connections() {
 
 # Build full cache
 build_cache() {
-    local overview waf conns ts
+    local overview waf conns ts ts_epoch
     overview=$(build_overview)
     waf=$(build_waf_stats)
     conns=$(build_connections)
     ts=$(date -Iseconds)
+    ts_epoch=$(date +%s)
 
-    printf '{"overview":%s,"waf":%s,"connections":%s,"timestamp":"%s"}' \
-        "$overview" "$waf" "$conns" "$ts" > "$CACHE_FILE"
+    printf '{"overview":%s,"waf":%s,"connections":%s,"timestamp":"%s","timestamp_epoch":%d}' \
+        "$overview" "$waf" "$conns" "$ts" "$ts_epoch" > "$CACHE_FILE"
 }
 
 # Refresh cache in background if stale
@@ -117,29 +126,61 @@ get_cached() {
     fi
 }
 
-# Fast getters from cache
-get_overview() {
+# Get freshness metadata
+get_freshness() {
+    local age ts ts_epoch
     if [ -f "$CACHE_FILE" ]; then
-        jsonfilter -i "$CACHE_FILE" -e '@.overview' 2>/dev/null || build_overview
+        age=$(get_cache_age)
+        ts=$(jsonfilter -i "$CACHE_FILE" -e '@.timestamp' 2>/dev/null || echo "")
+        ts_epoch=$(jsonfilter -i "$CACHE_FILE" -e '@.timestamp_epoch' 2>/dev/null || echo 0)
     else
-        build_overview
+        age=999
+        ts=""
+        ts_epoch=0
     fi
+    printf '{"age":%d,"timestamp":"%s","timestamp_epoch":%d,"fresh":%s}' \
+        "$age" "$ts" "$ts_epoch" "$([ "$age" -lt "$CACHE_TTL" ] && echo true || echo false)"
+}
+
+# Fast getters from cache - now with freshness metadata
+get_overview() {
+    local data freshness
+    if [ -f "$CACHE_FILE" ]; then
+        data=$(jsonfilter -i "$CACHE_FILE" -e '@.overview' 2>/dev/null)
+        [ -z "$data" ] && data=$(build_overview)
+    else
+        data=$(build_overview)
+    fi
+    freshness=$(get_freshness)
+    # Merge data with freshness
+    printf '%s' "$data" | sed 's/}$//'
+    printf ',"_freshness":%s}' "$freshness"
 }
 
 get_waf_stats() {
+    local data freshness
     if [ -f "$CACHE_FILE" ]; then
-        jsonfilter -i "$CACHE_FILE" -e '@.waf' 2>/dev/null || build_waf_stats
+        data=$(jsonfilter -i "$CACHE_FILE" -e '@.waf' 2>/dev/null)
+        [ -z "$data" ] && data=$(build_waf_stats)
     else
-        build_waf_stats
+        data=$(build_waf_stats)
     fi
+    freshness=$(get_freshness)
+    printf '%s' "$data" | sed 's/}$//'
+    printf ',"_freshness":%s}' "$freshness"
 }
 
 get_connections() {
+    local data freshness
     if [ -f "$CACHE_FILE" ]; then
-        jsonfilter -i "$CACHE_FILE" -e '@.connections' 2>/dev/null || build_connections
+        data=$(jsonfilter -i "$CACHE_FILE" -e '@.connections' 2>/dev/null)
+        [ -z "$data" ] && data=$(build_connections)
     else
-        build_connections
+        data=$(build_connections)
     fi
+    freshness=$(get_freshness)
+    printf '%s' "$data" | sed 's/}$//'
+    printf ',"_freshness":%s}' "$freshness"
 }
 
 # Simple getters (less critical, can compute)

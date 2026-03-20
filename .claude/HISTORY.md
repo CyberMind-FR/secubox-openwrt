@@ -1,6 +1,27 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-03-17 (VM Firmware Build + CI Fixes)_
+_Last updated: 2026-03-20 (Seed Script + Package Repo)_
+
+0. **SecuBox Seed Script & Package Repository (2026-03-20)**
+   - NEW: `scripts/secubox-seed.sh` - Bootstrap script for fresh OpenWrt
+   - NEW: `scripts/secubox-slipstream.sh` - Bake SecuBox config into images
+   - NEW: `.github/workflows/publish-package-repo.yml` - GitHub Pages package repo
+   - Package repository live at https://repo.secubox.in
+   - **Seed script features**:
+     - Auto-detects architecture (x86_64, aarch64_cortex-a72, etc.)
+     - Configures SecuBox opkg feeds in customfeeds.conf
+     - Disables signature checking for unsigned feeds (fixes "Unknown package" error)
+     - Retry logic (3 attempts) for all network operations
+     - Profile-based installation: minimal, standard, full
+     - Dry-run mode for testing
+   - **Slipstream script**: Pre-configures images during build
+     - Creates /etc/opkg/customfeeds.conf with SecuBox feeds
+     - First-boot script (/etc/uci-defaults/99-secubox-setup)
+     - Custom banner with SecuBox branding
+   - GitHub Actions integration:
+     - VM images (build-secubox-vm.yml) now include slipstream
+     - Device images (build-secubox-images.yml) now include slipstream
+     - Package repo deployed to GitHub Pages on release
 
 0. **SecuBox VM Firmware Build Workflow (2026-03-17)**
    - NEW: `.github/workflows/build-secubox-vm.yml` for x86_64 VM appliance images

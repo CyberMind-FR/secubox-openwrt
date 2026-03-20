@@ -2266,15 +2266,27 @@ save_settings() {
 # get_overview - returns cached data for instant response
 # Cache is refreshed by background cron job or refresh_overview_cache call
 get_overview() {
+	# Calculate cache age for freshness indicator
+	local cache_age=999
+	local cache_fresh=false
+	if [ -f "$CROWDSEC_OVERVIEW_CACHE" ]; then
+		local now=$(date +%s)
+		local mtime=$(stat -c %Y "$CROWDSEC_OVERVIEW_CACHE" 2>/dev/null || echo 0)
+		cache_age=$((now - mtime))
+		[ "$cache_age" -lt "$CACHE_MAX_AGE" ] && cache_fresh=true
+	fi
+
 	# Return cached data if available and fresh
 	if is_cache_fresh "$CROWDSEC_OVERVIEW_CACHE"; then
-		cat "$CROWDSEC_OVERVIEW_CACHE"
+		# Inject freshness metadata into cached response
+		sed "s/}$/,\"_freshness\":{\"age\":$cache_age,\"fresh\":true}}/" "$CROWDSEC_OVERVIEW_CACHE"
 		return 0
 	fi
 
 	# If cache exists but stale, return stale data (better than timeout)
 	if [ -f "$CROWDSEC_OVERVIEW_CACHE" ]; then
-		cat "$CROWDSEC_OVERVIEW_CACHE"
+		# Inject freshness metadata
+		sed "s/}$/,\"_freshness\":{\"age\":$cache_age,\"fresh\":false}}/" "$CROWDSEC_OVERVIEW_CACHE"
 		# Trigger async refresh
 		( refresh_overview_cache ) >/dev/null 2>&1 &
 		return 0
