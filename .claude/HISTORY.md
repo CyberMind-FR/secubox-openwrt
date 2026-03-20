@@ -2,6 +2,23 @@
 
 _Last updated: 2026-03-20 (Seed Script + Package Repo)_
 
+0. **Progressive Freshness Indicators (2026-03-20)**
+   - Added visible "Updated Xs ago" timestamps to Metrics and CrowdSec dashboards
+   - **Visual freshness states**:
+     - Fresh (green glow): Data is < 15s old (metrics) / < 30s old (CrowdSec)
+     - Recent (yellow): Data is < 45s old (metrics) / < 90s old (CrowdSec)
+     - Stale (red): Data is older than threshold
+   - **Backend changes**:
+     - `luci.metrics`: Added `_freshness` metadata (age, fresh, timestamp_epoch)
+     - `luci.crowdsec-dashboard`: Added `_freshness` to get_overview response
+   - **Frontend changes**:
+     - Freshness indicator in header (dot + "Xs ago" text)
+     - Flash animation when values change
+     - Color transitions for freshness state changes
+   - **Shared utilities** in `kiss-theme.js`:
+     - `formatAge()`, `getFreshnessClass()`, `getFreshnessColor()`
+     - `freshnessIndicator()`, `updateFreshness()` for reuse
+
 0. **SecuBox Seed Script & Package Repository (2026-03-20)**
    - NEW: `scripts/secubox-seed.sh` - Bootstrap script for fresh OpenWrt
    - NEW: `scripts/secubox-slipstream.sh` - Bake SecuBox config into images
