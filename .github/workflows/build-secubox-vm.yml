@@ -170,6 +170,81 @@ jobs:
           echo "📊 Total: $PKG_COUNT SecuBox packages copied"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
+      - name: Slipstream SecuBox configuration
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🔧 SLIPSTREAMING SECUBOX CONFIGURATION"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          # Create files directory for slipstream content
+          mkdir -p openwrt/files/etc/opkg
+          mkdir -p openwrt/files/etc/uci-defaults
+          mkdir -p openwrt/files/usr/sbin
+
+          # Add SecuBox repository configuration
+          cat > openwrt/files/etc/opkg/customfeeds.conf << 'EOF'
+          # SecuBox Package Repository
+          # Pre-configured by GitHub Actions build
+          src/gz secubox_packages https://repo.secubox.in/packages/x86_64
+          src/gz secubox_luci https://repo.secubox.in/luci/x86_64
+          EOF
+
+          # Copy seed script
+          if [[ -f "scripts/secubox-seed.sh" ]]; then
+            cp scripts/secubox-seed.sh openwrt/files/usr/sbin/secubox-seed
+            chmod +x openwrt/files/usr/sbin/secubox-seed
+            echo "  ✅ Seed script installed"
+          fi
+
+          # Create first-boot setup script
+          cat > openwrt/files/etc/uci-defaults/99-secubox-setup << 'FIRSTBOOT'
+          #!/bin/sh
+          # SecuBox First-Boot Setup
+          LOG="/tmp/secubox-firstboot.log"
+          echo "[$(date)] SecuBox first-boot starting..." >> "$LOG"
+
+          # Update package lists
+          opkg update >> "$LOG" 2>&1 || true
+
+          # Try to install core packages if repo is available
+          for pkg in secubox-core secubox-base; do
+            if opkg list | grep -q "^$pkg "; then
+              opkg install "$pkg" >> "$LOG" 2>&1 || true
+            fi
+          done
+
+          # Set SecuBox theme as default
+          if [ -f /etc/config/luci ]; then
+            uci set luci.main.mediaurlbase='/luci-static/secubox' 2>/dev/null || true
+            uci commit luci 2>/dev/null || true
+          fi
+
+          echo "[$(date)] SecuBox first-boot complete" >> "$LOG"
+          exit 0
+          FIRSTBOOT
+          chmod +x openwrt/files/etc/uci-defaults/99-secubox-setup
+          echo "  ✅ First-boot script created"
+
+          # Create SecuBox banner
+          cat > openwrt/files/etc/banner << 'BANNER'
+
+            ____                  ____
+           / ___|  ___  ___ _   _| __ )  _____  __
+           \___ \ / _ \/ __| | | |  _ \ / _ \ \/ /
+            ___) |  __/ (__| |_| | |_) | (_) >  <
+           |____/ \___|\___|\__,_|____/ \___/_/\_\
+
+           SecuBox VM - Security Gateway for OpenWrt
+           https://secubox.in
+
+           Run 'secubox-seed --help' for setup options
+
+          BANNER
+          echo "  ✅ SecuBox banner created"
+
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
       - name: Generate VM configuration
         run: |
           cd openwrt

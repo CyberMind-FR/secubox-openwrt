@@ -1,16 +1,66 @@
-# Documentation Publishing Scripts
+# SecuBox Scripts
 
 English | [Francais](README.fr.md) | [中文](README.zh.md)
 
-**Version:** 1.0.0
-**Last Updated:** 2025-12-28
-**Purpose:** Automated scripts for publishing SecuBox documentation
+**Version:** 1.1.0
+**Last Updated:** 2026-03-20
+**Purpose:** Automated scripts for SecuBox installation and documentation publishing
 
 ---
 
 ## 📜 Available Scripts
 
-### 1. setup-wiki.sh
+### 1. secubox-seed.sh
+**Purpose:** Bootstrap a fresh OpenWrt installation with SecuBox packages
+
+**Usage:**
+```bash
+# Remote install (recommended)
+wget -O- https://repo.secubox.in/seed.sh | sh
+
+# Or with curl
+curl -fsSL https://repo.secubox.in/seed.sh | sh
+
+# Local install with options
+./scripts/secubox-seed.sh --profile=full
+```
+
+**Installation Profiles:**
+
+| Profile | Description | Packages |
+|---------|-------------|----------|
+| `minimal` | Core only | secubox-core, secubox-base, luci-theme-secubox |
+| `standard` | Core + Security + Network | + crowdsec, haproxy, mitmproxy, ipblocklist |
+| `full` | Everything | + tor, exposure, glances, master-link, p2p |
+
+**Options:**
+- `--profile=PROFILE` - Choose installation profile (minimal/standard/full)
+- `--mirror=URL` - Override repository URL
+- `--dry-run` - Show what would be installed
+- `--skip-update` - Skip opkg update
+
+**Environment Variables:**
+- `SECUBOX_PROFILE` - Same as --profile
+- `SECUBOX_MIRROR` - Same as --mirror
+- `SECUBOX_DRY_RUN=1` - Same as --dry-run
+- `SECUBOX_SKIP_UPDATE=1` - Same as --skip-update
+
+**What it does:**
+1. Detects system architecture (x86_64, aarch64, armv7l)
+2. Configures SecuBox package repository
+3. Updates package lists
+4. Installs packages based on selected profile
+5. Runs post-installation setup
+6. Enables and starts services
+
+**Requirements:**
+- OpenWrt 24.10+
+- Internet connectivity
+- Root access
+
+---
+
+### 2. setup-wiki.sh
 **Purpose:** Sync DOCS/ to GitHub Wiki
 
 **Usage:**

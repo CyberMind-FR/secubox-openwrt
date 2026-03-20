@@ -605,7 +605,8 @@
       "Bash({ echo \"=== ROOT .md FILES ===\")",
       "Bash(if [ -f \"$d/README.md\" ])",
       "Bash([ ! -f \"$d/README.fr.md\" ])",
-      "Bash(basename:*)"
+      "Bash(basename:*)",
+      "Bash(VBoxManage internalcommands sethduuid:*)"
     ]
   }
 }
