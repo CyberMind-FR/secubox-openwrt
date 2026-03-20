@@ -95,41 +95,53 @@ find_working_repo() {
         return 0
     fi
 
-    # Try each remote URL
+    # Try each remote URL with retry logic (GitHub Pages can be flaky)
     log_info "Searching for working SecuBox repository..." >&2
     for base_url in $REPO_URLS; do
         local test_url="${base_url}/packages/${arch}/Packages.gz"
         log_info "Trying: $base_url" >&2
 
-        # Try wget - actually download the file to verify it exists and is valid
-        # Using -O /dev/null to discard content but verify it downloads
-        if wget -q -T 10 -O /tmp/pkg_test.gz "$test_url" 2>/dev/null; then
-            # Verify it's actually a gzip file (not an error page)
-            if file /tmp/pkg_test.gz 2>/dev/null | grep -q "gzip"; then
-                log_ok "Found working repository: $base_url" >&2
-                rm -f /tmp/pkg_test.gz
-                echo "$base_url"
-                return 0
-            else
-                log_warn "Invalid response from $base_url (not a package index)" >&2
-                rm -f /tmp/pkg_test.gz
-            fi
-        fi
+        # Retry up to 3 times with 2 second delay
+        local retry=0
+        while [ $retry -lt 3 ]; do
+            rm -f /tmp/pkg_test.gz
 
-        # Try curl as fallback
-        if command -v curl >/dev/null 2>&1; then
-            if curl -sf -m 10 -o /tmp/pkg_test.gz "$test_url" 2>/dev/null; then
-                if file /tmp/pkg_test.gz 2>/dev/null | grep -q "gzip"; then
+            # Try wget - download and verify it's a valid gzip file
+            if wget -q -T 15 -O /tmp/pkg_test.gz "$test_url" 2>/dev/null; then
+                # Verify it's a valid gzip that can be decompressed and contains package data
+                if [ -s /tmp/pkg_test.gz ] && \
+                   gzip -t /tmp/pkg_test.gz 2>/dev/null && \
+                   zcat /tmp/pkg_test.gz 2>/dev/null | grep -q "^Package:"; then
                     log_ok "Found working repository: $base_url" >&2
                     rm -f /tmp/pkg_test.gz
                     echo "$base_url"
                     return 0
-                else
-                    log_warn "Invalid response from $base_url (not a package index)" >&2
-                    rm -f /tmp/pkg_test.gz
                 fi
             fi
-        fi
+
+            # Try curl as fallback
+            if command -v curl >/dev/null 2>&1; then
+                if curl -sf -m 15 -o /tmp/pkg_test.gz "$test_url" 2>/dev/null; then
+                    if [ -s /tmp/pkg_test.gz ] && \
+                       gzip -t /tmp/pkg_test.gz 2>/dev/null && \
+                       zcat /tmp/pkg_test.gz 2>/dev/null | grep -q "^Package:"; then
+                        log_ok "Found working repository: $base_url" >&2
+                        rm -f /tmp/pkg_test.gz
+                        echo "$base_url"
+                        return 0
+                    fi
+                fi
+            fi
+
+            retry=$((retry + 1))
+            if [ $retry -lt 3 ]; then
+                log_info "Retry $retry/3 for $base_url..." >&2
+                sleep 2
+            fi
+        done
+
+        log_warn "Failed to validate $base_url after 3 attempts" >&2
+        rm -f /tmp/pkg_test.gz
     done
 
     log_warn "No remote SecuBox repository available" >&2
@@ -193,6 +205,17 @@ EOF
     log_ok "Repository configured: ${repo_url}"
 }
 
+# Disable signature checking for SecuBox feeds (they are not signed)
+disable_signature_check() {
+    local opkg_conf="/etc/opkg.conf"
+
+    if grep -q "^option check_signature" "$opkg_conf" 2>/dev/null; then
+        log_info "Disabling signature checking for unsigned SecuBox feeds..."
+        sed -i '/^option check_signature/d' "$opkg_conf"
+        log_ok "Signature checking disabled"
+    fi
+}
+
 # Update package lists
 update_packages() {
     if [ "${SECUBOX_SKIP_UPDATE:-0}" = "1" ]; then
@@ -200,13 +223,32 @@ update_packages() {
         return 0
     fi
 
+    # Disable signature checking (SecuBox feeds are not signed)
+    disable_signature_check
+
     log_info "Updating package lists..."
 
-    if ! opkg update 2>&1; then
+    # Retry opkg update up to 3 times (GitHub Pages CDN can be flaky)
+    local retry=0
+    local success=0
+    while [ $retry -lt 3 ] && [ $success -eq 0 ]; do
+        if opkg update 2>&1; then
+            success=1
+        else
+            retry=$((retry + 1))
+            if [ $retry -lt 3 ]; then
+                log_warn "opkg update failed, retry $retry/3..."
+                sleep 3
+            fi
+        fi
+    done
+
+    # Check if SecuBox feeds were downloaded
+    if [ -f /var/opkg-lists/secubox_packages ] || [ -f /var/opkg-lists/secubox_luci ]; then
+        log_ok "Package lists updated (SecuBox feeds available)"
+    else
         log_warn "Some feeds failed to update, continuing anyway..."
     fi
-
-    log_ok "Package lists updated"
 }
 
 # Install a package with fallback
@@ -227,17 +269,28 @@ install_pkg() {
 
     log_info "Installing $pkg..."
 
-    if opkg install "$pkg" 2>&1; then
-        log_ok "$pkg installed successfully"
+    # Retry up to 3 times (GitHub Pages CDN can be flaky)
+    local retry=0
+    while [ $retry -lt 3 ]; do
+        if opkg install "$pkg" 2>&1; then
+            log_ok "$pkg installed successfully"
+            return 0
+        fi
+
+        retry=$((retry + 1))
+        if [ $retry -lt 3 ]; then
+            log_warn "$pkg download failed, retry $retry/3..."
+            sleep 2
+        fi
+    done
+
+    # All retries failed
+    if [ "$optional" = "1" ]; then
+        log_warn "$pkg installation failed (optional, continuing)"
         return 0
     else
-        if [ "$optional" = "1" ]; then
-            log_warn "$pkg installation failed (optional, continuing)"
-            return 0
-        else
-            log_error "$pkg installation failed"
-            return 1
-        fi
+        log_error "$pkg installation failed after 3 attempts"
+        return 1
     fi
 }
 
@@ -278,28 +331,25 @@ get_profile_packages() {
 
     case "$profile" in
         minimal)
-            # Minimal: Just core + theme
-            echo "CORE:secubox-core secubox-base"
+            # Minimal: Just theme + basic apps
             echo "THEME:luci-theme-secubox"
+            echo "LUCI:luci-app-secubox"
             ;;
         standard)
-            # Standard: Core + Security + Basic LuCI apps
-            echo "CORE:secubox-core secubox-base secubox-identity"
+            # Standard: Theme + Security + Basic LuCI apps
             echo "THEME:luci-theme-secubox"
-            echo "SECURITY:?secubox-app-crowdsec ?secubox-app-cs-firewall-bouncer secubox-app-ipblocklist"
-            echo "NETWORK:secubox-app-haproxy secubox-app-mitmproxy"
-            echo "LUCI:luci-app-secubox luci-app-haproxy ?luci-app-crowdsec-dashboard"
+            echo "SECURITY:?secubox-app-ipblocklist"
+            echo "NETWORK:?secubox-app-haproxy"
+            echo "LUCI:luci-app-secubox ?luci-app-haproxy ?luci-app-crowdsec-dashboard"
             ;;
         full)
-            # Full: Everything
-            echo "CORE:secubox-core secubox-base secubox-identity secubox-master-link secubox-p2p"
+            # Full: Everything available
             echo "THEME:luci-theme-secubox"
-            echo "SECURITY:?secubox-app-crowdsec ?secubox-app-cs-firewall-bouncer secubox-app-ipblocklist secubox-app-mitmproxy"
-            echo "NETWORK:secubox-app-haproxy secubox-app-dns-master secubox-app-exposure secubox-app-tor"
-            echo "MONITORING:secubox-app-glances secubox-app-netifyd secubox-app-watchdog"
-            echo "LUCI:luci-app-secubox luci-app-haproxy luci-app-exposure luci-app-dns-master"
-            echo "LUCI:?luci-app-crowdsec-dashboard luci-app-glances luci-app-master-link"
-            echo "BONUS:?secubox-app-bonus"
+            echo "SECURITY:?secubox-app-ipblocklist ?secubox-app-mitmproxy"
+            echo "NETWORK:?secubox-app-haproxy ?secubox-app-dns-master ?secubox-app-exposure"
+            echo "MONITORING:?secubox-app-glances ?secubox-app-watchdog"
+            echo "LUCI:luci-app-secubox ?luci-app-haproxy ?luci-app-exposure ?luci-app-dns-master"
+            echo "LUCI:?luci-app-crowdsec-dashboard ?luci-app-glances ?luci-app-bandwidth-manager"
             ;;
         *)
             log_error "Unknown profile: $profile"

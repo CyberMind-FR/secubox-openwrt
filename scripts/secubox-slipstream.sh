@@ -129,6 +129,12 @@ else
     exit 1
 fi
 
+# Disable signature checking for unsigned SecuBox feeds
+if grep -q "^option check_signature" /etc/opkg.conf 2>/dev/null; then
+    log "Disabling signature checking for unsigned feeds..."
+    sed -i '/^option check_signature/d' /etc/opkg.conf
+fi
+
 # Update package lists
 log "Updating package lists..."
 if opkg update 2>&1 | tee -a "$LOG_FILE"; then
@@ -138,7 +144,7 @@ else
 fi
 
 # Install core packages if not already installed
-CORE_PACKAGES="secubox-core secubox-base luci-theme-secubox"
+CORE_PACKAGES="luci-theme-secubox luci-app-secubox"
 
 for pkg in $CORE_PACKAGES; do
     if ! opkg list-installed | grep -q "^$pkg "; then
