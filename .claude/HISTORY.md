@@ -1,6 +1,24 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-03-20 (Metrics Freshness OpenWrt Fix)_
+_Last updated: 2026-03-20 (Wiki Translations & Meta-package)_
+
+0. **Wiki Internationalization & Meta-package (2026-03-20)**
+   - **Wiki translations**: All 17 wiki pages translated to French and Chinese
+     - Pages: Home, Quick-Start, Installation, Architecture, Development-Guidelines,
+       Module-Implementation-Guide, Module-Status, LuCI-Development-Reference,
+       Code-Templates, Documentation-Index, Permissions-Guide, Validation-Guide,
+       VM-Appliance, Feature-Regeneration-Prompts, TODO-Analyse, CLAUDE, _Sidebar
+     - Naming convention: `Page.fr.md` (French), `Page.zh.md` (Chinese)
+   - **NEW: secubox-full meta-package** (`package/secubox/secubox-full/`)
+     - Tiered bundle system for easier deployment:
+       - `secubox-core-bundle`: Essential components (core, p2p, identity, vortex, LuCI)
+       - `secubox-security-bundle`: WAF/IDS (CrowdSec, mitmproxy, threat detection)
+       - `secubox-services-bundle`: Web services (HAProxy, DNS, Tor, apps)
+       - `secubox-luci-bundle`: All LuCI interface apps
+       - `secubox-full`: Complete installation with all components
+   - **CI workflow updates**: VM and firmware builds now include secubox-core by default
+     - secubox-core, secubox-app, secubox-p2p, secubox-master-link, secubox-identity
+     - luci-app-secubox, luci-theme-secubox
 
 0. **Progressive Freshness Indicators (2026-03-20)**
    - Added visible "Updated Xs ago" timestamps to Metrics and CrowdSec dashboards
