@@ -1,4 +1,6 @@
-# 📝 MetaBlogizer - Static Site Publisher
+# MetaBlogizer - Static Site Publisher
+
+English | [Francais](README.fr.md) | [中文](README.zh.md)
 
 One-click static website hosting with automatic HAProxy vhosts, SSL certificates, and Gitea sync.
 

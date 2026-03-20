@@ -1,3 +1,5 @@
+[English](README.md) | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # SecuBox Console & CLI Tools Reference
 
 **Remote Management Point for SecuBox Devices**

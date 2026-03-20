@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # SecuBox SimpleX Chat Server
 
 Privacy-first messaging relay server running in an Alpine LXC container. Provides SMP (SimpleX Messaging Protocol) and XFTP (file transfer) services with end-to-end encryption and post-quantum cryptography support.

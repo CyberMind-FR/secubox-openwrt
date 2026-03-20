@@ -1,5 +1,7 @@
 # LuCI Jitsi Meet Configuration
 
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 Video conferencing service management for self-hosted Jitsi Meet.
 
 ## Installation

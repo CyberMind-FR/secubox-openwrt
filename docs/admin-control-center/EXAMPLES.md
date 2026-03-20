@@ -1,5 +1,7 @@
 # SecuBox Admin Control Center - Usage Examples
 
+> **Languages:** English | [Francais](../../docs-fr/admin-control-center/EXAMPLES.md) | [中文](../../docs-zh/admin-control-center/EXAMPLES.md)
+
 Comprehensive examples for state management and component registry operations.
 
 ---

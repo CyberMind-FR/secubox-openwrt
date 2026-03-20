@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # LuCI SecuBox Service Exposure Manager
 
 Unified interface for exposing local services via Tor hidden services and HAProxy SSL reverse proxy, with port conflict detection.

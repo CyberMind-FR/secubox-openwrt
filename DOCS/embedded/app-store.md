@@ -1,5 +1,7 @@
 # SecuBox App Store & Manifests
 
+> **Languages:** English | [Francais](../../DOCS-fr/embedded/app-store.md) | [中文](../../DOCS-zh/embedded/app-store.md)
+
 **Version:** 1.0.0  
 **Last Updated:** 2025-12-28  
 **Status:** Active

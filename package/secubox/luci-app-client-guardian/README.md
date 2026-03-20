@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # luci-app-client-guardian
 
 **Version:** 0.4.0  

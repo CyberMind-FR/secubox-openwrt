@@ -1,4 +1,6 @@
-# Rapport de Complétion - SecuBox Components
+# Completion Report - SecuBox Components
+
+> **Languages:** English | [Francais](../../DOCS-fr/archive/COMPLETION_REPORT.md) | [中文](../../DOCS-zh/archive/COMPLETION_REPORT.md)
 
 **Version:** 1.0.0  
 **Last Updated:** 2025-12-28  

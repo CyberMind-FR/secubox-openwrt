@@ -5,6 +5,8 @@
 **Status:** Beta — Ready for Pen Testing & Bug Bounty
 **Modules:** 86 LuCI Applications
 
+🌐 **Languages:** English | [Français](README.fr.md) | [中文](README.zh.md)
+
 [![Build OpenWrt Packages](https://github.com/CyberMind-FR/secubox-openwrt/actions/workflows/build-openwrt-packages.yml/badge.svg)](https://github.com/CyberMind-FR/secubox-openwrt/actions/workflows/build-openwrt-packages.yml)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/CyberMind-FR/secubox-openwrt?include_prereleases&label=release)](https://github.com/CyberMind-FR/secubox-openwrt/releases)

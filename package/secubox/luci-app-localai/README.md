@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # LuCI LocalAI Dashboard
 
 Local LLM inference server management with OpenAI-compatible API.

@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # SecuBox Jellyfin Media Server
 
 Free media server for streaming movies, TV shows, music, and photos. Runs Jellyfin inside Docker on SecuBox-powered OpenWrt systems.

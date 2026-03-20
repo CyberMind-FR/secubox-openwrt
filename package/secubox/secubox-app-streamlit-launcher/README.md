@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # SecuBox Streamlit Launcher
 
 On-demand Streamlit app launcher with idle shutdown and memory management.

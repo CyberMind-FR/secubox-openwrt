@@ -1,5 +1,7 @@
 # OpenWrt Package Permissions Guide
 
+🌐 **Languages:** English | [Français](../docs-fr/permissions-guide.md) | [中文](../docs-zh/permissions-guide.md)
+
 **Version:** 0.3.1  
 **Last Updated:** 2025-12-28  
 **Status:** Active  

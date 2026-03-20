@@ -1,5 +1,7 @@
 # SecuBox Documentation
 
+🌐 **Languages:** English | [Français](../docs-fr/index.md) | [中文](../docs-zh/index.md)
+
 **Version:** 1.0.0
 **Last Updated:** 2025-12-28
 **Project:** OpenWrt LuCI Security & Management Suite

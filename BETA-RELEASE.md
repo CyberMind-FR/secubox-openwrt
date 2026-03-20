@@ -1,5 +1,7 @@
 # SecuBox v1.0.0 Beta Release
 
+🌐 **Languages:** English | [Français](BETA-RELEASE.fr.md) | [中文](BETA-RELEASE.zh.md)
+
 **Release Date:** 2026-03-15
 **Status:** Beta — Ready for Pen Testing & Bug Bounty
 **Publisher:** [CyberMind.fr](https://cybermind.fr)

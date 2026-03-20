@@ -1,5 +1,7 @@
 # LuCI nDPId Dashboard
 
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 LuCI web interface for nDPId deep packet inspection -- real-time traffic analysis and protocol detection.
 
 ## Installation

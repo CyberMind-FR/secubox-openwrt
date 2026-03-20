@@ -1,5 +1,7 @@
 # SecuBox CDN Cache
 
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 **Version:** 0.5.0
 **Status:** Active
 

@@ -1,5 +1,7 @@
 # SecuBox SBOM Pipeline Documentation
 
+🌐 **Languages:** English | [Français](../docs-fr/sbom-pipeline.md) | [中文](../docs-zh/sbom-pipeline.md)
+
 ## Overview
 
 The SecuBox SBOM (Software Bill of Materials) pipeline generates CycloneDX 1.6 and

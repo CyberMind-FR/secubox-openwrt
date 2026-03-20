@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # LuCI SecuBox Admin Control Center
 
 Unified administration dashboard for SecuBox appstore plugins with system monitoring and management.

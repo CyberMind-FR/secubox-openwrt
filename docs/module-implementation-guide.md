@@ -1,5 +1,7 @@
 # SecuBox Module Implementation Guide
 
+> **Languages:** **English** | [Francais](../docs-fr/module-implementation-guide.md) | [中文](../docs-zh/module-implementation-guide.md)
+
 **Version:** 1.0.0  
 **Last Updated:** 2025-12-28  
 **Status:** Active  

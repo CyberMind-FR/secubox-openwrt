@@ -1,5 +1,7 @@
 # Security Policy
 
+🌐 **Languages:** English | [Français](SECURITY.fr.md) | [中文](SECURITY.zh.md)
+
 ## SecuBox Security Disclosure Policy
 
 This document describes the security policy for SecuBox firmware, in compliance with

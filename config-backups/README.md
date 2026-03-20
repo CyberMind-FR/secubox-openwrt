@@ -1,5 +1,7 @@
 # SecuBox Configuration Backups
 
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 Runtime configuration backups from the SecuBox router for version control.
 
 ## Structure

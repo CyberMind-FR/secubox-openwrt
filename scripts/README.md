@@ -1,5 +1,7 @@
 # Documentation Publishing Scripts
 
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 **Version:** 1.0.0
 **Last Updated:** 2025-12-28
 **Purpose:** Automated scripts for publishing SecuBox documentation

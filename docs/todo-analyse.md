@@ -1,5 +1,7 @@
 # Documentation Improvement TODO
 
+🌐 **Languages:** English | [Français](../docs-fr/todo-analyse.md) | [中文](../docs-zh/todo-analyse.md)
+
 **Version:** 1.0.0  
 **Last Updated:** 2025-12-28  
 **Status:** Active

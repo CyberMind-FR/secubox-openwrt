@@ -1,3 +1,5 @@
+[English](README.md) | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # LuCI Network Modes Dashboard
 
 **Version:** 0.3.6

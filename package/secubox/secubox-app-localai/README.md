@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # SecuBox LocalAI
 
 Native LLM server with OpenAI-compatible REST API. Supports GGUF models on ARM64 and x86_64.

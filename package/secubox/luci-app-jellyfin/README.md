@@ -1,5 +1,7 @@
 # LuCI Jellyfin Dashboard
 
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 Web interface for managing Jellyfin media server with real-time status, container controls, and integration management.
 
 ## Installation

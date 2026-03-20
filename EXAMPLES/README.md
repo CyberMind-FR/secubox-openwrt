@@ -1,5 +1,7 @@
 # SecuBox Code Examples
 
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 This directory contains practical code examples for SecuBox module development and integration.
 
 ## Available Examples

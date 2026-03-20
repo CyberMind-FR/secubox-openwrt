@@ -1,11 +1,13 @@
 # SecuBox & System Hub - Development Guidelines
 
-**Version:** 1.0.0  
-**Last Updated:** 2025-12-28  
-**Status:** Active  
-**Audience:** Développeurs, IA assistants, mainteneurs
+> **Available Languages:** **English** | [Français](../docs-fr/development-guidelines.md) | [中文](../docs-zh/development-guidelines.md)
 
-Ce document définit les standards, bonnes pratiques et validations obligatoires pour le développement de modules SecuBox et System Hub dans l'écosystème OpenWrt LuCI.
+**Version:** 1.0.0
+**Last Updated:** 2025-12-28
+**Status:** Active
+**Audience:** Developers, AI assistants, maintainers
+
+This document defines the standards, best practices, and mandatory validations for developing SecuBox and System Hub modules in the OpenWrt LuCI ecosystem.
 
 ---
 

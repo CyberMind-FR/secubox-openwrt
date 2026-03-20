@@ -1,5 +1,7 @@
 # SecuBox Website Help/Info Button Integration Plan
 
+> **Languages:** English | [Francais](../DOCS-fr/HELP_INTEGRATION_PLAN.md) | [中文](../DOCS-zh/HELP_INTEGRATION_PLAN.md)
+
 **Version:** 1.0
 **Date:** 2025-12-28
 **Status:** Planning Phase

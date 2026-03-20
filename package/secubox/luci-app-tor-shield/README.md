@@ -1,4 +1,6 @@
-# 🧅 Tor Shield - Anonymous Routing Made Simple
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
+# Tor Shield - Anonymous Routing Made Simple
 
 Network-wide privacy protection through the Tor network with one-click activation.
 

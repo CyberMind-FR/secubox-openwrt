@@ -1,5 +1,7 @@
 # VHost Manager & Reverse Proxy Notes
 
+> **Languages:** English | [Francais](../../DOCS-fr/embedded/vhost-manager.md) | [中文](../../DOCS-zh/embedded/vhost-manager.md)
+
 **Version:** 1.0.0  
 **Last Updated:** 2025-12-28  
 **Status:** Active

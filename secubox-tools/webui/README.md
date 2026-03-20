@@ -1,5 +1,7 @@
 # SecuBox WebUI Prototyper
 
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 FastAPI + Jinja2 mockup that emulates LuCI-like management of SecuBox plugins/modules on a local workstation. It virtualizes modules, presets, and command pipelines so developers can experiment without a router.
 
 ## Features

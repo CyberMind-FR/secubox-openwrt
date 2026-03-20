@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # SecuBox Glances System Monitor
 
 Cross-platform system monitoring tool running in an LXC container, with web UI and RESTful API.

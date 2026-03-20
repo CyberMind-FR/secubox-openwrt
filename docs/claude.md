@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+🌐 **Languages:** English | [Français](../docs-fr/claude.md) | [中文](../docs-zh/claude.md)
+
 **Version:** 1.0.0
 **Last Updated:** 2025-12-28
 **Status:** Active

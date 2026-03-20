@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # SecuBox Portal
 
 Unified web UI entry point for all SecuBox applications -- provides the top-level SecuBox navigation and tabbed dashboard.

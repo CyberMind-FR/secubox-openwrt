@@ -1,5 +1,7 @@
 # SecuBox Modules - Implementation Status
 
+🌐 **Languages:** English | [Français](../docs-fr/module-status.md) | [中文](../docs-zh/module-status.md)
+
 **Version:** 2.0.1
 **Last Updated:** 2025-12-30
 **Status:** In Heavily Development Stage

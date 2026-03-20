@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # SecuBox Vortex DNS
 
 Meshed multi-dynamic subdomain delegation system.

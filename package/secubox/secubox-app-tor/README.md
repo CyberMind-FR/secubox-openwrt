@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # SecuBox Tor Shield
 
 Tor integration for OpenWrt providing transparent proxy, SOCKS proxy, DNS over Tor, kill switch, hidden services, and bridge support.

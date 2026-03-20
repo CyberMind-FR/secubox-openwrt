@@ -1,5 +1,7 @@
 # LuCI Gitea Dashboard
 
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 Git hosting service management dashboard for Gitea.
 
 ## Installation

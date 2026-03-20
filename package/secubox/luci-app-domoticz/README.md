@@ -1,5 +1,7 @@
 # luci-app-domoticz
 
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 LuCI web interface for managing the Domoticz home automation platform on SecuBox.
 
 ## Installation

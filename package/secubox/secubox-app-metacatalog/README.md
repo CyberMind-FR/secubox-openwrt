@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # SecuBox Meta Cataloger
 
 Virtual library system that aggregates MetaBlogizer sites, Streamlit apps, and other services into a unified catalog organized by themed **Virtual Books**.

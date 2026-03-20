@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # SecuBox P2P Mesh Network
 
 Distributed peer-to-peer mesh networking for SecuBox appliances with integrated backup, recovery, and federation capabilities.

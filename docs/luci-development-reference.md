@@ -1,14 +1,11 @@
 # LuCI Development Reference Guide
 
-**Version:** 1.0.0  
-**Last Updated:** 2025-12-28  
+> **Languages:** English | [Francais](../docs-fr/luci-development-reference.md) | [中文](../docs-zh/luci-development-reference.md)
+
+**Version:** 1.0.0
+**Last Updated:** 2025-12-28
 **Status:** Active
-
-
-**Version:** 1.0.0  
-**Last Updated:** 2025-12-28  
-**Status:** Active  
-**Based on:** luci-app-secubox and luci-app-system-hub implementations  
+**Based on:** luci-app-secubox and luci-app-system-hub implementations
 **Target Audience:** Claude.ai and developers working on OpenWrt LuCI applications
 
 ---
