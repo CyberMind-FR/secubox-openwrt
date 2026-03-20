@@ -77,47 +77,62 @@ check_connectivity() {
 }
 
 # Find a working SecuBox repository
+# Outputs only the URL to stdout, all log messages go to stderr
 find_working_repo() {
     local arch="$1"
 
     # If user specified a mirror, use it directly
     if [ -n "$SECUBOX_MIRROR" ]; then
-        log_info "Using user-specified mirror: $SECUBOX_MIRROR"
+        log_info "Using user-specified mirror: $SECUBOX_MIRROR" >&2
         echo "$SECUBOX_MIRROR"
         return 0
     fi
 
     # Check local feed first (for bonus package)
     if [ -d "/www/secubox-feed" ] && [ -f "/www/secubox-feed/Packages" ]; then
-        log_info "Found local SecuBox feed at /www/secubox-feed"
+        log_info "Found local SecuBox feed at /www/secubox-feed" >&2
         echo "file:///www/secubox-feed"
         return 0
     fi
 
     # Try each remote URL
-    log_info "Searching for working SecuBox repository..."
+    log_info "Searching for working SecuBox repository..." >&2
     for base_url in $REPO_URLS; do
         local test_url="${base_url}/packages/${arch}/Packages.gz"
-        log_info "Trying: $base_url"
+        log_info "Trying: $base_url" >&2
 
-        # Try wget first (more common on OpenWrt)
-        if wget -q -T 10 --spider "$test_url" 2>/dev/null; then
-            log_ok "Found working repository: $base_url"
-            echo "$base_url"
-            return 0
+        # Try wget - actually download the file to verify it exists and is valid
+        # Using -O /dev/null to discard content but verify it downloads
+        if wget -q -T 10 -O /tmp/pkg_test.gz "$test_url" 2>/dev/null; then
+            # Verify it's actually a gzip file (not an error page)
+            if file /tmp/pkg_test.gz 2>/dev/null | grep -q "gzip"; then
+                log_ok "Found working repository: $base_url" >&2
+                rm -f /tmp/pkg_test.gz
+                echo "$base_url"
+                return 0
+            else
+                log_warn "Invalid response from $base_url (not a package index)" >&2
+                rm -f /tmp/pkg_test.gz
+            fi
         fi
 
         # Try curl as fallback
         if command -v curl >/dev/null 2>&1; then
-            if curl -sf -m 10 "$test_url" >/dev/null 2>&1; then
-                log_ok "Found working repository: $base_url"
-                echo "$base_url"
-                return 0
+            if curl -sf -m 10 -o /tmp/pkg_test.gz "$test_url" 2>/dev/null; then
+                if file /tmp/pkg_test.gz 2>/dev/null | grep -q "gzip"; then
+                    log_ok "Found working repository: $base_url" >&2
+                    rm -f /tmp/pkg_test.gz
+                    echo "$base_url"
+                    return 0
+                else
+                    log_warn "Invalid response from $base_url (not a package index)" >&2
+                    rm -f /tmp/pkg_test.gz
+                fi
             fi
         fi
     done
 
-    log_warn "No remote SecuBox repository available"
+    log_warn "No remote SecuBox repository available" >&2
     return 1
 }
 
@@ -128,10 +143,24 @@ configure_repo() {
 
     log_info "Configuring SecuBox package repository..."
 
-    # Find a working repository
-    local repo_url
-    repo_url=$(find_working_repo "$arch")
+    # Backup existing customfeeds.conf
+    if [ -f "$feeds_file" ]; then
+        cp "$feeds_file" "${feeds_file}.bak"
+    fi
 
+    # Check if SecuBox feed already configured
+    if grep -q "secubox_packages\|secubox_local\|secubox_luci" "$feeds_file" 2>/dev/null; then
+        log_warn "SecuBox feeds already configured, updating..."
+        sed -i '/secubox_packages/d; /secubox_luci/d; /secubox_local/d; /SecuBox Package/d; /SecuBox Local/d; /Added by secubox-seed/d' "$feeds_file"
+        # Remove empty lines at end of file
+        sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$feeds_file" 2>/dev/null || true
+    fi
+
+    # Find a working repository (URL goes to stdout, logs go to stderr)
+    local repo_url
+    repo_url=$(find_working_repo "$arch") || true
+
+    # Check if we got a valid URL
     if [ -z "$repo_url" ]; then
         log_warn "No SecuBox repository found. Packages will need to be installed manually."
         log_info "You can set SECUBOX_MIRROR to specify a custom repository URL."
@@ -141,17 +170,6 @@ configure_repo() {
         SECUBOX_REPO_AVAILABLE=0
     else
         SECUBOX_REPO_AVAILABLE=1
-    fi
-
-    # Backup existing customfeeds.conf
-    if [ -f "$feeds_file" ]; then
-        cp "$feeds_file" "${feeds_file}.bak"
-    fi
-
-    # Check if SecuBox feed already configured
-    if grep -q "secubox_packages" "$feeds_file" 2>/dev/null; then
-        log_warn "SecuBox feeds already configured, updating..."
-        sed -i '/secubox_/d' "$feeds_file"
     fi
 
     # Handle local file:// URLs differently
