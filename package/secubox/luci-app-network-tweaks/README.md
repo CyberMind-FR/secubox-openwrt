@@ -1,3 +1,5 @@
+[English](README.md) | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # Network Services Dashboard (luci-app-network-tweaks)
 
 **Unified network services monitoring with dynamic component discovery, cumulative impact tracking, and automatic DNS/hosts synchronization**

@@ -42,7 +42,7 @@ jobs:
           VERSION_NUM="${VERSION#v}"
           echo "version_num=$VERSION_NUM" >> $GITHUB_OUTPUT
 
-      - name: Download package tarballs from release
+      - name: Download packages from release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -50,36 +50,18 @@ jobs:
           cd downloads
 
           VERSION="${{ steps.version.outputs.version }}"
-          VERSION_NUM="${{ steps.version.outputs.version_num }}"
 
           echo "Downloading packages from release $VERSION..."
 
-          # Architecture-specific packages
-          ARCHITECTURES=(
-            "x86-64:x86_64"
-            "aarch64-generic:aarch64_generic"
-            "aarch64-cortex-a72:aarch64_cortex-a72"
-            "aarch64-cortex-a53:aarch64_cortex-a53"
-            "rockchip-armv8:aarch64_generic"
-            "bcm27xx-bcm2711:aarch64_cortex-a72"
-            "mediatek-filogic:aarch64_cortex-a53"
-            "mips-24kc:mips_24kc"
-            "mipsel-24kc:mipsel_24kc"
-          )
+          # Download all ipk files from the release
+          gh release download "$VERSION" -p "*.ipk" || {
+            echo "No ipk files found in release"
+            exit 1
+          }
 
-          for arch_map in "${ARCHITECTURES[@]}"; do
-            ARCH="${arch_map%%:*}"
-            OPKG_ARCH="${arch_map##*:}"
-            TARBALL="secubox-${VERSION_NUM}-${ARCH}.tar.gz"
-
-            echo "Downloading $TARBALL for opkg arch $OPKG_ARCH..."
-            gh release download "$VERSION" -p "$TARBALL" || echo "Skipping $TARBALL (not found)"
-          done
-
-          # All-architectures package (LuCI apps, configs)
-          gh release download "$VERSION" -p "secubox-${VERSION_NUM}-all-architectures.tar.gz" || true
-
-          ls -lh
+          echo "Downloaded packages:"
+          ls -lh *.ipk | wc -l
+          echo "packages total"
 
       - name: Create repository structure
         run: |
@@ -87,78 +69,43 @@ jobs:
           mkdir -p repo/luci
           mkdir -p repo/catalog
 
-          VERSION_NUM="${{ steps.version.outputs.version_num }}"
-
-          # Architecture mappings
-          declare -A ARCH_MAP=(
-            ["x86-64"]="x86_64"
-            ["aarch64-generic"]="aarch64_generic"
-            ["aarch64-cortex-a72"]="aarch64_cortex-a72"
-            ["aarch64-cortex-a53"]="aarch64_cortex-a53"
-            ["rockchip-armv8"]="aarch64_generic"
-            ["bcm27xx-bcm2711"]="aarch64_cortex-a72"
-            ["mediatek-filogic"]="aarch64_cortex-a53"
-            ["mips-24kc"]="mips_24kc"
-            ["mipsel-24kc"]="mipsel_24kc"
+          # All supported architectures - packages with _all.ipk work for all
+          ARCHITECTURES=(
+            "x86_64"
+            "aarch64_generic"
+            "aarch64_cortex-a72"
+            "aarch64_cortex-a53"
+            "mips_24kc"
+            "mipsel_24kc"
           )
 
-          # Extract and organize packages
-          for ARCH in "${!ARCH_MAP[@]}"; do
-            OPKG_ARCH="${ARCH_MAP[$ARCH]}"
-            TARBALL="downloads/secubox-${VERSION_NUM}-${ARCH}.tar.gz"
-
-            if [ -f "$TARBALL" ]; then
-              echo "Processing $TARBALL -> $OPKG_ARCH"
-
-              # Create arch directories
-              mkdir -p "repo/packages/${OPKG_ARCH}"
-              mkdir -p "repo/luci/${OPKG_ARCH}"
-
-              # Extract to temp
-              TMPDIR=$(mktemp -d)
-              tar -xzf "$TARBALL" -C "$TMPDIR"
-
-              # Move LuCI packages to luci/ and others to packages/
-              find "$TMPDIR" -name '*.ipk' | while read pkg; do
-                PKG_NAME=$(basename "$pkg")
-                if [[ "$PKG_NAME" == luci-* ]]; then
-                  cp "$pkg" "repo/luci/${OPKG_ARCH}/"
-                else
-                  cp "$pkg" "repo/packages/${OPKG_ARCH}/"
-                fi
-              done
-
-              rm -rf "$TMPDIR"
-            fi
+          # Create directories for each architecture
+          for OPKG_ARCH in "${ARCHITECTURES[@]}"; do
+            mkdir -p "repo/packages/${OPKG_ARCH}"
+            mkdir -p "repo/luci/${OPKG_ARCH}"
           done
 
-          # Handle all-architectures tarball (architecture-independent packages)
-          ALL_TARBALL="downloads/secubox-${VERSION_NUM}-all-architectures.tar.gz"
-          if [ -f "$ALL_TARBALL" ]; then
-            echo "Processing all-architectures packages..."
-            TMPDIR=$(mktemp -d)
-            tar -xzf "$ALL_TARBALL" -C "$TMPDIR"
+          # Categorize and copy packages
+          echo "Organizing packages..."
+          for ipk in downloads/*.ipk; do
+            [ -f "$ipk" ] || continue
+            PKG_NAME=$(basename "$ipk")
 
-            # Copy all-arch packages to each architecture directory
-            for OPKG_ARCH in "x86_64" "aarch64_generic" "aarch64_cortex-a72" "aarch64_cortex-a53" "mips_24kc" "mipsel_24kc"; do
-              if [ -d "repo/packages/${OPKG_ARCH}" ]; then
-                find "$TMPDIR" -name '*.ipk' | while read pkg; do
-                  PKG_NAME=$(basename "$pkg")
-                  # Skip if architecture-specific version exists
-                  if [ ! -f "repo/packages/${OPKG_ARCH}/${PKG_NAME}" ] && \
-                     [ ! -f "repo/luci/${OPKG_ARCH}/${PKG_NAME}" ]; then
-                    if [[ "$PKG_NAME" == luci-* ]]; then
-                      cp "$pkg" "repo/luci/${OPKG_ARCH}/" 2>/dev/null || true
-                    else
-                      cp "$pkg" "repo/packages/${OPKG_ARCH}/" 2>/dev/null || true
-                    fi
-                  fi
-                done
-              fi
+            # Determine if it's a LuCI package
+            if [[ "$PKG_NAME" == luci-* ]]; then
+              TARGET_DIR="repo/luci"
+            else
+              TARGET_DIR="repo/packages"
+            fi
+
+            # Copy to all architecture directories
+            # (OpenWrt packages are typically arch-independent for LuCI/shell packages)
+            for OPKG_ARCH in "${ARCHITECTURES[@]}"; do
+              cp "$ipk" "${TARGET_DIR}/${OPKG_ARCH}/"
             done
-            rm -rf "$TMPDIR"
-          fi
+          done
 
+          echo ""
           echo "Repository structure:"
           find repo -type d
           echo ""

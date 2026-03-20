@@ -1,7 +1,9 @@
 # Quick Start Guide - SecuBox Development
 
-**Version:** 1.0.0  
-**Last Updated:** 2025-12-28  
+🌐 **Languages:** English | [Français](../docs-fr/quick-start.md) | [中文](../docs-zh/quick-start.md)
+
+**Version:** 1.0.0
+**Last Updated:** 2025-12-28
 **Status:** Active
 
 **⚡ Aide-mémoire rapide pour développement**

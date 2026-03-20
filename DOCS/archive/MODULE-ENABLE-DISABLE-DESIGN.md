@@ -1,5 +1,7 @@
 # Module Enable/Disable Design Document
 
+> **Languages:** English | [Francais](../../DOCS-fr/archive/MODULE-ENABLE-DISABLE-DESIGN.md) | [中文](../../DOCS-zh/archive/MODULE-ENABLE-DISABLE-DESIGN.md)
+
 **Version:** 0.3.1
 **Date:** 2025-12-27
 **Author:** Claude Code + CyberMind

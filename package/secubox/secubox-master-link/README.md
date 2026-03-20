@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # SecuBox Master-Link
 
 Secure mesh onboarding for SecuBox appliances. A master node generates one-time join tokens, serves the secubox IPK bundle, and approves new peers via blockchain-backed trust. Supports gigogne (nested) hierarchy where approved nodes can become sub-masters.

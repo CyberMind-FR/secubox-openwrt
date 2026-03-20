@@ -15,9 +15,20 @@ CACHE_TTL=30  # seconds
 cache_is_fresh() {
     [ -f "$CACHE_FILE" ] || return 1
     local now=$(date +%s)
-    local mtime=$(stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0)
+    local mtime=$(date -r "$CACHE_FILE" +%s 2>/dev/null || echo 0)
     local age=$((now - mtime))
     [ "$age" -lt "$CACHE_TTL" ]
+}
+
+# Get cache age in seconds
+get_cache_age() {
+    if [ ! -f "$CACHE_FILE" ]; then
+        echo 999
+        return
+    fi
+    local now=$(date +%s)
+    local mtime=$(date -r "$CACHE_FILE" +%s 2>/dev/null || echo 0)
+    echo $((now - mtime))
 }
 
 # Build overview (called by cron or on stale cache)
@@ -42,11 +53,14 @@ build_overview() {
     crowdsec_up=false
     pgrep crowdsec >/dev/null 2>&1 && crowdsec_up=true
 
-    vhost_count=$(uci show haproxy 2>/dev/null | grep -c '=vhost$' || echo 0)
-    metablog_count=$(uci show metablogizer 2>/dev/null | grep -c '=site$' || echo 0)
-    streamlit_count=$(uci show streamlit 2>/dev/null | grep -c '=instance$' || echo 0)
-    cert_count=$(ls /srv/haproxy/certs/*.pem 2>/dev/null | wc -l || echo 0)
-    lxc_running=$(lxc-ls --running 2>/dev/null | wc -w || echo 0)
+    vhost_count=$(uci show haproxy 2>/dev/null | grep -c '=vhost$' || :)
+    metablog_count=$(uci show metablogizer 2>/dev/null | grep -c '=site$' || :)
+    streamlit_count=$(uci show streamlit 2>/dev/null | grep -c '=instance$' || :)
+    cert_count=$(ls /srv/haproxy/certs/*.pem 2>/dev/null | wc -l || :)
+    lxc_running=$(lxc-ls --running 2>/dev/null | wc -w || :)
+    # Ensure numeric defaults
+    : "${vhost_count:=0}"; : "${metablog_count:=0}"; : "${streamlit_count:=0}"
+    : "${cert_count:=0}"; : "${lxc_running:=0}"
 
     printf '{"uptime":%d,"load":"%s","mem_total_kb":%d,"mem_used_kb":%d,"mem_pct":%d,"haproxy":%s,"mitmproxy":%s,"crowdsec":%s,"vhosts":%d,"metablogs":%d,"streamlits":%d,"certificates":%d,"lxc_containers":%d}' \
         "$uptime" "$load" "$mem_total" "$mem_used" "$mem_pct" \
@@ -63,10 +77,12 @@ build_waf_stats() {
     pgrep -f mitmdump >/dev/null 2>&1 && mitmproxy_running=true
 
     if [ "$cs_running" = "true" ]; then
-        bans=$(cscli decisions list -o json 2>/dev/null | grep -c '"id"' || echo 0)
-        alerts_today=$(cscli alerts list --since 24h -o json 2>/dev/null | grep -c '"id"' || echo 0)
+        bans=$(cscli decisions list -o json 2>/dev/null | grep -c '"id"' || :)
+        alerts_today=$(cscli alerts list --since 24h -o json 2>/dev/null | grep -c '"id"' || :)
         # WAF blocks = mitmproxy scenario decisions
-        waf_blocked=$(cscli decisions list -o json 2>/dev/null | grep -c 'mitmproxy' || echo 0)
+        waf_blocked=$(cscli decisions list -o json 2>/dev/null | grep -c 'mitmproxy' || :)
+        # Ensure numeric defaults
+        : "${bans:=0}"; : "${alerts_today:=0}"; : "${waf_blocked:=0}"
     fi
 
     printf '{"crowdsec_running":%s,"mitmproxy_running":%s,"active_bans":%d,"alerts_today":%d,"waf_blocked":%d}' \
@@ -77,10 +93,12 @@ build_waf_stats() {
 build_connections() {
     local http_conns https_conns ssh_conns total_tcp
 
-    http_conns=$(netstat -an 2>/dev/null | grep -c ":80 .*ESTABLISHED" || echo 0)
-    https_conns=$(netstat -an 2>/dev/null | grep -c ":443 .*ESTABLISHED" || echo 0)
-    ssh_conns=$(netstat -an 2>/dev/null | grep -c ":22 .*ESTABLISHED" || echo 0)
-    total_tcp=$(netstat -an 2>/dev/null | grep -c "ESTABLISHED" || echo 0)
+    http_conns=$(netstat -an 2>/dev/null | grep -c ":80 .*ESTABLISHED" || :)
+    https_conns=$(netstat -an 2>/dev/null | grep -c ":443 .*ESTABLISHED" || :)
+    ssh_conns=$(netstat -an 2>/dev/null | grep -c ":22 .*ESTABLISHED" || :)
+    total_tcp=$(netstat -an 2>/dev/null | grep -c "ESTABLISHED" || :)
+    # Ensure numeric defaults
+    : "${http_conns:=0}"; : "${https_conns:=0}"; : "${ssh_conns:=0}"; : "${total_tcp:=0}"
 
     printf '{"http":%d,"https":%d,"ssh":%d,"total_tcp":%d}' \
         "$http_conns" "$https_conns" "$ssh_conns" "$total_tcp"
@@ -88,14 +106,15 @@ build_connections() {
 
 # Build full cache
 build_cache() {
-    local overview waf conns ts
+    local overview waf conns ts ts_epoch
     overview=$(build_overview)
     waf=$(build_waf_stats)
     conns=$(build_connections)
     ts=$(date -Iseconds)
+    ts_epoch=$(date +%s)
 
-    printf '{"overview":%s,"waf":%s,"connections":%s,"timestamp":"%s"}' \
-        "$overview" "$waf" "$conns" "$ts" > "$CACHE_FILE"
+    printf '{"overview":%s,"waf":%s,"connections":%s,"timestamp":"%s","timestamp_epoch":%d}' \
+        "$overview" "$waf" "$conns" "$ts" "$ts_epoch" > "$CACHE_FILE"
 }
 
 # Refresh cache in background if stale
@@ -117,29 +136,70 @@ get_cached() {
     fi
 }
 
-# Fast getters from cache
-get_overview() {
+# Get freshness metadata
+get_freshness() {
+    local age ts ts_epoch fresh
     if [ -f "$CACHE_FILE" ]; then
-        jsonfilter -i "$CACHE_FILE" -e '@.overview' 2>/dev/null || build_overview
+        age=$(get_cache_age)
+        ts=$(jsonfilter -i "$CACHE_FILE" -e '@.timestamp' 2>/dev/null | tr -d '\n')
+        ts_epoch=$(jsonfilter -i "$CACHE_FILE" -e '@.timestamp_epoch' 2>/dev/null | tr -d '\n')
     else
-        build_overview
+        age=999
+        ts=""
+        ts_epoch=0
     fi
+    # Ensure numeric values are valid
+    [ -z "$age" ] && age=999
+    [ -z "$ts_epoch" ] || [ "$ts_epoch" = "null" ] && ts_epoch=0
+    # Determine freshness
+    if [ "$age" -lt "$CACHE_TTL" ] 2>/dev/null; then
+        fresh=true
+    else
+        fresh=false
+    fi
+    printf '{"age":%d,"timestamp":"%s","timestamp_epoch":%d,"fresh":%s}' \
+        "$age" "$ts" "$ts_epoch" "$fresh"
+}
+
+# Fast getters from cache - now with freshness metadata
+get_overview() {
+    local data freshness
+    if [ -f "$CACHE_FILE" ]; then
+        data=$(jsonfilter -i "$CACHE_FILE" -e '@.overview' 2>/dev/null)
+        [ -z "$data" ] && data=$(build_overview)
+    else
+        data=$(build_overview)
+    fi
+    freshness=$(get_freshness)
+    # Merge data with freshness
+    printf '%s' "$data" | sed 's/}$//'
+    printf ',"_freshness":%s}' "$freshness"
 }
 
 get_waf_stats() {
+    local data freshness
     if [ -f "$CACHE_FILE" ]; then
-        jsonfilter -i "$CACHE_FILE" -e '@.waf' 2>/dev/null || build_waf_stats
+        data=$(jsonfilter -i "$CACHE_FILE" -e '@.waf' 2>/dev/null)
+        [ -z "$data" ] && data=$(build_waf_stats)
     else
-        build_waf_stats
+        data=$(build_waf_stats)
     fi
+    freshness=$(get_freshness)
+    printf '%s' "$data" | sed 's/}$//'
+    printf ',"_freshness":%s}' "$freshness"
 }
 
 get_connections() {
+    local data freshness
     if [ -f "$CACHE_FILE" ]; then
-        jsonfilter -i "$CACHE_FILE" -e '@.connections' 2>/dev/null || build_connections
+        data=$(jsonfilter -i "$CACHE_FILE" -e '@.connections' 2>/dev/null)
+        [ -z "$data" ] && data=$(build_connections)
     else
-        build_connections
+        data=$(build_connections)
     fi
+    freshness=$(get_freshness)
+    printf '%s' "$data" | sed 's/}$//'
+    printf ',"_freshness":%s}' "$freshness"
 }
 
 # Simple getters (less critical, can compute)

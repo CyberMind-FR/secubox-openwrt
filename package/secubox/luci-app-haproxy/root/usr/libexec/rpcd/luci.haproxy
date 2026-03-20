@@ -1640,6 +1640,34 @@ _add_exposed_service() {
 	json_close_object
 }
 
+# Sync mitmproxy routes from HAProxy backends
+method_sync_mitmproxy_routes() {
+	json_init
+
+	# Run mitmproxyctl sync-routes
+	if command -v mitmproxyctl >/dev/null 2>&1; then
+		local output
+		output=$(mitmproxyctl sync-routes 2>&1)
+		local exit_code=$?
+
+		if [ $exit_code -eq 0 ]; then
+			# Restart mitmproxy to apply new routes
+			/etc/init.d/mitmproxy restart >/dev/null 2>&1
+
+			json_add_boolean "success" 1
+			json_add_string "message" "Routes synchronized and mitmproxy restarted"
+		else
+			json_add_boolean "success" 0
+			json_add_string "error" "$output"
+		fi
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "mitmproxyctl not found"
+	fi
+
+	json_dump
+}
+
 # Main RPC interface
 case "$1" in
 	list)
@@ -1686,7 +1714,8 @@ case "$1" in
 	"generate": {},
 	"validate": {},
 	"get_logs": { "lines": "integer" },
-	"list_exposed_services": {}
+	"list_exposed_services": {},
+	"sync_mitmproxy_routes": {}
 }
 EOF
 		;;
@@ -1734,6 +1763,7 @@ EOF
 			validate) method_validate ;;
 			get_logs) method_get_logs ;;
 			list_exposed_services) method_list_exposed_services ;;
+			sync_mitmproxy_routes) method_sync_mitmproxy_routes ;;
 		esac
 		;;
 esac

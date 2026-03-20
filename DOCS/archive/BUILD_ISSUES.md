@@ -1,5 +1,7 @@
 # Build Issues & Solutions
 
+> **Languages:** English | [Francais](../../DOCS-fr/archive/BUILD_ISSUES.md) | [中文](../../DOCS-zh/archive/BUILD_ISSUES.md)
+
 **Version:** 1.0.0
 **Last Updated:** 2025-12-28
 **Status:** Active

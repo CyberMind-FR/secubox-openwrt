@@ -1,5 +1,7 @@
 # SecuBox Feature Regeneration Prompts
 
+🌐 **Languages:** English | [Français](../docs-fr/feature-regeneration-prompts.md) | [中文](../docs-zh/feature-regeneration-prompts.md)
+
 **Version:** 1.0.0  
 **Last Updated:** 2025-12-28  
 **Status:** Active  

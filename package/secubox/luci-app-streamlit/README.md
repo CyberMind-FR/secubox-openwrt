@@ -1,5 +1,7 @@
 # LuCI Streamlit Dashboard
 
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 LuCI web interface for managing Streamlit application instances with Gitea integration.
 
 ## Installation

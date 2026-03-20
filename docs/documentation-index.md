@@ -1,5 +1,7 @@
 # SecuBox Documentation Index
 
+🌐 **Languages:** English | [Français](../docs-fr/documentation-index.md) | [中文](../docs-zh/documentation-index.md)
+
 **Version:** 1.0.0  
 **Last Updated:** 2025-12-28  
 **Status:** Active  

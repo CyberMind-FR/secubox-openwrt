@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # SecuBox Gitea Platform
 
 Self-hosted lightweight Git service running in an LXC container on SecuBox-powered OpenWrt systems.

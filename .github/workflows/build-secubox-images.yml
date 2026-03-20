@@ -232,6 +232,92 @@ jobs:
           echo ""
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
+      - name: Slipstream SecuBox configuration
+        if: ${{ github.event.inputs.include_secubox == 'true' || github.event_name == 'push' }}
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🔧 SLIPSTREAMING SECUBOX CONFIGURATION"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          # Determine architecture for this device
+          ARCH="${{ matrix.subtarget }}"
+          case "$ARCH" in
+            cortexa72) OPKG_ARCH="aarch64_cortex-a72" ;;
+            cortexa53) OPKG_ARCH="aarch64_cortex-a53" ;;
+            *)         OPKG_ARCH="aarch64_generic" ;;
+          esac
+
+          # Create files directory for slipstream content
+          mkdir -p openwrt/files/etc/opkg
+          mkdir -p openwrt/files/etc/uci-defaults
+          mkdir -p openwrt/files/usr/sbin
+
+          # Add SecuBox repository configuration
+          cat > openwrt/files/etc/opkg/customfeeds.conf << EOF
+          # SecuBox Package Repository
+          # Pre-configured by GitHub Actions build
+          # Device: ${{ matrix.device }}
+          src/gz secubox_packages https://repo.secubox.in/packages/${OPKG_ARCH}
+          src/gz secubox_luci https://repo.secubox.in/luci/${OPKG_ARCH}
+          EOF
+          echo "  ✅ Repository configured for ${OPKG_ARCH}"
+
+          # Copy seed script
+          if [[ -f "scripts/secubox-seed.sh" ]]; then
+            cp scripts/secubox-seed.sh openwrt/files/usr/sbin/secubox-seed
+            chmod +x openwrt/files/usr/sbin/secubox-seed
+            echo "  ✅ Seed script installed"
+          fi
+
+          # Create first-boot setup script
+          cat > openwrt/files/etc/uci-defaults/99-secubox-setup << 'FIRSTBOOT'
+          #!/bin/sh
+          # SecuBox First-Boot Setup
+          LOG="/tmp/secubox-firstboot.log"
+          echo "[$(date)] SecuBox first-boot starting..." >> "$LOG"
+
+          # Update package lists
+          opkg update >> "$LOG" 2>&1 || true
+
+          # Try to install core packages if repo is available
+          for pkg in secubox-core secubox-base; do
+            if opkg list | grep -q "^$pkg "; then
+              opkg install "$pkg" >> "$LOG" 2>&1 || true
+            fi
+          done
+
+          # Set SecuBox theme as default
+          if [ -f /etc/config/luci ]; then
+            uci set luci.main.mediaurlbase='/luci-static/secubox' 2>/dev/null || true
+            uci commit luci 2>/dev/null || true
+          fi
+
+          echo "[$(date)] SecuBox first-boot complete" >> "$LOG"
+          exit 0
+          FIRSTBOOT
+          chmod +x openwrt/files/etc/uci-defaults/99-secubox-setup
+          echo "  ✅ First-boot script created"
+
+          # Create SecuBox banner
+          cat > openwrt/files/etc/banner << BANNER
+
+            ____                  ____
+           / ___|  ___  ___ _   _| __ )  _____  __
+           \___ \ / _ \/ __| | | |  _ \ / _ \ \/ /
+            ___) |  __/ (__| |_| | |_) | (_) >  <
+           |____/ \___|\___|\__,_|____/ \___/_/\_\
+
+           SecuBox - ${{ matrix.description }}
+           https://secubox.in
+
+           Run 'secubox-seed --help' for setup options
+
+          BANNER
+          echo "  ✅ SecuBox banner created"
+
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
       - name: Generate SecuBox config
         run: |
           cd openwrt
@@ -305,9 +391,14 @@ jobs:
           cd openwrt
 
           cat >> .config << 'EOF'
-          # SecuBox packages - Core
+          # SecuBox packages - Core (REQUIRED)
+          CONFIG_PACKAGE_secubox-core=y
           CONFIG_PACKAGE_secubox-app=y
+          CONFIG_PACKAGE_secubox-p2p=y
+          CONFIG_PACKAGE_secubox-master-link=y
+          CONFIG_PACKAGE_secubox-identity=y
           CONFIG_PACKAGE_luci-app-secubox=y
+          CONFIG_PACKAGE_luci-theme-secubox=y
           CONFIG_PACKAGE_luci-app-system-hub=y
 
           # SecuBox packages - Security & Monitoring

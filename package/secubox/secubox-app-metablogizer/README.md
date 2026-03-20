@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # MetaBlogizer - Static Site Publisher
 
 Static site publisher with automatic virtual host creation. Supports uhttpd (native) and nginx (LXC) backends.

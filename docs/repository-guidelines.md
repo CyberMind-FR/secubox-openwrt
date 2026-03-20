@@ -1,5 +1,7 @@
 # Repository Guidelines
 
+🌐 **Languages:** English | [Français](../docs-fr/repository-guidelines.md) | [中文](../docs-zh/repository-guidelines.md)
+
 ## Project Structure & Module Organization
 - LuCI apps (`luci-app-secubox`, `luci-app-*`) store views in `htdocs/luci-static/resources` and RPC logic in `root/usr/libexec/rpcd`; `package/secubox/` holds the SDK-ready copies of those modules.
 - `luci-theme-secubox`, `templates/`, and `plugins/` provide shared CSS, gradients, and widgets that should be referenced via `require secubox/*` instead of duplicating assets.

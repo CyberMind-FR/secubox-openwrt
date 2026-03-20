@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # SecuBox Service Registry
 
 Unified service aggregation dashboard with automatic publishing to HAProxy (clearnet) and Tor (hidden services), including health monitoring and QR code generation.

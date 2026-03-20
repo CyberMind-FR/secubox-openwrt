@@ -1,4 +1,6 @@
-# LuCI App – Zigbee2MQTT
+# LuCI App - Zigbee2MQTT
+
+English | [Francais](README.fr.md) | [中文](README.zh.md)
 
 **Version:** 1.0.0  
 **Last Updated:** 2025-12-28  

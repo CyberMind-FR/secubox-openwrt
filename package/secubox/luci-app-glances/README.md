@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # LuCI Glances Dashboard
 
 System monitoring dashboard powered by Glances with embedded Web UI.

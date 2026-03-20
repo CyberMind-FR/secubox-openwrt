@@ -1,7 +1,9 @@
 # SecuBox Codex Field Manual
 
-**Version:** 1.0.0  
-**Last Updated:** 2025-12-28  
+🌐 **Languages:** English | [Français](../docs-fr/codex.md) | [中文](../docs-zh/codex.md)
+
+**Version:** 1.0.0
+**Last Updated:** 2025-12-28
 **Status:** Active
 
 ---

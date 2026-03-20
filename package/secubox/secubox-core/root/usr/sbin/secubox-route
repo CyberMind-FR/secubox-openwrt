@@ -196,12 +196,6 @@ cmd_sync() {
 
 		[ -z "$domain" ] || [ -z "$host" ] || [ -z "$port" ] && continue
 
-		# Skip LuCI routes (port 8081)
-		if [ "$port" = "8081" ]; then
-			log_warn "Skipping LuCI route: $domain -> $host:8081"
-			continue
-		fi
-
 		if [ $first -eq 1 ]; then
 			printf '  "%s": ["%s", %s]' "$domain" "$host" "$port" >> "$tmp_file"
 			first=0
@@ -290,21 +284,35 @@ cmd_import_haproxy() {
 			fi
 		fi
 
-		# Skip special backends
+		# Skip backends without valid destinations
 		case "$backend" in
-			fallback|luci|luci_default|mitmproxy_inspector|"") continue ;;
+			fallback|mitmproxy_inspector|"") continue ;;
 		esac
 
 		# Find backend server info
 		local ip="" port=""
 
-		# Method 1: Check inline server field
-		local server=$(uci -q get haproxy.$backend.server)
-		if [ -n "$server" ]; then
-			local addr=$(echo "$server" | awk '{print $2}')
-			ip=$(echo "$addr" | cut -d':' -f1)
-			port=$(echo "$addr" | cut -d':' -f2)
-			[ "$ip" = "$port" ] && port="80"
+		# Handle well-known backends with fixed addresses
+		case "$backend" in
+			luci|luci_default)
+				ip="127.0.0.1"
+				port="8081"
+				;;
+			luci_control)
+				ip="192.168.255.1"
+				port="8515"
+				;;
+		esac
+
+		# Method 1: Check inline server field (only if not already set)
+		if [ -z "$ip" ]; then
+			local server=$(uci -q get haproxy.$backend.server)
+			if [ -n "$server" ]; then
+				local addr=$(echo "$server" | awk '{print $2}')
+				ip=$(echo "$addr" | cut -d':' -f1)
+				port=$(echo "$addr" | cut -d':' -f2)
+				[ "$ip" = "$port" ] && port="80"
+			fi
 		fi
 
 		# Method 2: Check separate server section

@@ -1,5 +1,7 @@
 # SecuBox Development Tools
 
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 **Version:** 1.2.0
 **Last Updated:** 2026-02-28
 **Status:** Active

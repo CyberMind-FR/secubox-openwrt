@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # LuCI WireGuard Dashboard
 
 Modern WireGuard VPN management interface for OpenWrt with setup wizard, peer management, and real-time monitoring.

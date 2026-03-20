@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # SecuBox Domoticz
 
 Home automation platform running in an LXC Debian container with MQTT bridge, Zigbee2MQTT integration, and P2P mesh support.

@@ -6,6 +6,19 @@
 'require crowdsec-dashboard.heatmap as heatmap';
 'require secubox/kiss-theme';
 
+// Freshness helpers
+function formatAge(seconds) {
+	if (seconds < 60) return seconds + 's ago';
+	if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+	return Math.floor(seconds / 3600) + 'h ago';
+}
+
+function getFreshnessClass(age) {
+	if (age < 30) return 'fresh';      // < 30s = green/fresh
+	if (age < 90) return 'recent';     // < 90s = yellow/recent
+	return 'stale';                     // > 90s = red/stale
+}
+
 return view.extend({
 	load: function() {
 		var link = document.createElement('link');
@@ -103,13 +116,24 @@ return view.extend({
 		s.geoLocal = this.parseGeoData(s.geo_local_raw || s.top_countries_raw);
 		s.geoCapi = this.parseGeoData(s.geo_capi_raw);
 
+		// Parse freshness data
+		var freshness = s._freshness || { age: 0, fresh: true };
+		var freshClass = getFreshnessClass(freshness.age || 0);
+		var freshAge = freshness.age || 0;
+
 		var content = [
-			// Header
+			// Header with freshness indicator
 			E('div', { 'style': 'margin-bottom: 24px;' }, [
-				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
-					E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'CrowdSec Dashboard'),
-					KissTheme.badge(s.crowdsec === 'running' ? 'RUNNING' : 'STOPPED',
-						s.crowdsec === 'running' ? 'green' : 'red')
+				E('div', { 'style': 'display: flex; align-items: center; justify-content: space-between;' }, [
+					E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+						E('h2', { 'style': 'font-size: 24px; font-weight: 700; margin: 0;' }, 'CrowdSec Dashboard'),
+						KissTheme.badge(s.crowdsec === 'running' ? 'RUNNING' : 'STOPPED',
+							s.crowdsec === 'running' ? 'green' : 'red')
+					]),
+					E('div', { 'class': 'cs-freshness', 'id': 'cs-freshness', 'style': 'display:flex; align-items:center; gap:8px; padding:6px 12px; border-radius:16px; background:var(--kiss-bg2); border:1px solid var(--kiss-line); font-size:12px;' }, [
+						E('span', { 'class': 'cs-fresh-dot ' + freshClass, 'id': 'cs-fresh-dot', 'style': 'width:8px; height:8px; border-radius:50%; background:' + (freshClass === 'fresh' ? '#00c853' : (freshClass === 'recent' ? '#ff9800' : '#f44336')) + '; box-shadow:0 0 4px ' + (freshClass === 'fresh' ? '#00c853' : (freshClass === 'recent' ? '#ff9800' : '#f44336')) + ';' }),
+						E('span', { 'id': 'cs-age', 'style': 'color:' + (freshClass === 'fresh' ? '#00c853' : (freshClass === 'recent' ? '#ff9800' : '#f44336')) + ';' }, freshAge < 5 ? 'just now' : formatAge(freshAge))
+					])
 				]),
 				E('p', { 'style': 'color: var(--kiss-muted); margin: 8px 0 0 0;' }, 'Collaborative security engine')
 			]),
@@ -262,6 +286,23 @@ return view.extend({
 			s.alerts = self.parseAlerts(s);
 			s.geoLocal = self.parseGeoData(s.geo_local_raw || s.top_countries_raw);
 			s.geoCapi = self.parseGeoData(s.geo_capi_raw);
+
+			// Update freshness indicator
+			var freshness = s._freshness || { age: 0, fresh: true };
+			var freshClass = getFreshnessClass(freshness.age || 0);
+			var freshAge = freshness.age || 0;
+			var dotEl = document.getElementById('cs-fresh-dot');
+			var ageEl = document.getElementById('cs-age');
+			if (dotEl) {
+				var color = freshClass === 'fresh' ? '#00c853' : (freshClass === 'recent' ? '#ff9800' : '#f44336');
+				dotEl.style.background = color;
+				dotEl.style.boxShadow = '0 0 4px ' + color;
+			}
+			if (ageEl) {
+				ageEl.textContent = freshAge < 5 ? 'just now' : formatAge(freshAge);
+				ageEl.style.color = freshClass === 'fresh' ? '#00c853' : (freshClass === 'recent' ? '#ff9800' : '#f44336');
+			}
+
 			var el = document.getElementById('cs-stats');
 			if (el) dom.content(el, self.renderStats(s));
 			el = document.getElementById('cs-alerts');

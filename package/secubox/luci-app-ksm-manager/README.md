@@ -1,3 +1,5 @@
+[English](README.md) | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # LuCI App - Key Storage Manager (KSM)
 
 **Version:** 0.4.0  

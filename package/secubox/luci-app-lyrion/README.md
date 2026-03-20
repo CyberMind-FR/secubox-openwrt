@@ -1,5 +1,7 @@
 # LuCI Lyrion Music Server
 
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 Management dashboard for Lyrion Music Server (formerly Logitech Media Server / Squeezebox Server).
 
 ## Installation

@@ -1,5 +1,7 @@
 # Documentation Archive
 
+> **Languages:** English | [Francais](../../DOCS-fr/archive/README.md) | [中文](../../DOCS-zh/archive/README.md)
+
 **Version:** 1.0.0  
 **Last Updated:** 2025-12-28  
 **Status:** Active

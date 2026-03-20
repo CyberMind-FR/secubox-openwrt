@@ -1,3 +1,5 @@
+[English](README.md) | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # Bandwidth Manager - QoS & Traffic Control
 
 **Version:** 0.4.0  

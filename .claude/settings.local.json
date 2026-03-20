@@ -596,7 +596,17 @@
       "Bash(while read f)",
       "Bash(do basename \"$f\")",
       "Bash(git rebase:*)",
-      "Bash(GIT_EDITOR=true git rebase:*)"
+      "Bash(GIT_EDITOR=true git rebase:*)",
+      "Bash(gh release:*)",
+      "Bash(do gh run cancel $run)",
+      "Bash(while read id)",
+      "Bash(do echo \"=== $id ===\")",
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt log --grep=\"1.0.0\" --oneline)",
+      "Bash({ echo \"=== ROOT .md FILES ===\")",
+      "Bash(if [ -f \"$d/README.md\" ])",
+      "Bash([ ! -f \"$d/README.fr.md\" ])",
+      "Bash(basename:*)",
+      "Bash(VBoxManage internalcommands sethduuid:*)"
     ]
   }
 }

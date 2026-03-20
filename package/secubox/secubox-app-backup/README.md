@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # SecuBox Backup Manager
 
 Unified backup system for LXC containers, UCI configuration, service data, and profiles with mesh sync support.

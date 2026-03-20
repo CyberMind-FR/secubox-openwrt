@@ -176,17 +176,13 @@ return view.extend({
 
                 E('div', { 'class': 'drop-zone', 'id': 'drop-zone' }, [
                     E('h2', {}, '📦 Drop to Publish'),
-                    E('p', {}, 'Drop HTML file or ZIP archive here'),
-                    E('p', { 'style': 'margin-top: 10px; font-size: 0.85em;' }, 'or click to browse'),
-                    E('input', { 'type': 'file', 'id': 'file-input', 'accept': '.html,.htm,.zip' })
+                    E('p', {}, 'Drop HTML files or ZIP archives here'),
+                    E('p', { 'style': 'margin-top: 10px; font-size: 0.85em;' }, 'or click to browse (multiple files supported)'),
+                    E('input', { 'type': 'file', 'id': 'file-input', 'accept': '.html,.htm,.zip', 'multiple': true })
                 ]),
 
                 E('div', { 'class': 'publish-form', 'id': 'publish-form' }, [
-                    E('div', { 'class': 'file-info', 'id': 'file-info' }, ''),
-                    E('div', { 'class': 'field' }, [
-                        E('label', {}, 'Site Name'),
-                        E('input', { 'type': 'text', 'id': 'site-name', 'placeholder': 'mysite' })
-                    ]),
+                    E('div', { 'id': 'files-list', 'style': 'margin-bottom: 15px;' }),
                     E('div', { 'class': 'field' }, [
                         E('label', {}, 'Domain'),
                         E('input', { 'type': 'text', 'id': 'site-domain', 'value': status.default_domain || 'gk2.secubox.in', 'placeholder': 'gk2.secubox.in' })
@@ -224,13 +220,12 @@ return view.extend({
         var dropZone = view.querySelector('#drop-zone');
         var fileInput = view.querySelector('#file-input');
         var publishForm = view.querySelector('#publish-form');
-        var fileInfo = view.querySelector('#file-info');
-        var siteName = view.querySelector('#site-name');
+        var filesList = view.querySelector('#files-list');
         var siteDomain = view.querySelector('#site-domain');
         var btnPublish = view.querySelector('#btn-publish');
         var btnCancel = view.querySelector('#btn-cancel');
         var resultMsg = view.querySelector('#result-msg');
-        var selectedFile = null;
+        var selectedFiles = [];
 
         // Drag & drop
         dropZone.addEventListener('click', function() { fileInput.click(); });
@@ -245,23 +240,46 @@ return view.extend({
             e.preventDefault();
             dropZone.classList.remove('drag-over');
             if (e.dataTransfer.files.length) {
-                handleFile(e.dataTransfer.files[0]);
+                handleFiles(Array.from(e.dataTransfer.files));
             }
         });
 
         fileInput.addEventListener('change', function() {
             if (fileInput.files.length) {
-                handleFile(fileInput.files[0]);
+                handleFiles(Array.from(fileInput.files));
             }
         });
 
-        function handleFile(file) {
-            selectedFile = file;
-            fileInfo.textContent = '📄 ' + file.name + ' (' + formatSize(file.size) + ')';
+        function handleFiles(files) {
+            selectedFiles = files.map(function(file) {
+                var name = file.name.replace(/\.(html?|zip)$/i, '').toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+                return { file: file, name: name };
+            });
 
-            // Auto-generate name from filename
-            var name = file.name.replace(/\.(html?|zip)$/i, '').toLowerCase().replace(/[^a-z0-9_-]/g, '_');
-            siteName.value = name;
+            // Build files list UI
+            filesList.innerHTML = '';
+            selectedFiles.forEach(function(item, idx) {
+                var row = E('div', { 'class': 'file-info', 'style': 'display: flex; align-items: center; gap: 10px; margin-bottom: 8px;' }, [
+                    E('span', { 'style': 'flex: 0 0 auto;' }, '📄'),
+                    E('span', { 'style': 'flex: 1; overflow: hidden; text-overflow: ellipsis;' }, item.file.name + ' (' + formatSize(item.file.size) + ')'),
+                    E('input', {
+                        'type': 'text',
+                        'value': item.name,
+                        'placeholder': 'site name',
+                        'data-idx': idx,
+                        'class': 'file-name-input',
+                        'style': 'width: 150px; padding: 5px 10px; background: #12121a; border: 1px solid #2a2a3e; border-radius: 4px; color: #e0e0e0;'
+                    })
+                ]);
+                filesList.appendChild(row);
+            });
+
+            // Update names on input change
+            filesList.querySelectorAll('.file-name-input').forEach(function(input) {
+                input.addEventListener('input', function() {
+                    selectedFiles[parseInt(input.dataset.idx)].name = input.value;
+                });
+            });
 
             publishForm.classList.add('active');
             dropZone.style.display = 'none';
@@ -276,57 +294,80 @@ return view.extend({
         btnCancel.addEventListener('click', function() {
             publishForm.classList.remove('active');
             dropZone.style.display = 'block';
-            selectedFile = null;
+            selectedFiles = [];
             fileInput.value = '';
+            filesList.innerHTML = '';
         });
 
         btnPublish.addEventListener('click', function() {
-            if (!selectedFile || !siteName.value) {
-                showResult('error', 'Please select a file and enter a name');
+            // Validate all files have names
+            var valid = selectedFiles.every(function(item) { return item.name && item.name.trim(); });
+            if (!selectedFiles.length || !valid) {
+                showResult('error', 'Please select files and enter names for all');
                 return;
             }
 
             btnPublish.disabled = true;
-            btnPublish.textContent = '⏳ Publishing...';
+            var total = selectedFiles.length;
+            var completed = 0;
+            var errors = [];
 
-            // Upload file first
-            var formData = new FormData();
-            formData.append('sessionid', rpc.getSessionID());
-            formData.append('filename', '/tmp/droplet-upload/' + selectedFile.name);
-            formData.append('filedata', selectedFile);
+            showResult('success', '⏳ Publishing ' + total + ' file(s)...');
 
-            fetch('/cgi-bin/cgi-upload', {
-                method: 'POST',
-                body: formData
-            })
-            .then(function(res) { return res.json(); })
-            .then(function(uploadRes) {
-                if (uploadRes.size) {
-                    // File uploaded, now publish
-                    return callDropletUpload(selectedFile.name, siteName.value, siteDomain.value);
-                } else {
-                    throw new Error('Upload failed');
+            // Process files sequentially
+            function processNext(idx) {
+                if (idx >= selectedFiles.length) {
+                    // All done
+                    btnPublish.disabled = false;
+                    btnPublish.textContent = '🚀 Publish';
+                    if (errors.length) {
+                        showResult('error', '❌ ' + errors.join('<br>'));
+                    } else {
+                        showResult('success', '✅ Published ' + total + ' droplet(s)!');
+                        setTimeout(function() { location.reload(); }, 2000);
+                    }
+                    return;
                 }
-            })
-            .then(function(result) {
-                // Handle async job response
-                if (result.status === 'started' && result.job_id) {
-                    showResult('success', '⏳ Publishing ' + result.name + '...');
-                    return pollJobStatus(result.job_id);
-                } else if (result.success) {
-                    showResult('success', '✅ Published! <a href="' + result.url + '" target="_blank">' + result.url + '</a>');
-                    setTimeout(function() { location.reload(); }, 2000);
-                } else {
-                    showResult('error', '❌ ' + (result.error || 'Failed to publish'));
-                }
-            })
-            .catch(function(err) {
-                showResult('error', '❌ ' + err.message);
-            })
-            .finally(function() {
-                btnPublish.disabled = false;
-                btnPublish.textContent = '🚀 Publish';
-            });
+
+                var item = selectedFiles[idx];
+                btnPublish.textContent = '⏳ ' + (idx + 1) + '/' + total + '...';
+
+                // Upload file
+                var formData = new FormData();
+                formData.append('sessionid', rpc.getSessionID());
+                formData.append('filename', '/tmp/droplet-upload/' + item.file.name);
+                formData.append('filedata', item.file);
+
+                fetch('/cgi-bin/cgi-upload', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(function(res) { return res.json(); })
+                .then(function(uploadRes) {
+                    if (uploadRes.size) {
+                        return callDropletUpload(item.file.name, item.name, siteDomain.value);
+                    } else {
+                        throw new Error('Upload failed for ' + item.file.name);
+                    }
+                })
+                .then(function(result) {
+                    if (result.status === 'started' && result.job_id) {
+                        return pollJobStatus(result.job_id, false);
+                    } else if (!result.success && result.error) {
+                        throw new Error(item.name + ': ' + result.error);
+                    }
+                })
+                .then(function() {
+                    completed++;
+                    processNext(idx + 1);
+                })
+                .catch(function(err) {
+                    errors.push(item.name + ': ' + err.message);
+                    processNext(idx + 1);
+                });
+            }
+
+            processNext(0);
         });
 
         function showResult(type, msg) {
@@ -334,7 +375,8 @@ return view.extend({
             resultMsg.innerHTML = msg;
         }
 
-        function pollJobStatus(jobId) {
+        function pollJobStatus(jobId, showMessages) {
+            if (showMessages === undefined) showMessages = true;
             return new Promise(function(resolve, reject) {
                 var attempts = 0;
                 var maxAttempts = 60; // 60 * 2s = 2 minutes max
@@ -343,22 +385,27 @@ return view.extend({
                     callDropletJobStatus(jobId).then(function(status) {
                         if (status.status === 'complete') {
                             if (status.success) {
-                                showResult('success', '✅ Published! <a href="' + status.url + '" target="_blank">' + status.url + '</a>');
-                                setTimeout(function() { location.reload(); }, 2000);
+                                if (showMessages) {
+                                    showResult('success', '✅ Published! <a href="' + status.url + '" target="_blank">' + status.url + '</a>');
+                                    setTimeout(function() { location.reload(); }, 2000);
+                                }
+                                resolve(status);
                             } else {
-                                showResult('error', '❌ ' + (status.error || 'Failed to publish'));
+                                if (showMessages) {
+                                    showResult('error', '❌ ' + (status.error || 'Failed to publish'));
+                                }
+                                reject(new Error(status.error || 'Failed to publish'));
                             }
-                            resolve(status);
                         } else if (status.status === 'running') {
                             attempts++;
                             if (attempts < maxAttempts) {
                                 setTimeout(check, 2000);
                             } else {
-                                showResult('error', '❌ Publish timed out');
+                                if (showMessages) showResult('error', '❌ Publish timed out');
                                 reject(new Error('Timeout'));
                             }
                         } else {
-                            showResult('error', '❌ Job not found');
+                            if (showMessages) showResult('error', '❌ Job not found');
                             reject(new Error('Job not found'));
                         }
                     }).catch(function(err) {

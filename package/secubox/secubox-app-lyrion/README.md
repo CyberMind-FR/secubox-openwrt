@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # SecuBox Lyrion Music Server
 
 Lyrion Music Server (formerly Logitech Media Server / Squeezebox Server) for SecuBox-powered OpenWrt systems.

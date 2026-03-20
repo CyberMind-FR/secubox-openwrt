@@ -1665,24 +1665,39 @@ cmd_sync_routes_legacy() {
 			backend=$(uci -q get haproxy.$vhost.original_backend)
 		fi
 
-		# Skip fallback, luci, and mitmproxy backends
+		# Skip fallback and mitmproxy backends (no valid destination)
 		case "$backend" in
-			fallback|luci|luci_default|mitmproxy_inspector|"") continue ;;
+			fallback|mitmproxy_inspector|"") continue ;;
 		esac
 
 		if [ -n "$domain" ] && [ -n "$backend" ]; then
 			local ip=""
 			local port=""
 
+			# Handle well-known backends with fixed addresses
+			case "$backend" in
+				luci|luci_default)
+					ip="127.0.0.1"
+					port="8081"
+					;;
+				luci_control)
+					ip="192.168.255.1"
+					port="8515"
+					;;
+			esac
+
 			# Method 1: Check for inline server field (old style)
-			local server=$(uci -q get haproxy.$backend.server)
-			if [ -n "$server" ]; then
-				# Parse server spec: "name ip:port check [options]"
-				local addr=$(echo "$server" | awk '{print $2}')
-				ip=$(echo "$addr" | cut -d':' -f1)
-				port=$(echo "$addr" | cut -d':' -f2)
-				# Handle backends without explicit port
-				[ "$ip" = "$port" ] && port="80"
+			# Only lookup if not already set by well-known backend
+			if [ -z "$ip" ]; then
+				local server=$(uci -q get haproxy.$backend.server)
+				if [ -n "$server" ]; then
+					# Parse server spec: "name ip:port check [options]"
+					local addr=$(echo "$server" | awk '{print $2}')
+					ip=$(echo "$addr" | cut -d':' -f1)
+					port=$(echo "$addr" | cut -d':' -f2)
+					# Handle backends without explicit port
+					[ "$ip" = "$port" ] && port="80"
+				fi
 			fi
 
 			# Method 2: Check for separate server section (new style)

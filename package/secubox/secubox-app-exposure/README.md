@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # SecuBox Service Exposure Manager
 
 Unified backend for managing service exposure: port conflict detection, Tor hidden services, and HAProxy SSL reverse proxy configuration.

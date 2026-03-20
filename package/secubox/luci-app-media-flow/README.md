@@ -1,5 +1,7 @@
 # LuCI Media Flow - Streaming Detection & Monitoring
 
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 **Version:** 0.4.0  
 **Last Updated:** 2025-12-28  
 **Status:** Active

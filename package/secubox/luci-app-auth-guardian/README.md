@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # Auth Guardian for OpenWrt
 
 **Version:** 0.4.0  

@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # luci-app-device-intel
 
 LuCI web interface for SecuBox Device Intelligence.

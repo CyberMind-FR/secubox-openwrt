@@ -36,7 +36,12 @@ return view.extend({
 					]),
 					K.E('p', { 'style': 'margin: 4px 0 0; color: var(--kiss-muted, #94a3b8); font-size: 14px;' },
 						'Configure domain-based routing to backend servers')
-				])
+				]),
+				K.E('button', {
+					'class': 'kiss-btn',
+					'style': 'display: flex; align-items: center; gap: 6px;',
+					'onClick': function() { self.handleSyncRoutes(); }
+				}, ['🔄 ', 'Sync WAF Routes'])
 			]),
 
 			// Add Virtual Host Card
@@ -268,6 +273,21 @@ return view.extend({
 			} else {
 				self.showToast('Failed: ' + (res.error || 'Unknown error'), 'error');
 			}
+		});
+	},
+
+	handleSyncRoutes: function() {
+		var self = this;
+		self.showToast('Syncing mitmproxy routes...', 'info');
+
+		return api.syncMitmproxyRoutes().then(function(res) {
+			if (res.success) {
+				self.showToast('WAF routes synchronized successfully', 'success');
+			} else {
+				self.showToast('Failed: ' + (res.error || 'Unknown error'), 'error');
+			}
+		}).catch(function(err) {
+			self.showToast('Error: ' + err.message, 'error');
 		});
 	},
 

@@ -681,6 +681,66 @@ body.kiss-mode .cbi-section { max-width: 100% !important; width: 100% !important
 		return this.E('button', { 'class': 'kiss-btn' + (type ? ' kiss-btn-' + type : ''), 'onClick': onClick }, label);
 	},
 
+	// Freshness utilities for cache timestamps
+	formatAge: function(seconds) {
+		if (seconds < 60) return seconds + 's ago';
+		if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+		return Math.floor(seconds / 3600) + 'h ago';
+	},
+
+	getFreshnessClass: function(age, freshThreshold, recentThreshold) {
+		freshThreshold = freshThreshold || 15;
+		recentThreshold = recentThreshold || 45;
+		if (age < freshThreshold) return 'fresh';
+		if (age < recentThreshold) return 'recent';
+		return 'stale';
+	},
+
+	getFreshnessColor: function(freshnessClass) {
+		if (freshnessClass === 'fresh') return '#00c853';
+		if (freshnessClass === 'recent') return '#ff9800';
+		return '#f44336';
+	},
+
+	// Create a freshness indicator element
+	freshnessIndicator: function(age, id) {
+		var freshClass = this.getFreshnessClass(age);
+		var color = this.getFreshnessColor(freshClass);
+		var self = this;
+		return this.E('div', {
+			'class': 'kiss-freshness',
+			'id': id || 'kiss-freshness',
+			'style': 'display:flex; align-items:center; gap:8px; padding:6px 12px; border-radius:16px; background:var(--kiss-bg2); border:1px solid var(--kiss-line); font-size:12px;'
+		}, [
+			this.E('span', {
+				'class': 'kiss-fresh-dot ' + freshClass,
+				'id': (id || 'kiss-freshness') + '-dot',
+				'style': 'width:8px; height:8px; border-radius:50%; background:' + color + '; box-shadow:0 0 4px ' + color + '; transition:all 0.3s;'
+			}),
+			this.E('span', {
+				'id': (id || 'kiss-freshness') + '-age',
+				'style': 'color:' + color + '; transition:color 0.3s;'
+			}, age < 5 ? 'just now' : self.formatAge(age))
+		]);
+	},
+
+	// Update an existing freshness indicator
+	updateFreshness: function(age, id) {
+		id = id || 'kiss-freshness';
+		var freshClass = this.getFreshnessClass(age);
+		var color = this.getFreshnessColor(freshClass);
+		var dotEl = document.getElementById(id + '-dot');
+		var ageEl = document.getElementById(id + '-age');
+		if (dotEl) {
+			dotEl.style.background = color;
+			dotEl.style.boxShadow = '0 0 4px ' + color;
+		}
+		if (ageEl) {
+			ageEl.textContent = age < 5 ? 'just now' : this.formatAge(age);
+			ageEl.style.color = color;
+		}
+	},
+
 	// Render top bar
 	renderTopbar: function() {
 		var self = this;

@@ -1,4 +1,6 @@
-# MagicMirror² Manager for SecuBox
+# MagicMirror2 Manager for SecuBox
+
+English | [Francais](README.fr.md) | [中文](README.zh.md)
 
 Complete ecosystem for running and managing MagicMirror² on OpenWrt-based SecuBox systems.
 

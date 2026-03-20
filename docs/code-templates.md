@@ -1,5 +1,7 @@
 # SecuBox Module Code Templates
 
+🌐 **Languages:** English | [Français](../docs-fr/code-templates.md) | [中文](../docs-zh/code-templates.md)
+
 **Version:** 1.0.0  
 **Last Updated:** 2025-12-28  
 **Status:** Active  

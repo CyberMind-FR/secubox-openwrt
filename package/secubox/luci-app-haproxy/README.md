@@ -1,4 +1,6 @@
-# ⚡ HAProxy Manager - Reverse Proxy Dashboard
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
+# HAProxy Manager - Reverse Proxy Dashboard
 
 Enterprise-grade reverse proxy management with automatic SSL certificates, vhost configuration, and backend health monitoring.
 

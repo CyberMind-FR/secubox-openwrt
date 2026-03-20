@@ -1,5 +1,7 @@
 # LuCI PicoBrew Dashboard
 
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 LuCI web interface for managing PicoBrew brewing controllers -- recipe and session monitoring.
 
 ## Installation

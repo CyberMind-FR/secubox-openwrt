@@ -1,3 +1,5 @@
+[English](README.md) | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # VHost Manager - Reverse Proxy & SSL Certificate Management
 
 **Version:** 2.0.0

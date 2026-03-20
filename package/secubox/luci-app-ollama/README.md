@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # LuCI Ollama Dashboard
 
 LuCI web interface for managing Ollama -- local large language model runtime.

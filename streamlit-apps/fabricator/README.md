@@ -1,5 +1,7 @@
 # SecuBox Fabricator
 
+🌐 **Languages:** English | [Français](README.fr.md) | [中文](README.zh.md)
+
 Widget & Component Constructor for SecuBox platform.
 
 ## Features

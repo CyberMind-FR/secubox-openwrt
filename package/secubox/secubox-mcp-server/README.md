@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # SecuBox MCP Server
 
 Model Context Protocol (MCP) server for SecuBox. Exposes device security data to AI assistants (Claude Desktop, Cursor, VS Code) via JSON-RPC 2.0 over stdio.

@@ -1,5 +1,7 @@
 # Punk Exposure Engine
 
+> **Languages**: English | [Francais](PUNK-EXPOSURE.fr.md) | [中文](PUNK-EXPOSURE.zh.md)
+
 ## Vision
 
 Every SecuBox node is a **generative station** — it discovers what runs locally, and offers a unified flow to make any service reachable through all available channels: Tor .onion, classical DNS/HTTPS, P2P mesh, or all three at once.

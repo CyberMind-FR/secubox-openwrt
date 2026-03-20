@@ -1,5 +1,7 @@
 # Docker Zigbee2MQTT on OpenWrt ARM64
 
+> **Languages:** English | [Francais](../../DOCS-fr/embedded/zigbee2mqtt-docker.md) | [中文](../../DOCS-zh/embedded/zigbee2mqtt-docker.md)
+
 **Version:** 1.0.0  
 **Last Updated:** 2025-12-28  
 **Status:** Active

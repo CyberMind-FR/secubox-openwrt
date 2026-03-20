@@ -1,4 +1,6 @@
-# 📰 Hexo CMS - Blog Publishing Platform
+# Hexo CMS - Blog Publishing Platform
+
+English | [Francais](README.fr.md) | [中文](README.zh.md)
 
 Full-featured Hexo blog management with multi-instance support, Gitea integration, HAProxy publishing, and Tor hidden services.
 

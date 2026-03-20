@@ -288,6 +288,12 @@ var callListExposedServices = rpc.declare({
 	expect: { services: [] }
 });
 
+var callSyncMitmproxyRoutes = rpc.declare({
+	object: 'luci.haproxy',
+	method: 'sync_mitmproxy_routes',
+	expect: {}
+});
+
 // ============================================
 // Helper Functions
 // ============================================
@@ -375,6 +381,9 @@ return baseclass.extend({
 
 	// Exposed services
 	listExposedServices: callListExposedServices,
+
+	// Mitmproxy
+	syncMitmproxyRoutes: callSyncMitmproxyRoutes,
 
 	// Helpers
 	getDashboardData: getDashboardData

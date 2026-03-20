@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # SecuBox Ollama - Local LLM Runtime
 
 Run large language models locally on your OpenWrt device. Provides an OpenAI-compatible REST API with native ARM64 support. Supports LLaMA, Mistral, Phi, Gemma, and other open models.

@@ -1,3 +1,5 @@
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # SecuBox Zigbee2MQTT - Zigbee to MQTT Bridge
 
 Docker-based Zigbee2MQTT bridge for OpenWrt. Connects Zigbee devices to your MQTT broker via a USB Zigbee adapter, enabling smart home integration without vendor cloud dependencies.

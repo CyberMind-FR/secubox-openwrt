@@ -1,5 +1,7 @@
 # SecuBox Admin Control Center - API Reference
 
+> **Languages:** English | [Francais](../../docs-fr/admin-control-center/API-REFERENCE.md) | [中文](../../docs-zh/admin-control-center/API-REFERENCE.md)
+
 Complete API reference for state management, component registry, and control center features.
 
 ---

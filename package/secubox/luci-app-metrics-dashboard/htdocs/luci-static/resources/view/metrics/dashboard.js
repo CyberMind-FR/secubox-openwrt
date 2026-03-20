@@ -35,6 +35,21 @@ function formatMem(kb) {
     return (kb / 1048576).toFixed(1) + ' GB';
 }
 
+function formatAge(seconds) {
+    if (seconds < 60) return seconds + 's ago';
+    if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+    return Math.floor(seconds / 3600) + 'h ago';
+}
+
+function getFreshnessClass(age) {
+    if (age < 15) return 'fresh';      // < 15s = green/fresh
+    if (age < 45) return 'recent';     // < 45s = yellow/recent
+    return 'stale';                     // > 45s = red/stale
+}
+
+// Track previous values for change detection
+var prevValues = {};
+
 return view.extend({
     load: function() {
         // Inject custom CSS
@@ -70,6 +85,54 @@ return view.extend({
             @keyframes blink {
                 50% { opacity: 0.4; }
             }
+            @keyframes pulse {
+                0%, 100% { transform: scale(1); }
+                50% { transform: scale(1.05); }
+            }
+            @keyframes flash {
+                0% { background: rgba(0, 200, 83, 0.3); }
+                100% { background: transparent; }
+            }
+            .mx-changed {
+                animation: flash 0.5s ease-out;
+            }
+
+            /* Freshness indicators */
+            .mx-freshness {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                font-size: 11px;
+                padding: 4px 10px;
+                border-radius: 12px;
+                background: var(--kiss-bg2, #1a1a2e);
+                border: 1px solid var(--kiss-border, #2a2a40);
+            }
+            .mx-freshness-dot {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                transition: background 0.3s, box-shadow 0.3s;
+            }
+            .mx-freshness-dot.fresh {
+                background: #00c853;
+                box-shadow: 0 0 6px #00c853;
+            }
+            .mx-freshness-dot.recent {
+                background: #ff9800;
+                box-shadow: 0 0 4px #ff9800;
+            }
+            .mx-freshness-dot.stale {
+                background: #f44336;
+                box-shadow: 0 0 4px #f44336;
+            }
+            .mx-age {
+                color: var(--kiss-muted, #888);
+                transition: color 0.3s;
+            }
+            .mx-age.fresh { color: #00c853; }
+            .mx-age.recent { color: #ff9800; }
+            .mx-age.stale { color: #f44336; }
 
             /* Stats Grid */
             .mx-grid {
@@ -211,13 +274,18 @@ return view.extend({
         var memCls = memPct > 85 ? 'red' : (memPct > 70 ? 'orange' : 'green');
 
         var content = [
-            // Header
+            // Header with freshness indicator
             E('div', { 'class': 'mx-header' }, [
                 E('div', { 'class': 'mx-title' }, 'Metrics Dashboard'),
-                E('div', { 'class': 'mx-live' }, [
-                    E('span', { 'class': 'mx-dot' }),
-                    'LIVE',
-                    E('span', { 'id': 'mx-time' }, new Date().toLocaleTimeString())
+                E('div', { 'style': 'display:flex; align-items:center; gap:16px;' }, [
+                    E('div', { 'class': 'mx-freshness', 'id': 'mx-freshness' }, [
+                        E('span', { 'class': 'mx-freshness-dot fresh', 'id': 'mx-fresh-dot' }),
+                        E('span', { 'class': 'mx-age fresh', 'id': 'mx-age' }, 'just now')
+                    ]),
+                    E('div', { 'class': 'mx-live' }, [
+                        E('span', { 'class': 'mx-dot' }),
+                        E('span', { 'id': 'mx-time' }, new Date().toLocaleTimeString())
+                    ])
                 ])
             ]),
 
@@ -354,6 +422,22 @@ return view.extend({
             var w = data[1] || {};
             var c = data[2] || {};
 
+            // Extract freshness info (from overview response)
+            var freshness = o._freshness || { age: 0, fresh: true };
+            var age = freshness.age || 0;
+            var freshClass = getFreshnessClass(age);
+
+            // Update freshness indicator
+            var freshDot = document.getElementById('mx-fresh-dot');
+            var ageEl = document.getElementById('mx-age');
+            if (freshDot) {
+                freshDot.className = 'mx-freshness-dot ' + freshClass;
+            }
+            if (ageEl) {
+                ageEl.textContent = age < 5 ? 'just now' : formatAge(age);
+                ageEl.className = 'mx-age ' + freshClass;
+            }
+
             var upd = {
                 's-up': formatUptime(o.uptime || 0),
                 's-load': 'Load: ' + (o.load || '0'),
@@ -372,7 +456,17 @@ return view.extend({
 
             for (var id in upd) {
                 var el = document.getElementById(id);
-                if (el) el.textContent = upd[id];
+                if (el) {
+                    var newVal = upd[id];
+                    // Animate if value changed
+                    if (prevValues[id] !== undefined && prevValues[id] !== newVal) {
+                        el.classList.remove('mx-changed');
+                        void el.offsetWidth; // Force reflow
+                        el.classList.add('mx-changed');
+                    }
+                    el.textContent = newVal;
+                    prevValues[id] = newVal;
+                }
             }
 
             // Service dots

@@ -1,4 +1,6 @@
-# 🛡️ LuCI CrowdSec Dashboard
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
+# LuCI CrowdSec Dashboard
 
 **Version:** 0.4.0  
 **Last Updated:** 2025-12-28  

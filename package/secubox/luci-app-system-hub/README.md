@@ -1,3 +1,5 @@
+[English](README.md) | [Francais](README.fr.md) | [中文](README.zh.md)
+
 # System Hub - Central Control Dashboard
 
 **Version:** 1.0.0  

@@ -1,5 +1,7 @@
 # SecuBox Netifyd Deep Packet Inspection Interface
 
+English | [Francais](README.fr.md) | [中文](README.zh.md)
+
 Complete LuCI interface for Netifyd DPI engine with real-time flow monitoring, application detection, and network analytics.
 
 ## Features

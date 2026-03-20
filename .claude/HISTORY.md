@@ -1,6 +1,66 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-03-17 (VM Firmware Build + CI Fixes)_
+_Last updated: 2026-03-20 (Wiki Translations & Meta-package)_
+
+0. **Wiki Internationalization & Meta-package (2026-03-20)**
+   - **Wiki translations**: All 17 wiki pages translated to French and Chinese
+     - Pages: Home, Quick-Start, Installation, Architecture, Development-Guidelines,
+       Module-Implementation-Guide, Module-Status, LuCI-Development-Reference,
+       Code-Templates, Documentation-Index, Permissions-Guide, Validation-Guide,
+       VM-Appliance, Feature-Regeneration-Prompts, TODO-Analyse, CLAUDE, _Sidebar
+     - Naming convention: `Page.fr.md` (French), `Page.zh.md` (Chinese)
+   - **NEW: secubox-full meta-package** (`package/secubox/secubox-full/`)
+     - Tiered bundle system for easier deployment:
+       - `secubox-core-bundle`: Essential components (core, p2p, identity, vortex, LuCI)
+       - `secubox-security-bundle`: WAF/IDS (CrowdSec, mitmproxy, threat detection)
+       - `secubox-services-bundle`: Web services (HAProxy, DNS, Tor, apps)
+       - `secubox-luci-bundle`: All LuCI interface apps
+       - `secubox-full`: Complete installation with all components
+   - **CI workflow updates**: VM and firmware builds now include secubox-core by default
+     - secubox-core, secubox-app, secubox-p2p, secubox-master-link, secubox-identity
+     - luci-app-secubox, luci-theme-secubox
+
+0. **Progressive Freshness Indicators (2026-03-20)**
+   - Added visible "Updated Xs ago" timestamps to Metrics and CrowdSec dashboards
+   - **Visual freshness states**:
+     - Fresh (green glow): Data is < 15s old (metrics) / < 30s old (CrowdSec)
+     - Recent (yellow): Data is < 45s old (metrics) / < 90s old (CrowdSec)
+     - Stale (red): Data is older than threshold
+   - **Backend changes**:
+     - `luci.metrics`: Added `_freshness` metadata (age, fresh, timestamp_epoch)
+     - `luci.crowdsec-dashboard`: Added `_freshness` to get_overview response
+   - **Frontend changes**:
+     - Freshness indicator in header (dot + "Xs ago" text)
+     - Flash animation when values change
+     - Color transitions for freshness state changes
+   - **Shared utilities** in `kiss-theme.js`:
+     - `formatAge()`, `getFreshnessClass()`, `getFreshnessColor()`
+     - `freshnessIndicator()`, `updateFreshness()` for reuse
+   - **OpenWrt compatibility fix (434e501d)**:
+     - Use `date -r` instead of `stat -c %Y` (stat not available in BusyBox)
+     - Fix `grep -c || echo 0` double-output causing "invalid number" errors
+     - Proper numeric defaults using `: "${var:=0}"` pattern
+
+0. **SecuBox Seed Script & Package Repository (2026-03-20)**
+   - NEW: `scripts/secubox-seed.sh` - Bootstrap script for fresh OpenWrt
+   - NEW: `scripts/secubox-slipstream.sh` - Bake SecuBox config into images
+   - NEW: `.github/workflows/publish-package-repo.yml` - GitHub Pages package repo
+   - Package repository live at https://repo.secubox.in
+   - **Seed script features**:
+     - Auto-detects architecture (x86_64, aarch64_cortex-a72, etc.)
+     - Configures SecuBox opkg feeds in customfeeds.conf
+     - Disables signature checking for unsigned feeds (fixes "Unknown package" error)
+     - Retry logic (3 attempts) for all network operations
+     - Profile-based installation: minimal, standard, full
+     - Dry-run mode for testing
+   - **Slipstream script**: Pre-configures images during build
+     - Creates /etc/opkg/customfeeds.conf with SecuBox feeds
+     - First-boot script (/etc/uci-defaults/99-secubox-setup)
+     - Custom banner with SecuBox branding
+   - GitHub Actions integration:
+     - VM images (build-secubox-vm.yml) now include slipstream
+     - Device images (build-secubox-images.yml) now include slipstream
+     - Package repo deployed to GitHub Pages on release
 
 0. **SecuBox VM Firmware Build Workflow (2026-03-17)**
    - NEW: `.github/workflows/build-secubox-vm.yml` for x86_64 VM appliance images
