@@ -1,6 +1,26 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-03-26 (Mesh Device Discovery)_
+_Last updated: 2026-03-26 (Wiki Documentation)_
+
+0. **Comprehensive Wiki Documentation (2026-03-26)**
+   - **Wiki structure** created at `docs/wiki/`:
+     - `Home.md`: Main navigation with all module categories
+     - `Installation.md`: Complete getting started guide
+     - `Quick-Start.md`: First-time setup walkthrough (10-minute guide)
+     - `Architecture.md`: 4-layer architecture overview (Core Mesh, AI Gateway, MirrorNet, Roadmap)
+     - `Modules.md`: Complete catalog of 80+ LuCI modules with screenshots
+   - **Module category pages** at `docs/wiki/modules/`:
+     - `Security.md`: 15 modules (CrowdSec, WAF, Guardians, ZKP, Threat Analyst)
+     - `Network.md`: 12 modules (HAProxy, Bandwidth, Traffic Shaper, CDN)
+     - `Mesh.md`: 7 modules (WireGuard, P2P, MirrorNet, Master Link)
+     - `DNS.md`: 6 modules (DNS Master, Vortex, Meshname, Provider)
+     - `Apps.md`: 20 modules (Jellyfin, Nextcloud, Matrix, VoIP, Domoticz)
+     - `System.md`: 14 modules (Config Vault, Reporter, RTTY, RezApp)
+     - `AI.md`: 8 modules (Gateway, LocalAI, Ollama, Threat Analyst)
+   - **Updated documentation**:
+     - `SCREENSHOTS.md`: Expanded to 111 modules with package names
+     - `README.md`: Added wiki links and module index table
+   - **Documentation stats**: 3,845 lines added, 14 files created
 
 0. **Mesh Network Device/VM Discovery (2026-03-26)**
    - **Enhanced discovery.sh** with multi-method network device detection:

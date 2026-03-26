@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-26 (Mesh Device Discovery)_
+_Last updated: 2026-03-26 (Wiki Documentation)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -9,6 +9,14 @@ _Last updated: 2026-03-26 (Mesh Device Discovery)_
 ## Recently Completed
 
 ### 2026-03-26
+
+- **Comprehensive Wiki Documentation (Complete)**
+  - Created `docs/wiki/` structure with 12 markdown pages
+  - Main pages: Home, Installation, Quick-Start, Architecture, Modules
+  - Module category pages: Security (15), Network (12), Mesh (7), DNS (6), Apps (20), System (14), AI (8)
+  - Updated SCREENSHOTS.md to 111 modules with package names
+  - Updated README.md with wiki navigation and module index
+  - Total: 3,845 lines of documentation
 
 - **Mesh Network Device/VM Discovery (Complete)**
   - Enhanced `discovery.sh` with multi-method device detection
