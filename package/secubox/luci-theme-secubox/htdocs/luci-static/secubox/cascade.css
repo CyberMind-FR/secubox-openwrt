@@ -82,13 +82,146 @@ body::before {
     animation: textFlicker 0.1s infinite;
 }
 
-/* === Header === */
-header, .main-head, #maincontent > header, .container > header {
+/* === Header Bar (LuCI Bootstrap Layout) === */
+header {
+    display: flex !important;
+    align-items: center !important;
     background: var(--tube-deep) !important;
     border-bottom: 1px solid var(--p31-ghost) !important;
-    padding: 0.75rem 1.5rem !important;
+    padding: 0 !important;
+    height: 50px !important;
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 1000 !important;
 }
 
+/* Brand/Hostname */
+header .brand {
+    display: flex !important;
+    align-items: center !important;
+    padding: 0 1.5rem !important;
+    font-size: 1.1rem !important;
+    font-weight: bold !important;
+    color: var(--p31-peak) !important;
+    text-shadow: var(--bloom-text) !important;
+    letter-spacing: 2px !important;
+    text-transform: uppercase !important;
+    text-decoration: none !important;
+    white-space: nowrap !important;
+    height: 100% !important;
+    background: var(--tube-black) !important;
+    border-right: 1px solid var(--p31-ghost) !important;
+}
+
+header .brand:hover {
+    color: var(--p31-hot) !important;
+}
+
+/* Top Navigation Menu */
+header .nav, header #topmenu {
+    display: flex !important;
+    flex: 1 !important;
+    list-style: none !important;
+    margin: 0 !important;
+    padding: 0 0.5rem !important;
+    height: 100% !important;
+    align-items: center !important;
+    overflow-x: auto !important;
+}
+
+header .nav li, header #topmenu li {
+    list-style: none !important;
+    height: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+}
+
+header .nav > li > a, header #topmenu > li > a {
+    display: flex !important;
+    align-items: center !important;
+    padding: 0 1rem !important;
+    height: 100% !important;
+    color: var(--p31-dim) !important;
+    text-decoration: none !important;
+    font-size: 0.8rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1px !important;
+    white-space: nowrap !important;
+    border-bottom: 2px solid transparent !important;
+    transition: all 0.2s ease !important;
+}
+
+header .nav > li > a:hover, header #topmenu > li > a:hover {
+    color: var(--p31-mid) !important;
+    background: rgba(51, 255, 102, 0.05) !important;
+}
+
+header .nav > li.active > a, header #topmenu > li.active > a,
+header .nav > li.selected > a, header #topmenu > li.selected > a {
+    color: var(--p31-peak) !important;
+    border-bottom-color: var(--p31-peak) !important;
+    text-shadow: var(--bloom-soft) !important;
+}
+
+/* Dropdown menus */
+header .nav li ul, header #topmenu li ul,
+.dropdown-menu, .menu-dropdown {
+    position: absolute !important;
+    top: 100% !important;
+    left: 0 !important;
+    min-width: 200px !important;
+    background: var(--tube-deep) !important;
+    border: 1px solid var(--p31-ghost) !important;
+    border-top: none !important;
+    padding: 0.5rem 0 !important;
+    display: none !important;
+    z-index: 1001 !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
+}
+
+header .nav li:hover ul, header #topmenu li:hover ul,
+header .nav li.open ul, header #topmenu li.open ul {
+    display: block !important;
+}
+
+header .nav li ul li, header #topmenu li ul li {
+    height: auto !important;
+}
+
+header .nav li ul li a, header #topmenu li ul li a {
+    display: block !important;
+    padding: 0.5rem 1rem !important;
+    color: var(--p31-dim) !important;
+    font-size: 0.8rem !important;
+    text-transform: none !important;
+    border-bottom: none !important;
+}
+
+header .nav li ul li a:hover, header #topmenu li ul li a:hover {
+    color: var(--p31-mid) !important;
+    background: rgba(51, 255, 102, 0.1) !important;
+}
+
+header .nav li ul li.active a, header #topmenu li ul li.active a {
+    color: var(--p31-peak) !important;
+    background: rgba(51, 255, 102, 0.1) !important;
+}
+
+/* Indicators (right side) */
+header #indicators, header .pull-right {
+    display: flex !important;
+    align-items: center !important;
+    margin-left: auto !important;
+    padding: 0 1rem !important;
+    gap: 0.75rem !important;
+}
+
+header #indicators .label, header .pull-right .label {
+    font-size: 0.7rem !important;
+    padding: 0.2rem 0.5rem !important;
+}
+
+/* Legacy header h1 styling */
 header h1, .main-head h1, #maincontent > header h1 {
     font-size: 1.2rem !important;
     color: var(--p31-peak) !important;
@@ -108,63 +241,75 @@ header h1::after {
     color: var(--p31-dim);
 }
 
-/* === Navigation Sidebar === */
-.main-left, #mainmenu, nav.main, .luci-nav {
+/* === Tabmenu (secondary navigation) === */
+#tabmenu, .cbi-tabmenu-container {
     background: var(--tube-deep) !important;
-    border-right: 1px solid var(--p31-ghost) !important;
+    border-bottom: 1px solid var(--p31-ghost) !important;
+    padding: 0 1rem !important;
+    margin: 0 -1.5rem 1.5rem -1.5rem !important;
 }
 
-.main-left ul, #mainmenu ul, nav.main ul {
+#tabmenu ul, .cbi-tabmenu-container ul {
+    display: flex !important;
     list-style: none !important;
     margin: 0 !important;
     padding: 0 !important;
 }
 
-.main-left li a, #mainmenu li a, nav.main li a,
-.main-left li > span, #mainmenu li > span {
+#tabmenu li a, .cbi-tabmenu-container li a {
     display: block !important;
-    padding: 0.6rem 1.2rem !important;
+    padding: 0.75rem 1.25rem !important;
     color: var(--p31-dim) !important;
     text-decoration: none !important;
-    font-size: 0.85rem !important;
+    font-size: 0.8rem !important;
     text-transform: uppercase !important;
     letter-spacing: 1px !important;
-    border-left: 2px solid transparent !important;
-    transition: all 0.2s ease !important;
-    background: transparent !important;
+    border-bottom: 2px solid transparent !important;
 }
 
-.main-left li a:hover, #mainmenu li a:hover, nav.main li a:hover {
+#tabmenu li a:hover, .cbi-tabmenu-container li a:hover {
     color: var(--p31-mid) !important;
-    background: rgba(51, 255, 102, 0.05) !important;
-    border-left-color: var(--p31-dim) !important;
 }
 
-.main-left li.active > a, .main-left li.selected > a,
-#mainmenu li.active > a, #mainmenu li.selected > a,
-nav.main li.active a {
+#tabmenu li.active a, #tabmenu li.selected a,
+.cbi-tabmenu-container li.active a {
     color: var(--p31-peak) !important;
-    background: rgba(51, 255, 102, 0.1) !important;
-    border-left-color: var(--p31-peak) !important;
+    border-bottom-color: var(--p31-peak) !important;
     text-shadow: var(--bloom-soft) !important;
 }
 
-/* Category Headers */
-.main-left li.slide, #mainmenu li.slide {
-    padding: 0.8rem 1.2rem 0.4rem !important;
-    color: var(--p31-ghost) !important;
-    font-size: 0.7rem !important;
-    text-transform: uppercase !important;
-    letter-spacing: 2px !important;
-    border-bottom: 1px solid var(--p31-ghost) !important;
-    margin-top: 0.5rem !important;
-}
-
-/* === Main Content === */
-.main-right, #maincontent, main, .container {
-    flex: 1 !important;
+/* === Main Content Area === */
+#maincontent, .container {
     padding: 1.5rem !important;
     background: var(--tube-black) !important;
+    min-height: calc(100vh - 50px - 40px) !important; /* viewport - header - footer */
+}
+
+/* Mode menu (bottom breadcrumb) */
+#modemenu {
+    display: flex !important;
+    list-style: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    gap: 0.5rem !important;
+}
+
+#modemenu li {
+    list-style: none !important;
+}
+
+#modemenu li a {
+    color: var(--p31-dim) !important;
+    font-size: 0.75rem !important;
+    text-decoration: none !important;
+}
+
+#modemenu li a:hover {
+    color: var(--p31-mid) !important;
+}
+
+#modemenu li.active a {
+    color: var(--p31-peak) !important;
 }
 
 /* === Cards/Panels === */
@@ -463,13 +608,24 @@ span.zonebadge {
 }
 
 /* === Footer === */
-footer, .main-foot, #mainfooter {
+footer {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
     background: var(--tube-deep) !important;
     border-top: 1px solid var(--p31-ghost) !important;
     padding: 0.5rem 1.5rem !important;
     font-size: 0.75rem !important;
     color: var(--p31-dim) !important;
-    text-align: center !important;
+    height: 40px !important;
+}
+
+footer a {
+    color: var(--p31-dim) !important;
+}
+
+footer a:hover {
+    color: var(--p31-mid) !important;
 }
 
 /* === Links === */
@@ -704,19 +860,49 @@ body.login {
 
 /* === Responsive === */
 @media (max-width: 768px) {
-    .main-left, #mainmenu, nav.main {
-        width: 100% !important;
-        min-height: auto !important;
+    header {
+        flex-wrap: wrap !important;
+        height: auto !important;
+    }
+
+    header .brand {
+        padding: 0.75rem 1rem !important;
         border-right: none !important;
         border-bottom: 1px solid var(--p31-ghost) !important;
     }
 
-    .main-right, #maincontent, main {
+    header .nav, header #topmenu {
+        width: 100% !important;
+        flex-wrap: wrap !important;
+        padding: 0 !important;
+        border-bottom: 1px solid var(--p31-ghost) !important;
+    }
+
+    header .nav > li > a, header #topmenu > li > a {
+        padding: 0.5rem 0.75rem !important;
+        font-size: 0.7rem !important;
+    }
+
+    header #indicators, header .pull-right {
+        width: 100% !important;
+        padding: 0.5rem 1rem !important;
+        justify-content: flex-end !important;
+    }
+
+    #maincontent, .container {
         padding: 1rem !important;
     }
 
     .dashboard-grid {
         grid-template-columns: 1fr !important;
+    }
+
+    footer {
+        flex-direction: column !important;
+        height: auto !important;
+        padding: 0.75rem !important;
+        gap: 0.5rem !important;
+        text-align: center !important;
     }
 }
 
