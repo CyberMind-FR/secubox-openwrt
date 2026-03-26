@@ -1,0 +1,285 @@
+#!/bin/sh
+# SecuBox Mesh Control CLI (secuboxctl)
+# Communicates with secuboxd via Unix control socket
+# CyberMind — SecuBox — 2026
+
+SOCKET="/var/run/secuboxd/topo.sock"
+VERSION="1.0.0"
+
+# Send command to daemon and get response
+send_command() {
+    local cmd="$1"
+
+    if [ ! -S "$SOCKET" ]; then
+        echo '{"error":"Daemon not running","socket":"'"$SOCKET"'"}'
+        return 1
+    fi
+
+    # Use socat if available
+    if command -v socat >/dev/null 2>&1; then
+        echo "$cmd" | socat - UNIX-CONNECT:"$SOCKET"
+    else
+        # Fallback: use FIFO approach
+        local fifo_in="/var/run/secuboxd/socket_in"
+        local fifo_out="/var/run/secuboxd/socket_out"
+        if [ -p "$fifo_in" ] && [ -p "$fifo_out" ]; then
+            echo "$cmd" > "$fifo_in"
+            timeout 5 cat "$fifo_out" 2>/dev/null || echo '{"error":"Timeout"}'
+        else
+            echo '{"error":"Socket communication not available"}'
+            return 1
+        fi
+    fi
+}
+
+# Format JSON output for display
+format_output() {
+    local json="$1"
+    local format="${2:-json}"
+
+    case "$format" in
+        json)
+            if command -v jq >/dev/null 2>&1; then
+                echo "$json" | jq .
+            else
+                echo "$json"
+            fi
+            ;;
+        table)
+            # Simple table formatting using jsonfilter
+            echo "$json"
+            ;;
+        *)
+            echo "$json"
+            ;;
+    esac
+}
+
+# Commands
+cmd_status() {
+    local response
+    response=$(send_command "mesh.status")
+    format_output "$response" "$1"
+}
+
+cmd_peers() {
+    local response
+    response=$(send_command "mesh.peers")
+
+    if [ "$1" = "-q" ] || [ "$1" = "--quiet" ]; then
+        echo "$response" | jsonfilter -e '@[*].did' 2>/dev/null | wc -l
+    else
+        format_output "$response" "$1"
+    fi
+}
+
+cmd_topology() {
+    local response
+    response=$(send_command "mesh.topology")
+    format_output "$response" "$1"
+}
+
+cmd_nodes() {
+    local response
+    response=$(send_command "mesh.nodes")
+    format_output "$response" "$1"
+}
+
+cmd_info() {
+    local response
+    response=$(send_command "node.info")
+    format_output "$response" "$1"
+}
+
+cmd_rotate() {
+    local response
+    response=$(send_command "node.rotate")
+
+    local success
+    success=$(echo "$response" | jsonfilter -e '@.success' 2>/dev/null)
+
+    if [ "$success" = "true" ]; then
+        echo "Key rotation successful"
+        echo "$response" | jsonfilter -e '@.new_expiry' 2>/dev/null
+        return 0
+    else
+        echo "Key rotation failed"
+        echo "$response" | jsonfilter -e '@.error' 2>/dev/null
+        return 1
+    fi
+}
+
+cmd_telemetry() {
+    local response
+    response=$(send_command "telemetry.latest")
+    format_output "$response" "$1"
+}
+
+cmd_ping() {
+    local response
+    response=$(send_command "ping")
+
+    if echo "$response" | grep -q '"pong":true'; then
+        echo "Daemon is running"
+        return 0
+    else
+        echo "Daemon not responding"
+        return 1
+    fi
+}
+
+# Service management
+cmd_start() {
+    if pgrep -x secuboxd >/dev/null 2>&1; then
+        echo "secuboxd is already running"
+        return 1
+    fi
+
+    /etc/init.d/secuboxd start
+    sleep 1
+
+    if pgrep -x secuboxd >/dev/null 2>&1; then
+        echo "secuboxd started"
+        return 0
+    else
+        echo "Failed to start secuboxd"
+        return 1
+    fi
+}
+
+cmd_stop() {
+    /etc/init.d/secuboxd stop
+    sleep 1
+
+    if pgrep -x secuboxd >/dev/null 2>&1; then
+        echo "secuboxd still running, killing..."
+        pkill -9 secuboxd
+    fi
+
+    echo "secuboxd stopped"
+}
+
+cmd_restart() {
+    cmd_stop
+    sleep 1
+    cmd_start
+}
+
+# Show usage
+usage() {
+    cat <<EOF
+SecuBox Mesh Control CLI (secuboxctl) v$VERSION
+
+Usage: secuboxctl <command> [options]
+
+Mesh Commands:
+  mesh status       Show mesh status (state, role, peers, gate)
+  mesh peers        List connected peers
+  mesh topology     Get mesh topology graph
+  mesh nodes        List all known nodes
+
+Node Commands:
+  node info         Show this node's information
+  node rotate       Rotate node keys
+
+Telemetry:
+  telemetry latest  Get latest system telemetry
+
+Service Commands:
+  start             Start secuboxd daemon
+  stop              Stop secuboxd daemon
+  restart           Restart secuboxd daemon
+  ping              Check if daemon is running
+
+Options:
+  -f, --format      Output format: json (default), table
+  -q, --quiet       Minimal output
+  -h, --help        Show this help
+  -v, --version     Show version
+
+Examples:
+  secuboxctl mesh status
+  secuboxctl mesh peers -f table
+  secuboxctl node info
+  secuboxctl telemetry latest
+
+Socket: $SOCKET
+EOF
+}
+
+# Main
+main() {
+    local cmd="$1"
+    shift
+
+    case "$cmd" in
+        mesh)
+            local subcmd="$1"
+            shift
+            case "$subcmd" in
+                status)     cmd_status "$@" ;;
+                peers)      cmd_peers "$@" ;;
+                topology)   cmd_topology "$@" ;;
+                nodes)      cmd_nodes "$@" ;;
+                *)          echo "Unknown mesh command: $subcmd"; usage; exit 1 ;;
+            esac
+            ;;
+        node)
+            local subcmd="$1"
+            shift
+            case "$subcmd" in
+                info)       cmd_info "$@" ;;
+                rotate)     cmd_rotate "$@" ;;
+                *)          echo "Unknown node command: $subcmd"; usage; exit 1 ;;
+            esac
+            ;;
+        telemetry)
+            local subcmd="$1"
+            shift
+            case "$subcmd" in
+                latest)     cmd_telemetry "$@" ;;
+                *)          echo "Unknown telemetry command: $subcmd"; usage; exit 1 ;;
+            esac
+            ;;
+        status)
+            cmd_status "$@"
+            ;;
+        peers)
+            cmd_peers "$@"
+            ;;
+        topology)
+            cmd_topology "$@"
+            ;;
+        start)
+            cmd_start
+            ;;
+        stop)
+            cmd_stop
+            ;;
+        restart)
+            cmd_restart
+            ;;
+        ping)
+            cmd_ping
+            ;;
+        -h|--help|help)
+            usage
+            exit 0
+            ;;
+        -v|--version|version)
+            echo "secuboxctl $VERSION (OpenWrt)"
+            exit 0
+            ;;
+        "")
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown command: $cmd"
+            usage
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"

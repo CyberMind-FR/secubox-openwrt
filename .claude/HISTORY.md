@@ -1,6 +1,37 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-03-20 (Wiki Translations & Meta-package)_
+_Last updated: 2026-03-25 (CRT P31 Phosphor Theme Enhancement)_
+
+0. **CRT P31 Phosphor Theme Enhancement (2026-03-25)**
+   - **NEW: CRT P31 theme variant** (`themes/crt-p31.css`)
+     - Authentic P31 phosphor green CRT terminal aesthetic
+     - Color palette: peak (#33ff66), hot (#66ffaa), mid (#22cc44), dim (#0f8822), ghost (#052210)
+     - Phosphor decay amber for warnings (#ffb347)
+     - CRT tube blacks for backgrounds (#050803, #080d05, #0d1208)
+   - **CRT visual effects** (`htdocs/luci-static/secubox/`)
+     - `cascade.css`: Complete CRT theme as standalone LuCI theme
+     - `crt-engine.js`: Scanlines overlay, phosphor glow, boot sequence animation
+     - `crt-components.js`: Reusable widgets, badges, progress bars, topology nodes
+   - **LuCI view templates** (`luasrc/luci/view/themes/secubox/`)
+     - `header.htm`: CRT-styled header with hostname display
+     - `footer.htm`: Mesh version and branding
+     - `sysauth.htm`: Terminal-style login page with glowing elements
+   - **Theme features**:
+     - Scanlines overlay (CSS pseudo-element, pointer-events: none)
+     - Phosphor bloom effects on text and interactive elements
+     - Monospace font stack (Courier Prime, IBM Plex Mono, Fira Code)
+     - Terminal boot sequence animation on first visit
+     - Status indicators with appropriate glow colors
+   - **Integration**:
+     - Added to existing secubox-theme system via `data-secubox-theme="crt-p31"`
+     - Compatible with all SecuBox LuCI modules
+     - Set as default theme via UCI defaults script
+   - **Files created/updated**:
+     - `htdocs/luci-static/resources/secubox-theme/themes/crt-p31.css`
+     - `htdocs/luci-static/secubox/cascade.css`
+     - `htdocs/luci-static/secubox/crt-engine.js`
+     - `htdocs/luci-static/secubox/crt-components.js`
+     - Makefile updated to PKG_RELEASE:=2
 
 0. **Wiki Internationalization & Meta-package (2026-03-20)**
    - **Wiki translations**: All 17 wiki pages translated to French and Chinese
@@ -5433,3 +5464,32 @@ git checkout HEAD -- index.html
   - Migrated secubox-reporter and bandwidth-manager to use shared library
   - Backwards-compatible fallback to legacy per-app SMTP settings
   - Eliminates duplicated SMTP configuration across SecuBox apps
+
+### 2026-03-25
+
+- **SecuBox Mesh Daemon (`secubox-mesh`) (Complete)**
+  - New `secubox-mesh` package: OpenWrt-native mesh daemon ported from Debian/Go version
+  - **secuboxd** daemon with Unix control socket at `/var/run/secuboxd/topo.sock`
+  - **secuboxctl** CLI tool compatible with Debian version interface:
+    - `mesh status|peers|topology|nodes` - mesh operations
+    - `node info|rotate` - node identity management
+    - `telemetry latest` - system metrics
+    - `start|stop|restart` - service control
+  - **Libraries** in `/usr/lib/secubox-mesh/`:
+    - `topology.sh` - node/edge management, graph storage, pruning
+    - `discovery.sh` - mDNS, WireGuard, ARP, static peer discovery
+    - `election.sh` - mesh gate election with weighted scoring algorithm
+    - `telemetry.sh` - system metrics collection (CPU, memory, uptime, load)
+    - `control.sh` - socket command parsing, rate limiting, health checks
+  - **Mesh Gate Election Algorithm**:
+    - Scoring weights: uptime (30%), peers (25%), CPU (15%), memory (15%), role (15%)
+    - Relay nodes preferred over edge nodes for gate role
+    - Leader election via highest score, periodic re-election
+  - **mDNS Service Discovery**: `_secubox._udp.local` with TXT records (did, role, version)
+  - **DID Integration**: Uses existing mirrornet identity library for did:plc format
+  - **UCI Config**: `/etc/config/secubox` with mesh, node, telemetry, discovery sections
+  - **procd Init Script**: Respawn, network triggers, file triggers
+  - **RPCD Handler**: `luci.secubox-mesh` with 11 methods for ubus access
+  - **ACL Permissions**: Read (status, peers, topology, nodes, telemetry, ping, get_config), Write (node_rotate, set_config, restart)
+  - **Dependencies**: secubox-mirrornet, secubox-identity, libubox-lua, libubus-lua, umdns, wireguard-tools, jshn, socat
+  - Cross-platform compatible with Debian secuboxd for hybrid mesh networks

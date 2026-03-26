@@ -1,12 +1,23 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-17 (VM Firmware Build + CI Fixes)_
+_Last updated: 2026-03-25 (SecuBox Mesh Daemon)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
 ---
 
 ## Recently Completed
+
+### 2026-03-25
+
+- **SecuBox Mesh Daemon (`secubox-mesh`) (Complete)**
+  - OpenWrt-native mesh daemon ported from Debian/Go version
+  - `secuboxd` daemon with Unix control socket, `secuboxctl` CLI
+  - Libraries: topology, discovery, election, telemetry, control
+  - Mesh gate election with weighted scoring algorithm
+  - mDNS service discovery: `_secubox._udp.local`
+  - RPCD handler with 11 ubus methods
+  - Cross-platform compatible with Debian version
 
 ### 2026-03-17
 

@@ -1,0 +1,30 @@
+{
+    "luci-app-secubox-mesh": {
+        "description": "Grant access to SecuBox Mesh Daemon",
+        "read": {
+            "ubus": {
+                "luci.secubox-mesh": [
+                    "status",
+                    "peers",
+                    "topology",
+                    "nodes",
+                    "node_info",
+                    "telemetry",
+                    "ping",
+                    "get_config"
+                ]
+            },
+            "uci": ["secubox"]
+        },
+        "write": {
+            "ubus": {
+                "luci.secubox-mesh": [
+                    "node_rotate",
+                    "set_config",
+                    "restart"
+                ]
+            },
+            "uci": ["secubox"]
+        }
+    }
+}
