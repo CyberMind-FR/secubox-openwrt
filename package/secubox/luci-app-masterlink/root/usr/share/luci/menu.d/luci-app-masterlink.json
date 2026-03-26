@@ -1,0 +1,13 @@
+{
+	"admin/services/masterlink": {
+		"title": "Master-Link",
+		"order": 90,
+		"action": {
+			"type": "view",
+			"path": "masterlink/join"
+		},
+		"depends": {
+			"acl": ["luci-app-masterlink"]
+		}
+	}
+}

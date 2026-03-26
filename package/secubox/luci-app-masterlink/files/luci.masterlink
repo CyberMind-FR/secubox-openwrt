@@ -1,0 +1,220 @@
+#!/bin/sh
+# SecuBox Master-Link RPCD handler
+# Provides ubus interface for mesh enrollment
+
+. /usr/share/libubox/jshn.sh
+
+NODE_ID_FILE="/etc/secubox/node.id"
+CONFIG_FILE="/etc/config/masterlink"
+
+# Generate or retrieve node fingerprint
+get_fingerprint() {
+    if [ -f "$NODE_ID_FILE" ]; then
+        cat "$NODE_ID_FILE"
+    else
+        mkdir -p /etc/secubox
+        local mac=""
+        # Try br-lan first (OpenWRT), then eth0
+        if [ -f /sys/class/net/br-lan/address ]; then
+            mac=$(cat /sys/class/net/br-lan/address | tr -d ':')
+        elif [ -f /sys/class/net/eth0/address ]; then
+            mac=$(cat /sys/class/net/eth0/address | tr -d ':')
+        else
+            mac=$(cat /sys/class/net/*/address 2>/dev/null | head -1 | tr -d ':')
+        fi
+        local fp="owrt-${mac}"
+        echo "$fp" > "$NODE_ID_FILE"
+        echo "$fp"
+    fi
+}
+
+# Get primary LAN IP address
+get_local_ip() {
+    local ip=""
+    # Try br-lan first (standard OpenWRT)
+    ip=$(ip -4 addr show br-lan 2>/dev/null | grep -oE 'inet [0-9.]+' | awk '{print $2}' | head -1)
+    if [ -z "$ip" ]; then
+        # Fallback to eth0
+        ip=$(ip -4 addr show eth0 2>/dev/null | grep -oE 'inet [0-9.]+' | awk '{print $2}' | head -1)
+    fi
+    echo "$ip"
+}
+
+# Get device model
+get_model() {
+    if [ -f /tmp/sysinfo/model ]; then
+        cat /tmp/sysinfo/model
+    elif [ -f /etc/board.json ]; then
+        jsonfilter -i /etc/board.json -e '@.model.name' 2>/dev/null
+    else
+        echo "Unknown"
+    fi
+}
+
+# Join a mesh network
+do_join() {
+    local master_ip="$1"
+    local token="$2"
+    local fingerprint=$(get_fingerprint)
+    local hostname=$(uci -q get system.@system[0].hostname || echo "openwrt")
+    local address=$(get_local_ip)
+    local model=$(get_model)
+
+    # Prepare JSON payload
+    local payload="{\"token\":\"${token}\",\"fingerprint\":\"${fingerprint}\",\"hostname\":\"${hostname}\",\"address\":\"${address}\",\"model\":\"${model}\"}"
+
+    # Call master API
+    local response=$(wget -qO- --post-data="$payload" \
+        --header="Content-Type: application/json" \
+        --timeout=30 \
+        "http://${master_ip}:7331/api/v1/p2p/master-link/join" 2>/dev/null)
+
+    if [ -z "$response" ]; then
+        json_init
+        json_add_string "status" "error"
+        json_add_string "message" "Failed to connect to master"
+        json_dump
+        return
+    fi
+
+    # Parse response status
+    local status=$(echo "$response" | jsonfilter -e '@.status' 2>/dev/null)
+    local master_fp=$(echo "$response" | jsonfilter -e '@.master_fingerprint' 2>/dev/null)
+    local depth=$(echo "$response" | jsonfilter -e '@.depth' 2>/dev/null)
+
+    case "$status" in
+        approved|pending)
+            # Save configuration
+            uci set masterlink.settings.enabled='1'
+            uci set masterlink.settings.role='peer'
+            uci set masterlink.settings.master_ip="$master_ip"
+            uci set masterlink.settings.status="$status"
+            [ -n "$master_fp" ] && uci set masterlink.settings.master_fingerprint="$master_fp"
+            [ -n "$depth" ] && uci set masterlink.settings.depth="$depth"
+            uci set masterlink.settings.joined_at="$(date -Iseconds)"
+            uci commit masterlink
+            ;;
+    esac
+
+    # Return original response
+    echo "$response"
+}
+
+# Leave current mesh
+do_leave() {
+    local master_ip=$(uci -q get masterlink.settings.master_ip)
+    local fingerprint=$(get_fingerprint)
+
+    # Notify master if connected
+    if [ -n "$master_ip" ]; then
+        wget -qO- --post-data="{\"fingerprint\":\"${fingerprint}\"}" \
+            --header="Content-Type: application/json" \
+            --timeout=10 \
+            "http://${master_ip}:7331/api/v1/p2p/master-link/leave" 2>/dev/null || true
+    fi
+
+    # Clear local configuration
+    uci set masterlink.settings.enabled='0'
+    uci set masterlink.settings.role='standalone'
+    uci set masterlink.settings.status='disconnected'
+    uci delete masterlink.settings.master_ip 2>/dev/null
+    uci delete masterlink.settings.master_fingerprint 2>/dev/null
+    uci delete masterlink.settings.depth 2>/dev/null
+    uci delete masterlink.settings.joined_at 2>/dev/null
+    uci commit masterlink
+
+    json_init
+    json_add_string "status" "ok"
+    json_add_string "message" "Left mesh network"
+    json_dump
+}
+
+# Get current status
+do_status() {
+    local enabled=$(uci -q get masterlink.settings.enabled || echo '0')
+    local role=$(uci -q get masterlink.settings.role || echo 'standalone')
+    local status=$(uci -q get masterlink.settings.status || echo 'disconnected')
+    local master_ip=$(uci -q get masterlink.settings.master_ip)
+    local master_fp=$(uci -q get masterlink.settings.master_fingerprint)
+    local depth=$(uci -q get masterlink.settings.depth || echo '0')
+    local joined_at=$(uci -q get masterlink.settings.joined_at)
+
+    json_init
+    json_add_boolean "enabled" "$enabled"
+    json_add_string "role" "$role"
+    json_add_string "status" "$status"
+    json_add_string "master_ip" "$master_ip"
+    json_add_string "master_fingerprint" "$master_fp"
+    json_add_int "depth" "$depth"
+    json_add_string "joined_at" "$joined_at"
+    json_add_string "fingerprint" "$(get_fingerprint)"
+    json_dump
+}
+
+# Get local node info
+do_info() {
+    json_init
+    json_add_string "fingerprint" "$(get_fingerprint)"
+    json_add_string "hostname" "$(uci -q get system.@system[0].hostname || echo 'openwrt')"
+    json_add_string "address" "$(get_local_ip)"
+    json_add_string "model" "$(get_model)"
+    json_add_string "firmware" "$(cat /etc/openwrt_release 2>/dev/null | grep DISTRIB_RELEASE | cut -d= -f2 | tr -d \"\')"
+    json_dump
+}
+
+# Verify master before joining (get master info without committing)
+do_verify() {
+    local master_ip="$1"
+    local token="$2"
+
+    # Request master info
+    local response=$(wget -qO- \
+        --timeout=10 \
+        "http://${master_ip}:7331/api/v1/p2p/master-link/info?token=${token}" 2>/dev/null)
+
+    if [ -z "$response" ]; then
+        json_init
+        json_add_string "status" "error"
+        json_add_string "message" "Failed to connect to master"
+        json_dump
+        return
+    fi
+
+    echo "$response"
+}
+
+case "$1" in
+    list)
+        echo '{"status":{},"join":{"master_ip":"str","token":"str"},"leave":{},"info":{},"verify":{"master_ip":"str","token":"str"}}'
+        ;;
+    call)
+        case "$2" in
+            status)
+                do_status
+                ;;
+            join)
+                read -r input
+                json_load "$input"
+                json_get_var master_ip master_ip
+                json_get_var token token
+                do_join "$master_ip" "$token"
+                ;;
+            leave)
+                do_leave
+                ;;
+            info)
+                do_info
+                ;;
+            verify)
+                read -r input
+                json_load "$input"
+                json_get_var master_ip master_ip
+                json_get_var token token
+                do_verify "$master_ip" "$token"
+                ;;
+            *)
+                echo '{"error":"Unknown method"}'
+                ;;
+        esac
+        ;;
+esac

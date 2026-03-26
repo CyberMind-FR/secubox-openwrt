@@ -1,0 +1,17 @@
+{
+	"luci-app-masterlink": {
+		"description": "Grant access to Master-Link mesh enrollment",
+		"read": {
+			"ubus": {
+				"luci.masterlink": ["status", "info", "verify"]
+			},
+			"uci": ["masterlink"]
+		},
+		"write": {
+			"ubus": {
+				"luci.masterlink": ["join", "leave"]
+			},
+			"uci": ["masterlink"]
+		}
+	}
+}
