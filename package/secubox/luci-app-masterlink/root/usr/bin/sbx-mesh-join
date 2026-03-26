@@ -165,10 +165,10 @@ main() {
     local depth=""
 
     if command -v jsonfilter >/dev/null; then
-        status=$(echo "$response" | jsonfilter -e '@.status' 2>/dev/null)
-        message=$(echo "$response" | jsonfilter -e '@.message' 2>/dev/null)
-        master_fp=$(echo "$response" | jsonfilter -e '@.master_fingerprint' 2>/dev/null)
-        depth=$(echo "$response" | jsonfilter -e '@.depth' 2>/dev/null)
+        status=$(echo "$response" | jsonfilter -e '@.status' 2>/dev/null || true)
+        message=$(echo "$response" | jsonfilter -e '@.message' 2>/dev/null || true)
+        master_fp=$(echo "$response" | jsonfilter -e '@.master_fingerprint' 2>/dev/null || true)
+        depth=$(echo "$response" | jsonfilter -e '@.depth' 2>/dev/null || true)
     elif command -v jq >/dev/null; then
         status=$(echo "$response" | jq -r '.status // empty')
         message=$(echo "$response" | jq -r '.message // empty')
