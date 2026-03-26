@@ -1,0 +1,20 @@
+		{% if (!blank_page): %}
+		</div>
+		<footer class="crt-footer">
+			<span>
+				Powered by
+				<a href="https://github.com/CyberMindTech/secubox" target="_blank" rel="noreferrer">
+					SecuBox</a>
+				/
+				<a href="https://github.com/openwrt/luci" target="_blank" rel="noreferrer">
+					{{ version.luciname }} ({{ version.luciversion }})</a>
+				/
+				<a href="{{ entityencode(version.disturl ?? '#', true) }}" target="_blank" rel="noreferrer">
+					{{ version.distname }} {{ version.distversion }}</a>
+			</span>
+			<ul class="breadcrumb pull-right" id="modemenu" style="display:none"></ul>
+		</footer>
+		<script>L.require('menu-bootstrap')</script>
+		{% endif %}
+	</body>
+</html>

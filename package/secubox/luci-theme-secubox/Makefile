@@ -6,7 +6,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-theme-secubox
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 PKG_MAINTAINER:=Gerald KERMA <devel@cybermind.fr>
 PKG_LICENSE:=MIT
 
@@ -26,9 +26,9 @@ define Package/luci-theme-secubox/install
 	# KISS theme helper for individual modules
 	$(INSTALL_DIR) $(1)/www/luci-static/resources/secubox
 	$(CP) ./htdocs/luci-static/resources/secubox/* $(1)/www/luci-static/resources/secubox/
-	# Lua view templates
-	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/view/themes/secubox
-	$(CP) ./luasrc/luci/view/themes/secubox/* $(1)/usr/lib/lua/luci/view/themes/secubox/
+	# Ucode templates (required for LuCI theme selection)
+	$(INSTALL_DIR) $(1)/usr/share/ucode/luci/template/themes/secubox
+	$(CP) ./ucode/luci/template/themes/secubox/*.ut $(1)/usr/share/ucode/luci/template/themes/secubox/
 	# UCI defaults
 	$(INSTALL_DIR) $(1)/etc/uci-defaults
 	$(INSTALL_BIN) ./root/etc/uci-defaults/90-luci-theme-secubox $(1)/etc/uci-defaults/
