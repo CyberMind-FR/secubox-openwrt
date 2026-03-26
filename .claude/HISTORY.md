@@ -1,6 +1,39 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-03-25 (CRT P31 Phosphor Theme Enhancement)_
+_Last updated: 2026-03-26 (Theme Deployment & Documentation)_
+
+0. **Theme Deployment & Documentation (2026-03-26)**
+   - **LuCI 24.10 Compatibility Fix**:
+     - Added ucode templates (`.ut` files) replacing incompatible Lua templates
+     - `header.ut`: Proper LuCI template with board info, theme reference
+     - `footer.ut`: SecuBox branding with version info
+     - Modern LuCI requires ucode templates in `/usr/share/ucode/luci/template/themes/`
+   - **Navbar Layout Fix**:
+     - Changed from sidebar layout to horizontal top navigation bar
+     - Header uses flexbox: `.brand` | `#topmenu.nav` | `#indicators`
+     - Added dropdown menu styles for submenu items
+     - Added `#tabmenu` secondary navigation styles
+     - Fixed footer to use flex layout
+     - Updated responsive styles for mobile header wrapping
+   - **Documentation Structure** (secubox-deb style):
+     - `docs/README.md`: Project overview and quick links
+     - `docs/SCREENSHOTS.md`: Module screenshot gallery (50+ entries, pending captures)
+     - `docs/UI-GUIDE.md`: CRT P31 theme design guide with color palette
+     - `docs/MODULES.md`: Complete package catalog (75+ modules)
+     - `docs/API.md`: RPCD/ubus API reference with method tables
+     - `docs/screenshots/router/`: Directory for OpenWrt router screenshots
+     - `docs/wiki/`: Directory for multilingual documentation
+   - **Files created/updated**:
+     - `ucode/luci/template/themes/secubox/header.ut`
+     - `ucode/luci/template/themes/secubox/footer.ut`
+     - `htdocs/luci-static/secubox/cascade.css` (layout fixes)
+     - `htdocs/luci-static/secubox/mobile.css` (new)
+     - Makefile updated to PKG_RELEASE:=3
+   - **Commits**:
+     - `feat(luci-theme-secubox)`: CRT P31 theme with Lua templates
+     - `fix(luci-theme-secubox)`: ucode templates for LuCI 24.10
+     - `fix(luci-theme-secubox)`: Navbar layout for horizontal nav
+     - `docs`: Comprehensive documentation structure
 
 0. **CRT P31 Phosphor Theme Enhancement (2026-03-25)**
    - **NEW: CRT P31 theme variant** (`themes/crt-p31.css`)

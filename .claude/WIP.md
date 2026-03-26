@@ -1,12 +1,28 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-25 (SecuBox Mesh Daemon)_
+_Last updated: 2026-03-26 (Theme Deployment & Documentation)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
 ---
 
 ## Recently Completed
+
+### 2026-03-26
+
+- **CRT P31 Theme Deployment & LuCI 24.10 Fix (Complete)**
+  - Fixed LuCI 24.10 compatibility with ucode templates (.ut files)
+  - Fixed navbar layout: sidebar → horizontal top navigation
+  - Header flexbox: brand | nav menu | indicators
+  - Added mobile responsive styles
+  - Deployed and tested on router
+
+- **Documentation Structure (Complete)**
+  - Created docs/ directory with secubox-deb style documentation
+  - SCREENSHOTS.md with 50+ module entries (pending captures)
+  - UI-GUIDE.md with CRT P31 theme design specs
+  - MODULES.md with 75+ package catalog
+  - API.md with RPCD/ubus method reference
 
 ### 2026-03-25
 
