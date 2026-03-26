@@ -1,107 +1,183 @@
 # SecuBox OpenWrt Documentation
 
-Welcome to the SecuBox OpenWrt documentation. This directory contains comprehensive documentation for the SecuBox mesh network appliance running on OpenWrt 24.10.
+Welcome to the **SecuBox** documentation. SecuBox is a privacy-focused mesh network appliance built on OpenWrt 24.10.
+
+---
 
 ## Quick Links
 
 | Document | Description |
 |----------|-------------|
-| [SCREENSHOTS.md](SCREENSHOTS.md) | Module screenshot gallery (CRT P31 theme) |
-| [UI-GUIDE.md](UI-GUIDE.md) | UI/UX design guide and theme documentation |
-| [MODULES.md](MODULES.md) | Complete module catalog with descriptions |
+| [Wiki Home](wiki/Home.md) | Main wiki with module navigation |
+| [Installation](wiki/Installation.md) | Getting started guide |
+| [Quick Start](wiki/Quick-Start.md) | First-time setup |
+| [Architecture](wiki/Architecture.md) | System architecture overview |
+| [Module Catalog](wiki/Modules.md) | Complete list of 80+ modules |
+
+---
+
+## Documentation Index
+
+### User Guides
+
+| Guide | Description |
+|-------|-------------|
+| [SCREENSHOTS.md](SCREENSHOTS.md) | Module screenshot gallery (111 modules) |
+| [UI-GUIDE.md](UI-GUIDE.md) | CRT P31 theme design guide |
+| [MODULES.md](MODULES.md) | Package catalog with versions |
 | [API.md](API.md) | RPCD/ubus API reference |
+
+### Module Documentation
+
+| Category | Wiki Page | Modules |
+|----------|-----------|---------|
+| Security | [wiki/modules/Security.md](wiki/modules/Security.md) | 15 modules |
+| Network | [wiki/modules/Network.md](wiki/modules/Network.md) | 12 modules |
+| Monitoring | [wiki/modules/Monitoring.md](wiki/modules/Monitoring.md) | 10 modules |
+| VPN & Mesh | [wiki/modules/Mesh.md](wiki/modules/Mesh.md) | 7 modules |
+| DNS | [wiki/modules/DNS.md](wiki/modules/DNS.md) | 6 modules |
+| Apps | [wiki/modules/Apps.md](wiki/modules/Apps.md) | 20 modules |
+| System | [wiki/modules/System.md](wiki/modules/System.md) | 14 modules |
+| AI | [wiki/modules/AI.md](wiki/modules/AI.md) | 8 modules |
+
+### Development
+
+| Document | Description |
+|----------|-------------|
+| [development-guidelines.md](development-guidelines.md) | Coding standards |
+| [module-implementation-guide.md](module-implementation-guide.md) | Creating new modules |
+| [luci-development-reference.md](luci-development-reference.md) | LuCI JavaScript guide |
+| [validation-guide.md](validation-guide.md) | Testing and validation |
+
+---
 
 ## Project Overview
 
-**SecuBox** is a privacy-focused mesh network appliance built on OpenWrt. It provides:
+**SecuBox** provides:
 
-- 🛡️ **Security**: CrowdSec IDS/IPS, WAF with mitmproxy, network isolation
-- 🌐 **Mesh Networking**: WireGuard VPN, P2P gossip protocol, automatic peer discovery
-- 🤖 **AI Integration**: Local AI with LocalAI/Ollama, sovereign data classification
-- 📡 **Privacy**: Tor integration, anonymous service exposure, ZKP verification
-- 🎨 **Modern UI**: LuCI-based dashboard with CRT P31 phosphor green terminal theme
+- **Security**: CrowdSec IDS/IPS, WAF with mitmproxy, network isolation
+- **Mesh Networking**: WireGuard VPN, P2P gossip protocol, automatic peer discovery
+- **AI Integration**: Local AI with LocalAI/Ollama, sovereign data classification
+- **Privacy**: Tor integration, anonymous service exposure, ZKP verification
+- **Modern UI**: LuCI-based dashboard with CRT P31 phosphor green terminal theme
 
-## Screenshots Directory
+### Module Statistics
 
-Screenshots are organized by platform:
+| Category | Count |
+|----------|-------|
+| LuCI Apps | 80+ |
+| Backend Packages | 40+ |
+| Service Apps | 20+ |
+| **Total** | **140+** |
+
+---
+
+## Directory Structure
 
 ```
 docs/
+├── README.md              # This file
+├── SCREENSHOTS.md         # Screenshot gallery (111 modules)
+├── MODULES.md             # Package catalog
+├── API.md                 # API reference
+├── UI-GUIDE.md            # Theme documentation
 ├── screenshots/
-│   └── router/       # MochaBin/ARM64 router screenshots
-└── wiki/             # Multilingual documentation
+│   └── router/            # OpenWrt router screenshots
+└── wiki/
+    ├── Home.md            # Wiki home
+    ├── Installation.md    # Installation guide
+    ├── Quick-Start.md     # Quick start
+    ├── Architecture.md    # Architecture overview
+    ├── Modules.md         # Module catalog
+    └── modules/
+        ├── Security.md    # Security modules
+        ├── Network.md     # Network modules
+        ├── Mesh.md        # VPN & Mesh modules
+        ├── DNS.md         # DNS modules
+        ├── Apps.md        # Application modules
+        ├── System.md      # System modules
+        └── AI.md          # AI modules
 ```
+
+---
 
 ## Theme: CRT P31 Phosphor Green
 
-The SecuBox UI uses a retro CRT terminal aesthetic:
+SecuBox uses a retro CRT terminal aesthetic:
 
-- **Primary Color**: `#33ff66` (phosphor peak green)
-- **Background**: `#050803` (deep tube black)
-- **Font**: Monospace (Courier Prime, IBM Plex Mono)
-- **Effects**:
-  - Scanline overlay
-  - Phosphor glow on text
-  - Terminal boot sequence animation
+| Element | Color |
+|---------|-------|
+| Primary | `#33ff66` (phosphor peak) |
+| Background | `#050803` (tube black) |
+| Font | Monospace (Courier Prime) |
+| Effects | Scanlines, phosphor glow |
 
 ![Theme Preview](screenshots/router/portal.png)
 
-## Module Categories
+See [UI-GUIDE.md](UI-GUIDE.md) for full theme documentation.
 
-### Core
-- `secubox-core` - Base configuration and utilities
-- `secubox-mesh` - Mesh daemon with topology management
-- `secubox-identity` - DID generation and trust scoring
-- `secubox-p2p` - P2P gossip protocol
+---
 
-### Security (12 modules)
-- CrowdSec Dashboard, WAF Filters, MITM Proxy
-- DNS Guard, Vortex DNS Firewall
-- Auth/Client/MAC Guardian, ZKP verification
+## CLI Quick Reference
 
-### Network (8 modules)
-- Network Modes, Bandwidth Manager, Traffic Shaper
-- HAProxy, Virtual Hosts, CDN Cache
+```bash
+# System
+secubox status              # System status
+secubox version             # Version info
 
-### Monitoring (6 modules)
-- Netdata integration, DPI (netifyd)
-- Device Intel, Media Flow, Watchdog, LAN Flows
+# Mesh
+secuboxctl status           # Mesh status
+secuboxctl peers            # List peers
 
-### Publishing (4 modules)
-- Metablogizer, Droplet, Streamlit Forge, Metacatalog
+# Security
+cscli decisions list        # CrowdSec bans
+cscli alerts list           # Recent alerts
 
-### AI (4 modules)
-- AI Gateway (data sovereignty), AI Insights
-- LocalAI, Ollama integration
+# Network
+haproxyctl vhost list       # List vhosts
+wgctl status                # WireGuard status
 
-## API Reference
+# AI
+aigatewayctl status         # AI Gateway status
+```
+
+---
+
+## API Usage
 
 All LuCI modules expose RPCD/ubus APIs:
 
 ```bash
-# List available methods
+# List methods
 ubus list | grep luci.secubox
 
-# Call a method
+# Call method
 ubus call luci.secubox-mesh status
 
-# Example: Get mesh topology
-ubus call luci.secubox-mesh topology
+# With parameters
+ubus call luci.secubox-mesh scan_full '{}'
 ```
 
-See [API.md](API.md) for complete method documentation.
+See [API.md](API.md) for complete documentation.
+
+---
 
 ## Development
 
-### Quick Deploy (without rebuild)
+### Quick Deploy
 
 ```bash
 # Deploy JS views
-scp htdocs/luci-static/resources/view/secubox/*.js root@192.168.255.1:/www/luci-static/resources/view/secubox/
+scp htdocs/luci-static/resources/view/secubox/*.js \
+    root@192.168.255.1:/www/luci-static/resources/view/secubox/
 
 # Deploy RPCD handler
-scp root/usr/libexec/rpcd/<handler> root@192.168.255.1:/usr/libexec/rpcd/
+scp root/usr/libexec/rpcd/<handler> \
+    root@192.168.255.1:/usr/libexec/rpcd/
 ssh root@192.168.255.1 '/etc/init.d/rpcd restart'
+
+# Clear caches
+ssh root@192.168.255.1 'rm -rf /tmp/luci-*'
 ```
 
 ### Build Package
@@ -114,6 +190,8 @@ rsync -av --delete package/secubox/<pkg>/ secubox-tools/local-feed/<pkg>/
 ./secubox-tools/local-build.sh build <pkg>
 ```
 
+---
+
 ## Support
 
 - **Repository**: [github.com/gkerma/secubox-openwrt](https://github.com/gkerma/secubox-openwrt)
@@ -122,4 +200,4 @@ rsync -av --delete package/secubox/<pkg>/ secubox-tools/local-feed/<pkg>/
 
 ---
 
-*SecuBox v1.0.0 | CyberMind — 2026*
+*SecuBox v1.0.0 | CyberMind 2026*
