@@ -1,0 +1,158 @@
+#!/bin/sh
+# SecuBox Mesh Invite Generator
+# Generates a join URL that can be shared with peer nodes
+# Usage: sbx-mesh-invite [--auto-approve] [--ttl SECONDS]
+
+set -e
+
+TOKENS_FILE="/var/lib/secubox/p2p/master-link/tokens.json"
+AUTO_APPROVE="true"
+TTL=3600
+MASTER_IP=""
+
+# Parse arguments
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --auto-approve|-a)
+            AUTO_APPROVE="true"
+            shift
+            ;;
+        --manual-approve|-m)
+            AUTO_APPROVE="false"
+            shift
+            ;;
+        --ttl|-t)
+            TTL="$2"
+            shift 2
+            ;;
+        --ip|-i)
+            MASTER_IP="$2"
+            shift 2
+            ;;
+        --help|-h)
+            cat << 'EOF'
+SecuBox Mesh Invite Generator
+
+Usage:
+  sbx-mesh-invite [options]
+
+Options:
+  -a, --auto-approve   Auto-approve joining nodes (default)
+  -m, --manual-approve Require manual approval
+  -t, --ttl SECONDS    Token validity in seconds (default: 3600)
+  -i, --ip ADDRESS     Master IP address for the invite URL
+  -h, --help           Show this help
+
+Output:
+  Prints a join URL that can be copy-pasted to peer nodes.
+  On the peer, run: sbx-mesh-join <URL>
+EOF
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            exit 1
+            ;;
+    esac
+done
+
+# Ensure tokens directory exists
+mkdir -p "$(dirname "$TOKENS_FILE")"
+
+# Generate random token (32 hex chars)
+if command -v openssl >/dev/null; then
+    TOKEN=$(openssl rand -hex 16)
+elif [ -r /dev/urandom ]; then
+    TOKEN=$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')
+else
+    # Fallback: use date + random
+    TOKEN=$(date +%s%N | sha256sum | head -c 32)
+fi
+
+# Calculate hash
+if command -v sha256sum >/dev/null; then
+    HASH=$(printf '%s' "$TOKEN" | sha256sum | cut -d' ' -f1)
+elif command -v openssl >/dev/null; then
+    HASH=$(printf '%s' "$TOKEN" | openssl dgst -sha256 | awk '{print $2}')
+else
+    echo "Error: No sha256 tool available" >&2
+    exit 1
+fi
+
+# Get timestamps
+NOW=$(date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S)
+NOW_TS=$(date +%s)
+EXPIRES_TS=$((NOW_TS + TTL))
+EXPIRES=$(date -Iseconds -d "@$EXPIRES_TS" 2>/dev/null || date -r "$EXPIRES_TS" -Iseconds 2>/dev/null || echo "$EXPIRES_TS")
+
+# Get local IP for URL
+LOCAL_IP="$MASTER_IP"
+if [ -z "$LOCAL_IP" ]; then
+    # Try common LAN interfaces first, prefer 192.168.x.x addresses
+    for iface in br-lan eth0 enp0s8 enp0s3 ens3; do
+        candidate=$(ip -4 addr show "$iface" 2>/dev/null | grep -oE 'inet 192\.168\.[0-9.]+' | awk '{print $2}' | head -1)
+        if [ -n "$candidate" ]; then
+            LOCAL_IP="$candidate"
+            break
+        fi
+    done
+    # Fallback to any non-loopback, non-10.x address
+    if [ -z "$LOCAL_IP" ]; then
+        LOCAL_IP=$(ip -4 addr show 2>/dev/null | grep -oE 'inet [0-9.]+' | grep -v '127.0.0' | grep -v 'inet 10\.' | awk '{print $2}' | head -1)
+    fi
+    [ -z "$LOCAL_IP" ] && LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+    [ -z "$LOCAL_IP" ] && LOCAL_IP="<MASTER_IP>"
+fi
+
+# Create new token entry
+NEW_TOKEN="{
+  \"hash\": \"$HASH\",
+  \"type\": \"join\",
+  \"created\": \"$NOW\",
+  \"expires\": \"$EXPIRES\",
+  \"expires_ts\": $EXPIRES_TS,
+  \"ttl\": $TTL,
+  \"status\": \"active\",
+  \"auto_approve\": $AUTO_APPROVE
+}"
+
+# Add to tokens file
+if [ -f "$TOKENS_FILE" ]; then
+    # Append to existing array using Python or jq
+    if command -v python3 >/dev/null; then
+        python3 << PYEOF
+import json
+with open("$TOKENS_FILE", "r") as f:
+    tokens = json.load(f)
+tokens.append(json.loads('''$NEW_TOKEN'''))
+with open("$TOKENS_FILE", "w") as f:
+    json.dump(tokens, f, indent=2)
+PYEOF
+    elif command -v jq >/dev/null; then
+        tmp=$(mktemp)
+        jq ". + [$NEW_TOKEN]" "$TOKENS_FILE" > "$tmp" && mv "$tmp" "$TOKENS_FILE"
+    else
+        # Manual append (risky but works for simple cases)
+        sed -i 's/]$/,'"$(echo "$NEW_TOKEN" | tr -d '\n')"']/' "$TOKENS_FILE"
+    fi
+else
+    echo "[$NEW_TOKEN]" > "$TOKENS_FILE"
+fi
+
+# Output the invite URL
+echo ""
+echo "Mesh Invite Generated"
+echo "====================="
+echo ""
+echo "Token: $TOKEN"
+echo "Expires: $EXPIRES"
+echo "Auto-approve: $AUTO_APPROVE"
+echo ""
+echo "Join URL (copy this to the peer node):"
+echo ""
+echo "  https://${LOCAL_IP}/master-link/?token=${TOKEN}"
+echo ""
+echo "Or run on the peer:"
+echo ""
+echo "  sbx-mesh-join ${LOCAL_IP} ${TOKEN}"
+echo ""

@@ -190,6 +190,9 @@ main() {
             # Save to UCI if available
             if command -v uci >/dev/null; then
                 log_step "Saving configuration..."
+                # Ensure config file and section exist
+                [ -f /etc/config/masterlink ] || touch /etc/config/masterlink
+                uci -q get masterlink.settings >/dev/null || uci set masterlink.settings='mesh'
                 uci set masterlink.settings.enabled='1'
                 uci set masterlink.settings.role='peer'
                 uci set masterlink.settings.status='approved'
@@ -207,6 +210,8 @@ main() {
 
             # Save pending state
             if command -v uci >/dev/null; then
+                [ -f /etc/config/masterlink ] || touch /etc/config/masterlink
+                uci -q get masterlink.settings >/dev/null || uci set masterlink.settings='mesh'
                 uci set masterlink.settings.enabled='1'
                 uci set masterlink.settings.role='peer'
                 uci set masterlink.settings.status='pending'
