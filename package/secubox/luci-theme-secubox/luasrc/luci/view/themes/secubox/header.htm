@@ -1,0 +1,106 @@
+<%#
+ SecuBox CRT P31 Theme - Header Template
+ CyberMind — SecuBox — 2026
+-%>
+
+<%
+	local sys  = require "luci.sys"
+	local http = require "luci.http"
+	local disp = require "luci.dispatcher"
+	local util = require "luci.util"
+	local fs   = require "nixio.fs"
+
+	local request  = disp.context.path
+	local request2 = disp.context.request
+	local category = request[1]
+	local cattree  = category and disp.node(category)
+
+	local node  = token and disp.node(unpack(request)) or nil
+	local title = node and node.title or "SecuBox"
+
+	local hostname = fs.readfile("/proc/sys/kernel/hostname") or ""
+	hostname = util.trim(hostname)
+-%>
+
+<!DOCTYPE html>
+<html lang="<%=luci.i18n.context.lang%>">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title><%=pcdata(hostname)%> - <%=striptags(title)%> - SecuBox</title>
+<link rel="stylesheet" href="<%=media%>/cascade.css?v=<%=luci.version.revision%>">
+<script src="<%=media%>/crt-engine.js?v=<%=luci.version.revision%>"></script>
+<% if node and node.css then %>
+<link rel="stylesheet" href="<%=resource%>/<%=node.css%>">
+<% end -%>
+<% if css then %>
+<style title="text/css"><%= css %></style>
+<% end -%>
+</head>
+<body class="lang_<%=luci.i18n.context.lang%>">
+<header class="main-head">
+	<div class="brand">SECUBOX</div>
+	<div class="status">
+		<span class="hostname"><%=pcdata(hostname)%></span>
+	</div>
+</header>
+
+<div id="maincontainer" class="main-container">
+	<nav class="main-left" id="mainmenu">
+		<ul class="mainmenu">
+		<%
+		local function submenu(prefix, node, level)
+			local childs = disp.node_childs(node)
+			if #childs > 0 then
+				for i, r in ipairs(childs) do
+					local nnode = node.nodes[r]
+					local href  = controller .. prefix .. r
+					local title = pcdata(striptags(nnode.title))
+					local active = (request[level] == r)
+
+					if nnode.hidden then
+						-- skip hidden nodes
+					else
+		%>
+			<li class="<%=active and "active " or ""%><%=nnode.nodes and "slide" or ""%>">
+				<a href="<%=href%>"><%=title%></a>
+				<%
+					if active and nnode.nodes then
+						submenu(prefix .. r .. "/", nnode, level + 1)
+					end
+				%>
+			</li>
+		<%
+					end
+				end
+			end
+		end
+
+		for i, r in ipairs(disp.node_childs(cattree)) do
+			local nnode = cattree.nodes[r]
+			local href  = controller .. "/" .. category .. "/" .. r
+			local title = pcdata(striptags(nnode.title))
+			local active = (request[2] == r)
+
+			if not nnode.hidden then
+		%>
+			<li class="<%=active and "active " or ""%><%=nnode.nodes and "slide" or ""%>">
+				<a href="<%=href%>"><%=title%></a>
+				<%
+					if active and nnode.nodes then
+						submenu("/" .. category .. "/" .. r .. "/", nnode, 3)
+					end
+				%>
+			</li>
+		<%
+			end
+		end
+		%>
+		</ul>
+	</nav>
+
+	<main class="main-right" id="maincontent">
+		<% if title then %>
+		<h2><%=pcdata(striptags(title))%></h2>
+		<% end %>

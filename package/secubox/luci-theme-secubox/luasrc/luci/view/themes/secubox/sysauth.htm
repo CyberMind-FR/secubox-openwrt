@@ -1,0 +1,215 @@
+<%#
+ SecuBox CRT P31 Theme - Login Page Template
+ CyberMind — SecuBox — 2026
+-%>
+
+<%
+	local sys = require "luci.sys"
+	local fs  = require "nixio.fs"
+	local util = require "luci.util"
+
+	local hostname = fs.readfile("/proc/sys/kernel/hostname") or "SecuBox"
+	hostname = util.trim(hostname)
+-%>
+
+<!DOCTYPE html>
+<html lang="<%=luci.i18n.context.lang%>">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title><%=pcdata(hostname)%> - Login - SecuBox</title>
+<link rel="stylesheet" href="<%=media%>/cascade.css?v=<%=luci.version.revision%>">
+<script src="<%=media%>/crt-engine.js?v=<%=luci.version.revision%>"></script>
+<style>
+body.login {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 100vh;
+	margin: 0;
+	padding: 1rem;
+}
+
+.login-container {
+	width: 100%;
+	max-width: 400px;
+	background: #080d05;
+	border: 1px solid #052210;
+	border-radius: 8px;
+	padding: 2rem;
+	box-shadow: 0 0 30px rgba(0, 0, 0, 0.8), 0 0 8px rgba(51,255,102,0.1);
+}
+
+.login-logo {
+	text-align: center;
+	margin-bottom: 2rem;
+}
+
+.login-logo h1 {
+	color: #33ff66;
+	font-size: 2rem;
+	letter-spacing: 4px;
+	text-shadow: 0 0 6px #33ff66, 0 0 14px rgba(51,255,102,0.5);
+	margin: 0;
+	font-weight: bold;
+}
+
+.login-logo h1::before {
+	content: '[ ';
+	color: #0f8822;
+}
+
+.login-logo h1::after {
+	content: ' ]';
+	color: #0f8822;
+}
+
+.login-logo .tagline {
+	color: #0f8822;
+	font-size: 0.75rem;
+	text-transform: uppercase;
+	letter-spacing: 2px;
+	margin-top: 0.5rem;
+}
+
+.login-hostname {
+	color: #22cc44;
+	font-size: 0.85rem;
+	text-align: center;
+	margin-bottom: 1.5rem;
+	padding: 0.5rem;
+	border: 1px solid #052210;
+	border-radius: 3px;
+	background: #050803;
+}
+
+.login-form label {
+	display: block;
+	color: #0f8822;
+	font-size: 0.75rem;
+	text-transform: uppercase;
+	letter-spacing: 1px;
+	margin-bottom: 0.3rem;
+}
+
+.login-form input[type="text"],
+.login-form input[type="password"] {
+	width: 100%;
+	background: #050803;
+	border: 1px solid #052210;
+	color: #22cc44;
+	padding: 0.75rem;
+	font-family: inherit;
+	font-size: 1rem;
+	border-radius: 3px;
+	margin-bottom: 1rem;
+}
+
+.login-form input:focus {
+	outline: none;
+	border-color: #22cc44;
+	box-shadow: 0 0 8px rgba(51,255,102,0.3), inset 0 0 4px rgba(51,255,102,0.1);
+}
+
+.login-form button {
+	width: 100%;
+	background: transparent;
+	border: 1px solid #22cc44;
+	color: #33ff66;
+	padding: 0.75rem;
+	font-family: inherit;
+	font-size: 0.9rem;
+	text-transform: uppercase;
+	letter-spacing: 2px;
+	cursor: pointer;
+	border-radius: 3px;
+	transition: all 0.2s ease;
+}
+
+.login-form button:hover {
+	background: #22cc44;
+	color: #050803;
+	text-shadow: none;
+}
+
+.login-error {
+	background: rgba(255, 68, 102, 0.1);
+	border: 1px solid #ff4466;
+	color: #ff6688;
+	padding: 0.75rem;
+	border-radius: 3px;
+	margin-bottom: 1rem;
+	font-size: 0.85rem;
+	text-align: center;
+}
+
+.login-footer {
+	text-align: center;
+	margin-top: 2rem;
+	padding-top: 1rem;
+	border-top: 1px solid #052210;
+	color: #052210;
+	font-size: 0.7rem;
+}
+
+.login-footer a {
+	color: #0f8822;
+}
+</style>
+</head>
+<body class="login">
+
+<div class="login-container">
+	<div class="login-logo">
+		<h1>SECUBOX</h1>
+		<div class="tagline">Mesh Security Appliance</div>
+	</div>
+
+	<div class="login-hostname">
+		<%=pcdata(hostname)%>
+	</div>
+
+	<% if fuser then %>
+	<div class="login-error">
+		Invalid username or password
+	</div>
+	<% end %>
+
+	<form class="login-form" method="post" action="<%=pcdata(duser and url("admin/uci/changes") or REQUEST_URI)%>">
+		<div class="form-group">
+			<label for="luci_username"><%:Username%></label>
+			<input type="text" id="luci_username" name="luci_username"
+				   value="<%=pcdata(duser)%>" placeholder="root"
+				   autocomplete="username" autofocus>
+		</div>
+
+		<div class="form-group">
+			<label for="luci_password"><%:Password%></label>
+			<input type="password" id="luci_password" name="luci_password"
+				   placeholder="********" autocomplete="current-password">
+		</div>
+
+		<button type="submit"><%:Login%></button>
+	</form>
+
+	<div class="login-footer">
+		<span>SecuBox v<%=luci.version.distversion%></span>
+		<span>|</span>
+		<a href="https://openwrt.org" target="_blank">OpenWrt</a>
+	</div>
+</div>
+
+<script>
+// Focus password field if username is pre-filled
+document.addEventListener('DOMContentLoaded', function() {
+	var username = document.getElementById('luci_username');
+	var password = document.getElementById('luci_password');
+	if (username && username.value && password) {
+		password.focus();
+	}
+});
+</script>
+
+</body>
+</html>

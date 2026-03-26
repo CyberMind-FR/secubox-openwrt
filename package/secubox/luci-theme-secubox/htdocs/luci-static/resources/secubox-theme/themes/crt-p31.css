@@ -1,0 +1,411 @@
+/**
+ * SecuBox CRT P31 Phosphor Green Theme
+ * File: themes/crt-p31.css
+ * Version: 1.0.0
+ * SPDX-License-Identifier: MIT
+ *
+ * Authentic CRT terminal aesthetic with P31 phosphor green
+ * Features scanlines, phosphor glow, and retro-futuristic styling
+ */
+
+body[data-secubox-theme="crt-p31"] {
+	/* P31 Phosphor Green Scale */
+	--cyber-p31-peak: #33ff66;      /* Maximum brightness */
+	--cyber-p31-hot: #66ffaa;       /* High brightness */
+	--cyber-p31-mid: #22cc44;       /* Medium brightness */
+	--cyber-p31-dim: #0f8822;       /* Low brightness */
+	--cyber-p31-ghost: #052210;     /* Ghosting/afterglow */
+
+	/* Phosphor Decay (amber for warnings) */
+	--cyber-p31-decay: #ffb347;
+	--cyber-p31-decay-dim: #cc7722;
+
+	/* CRT Tube Colors */
+	--cyber-tube-black: #050803;
+	--cyber-tube-deep: #080d05;
+	--cyber-tube-bezel: #0d1208;
+
+	/* Map to cyber design system */
+	--cyber-bg-primary: var(--cyber-tube-black);
+	--cyber-bg-secondary: var(--cyber-tube-deep);
+	--cyber-bg-tertiary: var(--cyber-tube-bezel);
+	--cyber-surface: #0a1207;
+	--cyber-surface-light: #0f1a0c;
+	--cyber-overlay: rgba(5, 8, 3, 0.9);
+
+	/* Text colors */
+	--cyber-text-primary: var(--cyber-p31-mid);
+	--cyber-text-secondary: var(--cyber-p31-dim);
+	--cyber-text-muted: var(--cyber-p31-ghost);
+	--cyber-text-inverse: var(--cyber-tube-black);
+
+	/* Accent - all green */
+	--cyber-accent-primary: var(--cyber-p31-mid);
+	--cyber-accent-primary-end: var(--cyber-p31-peak);
+	--cyber-accent-secondary: var(--cyber-p31-hot);
+	--cyber-accent-tertiary: var(--cyber-p31-dim);
+
+	/* Semantic colors */
+	--cyber-success: var(--cyber-p31-peak);
+	--cyber-success-soft: rgba(51, 255, 102, 0.1);
+	--cyber-warning: var(--cyber-p31-decay);
+	--cyber-warning-soft: rgba(255, 179, 71, 0.1);
+	--cyber-danger: #ff6688;
+	--cyber-danger-soft: rgba(255, 68, 102, 0.1);
+	--cyber-info: var(--cyber-p31-mid);
+	--cyber-info-soft: rgba(51, 255, 102, 0.05);
+
+	/* Fonts - monospace only */
+	--cyber-font-display: 'Courier Prime', 'IBM Plex Mono', 'Fira Code', 'Courier New', monospace;
+	--cyber-font-body: 'Courier Prime', 'IBM Plex Mono', 'Fira Code', 'Courier New', monospace;
+	--cyber-font-mono: 'Courier Prime', 'IBM Plex Mono', 'Fira Code', 'Courier New', monospace;
+
+	/* Shadows & borders - green glow */
+	--cyber-shadow: 0 0 20px rgba(51, 255, 102, 0.15);
+	--cyber-shadow-soft: 0 0 10px rgba(51, 255, 102, 0.1);
+	--cyber-border: 1px solid var(--cyber-p31-ghost);
+	--cyber-border-strong: 1px solid var(--cyber-p31-dim);
+
+	/* Phosphor glow effects */
+	--cyber-bloom-text: 0 0 2px var(--cyber-p31-peak), 0 0 6px var(--cyber-p31-peak), 0 0 14px rgba(51,255,102,0.5);
+	--cyber-bloom-soft: 0 0 6px var(--cyber-p31-peak), 0 0 14px rgba(51,255,102,0.5);
+	--cyber-bloom-box: 0 0 8px rgba(51,255,102,0.3), inset 0 0 4px rgba(51,255,102,0.1);
+
+	/* Glass effects - darker for CRT */
+	--cyber-glass-bg: rgba(5, 34, 16, 0.3);
+	--cyber-glass-border: var(--cyber-p31-ghost);
+	--cyber-glass-blur: 5px;
+	--cyber-glass-shadow: 0 0 20px rgba(51, 255, 102, 0.1);
+
+	/* Gradients - green phosphor */
+	--cyber-gradient-primary: linear-gradient(135deg, var(--cyber-p31-dim) 0%, var(--cyber-p31-mid) 100%);
+	--cyber-gradient-steel: linear-gradient(135deg, var(--cyber-tube-bezel) 0%, var(--cyber-tube-black) 100%);
+	--cyber-gradient-chrome: linear-gradient(135deg, var(--cyber-p31-dim) 0%, var(--cyber-tube-deep) 100%);
+	--cyber-gradient-cyber: linear-gradient(135deg, var(--cyber-p31-mid) 0%, var(--cyber-p31-peak) 100%);
+
+	/* Base styling */
+	background: var(--cyber-tube-black);
+	color: var(--cyber-p31-mid);
+	font-family: var(--cyber-font-body);
+	letter-spacing: 0.02em;
+}
+
+/* Scanlines overlay */
+body[data-secubox-theme="crt-p31"]::before {
+	content: '';
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	pointer-events: none;
+	background: repeating-linear-gradient(
+		0deg,
+		rgba(0, 0, 0, 0.15),
+		rgba(0, 0, 0, 0.15) 1px,
+		transparent 1px,
+		transparent 2px
+	);
+	z-index: 9999;
+}
+
+/* CRT screen curvature effect */
+body[data-secubox-theme="crt-p31"] {
+	border-radius: 8px;
+	box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.5), inset 0 0 10px rgba(51, 255, 102, 0.1);
+}
+
+/* Headers with glow */
+body[data-secubox-theme="crt-p31"] h1,
+body[data-secubox-theme="crt-p31"] h2,
+body[data-secubox-theme="crt-p31"] h3,
+body[data-secubox-theme="crt-p31"] .sh-page-title,
+body[data-secubox-theme="crt-p31"] .card-title {
+	color: var(--cyber-p31-peak);
+	text-shadow: var(--cyber-bloom-soft);
+	text-transform: uppercase;
+	letter-spacing: 2px;
+}
+
+/* Links */
+body[data-secubox-theme="crt-p31"] a {
+	color: var(--cyber-p31-mid);
+	text-decoration: none;
+	transition: all 0.2s ease;
+}
+
+body[data-secubox-theme="crt-p31"] a:hover {
+	color: var(--cyber-p31-peak);
+	text-shadow: var(--cyber-bloom-soft);
+}
+
+/* Buttons */
+body[data-secubox-theme="crt-p31"] button,
+body[data-secubox-theme="crt-p31"] .btn,
+body[data-secubox-theme="crt-p31"] .cbi-button {
+	background: transparent;
+	border: 1px solid var(--cyber-p31-dim);
+	color: var(--cyber-p31-mid);
+	font-family: inherit;
+	text-transform: uppercase;
+	letter-spacing: 1px;
+	transition: all 0.2s ease;
+}
+
+body[data-secubox-theme="crt-p31"] button:hover,
+body[data-secubox-theme="crt-p31"] .btn:hover,
+body[data-secubox-theme="crt-p31"] .cbi-button:hover {
+	color: var(--cyber-p31-peak);
+	border-color: var(--cyber-p31-mid);
+	text-shadow: var(--cyber-bloom-soft);
+}
+
+body[data-secubox-theme="crt-p31"] .btn-primary,
+body[data-secubox-theme="crt-p31"] .cbi-button-save,
+body[data-secubox-theme="crt-p31"] .cbi-button-apply {
+	border-color: var(--cyber-p31-mid);
+	color: var(--cyber-p31-peak);
+}
+
+body[data-secubox-theme="crt-p31"] .btn-primary:hover,
+body[data-secubox-theme="crt-p31"] .cbi-button-save:hover,
+body[data-secubox-theme="crt-p31"] .cbi-button-apply:hover {
+	background: var(--cyber-p31-mid);
+	color: var(--cyber-tube-black);
+	text-shadow: none;
+}
+
+body[data-secubox-theme="crt-p31"] .btn-danger,
+body[data-secubox-theme="crt-p31"] .cbi-button-remove {
+	border-color: var(--cyber-p31-decay-dim);
+	color: var(--cyber-p31-decay);
+}
+
+body[data-secubox-theme="crt-p31"] .btn-danger:hover,
+body[data-secubox-theme="crt-p31"] .cbi-button-remove:hover {
+	background: var(--cyber-p31-decay);
+	color: var(--cyber-tube-black);
+	text-shadow: none;
+}
+
+/* Form inputs */
+body[data-secubox-theme="crt-p31"] input[type="text"],
+body[data-secubox-theme="crt-p31"] input[type="password"],
+body[data-secubox-theme="crt-p31"] input[type="number"],
+body[data-secubox-theme="crt-p31"] input[type="email"],
+body[data-secubox-theme="crt-p31"] textarea,
+body[data-secubox-theme="crt-p31"] select {
+	background: var(--cyber-tube-black);
+	border: 1px solid var(--cyber-p31-ghost);
+	color: var(--cyber-p31-mid);
+	font-family: inherit;
+}
+
+body[data-secubox-theme="crt-p31"] input:focus,
+body[data-secubox-theme="crt-p31"] select:focus,
+body[data-secubox-theme="crt-p31"] textarea:focus {
+	outline: none;
+	border-color: var(--cyber-p31-mid);
+	box-shadow: var(--cyber-bloom-box);
+}
+
+/* Cards */
+body[data-secubox-theme="crt-p31"] .card,
+body[data-secubox-theme="crt-p31"] .panel,
+body[data-secubox-theme="crt-p31"] .cbi-section,
+body[data-secubox-theme="crt-p31"] .cbi-map {
+	background: var(--cyber-tube-deep);
+	border: 1px solid var(--cyber-p31-ghost);
+}
+
+/* Tables */
+body[data-secubox-theme="crt-p31"] table th {
+	background: var(--cyber-tube-black);
+	color: var(--cyber-p31-dim);
+	text-transform: uppercase;
+	letter-spacing: 1px;
+	font-weight: normal;
+	border-bottom: 1px solid var(--cyber-p31-ghost);
+}
+
+body[data-secubox-theme="crt-p31"] table td {
+	border-bottom: 1px solid var(--cyber-p31-ghost);
+	color: var(--cyber-p31-mid);
+}
+
+body[data-secubox-theme="crt-p31"] table tr:hover td {
+	background: rgba(51, 255, 102, 0.03);
+}
+
+/* Status indicators */
+body[data-secubox-theme="crt-p31"] .status-online,
+body[data-secubox-theme="crt-p31"] .online,
+body[data-secubox-theme="crt-p31"] .running {
+	color: var(--cyber-p31-peak);
+	text-shadow: 0 0 6px var(--cyber-p31-peak);
+}
+
+body[data-secubox-theme="crt-p31"] .status-offline,
+body[data-secubox-theme="crt-p31"] .offline,
+body[data-secubox-theme="crt-p31"] .stopped {
+	color: #ff6688;
+	text-shadow: 0 0 6px #ff4466;
+}
+
+body[data-secubox-theme="crt-p31"] .status-warning,
+body[data-secubox-theme="crt-p31"] .warning {
+	color: var(--cyber-p31-decay);
+	text-shadow: 0 0 6px var(--cyber-p31-decay);
+}
+
+/* Badges */
+body[data-secubox-theme="crt-p31"] .badge,
+body[data-secubox-theme="crt-p31"] .label {
+	border-radius: 2px;
+	text-transform: uppercase;
+	letter-spacing: 1px;
+	font-size: 0.7rem;
+}
+
+body[data-secubox-theme="crt-p31"] .badge-success {
+	background: rgba(51, 255, 102, 0.1);
+	border: 1px solid var(--cyber-p31-mid);
+	color: var(--cyber-p31-peak);
+}
+
+body[data-secubox-theme="crt-p31"] .badge-warning {
+	background: rgba(255, 179, 71, 0.1);
+	border: 1px solid var(--cyber-p31-decay-dim);
+	color: var(--cyber-p31-decay);
+}
+
+body[data-secubox-theme="crt-p31"] .badge-danger {
+	background: rgba(255, 68, 102, 0.1);
+	border: 1px solid #ff4466;
+	color: #ff6688;
+}
+
+/* Progress bars */
+body[data-secubox-theme="crt-p31"] .progress,
+body[data-secubox-theme="crt-p31"] .cbi-progressbar {
+	background: var(--cyber-tube-black);
+	border: 1px solid var(--cyber-p31-ghost);
+}
+
+body[data-secubox-theme="crt-p31"] .progress-bar,
+body[data-secubox-theme="crt-p31"] .cbi-progressbar > div {
+	background: linear-gradient(90deg, var(--cyber-p31-dim), var(--cyber-p31-mid));
+	box-shadow: 0 0 10px var(--cyber-p31-mid);
+}
+
+/* Navigation */
+body[data-secubox-theme="crt-p31"] nav a,
+body[data-secubox-theme="crt-p31"] .main-left a {
+	color: var(--cyber-p31-dim);
+	text-transform: uppercase;
+	letter-spacing: 1px;
+	border-left: 2px solid transparent;
+}
+
+body[data-secubox-theme="crt-p31"] nav a:hover,
+body[data-secubox-theme="crt-p31"] .main-left a:hover {
+	color: var(--cyber-p31-mid);
+	background: rgba(51, 255, 102, 0.05);
+	border-left-color: var(--cyber-p31-dim);
+}
+
+body[data-secubox-theme="crt-p31"] nav a.active,
+body[data-secubox-theme="crt-p31"] .main-left .active a {
+	color: var(--cyber-p31-peak);
+	background: rgba(51, 255, 102, 0.1);
+	border-left-color: var(--cyber-p31-peak);
+	text-shadow: var(--cyber-bloom-soft);
+}
+
+/* Alerts */
+body[data-secubox-theme="crt-p31"] .alert-success {
+	background: rgba(51, 255, 102, 0.1);
+	border: 1px solid var(--cyber-p31-dim);
+	color: var(--cyber-p31-mid);
+}
+
+body[data-secubox-theme="crt-p31"] .alert-warning {
+	background: rgba(255, 179, 71, 0.1);
+	border: 1px solid var(--cyber-p31-decay-dim);
+	color: var(--cyber-p31-decay);
+}
+
+body[data-secubox-theme="crt-p31"] .alert-danger,
+body[data-secubox-theme="crt-p31"] .alert-error {
+	background: rgba(255, 68, 102, 0.1);
+	border: 1px solid #ff4466;
+	color: #ff6688;
+}
+
+/* Scrollbars */
+body[data-secubox-theme="crt-p31"]::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+
+body[data-secubox-theme="crt-p31"]::-webkit-scrollbar-track {
+	background: var(--cyber-tube-black);
+}
+
+body[data-secubox-theme="crt-p31"]::-webkit-scrollbar-thumb {
+	background: var(--cyber-p31-ghost);
+	border-radius: 4px;
+}
+
+body[data-secubox-theme="crt-p31"]::-webkit-scrollbar-thumb:hover {
+	background: var(--cyber-p31-dim);
+}
+
+/* Selection */
+body[data-secubox-theme="crt-p31"] ::selection {
+	background: var(--cyber-p31-dim);
+	color: var(--cyber-tube-black);
+}
+
+/* Widgets */
+body[data-secubox-theme="crt-p31"] .widget-value,
+body[data-secubox-theme="crt-p31"] .stat-value {
+	color: var(--cyber-p31-peak);
+	text-shadow: var(--cyber-bloom-text);
+	font-weight: bold;
+}
+
+body[data-secubox-theme="crt-p31"] .widget-label,
+body[data-secubox-theme="crt-p31"] .stat-label {
+	color: var(--cyber-p31-dim);
+	text-transform: uppercase;
+	letter-spacing: 1px;
+	font-size: 0.7rem;
+}
+
+/* Topology visualization */
+body[data-secubox-theme="crt-p31"] .topology-node circle {
+	fill: var(--cyber-p31-dim);
+	stroke: var(--cyber-p31-mid);
+}
+
+body[data-secubox-theme="crt-p31"] .topology-node.active circle {
+	fill: var(--cyber-p31-mid);
+	stroke: var(--cyber-p31-peak);
+}
+
+body[data-secubox-theme="crt-p31"] .topology-edge {
+	stroke: var(--cyber-p31-ghost);
+}
+
+body[data-secubox-theme="crt-p31"] .topology-edge.active {
+	stroke: var(--cyber-p31-dim);
+}
+
+/* Code blocks */
+body[data-secubox-theme="crt-p31"] code,
+body[data-secubox-theme="crt-p31"] pre {
+	background: var(--cyber-tube-black);
+	border: 1px solid var(--cyber-p31-ghost);
+	color: var(--cyber-p31-mid);
+}
