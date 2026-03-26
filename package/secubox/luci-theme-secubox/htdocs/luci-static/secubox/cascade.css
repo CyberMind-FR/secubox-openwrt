@@ -1,55 +1,70 @@
 /* ============================================
    SecuBox CRT P31 Theme for OpenWrt LuCI
    CyberMind — SecuBox — 2026
+
+   Complete theme override for LuCI bootstrap
    ============================================ */
 
 /* === CSS Variables === */
 :root {
     /* P31 Phosphor Green Scale */
-    --p31-peak: #33ff66;      /* Maximum brightness - headers, active elements */
-    --p31-hot: #66ffaa;       /* High brightness - hover states */
-    --p31-mid: #22cc44;       /* Medium brightness - body text */
-    --p31-dim: #0f8822;       /* Low brightness - secondary text, borders */
-    --p31-ghost: #052210;     /* Ghosting/afterglow - subtle backgrounds */
+    --p31-peak: #33ff66;
+    --p31-hot: #66ffaa;
+    --p31-mid: #22cc44;
+    --p31-dim: #0f8822;
+    --p31-ghost: #052210;
 
-    /* Phosphor Decay (amber for warnings/errors) */
-    --p31-decay: #ffb347;     /* Warning/caution */
-    --p31-decay-dim: #cc7722; /* Muted warning */
+    /* Phosphor Decay (amber) */
+    --p31-decay: #ffb347;
+    --p31-decay-dim: #cc7722;
 
     /* CRT Tube Colors */
-    --tube-black: #050803;    /* Deep CRT black */
-    --tube-deep: #080d05;     /* Card backgrounds */
-    --tube-bezel: #0d1208;    /* Panel borders */
+    --tube-black: #050803;
+    --tube-deep: #080d05;
+    --tube-bezel: #0d1208;
 
-    /* Semantic Aliases */
-    --bg-dark: var(--tube-black);
-    --bg-card: var(--tube-deep);
-    --border: var(--p31-ghost);
-    --text: var(--p31-mid);
-    --text-bright: var(--p31-peak);
-    --text-dim: var(--p31-dim);
+    /* Danger red */
+    --danger: #ff4466;
+    --danger-dim: #cc3355;
 
     /* Glow Effects */
     --bloom-text: 0 0 2px var(--p31-peak), 0 0 6px var(--p31-peak), 0 0 14px rgba(51,255,102,0.5);
     --bloom-soft: 0 0 6px var(--p31-peak), 0 0 14px rgba(51,255,102,0.5);
     --bloom-box: 0 0 8px rgba(51,255,102,0.3), inset 0 0 4px rgba(51,255,102,0.1);
+
+    /* Bootstrap variable overrides */
+    --background-color-high: var(--tube-black);
+    --background-color-medium: var(--tube-deep);
+    --background-color-low: var(--tube-bezel);
+    --text-color-high: var(--p31-mid);
+    --text-color-medium: var(--p31-dim);
+    --border-color-high: var(--p31-ghost);
+    --border-color-medium: var(--p31-ghost);
 }
 
-/* === Reset & Base === */
-* {
+/* === Hard Reset === */
+*, *::before, *::after {
     box-sizing: border-box;
+    margin: 0;
+    padding: 0;
 }
 
-html, body {
+/* === Base Elements === */
+html {
+    font-size: 14px;
+    -webkit-text-size-adjust: 100%;
+}
+
+body {
     background: var(--tube-black) !important;
     color: var(--p31-mid) !important;
     font-family: 'Courier Prime', 'IBM Plex Mono', 'Fira Code', 'Courier New', 'Lucida Console', monospace !important;
-    font-size: 14px;
-    line-height: 1.5;
-    letter-spacing: 0.02em;
+    font-size: 14px !important;
+    line-height: 1.5 !important;
+    letter-spacing: 0.02em !important;
     min-height: 100vh;
-    margin: 0;
-    padding: 0;
+    margin: 0 !important;
+    padding: 0 !important;
 }
 
 /* === Scanlines Overlay === */
@@ -71,35 +86,30 @@ body::before {
     z-index: 9999;
 }
 
-/* === Text Flicker Animation === */
-@keyframes textFlicker {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.98; }
-}
+/* =============================================
+   HEADER & TOP NAVIGATION
+   ============================================= */
 
-.crt-text {
-    text-shadow: var(--bloom-text);
-    animation: textFlicker 0.1s infinite;
-}
-
-/* === Header Bar (LuCI Bootstrap Layout) === */
 header {
     display: flex !important;
     align-items: center !important;
     background: var(--tube-deep) !important;
     border-bottom: 1px solid var(--p31-ghost) !important;
     padding: 0 !important;
-    height: 50px !important;
+    min-height: 50px !important;
     position: sticky !important;
     top: 0 !important;
     z-index: 1000 !important;
+    flex-wrap: wrap !important;
 }
 
-/* Brand/Hostname */
-header .brand {
+/* Brand / Hostname */
+header > .brand,
+header > a.brand {
     display: flex !important;
     align-items: center !important;
     padding: 0 1.5rem !important;
+    min-height: 50px !important;
     font-size: 1.1rem !important;
     font-weight: bold !important;
     color: var(--p31-peak) !important;
@@ -108,39 +118,49 @@ header .brand {
     text-transform: uppercase !important;
     text-decoration: none !important;
     white-space: nowrap !important;
-    height: 100% !important;
     background: var(--tube-black) !important;
     border-right: 1px solid var(--p31-ghost) !important;
 }
 
-header .brand:hover {
+header > .brand:hover,
+header > a.brand:hover {
     color: var(--p31-hot) !important;
+    text-decoration: none !important;
 }
 
-/* Top Navigation Menu */
-header .nav, header #topmenu {
+/* Top Menu Navigation */
+header > .nav,
+header > ul.nav,
+header > #topmenu,
+ul#topmenu {
     display: flex !important;
     flex: 1 !important;
+    flex-wrap: wrap !important;
     list-style: none !important;
     margin: 0 !important;
     padding: 0 0.5rem !important;
-    height: 100% !important;
+    min-height: 50px !important;
     align-items: center !important;
-    overflow-x: auto !important;
+    background: transparent !important;
 }
 
-header .nav li, header #topmenu li {
+header > .nav > li,
+header > ul.nav > li,
+#topmenu > li {
     list-style: none !important;
-    height: 100% !important;
+    position: relative !important;
+    height: 50px !important;
     display: flex !important;
     align-items: center !important;
 }
 
-header .nav > li > a, header #topmenu > li > a {
+header > .nav > li > a,
+header > ul.nav > li > a,
+#topmenu > li > a {
     display: flex !important;
     align-items: center !important;
     padding: 0 1rem !important;
-    height: 100% !important;
+    height: 50px !important;
     color: var(--p31-dim) !important;
     text-decoration: none !important;
     font-size: 0.8rem !important;
@@ -149,23 +169,31 @@ header .nav > li > a, header #topmenu > li > a {
     white-space: nowrap !important;
     border-bottom: 2px solid transparent !important;
     transition: all 0.2s ease !important;
+    background: transparent !important;
 }
 
-header .nav > li > a:hover, header #topmenu > li > a:hover {
+header > .nav > li > a:hover,
+header > ul.nav > li > a:hover,
+#topmenu > li > a:hover {
     color: var(--p31-mid) !important;
     background: rgba(51, 255, 102, 0.05) !important;
+    text-decoration: none !important;
 }
 
-header .nav > li.active > a, header #topmenu > li.active > a,
-header .nav > li.selected > a, header #topmenu > li.selected > a {
+header > .nav > li.active > a,
+header > ul.nav > li.active > a,
+#topmenu > li.active > a {
     color: var(--p31-peak) !important;
     border-bottom-color: var(--p31-peak) !important;
     text-shadow: var(--bloom-soft) !important;
 }
 
-/* Dropdown menus */
-header .nav li ul, header #topmenu li ul,
-.dropdown-menu, .menu-dropdown {
+/* Dropdown Menus */
+header .nav li > ul,
+header ul.nav li > ul,
+#topmenu li > ul,
+.dropdown-menu,
+ul.dropdown-menu {
     position: absolute !important;
     top: 100% !important;
     left: 0 !important;
@@ -174,89 +202,113 @@ header .nav li ul, header #topmenu li ul,
     border: 1px solid var(--p31-ghost) !important;
     border-top: none !important;
     padding: 0.5rem 0 !important;
+    margin: 0 !important;
+    list-style: none !important;
     display: none !important;
     z-index: 1001 !important;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
 }
 
-header .nav li:hover ul, header #topmenu li:hover ul,
-header .nav li.open ul, header #topmenu li.open ul {
+header .nav li:hover > ul,
+header ul.nav li:hover > ul,
+#topmenu li:hover > ul,
+.dropdown:hover > .dropdown-menu {
     display: block !important;
 }
 
-header .nav li ul li, header #topmenu li ul li {
+header .nav li > ul li,
+#topmenu li > ul li,
+.dropdown-menu li {
     height: auto !important;
+    display: block !important;
 }
 
-header .nav li ul li a, header #topmenu li ul li a {
+header .nav li > ul li a,
+#topmenu li > ul li a,
+.dropdown-menu li a {
     display: block !important;
     padding: 0.5rem 1rem !important;
+    height: auto !important;
     color: var(--p31-dim) !important;
     font-size: 0.8rem !important;
     text-transform: none !important;
     border-bottom: none !important;
 }
 
-header .nav li ul li a:hover, header #topmenu li ul li a:hover {
+header .nav li > ul li a:hover,
+#topmenu li > ul li a:hover,
+.dropdown-menu li a:hover {
     color: var(--p31-mid) !important;
     background: rgba(51, 255, 102, 0.1) !important;
 }
 
-header .nav li ul li.active a, header #topmenu li ul li.active a {
+header .nav li > ul li.active a,
+#topmenu li > ul li.active a,
+.dropdown-menu li.active a {
     color: var(--p31-peak) !important;
     background: rgba(51, 255, 102, 0.1) !important;
 }
 
 /* Indicators (right side) */
-header #indicators, header .pull-right {
+header > #indicators,
+header > .pull-right,
+#indicators {
     display: flex !important;
     align-items: center !important;
     margin-left: auto !important;
     padding: 0 1rem !important;
     gap: 0.75rem !important;
+    min-height: 50px !important;
 }
 
-header #indicators .label, header .pull-right .label {
+#indicators .label,
+header .pull-right .label {
     font-size: 0.7rem !important;
     padding: 0.2rem 0.5rem !important;
 }
 
-/* Legacy header h1 styling */
-header h1, .main-head h1, #maincontent > header h1 {
-    font-size: 1.2rem !important;
-    color: var(--p31-peak) !important;
-    text-shadow: var(--bloom-text) !important;
-    font-weight: bold !important;
-    letter-spacing: 2px !important;
-    margin: 0 !important;
+/* =============================================
+   MAIN CONTENT AREA
+   ============================================= */
+
+#maincontent,
+.container,
+div.container {
+    background: var(--tube-black) !important;
+    padding: 1.5rem !important;
+    min-height: calc(100vh - 100px) !important;
 }
 
-header h1::before {
-    content: '[ ';
-    color: var(--p31-dim);
-}
+/* =============================================
+   TAB MENU (Secondary Navigation)
+   ============================================= */
 
-header h1::after {
-    content: ' ]';
-    color: var(--p31-dim);
-}
-
-/* === Tabmenu (secondary navigation) === */
-#tabmenu, .cbi-tabmenu-container {
+#tabmenu {
     background: var(--tube-deep) !important;
     border-bottom: 1px solid var(--p31-ghost) !important;
-    padding: 0 1rem !important;
-    margin: 0 -1.5rem 1.5rem -1.5rem !important;
+    padding: 0 !important;
+    margin: -1.5rem -1.5rem 1.5rem -1.5rem !important;
 }
 
-#tabmenu ul, .cbi-tabmenu-container ul {
+#tabmenu > ul,
+#tabmenu > ul.tabs,
+ul.tabs {
     display: flex !important;
+    flex-wrap: wrap !important;
     list-style: none !important;
     margin: 0 !important;
-    padding: 0 !important;
+    padding: 0 1rem !important;
+    background: transparent !important;
 }
 
-#tabmenu li a, .cbi-tabmenu-container li a {
+#tabmenu > ul > li,
+ul.tabs > li {
+    list-style: none !important;
+}
+
+#tabmenu > ul > li > a,
+ul.tabs > li > a,
+.tabs .tab {
     display: block !important;
     padding: 0.75rem 1.25rem !important;
     color: var(--p31-dim) !important;
@@ -265,61 +317,179 @@ header h1::after {
     text-transform: uppercase !important;
     letter-spacing: 1px !important;
     border-bottom: 2px solid transparent !important;
+    transition: all 0.2s ease !important;
+    background: transparent !important;
 }
 
-#tabmenu li a:hover, .cbi-tabmenu-container li a:hover {
+#tabmenu > ul > li > a:hover,
+ul.tabs > li > a:hover {
     color: var(--p31-mid) !important;
 }
 
-#tabmenu li.active a, #tabmenu li.selected a,
-.cbi-tabmenu-container li.active a {
+#tabmenu > ul > li.active > a,
+ul.tabs > li.active > a,
+.tabs .tab.active {
     color: var(--p31-peak) !important;
     border-bottom-color: var(--p31-peak) !important;
     text-shadow: var(--bloom-soft) !important;
 }
 
-/* === Main Content Area === */
-#maincontent, .container {
-    padding: 1.5rem !important;
-    background: var(--tube-black) !important;
-    min-height: calc(100vh - 50px - 40px) !important; /* viewport - header - footer */
+/* =============================================
+   CBI TAB MENU (Form Tabs)
+   ============================================= */
+
+.cbi-tabmenu,
+ul.cbi-tabmenu {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    list-style: none !important;
+    margin: 0 0 1rem 0 !important;
+    padding: 0 !important;
+    border-bottom: 1px solid var(--p31-ghost) !important;
+    background: transparent !important;
 }
 
-/* Mode menu (bottom breadcrumb) */
-#modemenu {
+.cbi-tabmenu > li {
+    list-style: none !important;
+}
+
+.cbi-tabmenu > li > a {
+    display: block !important;
+    padding: 0.6rem 1rem !important;
+    color: var(--p31-dim) !important;
+    text-decoration: none !important;
+    font-size: 0.8rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1px !important;
+    border: 1px solid transparent !important;
+    border-bottom: none !important;
+    margin-bottom: -1px !important;
+    background: transparent !important;
+}
+
+.cbi-tabmenu > li > a:hover {
+    color: var(--p31-mid) !important;
+}
+
+.cbi-tabmenu > li.cbi-tab > a {
+    color: var(--p31-peak) !important;
+    border-color: var(--p31-ghost) !important;
+    background: var(--tube-deep) !important;
+    text-shadow: var(--bloom-soft) !important;
+}
+
+/* =============================================
+   FOOTER & MODE MENU
+   ============================================= */
+
+footer {
     display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    flex-wrap: wrap !important;
+    background: var(--tube-deep) !important;
+    border-top: 1px solid var(--p31-ghost) !important;
+    padding: 0.5rem 1.5rem !important;
+    font-size: 0.75rem !important;
+    color: var(--p31-dim) !important;
+    min-height: 40px !important;
+}
+
+footer a {
+    color: var(--p31-dim) !important;
+    text-decoration: none !important;
+}
+
+footer a:hover {
+    color: var(--p31-mid) !important;
+}
+
+/* Mode Menu (breadcrumb) */
+#modemenu,
+ul#modemenu,
+.breadcrumb {
+    display: flex !important;
+    flex-wrap: wrap !important;
     list-style: none !important;
     margin: 0 !important;
     padding: 0 !important;
     gap: 0.5rem !important;
+    background: transparent !important;
 }
 
-#modemenu li {
+#modemenu > li,
+.breadcrumb > li {
     list-style: none !important;
 }
 
-#modemenu li a {
+#modemenu > li > a,
+.breadcrumb > li > a {
     color: var(--p31-dim) !important;
     font-size: 0.75rem !important;
     text-decoration: none !important;
+    padding: 0.25rem 0.5rem !important;
 }
 
-#modemenu li a:hover {
+#modemenu > li > a:hover,
+.breadcrumb > li > a:hover {
     color: var(--p31-mid) !important;
 }
 
-#modemenu li.active a {
+#modemenu > li.active > a,
+.breadcrumb > li.active > a {
     color: var(--p31-peak) !important;
 }
 
-/* === Cards/Panels === */
-.cbi-map, .cbi-section, fieldset, .panel, .card,
-div.cbi-value, .cbi-section-node {
+/* =============================================
+   CARDS, PANELS, SECTIONS
+   ============================================= */
+
+.cbi-map {
     background: var(--tube-deep) !important;
     border: 1px solid var(--p31-ghost) !important;
     border-radius: 4px !important;
     padding: 1rem !important;
     margin-bottom: 1rem !important;
+}
+
+.cbi-map > h2,
+.cbi-map > h3 {
+    color: var(--p31-peak) !important;
+    font-size: 1rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 2px !important;
+    margin: 0 0 0.5rem 0 !important;
+    padding: 0 !important;
+    text-shadow: var(--bloom-soft) !important;
+    background: transparent !important;
+    border: none !important;
+}
+
+.cbi-map-descr {
+    color: var(--p31-dim) !important;
+    font-size: 0.85rem !important;
+    margin-bottom: 1rem !important;
+}
+
+.cbi-section {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    margin-bottom: 1rem !important;
+}
+
+.cbi-section > h3,
+.cbi-section-title,
+legend {
+    color: var(--p31-peak) !important;
+    font-size: 0.9rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 2px !important;
+    padding: 0 0 0.5rem 0 !important;
+    margin: 0 0 1rem 0 !important;
+    border-bottom: 1px solid var(--p31-ghost) !important;
+    text-shadow: var(--bloom-soft) !important;
+    background: transparent !important;
 }
 
 .cbi-section-node {
@@ -328,29 +498,203 @@ div.cbi-value, .cbi-section-node {
     padding: 0 !important;
 }
 
-/* Section Headers */
-.cbi-section h2, .cbi-section h3, .cbi-section-title,
-legend, .panel-title, .card-title {
-    color: var(--p31-peak) !important;
-    font-size: 0.9rem !important;
-    text-transform: uppercase !important;
-    letter-spacing: 2px !important;
-    padding-bottom: 0.5rem !important;
+.cbi-section-descr {
+    color: var(--p31-dim) !important;
+    font-size: 0.85rem !important;
     margin-bottom: 1rem !important;
+}
+
+fieldset {
+    background: var(--tube-deep) !important;
+    border: 1px solid var(--p31-ghost) !important;
+    border-radius: 4px !important;
+    padding: 1rem !important;
+    margin-bottom: 1rem !important;
+}
+
+/* =============================================
+   FORM VALUES
+   ============================================= */
+
+.cbi-value {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: flex-start !important;
+    padding: 0.75rem 0 !important;
     border-bottom: 1px solid var(--p31-ghost) !important;
+    background: transparent !important;
+}
+
+.cbi-value:last-child,
+.cbi-value.cbi-value-last {
+    border-bottom: none !important;
+}
+
+.cbi-value-title,
+label.cbi-value-title {
+    flex: 0 0 200px !important;
+    color: var(--p31-dim) !important;
+    font-weight: normal !important;
+    font-size: 0.85rem !important;
+    padding-right: 1rem !important;
+}
+
+.cbi-value-field {
+    flex: 1 !important;
+    min-width: 200px !important;
+}
+
+.cbi-value-description {
+    flex: 0 0 100% !important;
+    color: var(--p31-ghost) !important;
+    font-size: 0.8rem !important;
+    margin-top: 0.5rem !important;
+    padding-left: 200px !important;
+}
+
+/* =============================================
+   FORM INPUTS
+   ============================================= */
+
+input[type="text"],
+input[type="password"],
+input[type="number"],
+input[type="email"],
+input[type="url"],
+input[type="tel"],
+input[type="search"],
+textarea,
+select,
+.cbi-input-text,
+.cbi-input-password,
+.cbi-input-select,
+.cbi-dropdown {
+    background: var(--tube-black) !important;
+    border: 1px solid var(--p31-ghost) !important;
+    color: var(--p31-mid) !important;
+    padding: 0.5rem 0.75rem !important;
+    font-family: inherit !important;
+    font-size: 0.9rem !important;
+    border-radius: 3px !important;
+    transition: border-color 0.2s, box-shadow 0.2s !important;
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+.cbi-dropdown:focus {
+    outline: none !important;
+    border-color: var(--p31-mid) !important;
+    box-shadow: var(--bloom-box) !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+    color: var(--p31-ghost) !important;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+    accent-color: var(--p31-peak) !important;
+    width: 16px !important;
+    height: 16px !important;
+}
+
+/* =============================================
+   BUTTONS
+   ============================================= */
+
+.cbi-button,
+button,
+input[type="submit"],
+input[type="button"],
+.btn {
+    background: transparent !important;
+    border: 1px solid var(--p31-dim) !important;
+    color: var(--p31-mid) !important;
+    padding: 0.5rem 1rem !important;
+    font-family: inherit !important;
+    font-size: 0.8rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1px !important;
+    cursor: pointer !important;
+    border-radius: 3px !important;
+    transition: all 0.2s ease !important;
+    text-decoration: none !important;
+    display: inline-block !important;
+}
+
+.cbi-button:hover,
+button:hover,
+.btn:hover {
+    color: var(--p31-peak) !important;
+    border-color: var(--p31-mid) !important;
     text-shadow: var(--bloom-soft) !important;
     background: transparent !important;
 }
 
-/* === Tables === */
-table, .table {
+.cbi-button-save,
+.cbi-button-apply,
+.cbi-button-action,
+.cbi-button-positive,
+.btn-primary {
+    border-color: var(--p31-mid) !important;
+    color: var(--p31-peak) !important;
+}
+
+.cbi-button-save:hover,
+.cbi-button-apply:hover,
+.cbi-button-action:hover,
+.btn-primary:hover {
+    background: var(--p31-mid) !important;
+    color: var(--tube-black) !important;
+    text-shadow: none !important;
+}
+
+.cbi-button-remove,
+.cbi-button-reset,
+.cbi-button-negative,
+.btn-danger {
+    border-color: var(--danger-dim) !important;
+    color: var(--danger) !important;
+}
+
+.cbi-button-remove:hover,
+.cbi-button-reset:hover,
+.cbi-button-negative:hover,
+.btn-danger:hover {
+    background: var(--danger) !important;
+    color: var(--tube-black) !important;
+    text-shadow: none !important;
+}
+
+.cbi-page-actions {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 0.5rem !important;
+    padding: 1rem 0 !important;
+    margin-top: 1rem !important;
+    border-top: 1px solid var(--p31-ghost) !important;
+    background: transparent !important;
+}
+
+/* =============================================
+   TABLES
+   ============================================= */
+
+table,
+.table {
     width: 100% !important;
     border-collapse: collapse !important;
     font-size: 0.85rem !important;
     background: var(--tube-deep) !important;
+    border: 1px solid var(--p31-ghost) !important;
 }
 
-th, thead td, .table-titles td {
+th,
+thead td,
+.table-titles td,
+.tr.table-titles .td {
     color: var(--p31-dim) !important;
     font-weight: normal !important;
     text-transform: uppercase !important;
@@ -362,107 +706,95 @@ th, thead td, .table-titles td {
     background: var(--tube-black) !important;
 }
 
-td, .table td, .cbi-section-table td {
+td,
+.table td,
+.td {
     padding: 0.75rem !important;
     border-bottom: 1px solid var(--p31-ghost) !important;
     color: var(--p31-mid) !important;
     background: transparent !important;
 }
 
-tr:hover td, .tr:hover .td {
+tr:hover td,
+.tr:hover .td {
     background: rgba(51, 255, 102, 0.03) !important;
 }
 
-/* === Forms === */
-input[type="text"],
-input[type="password"],
-input[type="number"],
-input[type="email"],
-input[type="url"],
-input[type="tel"],
-textarea,
-select,
-.cbi-input-text,
-.cbi-input-password,
-.cbi-input-select {
-    background: var(--tube-black) !important;
+.cbi-section-table {
+    background: var(--tube-deep) !important;
     border: 1px solid var(--p31-ghost) !important;
-    color: var(--p31-mid) !important;
-    padding: 0.5rem 0.75rem !important;
-    font-family: inherit !important;
-    font-size: 0.9rem !important;
-    border-radius: 3px !important;
+    border-radius: 4px !important;
+    overflow: hidden !important;
 }
 
-input:focus, select:focus, textarea:focus {
-    outline: none !important;
-    border-color: var(--p31-mid) !important;
-    box-shadow: var(--bloom-box) !important;
-}
-
-input::placeholder, textarea::placeholder {
-    color: var(--p31-ghost) !important;
-}
-
-/* Checkboxes & Radio */
-input[type="checkbox"],
-input[type="radio"] {
-    accent-color: var(--p31-peak) !important;
-}
-
-/* === Buttons === */
-.cbi-button, button, input[type="submit"],
-input[type="button"], .btn {
-    background: transparent !important;
-    border: 1px solid var(--p31-dim) !important;
-    color: var(--p31-mid) !important;
-    padding: 0.5rem 1rem !important;
-    font-family: inherit !important;
-    font-size: 0.8rem !important;
-    text-transform: uppercase !important;
-    letter-spacing: 1px !important;
-    cursor: pointer !important;
-    border-radius: 3px !important;
-    transition: all 0.2s ease !important;
-    text-decoration: none !important;
-}
-
-.cbi-button:hover, button:hover, .btn:hover {
-    color: var(--p31-peak) !important;
-    border-color: var(--p31-mid) !important;
-    text-shadow: var(--bloom-soft) !important;
+.cbi-rowstyle-1 {
     background: transparent !important;
 }
 
-.cbi-button-save, .cbi-button-apply, .btn-primary,
-.cbi-button-action, .cbi-button-positive {
-    border-color: var(--p31-mid) !important;
-    color: var(--p31-peak) !important;
+.cbi-rowstyle-2 {
+    background: rgba(51, 255, 102, 0.02) !important;
 }
 
-.cbi-button-save:hover, .btn-primary:hover,
-.cbi-button-apply:hover, .cbi-button-action:hover {
-    background: var(--p31-mid) !important;
-    color: var(--tube-black) !important;
-    text-shadow: none !important;
+/* =============================================
+   ALERTS & NOTIFICATIONS
+   ============================================= */
+
+.alert,
+.notice,
+.alert-message,
+.cbi-section-error,
+.cbi-section-warning,
+.errorbox,
+.warningbox,
+.successbox {
+    padding: 1rem !important;
+    border-radius: 4px !important;
+    margin-bottom: 1rem !important;
+    border: 1px solid !important;
 }
 
-.cbi-button-remove, .cbi-button-reset, .btn-danger,
-.cbi-button-negative {
+.alert-success,
+.notice.success,
+.successbox {
+    background: rgba(51, 255, 102, 0.1) !important;
+    border-color: var(--p31-dim) !important;
+    color: var(--p31-mid) !important;
+}
+
+.alert-warning,
+.notice.warning,
+.alert-message.warning,
+.warningbox,
+.cbi-section-warning {
+    background: rgba(255, 179, 71, 0.1) !important;
     border-color: var(--p31-decay-dim) !important;
     color: var(--p31-decay) !important;
 }
 
-.cbi-button-remove:hover, .btn-danger:hover,
-.cbi-button-reset:hover, .cbi-button-negative:hover {
-    background: var(--p31-decay) !important;
-    color: var(--tube-black) !important;
-    text-shadow: none !important;
+.alert-error,
+.alert-danger,
+.notice.error,
+.errorbox,
+.cbi-section-error {
+    background: rgba(255, 68, 102, 0.1) !important;
+    border-color: var(--danger) !important;
+    color: var(--danger) !important;
 }
 
-/* === Status Badges === */
-.badge, .label, .cbi-value-field .ifacebadge,
-span.zonebadge {
+.alert-info,
+.notice.info {
+    background: rgba(51, 255, 102, 0.05) !important;
+    border-color: var(--p31-ghost) !important;
+    color: var(--p31-dim) !important;
+}
+
+/* =============================================
+   BADGES & LABELS
+   ============================================= */
+
+.badge,
+.label,
+span.label {
     display: inline-block !important;
     padding: 0.15rem 0.5rem !important;
     font-size: 0.7rem !important;
@@ -470,63 +802,74 @@ span.zonebadge {
     letter-spacing: 1px !important;
     border-radius: 2px !important;
     border: 1px solid !important;
+    background: transparent !important;
 }
 
-.badge-success, .label-success, .badge.success {
+.badge-success,
+.label-success {
     border-color: var(--p31-mid) !important;
     color: var(--p31-peak) !important;
     background: rgba(51, 255, 102, 0.1) !important;
 }
 
-.badge-warning, .label-warning, .badge.warning {
+.badge-warning,
+.label-warning {
     border-color: var(--p31-decay-dim) !important;
     color: var(--p31-decay) !important;
     background: rgba(255, 179, 71, 0.1) !important;
 }
 
-.badge-danger, .label-danger, .badge.danger, .badge.error {
-    border-color: #ff4466 !important;
-    color: #ff6688 !important;
+.badge-danger,
+.label-danger {
+    border-color: var(--danger) !important;
+    color: var(--danger) !important;
     background: rgba(255, 68, 102, 0.1) !important;
 }
 
-.badge-info, .label-info, .badge.info {
+.badge-info,
+.label-info {
     border-color: var(--p31-dim) !important;
     color: var(--p31-mid) !important;
     background: rgba(51, 255, 102, 0.05) !important;
 }
 
-/* === Alerts/Notifications === */
-.alert, .notice, .cbi-section-error, .errorbox,
-.cbi-section-warning, .warningbox {
-    padding: 1rem !important;
-    border-radius: 4px !important;
-    margin-bottom: 1rem !important;
-    border: 1px solid !important;
+/* Interface badges */
+.ifacebadge {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 0.25rem !important;
+    background: var(--tube-black) !important;
+    border: 1px solid var(--p31-ghost) !important;
+    color: var(--p31-mid) !important;
+    padding: 0.2rem 0.5rem !important;
+    border-radius: 3px !important;
+    font-size: 0.8rem !important;
 }
 
-.alert-success, .notice.success, .successbox {
+/* Zone badges */
+span.zonebadge {
     background: rgba(51, 255, 102, 0.1) !important;
     border-color: var(--p31-dim) !important;
     color: var(--p31-mid) !important;
 }
 
-.alert-warning, .notice.warning, .warningbox,
-.cbi-section-warning {
-    background: rgba(255, 179, 71, 0.1) !important;
+.zonebadge.zone-lan {
+    border-color: var(--p31-mid) !important;
+    background: rgba(51, 255, 102, 0.15) !important;
+}
+
+.zonebadge.zone-wan {
     border-color: var(--p31-decay-dim) !important;
+    background: rgba(255, 179, 71, 0.1) !important;
     color: var(--p31-decay) !important;
 }
 
-.alert-error, .notice.error, .errorbox,
-.cbi-section-error, .alert-danger {
-    background: rgba(255, 68, 102, 0.1) !important;
-    border-color: #ff4466 !important;
-    color: #ff6688 !important;
-}
+/* =============================================
+   PROGRESS BARS
+   ============================================= */
 
-/* === Progress Bars === */
-.cbi-progressbar, .progress {
+.cbi-progressbar,
+.progress {
     background: var(--tube-black) !important;
     border: 1px solid var(--p31-ghost) !important;
     border-radius: 2px !important;
@@ -534,114 +877,55 @@ span.zonebadge {
     overflow: hidden !important;
 }
 
-.cbi-progressbar > div, .progress-bar {
+.cbi-progressbar > div,
+.progress-bar {
     background: linear-gradient(90deg, var(--p31-dim), var(--p31-mid)) !important;
     height: 100% !important;
     box-shadow: 0 0 10px var(--p31-mid) !important;
     transition: width 0.3s ease !important;
 }
 
-/* === Tabs === */
-.cbi-tabmenu, .tabs, ul.cbi-tabmenu {
-    display: flex !important;
-    border-bottom: 1px solid var(--p31-ghost) !important;
-    margin-bottom: 1rem !important;
-    list-style: none !important;
-    padding: 0 !important;
-    background: transparent !important;
-}
+/* =============================================
+   MODALS & DIALOGS
+   ============================================= */
 
-.cbi-tabmenu li, .tabs .tab {
-    list-style: none !important;
-}
-
-.cbi-tabmenu li a, .tabs .tab, .cbi-tabmenu li > a {
-    display: block !important;
-    padding: 0.6rem 1rem !important;
-    color: var(--p31-dim) !important;
-    text-decoration: none !important;
-    font-size: 0.8rem !important;
-    text-transform: uppercase !important;
-    letter-spacing: 1px !important;
-    border: 1px solid transparent !important;
-    border-bottom: none !important;
-    margin-bottom: -1px !important;
-    cursor: pointer !important;
-    background: transparent !important;
-}
-
-.cbi-tabmenu li.cbi-tab a, .tabs .tab.active,
-.cbi-tabmenu li.cbi-tab > a {
-    color: var(--p31-peak) !important;
-    border-color: var(--p31-ghost) !important;
+.modal,
+.dialog,
+.cbi-modal {
     background: var(--tube-deep) !important;
-    text-shadow: var(--bloom-soft) !important;
-}
-
-/* === Tooltips === */
-[data-tooltip] {
-    position: relative !important;
-}
-
-[data-tooltip]::after {
-    content: attr(data-tooltip) !important;
-    position: absolute !important;
-    bottom: 100% !important;
-    left: 50% !important;
-    transform: translateX(-50%) !important;
-    background: var(--tube-deep) !important;
-    border: 1px solid var(--p31-dim) !important;
-    color: var(--p31-mid) !important;
-    padding: 0.4rem 0.6rem !important;
-    font-size: 0.75rem !important;
-    white-space: nowrap !important;
-    border-radius: 3px !important;
-    opacity: 0 !important;
-    visibility: hidden !important;
-    transition: all 0.2s ease !important;
-    z-index: 1000 !important;
-}
-
-[data-tooltip]:hover::after {
-    opacity: 1 !important;
-    visibility: visible !important;
-}
-
-/* === Footer === */
-footer {
-    display: flex !important;
-    justify-content: space-between !important;
-    align-items: center !important;
-    background: var(--tube-deep) !important;
-    border-top: 1px solid var(--p31-ghost) !important;
-    padding: 0.5rem 1.5rem !important;
-    font-size: 0.75rem !important;
-    color: var(--p31-dim) !important;
-    height: 40px !important;
-}
-
-footer a {
-    color: var(--p31-dim) !important;
-}
-
-footer a:hover {
+    border: 1px solid var(--p31-ghost) !important;
+    border-radius: 6px !important;
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.8), var(--bloom-box) !important;
     color: var(--p31-mid) !important;
 }
 
-/* === Links === */
-a, .a {
+.modal-overlay,
+.cbi-modal-overlay {
+    background: rgba(0, 0, 0, 0.85) !important;
+}
+
+/* =============================================
+   LINKS
+   ============================================= */
+
+a {
     color: var(--p31-mid) !important;
     text-decoration: none !important;
     transition: all 0.2s ease !important;
 }
 
-a:hover, .a:hover {
+a:hover {
     color: var(--p31-peak) !important;
     text-shadow: var(--bloom-soft) !important;
 }
 
-/* === Code/Pre === */
-code, pre, .code {
+/* =============================================
+   CODE & PRE
+   ============================================= */
+
+code,
+pre,
+.code {
     background: var(--tube-black) !important;
     border: 1px solid var(--p31-ghost) !important;
     color: var(--p31-mid) !important;
@@ -650,190 +934,53 @@ code, pre, .code {
     border-radius: 3px !important;
 }
 
-pre, pre.code {
+pre,
+pre.code {
     padding: 1rem !important;
     overflow-x: auto !important;
+    display: block !important;
 }
 
-/* === Modals/Dialogs === */
-.modal, .dialog, .cbi-modal {
+/* =============================================
+   TOOLTIPS
+   ============================================= */
+
+.cbi-tooltip {
     background: var(--tube-deep) !important;
-    border: 1px solid var(--p31-ghost) !important;
-    border-radius: 6px !important;
-    box-shadow: 0 0 30px rgba(0, 0, 0, 0.8), var(--bloom-box) !important;
+    border: 1px solid var(--p31-dim) !important;
+    color: var(--p31-mid) !important;
+    padding: 0.4rem 0.6rem !important;
+    font-size: 0.75rem !important;
+    border-radius: 3px !important;
+    z-index: 10000 !important;
 }
 
-.modal-overlay, .cbi-modal-overlay {
-    background: rgba(0, 0, 0, 0.85) !important;
+/* =============================================
+   SPINNER & LOADING
+   ============================================= */
+
+.spinning {
+    color: var(--p31-mid) !important;
 }
 
-/* === Login Page === */
-.login-container, #login, form[action*="login"],
-body.login {
-    background: var(--tube-black) !important;
+.spinning::before {
+    border-color: var(--p31-ghost) !important;
+    border-top-color: var(--p31-peak) !important;
 }
 
-.login-container, #login > div, .login-box {
-    max-width: 400px !important;
-    margin: 10vh auto !important;
-    padding: 2rem !important;
-    background: var(--tube-deep) !important;
-    border: 1px solid var(--p31-ghost) !important;
-    border-radius: 6px !important;
-    text-align: center !important;
-}
-
-.login-container h1, #login h1, .login-box h1 {
-    color: var(--p31-peak) !important;
-    text-shadow: var(--bloom-text) !important;
-    margin-bottom: 2rem !important;
-    letter-spacing: 3px !important;
-}
-
-.login-container input, #login input, .login-box input[type="text"],
-.login-box input[type="password"] {
-    width: 100% !important;
-    max-width: none !important;
-    margin-bottom: 1rem !important;
-}
-
-.login-container button, #login button, .login-box button,
-.login-box input[type="submit"] {
-    width: 100% !important;
-    padding: 0.75rem !important;
-}
-
-/* === Dashboard Widgets === */
-.widget, .dashboard-widget {
-    background: var(--tube-deep) !important;
-    border: 1px solid var(--p31-ghost) !important;
-    border-radius: 4px !important;
-    padding: 1rem !important;
-}
-
-.widget-header, .dashboard-widget-header {
-    color: var(--p31-peak) !important;
-    font-size: 0.8rem !important;
-    text-transform: uppercase !important;
-    letter-spacing: 1px !important;
-    margin-bottom: 0.75rem !important;
-    text-shadow: var(--bloom-soft) !important;
-}
-
-.widget-value, .dashboard-widget-value {
-    font-size: 2rem !important;
-    color: var(--p31-peak) !important;
-    text-shadow: var(--bloom-text) !important;
-    font-weight: bold !important;
-}
-
-.widget-value.warning {
-    color: var(--p31-decay) !important;
-    text-shadow: 0 0 6px var(--p31-decay) !important;
-}
-
-.widget-value.danger {
-    color: #ff6688 !important;
-    text-shadow: 0 0 6px #ff4466 !important;
-}
-
-.widget-label {
-    font-size: 0.7rem !important;
+/* View loading */
+#view > .spinning {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    min-height: 200px !important;
     color: var(--p31-dim) !important;
-    text-transform: uppercase !important;
 }
 
-/* === Dashboard Grid === */
-.dashboard-grid {
-    display: grid !important;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)) !important;
-    gap: 1rem !important;
-    margin-bottom: 1.5rem !important;
-}
+/* =============================================
+   SCROLLBARS
+   ============================================= */
 
-/* === Topology Visualization === */
-.topology-container {
-    background: var(--tube-black) !important;
-    border: 1px solid var(--p31-ghost) !important;
-    border-radius: 4px !important;
-    padding: 1rem !important;
-}
-
-.topology-container svg {
-    width: 100% !important;
-    height: 400px !important;
-}
-
-.topology-node circle {
-    fill: var(--p31-dim) !important;
-    stroke: var(--p31-mid) !important;
-    stroke-width: 2 !important;
-}
-
-.topology-node.relay circle {
-    fill: var(--p31-decay-dim) !important;
-    stroke: var(--p31-decay) !important;
-}
-
-.topology-node.active circle {
-    fill: var(--p31-mid) !important;
-    stroke: var(--p31-peak) !important;
-}
-
-.topology-edge {
-    stroke: var(--p31-ghost) !important;
-    stroke-width: 1 !important;
-}
-
-.topology-edge.active {
-    stroke: var(--p31-dim) !important;
-    stroke-width: 2 !important;
-    animation: edgePulse 2s infinite !important;
-}
-
-@keyframes edgePulse {
-    0%, 100% { opacity: 0.5; }
-    50% { opacity: 1; }
-}
-
-/* === Status Indicators === */
-.status-online, .online, .running {
-    color: var(--p31-peak) !important;
-}
-
-.status-offline, .offline, .stopped {
-    color: #ff6688 !important;
-}
-
-.status-warning, .warning {
-    color: var(--p31-decay) !important;
-}
-
-/* Glowing dot indicators */
-.status-dot {
-    display: inline-block !important;
-    width: 8px !important;
-    height: 8px !important;
-    border-radius: 50% !important;
-    margin-right: 0.5rem !important;
-}
-
-.status-dot.online {
-    background: var(--p31-peak) !important;
-    box-shadow: 0 0 6px var(--p31-peak) !important;
-}
-
-.status-dot.offline {
-    background: #ff4466 !important;
-    box-shadow: 0 0 6px #ff4466 !important;
-}
-
-.status-dot.warning {
-    background: var(--p31-decay) !important;
-    box-shadow: 0 0 6px var(--p31-decay) !important;
-}
-
-/* === Scrollbars === */
 ::-webkit-scrollbar {
     width: 8px !important;
     height: 8px !important;
@@ -852,131 +999,130 @@ body.login {
     background: var(--p31-dim) !important;
 }
 
-/* === Selection === */
+/* =============================================
+   SELECTION
+   ============================================= */
+
 ::selection {
     background: var(--p31-dim) !important;
     color: var(--tube-black) !important;
 }
 
-/* === Responsive === */
+/* =============================================
+   RESPONSIVE
+   ============================================= */
+
 @media (max-width: 768px) {
     header {
-        flex-wrap: wrap !important;
+        flex-direction: column !important;
+        min-height: auto !important;
+    }
+
+    header > .brand,
+    header > a.brand {
+        width: 100% !important;
+        border-right: none !important;
+        border-bottom: 1px solid var(--p31-ghost) !important;
+        justify-content: center !important;
+    }
+
+    header > .nav,
+    header > ul.nav,
+    #topmenu {
+        width: 100% !important;
+        min-height: auto !important;
+        padding: 0.5rem !important;
+        justify-content: center !important;
+    }
+
+    header > .nav > li,
+    #topmenu > li {
         height: auto !important;
     }
 
-    header .brand {
-        padding: 0.75rem 1rem !important;
-        border-right: none !important;
-        border-bottom: 1px solid var(--p31-ghost) !important;
-    }
-
-    header .nav, header #topmenu {
-        width: 100% !important;
-        flex-wrap: wrap !important;
-        padding: 0 !important;
-        border-bottom: 1px solid var(--p31-ghost) !important;
-    }
-
-    header .nav > li > a, header #topmenu > li > a {
+    header > .nav > li > a,
+    #topmenu > li > a {
+        height: auto !important;
         padding: 0.5rem 0.75rem !important;
         font-size: 0.7rem !important;
     }
 
-    header #indicators, header .pull-right {
+    header > #indicators,
+    #indicators {
         width: 100% !important;
-        padding: 0.5rem 1rem !important;
-        justify-content: flex-end !important;
+        justify-content: center !important;
+        min-height: auto !important;
+        padding: 0.5rem !important;
+        border-top: 1px solid var(--p31-ghost) !important;
     }
 
-    #maincontent, .container {
+    #maincontent,
+    .container {
         padding: 1rem !important;
     }
 
-    .dashboard-grid {
-        grid-template-columns: 1fr !important;
+    .cbi-value {
+        flex-direction: column !important;
+    }
+
+    .cbi-value-title {
+        flex: 0 0 auto !important;
+        margin-bottom: 0.5rem !important;
+    }
+
+    .cbi-value-description {
+        padding-left: 0 !important;
     }
 
     footer {
         flex-direction: column !important;
-        height: auto !important;
-        padding: 0.75rem !important;
         gap: 0.5rem !important;
         text-align: center !important;
     }
 }
 
-/* === Spinner/Loading === */
-.spinning, .cbi-button-waiting {
-    animation: spin 1s linear infinite !important;
-}
+/* =============================================
+   UTILITY OVERRIDES
+   ============================================= */
 
-@keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-}
-
-/* === CRT Screen Curvature (subtle) === */
-body {
-    border-radius: 8px !important;
-    box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.5), inset 0 0 10px rgba(51, 255, 102, 0.1) !important;
-}
-
-/* === LuCI Specific Overrides === */
-.cbi-value-title {
-    color: var(--p31-dim) !important;
-    font-weight: normal !important;
-}
-
-.cbi-value-description {
-    color: var(--p31-ghost) !important;
-    font-size: 0.8rem !important;
-}
-
-.cbi-section-descr {
-    color: var(--p31-dim) !important;
-    font-size: 0.85rem !important;
-    margin-bottom: 1rem !important;
-}
-
-/* Interface badges */
-.ifacebadge {
-    background: var(--tube-black) !important;
-    border: 1px solid var(--p31-ghost) !important;
-    color: var(--p31-mid) !important;
-}
-
-/* Zone badges */
-.zonebadge {
-    background: rgba(51, 255, 102, 0.1) !important;
-    border-color: var(--p31-dim) !important;
-    color: var(--p31-mid) !important;
-}
-
-.zonebadge.zone-lan {
-    border-color: var(--p31-mid) !important;
-    background: rgba(51, 255, 102, 0.15) !important;
-}
-
-.zonebadge.zone-wan {
-    border-color: var(--p31-decay-dim) !important;
-    background: rgba(255, 179, 71, 0.1) !important;
-    color: var(--p31-decay) !important;
-}
-
-/* Hide default theme backgrounds */
-.main, .main-left, .main-right, .container,
-#maincontent, #maincontainer, header, footer {
+/* Hide default backgrounds */
+.main,
+.main-left,
+.main-right,
+#maincontainer,
+.fill {
+    background: transparent !important;
     background-image: none !important;
 }
 
-/* Force dark background everywhere */
-div, section, article, aside, main, nav, header, footer {
-    background-color: transparent;
-}
-
-/* Override any white/light backgrounds */
-.white, .bg-white, .bg-light {
+/* Force dark everywhere */
+.white,
+.bg-white,
+.bg-light {
     background: var(--tube-deep) !important;
     color: var(--p31-mid) !important;
+}
+
+/* Pull classes */
+.pull-right {
+    margin-left: auto !important;
+}
+
+.pull-left {
+    margin-right: auto !important;
+}
+
+/* Hidden */
+.hidden {
+    display: none !important;
+}
+
+/* Flash animation for table rows */
+.flash {
+    animation: flash 0.5s ease !important;
+}
+
+@keyframes flash {
+    0%, 100% { background: transparent; }
+    50% { background: rgba(51, 255, 102, 0.2); }
 }

@@ -11,7 +11,9 @@
                     "node_info",
                     "telemetry",
                     "ping",
-                    "get_config"
+                    "get_config",
+                    "devices",
+                    "scan_containers"
                 ]
             },
             "uci": ["secubox"]
@@ -21,7 +23,8 @@
                 "luci.secubox-mesh": [
                     "node_rotate",
                     "set_config",
-                    "restart"
+                    "restart",
+                    "scan_full"
                 ]
             },
             "uci": ["secubox"]

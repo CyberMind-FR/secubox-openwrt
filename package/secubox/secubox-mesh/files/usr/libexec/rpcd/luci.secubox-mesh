@@ -7,6 +7,10 @@
 . /usr/share/libubox/jshn.sh
 
 SOCKET="/var/run/secuboxd/topo.sock"
+STATEDIR="/var/lib/secubox-mesh"
+
+# Source discovery library for direct calls
+[ -f /usr/lib/secubox-mesh/discovery.sh ] && . /usr/lib/secubox-mesh/discovery.sh
 
 # Send command to daemon
 _send_cmd() {
@@ -39,7 +43,10 @@ case_list() {
     "ping": {},
     "get_config": {},
     "set_config": { "role": "string", "beacon_interval": "number" },
-    "restart": {}
+    "restart": {},
+    "devices": {},
+    "scan_full": {},
+    "scan_containers": {}
 }
 EOF
 }
@@ -125,6 +132,72 @@ case_call() {
             json_init
             json_add_boolean success 1
             json_dump
+            ;;
+        devices)
+            # Return discovered network devices
+            if [ -f "$STATEDIR/devices.json" ]; then
+                cat "$STATEDIR/devices.json"
+            else
+                echo '[]'
+            fi
+            ;;
+        scan_full)
+            # Trigger full network scan (including subnet scan)
+            if type discovery_scan_full >/dev/null 2>&1; then
+                # Run in background to avoid timeout
+                discovery_scan_full &
+                local scan_pid=$!
+
+                json_init
+                json_add_boolean started 1
+                json_add_int pid "$scan_pid"
+                json_add_string message "Full scan initiated"
+                json_dump
+            else
+                json_init
+                json_add_boolean started 0
+                json_add_string error "Discovery library not available"
+                json_dump
+            fi
+            ;;
+        scan_containers)
+            # Scan for containers and VMs specifically
+            local containers='[]'
+
+            if type discovery_scan_docker >/dev/null 2>&1; then
+                local docker_out lxc_out libvirt_out
+                docker_out=$(discovery_scan_docker 2>/dev/null)
+                lxc_out=$(discovery_scan_lxc 2>/dev/null)
+                libvirt_out=$(discovery_scan_libvirt 2>/dev/null)
+
+                # Build JSON from pipe-separated output
+                json_init
+                json_add_array containers
+
+                for line in $docker_out $lxc_out $libvirt_out; do
+                    [ -z "$line" ] && continue
+
+                    local did addr role port source
+                    did=$(echo "$line" | cut -d'|' -f1)
+                    addr=$(echo "$line" | cut -d'|' -f2)
+                    role=$(echo "$line" | cut -d'|' -f3)
+                    port=$(echo "$line" | cut -d'|' -f4)
+                    source=$(echo "$line" | cut -d'|' -f5)
+
+                    json_add_object ""
+                    json_add_string did "$did"
+                    json_add_string address "$addr"
+                    json_add_string role "$role"
+                    json_add_int port "${port:-0}"
+                    json_add_string source "$source"
+                    json_close_object
+                done
+
+                json_close_array
+                json_dump
+            else
+                echo '{"containers":[],"error":"Discovery library not available"}'
+            fi
             ;;
         *)
             json_init

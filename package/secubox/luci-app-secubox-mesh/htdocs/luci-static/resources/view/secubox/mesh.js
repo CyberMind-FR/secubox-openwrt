@@ -47,6 +47,24 @@ var callNodeRotate = rpc.declare({
 	expect: {}
 });
 
+var callDevices = rpc.declare({
+	object: 'luci.secubox-mesh',
+	method: 'devices',
+	expect: {}
+});
+
+var callScanFull = rpc.declare({
+	object: 'luci.secubox-mesh',
+	method: 'scan_full',
+	expect: {}
+});
+
+var callScanContainers = rpc.declare({
+	object: 'luci.secubox-mesh',
+	method: 'scan_containers',
+	expect: {}
+});
+
 function formatUptime(seconds) {
 	if (!seconds || seconds < 0) return '0s';
 	var days = Math.floor(seconds / 86400);
@@ -105,7 +123,8 @@ return view.extend({
 			callNodeInfo().catch(function() { return {}; }),
 			callTelemetry().catch(function() { return {}; }),
 			callMeshPeers().catch(function() { return []; }),
-			callGetConfig().catch(function() { return {}; })
+			callGetConfig().catch(function() { return {}; }),
+			callDevices().catch(function() { return []; })
 		]);
 	},
 
@@ -115,11 +134,13 @@ return view.extend({
 		var telemetry = data[2] || {};
 		var peers = data[3] || [];
 		var config = data[4] || {};
+		var devices = data[5] || [];
 
-		// Ensure peers is an array
-		if (!Array.isArray(peers)) {
-			peers = [];
-		}
+		// Ensure arrays
+		if (!Array.isArray(peers)) peers = [];
+		if (!Array.isArray(devices)) devices = [];
+
+		var self = this;
 
 		var view = E('div', { 'class': 'mesh-dashboard' }, [
 			E('style', {}, [
@@ -279,6 +300,7 @@ return view.extend({
 									E('th', {}, 'DID'),
 									E('th', {}, 'Address'),
 									E('th', {}, 'Role'),
+									E('th', {}, 'Source'),
 									E('th', {}, 'Last Seen')
 								])
 							]),
@@ -287,12 +309,71 @@ return view.extend({
 									E('td', {}, peer.did || '-'),
 									E('td', {}, peer.address || '-'),
 									E('td', {}, (peer.role || 'edge').toUpperCase()),
+									E('td', {}, peer.source || 'discovery'),
 									E('td', {}, peer.last_seen || '-')
 								]);
 							}))
 						])
 					] : [
 						E('div', { 'class': 'mesh-empty' }, 'No peers connected')
+					]
+				)
+			]),
+
+			// Network Devices Table
+			E('div', { 'class': 'mesh-card' }, [
+				E('div', { 'class': 'mesh-card-header', 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+					E('span', {}, 'Discovered Devices (' + devices.length + ')'),
+					E('button', {
+						'class': 'mesh-btn',
+						'style': 'padding: 4px 12px; font-size: 12px;',
+						'click': ui.createHandlerFn(self, function() {
+							ui.addNotification(null, E('p', 'Full network scan initiated...'), 'info');
+							return callScanFull().then(function(res) {
+								if (res && res.started) {
+									ui.addNotification(null, E('p', 'Scan in progress. Results will appear shortly.'), 'success');
+									// Refresh after delay
+									setTimeout(function() { window.location.reload(); }, 5000);
+								} else {
+									ui.addNotification(null, E('p', 'Failed to start scan: ' + (res.error || 'unknown')), 'error');
+								}
+							}).catch(function(e) {
+								ui.addNotification(null, E('p', 'Scan failed: ' + e.message), 'error');
+							});
+						})
+					}, 'Scan Network')
+				]),
+				E('div', { 'class': 'mesh-card-body', 'id': 'mesh-devices' },
+					devices.length > 0 ? [
+						E('table', { 'class': 'mesh-peers-table' }, [
+							E('thead', {}, [
+								E('tr', {}, [
+									E('th', {}, 'IP Address'),
+									E('th', {}, 'MAC'),
+									E('th', {}, 'Type'),
+									E('th', {}, 'Hostname'),
+									E('th', {}, 'Services'),
+									E('th', {}, 'State')
+								])
+							]),
+							E('tbody', {}, devices.map(function(dev) {
+								var typeColor = dev.type === 'secubox' ? '#33ff66' :
+									(dev.type === 'server' ? '#00aaff' : '#888888');
+								return E('tr', {}, [
+									E('td', {}, dev.ip || '-'),
+									E('td', { 'style': 'font-size: 11px;' }, dev.mac || '-'),
+									E('td', { 'style': 'color: ' + typeColor }, (dev.type || 'unknown').toUpperCase()),
+									E('td', {}, dev.hostname || '-'),
+									E('td', { 'style': 'font-size: 11px;' }, dev.services || '-'),
+									E('td', {}, dev.state || '-')
+								]);
+							}))
+						])
+					] : [
+						E('div', { 'class': 'mesh-empty' }, [
+							E('p', {}, 'No devices discovered yet.'),
+							E('p', { 'style': 'font-size: 12px; margin-top: 10px;' }, 'Click "Scan Network" to discover devices on your local network.')
+						])
 					]
 				)
 			])
@@ -303,19 +384,34 @@ return view.extend({
 			return Promise.all([
 				callMeshStatus().catch(function() { return {}; }),
 				callTelemetry().catch(function() { return {}; }),
-				callMeshPeers().catch(function() { return []; })
+				callMeshPeers().catch(function() { return []; }),
+				callDevices().catch(function() { return []; })
 			]).then(L.bind(function(data) {
 				var status = data[0] || {};
 				var telemetry = data[1] || {};
 				var peers = data[2] || [];
+				var devices = data[3] || [];
 
 				if (!Array.isArray(peers)) peers = [];
+				if (!Array.isArray(devices)) devices = [];
 
 				// Update status badge
 				var badge = document.querySelector('.mesh-status-badge');
 				if (badge) {
 					badge.textContent = status.state || 'unknown';
 					badge.className = 'mesh-status-badge ' + (status.state === 'running' ? 'mesh-status-running' : 'mesh-status-stopped');
+				}
+
+				// Update peer count in header
+				var peersHeader = document.querySelector('#mesh-peers')?.parentNode?.querySelector('.mesh-card-header');
+				if (peersHeader && !peersHeader.querySelector('button')) {
+					peersHeader.textContent = 'Connected Peers (' + peers.length + ')';
+				}
+
+				// Update devices count in header
+				var devicesHeader = document.querySelector('#mesh-devices')?.parentNode?.querySelector('.mesh-card-header span');
+				if (devicesHeader) {
+					devicesHeader.textContent = 'Discovered Devices (' + devices.length + ')';
 				}
 
 			}, this));

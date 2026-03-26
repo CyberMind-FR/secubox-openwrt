@@ -1,6 +1,34 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-03-26 (Theme Deployment & Documentation)_
+_Last updated: 2026-03-26 (Mesh Device Discovery)_
+
+0. **Mesh Network Device/VM Discovery (2026-03-26)**
+   - **Enhanced discovery.sh** with multi-method network device detection:
+     - `discovery_scan_subnet()`: Active /24 subnet scanning for SecuBox peers
+     - `discovery_scan_docker()`: Docker container discovery via Unix socket API
+     - `discovery_scan_lxc()`: LXC and Proxmox (pct) container detection
+     - `discovery_scan_libvirt()`: KVM/libvirt VM detection via virsh
+     - `discovery_scan_all_devices()`: Full ARP neighbor discovery with fingerprinting
+   - **Device fingerprinting** by open ports (ssh, http, https, mitmproxy)
+   - **New RPCD methods**:
+     - `devices`: List all discovered network devices
+     - `scan_full`: Trigger full network scan (includes slow subnet scan)
+     - `scan_containers`: Scan specifically for Docker/LXC/libvirt containers
+   - **LuCI mesh dashboard** updated:
+     - "Discovered Devices" table with IP, MAC, type, hostname, services, state
+     - "Scan Network" button to trigger full discovery
+     - Device types: secubox, server, container, vm, unknown
+     - Peer table now shows source field (docker:name, lxc:name, etc.)
+   - **Files updated**:
+     - `secubox-mesh/files/usr/lib/secubox-mesh/discovery.sh`
+     - `secubox-mesh/files/usr/libexec/rpcd/luci.secubox-mesh`
+     - `secubox-mesh/root/usr/share/rpcd/acl.d/luci-app-secubox-mesh.json`
+     - `luci-app-secubox-mesh/htdocs/luci-static/resources/view/secubox/mesh.js`
+
+0. **CRT P31 Theme UI Consistency Fix (2026-03-26)**
+   - Complete `cascade.css` rewrite (1100+ lines) for consistent styling
+   - All LuCI views now have uniform CRT P31 appearance
+   - Fixed: navigation, forms, tables, alerts, badges, modals, dropdowns
 
 0. **Theme Deployment & Documentation (2026-03-26)**
    - **LuCI 24.10 Compatibility Fix**:

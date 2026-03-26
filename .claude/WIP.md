@@ -1,6 +1,6 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-26 (Theme Deployment & Documentation)_
+_Last updated: 2026-03-26 (Mesh Device Discovery)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
@@ -9,6 +9,24 @@ _Last updated: 2026-03-26 (Theme Deployment & Documentation)_
 ## Recently Completed
 
 ### 2026-03-26
+
+- **Mesh Network Device/VM Discovery (Complete)**
+  - Enhanced `discovery.sh` with multi-method device detection
+  - New discovery methods:
+    - `discovery_scan_subnet()` - Active subnet scanning
+    - `discovery_scan_docker()` - Docker container detection via Unix socket
+    - `discovery_scan_lxc()` - LXC/Proxmox container detection
+    - `discovery_scan_libvirt()` - KVM/libvirt VM detection
+    - `discovery_scan_all_devices()` - Full network neighbor discovery with fingerprinting
+  - Device fingerprinting by services (ssh, http, https, mitmproxy)
+  - New RPCD methods: `devices`, `scan_full`, `scan_containers`
+  - Updated LuCI mesh.js with discovered devices table and scan button
+  - Devices classified by type: secubox, server, container, vm, unknown
+
+- **CRT P31 Theme UI Fix (Complete)**
+  - Comprehensive cascade.css rewrite (1100+ lines)
+  - Fixed UI inconsistencies across all LuCI views
+  - Consistent CRT P31 styling for nav, forms, tables, alerts, modals
 
 - **CRT P31 Theme Deployment & LuCI 24.10 Fix (Complete)**
   - Fixed LuCI 24.10 compatibility with ucode templates (.ut files)
