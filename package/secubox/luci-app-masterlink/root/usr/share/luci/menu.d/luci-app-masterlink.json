@@ -1,5 +1,5 @@
 {
-	"admin/services/masterlink": {
+	"admin/secubox/master-link": {
 		"title": "Master-Link",
 		"order": 90,
 		"action": {

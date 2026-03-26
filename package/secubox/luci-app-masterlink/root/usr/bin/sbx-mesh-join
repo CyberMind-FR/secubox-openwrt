@@ -64,7 +64,7 @@ Usage:
 
 Examples:
   sbx-mesh-join 192.168.1.1 abc123def456
-  sbx-mesh-join 'http://192.168.1.1:7331/master-link/?token=abc123'
+  sbx-mesh-join 'https://192.168.1.1/master-link/?token=abc123'
   sbx-mesh-join 'https://master.local/master-link/?token=abc123'
 
 The tool will:
@@ -137,18 +137,20 @@ main() {
 
     log_step "Connecting to master at ${master_ip}..."
 
-    # Send join request
+    # Send join request (HTTPS with self-signed cert support)
     local response=""
+    local api_url="https://${master_ip}/api/v1/p2p/master-link/join"
+
     if command -v curl >/dev/null; then
-        response=$(curl -sf --connect-timeout 30 -X POST \
+        response=$(curl -sf -k --connect-timeout 30 -X POST \
             -H "Content-Type: application/json" \
             -d "$payload" \
-            "http://${master_ip}:7331/api/v1/p2p/master-link/join" 2>/dev/null)
+            "$api_url" 2>/dev/null)
     else
-        response=$(wget -qO- --timeout=30 \
+        response=$(wget -qO- --no-check-certificate --timeout=30 \
             --header="Content-Type: application/json" \
             --post-data="$payload" \
-            "http://${master_ip}:7331/api/v1/p2p/master-link/join" 2>/dev/null)
+            "$api_url" 2>/dev/null)
     fi
 
     if [ -z "$response" ]; then
