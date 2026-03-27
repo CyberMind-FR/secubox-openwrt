@@ -1,6 +1,118 @@
 # SecuBox UI & Theme History
 
-_Last updated: 2026-03-20 (Wiki Translations & Meta-package)_
+_Last updated: 2026-03-26 (Wiki Documentation)_
+
+0. **Comprehensive Wiki Documentation (2026-03-26)**
+   - **Wiki structure** created at `docs/wiki/`:
+     - `Home.md`: Main navigation with all module categories
+     - `Installation.md`: Complete getting started guide
+     - `Quick-Start.md`: First-time setup walkthrough (10-minute guide)
+     - `Architecture.md`: 4-layer architecture overview (Core Mesh, AI Gateway, MirrorNet, Roadmap)
+     - `Modules.md`: Complete catalog of 80+ LuCI modules with screenshots
+   - **Module category pages** at `docs/wiki/modules/`:
+     - `Security.md`: 15 modules (CrowdSec, WAF, Guardians, ZKP, Threat Analyst)
+     - `Network.md`: 12 modules (HAProxy, Bandwidth, Traffic Shaper, CDN)
+     - `Mesh.md`: 7 modules (WireGuard, P2P, MirrorNet, Master Link)
+     - `DNS.md`: 6 modules (DNS Master, Vortex, Meshname, Provider)
+     - `Apps.md`: 20 modules (Jellyfin, Nextcloud, Matrix, VoIP, Domoticz)
+     - `System.md`: 14 modules (Config Vault, Reporter, RTTY, RezApp)
+     - `AI.md`: 8 modules (Gateway, LocalAI, Ollama, Threat Analyst)
+   - **Updated documentation**:
+     - `SCREENSHOTS.md`: Expanded to 111 modules with package names
+     - `README.md`: Added wiki links and module index table
+   - **Documentation stats**: 3,845 lines added, 14 files created
+
+0. **Mesh Network Device/VM Discovery (2026-03-26)**
+   - **Enhanced discovery.sh** with multi-method network device detection:
+     - `discovery_scan_subnet()`: Active /24 subnet scanning for SecuBox peers
+     - `discovery_scan_docker()`: Docker container discovery via Unix socket API
+     - `discovery_scan_lxc()`: LXC and Proxmox (pct) container detection
+     - `discovery_scan_libvirt()`: KVM/libvirt VM detection via virsh
+     - `discovery_scan_all_devices()`: Full ARP neighbor discovery with fingerprinting
+   - **Device fingerprinting** by open ports (ssh, http, https, mitmproxy)
+   - **New RPCD methods**:
+     - `devices`: List all discovered network devices
+     - `scan_full`: Trigger full network scan (includes slow subnet scan)
+     - `scan_containers`: Scan specifically for Docker/LXC/libvirt containers
+   - **LuCI mesh dashboard** updated:
+     - "Discovered Devices" table with IP, MAC, type, hostname, services, state
+     - "Scan Network" button to trigger full discovery
+     - Device types: secubox, server, container, vm, unknown
+     - Peer table now shows source field (docker:name, lxc:name, etc.)
+   - **Files updated**:
+     - `secubox-mesh/files/usr/lib/secubox-mesh/discovery.sh`
+     - `secubox-mesh/files/usr/libexec/rpcd/luci.secubox-mesh`
+     - `secubox-mesh/root/usr/share/rpcd/acl.d/luci-app-secubox-mesh.json`
+     - `luci-app-secubox-mesh/htdocs/luci-static/resources/view/secubox/mesh.js`
+
+0. **CRT P31 Theme UI Consistency Fix (2026-03-26)**
+   - Complete `cascade.css` rewrite (1100+ lines) for consistent styling
+   - All LuCI views now have uniform CRT P31 appearance
+   - Fixed: navigation, forms, tables, alerts, badges, modals, dropdowns
+
+0. **Theme Deployment & Documentation (2026-03-26)**
+   - **LuCI 24.10 Compatibility Fix**:
+     - Added ucode templates (`.ut` files) replacing incompatible Lua templates
+     - `header.ut`: Proper LuCI template with board info, theme reference
+     - `footer.ut`: SecuBox branding with version info
+     - Modern LuCI requires ucode templates in `/usr/share/ucode/luci/template/themes/`
+   - **Navbar Layout Fix**:
+     - Changed from sidebar layout to horizontal top navigation bar
+     - Header uses flexbox: `.brand` | `#topmenu.nav` | `#indicators`
+     - Added dropdown menu styles for submenu items
+     - Added `#tabmenu` secondary navigation styles
+     - Fixed footer to use flex layout
+     - Updated responsive styles for mobile header wrapping
+   - **Documentation Structure** (secubox-deb style):
+     - `docs/README.md`: Project overview and quick links
+     - `docs/SCREENSHOTS.md`: Module screenshot gallery (50+ entries, pending captures)
+     - `docs/UI-GUIDE.md`: CRT P31 theme design guide with color palette
+     - `docs/MODULES.md`: Complete package catalog (75+ modules)
+     - `docs/API.md`: RPCD/ubus API reference with method tables
+     - `docs/screenshots/router/`: Directory for OpenWrt router screenshots
+     - `docs/wiki/`: Directory for multilingual documentation
+   - **Files created/updated**:
+     - `ucode/luci/template/themes/secubox/header.ut`
+     - `ucode/luci/template/themes/secubox/footer.ut`
+     - `htdocs/luci-static/secubox/cascade.css` (layout fixes)
+     - `htdocs/luci-static/secubox/mobile.css` (new)
+     - Makefile updated to PKG_RELEASE:=3
+   - **Commits**:
+     - `feat(luci-theme-secubox)`: CRT P31 theme with Lua templates
+     - `fix(luci-theme-secubox)`: ucode templates for LuCI 24.10
+     - `fix(luci-theme-secubox)`: Navbar layout for horizontal nav
+     - `docs`: Comprehensive documentation structure
+
+0. **CRT P31 Phosphor Theme Enhancement (2026-03-25)**
+   - **NEW: CRT P31 theme variant** (`themes/crt-p31.css`)
+     - Authentic P31 phosphor green CRT terminal aesthetic
+     - Color palette: peak (#33ff66), hot (#66ffaa), mid (#22cc44), dim (#0f8822), ghost (#052210)
+     - Phosphor decay amber for warnings (#ffb347)
+     - CRT tube blacks for backgrounds (#050803, #080d05, #0d1208)
+   - **CRT visual effects** (`htdocs/luci-static/secubox/`)
+     - `cascade.css`: Complete CRT theme as standalone LuCI theme
+     - `crt-engine.js`: Scanlines overlay, phosphor glow, boot sequence animation
+     - `crt-components.js`: Reusable widgets, badges, progress bars, topology nodes
+   - **LuCI view templates** (`luasrc/luci/view/themes/secubox/`)
+     - `header.htm`: CRT-styled header with hostname display
+     - `footer.htm`: Mesh version and branding
+     - `sysauth.htm`: Terminal-style login page with glowing elements
+   - **Theme features**:
+     - Scanlines overlay (CSS pseudo-element, pointer-events: none)
+     - Phosphor bloom effects on text and interactive elements
+     - Monospace font stack (Courier Prime, IBM Plex Mono, Fira Code)
+     - Terminal boot sequence animation on first visit
+     - Status indicators with appropriate glow colors
+   - **Integration**:
+     - Added to existing secubox-theme system via `data-secubox-theme="crt-p31"`
+     - Compatible with all SecuBox LuCI modules
+     - Set as default theme via UCI defaults script
+   - **Files created/updated**:
+     - `htdocs/luci-static/resources/secubox-theme/themes/crt-p31.css`
+     - `htdocs/luci-static/secubox/cascade.css`
+     - `htdocs/luci-static/secubox/crt-engine.js`
+     - `htdocs/luci-static/secubox/crt-components.js`
+     - Makefile updated to PKG_RELEASE:=2
 
 0. **Wiki Internationalization & Meta-package (2026-03-20)**
    - **Wiki translations**: All 17 wiki pages translated to French and Chinese
@@ -5433,3 +5545,32 @@ git checkout HEAD -- index.html
   - Migrated secubox-reporter and bandwidth-manager to use shared library
   - Backwards-compatible fallback to legacy per-app SMTP settings
   - Eliminates duplicated SMTP configuration across SecuBox apps
+
+### 2026-03-25
+
+- **SecuBox Mesh Daemon (`secubox-mesh`) (Complete)**
+  - New `secubox-mesh` package: OpenWrt-native mesh daemon ported from Debian/Go version
+  - **secuboxd** daemon with Unix control socket at `/var/run/secuboxd/topo.sock`
+  - **secuboxctl** CLI tool compatible with Debian version interface:
+    - `mesh status|peers|topology|nodes` - mesh operations
+    - `node info|rotate` - node identity management
+    - `telemetry latest` - system metrics
+    - `start|stop|restart` - service control
+  - **Libraries** in `/usr/lib/secubox-mesh/`:
+    - `topology.sh` - node/edge management, graph storage, pruning
+    - `discovery.sh` - mDNS, WireGuard, ARP, static peer discovery
+    - `election.sh` - mesh gate election with weighted scoring algorithm
+    - `telemetry.sh` - system metrics collection (CPU, memory, uptime, load)
+    - `control.sh` - socket command parsing, rate limiting, health checks
+  - **Mesh Gate Election Algorithm**:
+    - Scoring weights: uptime (30%), peers (25%), CPU (15%), memory (15%), role (15%)
+    - Relay nodes preferred over edge nodes for gate role
+    - Leader election via highest score, periodic re-election
+  - **mDNS Service Discovery**: `_secubox._udp.local` with TXT records (did, role, version)
+  - **DID Integration**: Uses existing mirrornet identity library for did:plc format
+  - **UCI Config**: `/etc/config/secubox` with mesh, node, telemetry, discovery sections
+  - **procd Init Script**: Respawn, network triggers, file triggers
+  - **RPCD Handler**: `luci.secubox-mesh` with 11 methods for ubus access
+  - **ACL Permissions**: Read (status, peers, topology, nodes, telemetry, ping, get_config), Write (node_rotate, set_config, restart)
+  - **Dependencies**: secubox-mirrornet, secubox-identity, libubox-lua, libubus-lua, umdns, wireguard-tools, jshn, socat
+  - Cross-platform compatible with Debian secuboxd for hybrid mesh networks

@@ -1,0 +1,223 @@
+#!/bin/sh
+# SecuBox Mesh RPCD Handler
+# Exposes mesh daemon commands via ubus
+# CyberMind — SecuBox — 2026
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+SOCKET="/var/run/secuboxd/topo.sock"
+STATEDIR="/var/lib/secubox-mesh"
+
+# Source discovery library for direct calls
+[ -f /usr/lib/secubox-mesh/discovery.sh ] && . /usr/lib/secubox-mesh/discovery.sh
+
+# Send command to daemon
+_send_cmd() {
+    local cmd="$1"
+
+    if [ ! -S "$SOCKET" ]; then
+        echo '{"error":"Daemon not running"}'
+        return 1
+    fi
+
+    if command -v socat >/dev/null 2>&1; then
+        echo "$cmd" | socat - "UNIX-CONNECT:$SOCKET" 2>/dev/null
+    else
+        echo '{"error":"socat not available"}'
+        return 1
+    fi
+}
+
+# List available methods
+case_list() {
+    cat <<'EOF'
+{
+    "status": {},
+    "peers": {},
+    "topology": {},
+    "nodes": {},
+    "node_info": {},
+    "node_rotate": {},
+    "telemetry": {},
+    "ping": {},
+    "get_config": {},
+    "set_config": { "role": "string", "beacon_interval": "number" },
+    "restart": {},
+    "devices": {},
+    "scan_full": {},
+    "scan_containers": {}
+}
+EOF
+}
+
+# Call method
+case_call() {
+    local method="$1"
+
+    case "$method" in
+        status)
+            _send_cmd "mesh.status"
+            ;;
+        peers)
+            _send_cmd "mesh.peers"
+            ;;
+        topology)
+            _send_cmd "mesh.topology"
+            ;;
+        nodes)
+            _send_cmd "mesh.nodes"
+            ;;
+        node_info)
+            _send_cmd "node.info"
+            ;;
+        node_rotate)
+            _send_cmd "node.rotate"
+            ;;
+        telemetry)
+            _send_cmd "telemetry.latest"
+            ;;
+        ping)
+            local response
+            response=$(_send_cmd "ping")
+            if echo "$response" | grep -q '"pong":true'; then
+                json_init
+                json_add_boolean running 1
+                json_dump
+            else
+                json_init
+                json_add_boolean running 0
+                json_add_string error "Daemon not responding"
+                json_dump
+            fi
+            ;;
+        get_config)
+            json_init
+
+            config_load secubox
+
+            local enabled role subnet beacon_interval
+            config_get_bool enabled mesh enabled 1
+            config_get role mesh role "edge"
+            config_get subnet mesh subnet "10.42.0.0/16"
+            config_get beacon_interval mesh beacon_interval "30"
+
+            json_add_boolean enabled "$enabled"
+            json_add_string role "$role"
+            json_add_string subnet "$subnet"
+            json_add_int beacon_interval "$beacon_interval"
+
+            json_dump
+            ;;
+        set_config)
+            read -r input
+
+            local role beacon_interval
+            json_load "$input"
+            json_get_var role role
+            json_get_var beacon_interval beacon_interval
+
+            [ -n "$role" ] && uci set secubox.mesh.role="$role"
+            [ -n "$beacon_interval" ] && uci set secubox.mesh.beacon_interval="$beacon_interval"
+
+            uci commit secubox
+
+            json_init
+            json_add_boolean success 1
+            json_dump
+            ;;
+        restart)
+            /etc/init.d/secuboxd restart >/dev/null 2>&1
+
+            json_init
+            json_add_boolean success 1
+            json_dump
+            ;;
+        devices)
+            # Return discovered network devices
+            if [ -f "$STATEDIR/devices.json" ]; then
+                cat "$STATEDIR/devices.json"
+            else
+                echo '[]'
+            fi
+            ;;
+        scan_full)
+            # Trigger full network scan (including subnet scan)
+            if type discovery_scan_full >/dev/null 2>&1; then
+                # Run in background to avoid timeout
+                discovery_scan_full &
+                local scan_pid=$!
+
+                json_init
+                json_add_boolean started 1
+                json_add_int pid "$scan_pid"
+                json_add_string message "Full scan initiated"
+                json_dump
+            else
+                json_init
+                json_add_boolean started 0
+                json_add_string error "Discovery library not available"
+                json_dump
+            fi
+            ;;
+        scan_containers)
+            # Scan for containers and VMs specifically
+            local containers='[]'
+
+            if type discovery_scan_docker >/dev/null 2>&1; then
+                local docker_out lxc_out libvirt_out
+                docker_out=$(discovery_scan_docker 2>/dev/null)
+                lxc_out=$(discovery_scan_lxc 2>/dev/null)
+                libvirt_out=$(discovery_scan_libvirt 2>/dev/null)
+
+                # Build JSON from pipe-separated output
+                json_init
+                json_add_array containers
+
+                for line in $docker_out $lxc_out $libvirt_out; do
+                    [ -z "$line" ] && continue
+
+                    local did addr role port source
+                    did=$(echo "$line" | cut -d'|' -f1)
+                    addr=$(echo "$line" | cut -d'|' -f2)
+                    role=$(echo "$line" | cut -d'|' -f3)
+                    port=$(echo "$line" | cut -d'|' -f4)
+                    source=$(echo "$line" | cut -d'|' -f5)
+
+                    json_add_object ""
+                    json_add_string did "$did"
+                    json_add_string address "$addr"
+                    json_add_string role "$role"
+                    json_add_int port "${port:-0}"
+                    json_add_string source "$source"
+                    json_close_object
+                done
+
+                json_close_array
+                json_dump
+            else
+                echo '{"containers":[],"error":"Discovery library not available"}'
+            fi
+            ;;
+        *)
+            json_init
+            json_add_string error "Unknown method: $method"
+            json_dump
+            return 1
+            ;;
+    esac
+}
+
+# Main dispatcher
+case "$1" in
+    list)
+        case_list
+        ;;
+    call)
+        case_call "$2"
+        ;;
+    *)
+        echo '{"error":"Invalid command"}'
+        exit 1
+        ;;
+esac

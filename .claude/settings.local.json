@@ -606,7 +606,9 @@
       "Bash(if [ -f \"$d/README.md\" ])",
       "Bash([ ! -f \"$d/README.fr.md\" ])",
       "Bash(basename:*)",
-      "Bash(VBoxManage internalcommands sethduuid:*)"
+      "Bash(VBoxManage internalcommands sethduuid:*)",
+      "Bash(nmap:*)",
+      "WebFetch(domain:repo.secubox.in)"
     ]
   }
 }

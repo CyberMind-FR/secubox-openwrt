@@ -1,12 +1,65 @@
 # Work In Progress (Claude)
 
-_Last updated: 2026-03-17 (VM Firmware Build + CI Fixes)_
+_Last updated: 2026-03-26 (Wiki Documentation)_
 
 > **Architecture Reference**: SecuBox Fanzine v3 — Les 4 Couches
 
 ---
 
 ## Recently Completed
+
+### 2026-03-26
+
+- **Comprehensive Wiki Documentation (Complete)**
+  - Created `docs/wiki/` structure with 12 markdown pages
+  - Main pages: Home, Installation, Quick-Start, Architecture, Modules
+  - Module category pages: Security (15), Network (12), Mesh (7), DNS (6), Apps (20), System (14), AI (8)
+  - Updated SCREENSHOTS.md to 111 modules with package names
+  - Updated README.md with wiki navigation and module index
+  - Total: 3,845 lines of documentation
+
+- **Mesh Network Device/VM Discovery (Complete)**
+  - Enhanced `discovery.sh` with multi-method device detection
+  - New discovery methods:
+    - `discovery_scan_subnet()` - Active subnet scanning
+    - `discovery_scan_docker()` - Docker container detection via Unix socket
+    - `discovery_scan_lxc()` - LXC/Proxmox container detection
+    - `discovery_scan_libvirt()` - KVM/libvirt VM detection
+    - `discovery_scan_all_devices()` - Full network neighbor discovery with fingerprinting
+  - Device fingerprinting by services (ssh, http, https, mitmproxy)
+  - New RPCD methods: `devices`, `scan_full`, `scan_containers`
+  - Updated LuCI mesh.js with discovered devices table and scan button
+  - Devices classified by type: secubox, server, container, vm, unknown
+
+- **CRT P31 Theme UI Fix (Complete)**
+  - Comprehensive cascade.css rewrite (1100+ lines)
+  - Fixed UI inconsistencies across all LuCI views
+  - Consistent CRT P31 styling for nav, forms, tables, alerts, modals
+
+- **CRT P31 Theme Deployment & LuCI 24.10 Fix (Complete)**
+  - Fixed LuCI 24.10 compatibility with ucode templates (.ut files)
+  - Fixed navbar layout: sidebar → horizontal top navigation
+  - Header flexbox: brand | nav menu | indicators
+  - Added mobile responsive styles
+  - Deployed and tested on router
+
+- **Documentation Structure (Complete)**
+  - Created docs/ directory with secubox-deb style documentation
+  - SCREENSHOTS.md with 50+ module entries (pending captures)
+  - UI-GUIDE.md with CRT P31 theme design specs
+  - MODULES.md with 75+ package catalog
+  - API.md with RPCD/ubus method reference
+
+### 2026-03-25
+
+- **SecuBox Mesh Daemon (`secubox-mesh`) (Complete)**
+  - OpenWrt-native mesh daemon ported from Debian/Go version
+  - `secuboxd` daemon with Unix control socket, `secuboxctl` CLI
+  - Libraries: topology, discovery, election, telemetry, control
+  - Mesh gate election with weighted scoring algorithm
+  - mDNS service discovery: `_secubox._udp.local`
+  - RPCD handler with 11 ubus methods
+  - Cross-platform compatible with Debian version
 
 ### 2026-03-17
 

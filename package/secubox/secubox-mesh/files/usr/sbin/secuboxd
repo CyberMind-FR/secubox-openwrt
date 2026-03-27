@@ -1,0 +1,412 @@
+#!/bin/sh
+# SecuBox Mesh Daemon (secuboxd) for OpenWrt
+# Unix control socket server with mesh topology management
+# CyberMind — SecuBox — 2026
+
+. /lib/functions.sh
+
+# Paths
+RUNDIR="/var/run/secuboxd"
+SOCKET="$RUNDIR/topo.sock"
+PIDFILE="$RUNDIR/secuboxd.pid"
+STATEDIR="/var/lib/secubox-mesh"
+LOGFILE="/var/log/secuboxd.log"
+
+# Source mesh libraries
+. /usr/lib/secubox-mesh/topology.sh
+. /usr/lib/secubox-mesh/discovery.sh
+. /usr/lib/secubox-mesh/telemetry.sh
+. /usr/lib/secubox-mesh/control.sh
+. /usr/lib/secubox-mesh/election.sh
+
+# Source mirrornet libraries if available
+[ -f /usr/lib/mirrornet/identity.sh ] && . /usr/lib/mirrornet/identity.sh
+[ -f /usr/lib/mirrornet/gossip.sh ] && . /usr/lib/mirrornet/gossip.sh
+[ -f /usr/lib/mirrornet/health.sh ] && . /usr/lib/mirrornet/health.sh
+
+# Global state
+DAEMON_START_TIME=0
+MESH_STATE="starting"
+CURRENT_ROLE="edge"
+MESH_GATE=""
+PEER_COUNT=0
+
+log() {
+    local level="$1"
+    shift
+    local msg="$*"
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "[$timestamp] [$level] $msg" >> "$LOGFILE"
+    logger -t secuboxd -p "daemon.$level" "$msg"
+}
+
+log_info() { log "info" "$@"; }
+log_warn() { log "warn" "$@"; }
+log_error() { log "error" "$@"; }
+
+# Save daemon state for subprocess access
+save_daemon_state() {
+    cat > "$STATEDIR/daemon_state" <<STATE_EOF
+NODE_DID="$NODE_DID"
+CURRENT_ROLE="$CURRENT_ROLE"
+MESH_STATE="$MESH_STATE"
+MESH_GATE="$MESH_GATE"
+PEER_COUNT="$PEER_COUNT"
+DAEMON_START_TIME="$DAEMON_START_TIME"
+BEACON_INTERVAL="$BEACON_INTERVAL"
+STATEDIR="$STATEDIR"
+STATE_EOF
+}
+
+# Initialize daemon
+daemon_init() {
+    log_info "Initializing SecuBox mesh daemon"
+
+    # Create directories
+    mkdir -p "$RUNDIR" "$STATEDIR"
+    chmod 755 "$RUNDIR"
+
+    # Initialize state files
+    echo '{"nodes":[],"edges":[],"mesh_gate":""}' > "$STATEDIR/topology.json"
+    echo '[]' > "$STATEDIR/peers.json"
+    echo '{}' > "$STATEDIR/telemetry.json"
+
+    # Get node identity
+    if type identity_get_did >/dev/null 2>&1; then
+        NODE_DID=$(identity_get_did)
+    else
+        # Fallback DID generation
+        local machine_id mac_addr
+        machine_id=$(cat /etc/machine-id 2>/dev/null || echo "openwrt")
+        mac_addr=$(cat /sys/class/net/br-lan/address 2>/dev/null || \
+                   cat /sys/class/net/eth0/address 2>/dev/null || echo "00:00:00:00:00:00")
+        NODE_DID="did:plc:$(echo -n "${machine_id}:${mac_addr}" | md5sum | cut -c1-16)"
+    fi
+
+    # Load configuration
+    config_load secubox
+    config_get CURRENT_ROLE mesh role "edge"
+    config_get BEACON_INTERVAL mesh beacon_interval "30"
+    config_get ELECTION_INTERVAL mesh election_interval "60"
+    config_get MDNS_SERVICE mesh mdns_service "_secubox._udp"
+
+    DAEMON_START_TIME=$(date +%s)
+
+    # Save state for socket handler subprocess
+    save_daemon_state
+
+    log_info "Node DID: $NODE_DID"
+    log_info "Role: $CURRENT_ROLE"
+}
+
+# Handle control socket command
+handle_command() {
+    local cmd="$1"
+    local response=""
+
+    case "$cmd" in
+        "ping")
+            response='{"pong":true}'
+            ;;
+        "mesh.status")
+            response=$(cmd_mesh_status)
+            ;;
+        "mesh.peers")
+            response=$(cmd_mesh_peers)
+            ;;
+        "mesh.topology")
+            response=$(cmd_mesh_topology)
+            ;;
+        "mesh.nodes")
+            response=$(cmd_mesh_nodes)
+            ;;
+        "node.info")
+            response=$(cmd_node_info)
+            ;;
+        "node.rotate")
+            response=$(cmd_node_rotate)
+            ;;
+        "telemetry.latest")
+            response=$(cmd_telemetry_latest)
+            ;;
+        *)
+            response='{"error":"Unknown command","command":"'"$cmd"'"}'
+            ;;
+    esac
+
+    echo "$response"
+}
+
+# Command: mesh.status
+cmd_mesh_status() {
+    local uptime=$(($(date +%s) - DAEMON_START_TIME))
+    cat <<EOF
+{"state":"$MESH_STATE","peer_count":$PEER_COUNT,"role":"$CURRENT_ROLE","mesh_gate":"$MESH_GATE","uptime":$uptime,"did":"$NODE_DID"}
+EOF
+}
+
+# Command: mesh.peers
+cmd_mesh_peers() {
+    if [ -f "$STATEDIR/peers.json" ]; then
+        cat "$STATEDIR/peers.json"
+    else
+        echo '[]'
+    fi
+}
+
+# Command: mesh.topology
+cmd_mesh_topology() {
+    if [ -f "$STATEDIR/topology.json" ]; then
+        cat "$STATEDIR/topology.json"
+    else
+        echo '{"nodes":[],"edges":[],"mesh_gate":""}'
+    fi
+}
+
+# Command: mesh.nodes
+cmd_mesh_nodes() {
+    topology_get_nodes
+}
+
+# Command: node.info
+cmd_node_info() {
+    local zkp_valid="false"
+    [ -f "$STATEDIR/zkp_valid" ] && zkp_valid="true"
+
+    local pubkey=""
+    if [ -f /var/lib/mirrornet/identity/keys/primary.pub ]; then
+        pubkey=$(cat /var/lib/mirrornet/identity/keys/primary.pub 2>/dev/null | tr -d '\n')
+    fi
+
+    cat <<EOF
+{"did":"$NODE_DID","role":"$CURRENT_ROLE","public_key":"$pubkey","zkp_valid":$zkp_valid,"mesh_gate":"$MESH_GATE"}
+EOF
+}
+
+# Command: node.rotate
+cmd_node_rotate() {
+    if type identity_rotate_key >/dev/null 2>&1; then
+        identity_rotate_key "primary"
+        local new_expiry
+        new_expiry=$(date -d "+30 days" -Iseconds 2>/dev/null || date -Iseconds)
+        echo '{"success":true,"new_expiry":"'"$new_expiry"'"}'
+    else
+        echo '{"success":false,"error":"Identity rotation not available"}'
+    fi
+}
+
+# Command: telemetry.latest
+cmd_telemetry_latest() {
+    telemetry_collect
+}
+
+# Control socket server using netcat
+start_socket_server() {
+    log_info "Starting control socket server at $SOCKET"
+
+    # Remove old socket
+    rm -f "$SOCKET"
+
+    # Create socket directory
+    mkdir -p "$(dirname "$SOCKET")"
+
+    # Use socat if available, fallback to nc
+    if command -v socat >/dev/null 2>&1; then
+        socat UNIX-LISTEN:"$SOCKET",fork EXEC:"/usr/sbin/secuboxd --handle-client" &
+        SOCKET_PID=$!
+    else
+        # Fallback: use a FIFO-based approach
+        local fifo_in="$RUNDIR/socket_in"
+        local fifo_out="$RUNDIR/socket_out"
+        mkfifo "$fifo_in" "$fifo_out" 2>/dev/null
+
+        while true; do
+            if read -r cmd < "$fifo_in" 2>/dev/null; then
+                handle_command "$cmd" > "$fifo_out"
+            fi
+            sleep 0.1
+        done &
+        SOCKET_PID=$!
+    fi
+
+    log_info "Socket server started (PID: $SOCKET_PID)"
+}
+
+# Handle client connection (for socat exec mode)
+handle_client() {
+    # Load daemon state for subprocess
+    STATEDIR="/var/lib/secubox-mesh"
+    [ -f "$STATEDIR/daemon_state" ] && . "$STATEDIR/daemon_state"
+
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        handle_command "$line"
+    done
+}
+
+# mDNS service advertisement
+start_mdns() {
+    log_info "Starting mDNS advertisement"
+
+    local wg_port
+    wg_port=$(uci -q get network.wg0.listen_port || echo "51820")
+
+    # Use umdns if available
+    if command -v umdns >/dev/null 2>&1; then
+        # Create service file for umdns
+        mkdir -p /var/run/umdns
+        cat > /var/run/umdns/secubox.json <<EOF
+{
+    "secubox": {
+        "service": "_secubox._udp.local",
+        "port": $wg_port,
+        "txt": [
+            "did=$NODE_DID",
+            "role=$CURRENT_ROLE",
+            "version=1.0.0"
+        ]
+    }
+}
+EOF
+        # Reload umdns
+        /etc/init.d/umdns reload 2>/dev/null
+        log_info "mDNS service registered via umdns"
+    elif command -v avahi-publish >/dev/null 2>&1; then
+        # Fallback to avahi-publish
+        avahi-publish -s "secubox-${NODE_DID##*:}" "_secubox._udp" "$wg_port" \
+            "did=$NODE_DID" "role=$CURRENT_ROLE" "version=1.0.0" &
+        AVAHI_PID=$!
+        log_info "mDNS service registered via avahi-publish (PID: $AVAHI_PID)"
+    else
+        log_warn "No mDNS daemon available (umdns or avahi)"
+    fi
+}
+
+# Stop mDNS advertisement
+stop_mdns() {
+    rm -f /var/run/umdns/secubox.json
+    /etc/init.d/umdns reload 2>/dev/null
+    [ -n "$AVAHI_PID" ] && kill "$AVAHI_PID" 2>/dev/null
+}
+
+# Main daemon loop
+daemon_loop() {
+    local loop_count=0
+    MESH_STATE="running"
+    save_daemon_state
+
+    log_info "Entering main daemon loop"
+
+    while true; do
+        loop_count=$((loop_count + 1))
+
+        # Peer discovery (every beacon interval)
+        if [ $((loop_count % BEACON_INTERVAL)) -eq 0 ]; then
+            discovery_scan_peers
+            PEER_COUNT=$(discovery_get_peer_count)
+            log_info "Peer discovery: found $PEER_COUNT peers"
+            save_daemon_state
+        fi
+
+        # Topology update (every 2x beacon interval)
+        if [ $((loop_count % (BEACON_INTERVAL * 2))) -eq 0 ]; then
+            topology_update
+        fi
+
+        # Gate election (every election interval)
+        if [ $((loop_count % ELECTION_INTERVAL)) -eq 0 ]; then
+            local old_gate="$MESH_GATE"
+            MESH_GATE=$(election_run)
+            if [ "$MESH_GATE" != "$old_gate" ]; then
+                log_info "Mesh gate changed: $old_gate -> $MESH_GATE"
+            fi
+            # Update state file with new values
+            save_daemon_state
+        fi
+
+        # Telemetry collection (every 60 seconds)
+        if [ $((loop_count % 60)) -eq 0 ]; then
+            telemetry_collect > "$STATEDIR/telemetry.json"
+        fi
+
+        # Health check (every 30 seconds)
+        if [ $((loop_count % 30)) -eq 0 ] && type health_check >/dev/null 2>&1; then
+            health_check
+        fi
+
+        sleep 1
+    done
+}
+
+# Signal handlers
+cleanup() {
+    log_info "Shutting down secuboxd"
+    MESH_STATE="stopping"
+
+    stop_mdns
+
+    [ -n "$SOCKET_PID" ] && kill "$SOCKET_PID" 2>/dev/null
+    rm -f "$SOCKET" "$PIDFILE"
+
+    log_info "SecuBox mesh daemon stopped"
+    exit 0
+}
+
+trap cleanup INT TERM
+
+# Main entry point
+main() {
+    case "$1" in
+        --handle-client)
+            handle_client
+            exit 0
+            ;;
+        --foreground|-f)
+            daemon_init
+            start_socket_server
+            start_mdns
+            daemon_loop
+            ;;
+        --version|-v)
+            echo "secuboxd 1.0.0 (OpenWrt)"
+            exit 0
+            ;;
+        --help|-h)
+            cat <<EOF
+SecuBox Mesh Daemon (secuboxd)
+
+Usage: secuboxd [OPTION]
+
+Options:
+  -f, --foreground    Run in foreground (for procd)
+  -v, --version       Show version
+  -h, --help          Show this help
+
+Control socket: $SOCKET
+Configuration: /etc/config/secubox
+
+Commands (via socket):
+  ping              - Check daemon is alive
+  mesh.status       - Get mesh status
+  mesh.peers        - List connected peers
+  mesh.topology     - Get mesh topology
+  mesh.nodes        - List all nodes
+  node.info         - Get this node's info
+  node.rotate       - Rotate node keys
+  telemetry.latest  - Get latest telemetry
+EOF
+            exit 0
+            ;;
+        *)
+            # Default: run in foreground for procd
+            daemon_init
+            echo $$ > "$PIDFILE"
+            start_socket_server
+            start_mdns
+            daemon_loop
+            ;;
+    esac
+}
+
+main "$@"

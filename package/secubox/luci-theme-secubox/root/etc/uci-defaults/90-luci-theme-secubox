@@ -1,0 +1,11 @@
+#!/bin/sh
+# SecuBox CRT P31 Theme - UCI Defaults
+# Register and set SecuBox theme as default LuCI theme
+
+uci -q batch <<-EOF
+	set luci.themes.SecuBox='/luci-static/secubox'
+	set luci.main.mediaurlbase='/luci-static/secubox'
+	commit luci
+EOF
+
+exit 0

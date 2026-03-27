@@ -1,0 +1,14 @@
+{
+	"admin/secubox/mesh": {
+		"title": "Mesh Network",
+		"order": 35,
+		"action": {
+			"type": "view",
+			"path": "secubox/mesh"
+		},
+		"depends": {
+			"acl": ["luci-app-secubox-mesh"],
+			"uci": { "secubox": true }
+		}
+	}
+}

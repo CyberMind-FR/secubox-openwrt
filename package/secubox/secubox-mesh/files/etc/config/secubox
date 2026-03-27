@@ -1,0 +1,33 @@
+
+config mesh 'mesh'
+	option enabled '1'
+	option role 'edge'
+	option subnet '10.42.0.0/16'
+	option mdns_service '_secubox._udp'
+	option beacon_interval '30'
+	option election_interval '60'
+	option prune_interval '300'
+
+config node 'node'
+	option did ''
+	option keypair '/var/lib/mirrornet/identity/keys/primary.key'
+	option auto_rotate '0'
+	option rotate_days '30'
+
+config telemetry 'telemetry'
+	option enabled '1'
+	option interval '60'
+	option share_metrics '1'
+
+config discovery 'discovery'
+	option mdns '1'
+	option wireguard '1'
+	option arp '1'
+	option static '1'
+
+# Example static peer configuration
+#config peer 'peer1'
+#	option did 'did:plc:abcdef0123456789'
+#	option address '192.168.1.100'
+#	option role 'relay'
+#	option port '51820'

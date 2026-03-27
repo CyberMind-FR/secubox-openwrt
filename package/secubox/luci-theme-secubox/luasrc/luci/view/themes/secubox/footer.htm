@@ -1,0 +1,37 @@
+<%#
+ SecuBox CRT P31 Theme - Footer Template
+ CyberMind — SecuBox — 2026
+-%>
+
+	</main>
+</div>
+
+<footer class="main-foot" id="mainfooter">
+	<span>SecuBox Mesh v<%=luci.version.distversion%></span>
+	<span class="separator">|</span>
+	<span>Powered by <a href="https://openwrt.org" target="_blank">OpenWrt</a></span>
+	<span class="separator">|</span>
+	<span>&copy; 2026 CyberMind</span>
+</footer>
+
+<%
+	local webroot = luci.http.getenv("DOCUMENT_ROOT") or ""
+	local resource = luci.dispatcher.build_url("admin/translations", luci.i18n.context.lang)
+-%>
+
+<script>
+(function() {
+	// Initialize SecuBox CRT effects
+	if (window.SecuBoxCRT) {
+		window.SecuBoxCRT.configure({
+			enableScanlines: true,
+			enableFlicker: false,
+			enableGlow: true,
+			enableBootSequence: true
+		});
+	}
+})();
+</script>
+
+</body>
+</html>

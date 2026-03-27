@@ -1,16 +1,45 @@
+# SPDX-License-Identifier: MIT
+# SecuBox CRT P31 Phosphor Theme for OpenWrt LuCI
+# CyberMind — SecuBox — 2026
+
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-theme-secubox
-PKG_VERSION:=0.4.8
-PKG_RELEASE:=1
-PKG_LICENSE:=Apache-2.0
-PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
+PKG_VERSION:=1.0.0
+PKG_RELEASE:=3
+PKG_MAINTAINER:=Gerald KERMA <devel@cybermind.fr>
+PKG_LICENSE:=MIT
 
-LUCI_TITLE:=LuCI - SecuBox CyberMood Theme
-LUCI_DESCRIPTION:=Global CyberMood design system (CSS/JS/i18n) shared by all SecuBox dashboards.
+LUCI_TITLE:=SecuBox CRT P31 Phosphor Theme
 LUCI_DEPENDS:=+luci-base
-LUCI_PKGARCH:=all
+LUCI_DESCRIPTION:=CRT P31 phosphor green terminal theme for SecuBox mesh network appliance. Features scanlines, phosphor glow effects, multiple theme variants including CRT-P31, dark, cyberpunk, and more.
 
 include $(TOPDIR)/feeds/luci/luci.mk
 
-# call BuildPackage - OpenWrt buildroot
+define Package/luci-theme-secubox/install
+	# Main theme directory (CRT P31 base)
+	$(INSTALL_DIR) $(1)/www/luci-static/secubox
+	$(CP) ./htdocs/luci-static/secubox/* $(1)/www/luci-static/secubox/
+	# Theme system resources
+	$(INSTALL_DIR) $(1)/www/luci-static/resources/secubox-theme
+	$(CP) ./htdocs/luci-static/resources/secubox-theme/* $(1)/www/luci-static/resources/secubox-theme/
+	# KISS theme helper for individual modules
+	$(INSTALL_DIR) $(1)/www/luci-static/resources/secubox
+	$(CP) ./htdocs/luci-static/resources/secubox/* $(1)/www/luci-static/resources/secubox/
+	# Ucode templates (required for LuCI theme selection)
+	$(INSTALL_DIR) $(1)/usr/share/ucode/luci/template/themes/secubox
+	$(CP) ./ucode/luci/template/themes/secubox/*.ut $(1)/usr/share/ucode/luci/template/themes/secubox/
+	# UCI defaults
+	$(INSTALL_DIR) $(1)/etc/uci-defaults
+	$(INSTALL_BIN) ./root/etc/uci-defaults/90-luci-theme-secubox $(1)/etc/uci-defaults/
+endef
+
+define Package/luci-theme-secubox/postinst
+#!/bin/sh
+[ -n "$${IPKG_INSTROOT}" ] || {
+	uci set luci.main.mediaurlbase='/luci-static/secubox'
+	uci commit luci
+}
+endef
+
+$(eval $(call BuildPackage,luci-theme-secubox))
